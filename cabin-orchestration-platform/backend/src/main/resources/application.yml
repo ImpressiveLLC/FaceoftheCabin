@@ -1,0 +1,43 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cabin
+    username: cabin
+    password: ${POSTGRES_PASSWORD:cabin_dev_password}
+    driver-class-name: org.postgresql.Driver
+
+cabin:
+  name: Cumberland Cabin
+  mqtt:
+    brokerUrl: ${MQTT_URL:tcp://localhost:1883}
+    clientId: cabin-orchestrator
+  kafka:
+    bootstrapServers: ${KAFKA_BOOTSTRAP:localhost:9092}
+  dashboard:
+    familyDashboardUrl: ${FAMILY_DASHBOARD_URL:http://localhost:8081}
+  homeassistant:
+    url: ${HA_URL:http://localhost:8123}
+    token: ${HA_TOKEN:}
+  google:
+    calendarId: ${GOOGLE_CALENDAR_ID:primary}
+    oauthClientId: ${GOOGLE_CLIENT_ID:}
+    oauthClientSecret: ${GOOGLE_CLIENT_SECRET:}
+  devices:
+    waterPressure:
+      lowPsiAlert: 30
+      highPsiAlert: 75
+    thermostat:
+      freezeRiskTempF: 38
+    cameras:
+      defaultProtocol: rtsp
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,61 @@
+# Frigate NVR configuration
+# Add cameras here — RTSP URL, resolution, detection zones
+# https://docs.frigate.video
+
+mqtt:
+  host: cabin-mqtt
+  port: 1883
+  topic_prefix: cabin/camera
+  client_id: frigate
+
+# Uncomment and configure real camera RTSP URLs
+cameras:
+  front_door:
+    enabled: false    # Set true when camera is connected
+    ffmpeg:
+      inputs:
+        - path: rtsp://{FRIGATE_RTSP_PASSWORD}@192.168.1.101:554/stream1
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: false
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: false
+      retain:
+        days: 7
+  driveway:
+    enabled: false
+    ffmpeg:
+      inputs:
+        - path: rtsp://{FRIGATE_RTSP_PASSWORD}@192.168.1.102:554/stream1
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: false
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: false
+      retain:
+        days: 7
+
+detectors:
+  cpu1:
+    type: cpu
+    num_threads: 2
+
+record:
+  enabled: false   # Enable when storage is configured
+  retain:
+    days: 7
+
+snapshots:
+  enabled: false
+  retain:
+    default: 7

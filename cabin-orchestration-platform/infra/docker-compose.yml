@@ -1,0 +1,148 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+# Cabin Orchestration Platform — Full Stack
+# Lenovo Tiny / Ubuntu 24.04 / 32 GB RAM / 1 TB SSD
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── MQTT Broker ──────────────────────────────────────────
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: cabin-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"   # WebSocket (UI live tiles)
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - cabin_mqtt_data:/mosquitto/data
+      - cabin_mqtt_log:/mosquitto/log
+
+  # ── TimescaleDB (Postgres + time-series extension) ───────
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: cabin-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cabin
+      POSTGRES_USER: cabin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cabin_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - cabin_pgdata:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d   # SQL init scripts
+
+  # ── Kafka (KRaft, no Zookeeper) ──────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: cabin-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "cabin-cluster-01"
+    ports:
+      - "9092:9092"
+    volumes:
+      - cabin_kafka_data:/var/lib/kafka/data
+
+  # ── Grafana ───────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cabin-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-cabin_grafana}
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - cabin_grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - postgres
+
+  # ── Home Assistant ────────────────────────────────────────
+  # Device compatibility bridge: locks, Bosch, LG, Kidde,
+  # Nest/Google, Z-Wave, Zigbee, and 3000+ more integrations
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: cabin-homeassistant
+    restart: unless-stopped
+    privileged: true
+    network_mode: host    # Required for device discovery (mDNS, Z-Wave USB)
+    environment:
+      TZ: America/Chicago
+    volumes:
+      - cabin_ha_config:/config
+      - /run/dbus:/run/dbus:ro
+    # Note: bind USB Z-Wave/Zigbee stick with device: /dev/ttyUSB0:/dev/ttyUSB0
+
+  # ── Node-RED (visual rules / automation engine) ───────────
+  nodered:
+    image: nodered/node-red:latest
+    container_name: cabin-nodered
+    restart: unless-stopped
+    environment:
+      TZ: America/Chicago
+    ports:
+      - "1880:1880"
+    volumes:
+      - cabin_nodered_data:/data
+    depends_on:
+      - mqtt
+      - kafka
+
+  # ── Frigate NVR (RTSP cameras + motion detection) ─────────
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:stable
+    container_name: cabin-frigate
+    restart: unless-stopped
+    privileged: true
+    shm_size: "256mb"
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${CAMERA_PASSWORD:-cabin_cam}
+    ports:
+      - "5000:5000"   # Frigate UI
+      - "1984:1984"   # go2rtc WebRTC (bundled in Frigate)
+    volumes:
+      - ./frigate.yml:/config/config.yml
+      - cabin_frigate_clips:/media/frigate
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - mqtt
+
+  # ── Watchdog / Self-Healing ───────────────────────────────
+  watchdog:
+    image: python:3.12-slim
+    container_name: cabin-watchdog
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./watchdog:/app
+    command: python /app/watchdog.py
+    depends_on:
+      - mqtt
+      - postgres
+      - kafka
+
+volumes:
+  cabin_pgdata:
+  cabin_grafana:
+  cabin_mqtt_data:
+  cabin_mqtt_log:
+  cabin_kafka_data:
+  cabin_ha_config:
+  cabin_nodered_data:
+  cabin_frigate_clips:
