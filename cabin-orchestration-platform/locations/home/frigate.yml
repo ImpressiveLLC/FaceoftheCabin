@@ -1,0 +1,141 @@
+# Frigate NVR configuration — Home location
+# Five Reolink RLC-810A PoE cameras at 192.168.1.20–24
+# https://docs.frigate.video
+
+mqtt:
+  host: home-mqtt
+  port: 1883
+  topic_prefix: home/camera
+  client_id: frigate-home
+
+# RLC-810A RTSP paths:
+#   Main stream (detect + record): /h264Preview_01_main  (2560x1440 @ up to 25fps)
+#   Sub stream  (low-bandwidth):   /h264Preview_01_sub   (640x480)
+# Username is always "admin"; password set via FRIGATE_RTSP_PASSWORD env var.
+
+cameras:
+  home_front_door:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.20:554/h264Preview_01_main
+          roles:
+            - detect
+            - record
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.20:554/h264Preview_01_sub
+          roles:
+            - audio
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+      retain:
+        days: 7
+
+  home_driveway:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.21:554/h264Preview_01_main
+          roles:
+            - detect
+            - record
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.21:554/h264Preview_01_sub
+          roles:
+            - audio
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+      retain:
+        days: 7
+
+  home_backyard:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.22:554/h264Preview_01_main
+          roles:
+            - detect
+            - record
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.22:554/h264Preview_01_sub
+          roles:
+            - audio
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+      retain:
+        days: 7
+
+  home_garage:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.23:554/h264Preview_01_main
+          roles:
+            - detect
+            - record
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.23:554/h264Preview_01_sub
+          roles:
+            - audio
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+      retain:
+        days: 7
+
+  home_side_door:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.24:554/h264Preview_01_main
+          roles:
+            - detect
+            - record
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.24:554/h264Preview_01_sub
+          roles:
+            - audio
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+      retain:
+        days: 7
+
+# CPU-only detection — M920q has Intel UHD Graphics but no Coral/GPU.
+# With 5 cameras at 5fps each, 2 threads per detector is sufficient.
+# Add a second cpu detector if CPU usage exceeds ~60%.
+detectors:
+  cpu1:
+    type: cpu
+    num_threads: 3
+
+record:
+  enabled: true
+  retain:
+    days: 7
+  events:
+    retain:
+      default: 14
+
+snapshots:
+  enabled: true
+  retain:
+    default: 14

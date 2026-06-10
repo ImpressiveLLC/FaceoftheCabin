@@ -40,7 +40,7 @@ public class DeviceController {
     public DeviceDescriptor registerDevice(@RequestBody DeviceDescriptor descriptor) {
         registry.register(new DeviceStatus(
             descriptor.deviceId(), descriptor.type(), descriptor.name(),
-            "UNKNOWN", Instant.now(), Map.of()));
+            "UNKNOWN", Instant.now(), Map.of(), descriptor.location()));
         registry.registerDescriptor(descriptor);
         return descriptor;
     }

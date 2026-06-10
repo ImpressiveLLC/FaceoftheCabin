@@ -1,0 +1,38 @@
+# Spring Boot profile overlay for the Home location.
+# Activate with: --spring.profiles.active=home
+# Overrides base application.yml for home-hub deployment.
+
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/home
+    username: home
+    password: ${POSTGRES_PASSWORD:home_dev_password}
+
+cabin:
+  name: Home Hub
+  mqtt:
+    brokerUrl: ${MQTT_URL:tcp://localhost:1883}
+    clientId: home-orchestrator
+  kafka:
+    bootstrapServers: ${KAFKA_BOOTSTRAP:localhost:9092}
+  dashboard:
+    familyDashboardUrl: ${FAMILY_DASHBOARD_URL:http://localhost:8081}
+  homeassistant:
+    url: ${HOME_HA_URL:http://localhost:8123}
+    token: ${HOME_HA_TOKEN:}
+  locations:
+    home:
+      homeassistant:
+        url: ${HOME_HA_URL:http://localhost:8123}
+        token: ${HOME_HA_TOKEN:}
+  devices:
+    waterPressure:
+      lowPsiAlert: 30
+      highPsiAlert: 75
+    thermostat:
+      freezeRiskTempF: 38
+    cameras:
+      defaultProtocol: rtsp

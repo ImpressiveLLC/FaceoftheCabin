@@ -92,15 +92,17 @@ public class MqttBridgeService implements MqttCallback {
     private void handleDeviceMessage(String deviceId, String msgType, Map<String, Object> data) {
         DeviceStatus existing = registry.get(deviceId);
         if (existing == null) {
-            // Auto-register unknown device — type inferred from payload keys
+            // Auto-register unknown device — type inferred from payload keys, location from topic prefix
             DeviceType type = inferType(data);
-            existing = new DeviceStatus(deviceId, type, deviceId, "UNKNOWN", Instant.now(), Map.of());
-            log.info("Auto-registered new device: {} as {}", deviceId, type);
+            String loc = deviceId.startsWith("home-") ? "home" : "cabin";
+            existing = new DeviceStatus(deviceId, type, deviceId, "UNKNOWN", Instant.now(), Map.of(), loc);
+            log.info("Auto-registered new device: {} as {} at {}", deviceId, type, loc);
         }
         Map<String, Object> attrs = new LinkedHashMap<>(existing.attributes());
         attrs.putAll(data);
         String state = determineState(data, existing.type());
-        registry.update(new DeviceStatus(deviceId, existing.type(), existing.name(), state, Instant.now(), attrs));
+        registry.update(new DeviceStatus(deviceId, existing.type(), existing.name(), state,
+            Instant.now(), attrs, existing.location()));
 
         // Publish to Kafka for rules engine consumption
         CabinEvent event = new CabinEvent(

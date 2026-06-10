@@ -13,5 +13,6 @@ public record DeviceDescriptor(
     Set<DeviceCapability> capabilities,
     String protocolAdapter,   // "mqtt", "ha_rest", "rtsp", "http_poll", "google_sdm"
     String connectionString,  // MQTT topic prefix, HA entity_id, RTSP URL, HTTP endpoint
-    boolean enabled
+    boolean enabled,
+    String location           // "cabin" | "home"
 ) {}

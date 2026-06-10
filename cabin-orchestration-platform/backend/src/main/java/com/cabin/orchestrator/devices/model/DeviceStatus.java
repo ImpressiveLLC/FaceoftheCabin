@@ -12,5 +12,6 @@ public record DeviceStatus(
     String name,
     String state,           // ONLINE, OFFLINE, ALARM, UNKNOWN
     Instant lastSeen,
-    Map<String, Object> attributes  // metric bag: psi, temp_f, locked, motion, etc.
+    Map<String, Object> attributes,  // metric bag: psi, temp_f, locked, motion, etc.
+    String location        // "cabin" | "home" | null for auto-discovered
 ) {}

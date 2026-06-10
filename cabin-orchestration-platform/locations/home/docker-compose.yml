@@ -1,0 +1,172 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+# Home Orchestration Platform — Full Stack
+# Lenovo ThinkCentre M920q / Ubuntu 24.04 / 16 GB RAM / SSD
+# Memory limits sized for 16 GB: ~9 GB allocated to containers,
+# ~7 GB left for Ubuntu + Spring Boot backend + camera buffers.
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── MQTT Broker ──────────────────────────────────────────
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: home-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"   # WebSocket (UI live tiles)
+    volumes:
+      - ../../infra/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - home_mqtt_data:/mosquitto/data
+      - home_mqtt_log:/mosquitto/log
+    mem_limit: 256m
+
+  # ── TimescaleDB (Postgres + time-series extension) ───────
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: home-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: home
+      POSTGRES_USER: home
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-home_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - home_pgdata:/var/lib/postgresql/data
+      - ../../infra/init-db:/docker-entrypoint-initdb.d
+    mem_limit: 2g
+
+  # ── Kafka (KRaft, no Zookeeper) ──────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: home-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "home-cluster-01"
+      # Keep heap small on 16 GB host
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+    ports:
+      - "9092:9092"
+    volumes:
+      - home_kafka_data:/var/lib/kafka/data
+    mem_limit: 1g
+
+  # ── Grafana ───────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: home-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-home_grafana}
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - home_grafana:/var/lib/grafana
+      - ../../infra/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - postgres
+    mem_limit: 512m
+
+  # ── Home Assistant ────────────────────────────────────────
+  # Integrations active at home location:
+  #   - Kwikset 916 Zigbee locks via Aeotec Z-Stick 10 Pro + Zigbee2MQTT
+  #   - meross MTS300M Matter thermostat (HA Matter integration)
+  #   - Kidde P4010ACSCO-WF smoke/CO (HACS Kidde HomeSafe)
+  #   - Emporia Vue Gen 3 (HA Emporia Vue integration)
+  #   - LG ThinQ washer + dryer (HA SmartThinQ sensors)
+  #   - Bosch 500 Series dishwasher (HA Home Connect)
+  #   - Daikin Aurora HVAC BRP072A43 (HA Daikin local API)
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: home-homeassistant
+    restart: unless-stopped
+    privileged: true
+    network_mode: host    # Required for mDNS discovery (Matter, Daikin local API)
+    environment:
+      TZ: America/Chicago
+    volumes:
+      - home_ha_config:/config
+      - /run/dbus:/run/dbus:ro
+    # Aeotec Z-Stick 10 Pro — bind the correct USB device path:
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    mem_limit: 1500m
+
+  # ── Node-RED (visual rules / automation engine) ───────────
+  nodered:
+    image: nodered/node-red:latest
+    container_name: home-nodered
+    restart: unless-stopped
+    environment:
+      TZ: America/Chicago
+    ports:
+      - "1880:1880"
+    volumes:
+      - home_nodered_data:/data
+    depends_on:
+      - mqtt
+      - kafka
+    mem_limit: 512m
+
+  # ── Frigate NVR (5× Reolink RLC-810A via RTSP) ───────────
+  # shm_size: 5 cameras × ~90 MB shared memory each = ~512 MB
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:stable
+    container_name: home-frigate
+    restart: unless-stopped
+    privileged: true
+    shm_size: "512mb"
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${CAMERA_PASSWORD:-home_cam}
+    ports:
+      - "5000:5000"   # Frigate UI
+      - "1984:1984"   # go2rtc WebRTC (bundled)
+    volumes:
+      - ./frigate.yml:/config/config.yml
+      - home_frigate_clips:/media/frigate
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - mqtt
+    mem_limit: 2g
+
+  # ── Watchdog / Self-Healing ───────────────────────────────
+  watchdog:
+    image: python:3.12-slim
+    container_name: home-watchdog
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: localhost
+      MQTT_PORT: "1883"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../infra/watchdog:/app
+    command: python /app/watchdog.py
+    depends_on:
+      - mqtt
+      - postgres
+      - kafka
+    mem_limit: 128m
+
+volumes:
+  home_pgdata:
+  home_grafana:
+  home_mqtt_data:
+  home_mqtt_log:
+  home_kafka_data:
+  home_ha_config:
+  home_nodered_data:
+  home_frigate_clips:

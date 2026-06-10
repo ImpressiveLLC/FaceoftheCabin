@@ -20,6 +20,11 @@ cabin:
   homeassistant:
     url: ${HA_URL:http://localhost:8123}
     token: ${HA_TOKEN:}
+  locations:
+    home:
+      homeassistant:
+        url: ${HOME_HA_URL:http://home-hub:8123}
+        token: ${HOME_HA_TOKEN:}
   google:
     calendarId: ${GOOGLE_CALENDAR_ID:primary}
     oauthClientId: ${GOOGLE_CLIENT_ID:}
