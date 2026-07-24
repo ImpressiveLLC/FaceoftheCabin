@@ -1,0 +1,13 @@
+# Local dev override — Windows / Docker Desktop
+# Use: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+#
+# Skips:
+#   homeassistant — requires network_mode: host (Linux-only on Docker Desktop)
+#   watchdog      — requires Docker socket + mosquitto_pub (not in python:3.12-slim)
+
+services:
+  homeassistant:
+    profiles: [linux-only]
+
+  watchdog:
+    profiles: [linux-only]
