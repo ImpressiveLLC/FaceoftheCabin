@@ -66,8 +66,8 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<?, ?> body = response.getBody();
                 String state = String.valueOf(body.get("state"));
-                Object attrsObj = body.getOrDefault("attributes", Map.of());
-                Map<?, ?> attrs = attrsObj instanceof Map<?, ?> m ? m : Map.of();
+                Object attrsObj = body.get("attributes");
+                Map<?, ?> attrs = (attrsObj instanceof Map) ? (Map<?, ?>) attrsObj : Collections.emptyMap();
                 Map<String, Object> attributes = new LinkedHashMap<>();
                 attrs.forEach((k, v) -> attributes.put(String.valueOf(k), v));
                 return Optional.of(new DeviceStatus(
