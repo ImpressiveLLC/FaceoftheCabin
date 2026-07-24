@@ -1,12 +1,35 @@
+/* ─── CSS custom properties (defaults = Modern theme) ───────────────────── */
+:root {
+  --bg:           #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary:  #21262d;
+  --surface:      #161b22;
+  --border:       #21262d;
+  --border-focus: #1f6feb;
+  --text:         #e6edf3;
+  --text-muted:   #8b949e;
+  --text-dim:     #6e7681;
+  --accent:       #1f6feb;
+  --accent-hover: #388bfd;
+  --success:      #3fb950;
+  --warning:      #d29922;
+  --danger:       #f85149;
+  --font-display: "Inter", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", "Fira Code", monospace;
+  --radius:       10px;
+  --radius-sm:    6px;
+}
+
 /* ─── Reset & Base ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #0d1117;
-  color: #e6edf3;
+  font-family: var(--font-display);
+  background: var(--bg);
+  color: var(--text);
   font-size: 14px;
   line-height: 1.5;
+  transition: background 0.2s, color 0.2s;
 }
 
 /* ─── App Shell ────────────────────────────────────────────────────────── */
@@ -19,8 +42,8 @@ body {
 /* ─── Navigation Rail ──────────────────────────────────────────────────── */
 .nav-rail {
   width: 72px;
-  background: #161b22;
-  border-right: 1px solid #21262d;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -40,14 +63,14 @@ body {
   gap: 3px;
   background: none;
   border: none;
-  color: #8b949e;
+  color: var(--text-muted);
   padding: 10px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   cursor: pointer;
   width: 58px;
   transition: background 0.15s, color 0.15s;
 }
-.nav-item:hover { background: #21262d; color: #e6edf3; }
+.nav-item:hover { background: var(--bg-tertiary); color: var(--text); }
 .nav-active { background: #1f3a5f !important; color: #58a6ff !important; }
 .nav-label { font-size: 10px; text-align: center; line-height: 1.2; }
 
@@ -64,8 +87,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 20px;
-  background: #161b22;
-  border-bottom: 1px solid #21262d;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
   height: 48px;
 }
 .platform-name { font-weight: 600; color: #f0f6fc; letter-spacing: 0.02em; }
@@ -132,9 +155,9 @@ body {
   margin-bottom: 20px;
 }
 .kpi-tile {
-  background: #161b22;
-  border: 1px solid #21262d;
-  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -152,9 +175,9 @@ body {
   gap: 12px;
 }
 .device-card {
-  background: #161b22;
-  border: 1px solid #21262d;
-  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 14px;
   cursor: pointer;
   transition: border-color 0.15s;
@@ -474,10 +497,47 @@ body {
 .location-section-header {
   font-size: 13px;
   font-weight: 600;
-  color: #8b949e;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 14px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #21262d;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ─── Theme switcher ─────────────────────────────────────────────────────── */
+.theme-btn {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px;
+}
+.theme-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 200;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.theme-option {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: none; color: var(--text-muted);
+  padding: 7px 10px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 13px; text-align: left;
+  transition: background 0.12s, color 0.12s;
+  font-family: var(--font-display);
+}
+.theme-option:hover { background: var(--bg-tertiary); color: var(--text); }
+.theme-option-active { color: var(--text) !important; background: var(--bg-tertiary); }
+.theme-swatch {
+  display: inline-block;
+  width: 18px; height: 18px;
+  border-radius: 4px;
+  flex-shrink: 0;
 }

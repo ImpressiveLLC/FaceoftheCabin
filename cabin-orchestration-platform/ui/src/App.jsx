@@ -15,6 +15,7 @@
 
 import React, { useEffect, useState, useRef, useCallback, createContext, useContext } from "react";
 import { createRoot } from "react-dom/client";
+import { ThemeProvider, ThemeSwitcher } from "./ThemeProvider.jsx";
 import {
   Home, Settings, Cpu, Activity, Zap,
   ChevronDown, ChevronUp, Wifi, WifiOff,
@@ -938,6 +939,7 @@ function App() {
             <span className="platform-name">{locationLabel} — Orchestration Hub</span>
             <div className="toolbar-right">
               <LocationSwitcher active={activeLocation} onChange={setActiveLocation} />
+              <ThemeSwitcher />
               <span className={`api-status ${connected ? "api-ok" : "api-err"}`}>
                 {connected ? <><CheckCircle size={12}/> API</> : <><AlertTriangle size={12}/> API offline</>}
               </span>
@@ -957,4 +959,8 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(
+  <ThemeProvider>
+    <App />
+  </ThemeProvider>
+);

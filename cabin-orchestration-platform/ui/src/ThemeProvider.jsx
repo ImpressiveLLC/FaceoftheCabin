@@ -1,0 +1,217 @@
+/**
+ * ThemeProvider — independently-selectable palette + font presets.
+ *
+ * Presets: Modern (default), LCARS, Monolith, Retro-CRT, Bluefin-mono
+ * Persisted to localStorage under key "cabin-theme".
+ *
+ * Usage:
+ *   Wrap <App/> with <ThemeProvider>
+ *   Call useTheme() anywhere to get { theme, setTheme, themes }
+ *   CSS custom properties are stamped on <html> — use var(--bg) etc. in styles.
+ */
+
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { Palette } from "lucide-react";
+
+// ─── Theme definitions ──────────────────────────────────────────────────────
+export const THEMES = {
+  modern: {
+    id: "modern",
+    label: "Modern",
+    vars: {
+      "--bg":           "#0d1117",
+      "--bg-secondary": "#161b22",
+      "--bg-tertiary":  "#21262d",
+      "--surface":      "#161b22",
+      "--border":       "#21262d",
+      "--border-focus": "#1f6feb",
+      "--text":         "#e6edf3",
+      "--text-muted":   "#8b949e",
+      "--text-dim":     "#6e7681",
+      "--accent":       "#1f6feb",
+      "--accent-hover": "#388bfd",
+      "--success":      "#3fb950",
+      "--warning":      "#d29922",
+      "--danger":       "#f85149",
+      "--font-display": "'Inter', system-ui, sans-serif",
+      "--font-mono":    "'JetBrains Mono', 'Fira Code', monospace",
+      "--radius":       "10px",
+      "--radius-sm":    "6px",
+    },
+  },
+
+  lcars: {
+    id: "lcars",
+    label: "LCARS",
+    vars: {
+      "--bg":           "#000000",
+      "--bg-secondary": "#0a0a1a",
+      "--bg-tertiary":  "#111130",
+      "--surface":      "#0d0d28",
+      "--border":       "#cc6600",
+      "--border-focus": "#ff9900",
+      "--text":         "#ff9900",
+      "--text-muted":   "#cc7700",
+      "--text-dim":     "#885500",
+      "--accent":       "#cc6600",
+      "--accent-hover": "#ff9900",
+      "--success":      "#99cc00",
+      "--warning":      "#ffcc00",
+      "--danger":       "#cc0000",
+      "--font-display": "'Antonio', 'Orbitron', 'Arial Narrow', sans-serif",
+      "--font-mono":    "'Share Tech Mono', monospace",
+      "--radius":       "18px",
+      "--radius-sm":    "4px",
+    },
+  },
+
+  monolith: {
+    id: "monolith",
+    label: "Monolith",
+    vars: {
+      "--bg":           "#0a0a0a",
+      "--bg-secondary": "#111111",
+      "--bg-tertiary":  "#1a1a1a",
+      "--surface":      "#111111",
+      "--border":       "#2a2a2a",
+      "--border-focus": "#555555",
+      "--text":         "#cccccc",
+      "--text-muted":   "#666666",
+      "--text-dim":     "#444444",
+      "--accent":       "#444444",
+      "--accent-hover": "#666666",
+      "--success":      "#448844",
+      "--warning":      "#886644",
+      "--danger":       "#884444",
+      "--font-display": "'IBM Plex Mono', 'Courier New', monospace",
+      "--font-mono":    "'IBM Plex Mono', monospace",
+      "--radius":       "2px",
+      "--radius-sm":    "1px",
+    },
+  },
+
+  retrocrt: {
+    id: "retrocrt",
+    label: "Retro-CRT",
+    vars: {
+      "--bg":           "#050a05",
+      "--bg-secondary": "#071007",
+      "--bg-tertiary":  "#0a1a0a",
+      "--surface":      "#071007",
+      "--border":       "#1a4a1a",
+      "--border-focus": "#00ff41",
+      "--text":         "#00ff41",
+      "--text-muted":   "#00aa2a",
+      "--text-dim":     "#006618",
+      "--accent":       "#00cc33",
+      "--accent-hover": "#00ff41",
+      "--success":      "#00ff41",
+      "--warning":      "#ffcc00",
+      "--danger":       "#ff3300",
+      "--font-display": "'VT323', 'Share Tech Mono', monospace",
+      "--font-mono":    "'VT323', monospace",
+      "--radius":       "0px",
+      "--radius-sm":    "0px",
+    },
+  },
+
+  bluefin: {
+    id: "bluefin",
+    label: "Bluefin-mono",
+    vars: {
+      "--bg":           "#0a0f1a",
+      "--bg-secondary": "#0f1929",
+      "--bg-tertiary":  "#162035",
+      "--surface":      "#0f1929",
+      "--border":       "#1e3050",
+      "--border-focus": "#4080c0",
+      "--text":         "#a0c8f0",
+      "--text-muted":   "#608ab0",
+      "--text-dim":     "#3a5570",
+      "--accent":       "#2060a0",
+      "--accent-hover": "#4080c0",
+      "--success":      "#40a080",
+      "--warning":      "#a09040",
+      "--danger":       "#a04040",
+      "--font-display": "'Roboto Mono', 'JetBrains Mono', monospace",
+      "--font-mono":    "'Roboto Mono', monospace",
+      "--radius":       "6px",
+      "--radius-sm":    "3px",
+    },
+  },
+};
+
+const STORAGE_KEY = "cabin-theme";
+
+// ─── Context ────────────────────────────────────────────────────────────────
+const ThemeContext = createContext(null);
+export function useTheme() { return useContext(ThemeContext); }
+
+// ─── Provider ───────────────────────────────────────────────────────────────
+export function ThemeProvider({ children }) {
+  const [themeId, setThemeId] = useState(() => {
+    return localStorage.getItem(STORAGE_KEY) || "modern";
+  });
+
+  const theme = THEMES[themeId] || THEMES.modern;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+    // Body font follows --font-display
+    document.body.style.fontFamily = theme.vars["--font-display"];
+    localStorage.setItem(STORAGE_KEY, themeId);
+  }, [themeId, theme]);
+
+  const setTheme = (id) => {
+    if (THEMES[id]) setThemeId(id);
+  };
+
+  return (
+    <ThemeContext.Provider value={{ theme, themeId, setTheme, themes: THEMES }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+// ─── ThemeSwitcher widget (drop into any toolbar) ───────────────────────────
+export function ThemeSwitcher() {
+  const { themeId, setTheme, themes } = useTheme();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="theme-switcher" style={{ position: "relative" }}>
+      <button
+        className="btn-ghost theme-btn"
+        onClick={() => setOpen(o => !o)}
+        title="Change theme"
+      >
+        <Palette size={14}/>
+        <span>{themes[themeId]?.label || "Theme"}</span>
+      </button>
+      {open && (
+        <div className="theme-dropdown">
+          {Object.values(themes).map(t => (
+            <button
+              key={t.id}
+              className={`theme-option ${themeId === t.id ? "theme-option-active" : ""}`}
+              onClick={() => { setTheme(t.id); setOpen(false); }}
+            >
+              <ThemeSwatch vars={t.vars}/>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThemeSwatch({ vars }) {
+  return (
+    <span className="theme-swatch" style={{
+      background: `linear-gradient(135deg, ${vars["--bg-secondary"]} 50%, ${vars["--accent"]} 50%)`,
+      border: `1px solid ${vars["--border"]}`,
+    }}/>
+  );
+}
