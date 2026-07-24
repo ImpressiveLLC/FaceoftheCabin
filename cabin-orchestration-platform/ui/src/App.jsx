@@ -192,6 +192,45 @@ function ConfigCard({ title, icon: Icon, children }) {
   );
 }
 
+// ─── Alert controls (rendered at top of each alertable panel) ─────────────
+function AlertControls({ panelId }) {
+  const { alertCfg, enableAlert, resetAlert } = useApp();
+  const entry = alertCfg?.[panelId] || { enabled: false, alertSince: null };
+
+  if (!entry.enabled) {
+    return (
+      <div className="alert-ctrl alert-ctrl-unconfigured">
+        <Circle size={12} className="alert-ctrl-dot"/>
+        <span>Alert monitoring not enabled</span>
+        <button className="btn-ghost alert-ctrl-btn" onClick={() => enableAlert(panelId)}>
+          Enable
+        </button>
+      </div>
+    );
+  }
+
+  const alertDur = entry.alertSince ? Date.now() - entry.alertSince : null;
+  const isCritical = alertDur !== null && alertDur >= CRITICAL_MS;
+  const isWarn     = alertDur !== null && alertDur < CRITICAL_MS;
+
+  return (
+    <div className={`alert-ctrl ${isCritical ? "alert-ctrl-critical" : isWarn ? "alert-ctrl-warn" : "alert-ctrl-ok"}`}>
+      {isCritical && <AlertTriangle size={12} className="alert-ctrl-dot"/>}
+      {isWarn     && <AlertTriangle size={12} className="alert-ctrl-dot"/>}
+      {!isCritical && !isWarn && <CheckCircle size={12} className="alert-ctrl-dot"/>}
+      <span>
+        {isCritical && `Critical — alert active for ${Math.floor(alertDur / 60000)} min`}
+        {isWarn     && `Warning — alert active for ${Math.floor(alertDur / 60000)} min`}
+        {!isCritical && !isWarn && "Watching — no active alerts"}
+      </span>
+      <button className="btn-ghost alert-ctrl-btn" onClick={() => resetAlert(panelId)}
+        title="Reset to unconfigured — stops all alerting until re-enabled">
+        Reset alerts
+      </button>
+    </div>
+  );
+}
+
 // ─── Panel: Device Manager ─────────────────────────────────────────────────
 // L1 nav: See | Change | Add | Remove
 // L2: device list filtered by action
@@ -219,6 +258,8 @@ function DeviceManagerPanel() {
           <button className="btn-ghost" onClick={refreshDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
       </div>
+
+      <AlertControls panelId="DEVICE_MANAGER" />
 
       {/* L1 nav */}
       <div className="dm-l1-nav">
@@ -760,6 +801,7 @@ function MonitoringPanel({ active }) {
 
   return (
     <div className="panel-content">
+      <AlertControls panelId="MONITORING" />
       <div className="panel-header-bar">
         <h2>Monitoring</h2>
         <span className={`ws-indicator ${active ? "ws-live" : "ws-off"}`}>
@@ -797,6 +839,7 @@ function RulesPanel() {
   const noderedUrl = locationCfg?.noderedUrl || LOCATIONS.cabin.noderedUrl;
   return (
     <div className="panel-content">
+      <AlertControls panelId="RULES_ENGINE" />
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>
         <a href={noderedUrl} target="_blank" rel="noreferrer" className="btn-primary">
@@ -860,66 +903,101 @@ function BuiltinRules() {
   );
 }
 
-// ─── Notification hook ─────────────────────────────────────────────────────
-// Polls /api/system/health every 30s and derives per-panel alert levels.
-// level: null | "warn" | "critical"
-// "critical" = any device OFFLINE for >20 min (staleSince check)
-// "warn"     = any device OFFLINE or ALARM, but not yet critical
-// Panels clear their badge when visited (acknowledged on visit).
-const CRITICAL_MS = 20 * 60 * 1000;
+// ─── Nav alert system ──────────────────────────────────────────────────────
+//
+// State machine per panel (persisted to localStorage):
+//   unconfigured  → no badge, panel shows "Enable monitoring" button
+//   watching      → no badge, alert condition not yet met
+//   warn          → orange dot, alert condition has been true < 20 min
+//   critical      → red pulsing AlertTriangle, alert condition ≥ 20 min
+//
+// Reset always returns to "unconfigured". Nothing alerts until re-enabled.
+//
+// Panels that support alerting: DEVICE_MANAGER, MONITORING, RULES_ENGINE
+// Alert conditions:
+//   DEVICE_MANAGER / MONITORING: any device OFFLINE or ALARM
+//   RULES_ENGINE:                escalates to warn when others are critical
+//
+const ALERT_PANELS   = ["DEVICE_MANAGER", "MONITORING", "RULES_ENGINE"];
+const CRITICAL_MS    = 20 * 60 * 1000;
+const ALERT_CFG_KEY  = "cabin-alert-cfg";  // localStorage key
 
-function useNavAlerts(activePanel) {
-  const [alerts, setAlerts] = useState({}); // panelId -> "warn"|"critical"|null
-  const [acked, setAcked]   = useState({}); // panelId -> last-acked alert fingerprint
+function loadAlertCfg() {
+  try { return JSON.parse(localStorage.getItem(ALERT_CFG_KEY)) || {}; }
+  catch { return {}; }
+}
 
-  // Clear badge for the active panel on each visit
+// cfg shape per panel: { enabled: bool, alertSince: ms|null }
+function useNavAlerts() {
+  const [cfg, setCfg] = useState(loadAlertCfg);
+  // "level" derived each poll cycle, not stored
+  const [levels, setLevels] = useState({});
+
+  // Persist cfg changes
   useEffect(() => {
-    setAcked(a => ({ ...a, [activePanel]: alerts[activePanel] }));
-  }, [activePanel]); // eslint-disable-line react-hooks/exhaustive-deps
+    localStorage.setItem(ALERT_CFG_KEY, JSON.stringify(cfg));
+  }, [cfg]);
+
+  const enableAlert  = (panelId) => setCfg(c => ({ ...c, [panelId]: { enabled: true,  alertSince: null } }));
+  const resetAlert   = (panelId) => setCfg(c => ({ ...c, [panelId]: { enabled: false, alertSince: null } }));
 
   useEffect(() => {
     const check = async () => {
-      try {
-        const h = await fetch(`${LOCATIONS.cabin.apiBase}/api/system/health`).then(r => r.json());
-        const now = Date.now();
+      let h = null;
+      try { h = await fetch(`${LOCATIONS.cabin.apiBase}/api/system/health`).then(r => r.json()); }
+      catch { return; }
 
-        // Work out critical vs warn from stale list + alarm count
-        const hasCritical = (h.staleDevices || []).some(d => {
-          const staleMs = now - new Date(d.staleSince).getTime();
-          return staleMs > CRITICAL_MS;
-        });
-        const hasAlarm   = (h.alarm || 0) > 0;
-        const hasOffline = (h.offline || 0) > 0;
+      const now       = Date.now();
+      const hasAlarm  = (h.alarm  || 0) > 0;
+      const hasOffline= (h.offline || 0) > 0;
+      const alertCondition = hasAlarm || hasOffline; // true = something needs attention
 
-        const deviceLevel  = hasCritical ? "critical" : (hasOffline ? "warn" : null);
-        const monitorLevel = hasCritical ? "critical" : (hasAlarm   ? "warn" : null);
-        const rulesLevel   = hasCritical ? "warn"     : null; // rules panel is relevant when things are broken
+      setCfg(prev => {
+        const next = { ...prev };
+        for (const panelId of ALERT_PANELS) {
+          const entry = prev[panelId] || { enabled: false, alertSince: null };
+          if (!entry.enabled) { next[panelId] = entry; continue; }
 
-        setAlerts({
-          DEVICE_MANAGER: deviceLevel,
-          MONITORING:     monitorLevel,
-          RULES_ENGINE:   rulesLevel,
-          FAMILY_HUB:     null,
-          FAMILY_CONFIG:  null,
-        });
-      } catch {}
+          // RULES_ENGINE only alerts when device panels are in trouble
+          const condition = panelId === "RULES_ENGINE" ? hasOffline : alertCondition;
+
+          if (condition && entry.alertSince === null) {
+            // Condition just started — start the timer
+            next[panelId] = { ...entry, alertSince: now };
+          } else if (!condition && entry.alertSince !== null) {
+            // Condition cleared
+            next[panelId] = { ...entry, alertSince: null };
+          } else {
+            next[panelId] = entry;
+          }
+        }
+        return next;
+      });
+
+      // Derive display levels from the updated cfg (read from prev + above logic)
+      setLevels(prev => {
+        const next = {};
+        for (const panelId of ALERT_PANELS) {
+          // Re-read from localStorage since setCfg above is async
+          const stored = loadAlertCfg()[panelId] || { enabled: false, alertSince: null };
+          if (!stored.enabled || stored.alertSince === null) { next[panelId] = null; continue; }
+          const dur = now - stored.alertSince;
+          next[panelId] = dur >= CRITICAL_MS ? "critical" : "warn";
+        }
+        return next;
+      });
     };
     check();
     const t = setInterval(check, 30_000);
     return () => clearInterval(t);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // An alert is "unacked" if its current level differs from what was acked
-  const unacked = {};
-  for (const [panel, level] of Object.entries(alerts)) {
-    unacked[panel] = level !== null && level !== acked[panel] ? level : null;
-  }
-  return unacked;
+  return { levels, cfg, enableAlert, resetAlert };
 }
 
 // ─── Navigation Rail ───────────────────────────────────────────────────────
-function NavRail({ active, onSelect }) {
-  const alerts = useNavAlerts(active);
+function NavRail({ active, onSelect, alertLevels }) {
+  const alerts = alertLevels;
 
   return (
     <nav className="nav-rail">
@@ -964,6 +1042,7 @@ function App() {
   const [devices,        setDevices]        = useState([]);
   const [config,         setConfig]         = useState({});
   const [connected,      setConnected]      = useState(false);
+  const { levels: alertLevels, cfg: alertCfg, enableAlert, resetAlert } = useNavAlerts();
 
   // locationCfg is null when "both" — individual components handle that case.
   const locationCfg = activeLocation !== "both" ? LOCATIONS[activeLocation] : null;
@@ -1007,9 +1086,10 @@ function App() {
     <AppContext.Provider value={{
       devices, config, refreshDevices,
       activeLocation, locationCfg,
+      alertCfg, enableAlert, resetAlert,
     }}>
       <div className="app-shell">
-        <NavRail active={activePanel} onSelect={setActivePanel} />
+        <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />
         <main className="main-area">
           <div className="main-toolbar">
             <span className="platform-name">{locationLabel} — Orchestration Hub</span>

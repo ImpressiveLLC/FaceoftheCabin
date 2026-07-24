@@ -542,6 +542,47 @@ body {
   flex-shrink: 0;
 }
 
+/* ─── Alert controls bar (top of alertable panels) ──────────────────────── */
+.alert-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+}
+.alert-ctrl span { flex: 1; }
+.alert-ctrl-btn { font-size: 11px; padding: 3px 8px; flex-shrink: 0; }
+
+.alert-ctrl-unconfigured {
+  background: var(--bg-secondary);
+  color: var(--text-dim);
+}
+.alert-ctrl-unconfigured .alert-ctrl-dot { color: var(--text-dim); }
+
+.alert-ctrl-ok {
+  background: #0d1f0d;
+  border-color: #1a3a1a;
+  color: var(--success);
+}
+.alert-ctrl-ok .alert-ctrl-dot { color: var(--success); }
+
+.alert-ctrl-warn {
+  background: #1f1a0a;
+  border-color: #3a2e0a;
+  color: var(--warning);
+}
+.alert-ctrl-warn .alert-ctrl-dot { color: var(--warning); }
+
+.alert-ctrl-critical {
+  background: #1f0a0a;
+  border-color: #3a1010;
+  color: var(--danger);
+}
+.alert-ctrl-critical .alert-ctrl-dot { color: var(--danger); }
+
 /* ─── Nav alert states ───────────────────────────────────────────────────── */
 
 @keyframes nav-critical-pulse {
