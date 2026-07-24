@@ -20,7 +20,9 @@ import {
   ChevronDown, ChevronUp, Wifi, WifiOff,
   Droplets, Thermometer, Camera, ShieldAlert, Lock,
   RefreshCw, Plus, Trash2, ToggleLeft, ToggleRight,
-  AlertTriangle, CheckCircle, Circle, Zap as Energy
+  AlertTriangle, CheckCircle, Circle, ArrowLeft,
+  Eye, Edit2, UserPlus, Minus, ExternalLink,
+  Radio, Clock, Battery
 } from "lucide-react";
 import "./styles.css";
 
@@ -190,10 +192,23 @@ function ConfigCard({ title, icon: Icon, children }) {
 }
 
 // ─── Panel: Device Manager ─────────────────────────────────────────────────
+// L1 nav: See | Change | Add | Remove
+// L2: device list filtered by action
+// L3: device detail / edit / pairing flow / confirm remove
+
+const DM_VIEWS = [
+  { id: "see",    label: "See",    icon: Eye },
+  { id: "change", label: "Change", icon: Edit2 },
+  { id: "add",    label: "Add",    icon: UserPlus },
+  { id: "remove", label: "Remove", icon: Minus },
+];
+
 function DeviceManagerPanel() {
   const { devices, refreshDevices } = useApp();
-  const [selected, setSelected] = useState(null);
-  const [adding, setAdding] = useState(false);
+  const [view, setView]       = useState("see");     // L1
+  const [selected, setSelected] = useState(null);    // L2 → L3
+
+  const handleViewChange = (v) => { setView(v); setSelected(null); };
 
   return (
     <div className="panel-content">
@@ -201,133 +216,460 @@ function DeviceManagerPanel() {
         <h2>Device Manager</h2>
         <div className="header-actions">
           <button className="btn-ghost" onClick={refreshDevices}><RefreshCw size={14}/> Refresh</button>
-          <button className="btn-primary" onClick={() => setAdding(true)}><Plus size={14}/> Add Device</button>
         </div>
       </div>
-      <div className="device-grid">
-        {devices.map(d => {
-          const Icon = deviceIcon(d.type);
+
+      {/* L1 nav */}
+      <div className="dm-l1-nav">
+        {DM_VIEWS.map(v => {
+          const Icon = v.icon;
           return (
-            <div key={d.deviceId}
-              className={`device-card ${selected === d.deviceId ? "selected" : ""}`}
-              onClick={() => setSelected(selected === d.deviceId ? null : d.deviceId)}>
-              <div className="device-card-header">
-                <Icon size={20} />
-                <span className="device-name">{d.name}</span>
-                <span className={`state-badge ${stateColor(d.state)}`}>{d.state}</span>
-              </div>
-              <div className="device-type">{d.type}</div>
-              {d.lastSeen && (
-                <div className="device-lastseen">Last seen: {new Date(d.lastSeen).toLocaleTimeString()}</div>
-              )}
-              {selected === d.deviceId && (
-                <div className="device-attrs">
-                  {Object.entries(d.attributes || {}).map(([k, v]) => v != null && (
-                    <div key={k} className="attr-row">
-                      <span className="attr-key">{k}</span>
-                      <span className="attr-val">{String(v)}</span>
-                    </div>
-                  ))}
-                  <DeviceActions device={d} />
-                </div>
-              )}
-            </div>
+            <button key={v.id}
+              className={`dm-l1-btn ${view === v.id ? "dm-l1-active" : ""}`}
+              onClick={() => handleViewChange(v.id)}>
+              <Icon size={15}/> {v.label}
+            </button>
           );
         })}
-        {devices.length === 0 && (
-          <div className="empty-state"><Cpu size={40} opacity={0.3}/><p>No devices registered yet.</p></div>
-        )}
+        <a href={`${LOCATIONS.cabin.apiBase.replace(":8080","")  /* Z2M runs on cabin-hub:8080 in prod */}`}
+           className="dm-advanced-link" target="_blank" rel="noreferrer">
+          Advanced (Z2M) <ExternalLink size={11}/>
+        </a>
       </div>
-      {adding && <AddDeviceModal onClose={() => { setAdding(false); refreshDevices(); }} />}
+
+      {/* L2/L3 content */}
+      {view === "see"    && <DmSeeView    devices={devices} selected={selected} onSelect={setSelected} />}
+      {view === "change" && <DmChangeView devices={devices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
+      {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
+      {view === "remove" && <DmRemoveView devices={devices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
     </div>
   );
 }
 
-function DeviceActions({ device }) {
-  const { refreshDevices, locationCfg } = useApp();
-  // Route command to the hub that owns this device
-  const apiBase = device.location === "home"
-    ? LOCATIONS.home.apiBase
-    : LOCATIONS.cabin.apiBase;
-  const sendCommand = async (cmd) => {
-    await fetch(`${apiBase}/api/devices/${device.deviceId}/command`, {
+// ── L2/L3: See ──
+function DmSeeView({ devices, selected, onSelect }) {
+  const [health, setHealth] = useState(null);
+  useEffect(() => {
+    fetch(`${LOCATIONS.cabin.apiBase}/api/system/health`)
+      .then(r => r.json()).then(setHealth).catch(() => {});
+  }, []);
+
+  const sel = selected ? devices.find(d => d.deviceId === selected) : null;
+
+  return (
+    <div className="dm-layout">
+      <div className="dm-list">
+        {/* Health summary bar */}
+        {health && (
+          <div className="dm-health-bar">
+            <span className="health-chip health-ok"><CheckCircle size={11}/> {health.online} online</span>
+            <span className="health-chip health-offline"><WifiOff size={11}/> {health.offline} offline</span>
+            {health.alarm > 0 && <span className="health-chip health-alarm"><ShieldAlert size={11}/> {health.alarm} alarm</span>}
+            <span className="health-chip health-z2m">Z2M: {health.zigbeeBridge || "—"}</span>
+          </div>
+        )}
+        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} />)}
+        {devices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/><p>No devices registered.</p></div>}
+      </div>
+      {sel && (
+        <div className="dm-detail">
+          <DmDeviceDetail device={sel} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── L2/L3: Change ──
+function DmChangeView({ devices, selected, onSelect, onRefresh }) {
+  const sel = selected ? devices.find(d => d.deviceId === selected) : null;
+  return (
+    <div className="dm-layout">
+      <div className="dm-list">
+        <p className="dm-hint">Select a device to edit its name or enabled state.</p>
+        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} />)}
+      </div>
+      {sel && (
+        <div className="dm-detail">
+          <DmEditForm device={sel} onSaved={onRefresh} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── L2/L3: Add ──
+function DmAddView({ onDone }) {
+  const [mode, setMode] = useState(null); // null | "zigbee" | "manual"
+  return (
+    <div className="dm-add-root">
+      {!mode && (
+        <div className="dm-add-choice">
+          <p className="dm-hint">How do you want to add a device?</p>
+          <div className="dm-add-options">
+            <button className="dm-add-option" onClick={() => setMode("zigbee")}>
+              <Radio size={28}/>
+              <strong>Pair a Zigbee device</strong>
+              <span>Opens a 4-minute pairing window on the cabin hub's Zigbee coordinator</span>
+            </button>
+            <button className="dm-add-option" onClick={() => setMode("manual")}>
+              <Cpu size={28}/>
+              <strong>Register manually</strong>
+              <span>Add a Home Assistant entity, RTSP camera, or MQTT device by ID</span>
+            </button>
+          </div>
+        </div>
+      )}
+      {mode === "zigbee" && <ZigbeePairingFlow onBack={() => setMode(null)} onDone={onDone} />}
+      {mode === "manual" && <ManualAddForm onBack={() => setMode(null)} onDone={onDone} />}
+    </div>
+  );
+}
+
+// ── Zigbee pairing flow ──
+function ZigbeePairingFlow({ onBack, onDone }) {
+  const PAIR_DURATION = 254; // seconds (~4m14s)
+  const [phase, setPhase]         = useState("idle"); // idle | pairing | found | done
+  const [secondsLeft, setSeconds] = useState(PAIR_DURATION);
+  const [newDevices, setNewDevices] = useState([]);
+  const [afterChoice, setAfterChoice] = useState(null); // "another" | "configure" | "seeall"
+  const timerRef = useRef(null);
+  const pollRef  = useRef(null);
+  const prevIds  = useRef(null);
+
+  const startPairing = async () => {
+    // Snapshot current device IDs before opening window
+    const snap = await fetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
+      .then(r => r.json()).catch(() => []);
+    prevIds.current = new Set(snap.map(d => d.deviceId));
+
+    await fetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: cmd })
+      body: JSON.stringify({ enable: true, duration: PAIR_DURATION })
     });
-    refreshDevices();
+    setPhase("pairing");
+    setSeconds(PAIR_DURATION);
+
+    // Countdown
+    timerRef.current = setInterval(() => {
+      setSeconds(s => {
+        if (s <= 1) { clearInterval(timerRef.current); setPhase("done"); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+
+    // Poll for new devices every 3s
+    pollRef.current = setInterval(async () => {
+      const all = await fetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
+        .then(r => r.json()).catch(() => []);
+      const found = all.filter(d => !prevIds.current.has(d.deviceId));
+      if (found.length > 0) setNewDevices(found);
+    }, 3000);
   };
-  const remove = async () => {
-    if (!confirm(`Remove ${device.name}?`)) return;
-    await fetch(`${apiBase}/api/devices/${device.deviceId}`, { method: "DELETE" });
-    refreshDevices();
+
+  const stopPairing = async () => {
+    clearInterval(timerRef.current);
+    clearInterval(pollRef.current);
+    await fetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enable: false, duration: 0 })
+    });
+    setPhase("done");
   };
+
+  useEffect(() => () => { clearInterval(timerRef.current); clearInterval(pollRef.current); }, []);
+
+  const mins = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
+  const secs = String(secondsLeft % 60).padStart(2, "0");
+
+  if (phase === "idle") return (
+    <div className="pairing-container">
+      <button className="btn-ghost dm-back" onClick={onBack}><ArrowLeft size={14}/> Back</button>
+      <div className="pairing-card">
+        <Radio size={36} className="pairing-icon"/>
+        <h3>Pair a Zigbee Device</h3>
+        <p>Put your device into pairing mode (hold the button until the LED flashes), then open the pairing window.</p>
+        <p className="config-hint">The cabin hub's Zigbee coordinator will accept new devices for 4 minutes 14 seconds.</p>
+        <button className="btn-primary pairing-start-btn" onClick={startPairing}>
+          Open pairing window
+        </button>
+      </div>
+    </div>
+  );
+
+  if (phase === "pairing") return (
+    <div className="pairing-container">
+      <div className="pairing-card pairing-active">
+        <div className="pairing-countdown">{mins}:{secs}</div>
+        <p className="pairing-status">Pairing window open — put device into pairing mode now</p>
+        {newDevices.length > 0 && (
+          <div className="pairing-found">
+            <strong>New device{newDevices.length > 1 ? "s" : ""} found:</strong>
+            {newDevices.map(d => (
+              <div key={d.deviceId} className="pairing-found-row">
+                <CheckCircle size={14} className="found-check"/> {d.name} ({d.deviceId})
+              </div>
+            ))}
+          </div>
+        )}
+        <button className="btn-ghost" onClick={stopPairing}>Stop early</button>
+      </div>
+    </div>
+  );
+
+  // phase === "done"
   return (
-    <div className="device-actions">
-      {device.type === "LOCK" && <>
-        <button className="btn-secondary" onClick={() => sendCommand("lock.lock")}>Lock</button>
-        <button className="btn-secondary" onClick={() => sendCommand("lock.unlock")}>Unlock</button>
-      </>}
-      {device.type === "THERMOSTAT" && (
-        <button className="btn-secondary" onClick={() => sendCommand("climate.set_hvac_mode")}>Configure</button>
-      )}
-      <button className="btn-danger" onClick={remove}><Trash2 size={12}/> Remove</button>
+    <div className="pairing-container">
+      <div className="pairing-card">
+        {newDevices.length > 0 ? (
+          <>
+            <CheckCircle size={36} className="pairing-icon pairing-success"/>
+            <h3>Paired {newDevices.length} device{newDevices.length > 1 ? "s" : ""}!</h3>
+            {newDevices.map(d => (
+              <div key={d.deviceId} className="pairing-found-row">
+                <CheckCircle size={13} className="found-check"/> {d.name}
+              </div>
+            ))}
+            <div className="pairing-choices">
+              <button className="btn-secondary" onClick={() => { setPhase("idle"); setNewDevices([]); }}>
+                Add another
+              </button>
+              <button className="btn-primary" onClick={onDone}>See all devices</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <Clock size={36} className="pairing-icon"/>
+            <h3>Pairing window closed</h3>
+            <p className="config-hint">No new devices were found. Make sure the device is in pairing mode before opening the window.</p>
+            <div className="pairing-choices">
+              <button className="btn-secondary" onClick={() => setPhase("idle")}>Try again</button>
+              <button className="btn-ghost" onClick={onBack}>Back</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
 
-function AddDeviceModal({ onClose }) {
+// ── Manual add form ──
+function ManualAddForm({ onBack, onDone }) {
   const { locationCfg } = useApp();
   const [form, setForm] = useState({
     deviceId: "", name: "", type: "HOME_ASSISTANT_ENTITY",
     protocolAdapter: "ha_rest", connectionString: "", enabled: true,
     location: locationCfg?.id || "cabin"
   });
+  const [saving, setSaving] = useState(false);
   const apiBase = form.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+
   const submit = async () => {
+    if (!form.deviceId || !form.name) return;
+    setSaving(true);
     await fetch(`${apiBase}/api/devices`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, capabilities: [] })
     });
-    onClose();
+    setSaving(false);
+    onDone();
   };
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <h3>Add Device</h3>
+    <div className="pairing-container">
+      <button className="btn-ghost dm-back" onClick={onBack}><ArrowLeft size={14}/> Back</button>
+      <div className="dm-edit-form">
+        <h3>Register Device Manually</h3>
         <label>Location
           <select value={form.location} onChange={e=>setForm({...form,location:e.target.value})}>
             <option value="cabin">Cabin</option>
             <option value="home">Home</option>
           </select>
         </label>
-        <label>Device ID <input value={form.deviceId} onChange={e=>setForm({...form,deviceId:e.target.value})}/></label>
-        <label>Display Name <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>
+        <label>Device ID <input value={form.deviceId} placeholder="e.g. home-lock-garage" onChange={e=>setForm({...form,deviceId:e.target.value})}/></label>
+        <label>Display Name <input value={form.name} placeholder="e.g. Home Garage Lock" onChange={e=>setForm({...form,name:e.target.value})}/></label>
         <label>Type
           <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
-            {["LOCK","THERMOSTAT","SMOKE_ALARM","CAMERA","WATER_PRESSURE_SENSOR",
-              "MOTION_SENSOR","DISHWASHER","WASHING_MACHINE","DRYER","POWER_METER",
-              "HOME_ASSISTANT_ENTITY"].map(t=>(
-              <option key={t}>{t}</option>
-            ))}
+            {["LOCK","THERMOSTAT","SMOKE_ALARM","CAMERA","WATER_PRESSURE_SENSOR","WATER_LEAK_SENSOR",
+              "MOTION_SENSOR","CONTACT_SENSOR","DISHWASHER","WASHING_MACHINE","DRYER","POWER_METER",
+              "HOME_ASSISTANT_ENTITY"].map(t=><option key={t}>{t}</option>)}
           </select>
         </label>
         <label>Protocol Adapter
           <select value={form.protocolAdapter} onChange={e=>setForm({...form,protocolAdapter:e.target.value})}>
-            {["ha_rest","mqtt","rtsp","http_poll","google_sdm"].map(a=>(
-              <option key={a}>{a}</option>
-            ))}
+            {["ha_rest","mqtt","rtsp","http_poll","google_sdm"].map(a=><option key={a}>{a}</option>)}
           </select>
         </label>
-        <label>Connection String (HA entity_id / MQTT topic / RTSP URL)
-          <input value={form.connectionString} onChange={e=>setForm({...form,connectionString:e.target.value})}
-            placeholder="e.g. lock.home_front_door or home/device/energy"/>
+        <label>Connection String
+          <input value={form.connectionString}
+            placeholder="HA entity_id, MQTT topic, or RTSP URL"
+            onChange={e=>setForm({...form,connectionString:e.target.value})}/>
         </label>
         <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={submit}>Add Device</button>
+          <button className="btn-ghost" onClick={onBack}>Cancel</button>
+          <button className="btn-primary" onClick={submit} disabled={saving || !form.deviceId || !form.name}>
+            {saving ? "Saving…" : "Register Device"}
+          </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── L2/L3: Remove ──
+function DmRemoveView({ devices, selected, onSelect, onRefresh }) {
+  const [confirming, setConfirming] = useState(false);
+  const sel = selected ? devices.find(d => d.deviceId === selected) : null;
+
+  const doRemove = async () => {
+    if (!sel) return;
+    const apiBase = sel.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+    await fetch(`${apiBase}/api/devices/${sel.deviceId}`, { method: "DELETE" });
+    onSelect(null);
+    setConfirming(false);
+    onRefresh();
+  };
+
+  return (
+    <div className="dm-layout">
+      <div className="dm-list">
+        <p className="dm-hint">Select a device to remove it from the registry.</p>
+        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => { onSelect(selected === d.deviceId ? null : d.deviceId); setConfirming(false); }} />)}
+      </div>
+      {sel && (
+        <div className="dm-detail">
+          {!confirming ? (
+            <div className="dm-remove-panel">
+              <div className="dm-remove-device-name">{sel.name}</div>
+              <div className="dm-remove-device-id">{sel.deviceId} · {sel.location}</div>
+              <p className="dm-hint">This removes the device from the registry. It does not affect Home Assistant or Zigbee2MQTT pairing.</p>
+              <button className="btn-danger dm-remove-confirm-btn" onClick={() => setConfirming(true)}>
+                <Trash2 size={14}/> Remove this device
+              </button>
+            </div>
+          ) : (
+            <div className="dm-remove-panel">
+              <AlertTriangle size={32} className="remove-warn-icon"/>
+              <strong>Remove "{sel.name}"?</strong>
+              <p className="dm-hint">This cannot be undone from the UI. The device will disappear from all panels.</p>
+              <div className="pairing-choices">
+                <button className="btn-ghost" onClick={() => setConfirming(false)}>Cancel</button>
+                <button className="btn-danger" onClick={doRemove}><Trash2 size={13}/> Confirm remove</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Shared sub-components ──
+
+function DmDeviceRow({ device, selected, onClick }) {
+  const Icon = deviceIcon(device.type);
+  const isZ2m = device.deviceId.startsWith("z2m-");
+  return (
+    <div className={`dm-device-row ${selected ? "dm-row-selected" : ""}`} onClick={onClick}>
+      <Icon size={16} className="dm-row-icon"/>
+      <div className="dm-row-info">
+        <span className="dm-row-name">{device.name}</span>
+        <span className="dm-row-meta">{device.type} · {device.location}{isZ2m ? " · zigbee" : ""}</span>
+      </div>
+      <span className={`state-badge ${stateColor(device.state)}`}>{device.state}</span>
+    </div>
+  );
+}
+
+function DmDeviceDetail({ device }) {
+  return (
+    <div className="dm-detail-inner">
+      <div className="dm-detail-name">{device.name}</div>
+      <div className="dm-detail-id">{device.deviceId}</div>
+      <div className="dm-detail-rows">
+        <div className="dm-detail-row"><span>Type</span><span>{device.type}</span></div>
+        <div className="dm-detail-row"><span>Location</span><span>{device.location}</span></div>
+        <div className="dm-detail-row"><span>State</span>
+          <span className={`state-badge ${stateColor(device.state)}`}>{device.state}</span>
+        </div>
+        <div className="dm-detail-row"><span>Last seen</span>
+          <span>{device.lastSeen ? new Date(device.lastSeen).toLocaleString() : "—"}</span>
+        </div>
+      </div>
+      {Object.keys(device.attributes || {}).length > 0 && (
+        <>
+          <div className="dm-detail-section">Attributes</div>
+          {Object.entries(device.attributes).map(([k, v]) => v != null && (
+            <div key={k} className="attr-row">
+              <span className="attr-key">{k}</span>
+              <span className="attr-val">{String(v)}</span>
+            </div>
+          ))}
+        </>
+      )}
+      {device.type === "LOCK" && <DmLockActions device={device}/>}
+    </div>
+  );
+}
+
+function DmLockActions({ device }) {
+  const { refreshDevices } = useApp();
+  const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+  const cmd = async (command) => {
+    await fetch(`${apiBase}/api/devices/${device.deviceId}/command`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command })
+    });
+    refreshDevices();
+  };
+  return (
+    <div className="device-actions" style={{marginTop: 12}}>
+      <button className="btn-secondary" onClick={() => cmd("lock.lock")}><Lock size={12}/> Lock</button>
+      <button className="btn-secondary" onClick={() => cmd("lock.unlock")}>Unlock</button>
+    </div>
+  );
+}
+
+function DmEditForm({ device, onSaved }) {
+  const [name, setName]       = useState(device.name);
+  const [enabled, setEnabled] = useState(device.enabled !== false);
+  const [saving, setSaving]   = useState(false);
+  const [saved, setSaved]     = useState(false);
+  const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+
+  const save = async () => {
+    setSaving(true);
+    await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, enabled })
+    });
+    setSaving(false);
+    setSaved(true);
+    onSaved();
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="dm-edit-form">
+      <div className="dm-detail-name">{device.deviceId}</div>
+      <label>Display Name
+        <input value={name} onChange={e => { setName(e.target.value); setSaved(false); }}/>
+      </label>
+      <label className="dm-toggle-row">
+        <span>Enabled</span>
+        <button className="btn-ghost" onClick={() => setEnabled(e => !e)}>
+          {enabled ? <ToggleRight size={22} className="toggle-on"/> : <ToggleLeft size={22} className="toggle-off"/>}
+        </button>
+      </label>
+      <div className="modal-actions">
+        {saved && <span className="save-ok"><CheckCircle size={13}/> Saved</span>}
+        <button className="btn-primary" onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save changes"}
+        </button>
       </div>
     </div>
   );
