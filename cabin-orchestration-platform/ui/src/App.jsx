@@ -13,7 +13,7 @@
  * Env vars VITE_CABIN_* and VITE_HOME_* override defaults for local dev.
  */
 
-import React, { useEffect, useState, useRef, useCallback, createContext, useContext } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo, createContext, useContext } from "react";
 import { createRoot } from "react-dom/client";
 import { ThemeProvider, ThemeSwitcher } from "./ThemeProvider.jsx";
 import {
@@ -23,7 +23,7 @@ import {
   RefreshCw, Plus, Trash2, ToggleLeft, ToggleRight,
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
   Eye, Edit2, UserPlus, Minus, ExternalLink,
-  Radio, Clock, Battery, MapPin
+  Radio, Clock, Battery, MapPin, GripVertical
 } from "lucide-react";
 import "./styles.css";
 
@@ -245,23 +245,30 @@ const DM_VIEWS = [
 
 function DeviceManagerPanel() {
   const { devices, refreshDevices } = useApp();
-  const [view, setView]       = useState("see");     // L1
-  const [selected, setSelected] = useState(null);    // L2 → L3
+  const [view, setView]             = useState("see");
+  const [selected, setSelected]     = useState(null);
+  const [reorderMode, setReorderMode] = useState(false);
 
-  const handleViewChange = (v) => { setView(v); setSelected(null); };
+  const handleViewChange = (v) => { setView(v); setSelected(null); setReorderMode(false); };
 
   return (
     <div className="panel-content">
       <div className="panel-header-bar">
         <h2>Device Manager</h2>
         <div className="header-actions">
+          {view === "see" && (
+            <button
+              className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
+              onClick={() => setReorderMode(r => !r)}>
+              <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
+            </button>
+          )}
           <button className="btn-ghost" onClick={refreshDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
       </div>
 
       <AlertControls panelId="DEVICE_MANAGER" />
 
-      {/* L1 nav */}
       <div className="dm-l1-nav">
         {DM_VIEWS.map(v => {
           const Icon = v.icon;
@@ -273,14 +280,13 @@ function DeviceManagerPanel() {
             </button>
           );
         })}
-        <a href={`${LOCATIONS.cabin.apiBase.replace(":8080","")  /* Z2M runs on cabin-hub:8080 in prod */}`}
+        <a href={`${LOCATIONS.cabin.apiBase.replace(":8080","")}`}
            className="dm-advanced-link" target="_blank" rel="noreferrer">
           Advanced (Z2M) <ExternalLink size={11}/>
         </a>
       </div>
 
-      {/* L2/L3 content */}
-      {view === "see"    && <DmSeeView    devices={devices} selected={selected} onSelect={setSelected} />}
+      {view === "see"    && <DmSeeView    devices={devices} selected={selected} onSelect={setSelected} reorderMode={reorderMode} />}
       {view === "change" && <DmChangeView devices={devices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
       {view === "remove" && <DmRemoveView devices={devices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
@@ -289,19 +295,36 @@ function DeviceManagerPanel() {
 }
 
 // ── L2/L3: See ──
-function DmSeeView({ devices, selected, onSelect }) {
+function DmSeeView({ devices, selected, onSelect, reorderMode }) {
+  const { activeLocation } = useApp();
   const [health, setHealth] = useState(null);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+
   useEffect(() => {
     fetch(`${LOCATIONS.cabin.apiBase}/api/system/health`)
       .then(r => r.json()).then(setHealth).catch(() => {});
   }, []);
 
-  const sel = selected ? devices.find(d => d.deviceId === selected) : null;
+  const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
+  const { ordered, pinnedCount, reorder } = useDraggableOrder(
+    `order.devices.${activeLocation}`, devices, isAlarm
+  );
+
+  const sel = selected ? ordered.find(d => d.deviceId === selected) : null;
+
+  const onDragStart = (idx) => (e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
+  const onDragOver  = (idx) => (e) => { e.preventDefault(); setOverIdx(idx); };
+  const onDrop      = (idx) => (e) => {
+    e.preventDefault();
+    if (dragIdx !== null) reorder(dragIdx, idx);
+    setDragIdx(null); setOverIdx(null);
+  };
+  const onDragEnd   = () => { setDragIdx(null); setOverIdx(null); };
 
   return (
     <div className="dm-layout">
-      <div className="dm-list">
-        {/* Health summary bar */}
+      <div className={`dm-list ${reorderMode ? "reorder-mode" : ""}`}>
         {health && (
           <div className="dm-health-bar">
             <span className="health-chip health-ok"><CheckCircle size={11}/> {health.online} online</span>
@@ -310,7 +333,30 @@ function DmSeeView({ devices, selected, onSelect }) {
             <span className="health-chip health-z2m">Z2M: {health.zigbeeBridge || "—"}</span>
           </div>
         )}
-        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} />)}
+        {ordered.map((d, idx) => {
+          const isPinned = idx < pinnedCount;
+          const isOver   = reorderMode && overIdx === idx && dragIdx !== idx;
+          return (
+            <div key={d.deviceId}
+              className={`reorder-card ${isOver ? "drag-over-card" : ""}`}
+              draggable={reorderMode && !isPinned}
+              onDragStart={reorderMode && !isPinned ? onDragStart(idx) : undefined}
+              onDragOver={reorderMode ? onDragOver(idx) : undefined}
+              onDrop={reorderMode ? onDrop(idx) : undefined}
+              onDragEnd={reorderMode ? onDragEnd : undefined}
+            >
+              <DmDeviceRow device={d}
+                selected={selected === d.deviceId}
+                onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)}
+                dragHandle={reorderMode
+                  ? (isPinned
+                    ? <Lock size={12} className="auto-pin-icon" title="Auto-pinned: alarm active"/>
+                    : <GripVertical size={12} className="drag-handle"/>)
+                  : null}
+              />
+            </div>
+          );
+        })}
         {devices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/><p>No devices registered.</p></div>}
       </div>
       {sel && (
@@ -611,11 +657,12 @@ function DmRemoveView({ devices, selected, onSelect, onRefresh }) {
 
 // ── Shared sub-components ──
 
-function DmDeviceRow({ device, selected, onClick }) {
+function DmDeviceRow({ device, selected, onClick, dragHandle }) {
   const Icon = deviceIcon(device.type);
   const isZ2m = device.deviceId.startsWith("z2m-");
   return (
     <div className={`dm-device-row ${selected ? "dm-row-selected" : ""}`} onClick={onClick}>
+      {dragHandle}
       <Icon size={16} className="dm-row-icon"/>
       <div className="dm-row-info">
         <span className="dm-row-name">{device.name}</span>
@@ -801,19 +848,29 @@ const MN_VIEWS = [
 
 function MonitoringPanel({ active }) {
   const { devices, activeLocation, activeProfile } = useApp();
-  const [view, setView]         = useState("see");
-  const [selected, setSelected] = useState(null);
+  const [view, setView]               = useState("see");
+  const [selected, setSelected]       = useState(null);
+  const [reorderMode, setReorderMode] = useState(false);
 
-  const handleViewChange = (v) => { setView(v); setSelected(null); };
+  const handleViewChange = (v) => { setView(v); setSelected(null); setReorderMode(false); };
 
   return (
     <div className="panel-content">
       <AlertControls panelId="MONITORING" />
       <div className="panel-header-bar">
         <h2>Monitoring</h2>
-        <span className={`ws-indicator ${active ? "ws-live" : "ws-off"}`}>
-          {active ? <><Wifi size={12}/> Live</> : <><WifiOff size={12}/> Docked</>}
-        </span>
+        <div className="header-actions">
+          {view === "see" && (
+            <button
+              className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
+              onClick={() => setReorderMode(r => !r)}>
+              <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
+            </button>
+          )}
+          <span className={`ws-indicator ${active ? "ws-live" : "ws-off"}`}>
+            {active ? <><Wifi size={12}/> Live</> : <><WifiOff size={12}/> Docked</>}
+          </span>
+        </div>
       </div>
 
       <div className="dm-l1-nav">
@@ -832,7 +889,7 @@ function MonitoringPanel({ active }) {
         </span>
       </div>
 
-      {view === "see"    && <MnSeeView devices={devices} activeLocation={activeLocation} active={active} />}
+      {view === "see"    && <MnSeeView devices={devices} activeLocation={activeLocation} active={active} reorderMode={reorderMode} />}
       {view === "change" && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} />}
       {view === "add"    && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} />}
       {view === "remove" && <MnRemoveView />}
@@ -840,7 +897,76 @@ function MonitoringPanel({ active }) {
   );
 }
 
-function MnSeeView({ devices, activeLocation, active }) {
+function KpiListItem({ device, idx, dragIdx, overIdx, reorderMode, isPinned,
+    onDragStart, onDragOver, onDrop, onDragEnd }) {
+  const { displayConfigs } = useApp();
+  const cfg = displayConfigs?.[device.deviceId];
+  const Icon = deviceIcon(device.type);
+  const effectiveLabel = cfg?.displayName || device.name;
+  const stCls          = severityClass(cfg?.severityOverride) || stateColor(device.state);
+  const badgeLabel     = cfg?.stateLabelMap?.[device.state] || device.state || "UNKNOWN";
+  const isOver         = reorderMode && overIdx === idx && dragIdx !== idx;
+
+  return (
+    <div
+      className={`kpi-list-item reorder-card ${isOver ? "drag-over-card" : ""}`}
+      draggable={reorderMode && !isPinned}
+      onDragStart={reorderMode && !isPinned ? onDragStart : undefined}
+      onDragOver={reorderMode ? onDragOver : undefined}
+      onDrop={reorderMode ? onDrop : undefined}
+      onDragEnd={reorderMode ? onDragEnd : undefined}
+    >
+      {reorderMode && (isPinned
+        ? <Lock size={13} className="auto-pin-icon" title="Auto-pinned: alarm active"/>
+        : <GripVertical size={13} className="drag-handle"/>)}
+      <Icon size={15} style={{ flexShrink: 0, opacity: 0.65 }}/>
+      <span className="kpi-list-label">{effectiveLabel}</span>
+      <span className="kpi-list-type">{device.type?.toLowerCase().replace(/_/g, " ")}</span>
+      <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
+    </div>
+  );
+}
+
+function MnSeeView({ devices, activeLocation, active, reorderMode }) {
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+
+  const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
+  const locDevices = activeLocation === "both"
+    ? devices
+    : devices.filter(d => !d.location || d.location === activeLocation);
+
+  const { ordered, pinnedCount, reorder } = useDraggableOrder(
+    `order.monitoring.${activeLocation}`, locDevices, isAlarm
+  );
+
+  const onDragStart = (idx) => (e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
+  const onDragOver  = (idx) => (e) => { e.preventDefault(); setOverIdx(idx); };
+  const onDrop      = (idx) => (e) => {
+    e.preventDefault();
+    if (dragIdx !== null) reorder(dragIdx, idx);
+    setDragIdx(null); setOverIdx(null);
+  };
+  const onDragEnd = () => { setDragIdx(null); setOverIdx(null); };
+
+  if (reorderMode) {
+    return (
+      <div className="kpi-list reorder-mode">
+        {ordered.map((d, idx) => (
+          <KpiListItem key={d.deviceId} device={d} idx={idx}
+            dragIdx={dragIdx} overIdx={overIdx}
+            reorderMode={reorderMode} isPinned={idx < pinnedCount}
+            onDragStart={onDragStart(idx)} onDragOver={onDragOver(idx)}
+            onDrop={onDrop(idx)} onDragEnd={onDragEnd}
+          />
+        ))}
+        {ordered.length === 0 && (
+          <div className="empty-state"><Activity size={36} opacity={0.3}/><p>No devices for this location.</p></div>
+        )}
+      </div>
+    );
+  }
+
   const locs = activeLocation === "both"
     ? [LOCATIONS.cabin, LOCATIONS.home]
     : [LOCATIONS[activeLocation] || LOCATIONS.cabin];
@@ -1211,6 +1337,46 @@ function useNavAlerts() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { levels, cfg, enableAlert, resetAlert };
+}
+
+// ─── Draggable order ──────────────────────────────────────────────────────
+// Manages a user-defined sort order for a list of items, persisted in
+// localStorage. Alarm items auto-pin to the front regardless of saved order.
+// Unknown items (newly registered devices) append to the tail.
+function useDraggableOrder(storageKey, items, isAlarm) {
+  const getId = (item) => item.deviceId || item.id || item.name;
+
+  const [savedOrder, setSavedOrder] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey)) || []; }
+    catch { return []; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(savedOrder));
+  }, [storageKey, savedOrder]);
+
+  const ordered = useMemo(() => {
+    const idToItem = new Map(items.map(i => [getId(i), i]));
+    // Saved IDs first (filter out stale), then new unknowns at tail
+    const inOrder = [
+      ...savedOrder.filter(id => idToItem.has(id)).map(id => idToItem.get(id)),
+      ...items.filter(i => !savedOrder.includes(getId(i))),
+    ];
+    if (!isAlarm) return inOrder;
+    return [...inOrder.filter(isAlarm), ...inOrder.filter(i => !isAlarm(i))];
+  }, [items, savedOrder, isAlarm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pinnedCount = isAlarm ? ordered.filter(isAlarm).length : 0;
+
+  const reorder = useCallback((fromIdx, toIdx) => {
+    if (fromIdx === toIdx || fromIdx < pinnedCount || toIdx < pinnedCount) return;
+    const next = [...ordered];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    setSavedOrder(next.map(getId));
+  }, [ordered, pinnedCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { ordered, pinnedCount, reorder };
 }
 
 // ─── Presence profile ─────────────────────────────────────────────────────
