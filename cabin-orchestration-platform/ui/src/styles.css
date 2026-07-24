@@ -542,6 +542,38 @@ body {
   flex-shrink: 0;
 }
 
+/* ─── Nav alert states ───────────────────────────────────────────────────── */
+
+@keyframes nav-critical-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
+/* Warn: orange icon tint + dot badge */
+.nav-warn .nav-alert-icon { color: var(--warning) !important; }
+
+/* Critical: red icon, slow pulse, whole button gets a left-edge bar */
+.nav-critical {
+  border-left: 2px solid var(--danger);
+  padding-left: calc(10px - 2px); /* keep alignment */
+}
+.nav-critical .nav-alert-critical {
+  color: var(--danger) !important;
+  animation: nav-critical-pulse 1.8s ease-in-out infinite;
+}
+.nav-critical .nav-label { color: var(--danger) !important; }
+
+/* Dot badge (warn only — appears top-right of the icon area) */
+.nav-item { position: relative; }
+.nav-badge {
+  position: absolute;
+  top: 7px; right: 7px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg-secondary);
+}
+.nav-badge-warn { background: var(--warning); }
+
 /* ─── Mad Science theme effects ──────────────────────────────────────────── */
 
 @keyframes ms-pulse {

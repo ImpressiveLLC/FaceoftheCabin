@@ -860,20 +860,96 @@ function BuiltinRules() {
   );
 }
 
+// ─── Notification hook ─────────────────────────────────────────────────────
+// Polls /api/system/health every 30s and derives per-panel alert levels.
+// level: null | "warn" | "critical"
+// "critical" = any device OFFLINE for >20 min (staleSince check)
+// "warn"     = any device OFFLINE or ALARM, but not yet critical
+// Panels clear their badge when visited (acknowledged on visit).
+const CRITICAL_MS = 20 * 60 * 1000;
+
+function useNavAlerts(activePanel) {
+  const [alerts, setAlerts] = useState({}); // panelId -> "warn"|"critical"|null
+  const [acked, setAcked]   = useState({}); // panelId -> last-acked alert fingerprint
+
+  // Clear badge for the active panel on each visit
+  useEffect(() => {
+    setAcked(a => ({ ...a, [activePanel]: alerts[activePanel] }));
+  }, [activePanel]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const h = await fetch(`${LOCATIONS.cabin.apiBase}/api/system/health`).then(r => r.json());
+        const now = Date.now();
+
+        // Work out critical vs warn from stale list + alarm count
+        const hasCritical = (h.staleDevices || []).some(d => {
+          const staleMs = now - new Date(d.staleSince).getTime();
+          return staleMs > CRITICAL_MS;
+        });
+        const hasAlarm   = (h.alarm || 0) > 0;
+        const hasOffline = (h.offline || 0) > 0;
+
+        const deviceLevel  = hasCritical ? "critical" : (hasOffline ? "warn" : null);
+        const monitorLevel = hasCritical ? "critical" : (hasAlarm   ? "warn" : null);
+        const rulesLevel   = hasCritical ? "warn"     : null; // rules panel is relevant when things are broken
+
+        setAlerts({
+          DEVICE_MANAGER: deviceLevel,
+          MONITORING:     monitorLevel,
+          RULES_ENGINE:   rulesLevel,
+          FAMILY_HUB:     null,
+          FAMILY_CONFIG:  null,
+        });
+      } catch {}
+    };
+    check();
+    const t = setInterval(check, 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // An alert is "unacked" if its current level differs from what was acked
+  const unacked = {};
+  for (const [panel, level] of Object.entries(alerts)) {
+    unacked[panel] = level !== null && level !== acked[panel] ? level : null;
+  }
+  return unacked;
+}
+
 // ─── Navigation Rail ───────────────────────────────────────────────────────
 function NavRail({ active, onSelect }) {
+  const alerts = useNavAlerts(active);
+
   return (
     <nav className="nav-rail">
       <div className="nav-logo">⌂</div>
       {PANELS.map(p => {
+        const level = alerts[p.id];
+        const isCritical = level === "critical";
+        const isWarn     = level === "warn";
         const Icon = p.icon;
+
         return (
           <button key={p.id}
-            className={`nav-item ${active === p.id ? "nav-active" : ""}`}
+            className={[
+              "nav-item",
+              active === p.id ? "nav-active" : "",
+              isCritical ? "nav-critical" : "",
+              isWarn && !isCritical ? "nav-warn" : "",
+            ].filter(Boolean).join(" ")}
             onClick={() => onSelect(p.id)}
-            title={p.label}>
-            <Icon size={20} />
+            title={`${p.label}${isCritical ? " — CRITICAL" : isWarn ? " — attention needed" : ""}`}>
+
+            {/* Critical: swap icon for AlertTriangle with animated pulse */}
+            {isCritical
+              ? <AlertTriangle size={20} className="nav-alert-icon nav-alert-critical" />
+              : <Icon size={20} className={isWarn ? "nav-alert-icon nav-alert-warn" : ""} />
+            }
             <span className="nav-label">{p.label}</span>
+
+            {/* Dot badge for warn; no dot for critical (whole icon already changes) */}
+            {isWarn && !isCritical && <span className="nav-badge nav-badge-warn" />}
           </button>
         );
       })}
