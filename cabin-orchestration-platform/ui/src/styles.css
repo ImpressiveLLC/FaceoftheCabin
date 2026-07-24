@@ -146,6 +146,7 @@ body {
 .state-alarm   { background: #4a1010; color: #f85149; }
 .state-offline { background: #2a2020; color: #8b949e; }
 .state-unknown { background: #2a2620; color: #d29922; }
+.state-warn    { background: #2a2010; color: var(--warning); }
 
 /* ─── KPI Tiles ────────────────────────────────────────────────────────── */
 .kpi-grid {
@@ -165,6 +166,7 @@ body {
 }
 .kpi-state-ok    { border-color: #1a3a2a; }
 .kpi-state-alarm { border-color: #4a1010; }
+.kpi-state-warn  { border-color: #3a2810; }
 .kpi-label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
 .kpi-value { font-size: 22px; font-weight: 700; color: #f0f6fc; }
 
@@ -316,6 +318,67 @@ body {
 }
 
 /* ─── Location Switcher ─────────────────────────────────────────────────── */
+/* ─── Presence toggle ────────────────────────────────────────────────────── */
+.presence-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+}
+.presence-select {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-display);
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  padding-right: 4px;
+}
+.presence-select:focus { color: var(--text); }
+.presence-select option { background: var(--bg-secondary); color: var(--text); }
+
+/* ─── Monitoring panel profile hint ─────────────────────────────────────── */
+.mn-profile-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+/* ─── Display config form (inside dm-edit-form) ──────────────────────────── */
+.dm-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 14px 0 4px;
+}
+.dm-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.dm-label-row input { flex: 1; }
+.dm-label-key {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.dm-label-add { margin-top: 4px; }
+
 .location-switcher {
   display: flex;
   gap: 2px;

@@ -23,7 +23,7 @@ import {
   RefreshCw, Plus, Trash2, ToggleLeft, ToggleRight,
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
   Eye, Edit2, UserPlus, Minus, ExternalLink,
-  Radio, Clock, Battery
+  Radio, Clock, Battery, MapPin
 } from "lucide-react";
 import "./styles.css";
 
@@ -737,32 +737,32 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
 
       <div className="kpi-grid">
         {pressure && (
-          <KpiTile icon={Droplets} label="Water Pressure"
+          <KpiTile icon={Droplets} label="Water Pressure" deviceId={pressure.deviceId}
             value={pressure.attributes?.psi != null ? `${pressure.attributes.psi} PSI` : "—"}
             state={pressure.state} />
         )}
         {thermostats.map(t => (
-          <KpiTile key={t.deviceId} icon={Thermometer} label={t.name}
+          <KpiTile key={t.deviceId} icon={Thermometer} label={t.name} deviceId={t.deviceId}
             value={t.attributes?.current_temperature != null
               ? `${t.attributes.current_temperature}°F` : "—"}
             state={t.state} />
         ))}
         {smoke && (
-          <KpiTile icon={ShieldAlert} label={smoke.name || "Smoke/CO Alarm"}
+          <KpiTile icon={ShieldAlert} label={smoke.name || "Smoke/CO Alarm"} deviceId={smoke.deviceId}
             value={smoke.state || "UNKNOWN"}
             state={smoke.state === "ALARM" ? "ALARM" : smoke.state} />
         )}
         {energy && (
-          <KpiTile icon={Zap} label="Energy"
+          <KpiTile icon={Zap} label="Energy" deviceId={energy.deviceId}
             value={energy.attributes?.state_w != null ? `${energy.attributes.state_w} W` : "—"}
             state={energy.state} />
         )}
         {locks.map(l => (
-          <KpiTile key={l.deviceId} icon={Lock} label={l.name}
+          <KpiTile key={l.deviceId} icon={Lock} label={l.name} deviceId={l.deviceId}
             value={l.state} state={l.state} />
         ))}
         {cameras.map(c => (
-          <KpiTile key={c.deviceId} icon={Camera} label={c.name}
+          <KpiTile key={c.deviceId} icon={Camera} label={c.name} deviceId={c.deviceId}
             value={c.state} state={c.state} />
         ))}
       </div>
@@ -792,12 +792,19 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
   );
 }
 
-function MonitoringPanel({ active }) {
-  const { devices, activeLocation } = useApp();
+const MN_VIEWS = [
+  { id: "see",    label: "See",    icon: Eye },
+  { id: "change", label: "Change", icon: Edit2 },
+  { id: "add",    label: "Add",    icon: Plus },
+  { id: "remove", label: "Remove", icon: Minus },
+];
 
-  const locs = activeLocation === "both"
-    ? [LOCATIONS.cabin, LOCATIONS.home]
-    : [LOCATIONS[activeLocation] || LOCATIONS.cabin];
+function MonitoringPanel({ active }) {
+  const { devices, activeLocation, activeProfile } = useApp();
+  const [view, setView]         = useState("see");
+  const [selected, setSelected] = useState(null);
+
+  const handleViewChange = (v) => { setView(v); setSelected(null); };
 
   return (
     <div className="panel-content">
@@ -808,27 +815,238 @@ function MonitoringPanel({ active }) {
           {active ? <><Wifi size={12}/> Live</> : <><WifiOff size={12}/> Docked</>}
         </span>
       </div>
-      <div className={activeLocation === "both" ? "monitoring-split" : ""}>
-        {locs.map(loc => (
-          <LocationMonitoringSection
-            key={loc.id}
-            locCfg={loc}
-            devices={devices}
-            active={active}
-          />
+
+      <div className="dm-l1-nav">
+        {MN_VIEWS.map(v => {
+          const Icon = v.icon;
+          return (
+            <button key={v.id}
+              className={`dm-l1-btn ${view === v.id ? "dm-l1-active" : ""}`}
+              onClick={() => handleViewChange(v.id)}>
+              <Icon size={15}/> {v.label}
+            </button>
+          );
+        })}
+        <span className="mn-profile-hint">
+          <MapPin size={11}/> {PROFILE_LABELS[activeProfile] || activeProfile}
+        </span>
+      </div>
+
+      {view === "see"    && <MnSeeView devices={devices} activeLocation={activeLocation} active={active} />}
+      {view === "change" && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} />}
+      {view === "add"    && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} />}
+      {view === "remove" && <MnRemoveView />}
+    </div>
+  );
+}
+
+function MnSeeView({ devices, activeLocation, active }) {
+  const locs = activeLocation === "both"
+    ? [LOCATIONS.cabin, LOCATIONS.home]
+    : [LOCATIONS[activeLocation] || LOCATIONS.cabin];
+  return (
+    <div className={activeLocation === "both" ? "monitoring-split" : ""}>
+      {locs.map(loc => (
+        <LocationMonitoringSection key={loc.id} locCfg={loc} devices={devices} active={active} />
+      ))}
+    </div>
+  );
+}
+
+function MnChangeView({ devices, selected, onSelect }) {
+  const { activeProfile, refreshDisplayConfigs } = useApp();
+  const sel = selected ? devices.find(d => d.deviceId === selected) : null;
+
+  return (
+    <div className="dm-layout">
+      <div className="dm-list">
+        <div className="dm-health-bar" style={{ fontSize: 11, opacity: 0.65 }}>
+          Configure display overrides for profile:&nbsp;<strong>{PROFILE_LABELS[activeProfile] || activeProfile}</strong>
+        </div>
+        {devices.map(d => (
+          <DmDeviceRow key={d.deviceId} device={d}
+            selected={selected === d.deviceId}
+            onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} />
         ))}
+        {devices.length === 0 && (
+          <div className="empty-state"><Cpu size={36} opacity={0.3}/><p>No devices.</p></div>
+        )}
+      </div>
+      {sel && (
+        <div className="dm-detail">
+          <DisplayConfigForm device={sel} profile={activeProfile} onSaved={refreshDisplayConfigs} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MnRemoveView() {
+  const { activeProfile, displayConfigs, refreshDisplayConfigs, devices } = useApp();
+  const [removing, setRemoving] = useState(null);
+  const configured = Object.values(displayConfigs);
+
+  const doRemove = async (cfg) => {
+    setRemoving(cfg.deviceId);
+    const apiBase = cfg.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+    await fetch(`${apiBase}/api/devices/${cfg.deviceId}/display-config?profile=${activeProfile}`,
+      { method: "DELETE" }).catch(() => {});
+    setRemoving(null);
+    refreshDisplayConfigs();
+  };
+
+  if (configured.length === 0) {
+    return (
+      <div className="empty-state" style={{ marginTop: 24 }}>
+        <Activity size={36} opacity={0.3}/>
+        <p>No display overrides configured for<br/><strong>{PROFILE_LABELS[activeProfile] || activeProfile}</strong>.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="dm-remove-list">
+      <p className="config-hint" style={{ margin: "10px 14px" }}>
+        Display configs for profile: <strong>{PROFILE_LABELS[activeProfile] || activeProfile}</strong>
+      </p>
+      {configured.map(cfg => {
+        const dev = devices.find(d => d.deviceId === cfg.deviceId);
+        return (
+          <div key={cfg.deviceId} className="dm-remove-row">
+            <div className="dm-remove-info">
+              <strong>{cfg.displayName || dev?.name || cfg.deviceId}</strong>
+              <span className="config-hint">{cfg.deviceId} · {cfg.presenceProfile}</span>
+              {cfg.severityOverride && (
+                <span className="health-chip">Override: {cfg.severityOverride}</span>
+              )}
+            </div>
+            <button className="btn-danger" disabled={removing === cfg.deviceId}
+              onClick={() => doRemove(cfg)}>
+              <Trash2 size={14}/> {removing === cfg.deviceId ? "Removing…" : "Remove"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DisplayConfigForm({ device, profile, onSaved }) {
+  const { displayConfigs } = useApp();
+  const existing = displayConfigs?.[device.deviceId];
+
+  const [displayName,      setDisplayName]      = useState(existing?.displayName || "");
+  const [severityOverride, setSeverityOverride] = useState(existing?.severityOverride || "");
+  const [labelMap,         setLabelMap]         = useState(existing?.stateLabelMap || {});
+  const [newKey,  setNewKey]  = useState("");
+  const [newVal,  setNewVal]  = useState("");
+  const [saving,  setSaving]  = useState(false);
+  const [saved,   setSaved]   = useState(false);
+
+  // Sync form when device or existing config changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setDisplayName(existing?.displayName || "");
+    setSeverityOverride(existing?.severityOverride || "");
+    setLabelMap(existing?.stateLabelMap || {});
+    setSaved(false);
+  }, [device.deviceId, JSON.stringify(existing)]);
+
+  const save = async () => {
+    setSaving(true);
+    const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+    await fetch(`${apiBase}/api/devices/${device.deviceId}/display-config?profile=${profile}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName, stateLabelMap: labelMap, severityOverride }),
+    }).catch(() => {});
+    setSaving(false);
+    setSaved(true);
+    onSaved();
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const addLabel = () => {
+    if (!newKey.trim()) return;
+    setLabelMap(m => ({ ...m, [newKey.trim()]: newVal }));
+    setNewKey(""); setNewVal("");
+  };
+  const removeLabel = (k) => setLabelMap(m => { const n = { ...m }; delete n[k]; return n; });
+
+  return (
+    <div className="dm-edit-form">
+      <div className="dm-detail-name">{device.name || device.deviceId}</div>
+      <p className="config-hint">Display overrides for: <strong>{PROFILE_LABELS[profile] || profile}</strong></p>
+
+      <label>Custom display name
+        <input placeholder={device.name} value={displayName}
+          onChange={e => { setDisplayName(e.target.value); setSaved(false); }} />
+      </label>
+
+      <label>Severity override
+        <select value={severityOverride}
+          onChange={e => { setSeverityOverride(e.target.value); setSaved(false); }}>
+          <option value="">Default (auto from status)</option>
+          <option value="OK">OK — green</option>
+          <option value="WARN">Warn — orange</option>
+          <option value="ALERT">Alert — red</option>
+        </select>
+      </label>
+
+      <div className="dm-section-label">State label overrides</div>
+      <p className="config-hint" style={{ marginBottom: 6 }}>
+        Map raw status → display label (e.g. ONLINE → "Unlocked")
+      </p>
+
+      {Object.entries(labelMap).map(([k, v]) => (
+        <div key={k} className="dm-label-row">
+          <code className="dm-label-key">{k}</code>
+          <span>→</span>
+          <input value={v} onChange={e => setLabelMap(m => ({ ...m, [k]: e.target.value }))} />
+          <button className="btn-ghost" onClick={() => removeLabel(k)}><Trash2 size={13}/></button>
+        </div>
+      ))}
+
+      <div className="dm-label-row dm-label-add">
+        <input placeholder="State (e.g. ONLINE)" value={newKey}
+          onChange={e => setNewKey(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && addLabel()} />
+        <span>→</span>
+        <input placeholder="Label (e.g. Unlocked)" value={newVal}
+          onChange={e => setNewVal(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && addLabel()} />
+        <button className="btn-ghost" onClick={addLabel}><Plus size={13}/></button>
+      </div>
+
+      <div className="modal-actions">
+        {saved && <span className="save-ok"><CheckCircle size={13}/> Saved</span>}
+        <button className="btn-primary" onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save overrides"}
+        </button>
       </div>
     </div>
   );
 }
 
-function KpiTile({ icon: Icon, label, value, state }) {
+function severityClass(override) {
+  return { OK: "state-ok", WARN: "state-warn", ALERT: "state-alarm" }[override] || null;
+}
+
+function KpiTile({ icon: Icon, label, value, state, deviceId }) {
+  const { displayConfigs } = useApp();
+  const cfg = deviceId ? displayConfigs?.[deviceId] : null;
+
+  const effectiveLabel = cfg?.displayName || label;
+  const effectiveValue = cfg?.stateLabelMap?.[state] || cfg?.stateLabelMap?.[value] || value;
+  const stCls          = severityClass(cfg?.severityOverride) || stateColor(state);
+  const badgeLabel     = cfg?.stateLabelMap?.[state] || state || "UNKNOWN";
+
   return (
-    <div className={`kpi-tile kpi-${stateColor(state)}`}>
+    <div className={`kpi-tile kpi-${stCls}`}>
       <Icon size={22} />
-      <div className="kpi-label">{label}</div>
-      <div className="kpi-value">{value}</div>
-      <span className={`state-badge ${stateColor(state)}`}>{state || "UNKNOWN"}</span>
+      <div className="kpi-label">{effectiveLabel}</div>
+      <div className="kpi-value">{effectiveValue}</div>
+      <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>
   );
 }
@@ -995,6 +1213,72 @@ function useNavAlerts() {
   return { levels, cfg, enableAlert, resetAlert };
 }
 
+// ─── Presence profile ─────────────────────────────────────────────────────
+function usePresence() {
+  const [profile, setProfileState] = useState("AT_HOME");
+  const [options, setOptions]      = useState([]);
+
+  useEffect(() => {
+    fetch(`${LOCATIONS.cabin.apiBase}/api/presence`)
+      .then(r => r.json())
+      .then(data => { setProfileState(data.profile); setOptions(data.options || []); })
+      .catch(() => {});
+  }, []);
+
+  const setProfile = (p) => {
+    setProfileState(p); // optimistic
+    fetch(`${LOCATIONS.cabin.apiBase}/api/presence`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: p }),
+    }).then(r => r.json()).then(d => setProfileState(d.profile)).catch(() => {});
+  };
+
+  return { profile, setProfile, options };
+}
+
+// ─── Display configs (bulk, for active profile) ────────────────────────────
+function useDisplayConfigs(profile) {
+  const [configs, setConfigs] = useState({}); // deviceId → DeviceDisplayConfig
+
+  const refetch = useCallback(() => {
+    if (!profile) return;
+    fetch(`${LOCATIONS.cabin.apiBase}/api/devices/display-config?profile=${profile}`)
+      .then(r => r.json())
+      .then(list => {
+        const map = {};
+        list.forEach(c => { map[c.deviceId] = c; });
+        setConfigs(map);
+      })
+      .catch(() => {});
+  }, [profile]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { configs, refetch };
+}
+
+// ─── Presence toggle (toolbar widget) ─────────────────────────────────────
+const PROFILE_LABELS = {
+  AT_HOME: "At Home", AT_CABIN: "At Cabin", AWAY: "Away", BOTH_OCCUPIED: "Both Occupied",
+};
+
+function PresenceToggle() {
+  const { activeProfile, setProfile, presenceOptions } = useApp();
+  const opts = presenceOptions.length > 0
+    ? presenceOptions
+    : Object.entries(PROFILE_LABELS).map(([value, label]) => ({ value, label }));
+  return (
+    <div className="presence-toggle">
+      <MapPin size={13} style={{ opacity: 0.6 }}/>
+      <select className="presence-select" value={activeProfile}
+        onChange={e => setProfile(e.target.value)}>
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
 // ─── Navigation Rail ───────────────────────────────────────────────────────
 function NavRail({ active, onSelect, alertLevels }) {
   const alerts = alertLevels;
@@ -1043,6 +1327,8 @@ function App() {
   const [config,         setConfig]         = useState({});
   const [connected,      setConnected]      = useState(false);
   const { levels: alertLevels, cfg: alertCfg, enableAlert, resetAlert } = useNavAlerts();
+  const { profile: activeProfile, setProfile, options: presenceOptions } = usePresence();
+  const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile);
 
   // locationCfg is null when "both" — individual components handle that case.
   const locationCfg = activeLocation !== "both" ? LOCATIONS[activeLocation] : null;
@@ -1087,6 +1373,8 @@ function App() {
       devices, config, refreshDevices,
       activeLocation, locationCfg,
       alertCfg, enableAlert, resetAlert,
+      activeProfile, setProfile, presenceOptions,
+      displayConfigs, refreshDisplayConfigs,
     }}>
       <div className="app-shell">
         <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />
@@ -1095,6 +1383,7 @@ function App() {
             <span className="platform-name">{locationLabel} — Orchestration Hub</span>
             <div className="toolbar-right">
               <LocationSwitcher active={activeLocation} onChange={setActiveLocation} />
+              <PresenceToggle />
               <ThemeSwitcher />
               <span className={`api-status ${connected ? "api-ok" : "api-err"}`}>
                 {connected ? <><CheckCircle size={12}/> API</> : <><AlertTriangle size={12}/> API offline</>}

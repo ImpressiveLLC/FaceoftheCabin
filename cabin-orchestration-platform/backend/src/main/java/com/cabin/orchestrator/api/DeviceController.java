@@ -2,6 +2,8 @@ package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.devices.DeviceHealthMonitor;
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.display.DeviceDisplayConfig;
+import com.cabin.orchestrator.devices.display.DeviceDisplayConfigService;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
@@ -22,13 +24,16 @@ public class DeviceController {
     private final DeviceRegistry registry;
     private final Zigbee2MqttAdapter z2mAdapter;
     private final DeviceHealthMonitor healthMonitor;
+    private final DeviceDisplayConfigService displayConfigService;
 
     public DeviceController(DeviceRegistry registry,
                              Zigbee2MqttAdapter z2mAdapter,
-                             DeviceHealthMonitor healthMonitor) {
+                             DeviceHealthMonitor healthMonitor,
+                             DeviceDisplayConfigService displayConfigService) {
         this.registry = registry;
         this.z2mAdapter = z2mAdapter;
         this.healthMonitor = healthMonitor;
+        this.displayConfigService = displayConfigService;
     }
 
     /** List all registered devices with their current state */
@@ -134,5 +139,69 @@ public class DeviceController {
             registry.registerDescriptor(updated);
             return Map.<String, Object>of("updated", deviceId, "name", name, "enabled", enabled);
         }).orElse(Map.of("error", "not found"));
+    }
+
+    // ── Display-config endpoints ───────────────────────────────────────────────
+
+    /**
+     * Bulk: all display configs for an active presence profile.
+     * GET /api/devices/display-config?profile=AT_HOME
+     */
+    @GetMapping("/display-config")
+    public List<DeviceDisplayConfig> bulkDisplayConfig(@RequestParam String profile) {
+        return displayConfigService.allForProfile(profile);
+    }
+
+    /**
+     * Single device, single profile.
+     * GET /api/devices/{id}/display-config?profile=AT_HOME
+     */
+    @GetMapping("/{deviceId}/display-config")
+    public Map<String, Object> getDisplayConfig(@PathVariable String deviceId,
+                                                 @RequestParam String profile) {
+        String location = registry.descriptor(deviceId).map(DeviceDescriptor::location).orElse("cabin");
+        return displayConfigService.get(deviceId, location, profile)
+            .map(c -> Map.<String, Object>of(
+                "deviceId",        c.deviceId(),
+                "location",        c.location(),
+                "presenceProfile", c.presenceProfile(),
+                "displayName",     c.displayName() != null ? c.displayName() : "",
+                "stateLabelMap",   c.stateLabelMap(),
+                "severityOverride", c.severityOverride() != null ? c.severityOverride() : ""))
+            .orElse(Map.of("deviceId", deviceId, "presenceProfile", profile,
+                           "displayName", "", "stateLabelMap", Map.of(), "severityOverride", ""));
+    }
+
+    /**
+     * Upsert display config.
+     * PATCH /api/devices/{id}/display-config?profile=AT_HOME
+     * Body: { displayName, stateLabelMap, severityOverride }
+     */
+    @PatchMapping("/{deviceId}/display-config")
+    @SuppressWarnings("unchecked")
+    public DeviceDisplayConfig patchDisplayConfig(@PathVariable String deviceId,
+                                                   @RequestParam String profile,
+                                                   @RequestBody Map<String, Object> body) {
+        String location = registry.descriptor(deviceId).map(DeviceDescriptor::location).orElse("cabin");
+        String displayName     = (String) body.getOrDefault("displayName", null);
+        Object labelRaw        = body.get("stateLabelMap");
+        Map<String, String> labelMap = (labelRaw instanceof Map) ? (Map<String, String>) labelRaw : Map.of();
+        String severityOverride = (String) body.getOrDefault("severityOverride", null);
+        if (severityOverride != null && severityOverride.isBlank()) severityOverride = null;
+        if (displayName      != null && displayName.isBlank())      displayName = null;
+        return displayConfigService.upsert(
+            new DeviceDisplayConfig(deviceId, location, profile, displayName, labelMap, severityOverride));
+    }
+
+    /**
+     * Delete display config for one device+profile combination.
+     * DELETE /api/devices/{id}/display-config?profile=AT_HOME
+     */
+    @DeleteMapping("/{deviceId}/display-config")
+    public Map<String, String> deleteDisplayConfig(@PathVariable String deviceId,
+                                                    @RequestParam String profile) {
+        String location = registry.descriptor(deviceId).map(DeviceDescriptor::location).orElse("cabin");
+        displayConfigService.delete(deviceId, location, profile);
+        return Map.of("deleted", deviceId, "profile", profile);
     }
 }
