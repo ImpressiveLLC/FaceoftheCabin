@@ -541,3 +541,44 @@ body {
   border-radius: 4px;
   flex-shrink: 0;
 }
+
+/* ─── Mad Science theme effects ──────────────────────────────────────────── */
+
+@keyframes ms-pulse {
+  0%, 100% { box-shadow: var(--glow-purple); }
+  50%       { box-shadow: 0 0 18px #bf00ff, 0 0 40px #bf00ff60; }
+}
+
+@keyframes ms-flicker {
+  0%,  19%, 21%, 23%, 100% { opacity: 1; }
+  20%                       { opacity: 0.92; }
+  22%                       { opacity: 0.98; }
+  57%, 59%                  { opacity: 1; }
+  58%                       { opacity: 0.96; }
+  82%, 84%                  { opacity: 1; }
+  83%                       { opacity: 0.94; }
+}
+
+/* KPI tiles */
+[data-theme="madscience"] .kpi-tile.kpi-state-ok {
+  box-shadow: var(--glow-green);
+}
+[data-theme="madscience"] .kpi-tile.kpi-state-alarm {
+  box-shadow: var(--glow-purple);
+  animation: ms-pulse 2.4s ease-in-out infinite;
+}
+
+/* Nav active item */
+[data-theme="madscience"] .nav-active {
+  box-shadow: var(--glow-purple);
+}
+
+/* State badges */
+[data-theme="madscience"] .state-badge {
+  text-shadow: var(--glow-green);
+}
+
+/* Platform name flicker */
+[data-theme="madscience"] .platform-name {
+  animation: ms-flicker 8s linear infinite;
+}

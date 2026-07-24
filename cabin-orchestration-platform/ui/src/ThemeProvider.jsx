@@ -186,9 +186,25 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     const root = document.documentElement;
     Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
-    // Body font follows --font-display
     document.body.style.fontFamily = theme.vars["--font-display"];
+    // Stamp data-theme so CSS selectors can apply theme-specific effects
+    root.setAttribute("data-theme", themeId);
     localStorage.setItem(STORAGE_KEY, themeId);
+
+    // Load Share Tech Mono from Google Fonts only when mad-science is active
+    const FONT_ID = "cabin-font-madscience";
+    let link = document.getElementById(FONT_ID);
+    if (themeId === "madscience") {
+      if (!link) {
+        link = document.createElement("link");
+        link.id = FONT_ID;
+        link.rel = "stylesheet";
+        link.href = "https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap";
+        document.head.appendChild(link);
+      }
+    } else {
+      link?.remove();
+    }
   }, [themeId, theme]);
 
   const setTheme = (id) => {
