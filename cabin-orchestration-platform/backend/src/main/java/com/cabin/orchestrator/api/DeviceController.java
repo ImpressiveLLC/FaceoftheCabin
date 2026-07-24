@@ -1,10 +1,12 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.devices.DeviceHealthMonitor;
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.devices.model.DeviceCapability;
+import com.cabin.orchestrator.integrations.zigbee.Zigbee2MqttAdapter;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -18,9 +20,15 @@ import java.util.Set;
 public class DeviceController {
 
     private final DeviceRegistry registry;
+    private final Zigbee2MqttAdapter z2mAdapter;
+    private final DeviceHealthMonitor healthMonitor;
 
-    public DeviceController(DeviceRegistry registry) {
+    public DeviceController(DeviceRegistry registry,
+                             Zigbee2MqttAdapter z2mAdapter,
+                             DeviceHealthMonitor healthMonitor) {
         this.registry = registry;
+        this.z2mAdapter = z2mAdapter;
+        this.healthMonitor = healthMonitor;
     }
 
     /** List all registered devices with their current state */
@@ -78,5 +86,53 @@ public class DeviceController {
             "capabilities", DeviceCapability.values(),
             "adapters", List.of("mqtt", "ha_rest", "rtsp", "http_poll", "google_sdm")
         );
+    }
+
+    /**
+     * Open or close the Zigbee pairing window.
+     * Body: { "enable": true, "duration": 254 }
+     * Duration is in seconds; 254 = max (~4m14s).
+     */
+    @PostMapping("/permit-join")
+    public Map<String, Object> permitJoin(@RequestBody Map<String, Object> body) {
+        boolean enable = Boolean.TRUE.equals(body.get("enable"));
+        int duration = body.containsKey("duration") ? ((Number) body.get("duration")).intValue() : 254;
+        z2mAdapter.permitJoin(enable, duration);
+        return Map.of("permitJoin", enable, "duration", duration);
+    }
+
+    /**
+     * Get or update per-device config (DeviceDescriptor fields writable by the UI).
+     * PATCH accepts a partial map; only 'name' and 'enabled' are mutable here.
+     */
+    @GetMapping("/{deviceId}/config")
+    public Map<String, Object> getDeviceConfig(@PathVariable String deviceId) {
+        return registry.descriptor(deviceId)
+            .map(d -> Map.<String, Object>of(
+                "deviceId", d.deviceId(),
+                "name", d.name(),
+                "type", d.type(),
+                "capabilities", d.capabilities(),
+                "protocolAdapter", d.protocolAdapter(),
+                "connectionString", d.connectionString(),
+                "enabled", d.enabled(),
+                "location", d.location()
+            ))
+            .orElse(Map.of("error", "not found"));
+    }
+
+    @PatchMapping("/{deviceId}/config")
+    public Map<String, Object> patchDeviceConfig(@PathVariable String deviceId,
+                                                  @RequestBody Map<String, Object> patch) {
+        return registry.descriptor(deviceId).map(existing -> {
+            String name    = patch.containsKey("name") ? (String) patch.get("name") : existing.name();
+            boolean enabled = patch.containsKey("enabled")
+                ? Boolean.TRUE.equals(patch.get("enabled")) : existing.enabled();
+            DeviceDescriptor updated = new DeviceDescriptor(
+                existing.deviceId(), name, existing.type(), existing.capabilities(),
+                existing.protocolAdapter(), existing.connectionString(), enabled, existing.location());
+            registry.registerDescriptor(updated);
+            return Map.<String, Object>of("updated", deviceId, "name", name, "enabled", enabled);
+        }).orElse(Map.of("error", "not found"));
     }
 }

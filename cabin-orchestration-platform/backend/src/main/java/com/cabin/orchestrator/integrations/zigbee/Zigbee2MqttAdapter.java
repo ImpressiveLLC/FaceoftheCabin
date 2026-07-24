@@ -1,0 +1,340 @@
+package com.cabin.orchestrator.integrations.zigbee;
+
+import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.model.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import org.eclipse.paho.client.mqttv3.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Bridges Zigbee2MQTT into the DeviceRegistry.
+ *
+ * Subscriptions:
+ *   zigbee2mqtt/bridge/devices        — device list (device discovery)
+ *   zigbee2mqtt/bridge/state          — bridge health
+ *   zigbee2mqtt/{friendly_name}       — per-device state updates
+ *
+ * Publishes:
+ *   zigbee2mqtt/bridge/request/permit_join   — open/close pairing window
+ *   zigbee2mqtt/{friendly_name}/set          — commands to device
+ *
+ * Device IDs are prefixed with "z2m-" to avoid collision with MQTT/HA devices.
+ * Location is always "cabin" (Z2M is cabin-only for now; extend if home-hub
+ * gets a coordinator).
+ */
+@Service
+public class Zigbee2MqttAdapter implements MqttCallback {
+
+    private static final Logger log = LoggerFactory.getLogger(Zigbee2MqttAdapter.class);
+    private static final String Z2M_PREFIX = "zigbee2mqtt/";
+    private static final String DEVICE_ID_PREFIX = "z2m-";
+
+    @Value("${cabin.mqtt.brokerUrl:tcp://localhost:1883}")
+    private String brokerUrl;
+
+    @Value("${cabin.zigbee.location:cabin}")
+    private String zigbeeLocation;
+
+    private MqttClient client;
+    private final DeviceRegistry registry;
+    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+
+    // Tracks friendly names seen via bridge/devices so we know which topics are Z2M devices
+    private final Set<String> knownFriendlyNames = ConcurrentHashMap.newKeySet();
+    // Tracks whether bridge is online
+    private volatile String bridgeState = "offline";
+
+    public Zigbee2MqttAdapter(DeviceRegistry registry) {
+        this.registry = registry;
+    }
+
+    @PostConstruct
+    public void connect() {
+        try {
+            client = new MqttClient(brokerUrl, "z2m-adapter-" + UUID.randomUUID());
+            client.setCallback(this);
+            MqttConnectOptions opts = new MqttConnectOptions();
+            opts.setAutomaticReconnect(true);
+            opts.setCleanSession(false);
+            client.connect(opts);
+            client.subscribe(Z2M_PREFIX + "bridge/devices", 1);
+            client.subscribe(Z2M_PREFIX + "bridge/state", 1);
+            client.subscribe(Z2M_PREFIX + "#", 0);
+            log.info("Zigbee2MQTT adapter connected to {}", brokerUrl);
+        } catch (MqttException e) {
+            log.warn("Zigbee2MQTT adapter connect failed (Z2M may not be running): {}", e.getMessage());
+        }
+    }
+
+    @Override
+    public void messageArrived(String topic, MqttMessage message) {
+        try {
+            String payload = new String(message.getPayload());
+            if (topic.equals(Z2M_PREFIX + "bridge/devices")) {
+                handleBridgeDeviceList(payload);
+            } else if (topic.equals(Z2M_PREFIX + "bridge/state")) {
+                handleBridgeState(payload);
+            } else if (topic.startsWith(Z2M_PREFIX) && !topic.contains("/set") && !topic.contains("/get")) {
+                String friendlyName = topic.substring(Z2M_PREFIX.length());
+                // Skip bridge sub-topics we don't handle
+                if (!friendlyName.startsWith("bridge/") && knownFriendlyNames.contains(friendlyName)) {
+                    handleDeviceState(friendlyName, payload);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Z2M message processing error on {}: {}", topic, e.getMessage());
+        }
+    }
+
+    private void handleBridgeState(String payload) {
+        try {
+            JsonNode node = mapper.readTree(payload);
+            bridgeState = node.has("state") ? node.get("state").asText() : payload.trim();
+            log.debug("Z2M bridge state: {}", bridgeState);
+        } catch (Exception e) {
+            bridgeState = payload.trim();
+        }
+    }
+
+    /**
+     * Parses the zigbee2mqtt/bridge/devices array and registers any new devices.
+     * Each element has: ieee_address, friendly_name, type, definition.exposes[]
+     */
+    private void handleBridgeDeviceList(String payload) {
+        try {
+            JsonNode devices = mapper.readTree(payload);
+            if (!devices.isArray()) return;
+            for (JsonNode device : devices) {
+                String friendlyName = device.path("friendly_name").asText(null);
+                if (friendlyName == null || friendlyName.equals("Coordinator")) continue;
+                knownFriendlyNames.add(friendlyName);
+                String deviceId = DEVICE_ID_PREFIX + friendlyName.replace(" ", "_");
+                if (registry.descriptor(deviceId).isPresent()) continue; // already registered
+
+                JsonNode definition = device.path("definition");
+                Set<DeviceCapability> caps = inferCapabilities(definition);
+                DeviceType type = inferType(definition, caps);
+
+                DeviceDescriptor desc = new DeviceDescriptor(
+                    deviceId,
+                    friendlyName,
+                    type,
+                    caps,
+                    "mqtt",
+                    Z2M_PREFIX + friendlyName,
+                    true,
+                    zigbeeLocation
+                );
+                registry.registerDescriptor(desc);
+                log.info("Z2M registered device: {} ({})", friendlyName, type);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse Z2M device list: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Handles per-device state messages. The Z2M payload is a flat JSON object
+     * with property names matching the 'property' fields from definition.exposes.
+     * Unknown properties are stored in attributes as-is.
+     */
+    private void handleDeviceState(String friendlyName, String payload) {
+        String deviceId = DEVICE_ID_PREFIX + friendlyName.replace(" ", "_");
+        try {
+            JsonNode node = mapper.readTree(payload);
+            if (!node.isObject()) return;
+
+            DeviceStatus existing = registry.get(deviceId);
+            if (existing == null) return; // not registered yet; bridge/devices will handle it
+
+            Map<String, Object> attrs = new LinkedHashMap<>();
+            node.fields().forEachRemaining(e -> attrs.put(e.getKey(), jsonNodeToValue(e.getValue())));
+
+            String state = deriveState(attrs, existing.type());
+            registry.update(new DeviceStatus(
+                deviceId, existing.type(), existing.name(), state,
+                Instant.now(), attrs, existing.location()));
+        } catch (Exception e) {
+            log.warn("Failed to parse Z2M state for {}: {}", friendlyName, e.getMessage());
+        }
+    }
+
+    /**
+     * Infers DeviceCapabilities from definition.exposes[].
+     * Handles generic feature types ('binary', 'numeric', 'enum') and
+     * composite features that have sub-features (e.g. water_leak_buzzer
+     * nested under a composite).
+     */
+    private Set<DeviceCapability> inferCapabilities(JsonNode definition) {
+        Set<DeviceCapability> caps = new HashSet<>();
+        if (definition.isMissingNode()) {
+            caps.add(DeviceCapability.TELEMETRY);
+            return caps;
+        }
+        JsonNode exposes = definition.path("exposes");
+        if (!exposes.isArray()) {
+            caps.add(DeviceCapability.TELEMETRY);
+            return caps;
+        }
+        for (JsonNode expose : exposes) {
+            processExpose(expose, caps);
+        }
+        if (caps.isEmpty()) caps.add(DeviceCapability.TELEMETRY);
+        return caps;
+    }
+
+    private void processExpose(JsonNode expose, Set<DeviceCapability> caps) {
+        String type = expose.path("type").asText("");
+        String property = expose.path("property").asText("");
+        String name = expose.path("name").asText("");
+        int access = expose.path("access").asInt(1);
+        boolean writable = (access & 2) != 0;
+
+        switch (type) {
+            case "binary" -> {
+                if (property.contains("water_leak") || property.contains("smoke") ||
+                    property.contains("alarm") || property.contains("tamper")) {
+                    caps.add(DeviceCapability.ALARM);
+                } else if (property.contains("occupancy") || property.contains("presence")) {
+                    caps.add(DeviceCapability.PRESENCE);
+                } else if (property.contains("contact") || property.contains("lock")) {
+                    if (writable) caps.add(DeviceCapability.COMMAND);
+                    caps.add(DeviceCapability.ACCESS_CONTROL);
+                } else {
+                    caps.add(DeviceCapability.TELEMETRY);
+                    if (writable) caps.add(DeviceCapability.COMMAND);
+                }
+            }
+            case "numeric" -> {
+                caps.add(DeviceCapability.TELEMETRY);
+                if (writable) caps.add(DeviceCapability.COMMAND);
+                if (property.contains("power") || property.contains("energy") ||
+                    property.contains("current") || property.contains("voltage")) {
+                    caps.add(DeviceCapability.POWER_MONITOR);
+                }
+            }
+            case "enum" -> {
+                caps.add(DeviceCapability.TELEMETRY);
+                if (writable) caps.add(DeviceCapability.COMMAND);
+            }
+            case "climate" -> {
+                caps.add(DeviceCapability.TELEMETRY);
+                caps.add(DeviceCapability.COMMAND);
+                caps.add(DeviceCapability.CLIMATE);
+            }
+            case "lock" -> {
+                caps.add(DeviceCapability.COMMAND);
+                caps.add(DeviceCapability.ACCESS_CONTROL);
+            }
+            case "composite" -> {
+                // Recurse into sub-features (e.g. water_leak_buzzer on THIRDREALITY)
+                JsonNode features = expose.path("features");
+                if (features.isArray()) {
+                    for (JsonNode sub : features) processExpose(sub, caps);
+                }
+            }
+            default -> {
+                caps.add(DeviceCapability.TELEMETRY);
+                if (writable) caps.add(DeviceCapability.COMMAND);
+            }
+        }
+    }
+
+    private DeviceType inferType(JsonNode definition, Set<DeviceCapability> caps) {
+        String model = definition.path("model").asText("").toLowerCase();
+        String desc = definition.path("description").asText("").toLowerCase();
+        String vendor = definition.path("vendor").asText("").toLowerCase();
+
+        if (model.contains("snzb-05") || desc.contains("water leak")) return DeviceType.WATER_LEAK_SENSOR;
+        if (model.contains("snzb-03") || desc.contains("motion"))      return DeviceType.MOTION_SENSOR;
+        if (model.contains("snzb-04") || desc.contains("contact"))     return DeviceType.CONTACT_SENSOR;
+        if (model.contains("snzb-02") || desc.contains("temperature")) return DeviceType.TEMPERATURE_SENSOR;
+        if (model.contains("zbminir") || desc.contains("switch"))      return DeviceType.HOME_ASSISTANT_ENTITY;
+        if (desc.contains("smoke") || desc.contains("co alarm"))       return DeviceType.SMOKE_ALARM;
+        if (desc.contains("smart plug") || desc.contains("outlet"))    return DeviceType.POWER_METER;
+        if (caps.contains(DeviceCapability.CLIMATE))                   return DeviceType.THERMOSTAT;
+        if (caps.contains(DeviceCapability.ACCESS_CONTROL))            return DeviceType.LOCK;
+        if (caps.contains(DeviceCapability.ALARM))                     return DeviceType.WATER_LEAK_SENSOR;
+        return DeviceType.HOME_ASSISTANT_ENTITY;
+    }
+
+    private String deriveState(Map<String, Object> attrs, DeviceType type) {
+        // Water leak / alarm sensors
+        Object waterLeak = attrs.get("water_leak");
+        if (Boolean.TRUE.equals(waterLeak)) return "ALARM";
+        Object smoke = attrs.get("smoke");
+        if (Boolean.TRUE.equals(smoke)) return "ALARM";
+        // Generic alarm property
+        Object alarm = attrs.get("alarm");
+        if (Boolean.TRUE.equals(alarm)) return "ALARM";
+        // Contact/motion: report as ONLINE but leave state informational in attrs
+        Object linkquality = attrs.get("linkquality");
+        if (linkquality == null) return "UNKNOWN";
+        return "ONLINE";
+    }
+
+    private Object jsonNodeToValue(JsonNode node) {
+        if (node.isBoolean()) return node.booleanValue();
+        if (node.isNumber())  return node.numberValue();
+        if (node.isTextual()) return node.textValue();
+        return node.toString();
+    }
+
+    /** Open or close the Zigbee pairing window. duration=254 = max (4m14s). */
+    public void permitJoin(boolean enable, int duration) {
+        if (client == null || !client.isConnected()) {
+            log.warn("Z2M not connected — cannot permit_join");
+            return;
+        }
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("value", enable);
+            if (enable) body.put("time", duration);
+            String json = mapper.writeValueAsString(body);
+            client.publish(Z2M_PREFIX + "bridge/request/permit_join",
+                new MqttMessage(json.getBytes()));
+            log.info("Z2M permit_join={} duration={}s", enable, duration);
+        } catch (Exception e) {
+            log.error("Z2M permit_join failed: {}", e.getMessage());
+        }
+    }
+
+    /** Send a property update to a Zigbee device (e.g. water_leak_buzzer: true). */
+    public boolean sendCommand(String friendlyName, Map<String, Object> payload) {
+        if (client == null || !client.isConnected()) return false;
+        try {
+            String json = mapper.writeValueAsString(payload);
+            client.publish(Z2M_PREFIX + friendlyName + "/set",
+                new MqttMessage(json.getBytes()));
+            return true;
+        } catch (Exception e) {
+            log.error("Z2M sendCommand to {} failed: {}", friendlyName, e.getMessage());
+            return false;
+        }
+    }
+
+    public String getBridgeState() { return bridgeState; }
+    public Set<String> getKnownFriendlyNames() { return Collections.unmodifiableSet(knownFriendlyNames); }
+
+    @Override public void connectionLost(Throwable cause) {
+        log.warn("Z2M adapter connection lost: {}", cause.getMessage());
+    }
+
+    @Override public void deliveryComplete(IMqttDeliveryToken token) {}
+
+    @PreDestroy
+    public void disconnect() {
+        try { if (client != null && client.isConnected()) client.disconnect(); }
+        catch (MqttException ignored) {}
+    }
+}
