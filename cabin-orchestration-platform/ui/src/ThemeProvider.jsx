@@ -139,6 +139,34 @@ export const THEMES = {
       "--radius-sm":    "3px",
     },
   },
+
+  madscience: {
+    id: "madscience",
+    label: "Mad Science",
+    vars: {
+      "--bg":           "#050508",
+      "--bg-secondary": "#0d0a1a",
+      "--bg-tertiary":  "#130f25",
+      "--surface":      "#0d0a1a",
+      "--border":       "#1a2e12",
+      "--border-focus": "#39ff14",
+      "--text":         "#c8ffb0",
+      "--text-muted":   "#5a8050",
+      "--text-dim":     "#3a5530",
+      "--accent":       "#39ff14",
+      "--accent-hover": "#bf00ff",
+      "--accent-2":     "#bf00ff",
+      "--success":      "#39ff14",
+      "--warning":      "#f5f500",
+      "--danger":       "#ff006e",
+      "--font-display": "'Share Tech Mono', 'Courier New', monospace",
+      "--font-mono":    "'Courier New', monospace",
+      "--radius":       "2px",
+      "--radius-sm":    "1px",
+      "--glow-green":   "0 0 8px #39ff14, 0 0 20px #39ff1440",
+      "--glow-purple":  "0 0 8px #bf00ff, 0 0 20px #bf00ff40",
+    },
+  },
 };
 
 const STORAGE_KEY = "cabin-theme";
