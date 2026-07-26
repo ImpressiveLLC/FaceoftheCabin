@@ -86,8 +86,11 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 handleBridgeState(payload);
             } else if (topic.startsWith(Z2M_PREFIX) && !topic.contains("/set") && !topic.contains("/get")) {
                 String friendlyName = topic.substring(Z2M_PREFIX.length());
-                // Skip bridge sub-topics we don't handle
-                if (!friendlyName.startsWith("bridge/") && knownFriendlyNames.contains(friendlyName)) {
+                if (friendlyName.endsWith("/availability")) {
+                    // Z2M availability is the authoritative online/offline signal — use it directly
+                    String name = friendlyName.substring(0, friendlyName.lastIndexOf("/availability"));
+                    if (knownFriendlyNames.contains(name)) handleAvailability(name, payload);
+                } else if (!friendlyName.startsWith("bridge/") && knownFriendlyNames.contains(friendlyName)) {
                     handleDeviceState(friendlyName, payload);
                 }
             }
@@ -103,6 +106,24 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             log.debug("Z2M bridge state: {}", bridgeState);
         } catch (Exception e) {
             bridgeState = payload.trim();
+        }
+    }
+
+    private void handleAvailability(String friendlyName, String payload) {
+        String deviceId = DEVICE_ID_PREFIX + friendlyName.replace(" ", "_");
+        try {
+            JsonNode node = mapper.readTree(payload);
+            String avail = node.has("state") ? node.get("state").asText() : payload.trim();
+            DeviceStatus existing = registry.get(deviceId);
+            if (existing == null) return;
+            String newState = "online".equalsIgnoreCase(avail) ? "ONLINE" : "OFFLINE";
+            // Only update state, preserve existing attributes
+            registry.update(new DeviceStatus(
+                deviceId, existing.type(), existing.name(), newState,
+                Instant.now(), existing.attributes(), existing.location()));
+            log.debug("Z2M availability: {} -> {}", friendlyName, newState);
+        } catch (Exception e) {
+            log.warn("Failed to parse Z2M availability for {}: {}", friendlyName, e.getMessage());
         }
     }
 
