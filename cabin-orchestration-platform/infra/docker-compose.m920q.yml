@@ -1,0 +1,47 @@
+# M920q Cabin Hub overlay — use alongside docker-compose.yml
+#
+# The M920q already runs: mosquitto, homeassistant, nodered, frigate,
+# zigbee2mqtt, homepage (port 3000), uptime-kuma (port 3001), mediamtx.
+#
+# This overlay disables everything that would conflict and only starts
+# the two services the existing stack doesn't have: Postgres and Kafka.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d
+#
+# Then run the backend and UI directly (not in Docker):
+#   cd ~/repos/FaceoftheCabin/cabin-orchestration-platform/backend && ./mvnw spring-boot:run
+#   cd ~/repos/FaceoftheCabin/cabin-orchestration-platform/ui && npm run dev
+
+services:
+
+  # Already running as 'mosquitto' container — skip ours
+  mqtt:
+    profiles: [disabled]
+
+  # Already running as 'homeassistant' (host network) — skip ours
+  homeassistant:
+    profiles: [disabled]
+
+  # Already running as 'nodered' container — skip ours
+  nodered:
+    profiles: [disabled]
+
+  # Already running as 'frigate' container — skip ours
+  frigate:
+    profiles: [disabled]
+
+  # 'homepage' owns port 3000, 'uptime-kuma' owns 3001 — run Grafana on 3002
+  grafana:
+    ports:
+      - "3002:3000"
+
+  # Watchdog monitors Docker socket — keep disabled until integrated
+  watchdog:
+    profiles: [disabled]
+
+  # Postgres (TimescaleDB) — not currently running on M920q, START this
+  # postgres: inherited from base compose, no changes needed
+
+  # Kafka (KRaft) — not currently running on M920q, START this
+  # kafka: inherited from base compose, no changes needed

@@ -238,14 +238,33 @@ VITE_CABIN_NODERED_URL=http://localhost:1880
 VITE_CABIN_FRIGATE_URL=http://localhost:5000
 ```
 
-### 5 — On the cabin M920q (Linux, full stack)
+### 5 — On the cabin M920q (Linux — partial stack only)
+
+The M920q already runs its own Docker project with: `mosquitto` (1883),
+`homeassistant` (host network), `nodered` (1880), `frigate` (5000),
+`zigbee2mqtt` (8080), `homepage` (3000), `uptime-kuma` (3001), `mediamtx`.
+
+**Do NOT run `docker compose up` with the base file alone — it will conflict.**
+Use the M920q overlay which skips everything already running and only starts
+Postgres and Kafka (the two things the existing stack doesn't have):
+
 ```bash
-cd ~/cabin-orchestration-platform/infra
-docker compose up -d                    # all 8 services
-cd ../backend
-./mvnw spring-boot:run
+cd ~/repos/FaceoftheCabin/cabin-orchestration-platform/infra
+cp .env.m920q.example .env          # fill in passwords first
+docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d
+# starts: cabin-postgres (5432), cabin-kafka (9092), cabin-grafana (3002)
+# skips:  mqtt, homeassistant, nodered, frigate, watchdog (already running)
 ```
-Point Zigbee2MQTT at the SONOFF ZBDongle-E: `serial.port: /dev/ttyUSB0` in Z2M config.
+
+Then run backend and UI directly:
+```bash
+cd ~/repos/FaceoftheCabin/cabin-orchestration-platform/backend
+./mvnw spring-boot:run
+# connects to: existing mosquitto:1883, existing HA:8123, new postgres:5432
+
+cd ~/repos/FaceoftheCabin/cabin-orchestration-platform/ui
+npm install && npm run dev
+```
 
 ---
 
