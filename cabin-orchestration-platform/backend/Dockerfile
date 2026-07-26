@@ -1,13 +1,12 @@
-# ── Stage 1: build ──────────────────────────────────────────────
-FROM eclipse-temurin:21-jdk-alpine AS build
+# Stage 1: build — uses official Maven image (includes mvn + JDK 21)
+FROM maven:3.9-eclipse-temurin-21-alpine AS build
 WORKDIR /app
-COPY .mvn/ .mvn/
-COPY mvnw pom.xml ./
-RUN ./mvnw dependency:go-offline -q
+COPY pom.xml ./
+RUN mvn dependency:go-offline -q
 COPY src ./src
-RUN ./mvnw package -DskipTests -q
+RUN mvn package -DskipTests -q
 
-# ── Stage 2: runtime ─────────────────────────────────────────────
+# Stage 2: runtime — slim JRE only
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
