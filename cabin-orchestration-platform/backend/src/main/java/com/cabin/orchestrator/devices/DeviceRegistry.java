@@ -27,127 +27,90 @@ public class DeviceRegistry {
     }
 
     private void seedDefaults() {
-        // ── Cabin devices ────────────────────────────────────────────────────
+        // ── Cabin devices — real paired hardware as of 2026-07-25 ────────────
+        // Zigbee devices auto-registered by Zigbee2MqttAdapter (z2m- prefix).
+        // Seeds here are non-Zigbee cabin devices only.
 
-        registerDescriptor(new DeviceDescriptor(
-            "water-main-pressure", "Main Water Pressure", DeviceType.WATER_PRESSURE_SENSOR,
-            Set.of(DeviceCapability.TELEMETRY), "mqtt",
-            "cabin/device/water-main-pressure", true, "cabin"));
+        // Future: add cabin thermostat, smoke alarm, cameras when installed
+        // Future: add home hub devices when home-hub is deployed
 
-        registerDescriptor(new DeviceDescriptor(
-            "cabin-thermostat-main", "Cabin Thermostat", DeviceType.THERMOSTAT,
-            Set.of(DeviceCapability.TELEMETRY, DeviceCapability.COMMAND, DeviceCapability.CLIMATE),
-            "ha_rest", "climate.cabin_thermostat", true, "cabin"));
+        // ── Home devices — disabled until home-hub deployed ──────────────────
 
-        registerDescriptor(new DeviceDescriptor(
-            "kidde-smoke-main", "Cabin Smoke Alarm", DeviceType.SMOKE_ALARM,
-            Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ALARM),
-            "ha_rest", "binary_sensor.kidde_smoke_alarm", true, "cabin"));
-
-        registerDescriptor(new DeviceDescriptor(
-            "front-door-lock", "Cabin Front Door Lock", DeviceType.LOCK,
-            Set.of(DeviceCapability.COMMAND, DeviceCapability.ACCESS_CONTROL),
-            "ha_rest", "lock.front_door", true, "cabin"));
-
-        registerDescriptor(new DeviceDescriptor(
-            "camera-front-door", "Cabin Front Door Camera", DeviceType.CAMERA,
-            Set.of(DeviceCapability.STREAM, DeviceCapability.PRESENCE),
-            "rtsp", "rtsp://192.168.1.101/stream1", false, "cabin"));
-
-        registerDescriptor(new DeviceDescriptor(
-            "bosch-dishwasher", "Cabin Bosch Dishwasher", DeviceType.DISHWASHER,
-            Set.of(DeviceCapability.TELEMETRY, DeviceCapability.APPLIANCE),
-            "ha_rest", "sensor.bosch_dishwasher_door", true, "cabin"));
-
-        registerDescriptor(new DeviceDescriptor(
-            "lg-washer", "Cabin LG Washing Machine", DeviceType.WASHING_MACHINE,
-            Set.of(DeviceCapability.TELEMETRY, DeviceCapability.COMMAND, DeviceCapability.APPLIANCE),
-            "ha_rest", "sensor.lg_washer_state", true, "cabin"));
-
-        // ── Home devices ─────────────────────────────────────────────────────
-
-        // Reolink RLC-810A PoE cameras (RTSP → Frigate; IPs 192.168.1.20–24)
+        // Reolink RLC-810A PoE cameras (5× — Frigate, home LAN 192.168.1.20–24)
         registerDescriptor(new DeviceDescriptor(
             "home-cam-front", "Home Front Door Camera", DeviceType.CAMERA,
             Set.of(DeviceCapability.STREAM, DeviceCapability.PRESENCE),
             "rtsp", "rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.20:554/h264Preview_01_main",
-            true, "home"));
+            false, "home"));
 
         registerDescriptor(new DeviceDescriptor(
             "home-cam-driveway", "Home Driveway Camera", DeviceType.CAMERA,
             Set.of(DeviceCapability.STREAM, DeviceCapability.PRESENCE),
             "rtsp", "rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.21:554/h264Preview_01_main",
-            true, "home"));
+            false, "home"));
 
         registerDescriptor(new DeviceDescriptor(
             "home-cam-backyard", "Home Backyard Camera", DeviceType.CAMERA,
             Set.of(DeviceCapability.STREAM, DeviceCapability.PRESENCE),
             "rtsp", "rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.22:554/h264Preview_01_main",
-            true, "home"));
+            false, "home"));
 
         registerDescriptor(new DeviceDescriptor(
             "home-cam-garage", "Home Garage Camera", DeviceType.CAMERA,
             Set.of(DeviceCapability.STREAM, DeviceCapability.PRESENCE),
             "rtsp", "rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.23:554/h264Preview_01_main",
-            true, "home"));
+            false, "home"));
 
         registerDescriptor(new DeviceDescriptor(
             "home-cam-side", "Home Side Door Camera", DeviceType.CAMERA,
             Set.of(DeviceCapability.STREAM, DeviceCapability.PRESENCE),
             "rtsp", "rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.24:554/h264Preview_01_main",
-            true, "home"));
+            false, "home"));
 
-        // Kwikset 916 Zigbee deadbolts (Aeotec Z-Stick 10 Pro → Zigbee2MQTT → HA)
         registerDescriptor(new DeviceDescriptor(
             "home-lock-front", "Home Front Door Lock", DeviceType.LOCK,
             Set.of(DeviceCapability.COMMAND, DeviceCapability.ACCESS_CONTROL),
-            "ha_rest", "lock.home_front_door", true, "home"));
+            "ha_rest", "lock.home_front_door", false, "home"));
 
         registerDescriptor(new DeviceDescriptor(
             "home-lock-back", "Home Back Door Lock", DeviceType.LOCK,
             Set.of(DeviceCapability.COMMAND, DeviceCapability.ACCESS_CONTROL),
-            "ha_rest", "lock.home_back_door", true, "home"));
+            "ha_rest", "lock.home_back_door", false, "home"));
 
-        // meross MTS300M Matter thermostat (HA Matter integration)
         registerDescriptor(new DeviceDescriptor(
             "home-thermostat-main", "Home Thermostat", DeviceType.THERMOSTAT,
             Set.of(DeviceCapability.TELEMETRY, DeviceCapability.COMMAND, DeviceCapability.CLIMATE),
-            "ha_rest", "climate.home_thermostat", true, "home"));
+            "ha_rest", "climate.home_thermostat", false, "home"));
 
-        // Kidde P4010ACSCO-WF smoke/CO combo (HACS Kidde HomeSafe integration)
         registerDescriptor(new DeviceDescriptor(
             "home-smoke-co-main", "Home Smoke/CO Alarm", DeviceType.SMOKE_ALARM,
             Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ALARM),
-            "ha_rest", "binary_sensor.home_kidde_smoke_co", true, "home"));
+            "ha_rest", "binary_sensor.home_kidde_smoke_co", false, "home"));
 
-        // Emporia Vue Gen 3 energy monitor (HA Emporia Vue integration)
         registerDescriptor(new DeviceDescriptor(
             "home-energy-main", "Home Energy Monitor", DeviceType.POWER_METER,
             Set.of(DeviceCapability.TELEMETRY, DeviceCapability.POWER_MONITOR),
-            "ha_rest", "sensor.home_emporia_total_power_w", true, "home"));
+            "ha_rest", "sensor.home_emporia_total_power_w", false, "home"));
 
-        // LG ThinQ washer + dryer (HA SmartThinQ integration — cloud poll, monitor only)
         registerDescriptor(new DeviceDescriptor(
             "home-lg-washer", "Home LG Washer", DeviceType.WASHING_MACHINE,
             Set.of(DeviceCapability.TELEMETRY, DeviceCapability.APPLIANCE),
-            "ha_rest", "sensor.home_lg_washer_state", true, "home"));
+            "ha_rest", "sensor.home_lg_washer_state", false, "home"));
 
         registerDescriptor(new DeviceDescriptor(
             "home-lg-dryer", "Home LG Dryer", DeviceType.DRYER,
             Set.of(DeviceCapability.TELEMETRY, DeviceCapability.APPLIANCE),
-            "ha_rest", "sensor.home_lg_dryer_state", true, "home"));
+            "ha_rest", "sensor.home_lg_dryer_state", false, "home"));
 
-        // Bosch 500 Series dishwasher (HA Home Connect integration — monitor + control)
         registerDescriptor(new DeviceDescriptor(
             "home-bosch-dishwasher", "Home Bosch Dishwasher", DeviceType.DISHWASHER,
             Set.of(DeviceCapability.TELEMETRY, DeviceCapability.COMMAND, DeviceCapability.APPLIANCE),
-            "ha_rest", "sensor.home_bosch_dishwasher_door", true, "home"));
+            "ha_rest", "sensor.home_bosch_dishwasher_door", false, "home"));
 
-        // Daikin Aurora HVAC with BRP072A43 WiFi module (HA Daikin integration — local API)
         registerDescriptor(new DeviceDescriptor(
             "home-daikin-hvac", "Home Daikin Aurora HVAC", DeviceType.THERMOSTAT,
             Set.of(DeviceCapability.TELEMETRY, DeviceCapability.COMMAND, DeviceCapability.CLIMATE),
-            "ha_rest", "climate.home_daikin_aurora", true, "home"));
+            "ha_rest", "climate.home_daikin_aurora", false, "home"));
     }
 
     public void registerDescriptor(DeviceDescriptor desc) {
