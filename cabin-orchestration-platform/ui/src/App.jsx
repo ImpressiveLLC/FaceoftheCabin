@@ -771,13 +771,14 @@ function DmEditForm({ device, onSaved }) {
 function LocationMonitoringSection({ locCfg, devices, active }) {
   const liveMessages = useMqttTelemetry(active, locCfg.wsBase);
 
-  const locDevices = devices.filter(d => !d.location || d.location === locCfg.id);
-  const pressure   = locDevices.find(d => d.type === "WATER_PRESSURE_SENSOR");
+  const locDevices  = devices.filter(d => !d.location || d.location === locCfg.id);
+  const pressure    = locDevices.find(d => d.type === "WATER_PRESSURE_SENSOR");
   const thermostats = locDevices.filter(d => d.type === "THERMOSTAT");
-  const smoke      = locDevices.find(d => d.type === "SMOKE_ALARM");
-  const locks      = locDevices.filter(d => d.type === "LOCK");
-  const cameras    = locDevices.filter(d => d.type === "CAMERA");
-  const energy     = locDevices.find(d => d.type === "POWER_METER");
+  const tempSensors = locDevices.filter(d => d.type === "TEMPERATURE_SENSOR");
+  const smoke       = locDevices.find(d => d.type === "SMOKE_ALARM");
+  const locks       = locDevices.filter(d => d.type === "LOCK");
+  const cameras     = locDevices.filter(d => d.type === "CAMERA");
+  const energy      = locDevices.find(d => d.type === "POWER_METER");
 
   return (
     <div className="location-section">
@@ -795,6 +796,18 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
               ? `${t.attributes.current_temperature}°F` : "—"}
             state={t.state} />
         ))}
+        {tempSensors.map(s => {
+          const temp = s.attributes?.temperature;
+          const hum  = s.attributes?.humidity;
+          const val  = [
+            temp != null && `${temp}°C`,
+            hum  != null && `${hum}%`,
+          ].filter(Boolean).join(" · ") || "—";
+          return (
+            <KpiTile key={s.deviceId} icon={Thermometer} label={s.name} deviceId={s.deviceId}
+              value={val} state={s.state} />
+          );
+        })}
         {smoke && (
           <KpiTile icon={ShieldAlert} label={smoke.name || "Smoke/CO Alarm"} deviceId={smoke.deviceId}
             value={smoke.state || "UNKNOWN"}
