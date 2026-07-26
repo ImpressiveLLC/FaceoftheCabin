@@ -1,0 +1,56 @@
+<svg viewBox="0 0 140 150" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Smrekar Family Crest
+    Spruce tree with three martlets — after the Hodgson coat of arms.
+    Martlets: Or (gold). Tree: Vert. Trunk: proper (brown).
+    Background: transparent for overlay use.
+  -->
+
+  <!-- ── Spruce tree ───────────────────────────────────────────────── -->
+  <!-- Tier 1 – apex -->
+  <polygon points="70,10 57,34 83,34" fill="#1A6E30"/>
+  <!-- Tier 2 – mid canopy -->
+  <polygon points="70,24 44,58 96,58" fill="#1A6E30"/>
+  <!-- Tier 3 – base canopy -->
+  <polygon points="70,44 28,88 112,88" fill="#1A6E30"/>
+  <!-- Trunk -->
+  <rect x="62" y="86" width="16" height="26" rx="3" fill="#5C3318"/>
+
+  <!--
+    Martlet path (reusable):
+    Centered at 0,0  |  ~28 wide × 22 tall before scaling.
+    Front-facing, 2D heraldic convention:
+      – No feet (truncated legs)
+      – No protruding beak (head tuft only)
+      – Spread wings, forked tail
+  -->
+  <defs>
+    <path id="m"
+      d="M 0,-10
+         C  3,-13  6,-11  5,-7
+         L 14,-4
+         C 13, 2   9, 3   6, 2
+         L  5, 6
+         L  7,12
+         L  2, 9
+         L  0,12
+         L -2, 9
+         L -7,12
+         L -5, 6
+         C -9, 3 -13, 2 -14,-4
+         L -5,-7
+         C -6,-11 -3,-13  0,-10
+         Z"
+      fill="#D4AF37"/>
+  </defs>
+
+  <!-- ── Three martlets ──────────────────────────────────────────── -->
+  <!-- Top martlet — at the apex, centred above the tree tip -->
+  <use href="#m" transform="translate(70,6) scale(0.52)"/>
+
+  <!-- Left martlet — flanking the left canopy -->
+  <use href="#m" transform="translate(14,64) scale(0.52)"/>
+
+  <!-- Right martlet — flanking the right canopy -->
+  <use href="#m" transform="translate(126,64) scale(0.52)"/>
+</svg>
