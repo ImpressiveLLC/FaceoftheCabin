@@ -1,0 +1,564 @@
+# FaceoftheCabin Platform Ontology
+# ─────────────────────────────────────────────────────────────────────────────
+# This file is the semantic contract for the entire platform.
+# It describes every named element — hardware, infrastructure, code constructs,
+# APIs, data fields, UI labels, and cross-cutting references — at the
+# intersection of all platform layers.
+#
+# This is NOT a data model, schema, or frontend/backend spec.
+# It is the authoritative definition of what things ARE, what layer they live
+# on, how they relate to other elements, and how they should be rendered
+# per audience context.
+#
+# Audiences:
+#   semantic    — plain English, no jargon (Mom, casual user)
+#   systems     — named concepts with values and thresholds (analyst, operator)
+#   technical   — raw identifiers, types, protocols (developer, technician)
+#   compliance  — audit-relevant metadata and confidence indicators (adjuster)
+#
+# Layer taxonomy:
+#   hardware    — physical devices and their firmware identity
+#   protocol    — communication standards (Zigbee, MQTT, HTTP, Tailscale)
+#   integration — bridges between layers (Z2M, HA, Paho MQTT client)
+#   infra       — runtime environment (Docker, Postgres, Kafka, Linux host)
+#   backend     — Spring Boot application layer
+#   frontend    — React UI layer
+#   network     — connectivity fabric (LAN, Tailscale, Docker networks)
+#   ontology    — this file and the semantic layer itself
+#
+# Primitive flag:
+#   primitive: true means this element is not derived — it is a source value
+#   used to compute or label other elements. Primitives are never hidden from
+#   the technical audience even when invisible to semantic/systems audiences.
+#
+# Format per element:
+#   id:           canonical snake_case identifier (unique across platform)
+#   layer:        one of the layer taxonomy values above
+#   primitive:    true | false
+#   label:
+#     semantic:   what mom sees
+#     systems:    what the analyst sees
+#     technical:  what the developer sees
+#     compliance: what the adjuster sees
+#   definition:   one-sentence plain English description
+#   derives_from: list of element ids this element is computed or derived from
+#   used_by:      list of element ids or system names that consume this element
+#   normal_range: expected value envelope (optional, for sensor readings)
+#   notes:        implementation notes, constraints, known issues
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "0.1.0"
+status: draft
+maintainer: FaceoftheCabin platform team
+last_updated: "2026-07-26"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HARDWARE ELEMENTS
+# Physical devices and their immutable identity
+# ═══════════════════════════════════════════════════════════════════════════
+
+elements:
+
+  - id: zigbee_ieee_address
+    layer: hardware
+    primitive: true
+    label:
+      semantic: (not shown)
+      systems: IEEE Address
+      technical: ieee_address (e.g. 0x00124b0014d8a1c3)
+      compliance: Device Hardware ID
+    definition: >
+      The globally unique 64-bit hardware address burned into every Zigbee
+      chip at manufacture. Immutable. The lowest-level identity of a physical
+      device, independent of any pairing, naming, or software state.
+    derives_from: []
+    used_by: [zigbee2mqtt, z2m_friendly_name, z2m_device_record]
+    notes: >
+      Never changes even if device is reset, re-paired, or renamed.
+      Use as the stable foreign key when correlating across Z2M, HA, and
+      FaceoftheCabin records. Not surfaced in UI except in technical view.
+
+  - id: zigbee_model
+    layer: hardware
+    primitive: true
+    label:
+      semantic: (not shown)
+      systems: Device Model
+      technical: model (e.g. SNZB-02, SNZB-04)
+      compliance: Hardware Model
+    definition: >
+      Manufacturer model string identifying the hardware capabilities and
+      firmware baseline of a Zigbee device.
+    derives_from: [zigbee_ieee_address]
+    used_by: [z2m_device_type_inference, device_display_photo, data_dictionary]
+    notes: >
+      Used to infer device type in Zigbee2MqttAdapter.inferType().
+      Also used to look up spec sheet photos from Z2M device database
+      (https://github.com/Koenkk/zigbee2mqtt.io/tree/master/public/images/devices)
+      as install-time thumbnail fallback when user has not taken a photo.
+
+  - id: zigbee_vendor
+    layer: hardware
+    primitive: true
+    label:
+      semantic: (not shown)
+      systems: Manufacturer
+      technical: vendor (e.g. SONOFF, Aqara)
+      compliance: Manufacturer
+    definition: Manufacturer name string as reported by the Zigbee device.
+    derives_from: [zigbee_ieee_address]
+    used_by: [device_display_photo, data_dictionary]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PROTOCOL ELEMENTS
+# Communication standards and their identifiers
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: z2m_friendly_name
+    layer: protocol
+    primitive: true
+    label:
+      semantic: (not shown — use display_name instead)
+      systems: Z2M Friendly Name
+      technical: friendly_name (e.g. door_second_contact)
+      compliance: Sensor Identifier
+    definition: >
+      The human-assigned snake_case name for a Zigbee device as configured
+      in Zigbee2MQTT. Forms the MQTT topic path and is the stable internal
+      key for all Z2M operations. Must use snake_case — spaces break MQTT
+      topic parsing.
+    derives_from: [zigbee_ieee_address]
+    used_by: [mqtt_topic, fotc_device_id, z2m_device_record]
+    notes: >
+      This is a primitive that is intentionally NOT surfaced in any UI
+      audience except technical. It is the seed from which display_name
+      is derived. Changing this in Z2M renames the MQTT topic and requires
+      re-mapping in FaceoftheCabin device metadata.
+      Constraint: snake_case only. No spaces. Protocol-enforced.
+
+  - id: mqtt_topic
+    layer: protocol
+    primitive: false
+    label:
+      semantic: (not shown)
+      systems: MQTT Topic
+      technical: zigbee2mqtt/{friendly_name}
+      compliance: (not shown)
+    definition: >
+      The MQTT publish/subscribe path for a device's state messages.
+      Constructed from the Z2M topic prefix and the device friendly_name.
+    derives_from: [z2m_friendly_name]
+    used_by: [mqtt_bridge_service, z2m_adapter, fotc_backend]
+
+  - id: mqtt_availability_topic
+    layer: protocol
+    primitive: true
+    label:
+      semantic: Connection status
+      systems: Availability
+      technical: zigbee2mqtt/{friendly_name}/availability
+      compliance: Sensor Online Status
+    definition: >
+      Z2M publishes {"state":"online"} or {"state":"offline"} to this topic
+      when a device joins or leaves the Zigbee mesh. This is the authoritative
+      online/offline signal — more reliable than inferring from data messages.
+    derives_from: [z2m_friendly_name]
+    used_by: [z2m_adapter_handle_availability, device_state]
+    notes: >
+      FaceoftheCabin uses this as the primary state signal. Data message
+      arrival (linkquality present) is a secondary signal. See
+      Zigbee2MqttAdapter.handleAvailability().
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INTEGRATION ELEMENTS
+# Bridges between layers
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: fotc_device_id
+    layer: integration
+    primitive: false
+    label:
+      semantic: (not shown)
+      systems: Device ID
+      technical: z2m-{friendly_name} (e.g. z2m-door_second_contact)
+      compliance: Platform Device ID
+    definition: >
+      FaceoftheCabin's internal stable identifier for a device. Prefixed
+      with the integration source (z2m-, home-, etc.) to namespace across
+      multiple integration adapters.
+    derives_from: [z2m_friendly_name]
+    used_by: [device_registry, device_status, api_devices_endpoint, ui_tile]
+    notes: >
+      Never shown in semantic or systems UI. Technical and compliance views
+      show it alongside display_name for cross-reference.
+
+  - id: display_name
+    layer: integration
+    primitive: false
+    label:
+      semantic: Device name (e.g. "Back Door Sensor")
+      systems: Display Name
+      technical: displayName (device metadata table)
+      compliance: Sensor Label
+    definition: >
+      The human-readable name for a device as set by the user at install
+      time or via the settings panel. Completely independent of z2m_friendly_name.
+      This is what every non-technical audience sees everywhere in the platform.
+    derives_from: [z2m_friendly_name, user_input]
+    used_by: [ui_tile, ui_detail_sheet, notification_copy, audit_log]
+    notes: >
+      Stored in device metadata table in Postgres. Seeded at first discovery
+      with a cleaned version of friendly_name (underscores to spaces, title
+      case) as a prompt default. User can override at any time.
+      If not set, UI falls back to cleaned friendly_name — never raw snake_case.
+
+  - id: device_room
+    layer: integration
+    primitive: false
+    label:
+      semantic: Room (e.g. "Kitchen", "Back Porch")
+      systems: Zone / Room
+      technical: room (device metadata table)
+      compliance: Installation Location
+    definition: >
+      User-defined spatial grouping for a device. Used to group tiles on the
+      dashboard and provide location context in notifications.
+    derives_from: [user_input]
+    used_by: [ui_tile, notification_copy, audit_log, dashboard_grouping]
+
+  - id: device_install_photo
+    layer: integration
+    primitive: false
+    label:
+      semantic: Photo
+      systems: Install Photo
+      technical: photoUrl (device metadata table)
+      compliance: Installation Evidence
+    definition: >
+      Photo taken at device install time showing the physical device and its
+      location. Used as tile background or thumbnail. Serves as visual memory
+      aid for all audiences and installation evidence for compliance.
+    derives_from: [user_input, zigbee_model, zigbee_vendor]
+    used_by: [ui_tile, ui_detail_sheet, compliance_report]
+    notes: >
+      Fallback hierarchy: user photo → Z2M device database spec image
+      (keyed by zigbee_model) → generic device type icon.
+      Prompted once at first device discovery. Stored as URL (local or CDN).
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DEVICE STATE ELEMENTS
+# Runtime readings and their semantic definitions
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: device_state
+    layer: backend
+    primitive: false
+    label:
+      semantic: Status (Online / Offline / Alert)
+      systems: Device State (ONLINE / OFFLINE / UNKNOWN / ALARM)
+      technical: state field on DeviceStatus
+      compliance: Operational Status
+    definition: >
+      The current operational state of a device. Derived from Z2M availability
+      topic (primary) and data message presence (secondary). UNKNOWN means
+      the platform has not yet received a state signal since last restart.
+    derives_from: [mqtt_availability_topic, linkquality]
+    used_by: [ui_tile_state, system_health_endpoint, notification_trigger, audit_log]
+    notes: >
+      UNKNOWN is a transient state, not a stable one. If a device stays
+      UNKNOWN for >5 minutes after backend start, treat as a connectivity
+      issue. See QA check: devices-z2m.
+
+  - id: linkquality
+    layer: protocol
+    primitive: true
+    label:
+      semantic: Signal (● ● ● / ● ● ○ / ● ○ ○)
+      systems: Link Quality (0–255 LQI)
+      technical: linkquality attribute (Zigbee LQI)
+      compliance: Signal Confidence
+    definition: >
+      Zigbee Link Quality Indicator. A 0–255 integer representing the RF
+      signal quality between a device and its nearest mesh router or
+      coordinator. Higher is better.
+    derives_from: [zigbee_ieee_address]
+    used_by: [device_state, ui_detail_sheet, data_dictionary]
+    normal_range:
+      good: ">= 150"
+      fair: "100–149"
+      poor: "< 100"
+    notes: >
+      Rendered as dots or bars in semantic view. Shown as numeric LQI in
+      technical view. Used as secondary online signal — presence of linkquality
+      in a data message confirms device is transmitting.
+
+  - id: battery_percent
+    layer: protocol
+    primitive: true
+    label:
+      semantic: Battery (e.g. "Battery low — replace soon")
+      systems: Battery (%)
+      technical: battery attribute (0–100)
+      compliance: Power Source Status
+    definition: >
+      Remaining battery level as reported by the device, expressed as a
+      percentage of full charge.
+    derives_from: [zigbee_ieee_address]
+    used_by: [ui_tile_badge, ui_detail_sheet, battery_alert, audit_log]
+    normal_range:
+      ok: ">= 20"
+      warn: "10–19"
+      critical: "< 10"
+    notes: >
+      Warn threshold (20%) should proactively surface on tile badge without
+      requiring drill-down. Critical threshold (10%) triggers a notification.
+      Not all devices report battery — absence of battery attribute should
+      not be treated as 0%.
+
+  - id: temperature_celsius
+    layer: protocol
+    primitive: true
+    label:
+      semantic: Temperature (e.g. "Comfortable — 72°F")
+      systems: Temperature (°C / °F)
+      technical: temperature attribute (float, Celsius)
+      compliance: Environmental Reading
+    definition: >
+      Ambient temperature reading from a Zigbee temperature sensor,
+      reported in degrees Celsius by Z2M.
+    derives_from: [zigbee_ieee_address]
+    used_by: [ui_tile_value, ui_detail_sheet, freeze_alert, data_dictionary]
+    normal_range:
+      freeze_risk: "< 3.3"    # 38°F
+      cold: "3.3–15.5"
+      comfortable: "15.5–26.6"
+      warm: "26.6–35"
+      hot: "> 35"
+    notes: >
+      Stored and transmitted in Celsius. UI renders in °F by default for
+      US users with semantic bracket label. Technical view shows raw °C.
+      Freeze risk threshold (3.3°C / 38°F) triggers alert regardless of
+      user role — safety-class reading.
+
+  - id: humidity_percent
+    layer: protocol
+    primitive: true
+    label:
+      semantic: Humidity (e.g. "Comfortable — 45%")
+      systems: Relative Humidity (%)
+      technical: humidity attribute (float, %RH)
+      compliance: Environmental Reading
+    definition: >
+      Relative humidity reading from a Zigbee humidity sensor, expressed
+      as a percentage of saturation.
+    derives_from: [zigbee_ieee_address]
+    used_by: [ui_tile_value, ui_detail_sheet, mold_risk_alert, data_dictionary]
+    normal_range:
+      dry: "< 30"
+      comfortable: "30–60"
+      humid: "60–75"
+      mold_risk: "> 75"
+    notes: >
+      Mold risk threshold (>75% sustained) is a compliance-class alert.
+      A leak sensor showing >90% humidity sustained for >30 minutes should
+      trigger a water event alert regardless of contact sensor state.
+
+  - id: contact_state
+    layer: protocol
+    primitive: true
+    label:
+      semantic: Open / Closed
+      systems: Contact (true=closed, false=open)
+      technical: contact attribute (boolean)
+      compliance: Entry Point Status
+    definition: >
+      Boolean state of a contact sensor — true when the magnetic contact
+      is closed (door/window shut), false when open.
+    derives_from: [zigbee_ieee_address]
+    used_by: [ui_tile_value, ui_detail_sheet, entry_alert, audit_log]
+    notes: >
+      Polarity is: true=closed=safe, false=open=notable.
+      Semantic rendering: true → "Closed ✓", false → "Open".
+      Compliance view includes timestamp of last state change.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INFRASTRUCTURE ELEMENTS
+# Runtime environment identifiers
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: tailscale_ip
+    layer: network
+    primitive: true
+    label:
+      semantic: (not shown)
+      systems: Tailscale IP
+      technical: 100.x.x.x (Tailscale MagicDNS IP)
+      compliance: Remote Access Address
+    definition: >
+      The stable private IP address assigned to a machine within the
+      Tailscale mesh VPN. Used for cross-machine service access without
+      exposing services to the public internet.
+    derives_from: []
+    used_by: [env_mqtt_url, env_ha_url, vite_cabin_api_base, qa_runner]
+    notes: >
+      cabin hub (M920q): 100.77.44.113
+      ilikethelights (dev): detected at runtime via tailscale status
+      These IPs are stable per-machine but not globally fixed. Do not
+      hardcode in committed files — use env vars or machine profiles.
+
+  - id: docker_network_cabin_default
+    layer: infra
+    primitive: true
+    label:
+      semantic: (not shown)
+      systems: Cabin Docker Network
+      technical: cabin_default (Docker bridge network)
+      compliance: (not shown)
+    definition: >
+      The Docker bridge network shared by all containers in the existing
+      cabin stack (mosquitto, homeassistant, nodered, frigate, zigbee2mqtt,
+      homepage, uptime-kuma, mediamtx). FaceoftheCabin's cabin-backend
+      joins this network to reach mosquitto by container name.
+    derives_from: []
+    used_by: [cabin_backend_container, mosquitto_container]
+    notes: >
+      Network name discovered during M920q deployment — was incorrectly
+      assumed to be mosquitto_default in early overlay config. Correct
+      name is cabin_default. See docker-compose.m920q.yml.
+
+  - id: machine_hostname
+    layer: infra
+    primitive: true
+    label:
+      semantic: (not shown)
+      systems: Machine Name
+      technical: platform.node() hostname
+      compliance: Asset Identifier
+    definition: >
+      The OS hostname of a machine running FaceoftheCabin components.
+      Used by the QA runner to auto-detect machine profile and apply
+      the correct test suite and environment assumptions.
+    derives_from: []
+    used_by: [qa_runner_machine_detection, machine_profile]
+    notes: >
+      Known machines:
+        ilikethelights — Windows dev machine, Minneapolis
+        nates-little-m920q — Linux cabin hub, M920q hardware
+      Unknown hostnames get a best-effort profile. Add new machines to
+      qa/cabin_qa.py _MACHINES dict when they become regular access points.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ACTION ELEMENTS
+# Controllable behaviors and their constraints
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: device_command
+    layer: backend
+    primitive: false
+    label:
+      semantic: Action (e.g. "Sound alarm", "Lock door")
+      systems: Device Command
+      technical: POST /api/devices/{deviceId}/command {command, payload}
+      compliance: Recorded Action
+    definition: >
+      A user-initiated instruction sent to a physical device via the
+      FaceoftheCabin backend, routed through Home Assistant for execution,
+      logging, and automation awareness.
+    derives_from: [fotc_device_id, ha_service_call]
+    used_by: [ui_action_button, audit_log, ha_adapter]
+    notes: >
+      All commands route through HA adapter — not direct Z2M MQTT.
+      This ensures HA automations are aware of manual commands and can
+      respond (e.g. don't re-trigger alarm if user just silenced it).
+      Every command execution is written to audit_log with timestamp,
+      user context, command, payload, and HA response status.
+
+  - id: action_confirmation_copy
+    layer: frontend
+    primitive: false
+    label:
+      semantic: Confirmation message before irreversible action
+      systems: Confirmation Dialog
+      technical: confirmation prop on ActionButton component
+      compliance: Required pre-action disclosure
+    definition: >
+      Plain-language consequence description shown to the user before any
+      action that is irreversible, safety-relevant, or has liability
+      implications. Required for: silence alarm, bypass sensor, unlock door.
+    derives_from: [device_command]
+    used_by: [ui_action_button, compliance_report]
+    notes: >
+      Examples:
+        Silence leak alarm: "Silencing this alarm means water damage may
+        go undetected. The sensor will not alert again until re-armed."
+        Unlock door: "This will unlock the front door remotely. Confirm
+        you intend to grant access."
+      Must be present on all destructive/safety actions. Non-negotiable
+      per adjuster feedback from user test group session 2026-07-26.
+
+  - id: audit_log
+    layer: backend
+    primitive: false
+    label:
+      semantic: Activity history
+      systems: Audit Log
+      technical: device_audit_log table (Postgres)
+      compliance: Action Evidence Record
+    definition: >
+      Append-only timestamped record of every device command, alert trigger,
+      sensor state change, and system event. The compliance and liability
+      record of platform activity.
+    derives_from: [device_command, device_state, notification_trigger]
+    used_by: [ui_detail_sheet_history, compliance_report, qa_runner]
+    notes: >
+      Promoted from Phase 2 to core requirement per adjuster and analyst
+      feedback (user test group session 2026-07-26). Must be present when
+      device command endpoint ships. Immutable — no delete or update,
+      append only.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ONTOLOGY META-ELEMENTS
+# Elements that describe the ontology itself
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: semantic_layer_toggle
+    layer: ontology
+    primitive: false
+    label:
+      semantic: "View: Simple / Detailed / Technical"
+      systems: Audience Context Toggle
+      technical: roleContext (localStorage, semantic|systems|technical|compliance)
+      compliance: (not shown)
+    definition: >
+      User preference controlling how all data elements are rendered across
+      the platform. Persisted in localStorage. Determines which label
+      and which attributes are visible for every element in every view.
+    derives_from: [user_input]
+    used_by: [format_attribute_util, ui_tile, ui_detail_sheet, data_dictionary_ui]
+    notes: >
+      Default: semantic (plain English) for new users.
+      The toggle is additive — technical view shows everything semantic
+      and systems show, plus raw identifiers. It is not a filter that
+      hides useful information; it is a progressive disclosure mechanism.
+
+  - id: data_dictionary_ui
+    layer: frontend
+    primitive: false
+    label:
+      semantic: Help — What does this mean?
+      systems: Data Dictionary
+      technical: /settings/dictionary route
+      compliance: Terminology Reference
+    definition: >
+      Searchable, filterable reference of all platform elements rendered
+      per the current audience context. Sourced from this ontology file.
+      Accessible from the detail sheet ("What is linkquality?") and from
+      the settings panel.
+    derives_from: [ontology_yaml, semantic_layer_toggle]
+    used_by: [ui_help, ui_detail_sheet_tooltip, settings_panel]
+    notes: >
+      The data dictionary UI is the last thing built — it is powered by
+      the same element definitions that drive the rendering layer.
+      Building the rendering layer first (formatAttribute utility) means
+      the dictionary is a display view of already-existing structured data,
+      not a separately maintained document.
