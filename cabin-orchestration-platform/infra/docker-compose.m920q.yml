@@ -57,6 +57,7 @@ services:
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-cabin_grafana}
+      GF_SECURITY_ALLOW_EMBEDDING: "true"   # required for iframe embed in cabin-ui
       GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/grafana"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_AUTH_ANONYMOUS_ENABLED: "false"

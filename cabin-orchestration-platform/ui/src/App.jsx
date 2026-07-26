@@ -23,9 +23,21 @@ import {
   RefreshCw, Plus, Trash2, ToggleLeft, ToggleRight,
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
   Eye, Edit2, UserPlus, Minus, ExternalLink,
-  Radio, Clock, Battery, MapPin, GripVertical
+  Radio, Clock, Battery, MapPin, GripVertical, BarChart2
 } from "lucide-react";
 import "./styles.css";
+
+// ─── Temperature unit ──────────────────────────────────────────────────────
+function useTempUnit() {
+  const [unit, setUnit] = useState(() => localStorage.getItem("tempUnit") || "F");
+  const toggle = () => setUnit(u => { const n = u === "F" ? "C" : "F"; localStorage.setItem("tempUnit", n); return n; });
+  return [unit, toggle];
+}
+function fmtTemp(celsius, unit) {
+  if (celsius == null) return "—";
+  const val = unit === "F" ? (celsius * 9/5 + 32).toFixed(1) : celsius;
+  return `${val}°${unit}`;
+}
 
 // ─── Location config ───────────────────────────────────────────────────────
 // Both hubs exposed via Tailscale MagicDNS. Override per-hub with env vars
@@ -132,23 +144,90 @@ function useMqttTelemetry(active, wsBase) {
 }
 
 // ─── Panel: Family Hub ─────────────────────────────────────────────────────
+function FamilyHubLocationCard({ locId, locCfg, devices }) {
+  const locDevices = devices.filter(d => !d.location || d.location === locId);
+  const online  = locDevices.filter(d => d.state === "ONLINE").length;
+  const alarm   = locDevices.filter(d => d.state === "ALARM").length;
+  const offline = locDevices.filter(d => d.state === "OFFLINE").length;
+  const total   = locDevices.length;
+  const [tempUnit, toggleTempUnit] = useTempUnit();
+  const tempSensors = locDevices.filter(d => d.type === "TEMPERATURE_SENSOR");
+
+  const deployed = !!locCfg.apiBase;
+  const stateColor = alarm > 0 ? "var(--state-alarm)" : online === total && total > 0 ? "var(--state-online)" : "var(--state-warning)";
+
+  const quickLinks = [
+    { label: "Home Assistant", url: locCfg.haUrl, icon: Home },
+    { label: "Zigbee2MQTT",   url: locCfg.z2mUrl, icon: Radio },
+    { label: "Grafana",       url: locCfg.grafanaUrl, icon: BarChart2 },
+    { label: "Node-RED",      url: locCfg.noderedUrl, icon: Cpu },
+  ];
+
+  return (
+    <div className="family-hub-card">
+      <div className="family-hub-card-header">
+        <span className="family-hub-location-label">{locCfg.label}</span>
+        {deployed && (
+          <span className="family-hub-state-dot" style={{ background: stateColor }} />
+        )}
+      </div>
+
+      {!deployed ? (
+        <div className="family-hub-placeholder">
+          <Home size={28} opacity={0.25} />
+          <p>Hub not yet deployed</p>
+        </div>
+      ) : (
+        <>
+          <div className="family-hub-device-summary">
+            <span className="fh-stat fh-online">{online} online</span>
+            {alarm   > 0 && <span className="fh-stat fh-alarm">{alarm} alarm</span>}
+            {offline > 0 && <span className="fh-stat fh-offline">{offline} offline</span>}
+            <span className="fh-stat fh-total">{total} total</span>
+          </div>
+
+          {tempSensors.length > 0 && (
+            <div className="family-hub-temps">
+              {tempSensors.map(s => (
+                <div key={s.deviceId} className="fh-temp-row">
+                  <Thermometer size={13} />
+                  <span className="fh-temp-name">{s.name}</span>
+                  <span className="fh-temp-val">
+                    {fmtTemp(s.attributes?.temperature, tempUnit)}
+                    {s.attributes?.humidity != null && ` · ${s.attributes.humidity}%`}
+                  </span>
+                </div>
+              ))}
+              <button className="btn-ghost btn-ghost-xs" onClick={toggleTempUnit}>°{tempUnit}</button>
+            </div>
+          )}
+
+          <div className="family-hub-links">
+            {quickLinks.map(({ label, url, icon: Icon }) => (
+              <a key={label} href={url} target="_blank" rel="noreferrer" className="fh-quick-link">
+                <Icon size={12} /> {label} ↗
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FamilyHubPanel() {
-  const { config } = useApp();
-  const url = config?.familyDashboardUrl || "";
+  const { devices } = useApp();
   return (
     <div className="panel-content">
       <div className="panel-header-bar">
         <h2>Smrekar Familia Hub</h2>
-        <a href={url} target="_blank" rel="noreferrer" className="btn-ghost">Open in new tab ↗</a>
+        <span className="panel-subtitle">Both locations at a glance</span>
       </div>
-      {url ? (
-        <iframe title="Family Dashboard" src={url} className="embed-frame" />
-      ) : (
-        <div className="empty-state">
-          <Home size={40} opacity={0.3} />
-          <p>Family Hub URL not configured.<br />Set <code>FAMILY_DASHBOARD_URL</code> in application.yml.</p>
-        </div>
-      )}
+      <div className="family-hub-grid">
+        {Object.entries(LOCATIONS).map(([id, cfg]) => (
+          <FamilyHubLocationCard key={id} locId={id} locCfg={cfg} devices={devices} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -770,6 +849,7 @@ function DmEditForm({ device, onSaved }) {
 // Renders KPI tiles + Grafana + event log for a single location.
 function LocationMonitoringSection({ locCfg, devices, active }) {
   const liveMessages = useMqttTelemetry(active, locCfg.wsBase);
+  const [tempUnit, toggleTempUnit] = useTempUnit();
 
   const locDevices  = devices.filter(d => !d.location || d.location === locCfg.id);
   const pressure    = locDevices.find(d => d.type === "WATER_PRESSURE_SENSOR");
@@ -782,7 +862,12 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
 
   return (
     <div className="location-section">
-      <div className="location-section-header">{locCfg.label}</div>
+      <div className="location-section-header">
+        {locCfg.label}
+        <button className="btn-ghost btn-ghost-sm" onClick={toggleTempUnit} title="Toggle °F / °C">
+          °{tempUnit}
+        </button>
+      </div>
 
       <div className="kpi-grid">
         {pressure && (
@@ -792,15 +877,14 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
         )}
         {thermostats.map(t => (
           <KpiTile key={t.deviceId} icon={Thermometer} label={t.name} deviceId={t.deviceId}
-            value={t.attributes?.current_temperature != null
-              ? `${t.attributes.current_temperature}°F` : "—"}
+            value={fmtTemp(t.attributes?.current_temperature, tempUnit)}
             state={t.state} />
         ))}
         {tempSensors.map(s => {
           const temp = s.attributes?.temperature;
           const hum  = s.attributes?.humidity;
           const val  = [
-            temp != null && `${temp}°C`,
+            fmtTemp(temp, tempUnit),
             hum  != null && `${hum}%`,
           ].filter(Boolean).join(" · ") || "—";
           return (
