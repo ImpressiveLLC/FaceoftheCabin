@@ -1,25 +1,28 @@
 # M920q Cabin Hub overlay
 #
-# The M920q already runs a separate Docker project with:
-#   mosquitto (1883), homeassistant (host/8123), nodered (1880),
+# Existing cabin stack (at /storage/containers/compose/cabin/) runs:
+#   mosquitto (1883), homeassistant (host network/8123), nodered (1880),
 #   frigate (5000), zigbee2mqtt (8080), homepage (3000),
-#   uptime-kuma (3001), mediamtx (8554/8888/8889/9997)
+#   uptime-kuma (3001), mediamtx, blinkbridge
+# All on the Docker network: cabin_default
 #
 # This overlay:
-#   - Disables FaceoftheCabin services that would conflict
+#   - Disables FaceoftheCabin services that conflict with the existing stack
+#   - Fixes Kafka advertised listener for container-to-container use
 #   - Shifts Grafana to port 3002 (3000=homepage, 3001=uptime-kuma)
-#   - Adds the FaceoftheCabin backend (port 8090) and UI (port 4080)
-#   - Starts only Postgres and Kafka from the base stack
+#   - Adds cabin-backend (port 8090) joined to cabin_default to reach mosquitto
+#   - Adds cabin-ui (port 4080) with Tailscale IPs baked into the build
 #
-# Usage (from infra/ directory):
-#   cp .env.m920q.example .env   # fill in secrets first
+# Usage (from cabin-orchestration-platform/infra/):
+#   cp .env.m920q.example ../.env   # fill in HA_TOKEN and passwords
 #   docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d --build
 #
-# Dashboard available at: http://100.77.44.113:4080  (or via Tailscale)
+# Dashboard: http://100.77.44.113:4080  (Tailscale or LAN)
+# Backend:   http://100.77.44.113:8090/actuator/health
 
 services:
 
-  # ── Disabled — already running as separate containers ──────────
+  # ── Disabled — already running in the existing cabin stack ────────────
   mqtt:
     profiles: [disabled]
 
@@ -35,12 +38,18 @@ services:
   watchdog:
     profiles: [disabled]
 
-  # ── Grafana shifted to 3002 (3000 = homepage, 3001 = uptime-kuma) ─
+  # ── Fix Kafka advertised listener for container networking ────────────
+  # Base compose advertises localhost:9092 which breaks container clients.
+  kafka:
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://cabin-kafka:9092
+
+  # ── Grafana: shift to 3002 (3000=homepage, 3001=uptime-kuma) ─────────
   grafana:
     ports:
       - "3002:3000"
 
-  # ── FaceoftheCabin Spring Boot backend ────────────────────────
+  # ── FaceoftheCabin Spring Boot backend ───────────────────────────────
   cabin-backend:
     build:
       context: ../backend
@@ -52,21 +61,21 @@ services:
     environment:
       SERVER_PORT: 8090
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cabin_dev_password}
-      MQTT_URL: tcp://mosquitto:1883         # existing mosquitto container
-      HA_URL: http://172.17.0.1:8123         # HA on host network — reach via Docker bridge gateway
+      MQTT_URL: tcp://mosquitto:1883        # reach existing mosquitto via cabin_default
+      HA_URL: http://192.168.2.46:8123      # HA on host network — use LAN IP
       HA_TOKEN: ${HA_TOKEN:-}
       HOME_HA_URL: ${HOME_HA_URL:-http://home-hub:8123}
       HOME_HA_TOKEN: ${HOME_HA_TOKEN:-}
       KAFKA_BOOTSTRAP: cabin-kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://cabin-postgres:5432/cabin
     networks:
-      - cabin_net
-      - mosquitto_net    # attach to existing mosquitto network
+      - default         # project network: reaches cabin-postgres, cabin-kafka
+      - cabin_default   # existing network: reaches mosquitto, nodered, z2m
     depends_on:
       - postgres
       - kafka
 
-  # ── FaceoftheCabin React UI (nginx, built from source) ────────
+  # ── FaceoftheCabin React UI (nginx, static build) ────────────────────
   cabin-ui:
     build:
       context: ../ui
@@ -77,18 +86,18 @@ services:
         VITE_CABIN_GRAFANA_URL: http://100.77.44.113:3002
         VITE_CABIN_NODERED_URL: http://100.77.44.113:1880
         VITE_CABIN_FRIGATE_URL: http://100.77.44.113:5000
+        VITE_CABIN_HA_URL: http://100.77.44.113:8123
+        VITE_CABIN_Z2M_URL: http://100.77.44.113:8080
     container_name: cabin-ui
     restart: unless-stopped
     ports:
       - "4080:80"
     networks:
-      - cabin_net
+      - default
     depends_on:
       - cabin-backend
 
 networks:
-  cabin_net:
-    driver: bridge
-  mosquitto_net:
-    external: true        # name of the network mosquitto container is on
-    name: mosquitto_default
+  cabin_default:
+    external: true
+    name: cabin_default   # the network all existing cabin containers share
