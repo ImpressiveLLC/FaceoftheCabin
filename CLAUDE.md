@@ -1,7 +1,31 @@
-# CLAUDE.md — smrekar-platform (FaceoftheCabin)
+# CLAUDE.md — FaceoftheCabin platform
 
 This file gives Claude Code full context for every session — on any machine,
 at any location.
+
+**Canonical repo:** `https://github.com/ImpressiveLLC/FaceoftheCabin`
+(Previously `smrekarfamilia-sudo/FaceoftheCabin` — always use the ImpressiveLLC URL.)
+
+---
+
+## Multi-machine workflow (IMPORTANT — core product tenet)
+
+This platform is designed to be worked on across multiple machines. The rule is simple:
+
+| Machine | Identity | Role |
+|---------|----------|------|
+| Windows PC, Minneapolis | `ilikethelights` | Primary dev — UI, backend, new features |
+| Lenovo M920q at cabin | `m920q` / "at the cabin" | Cabin hub — Docker stack, Z2M, HA, integration testing |
+| Any future machine | — | Clone repo, follow same steps |
+
+**Before switching machines:**
+1. `git push origin main` on the machine you're leaving
+2. On the new machine: `git pull origin main`
+3. Never commit directly on the M920q unless doing cabin-specific infra work — push from there immediately
+
+**Single source of truth:** GitHub `ImpressiveLLC/FaceoftheCabin`. If something isn't there, it doesn't exist on other machines.
+
+**If Claude can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
 
 ---
 
@@ -122,36 +146,36 @@ Both hubs are x86_64. No ARM/Pi hardware anywhere. Tailscale is the only VPN.
 
 ---
 
-## Deployed cabin stack (as of 2026-07)
+## Deployed cabin stack (as of 2026-07-25)
 
 The cabin M920q is **live**. Home Assistant + Zigbee2MQTT are running.
-Hardware is **ordered but not yet paired** (SONOFF + THIRDREALITY devices,
-order #sn42122, 2026-07-18). Cabin also lost power/connectivity 2026-07-18,
-so pairing is on hold.
+**13 Zigbee devices are paired and confirmed working** (2026-07-25 session).
+Coordinator: Sonoff Dongle Plus V2, `ember` adapter. HA discovery confirmed.
 
-Zigbee devices to be paired (see `ImpressiveLLC/CabinAutomations/PAIRING_GUIDE.md`
-for full sequence and friendly name assignments):
+**Paired entity IDs (live on M920q):**
 
-| Friendly name | Device | Role |
-|---|---|---|
-| `door_front_contact` | SNZB-04P | Front door contact |
-| `door_second_contact` | SNZB-04P | Second door contact |
-| `motion_entry_occupancy` | SNZB-03PR2 | Entry motion |
-| `leak_bosch_washer` | SNZB-05P | Leak under Bosch washer |
-| `leak_lg_washer` | SNZB-05P | Leak under LG washer |
-| `leak_liebherr_fridge` | SNZB-05P | Leak under fridge |
-| `temp_mech_room` | SNZB-02WD | Temp/humidity, mech room |
-| `temp_kitchen` | SNZB-02WD | Temp/humidity, kitchen |
-| `probe_bathroom_wall` | SNZB-02LD | Pipe probe, bathroom outer wall |
-| `light_entry` | ZBMINIR2 | Entry light switch (router) |
-| `leak_alarm_mech_room` | THIRDREALITY Drip Detect | Mech room siren |
-| `leak_alarm_bathroom` | THIRDREALITY Drip Detect | Bathroom siren |
-| `leak_spare_siren` | THIRDREALITY Drip Detect | Intrusion deterrence siren |
-| `heater_mech_room` | THIRDREALITY Smart Plug | Mech room heater |
-| `deterrent_radio_light` | THIRDREALITY Smart Plug | Radio + lamp strip |
-| `router_tripwire_a` | THIRDREALITY Smart Plug | RF tripwire node A |
-| `router_tripwire_b` | THIRDREALITY Smart Plug | RF tripwire node B |
-| `main_water_valve` | Zigbee valve actuator | Main water shutoff |
+| Entity ID | Role |
+|---|---|
+| `leak_mech_room` | Leak sensor, mechanical room |
+| `leak_alarm_fridge` | Leak sensor/siren, fridge |
+| `leak_alarm_dishwasher` | Leak sensor/siren, dishwasher |
+| `leak_alarm_bathroom` | Leak sensor/siren, bathroom |
+| `temp_mech_room` | Temp/humidity, mech room |
+| `temp_kitchen` | Temp/humidity, kitchen |
+| `temp_outside_lowest` | Outdoor low temp probe |
+| `heater_mech_room` | Smart plug — mech room heater |
+| `main_water_valve` | Zigbee valve actuator — main shutoff |
+| `door_front_contact` | Front door contact sensor |
+| `door_second_contact` | Second door contact sensor |
+| `motion_entry` | Entry motion sensor |
+| `smart_switch_breaker_box` | Smart switch — breaker box |
+
+**Still pending hardware (not yet installed):** entry light, deterrent plug,
+RF tripwire routers, spare siren, water heater switch.
+
+**HA networking constraint:** HA runs `network_mode: host` on M920q. Other
+containers must reach it via LAN IP (`192.168.2.46:8123`) or Tailscale IP
+(`100.77.44.113:8123`) — NOT by container hostname.
 
 Z2M coordinator: SONOFF ZBDongle-E (USB on M920q).
 
@@ -288,32 +312,27 @@ zigbee2mqtt/bridge/request/permit_join
 
 ---
 
-## Next task: Zigbee Device Manager
+## Current feature state (as of 2026-07-26)
 
-**Full brief:** `ImpressiveLLC/CabinAutomations/CLAUDE_CODE_BRIEF_device_manager.md`
+All items below are **complete and pushed to GitHub**:
 
-Summary:
-1. **`Zigbee2MqttAdapter.java`** — subscribes `zigbee2mqtt/bridge/devices`,
-   per-device state topics; publishes permit_join and `/set` commands;
-   translates Z2M device JSON → `DeviceDescriptor` via `exposes` capabilities;
-   handles sub-properties (e.g. `water_leak_buzzer`) generically
-2. **`DeviceHealthMonitor.java`** — exponential backoff reconnect; last-known-good
-   cache with `staleSince` timestamp; `GET /api/system/health`; unknown device
-   capability → `UnknownDevice` passthrough (never crash the list)
-3. **New API endpoints** — `POST /api/devices/permit-join`,
-   `GET|PATCH /api/devices/{id}/config`, `GET /api/system/health`
-4. **`DeviceManagerPanel` extension** — L1→L2→L3 nav: See / Change / Add / Remove;
-   Add flow has 254s countdown + live "new device found" list;
-   on pair success: 3 explicit choices (Add another / Configure it now / See all);
-   Remove has confirmation; Advanced link opens Z2M iframe with overlay back button
-5. **`ThemeProvider.jsx`** — independently-selectable palette + font;
-   CSS custom properties (`--bg`, `--surface`, `--accent`, `--font-display`,
-   `--font-mono`, `--success`, `--warning`, `--danger`); presets: LCARS,
-   Monolith, Retro-CRT, Bluefin-mono, Modern; persisted to localStorage
+- `Zigbee2MqttAdapter.java` — Z2M bridge, auto-discovery, `exposes` capability inference
+- `DeviceHealthMonitor.java` — stale detection, exponential backoff, `/api/system/health`
+- `DeviceManagerPanel` L1→L2→L3: See / Change / Add (254s pairing countdown) / Remove
+- `MonitoringPanel` L1→L2→L3: See (KPI tiles + Grafana) / Change/Add (DisplayConfigForm) / Remove
+- `PresenceProfile` (AT_HOME / AT_CABIN / AWAY / BOTH_OCCUPIED) + toolbar toggle
+- `DeviceDisplayConfig` — per-device display overrides keyed by `(deviceId, location, profile)`
+- `AutomationRuleService` — presence-aware lock/motion rules; safety rules parallel to Node-RED
+- Nav rail alert state machine: unconfigured → watching → warn (<20 min) → critical (≥20 min)
+- `useDraggableOrder` — HTML5 DnD reorder, localStorage, ALARM auto-pin; works in both panels
+- **ThemeProvider** — 7 presets: Modern, LCARS, Monolith, Retro-CRT, Bluefin-mono, Mad Science, Deep Space (HAL 9000)
 
-**Build order:** See → health badge → Change → Add → Remove → ThemeProvider
-
-**Test against:** live cabin M920q via Tailscale (`cabin-hub:8080`, Z2M at `cabin-hub:8080`)
+**Pending next:**
+- Wire real M920q entity IDs into `DeviceRegistry` default seeds
+- Swap `notify.mobile_app_YOUR_PHONE` in `CabinAutomations` for real HA mobile app service name
+- Notification service (email/SMS from automation alert events)
+- home-hub deployment
+- Production Docker Compose with env-var secrets
 
 ---
 
@@ -321,9 +340,9 @@ Summary:
 
 | Repo | Contents |
 |---|---|
-| `smrekarfamilia-sudo/FaceoftheCabin` | **This repo** — platform code |
-| `ImpressiveLLC/CabinAutomations` | HA automations YAML, pairing guide, device brief |
-| `smrekarfamilia-sudo/CabinSensorAutomationDetection` | Referenced in CabinAutomations README |
+| `ImpressiveLLC/FaceoftheCabin` | **This repo** — platform code (UI + backend + infra) |
+| `ImpressiveLLC/CabinAutomations` | HA automations YAML (`3dbc5ca` current), pairing guide |
+| `ImpressiveLLC/CabinSensorAutomationDetection` | Sensor detection utilities |
 
 ---
 
