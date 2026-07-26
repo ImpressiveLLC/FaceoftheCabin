@@ -796,3 +796,50 @@ body {
 [data-theme="madscience"] .platform-name {
   animation: ms-flicker 8s linear infinite;
 }
+
+/* =============================================================================
+   DEEP SPACE / HAL 9000 THEME
+   ============================================================================= */
+
+/* Scan-line body texture */
+[data-theme="deepspace"] body {
+  background-image: linear-gradient(rgba(18, 22, 32, 0.45) 1px, transparent 1px);
+  background-size: 100% 4px;
+}
+
+/* KPI tiles — cyan glow when nominal, HAL red when alarming */
+[data-theme="deepspace"] .kpi-tile.kpi-state-ok {
+  box-shadow: var(--glow-cyan);
+}
+[data-theme="deepspace"] .kpi-tile.kpi-state-alarm {
+  box-shadow: var(--glow-hal);
+  animation: hal-pulse 1.8s ease-in-out infinite;
+}
+
+/* Nav active item — HAL red left edge */
+[data-theme="deepspace"] .nav-active {
+  border-left: 2px solid var(--danger) !important;
+  box-shadow: var(--glow-hal);
+}
+
+/* State badges */
+[data-theme="deepspace"] .state-badge {
+  text-shadow: var(--glow-cyan);
+  letter-spacing: 0.15em;
+}
+
+/* Platform name — slow HAL beacon pulse in danger red */
+[data-theme="deepspace"] .platform-name {
+  animation: hal-beacon 3s ease-in-out infinite;
+  color: var(--danger);
+}
+
+@keyframes hal-pulse {
+  0%, 100% { box-shadow: 0 0 4px #ff2d55, 0 0 12px #ff2d5520; }
+  50%       { box-shadow: 0 0 14px #ff2d55, 0 0 36px #ff2d5560; }
+}
+
+@keyframes hal-beacon {
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 1; }
+}

@@ -167,6 +167,33 @@ export const THEMES = {
       "--glow-purple":  "0 0 8px #bf00ff, 0 0 20px #bf00ff40",
     },
   },
+
+  deepspace: {
+    id: "deepspace",
+    label: "Deep Space",
+    vars: {
+      "--bg":           "#080a0f",   // void hull — matte deep black
+      "--bg-secondary": "#111520",   // console surface
+      "--bg-tertiary":  "#161c2e",   // elevated panel
+      "--surface":      "#111520",
+      "--border":       "#21283b",   // zero-tolerance bezel seam
+      "--border-focus": "#00a3ff",   // data-cyan status readout
+      "--text":         "#ffffff",   // starlight-pure
+      "--text-muted":   "#8e8e93",   // starlight-dim
+      "--text-dim":     "#4a4f5e",
+      "--accent":       "#00a3ff",   // primary computer status blue
+      "--accent-hover": "#33b8ff",
+      "--success":      "#00a3ff",   // cyan = nominal / operational
+      "--warning":      "#ff9500",   // data-amber secondary grid
+      "--danger":       "#ff2d55",   // HAL 9000 eye — luminous red
+      "--font-display": "'Chakra Petch', 'Helvetica Neue', sans-serif",
+      "--font-mono":    "'Share Tech Mono', monospace",
+      "--radius":       "0px",       // rectilinear — no curves in space
+      "--radius-sm":    "0px",
+      "--glow-hal":     "0 0 8px #ff2d55, 0 0 24px #ff2d5540",
+      "--glow-cyan":    "0 0 8px #00a3ff, 0 0 20px #00a3ff40",
+    },
+  },
 };
 
 const STORAGE_KEY = "cabin-theme";
@@ -191,20 +218,31 @@ export function ThemeProvider({ children }) {
     root.setAttribute("data-theme", themeId);
     localStorage.setItem(STORAGE_KEY, themeId);
 
-    // Load Share Tech Mono from Google Fonts only when mad-science is active
-    const FONT_ID = "cabin-font-madscience";
-    let link = document.getElementById(FONT_ID);
-    if (themeId === "madscience") {
-      if (!link) {
-        link = document.createElement("link");
-        link.id = FONT_ID;
-        link.rel = "stylesheet";
-        link.href = "https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap";
-        document.head.appendChild(link);
+    // Load web fonts only for themes that need them
+    const THEME_FONTS = {
+      madscience: {
+        id: "cabin-font-madscience",
+        href: "https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap",
+      },
+      deepspace: {
+        id: "cabin-font-deepspace",
+        href: "https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&family=Share+Tech+Mono&display=swap",
+      },
+    };
+    Object.entries(THEME_FONTS).forEach(([tid, font]) => {
+      let el = document.getElementById(font.id);
+      if (themeId === tid) {
+        if (!el) {
+          el = document.createElement("link");
+          el.id = font.id;
+          el.rel = "stylesheet";
+          el.href = font.href;
+          document.head.appendChild(el);
+        }
+      } else {
+        el?.remove();
       }
-    } else {
-      link?.remove();
-    }
+    });
   }, [themeId, theme]);
 
   const setTheme = (id) => {
