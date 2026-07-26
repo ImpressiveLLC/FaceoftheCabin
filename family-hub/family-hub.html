@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<!-- saved from url=(0064)file:///C:/Users/nhsmrekar/Downloads/family-hub_2%20updated.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smrekar Family Hub</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A0%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com/">
+  <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+  <link href="./css2.css" rel="stylesheet">
+
+  <style>
+    /* ═══════════════════════════════════════════
+       RESET + ROOT
+    ═══════════════════════════════════════════ */
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+    :root {
+      --gold:         #E8B84B;
+      --gold-glow:    rgba(232,184,75,0.22);
+      --gold-faint:   rgba(232,184,75,0.10);
+      --teal:         #4BC8C8;
+      --teal-glow:    rgba(75,200,200,0.18);
+      --rose:         #E87B7B;
+      --rose-glow:    rgba(232,123,123,0.18);
+      --cream:        #F5EDD8;
+      --cream-dim:    rgba(245,237,216,0.65);
+      --cream-ghost:  rgba(245,237,216,0.30);
+      --night:        #080C12;
+      --glass:        rgba(8,12,18,0.62);
+      --glass-light:  rgba(255,255,255,0.055);
+      --glass-border: rgba(255,255,255,0.09);
+      --shadow:       0 10px 50px rgba(0,0,0,0.60);
+      --radius:       20px;
+      --font-display: 'Playfair Display', serif;
+      --font-ui:      'DM Sans', sans-serif;
+    }
+
+    html, body {
+      width:100%; height:100%;
+      overflow:hidden;
+      background: var(--night);
+      color: var(--cream);
+      font-family: var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ═══════════════════════════════════════════
+       PHOTO BG
+    ═══════════════════════════════════════════ */
+    #photo-bg {
+      position:fixed; inset:0; z-index:0;
+    }
+    .photo-slide {
+      position:absolute; inset:0;
+      background-size:cover; background-position:center;
+      opacity:0;
+      transition: opacity 2.2s ease-in-out;
+    }
+    .photo-slide.active {
+      opacity:1;
+      animation: kenburns 22s ease-in-out infinite alternate;
+    }
+    @keyframes kenburns {
+      0%   { transform: scale(1.00) translate(0%,0%); }
+      50%  { transform: scale(1.06) translate(-1.2%,0.6%); }
+      100% { transform: scale(1.04) translate(0.8%,-0.9%); }
+    }
+    #photo-overlay {
+      position:fixed; inset:0; z-index:1;
+      pointer-events: none;
+      background:
+        linear-gradient(to bottom, rgba(0,0,0,.72) 0%, rgba(0,0,0,.08) 28%, rgba(0,0,0,.08) 60%, rgba(0,0,0,.72) 100%),
+        linear-gradient(to right,  rgba(0,0,0,.55) 0%, transparent 28%, transparent 72%, rgba(0,0,0,.55) 100%);
+    }
+    #photo-overlay::after {
+      content:'';
+      position:absolute; inset:0;
+      background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+      opacity:.5; pointer-events:none;
+    }
+
+    /* ═══════════════════════════════════════════
+       MAIN GRID
+    ═══════════════════════════════════════════ */
+    #app {
+      position:relative; z-index:2;
+      width:100vw; height:100vh;
+      display:grid;
+      grid-template-rows: auto 1fr auto;
+      grid-template-columns: 310px 1fr 310px;
+      padding: 28px 30px 20px;
+      animation: appFadeIn 1.4s ease both;
+    }
+    @keyframes appFadeIn {
+      from { opacity:0; transform:translateY(10px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ═══════════════════════════════════════════
+       TOP BAR
+    ═══════════════════════════════════════════ */
+    #top-bar {
+      grid-column:1/-1; grid-row:1;
+      display:flex; align-items:flex-start; justify-content:center;
+      padding-bottom:16px;
+      position:relative;
+    }
+    #clock-center { text-align:center; }
+    #clock {
+      font-family: var(--font-display);
+      font-size: clamp(64px,8.8vw,118px);
+      font-weight:400;
+      letter-spacing:-2px;
+      line-height:1;
+      color: var(--cream);
+      text-shadow:0 4px 60px rgba(0,0,0,.75);
+    }
+    #clock .ampm {
+      font-size:.28em; font-weight:500; letter-spacing:3px;
+      vertical-align:super; opacity:.65; margin-left:5px;
+      font-family: var(--font-ui);
+    }
+    #date-line {
+      margin-top:5px;
+      font-size: clamp(10px,1vw,13px);
+      font-weight:400; letter-spacing:3.5px; text-transform:uppercase;
+      color: var(--cream-dim);
+    }
+    #custody-badge {
+      position:absolute; top:8px; right:0;
+      display:flex; align-items:center; gap:8px;
+      padding:8px 16px;
+      background: var(--glass);
+      border:1px solid var(--glass-border);
+      border-radius:40px;
+      backdrop-filter:blur(20px);
+      font-size:12px; font-weight:500; letter-spacing:.5px;
+      transition: all .4s;
+    }
+    #custody-badge.home  { border-color:rgba(75,200,200,.35); color:var(--teal); }
+    #custody-badge.away  { border-color:rgba(255,255,255,.12); color:var(--cream-dim); }
+    #custody-badge .dot  { width:7px; height:7px; border-radius:50%; background:currentColor; }
+
+    /* ═══════════════════════════════════════════
+       GLASS CARD BASE
+    ═══════════════════════════════════════════ */
+    .glass-card {
+      background: var(--glass);
+      border:1px solid var(--glass-border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(30px) saturate(1.5);
+      -webkit-backdrop-filter: blur(30px) saturate(1.5);
+      padding:18px 17px;
+      display:flex; flex-direction:column; gap:8px;
+      overflow:hidden; align-self:start;
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
+    }
+    .card-label {
+      font-size:9px; font-weight:600; letter-spacing:2.5px; text-transform:uppercase;
+      display:flex; align-items:center; gap:7px;
+    }
+    .card-label-icon {
+      width:17px; height:17px; border-radius:5px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:10px;
+    }
+    .card-divider {
+      height:1px;
+      background:linear-gradient(to right, var(--glass-border), transparent);
+      margin:1px 0 5px;
+    }
+
+    /* ═══════════════════════════════════════════
+       LEFT: CALENDAR
+    ═══════════════════════════════════════════ */
+    #cal-card {
+      grid-column:1; grid-row:2;
+      animation: slideLeft .8s .3s ease both;
+    }
+    @keyframes slideLeft {
+      from { opacity:0; transform:translateX(-16px); }
+      to   { opacity:1; transform:translateX(0); }
+    }
+    .card-label.cal-color { color: var(--gold); }
+    .card-label-icon.cal-color { background: var(--gold-faint); }
+
+    #cal-events { display:flex; flex-direction:column; }
+    .day-header {
+      font-size:9px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+      color: var(--gold); opacity:.8; padding:8px 0 3px;
+    }
+    .day-header:first-child { padding-top:0; }
+    .ev {
+      display:flex; align-items:flex-start; gap:10px;
+      padding:8px 0; border-bottom:1px solid rgba(255,255,255,.055);
+    }
+    .ev:last-child { border-bottom:none; padding-bottom:0; }
+    .ev-pip {
+      width:5px; height:5px; border-radius:50%; background:var(--gold);
+      margin-top:5px; flex-shrink:0; box-shadow:0 0 7px var(--gold);
+    }
+    .ev-name {
+      font-size:13.5px; font-weight:400; color:var(--cream);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.3;
+    }
+    .ev-time { font-size:10.5px; color:var(--cream-dim); margin-top:1px; }
+
+    /* Upcoming birthdays row */
+    #birthday-row {
+      display:flex; flex-direction:column; gap:5px; margin-top:2px;
+    }
+    .bday-item {
+      display:flex; align-items:center; gap:8px;
+      padding:7px 10px; border-radius:11px;
+      background:var(--glass-light);
+      border:1px solid var(--glass-border);
+      font-size:12px;
+    }
+    .bday-emoji { font-size:14px; }
+    .bday-info { flex:1; }
+    .bday-name { font-weight:500; color:var(--cream); line-height:1.2; }
+    .bday-date { font-size:10px; color:var(--cream-ghost); }
+    .bday-days {
+      font-size:10px; font-weight:600; letter-spacing:.5px;
+      color:var(--rose); white-space:nowrap;
+    }
+
+    /* ═══════════════════════════════════════════
+       CENTER
+    ═══════════════════════════════════════════ */
+    #center-area {
+      grid-column:2; grid-row:2;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:flex-end;
+      padding:0 16px 6px; gap:10px;
+    }
+    #greeting {
+      font-family: var(--font-display);
+      font-size: clamp(16px,1.8vw,24px);
+      font-style:italic; font-weight:400;
+      color:rgba(245,237,216,.78);
+      text-shadow:0 2px 28px rgba(0,0,0,.85);
+      text-align:center;
+    }
+    #today-custody-text {
+      font-size:11px; letter-spacing:1px; text-transform:uppercase;
+      color:var(--cream-ghost); text-align:center;
+    }
+
+    /* ═══════════════════════════════════════════
+       RIGHT: CHORES
+    ═══════════════════════════════════════════ */
+    #chores-card {
+      grid-column:3; grid-row:2;
+      animation: slideRight .8s .3s ease both;
+    }
+    @keyframes slideRight {
+      from { opacity:0; transform:translateX(16px); }
+      to   { opacity:1; transform:translateX(0); }
+    }
+    .card-label.chores-color { color: var(--teal); }
+    .card-label-icon.chores-color { background: var(--teal-glow); }
+
+    /* Kid section within chores */
+    .kid-section { display:flex; flex-direction:column; }
+    .kid-header {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:6px 0 3px;
+    }
+    .kid-header:first-child { padding-top:0; }
+    .kid-name-row { display:flex; align-items:center; gap:7px; }
+    .kid-avatar-sm { font-size:15px; }
+    .kid-name-sm {
+      font-size:12px; font-weight:500; color:var(--cream);
+      letter-spacing:.3px;
+    }
+    .kid-score {
+      font-size:10px; font-weight:600; letter-spacing:.5px;
+      color:var(--teal); opacity:.9;
+    }
+    .chore-row {
+      display:flex; align-items:center; gap:9px;
+      padding:6px 0; border-bottom:1px solid rgba(255,255,255,.048);
+      cursor:pointer; transition:opacity .2s;
+    }
+    .chore-row:last-child { border-bottom:none; }
+    .chore-row.done { opacity:.38; }
+    .chore-row:active { transform:scale(0.98); }
+    .chore-cb {
+      width:20px; height:20px; border-radius:50%;
+      border:1.5px solid rgba(255,255,255,.2);
+      flex-shrink:0; display:flex; align-items:center; justify-content:center;
+      font-size:10px; transition:all .22s cubic-bezier(.34,1.56,.64,1);
+    }
+    .chore-row.done .chore-cb {
+      background:var(--teal); border-color:var(--teal);
+      box-shadow:0 0 10px rgba(75,200,200,.45);
+    }
+    .chore-label {
+      font-size:12.5px; font-weight:400; color:var(--cream); flex:1;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      line-height:1.3;
+    }
+    .chore-pts { font-size:9px; color:var(--teal); opacity:.7; flex-shrink:0; }
+
+    /* Reward progress strip */
+    .reward-strip {
+      margin-top:4px; padding:8px 10px; border-radius:11px;
+      background:var(--glass-light); border:1px solid var(--glass-border);
+    }
+    .reward-strip-top {
+      display:flex; align-items:center; justify-content:space-between;
+      margin-bottom:5px;
+    }
+    .reward-strip-name { font-size:10.5px; font-weight:500; color:var(--cream); }
+    .reward-pct { font-size:10px; font-weight:600; color:var(--gold); }
+    .progress-bar {
+      height:4px; border-radius:2px;
+      background:rgba(255,255,255,.1); overflow:hidden;
+    }
+    .progress-fill {
+      height:100%; border-radius:2px;
+      background:linear-gradient(to right, var(--gold), var(--teal));
+      transition: width .5s ease;
+    }
+    .reward-unlocked {
+      margin-top:5px;
+      font-size:10px; color:#6EE7B7; text-align:center; font-weight:500;
+    }
+
+    /* Away state for chores */
+    .kids-away-msg {
+      font-size:13px; color:var(--cream-ghost); text-align:center;
+      padding:16px 0; font-style:italic; line-height:1.6;
+    }
+
+    /* ═══════════════════════════════════════════
+       BOTTOM BAR
+    ═══════════════════════════════════════════ */
+    #bottom-bar {
+      grid-column:1/-1; grid-row:3;
+      display:flex; align-items:center; justify-content:space-between;
+      padding-top:14px;
+    }
+    #photo-counter { font-size:10.5px; color:var(--cream-ghost); letter-spacing:.5px; min-width:80px; }
+    #photo-dots { display:flex; align-items:center; gap:5px; }
+    .p-dot {
+      height:4px; width:4px; border-radius:2px;
+      background:rgba(255,255,255,.25); transition:width .3s, background .3s;
+      cursor:pointer;
+    }
+    .p-dot.active { width:18px; background:var(--gold); }
+    #photo-caption { font-size:10.5px; font-style:italic; color:var(--cream-ghost); text-align:right; min-width:80px; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    /* ═══════════════════════════════════════════
+       DASHBOARD OVERLAY  (full-screen slide-up)
+    ═══════════════════════════════════════════ */
+    #dashboard-overlay {
+      position:fixed; inset:0; z-index:70;
+      background:rgba(8,12,18,.96);
+      backdrop-filter:blur(18px);
+      display:flex; flex-direction:column;
+      transform:translateY(100%);
+      transition:transform .4s cubic-bezier(.4,0,.2,1);
+      overflow:hidden;
+    }
+    #dashboard-overlay.open { transform:translateY(0); }
+
+    #dash-topbar {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:24px 36px 0;
+      flex-shrink:0;
+    }
+    #dash-title {
+      font-family: var(--font-display);
+      font-size:28px; font-weight:500; color:var(--cream);
+    }
+    #dash-close {
+      background:none; border:none; color:var(--cream-dim);
+      font-size:22px; cursor:pointer; padding:4px 8px;
+      transition:color .2s; line-height:1;
+    }
+    #dash-close:hover { color:var(--gold); }
+
+    /* Tabs */
+    #dash-tabs {
+      display:flex; gap:4px; padding:18px 36px 0;
+      flex-shrink:0; border-bottom:1px solid var(--glass-border);
+      padding-bottom:0;
+    }
+    .d-tab {
+      background:none; border:none; cursor:pointer;
+      font-family: var(--font-ui); font-size:13px; font-weight:500;
+      color:var(--cream-dim); padding:10px 18px 12px; border-radius:10px 10px 0 0;
+      transition:color .2s, background .2s;
+      letter-spacing:.3px;
+      border-bottom:2px solid transparent;
+      margin-bottom:-1px;
+    }
+    .d-tab:hover { color:var(--cream); }
+    .d-tab.active { color:var(--gold); border-bottom-color:var(--gold); }
+
+    #dash-content {
+      flex:1; overflow-y:auto; padding:24px 36px 36px;
+      scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.1) transparent;
+    }
+    .tab-pane { display:none; }
+    .tab-pane.active { display:block; }
+
+    /* ── Dashboard Tab ── */
+    .dash-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .dash-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:16px; }
+    .dash-card {
+      background:rgba(255,255,255,.045);
+      border:1px solid var(--glass-border);
+      border-radius:var(--radius); padding:20px;
+    }
+    .dash-card-title {
+      font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+      color:var(--gold); margin-bottom:14px;
+    }
+    .kid-progress-card { }
+    .kid-big-name {
+      font-family: var(--font-display);
+      font-size:24px; font-weight:500; color:var(--cream);
+      display:flex; align-items:center; gap:10px;
+    }
+    .kid-big-age {
+      font-size:11px; background:var(--gold-glow); color:var(--gold);
+      border-radius:20px; padding:2px 10px; font-family:var(--font-ui);
+      font-weight:600; letter-spacing:.5px;
+    }
+    .kid-bday-sub { font-size:11.5px; color:var(--cream-dim); margin:6px 0 12px; }
+    .big-progress-bar {
+      height:6px; border-radius:3px; background:rgba(255,255,255,.1); overflow:hidden; margin:6px 0 4px;
+    }
+    .big-progress-fill {
+      height:100%; border-radius:3px;
+      background:linear-gradient(to right, var(--gold) 0%, var(--teal) 100%);
+      transition: width .6s ease;
+    }
+    .progress-label { font-size:11px; color:var(--cream-dim); }
+    .reward-status {
+      margin-top:10px; padding:8px 12px; border-radius:11px;
+      font-size:11.5px; font-weight:500;
+    }
+    .reward-status.earned { background:rgba(110,231,183,.1); color:#6EE7B7; border:1px solid rgba(110,231,183,.2); }
+    .reward-status.pending { background:rgba(232,184,75,.08); color:var(--gold); border:1px solid var(--gold-faint); }
+
+    .frankie-card .frankie-big { font-size:48px; text-align:center; margin:10px 0; }
+    .frankie-info { font-size:13px; color:var(--cream-dim); text-align:center; line-height:1.7; }
+
+    /* ── Schedule Tab ── */
+    .schedule-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+    .sched-day {
+      padding:12px 8px; border-radius:14px; text-align:center;
+      transition:transform .15s;
+    }
+    .sched-day:hover { transform:scale(1.04); }
+    .sched-day.home { background:rgba(75,200,200,.12); border:1px solid rgba(75,200,200,.25); }
+    .sched-day.away { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); }
+    .sched-day.today { box-shadow:0 0 0 2px var(--gold); }
+    .sched-weekday { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; opacity:.6; }
+    .sched-num { font-family:var(--font-display); font-size:22px; font-weight:400; margin:2px 0; }
+    .sched-status { font-size:9px; font-weight:600; letter-spacing:.5px; }
+    .sched-day.home .sched-status { color:var(--teal); }
+    .sched-day.away .sched-status { color:rgba(255,255,255,.35); }
+    .schedule-legend {
+      display:flex; gap:16px; margin-top:14px;
+      font-size:11px; color:var(--cream-dim);
+    }
+    .legend-dot {
+      width:10px; height:10px; border-radius:50%;
+      display:inline-block; margin-right:5px; vertical-align:middle;
+    }
+
+    /* ── Chores Tab ── */
+    .chores-tab-header {
+      display:flex; align-items:center; gap:12px; margin-bottom:20px;
+    }
+    .kid-selector { display:flex; gap:8px; }
+    .kid-sel-btn {
+      background:rgba(255,255,255,.06); border:1px solid var(--glass-border);
+      border-radius:40px; padding:7px 16px; font-family:var(--font-ui);
+      font-size:12px; font-weight:500; color:var(--cream-dim); cursor:pointer;
+      transition:all .2s;
+    }
+    .kid-sel-btn.active { background:var(--teal-glow); border-color:rgba(75,200,200,.4); color:var(--teal); }
+    .chore-week-header {
+      font-size:9.5px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+      color:var(--gold); margin:20px 0 10px;
+    }
+    .chore-day-block {
+      background:rgba(255,255,255,.04); border:1px solid var(--glass-border);
+      border-radius:16px; padding:14px; margin-bottom:10px;
+    }
+    .chore-day-block.future { opacity:.55; }
+    .chore-day-title {
+      display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;
+    }
+    .chore-day-name { font-size:14px; font-weight:500; color:var(--cream); }
+    .chore-day-count { font-size:11px; color:var(--cream-dim); }
+    .chore-day-badge {
+      font-size:10px; font-weight:600; padding:3px 10px; border-radius:20px;
+      background:var(--teal-glow); color:var(--teal);
+    }
+    .chore-full-row {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:9px 12px; border-radius:11px; margin-bottom:5px;
+      background:rgba(255,255,255,.035); cursor:pointer; transition:.15s;
+    }
+    .chore-full-row:last-child { margin-bottom:0; }
+    .chore-full-row.done { opacity:.38; }
+    .chore-full-row:hover { background:rgba(255,255,255,.06); }
+    .chore-full-row.future { cursor:default; }
+    .chore-full-row.future:hover { background:rgba(255,255,255,.035); }
+    .chore-full-label { font-size:13px; color:var(--cream); flex:1; }
+    .chore-full-tags { font-size:10px; color:var(--teal); opacity:.7; margin-left:8px; }
+    .chore-full-cb {
+      width:22px; height:22px; border-radius:50%; flex-shrink:0;
+      border:1.5px solid rgba(255,255,255,.22);
+      display:flex; align-items:center; justify-content:center;
+      font-size:11px; transition:all .22s cubic-bezier(.34,1.56,.64,1);
+    }
+    .chore-full-row.done .chore-full-cb {
+      background:var(--teal); border-color:var(--teal);
+      box-shadow:0 0 10px rgba(75,200,200,.4);
+    }
+
+    /* ── Rewards Tab ── */
+    .rewards-layout { display:grid; grid-template-columns:1fr 340px; gap:20px; }
+    .reward-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .reward-tile {
+      background:rgba(255,255,255,.045); border:1px solid var(--glass-border);
+      border-radius:14px; padding:16px;
+      font-size:13px; font-weight:500; color:var(--cream);
+      display:flex; align-items:flex-start; gap:10px;
+    }
+    .reward-star { font-size:18px; flex-shrink:0; }
+    .reward-rule-card {
+      background:rgba(255,255,255,.045); border:1px solid var(--glass-border);
+      border-radius:var(--radius); padding:20px;
+    }
+    .rule-title { font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--gold); margin-bottom:12px; }
+    .rule-text { font-size:12.5px; color:var(--cream-dim); line-height:1.65; margin-bottom:14px; }
+    .kid-reward-row {
+      padding:12px; border-radius:12px; background:rgba(255,255,255,.04);
+      border:1px solid var(--glass-border); margin-bottom:10px;
+    }
+    .kid-reward-name { font-size:13px; font-weight:500; color:var(--cream); margin-bottom:6px; display:flex; justify-content:space-between; }
+    .kid-reward-pct { font-size:11px; color:var(--gold); }
+
+    /* ═══════════════════════════════════════════
+       SETTINGS PANEL
+    ═══════════════════════════════════════════ */
+    #settings-panel {
+      position:fixed; top:0; right:-430px; width:410px; height:100vh; z-index:9999;
+      background:rgba(8,12,18,.98); border-left:1px solid var(--glass-border);
+      backdrop-filter:blur(24px);
+      display:flex; flex-direction:column;
+      transition:right .38s cubic-bezier(.4,0,.2,1);
+      overflow-y:auto;
+    }
+    #settings-panel.open { right:0; }
+    .settings-inner { padding:32px 26px 28px; display:flex; flex-direction:column; gap:18px; min-height:100%; }
+    .settings-head { display:flex; justify-content:space-between; align-items:center; }
+    .settings-title { font-family:var(--font-display); font-size:28px; font-weight:400; color:var(--cream); }
+    .settings-close { background:none; border:none; color:var(--cream-dim); cursor:pointer; font-size:20px; transition:color .2s; }
+    .settings-close:hover { color:var(--gold); }
+    .s-section { border-top:1px solid var(--glass-border); padding-top:14px; }
+    .s-section-title { font-size:8.5px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:var(--gold); margin-bottom:12px; }
+    .s-field { margin-bottom:12px; }
+    .s-field label { display:block; font-size:11px; color:var(--cream-dim); margin-bottom:5px; letter-spacing:.3px; }
+    .s-field input, .s-field select {
+      width:100%; background:rgba(255,255,255,.06); border:1px solid var(--glass-border);
+      border-radius:10px; padding:9px 13px; color:var(--cream);
+      font-family:var(--font-ui); font-size:13px; outline:none; transition:border-color .2s;
+    }
+    .s-field input:focus, .s-field select:focus { border-color:rgba(232,184,75,.5); }
+    .s-field input::placeholder { color:rgba(255,255,255,.22); }
+    .s-field select option { background:#111827; }
+    .s-hint { font-size:10px; color:var(--cream-ghost); margin-top:4px; line-height:1.5; }
+    .s-hint a { color:var(--gold); }
+    .s-actions { display:flex; flex-direction:column; gap:9px; margin-top:auto; padding-top:8px; }
+    .btn-gold {
+      background:var(--gold); color:#0D0D0D; border:none;
+      padding:12px 18px; border-radius:12px;
+      font-family:var(--font-ui); font-size:14px; font-weight:600;
+      cursor:pointer; width:100%; transition:transform .15s, box-shadow .15s;
+    }
+    .btn-gold:hover { transform:translateY(-1px); box-shadow:0 5px 22px rgba(232,184,75,.4); }
+    .btn-ghost {
+      background:transparent; color:var(--cream-dim); border:1px solid var(--glass-border);
+      padding:10px 18px; border-radius:12px;
+      font-family:var(--font-ui); font-size:13px; cursor:pointer; width:100%; transition:.2s;
+    }
+    .btn-ghost:hover { border-color:var(--gold); color:var(--gold); }
+
+    /* ═══════════════════════════════════════════
+       AUTH OVERLAY
+    ═══════════════════════════════════════════ */
+    #auth-overlay {
+      position:fixed; inset:0; z-index:60;
+      background:rgba(8,12,18,.93);
+      /* backdrop-filter removed: creates stacking context that conflicts with animation */
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:18px;
+      animation: appFadeIn .7s ease both;
+    }
+    #auth-overlay.hidden { display:none; }
+    .auth-logo { font-size:52px; }
+    .auth-h1 { font-family:var(--font-display); font-size:54px; font-weight:400; color:var(--cream); letter-spacing:-1px; }
+    .auth-sub { font-size:15px; color:var(--cream-dim); text-align:center; max-width:360px; line-height:1.65; }
+    .auth-google-btn {
+      display:flex; align-items:center; gap:12px;
+      background:var(--cream); color:#111; border:none;
+      padding:14px 28px; border-radius:50px;
+      font-family:var(--font-ui); font-size:15px; font-weight:500;
+      cursor:pointer; box-shadow:0 4px 24px rgba(0,0,0,.4);
+      transition:transform .2s, box-shadow .2s;
+    }
+    .auth-google-btn:hover { transform:translateY(-2px); box-shadow:0 8px 36px rgba(0,0,0,.5); }
+    .auth-google-btn img { width:20px; height:20px; }
+    .auth-note { font-size:12px; color:var(--cream-ghost); text-align:center; max-width:300px; line-height:1.6; }
+    .auth-cfg-link { background:none; border:none; color:var(--gold); cursor:pointer; font-size:13px; text-decoration:underline; }
+
+    /* ═══════════════════════════════════════════
+       FIXED ACTION BUTTONS
+    ═══════════════════════════════════════════ */
+    #fab-row {
+      position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+      z-index:20; display:flex; gap:10px;
+    }
+    .fab {
+      display:flex; align-items:center; gap:7px;
+      background:var(--glass); border:1px solid var(--glass-border);
+      border-radius:40px; padding:9px 18px;
+      color:var(--cream-dim); font-family:var(--font-ui);
+      font-size:12px; font-weight:500; cursor:pointer;
+      backdrop-filter:blur(16px);
+      opacity:.55; transition:opacity .2s, transform .15s;
+    }
+    .fab:hover { opacity:1; transform:translateY(-2px); }
+    .fab-icon { font-size:14px; }
+
+    #settings-btn {
+      position:fixed; top:20px; left:20px; z-index:65;
+      width:38px; height:38px; border-radius:50%;
+      background:var(--glass); border:1px solid var(--glass-border);
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; backdrop-filter:blur(14px);
+      opacity:.75; transition:opacity .2s, transform .25s; font-size:16px;
+    }
+    #settings-btn:hover { opacity:1; transform:rotate(25deg); }
+
+    /* ═══════════════════════════════════════════
+       UTILITY
+    ═══════════════════════════════════════════ */
+    .empty { font-size:12.5px; color:var(--cream-ghost); text-align:center; padding:12px 0; font-style:italic; }
+    .loading { font-size:12px; color:var(--cream-ghost); text-align:center; padding:10px 0; animation:pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:.9} }
+    .err { font-size:11.5px; color:rgba(255,100,100,.7); text-align:center; padding:8px 0; }
+
+    /* Hide scrollbar in dash */
+    #dash-content::-webkit-scrollbar { width:4px; }
+    #dash-content::-webkit-scrollbar-track { background:transparent; }
+    #dash-content::-webkit-scrollbar-thumb { background:rgba(255,255,255,.1); border-radius:2px; }
+  </style>
+<style id="googleidentityservice_button_styles">.qJTHM{-moz-user-select:none;-webkit-user-select:none;-ms-user-select:none;color:#202124;direction:ltr;-webkit-touch-callout:none;font-family:"Roboto-Regular",arial,sans-serif;-webkit-font-smoothing:antialiased;font-weight:400;margin:0;overflow:hidden;-webkit-text-size-adjust:100%}.ynRLnc{left:-9999px;position:absolute;top:-9999px}.L6cTce{display:none}.bltWBb{overflow-wrap:break-word;word-break:break-word}.hSRGPd{color:#1a73e8;cursor:pointer;font-weight:500;text-decoration:none}.Bz112c-W3lGp{height:16px;width:16px}.Bz112c-E3DyYd{height:20px;width:20px}.Bz112c-r9oPif{height:24px;width:24px}.Bz112c-u2z5K{height:36px;width:36px}.Bz112c-uaxL4e{border-radius:10px}.LgbsSe-Bz112c{display:block}.S9gUrf-YoZ4jf{border:none;margin:0;padding:0}.S9gUrf-YoZ4jf *{border:none;margin:0;padding:0}.fFW7wc-ibnC6b>.aZ2wEe>div{border-color:#4285f4}.P1ekSe-ZMv3u{-webkit-transition:height linear .2s;transition:height linear .2s}.P1ekSe-ZMv3u>div:nth-child(1){background-color:#1a73e8!important;-webkit-transition:width linear .3s;transition:width linear .3s}.P1ekSe-ZMv3u>div:nth-child(2){background-image:-webkit-gradient(linear,left top,right top,from(rgba(255,255,255,.7)),to(rgba(255,255,255,.7))),-webkit-gradient(linear,left top,right top,from(#1a73e8),to(#1a73e8))!important;background-image:-webkit-linear-gradient(left,rgba(255,255,255,.7),rgba(255,255,255,.7)),-webkit-linear-gradient(left,#1a73e8,#1a73e8)!important;background-image:linear-gradient(to right,rgba(255,255,255,.7),rgba(255,255,255,.7)),linear-gradient(to right,#1a73e8,#1a73e8)!important}.P1ekSe-ZMv3u>div:nth-child(3){background-image:-webkit-gradient(linear,left top,right top,from(rgba(255,255,255,.7)),to(rgba(255,255,255,.7))),-webkit-gradient(linear,left top,right top,from(#1a73e8),to(#1a73e8))!important;background-image:-webkit-linear-gradient(left,rgba(255,255,255,.7),rgba(255,255,255,.7)),-webkit-linear-gradient(left,#1a73e8,#1a73e8)!important;background-image:linear-gradient(to right,rgba(255,255,255,.7),rgba(255,255,255,.7)),linear-gradient(to right,#1a73e8,#1a73e8)!important}.haAclf{display:inline-block}.nsm7Bb-HzV7m-LgbsSe{border-radius:4px;box-sizing:border-box;-webkit-transition:background-color .218s,border-color .218s;transition:background-color .218s,border-color .218s;-moz-user-select:none;-webkit-user-select:none;-ms-user-select:none;-webkit-appearance:none;background-color:#fff;background-image:none;border:1px solid #dadce0;color:#3c4043;cursor:pointer;font-family:"Google Sans",arial,sans-serif;font-size:14px;height:40px;letter-spacing:.25px;outline:none;overflow:hidden;padding:0 12px;position:relative;text-align:center;vertical-align:middle;white-space:nowrap;width:auto}@media screen and (-ms-high-contrast:active){.nsm7Bb-HzV7m-LgbsSe{border:2px solid windowText;color:windowText}}@media screen and (preferes-contrast:more){.nsm7Bb-HzV7m-LgbsSe{color:#000}}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe{font-size:14px;height:32px;letter-spacing:.25px;padding:0 10px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe{font-size:11px;height:20px;letter-spacing:.3px;padding:0 8px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe{padding:0;width:40px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.pSzOP-SxQuSe{width:32px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.purZT-SxQuSe{width:20px}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK{border-radius:20px}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK.pSzOP-SxQuSe{border-radius:16px}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK.purZT-SxQuSe{border-radius:10px}.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc{border:none;color:#fff}.nsm7Bb-HzV7m-LgbsSe.MFS4be-v3pZbf-Ia7Qfc{background-color:#1a73e8}.nsm7Bb-HzV7m-LgbsSe.MFS4be-JaPV2b-Ia7Qfc{background-color:#202124;color:#e8eaed}@media screen and (prefers-contrast:more){.nsm7Bb-HzV7m-LgbsSe.MFS4be-JaPV2b-Ia7Qfc{color:#fff}}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{height:18px;margin-right:8px;min-width:18px;width:18px}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{height:14px;min-width:14px;width:14px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{height:10px;min-width:10px;width:10px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-Bz112c{margin-left:8px;margin-right:-4px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{margin:0;padding:10px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.pSzOP-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{padding:8px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{padding:4px}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-top-left-radius:3px;border-bottom-left-radius:3px;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;-webkit-box-align:center;-webkit-align-items:center;align-items:center;background-color:#fff;height:36px;margin-left:-10px;margin-right:12px;min-width:36px;width:36px}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf .nsm7Bb-HzV7m-LgbsSe-Bz112c,.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf .nsm7Bb-HzV7m-LgbsSe-Bz112c{margin:0;padding:0}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{height:28px;margin-left:-8px;margin-right:10px;min-width:28px;width:28px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{height:16px;margin-left:-6px;margin-right:8px;min-width:16px;width:16px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:3px;margin-left:2px;margin-right:0;padding:0}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:18px}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:14px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:8px}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-bN97Pc-sM5MNb{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-align-items:center;-webkit-box-align:center;align-items:center;-webkit-flex-direction:row;-webkit-box-orient:horizontal;-webkit-box-direction:normal;flex-direction:row;-webkit-box-pack:justify;-webkit-justify-content:space-between;justify-content:space-between;-webkit-flex-wrap:nowrap;flex-wrap:nowrap;height:100%;position:relative;width:100%}.nsm7Bb-HzV7m-LgbsSe .oXtfBe-l4eHX{-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-BPrWId{-webkit-flex-grow:1;-webkit-box-flex:1;flex-grow:1;font-family:"Google Sans",arial,sans-serif;font-weight:500;overflow:hidden;text-overflow:ellipsis;vertical-align:top}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-BPrWId{font-weight:300}.nsm7Bb-HzV7m-LgbsSe .oXtfBe-l4eHX .nsm7Bb-HzV7m-LgbsSe-BPrWId{-webkit-flex-grow:0;-webkit-box-flex:0;flex-grow:0}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-MJoBVe{-webkit-transition:background-color .218s;transition:background-color .218s;bottom:0;left:0;position:absolute;right:0;top:0}.nsm7Bb-HzV7m-LgbsSe:hover,.nsm7Bb-HzV7m-LgbsSe:focus{box-shadow:none;border-color:rgb(210,227,252);outline:none}.nsm7Bb-HzV7m-LgbsSe:focus-within{outline:2px solid #00639b;border-color:transparent}.nsm7Bb-HzV7m-LgbsSe:hover .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(66,133,244,.08)}.nsm7Bb-HzV7m-LgbsSe:active .nsm7Bb-HzV7m-LgbsSe-MJoBVe,.nsm7Bb-HzV7m-LgbsSe:focus .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(66,133,244,.1)}.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc:hover .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(255,255,255,.24)}.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc:active .nsm7Bb-HzV7m-LgbsSe-MJoBVe,.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc:focus .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(255,255,255,.32)}.nsm7Bb-HzV7m-LgbsSe .n1UuX-DkfjY{border-radius:50%;display:-webkit-box;display:-webkit-flex;display:flex;height:20px;margin-left:-4px;margin-right:8px;min-width:20px;width:20px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId{font-family:"Roboto";font-size:12px;text-align:left}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .ssJRIf,.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff .fmcmS{overflow:hidden;text-overflow:ellipsis}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-align-items:center;-webkit-box-align:center;align-items:center;color:#5f6368;fill:#5f6368;font-size:11px;font-weight:400}.nsm7Bb-HzV7m-LgbsSe.jVeSEe.MFS4be-Ia7Qfc .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff{color:#e8eaed;fill:#e8eaed}@media screen and (prefers-contrast:more){.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff,.nsm7Bb-HzV7m-LgbsSe.jVeSEe.MFS4be-Ia7Qfc .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff{color:#000;fill:#000}}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff .Bz112c{height:18px;margin:-3px -3px -3px 2px;min-width:18px;width:18px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-top-left-radius:0;border-bottom-left-radius:0;border-top-right-radius:3px;border-bottom-right-radius:3px;margin-left:12px;margin-right:-10px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:18px}.L5Fo6c-sM5MNb{border:0;display:block;left:0;position:relative;top:0}.L5Fo6c-bF1uUb{border-radius:4px;bottom:0;cursor:pointer;left:0;position:absolute;right:0;top:0}.L5Fo6c-bF1uUb:focus{border:none;outline:none}sentinel{}</style></head>
+<body>
+
+<!-- ── PHOTO BG ── -->
+<div id="photo-bg">
+  <div class="photo-slide active" style="background:linear-gradient(135deg,#0a0e1a 0%,#0d1a2e 50%,#091420 100%);"></div>
+</div>
+<div id="photo-overlay"></div>
+
+<!-- ── SETTINGS BTN ── -->
+<button id="settings-btn" onclick="toggleSettings()" title="Settings">⚙</button>
+
+<!-- ── SETTINGS PANEL ── -->
+<div id="settings-panel" class="">
+  <div class="settings-inner">
+    <div class="settings-head">
+      <div class="settings-title">Settings</div>
+      <button class="settings-close" onclick="toggleSettings()">✕</button>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Display</div>
+      <div class="s-field"><label>Family Name</label><input id="set-fname" type="text" placeholder="e.g. Smrekar"></div>
+      <div class="s-field">
+        <label>Slideshow Interval</label>
+        <select id="set-interval">
+          <option value="8">8 seconds</option>
+          <option value="12" selected="">12 seconds</option>
+          <option value="20">20 seconds</option>
+          <option value="30">30 seconds</option>
+          <option value="60">1 minute</option>
+        </select>
+      </div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Google OAuth</div>
+      <div class="s-field">
+        <label>OAuth Client ID</label>
+        <input id="set-client-id" type="text" placeholder="xxxxx.apps.googleusercontent.com">
+        <div class="s-hint">Create at <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a> → APIs &amp; Services → Credentials. Add <code>http://127.0.0.1:5500</code> as an authorized JavaScript origin (no redirect URI needed). Grant Calendar/Photos access to <code>smrekarfamilia@gmail.com</code>.</div>
+      </div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Google Calendar</div>
+      <div class="s-field">
+        <label>Calendar ID</label>
+        <input id="set-cal-id" type="text" placeholder="smrekarfamilia@gmail.com">
+      </div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Google Photos</div>
+      <div class="s-field">
+        <label>Album ID (blank = recent photos)</label>
+        <input id="set-album-id" type="text" placeholder="Paste album ID from Google Photos URL">
+      </div>
+      <div class="s-field">
+        <label>Max Photos</label>
+        <select id="set-max-photos">
+          <option value="20">20</option>
+          <option value="50" selected="">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+    </div>
+    <div class="s-actions">
+      <button class="btn-gold" onclick="saveSettings()">Save Settings</button>
+      <button class="btn-ghost" onclick="signOut()">Sign Out</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── AUTH OVERLAY ── -->
+<div id="auth-overlay" style="opacity: 1;">
+  <div class="auth-logo">🏠</div>
+  <div class="auth-h1">Smrekar Hub</div>
+  <p class="auth-sub">Sign in with Google to sync the family calendar and photos to this display.</p>
+  <button class="auth-google-btn" onclick="startSignIn()">
+    <img src="./google.svg" alt="">
+    Sign in with Google
+  </button>
+  <p class="auth-note">You'll need an OAuth Client ID. <button class="auth-cfg-link" onclick="toggleSettings()">Open Settings →</button></p>
+</div>
+
+<!-- ── MAIN AMBIENT DISPLAY ── -->
+<div id="app">
+
+  <!-- TOP: Clock + custody badge -->
+  <div id="top-bar">
+    <div id="clock-center">
+      <div id="clock"><span id="clock-time">2:31</span><span class="ampm" id="clock-ampm">PM</span></div>
+      <div id="date-line">Sunday  ·  March 15, 2026</div>
+    </div>
+    <div id="custody-badge" class="custody-badge away">
+      <div class="dot"></div>
+      <span id="custody-text">Kids at Mom's</span>
+    </div>
+  </div>
+
+  <!-- LEFT: Calendar + Birthdays -->
+  <div class="glass-card" id="cal-card">
+    <div class="card-label cal-color">
+      <div class="card-label-icon cal-color">📅</div>
+      Upcoming
+    </div>
+    <div class="card-divider"></div>
+    <div id="cal-events"><div class="empty">Sign in to view events</div></div>
+    <div class="card-divider" style="margin-top:6px;"></div>
+    <div class="card-label cal-color" style="margin-top:2px;">
+      <div class="card-label-icon cal-color">🎂</div>
+      Birthdays
+    </div>
+    <div id="birthday-row"><div class="bday-item">
+      <div class="bday-emoji">🐶</div>
+      <div class="bday-info">
+        <div class="bday-name">Frankie</div>
+        <div class="bday-date">08/22</div>
+      </div>
+      <div class="bday-days" style="color:var(--cream-ghost)">160 days</div>
+    </div><div class="bday-item">
+      <div class="bday-emoji">👧</div>
+      <div class="bday-info">
+        <div class="bday-name">Emma</div>
+        <div class="bday-date">09/10</div>
+      </div>
+      <div class="bday-days" style="color:var(--cream-ghost)">179 days</div>
+    </div><div class="bday-item">
+      <div class="bday-emoji">🧒</div>
+      <div class="bday-info">
+        <div class="bday-name">Sam</div>
+        <div class="bday-date">09/24</div>
+      </div>
+      <div class="bday-days" style="color:var(--cream-ghost)">193 days</div>
+    </div></div>
+  </div>
+
+  <!-- CENTER: Greeting -->
+  <div id="center-area">
+    <div id="greeting">Good afternoon, Smrekar family</div>
+    <div id="today-custody-text">The kids are at Mom's today</div>
+  </div>
+
+  <!-- RIGHT: Today's Chores -->
+  <div class="glass-card" id="chores-card">
+    <div class="card-label chores-color">
+      <div class="card-label-icon chores-color">✓</div>
+      Today's Chores
+    </div>
+    <div class="card-divider"></div>
+    <div id="today-chores-body"><div class="kids-away-msg">Kids are at Mom's today.<br>Chores resume when they're back! 👋</div></div>
+  </div>
+
+  <!-- BOTTOM: Photo nav + open dashboard -->
+  <div id="bottom-bar">
+    <div id="photo-counter">–</div>
+    <div id="photo-dots"></div>
+    <div id="photo-caption"></div>
+  </div>
+
+</div><!-- /#app -->
+
+<!-- ── FAB ROW ── -->
+<div id="fab-row">
+  <button class="fab" onclick="openDashboard()"><span class="fab-icon">📊</span> Dashboard</button>
+  <button class="fab" onclick="nextPhoto()"><span class="fab-icon">▶</span> Next Photo</button>
+</div>
+
+<!-- ── DASHBOARD OVERLAY ── -->
+<div id="dashboard-overlay">
+  <div id="dash-topbar">
+    <div id="dash-title">🏠 Smrekar Family Hub</div>
+    <button id="dash-close" onclick="closeDashboard()">✕ Close</button>
+  </div>
+
+  <div id="dash-tabs">
+    <button class="d-tab active" onclick="switchTab(&#39;overview&#39;)">Overview</button>
+    <button class="d-tab" onclick="switchTab(&#39;schedule&#39;)">Parenting Days</button>
+    <button class="d-tab" onclick="switchTab(&#39;chores&#39;)">Chore Tracker</button>
+    <button class="d-tab" onclick="switchTab(&#39;rewards&#39;)">Rewards</button>
+  </div>
+
+  <div id="dash-content">
+    <!-- OVERVIEW -->
+    <div class="tab-pane active" id="tab-overview">
+      <div class="dash-grid-2" id="kids-overview-cards"></div>
+      <div class="dash-grid-3" id="bottom-overview-cards"></div>
+    </div>
+
+    <!-- SCHEDULE -->
+    <div class="tab-pane" id="tab-schedule">
+      <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;line-height:1.6;">
+        Parenting schedule starting <strong style="color:var(--cream)">Friday, March 13, 2026</strong>. 
+        Kids follow a rotating cycle — dark cards indicate days they're at Dad's.
+      </p>
+      <div class="schedule-grid" id="schedule-grid"></div>
+      <div class="schedule-legend">
+        <span><span class="legend-dot" style="background:var(--teal);"></span>Kids at Dad's</span>
+        <span><span class="legend-dot" style="background:rgba(255,255,255,.2);"></span>Kids at Mom's</span>
+        <span><span class="legend-dot" style="background:var(--gold);outline:2px solid var(--gold);border-radius:50%;"></span>Today</span>
+      </div>
+    </div>
+
+    <!-- CHORES -->
+    <div class="tab-pane" id="tab-chores">
+      <div class="chores-tab-header">
+        <div class="kid-selector" id="chore-kid-selector"></div>
+      </div>
+      <div id="chore-tracker-body"></div>
+    </div>
+
+    <!-- REWARDS -->
+    <div class="tab-pane" id="tab-rewards">
+      <div class="rewards-layout">
+        <div>
+          <div style="font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin-bottom:12px;">Reward Menu ⭐</div>
+          <div class="reward-grid" id="reward-grid"></div>
+        </div>
+        <div id="reward-progress-col"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── GOOGLE IDENTITY ── -->
+<script src="https://accounts.google.com/gsi/client" async="" defer="" onload="gsiLoaded()"></script>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════
+   FAMILY DATA  (from starter)
+═══════════════════════════════════════════ */
+const FAMILY = {
+  name: 'Smrekar',
+  calendarAccount: 'smrekarfamilia@gmail.com',
+  kids: [
+    { id:'sam',   name:'Sam',   age:9, birthday:'09/24', avatar:'🧒' },
+    { id:'emma',  name:'Emma',  age:6, birthday:'09/10', avatar:'👧' },
+  ],
+  pets: [
+    { id:'frankie', name:'Frankie', age:'6 months', birthday:'08/22', avatar:'🐶', species:'dog' },
+  ],
+};
+
+const CHORES = [
+  { id:'set_table',        label:'Set the table & help serve',         points:1, minAge:6,  tags:['meal','daily'] },
+  { id:'clear_table',      label:'Clear table & load dishwasher',      points:1, minAge:6,  tags:['meal','daily'] },
+  { id:'unload_dishwasher',label:'Unload dishwasher',                  points:1, minAge:6,  tags:['kitchen'] },
+  { id:'take_trash',       label:'Take out trash',                     points:1, minAge:6,  tags:['house'] },
+  { id:'take_recycling',   label:'Take out recycling',                 points:1, minAge:6,  tags:['house'] },
+  { id:'clean_cat_box',    label:'Clean the cat box',                  points:1, minAge:9,  tags:['pet'] },
+  { id:'homework',         label:'Do homework',                        points:1, minAge:6,  tags:['school','daily'] },
+  { id:'reading',          label:'Read 20 minutes',                    points:1, minAge:6,  tags:['school','daily'] },
+  { id:'vacuum_room',      label:'Vacuum one room',                    points:1, minAge:6,  tags:['house'] },
+  { id:'fold_laundry',     label:'Fold laundry',                       points:1, minAge:6,  tags:['laundry'] },
+  { id:'put_away_laundry', label:'Put away own laundry',               points:1, minAge:6,  tags:['laundry','daily'] },
+  { id:'brush_teeth',      label:'Brush teeth 2+ minutes',             points:1, minAge:6,  tags:['routine','daily'] },
+  { id:'wipe_table',       label:'Wipe table and chairs',              points:1, minAge:6,  tags:['meal'] },
+  { id:'make_bed',         label:'Make the bed',                       points:1, minAge:6,  tags:['routine','daily'] },
+  { id:'outfit_ready',     label:'Get outfit ready for tomorrow',      points:1, minAge:6,  tags:['routine','daily'] },
+  { id:'walk_frankie',     label:'Walk Frankie 🐶',                    points:1, minAge:6,  tags:['pet'] },
+  { id:'lunch_backpack',   label:'Help with lunch & load backpack',    points:1, minAge:6,  tags:['school','daily'] },
+];
+
+const REWARDS = [
+  'Ice cream or treat choice',
+  'Movie choice',
+  'Friend play date choice',
+  '40 min extra screen time',
+  'Game night choice',
+  'New puzzle',
+  '"You pick the meal" dinner',
+];
+
+// Parenting schedule anchor date (March 13, 2026 = day 0)
+const SCHEDULE_START = new Date('2026-03-13T12:00:00');
+// Kids home on these days within each 14-day cycle
+const KIDS_HOME_DAYS = new Set([0,1,4,5,8,9,12,13]);
+
+/* ═══════════════════════════════════════════
+   CONFIG
+═══════════════════════════════════════════ */
+const CFG_KEY = 'smrekar_hub_cfg';
+const DEFAULTS = {
+  familyName: 'Smrekar',
+  clientId: '',
+  calId: 'smrekarfamilia@gmail.com',
+  albumId: '',
+  slideshowInterval: 12,
+  maxPhotos: 50,
+};
+
+let CFG = { ...DEFAULTS, ...loadCfg() };
+
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem(CFG_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function saveCfg() { localStorage.setItem(CFG_KEY, JSON.stringify(CFG)); }
+
+function saveSettings() {
+  CFG.familyName        = document.getElementById('set-fname').value.trim() || CFG.familyName;
+  CFG.clientId          = document.getElementById('set-client-id').value.trim();
+  CFG.calId             = document.getElementById('set-cal-id').value.trim() || 'primary';
+  CFG.albumId           = document.getElementById('set-album-id').value.trim();
+  CFG.slideshowInterval = parseInt(document.getElementById('set-interval').value) || 12;
+  CFG.maxPhotos         = parseInt(document.getElementById('set-max-photos').value) || 50;
+  saveCfg();
+  updateGreeting();
+  startSlideshow();
+  toggleSettings();
+  if (CFG.clientId && !tokenClient) initGoogleAuth();
+}
+
+function populateSettings() {
+  document.getElementById('set-fname').value      = CFG.familyName;
+  document.getElementById('set-client-id').value  = CFG.clientId;
+  document.getElementById('set-cal-id').value     = CFG.calId;
+  document.getElementById('set-album-id').value   = CFG.albumId;
+  document.getElementById('set-interval').value   = CFG.slideshowInterval;
+  document.getElementById('set-max-photos').value = CFG.maxPhotos;
+}
+
+/* ═══════════════════════════════════════════
+   CLOCK, DATE, GREETING
+═══════════════════════════════════════════ */
+const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function updateClock() {
+  const now = new Date();
+  let h = now.getHours(), m = now.getMinutes();
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  document.getElementById('clock-time').textContent = `${h}:${String(m).padStart(2,'0')}`;
+  document.getElementById('clock-ampm').textContent = ap;
+  document.getElementById('date-line').textContent  = `${DAYS[now.getDay()]}  ·  ${MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+}
+
+function updateGreeting() {
+  const h = new Date().getHours();
+  const salut = h<5?'Good night':h<12?'Good morning':h<17?'Good afternoon':'Good evening';
+  document.getElementById('greeting').textContent = `${salut}, ${CFG.familyName} family`;
+}
+
+setInterval(updateClock, 1000); updateClock();
+setInterval(updateGreeting, 60000); updateGreeting();
+
+/* ═══════════════════════════════════════════
+   PARENTING SCHEDULE HELPERS
+═══════════════════════════════════════════ */
+function ymd(date) {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+function addDays(date, n) { const d=new Date(date); d.setDate(d.getDate()+n); return d; }
+
+function isKidsHome(date) {
+  const diff = Math.floor((new Date(ymd(date)) - new Date(ymd(SCHEDULE_START))) / 86400000);
+  if (diff < 0) return false;
+  return KIDS_HOME_DAYS.has(diff % 14);
+}
+
+function generateSchedule(days=28) {
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
+  return Array.from({length:days}, (_,i) => {
+    const date = addDays(startOfToday, i);
+    return {
+      date, key: ymd(date),
+      kidsHome: isKidsHome(date),
+      isToday: ymd(date) === ymd(today),
+      label: date.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),
+      weekday: date.toLocaleDateString('en-US',{weekday:'short'}),
+      dayNum: date.getDate(),
+      monthAbbr: date.toLocaleDateString('en-US',{month:'short'}),
+    };
+  });
+}
+
+/* ═══════════════════════════════════════════
+   CHORE ASSIGNMENTS
+═══════════════════════════════════════════ */
+function choresByAge(age) { return CHORES.filter(c => c.minAge <= age); }
+
+function defaultAssignments(dayKey, kidId) {
+  const kid = FAMILY.kids.find(k => k.id === kidId);
+  if (!kid) return [];
+  const available = choresByAge(kid.age);
+  const daily = ['brush_teeth','make_bed','reading'];
+  const rotating = kid.age >= 9
+    ? ['clear_table','unload_dishwasher','take_trash','walk_frankie','homework']
+    : ['set_table','wipe_table','outfit_ready','lunch_backpack','put_away_laundry'];
+  const dayOfMonth = parseInt(dayKey.split('-')[2], 10);
+  const extra = rotating[dayOfMonth % rotating.length];
+  return [...daily, extra].map(id => available.find(c => c.id === id)).filter(Boolean);
+}
+
+/* ═══════════════════════════════════════════
+   COMPLETION STATE (localStorage)
+═══════════════════════════════════════════ */
+const COMP_KEY = 'smrekar_chore_completion';
+
+function loadCompletion() {
+  try { return JSON.parse(localStorage.getItem(COMP_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+let completion = loadCompletion();
+
+function saveCompletion() { localStorage.setItem(COMP_KEY, JSON.stringify(completion)); }
+
+function getChoreState(dayKey, kidId, choreId) {
+  return !!(completion[`${dayKey}_${kidId}`] || {})[choreId];
+}
+
+function toggleChoreCompletion(dayKey, kidId, choreId) {
+  const k = `${dayKey}_${kidId}`;
+  if (!completion[k]) completion[k] = {};
+  completion[k][choreId] = !completion[k][choreId];
+  saveCompletion();
+  renderTodayChores();
+  renderChoreTracker();
+  renderOverview();
+  renderRewards();
+}
+
+function countDayCompleted(dayKey, kidId) {
+  return Object.values(completion[`${dayKey}_${kidId}`] || {}).filter(Boolean).length;
+}
+
+/* ═══════════════════════════════════════════
+   REWARD ELIGIBILITY
+═══════════════════════════════════════════ */
+// Most recent home days up to and including today, oldest last-N kept.
+// Looks backward because eligibility is about chores already completed —
+// generateSchedule() looks forward and is for display only.
+function recentHomeDays(count=7, lookbackDays=30) {
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
+  const days = [];
+  for (let i = 0; i <= lookbackDays && days.length < count; i++) {
+    const date = addDays(startOfToday, -i);
+    if (isKidsHome(date)) days.push({ date, key: ymd(date) });
+  }
+  return days;
+}
+
+function rewardEligibility(kidId, homeDays) {
+  const qualifying = homeDays.filter(d => countDayCompleted(d.key, kidId) >= 3).length;
+  return { qualifying, needed:4, eligible: qualifying >= 4, pct: Math.min(100, (qualifying/4)*100) };
+}
+
+/* ═══════════════════════════════════════════
+   BIRTHDAY HELPERS
+═══════════════════════════════════════════ */
+function daysUntilBirthday(mmdd) {
+  const [mm,dd] = mmdd.split('/').map(Number);
+  const now = new Date(); now.setHours(0,0,0,0);
+  let bday = new Date(now.getFullYear(), mm-1, dd);
+  if (bday < now) bday.setFullYear(bday.getFullYear()+1);
+  return Math.round((bday - now) / 86400000);
+}
+
+function renderBirthdays() {
+  const all = [
+    ...FAMILY.kids.map(k => ({ name:k.name, avatar:k.avatar, mmdd:k.birthday })),
+    ...FAMILY.pets.map(p => ({ name:p.name, avatar:p.avatar, mmdd:p.birthday })),
+  ];
+
+  const items = all
+    .map(x => ({ ...x, days: daysUntilBirthday(x.mmdd) }))
+    .sort((a,b) => a.days - b.days)
+    .slice(0,4);
+
+  document.getElementById('birthday-row').innerHTML = items.map(x => {
+    const label = x.days === 0 ? '🎉 Today!' : x.days === 1 ? 'Tomorrow' : `${x.days} days`;
+    const color = x.days <= 7 ? 'var(--rose)' : 'var(--cream-ghost)';
+    return `<div class="bday-item">
+      <div class="bday-emoji">${x.avatar}</div>
+      <div class="bday-info">
+        <div class="bday-name">${esc(x.name)}</div>
+        <div class="bday-date">${x.mmdd}</div>
+      </div>
+      <div class="bday-days" style="color:${color}">${label}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════
+   CUSTODY BADGE
+═══════════════════════════════════════════ */
+function updateCustodyBadge() {
+  const home = isKidsHome(new Date());
+  const badge = document.getElementById('custody-badge');
+  badge.className = 'custody-badge ' + (home ? 'home' : 'away');
+  document.getElementById('custody-text').textContent = home ? "Kids at Dad's 🏠" : "Kids at Mom's";
+  document.getElementById('today-custody-text').textContent = home
+    ? 'The kids are home tonight' : 'The kids are at Mom\'s today';
+}
+
+/* ═══════════════════════════════════════════
+   TODAY'S CHORES (ambient panel)
+═══════════════════════════════════════════ */
+function renderTodayChores() {
+  const el = document.getElementById('today-chores-body');
+  const today = new Date();
+  const todayKey = ymd(today);
+  const home = isKidsHome(today);
+
+  if (!home) {
+    el.innerHTML = `<div class="kids-away-msg">Kids are at Mom's today.<br>Chores resume when they're back! 👋</div>`;
+    return;
+  }
+
+  let html = '';
+  for (const kid of FAMILY.kids) {
+    const assigned = defaultAssignments(todayKey, kid.id);
+    const done = assigned.filter(c => getChoreState(todayKey, kid.id, c.id)).length;
+    const elig = rewardEligibility(kid.id, recentHomeDays(7));
+
+    html += `<div class="kid-section">
+      <div class="kid-header">
+        <div class="kid-name-row">
+          <span class="kid-avatar-sm">${kid.avatar}</span>
+          <span class="kid-name-sm">${esc(kid.name)}</span>
+        </div>
+        <span class="kid-score">${done}/${assigned.length}</span>
+      </div>`;
+
+    assigned.forEach(c => {
+      const isDone = getChoreState(todayKey, kid.id, c.id);
+      html += `<div class="chore-row ${isDone?'done':''}" onclick="toggleChoreCompletion('${todayKey}','${kid.id}','${c.id}')">
+        <div class="chore-cb">${isDone?'✓':''}</div>
+        <div class="chore-label">${esc(c.label)}</div>
+      </div>`;
+    });
+
+    html += `<div class="reward-strip">
+      <div class="reward-strip-top">
+        <div class="reward-strip-name">Weekly reward</div>
+        <div class="reward-pct">${elig.qualifying}/4 nights</div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${elig.pct}%"></div></div>
+      ${elig.eligible ? '<div class="reward-unlocked">⭐ Reward unlocked!</div>' : ''}
+    </div></div>`;
+
+    // divider between kids
+    if (kid !== FAMILY.kids[FAMILY.kids.length-1]) {
+      html += '<div class="card-divider" style="margin:6px 0;"></div>';
+    }
+  }
+  el.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════
+   DASHBOARD SECTIONS
+═══════════════════════════════════════════ */
+function renderOverview() {
+  const schedule = generateSchedule(28);
+  const homeDays = recentHomeDays(7);
+  let kidsHtml = '';
+  for (const kid of FAMILY.kids) {
+    const elig = rewardEligibility(kid.id, homeDays);
+    kidsHtml += `<div class="dash-card kid-progress-card">
+      <div class="dash-card-title">Kid Progress</div>
+      <div class="kid-big-name">${kid.avatar} ${esc(kid.name)} <span class="kid-big-age">${kid.age} yrs</span></div>
+      <div class="kid-bday-sub">🎂 Birthday ${kid.birthday} · ${daysUntilBirthday(kid.birthday)} days away</div>
+      <div class="big-progress-bar"><div class="big-progress-fill" style="width:${elig.pct}%"></div></div>
+      <div class="progress-label">${elig.qualifying} qualifying nights (need ${elig.needed} for reward)</div>
+      <div class="reward-status ${elig.eligible?'earned':'pending'}">
+        ${elig.eligible ? '⭐ Reward available!' : '⏳ Keep completing chores to unlock a reward'}
+      </div>
+    </div>`;
+  }
+  document.getElementById('kids-overview-cards').innerHTML = kidsHtml;
+
+  // This week's schedule snippet
+  const todayKey = ymd(new Date());
+  const next7 = schedule.slice(0,7);
+  let weekHtml = `<div class="dash-card">
+    <div class="dash-card-title">📅 Next 7 Days</div>`;
+  for (const d of next7) {
+    const isT = d.key === todayKey;
+    weekHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:13px;">
+      <span style="color:${isT?'var(--gold)':'var(--cream)'}">${d.label}${isT?' (today)':''}</span>
+      <span style="font-size:10px;font-weight:600;color:${d.kidsHome?'var(--teal)':'rgba(255,255,255,.35)'};">${d.kidsHome?'At Dad\'s':'At Mom\'s'}</span>
+    </div>`;
+  }
+  weekHtml += '</div>';
+
+  // Frankie card
+  let frankieHtml = '<div class="dash-card frankie-card"><div class="dash-card-title">Family Pet</div>';
+  for (const p of FAMILY.pets) {
+    frankieHtml += `<div class="frankie-big">${p.avatar}</div>
+      <div class="frankie-info"><strong style="color:var(--cream)">${esc(p.name)}</strong><br>${esc(p.age)} old<br>🎂 Birthday ${p.birthday} — ${daysUntilBirthday(p.birthday)} days away</div>`;
+  }
+  frankieHtml += '</div>';
+
+  document.getElementById('bottom-overview-cards').innerHTML = weekHtml + frankieHtml;
+}
+
+function renderSchedule() {
+  const schedule = generateSchedule(28);
+  const todayKey = ymd(new Date());
+  document.getElementById('schedule-grid').innerHTML = schedule.map(d => `
+    <div class="sched-day ${d.kidsHome?'home':'away'} ${d.key===todayKey?'today':''}">
+      <div class="sched-weekday">${d.weekday}</div>
+      <div class="sched-num">${d.dayNum}</div>
+      <div style="font-size:8px;color:var(--cream-ghost);margin-bottom:2px;">${d.monthAbbr}</div>
+      <div class="sched-status">${d.kidsHome?'HOME':'AWAY'}</div>
+    </div>`).join('');
+}
+
+let activeChoreKid = FAMILY.kids[0].id;
+
+function renderChoreKidSelector() {
+  document.getElementById('chore-kid-selector').innerHTML = FAMILY.kids.map(k =>
+    `<button class="kid-sel-btn ${activeChoreKid===k.id?'active':''}" onclick="selectChoreKid('${k.id}')">${k.avatar} ${k.name}</button>`
+  ).join('');
+}
+
+function selectChoreKid(kidId) {
+  activeChoreKid = kidId;
+  renderChoreKidSelector();
+  renderChoreTracker();
+}
+
+function renderChoreTracker() {
+  const schedule = generateSchedule(28).filter(d => d.kidsHome);
+  const kid = FAMILY.kids.find(k => k.id === activeChoreKid);
+  const todayKey = ymd(new Date());
+
+  // Two-week split
+  const week1 = schedule.slice(0,7);
+  const week2 = schedule.slice(7,14);
+
+  function renderWeek(days, label) {
+    let html = `<div class="chore-week-header">${label}</div>`;
+    for (const day of days) {
+      const assigned = defaultAssignments(day.key, activeChoreKid);
+      const doneCount = assigned.filter(c => getChoreState(day.key, activeChoreKid, c.id)).length;
+      const isT = day.key === todayKey;
+      const isFuture = day.key > todayKey;
+      html += `<div class="chore-day-block${isFuture?' future':''}">
+        <div class="chore-day-title">
+          <div>
+            <div class="chore-day-name" style="color:${isT?'var(--gold)':'var(--cream)'}">${day.label}${isT?' — Today':''}${isFuture?' — Upcoming':''}</div>
+            <div class="chore-day-count">${doneCount} of ${assigned.length} done</div>
+          </div>
+          <div class="chore-day-badge">${doneCount} chores</div>
+        </div>`;
+      for (const chore of assigned) {
+        const isDone = getChoreState(day.key, activeChoreKid, chore.id);
+        const onclick = isFuture ? '' : ` onclick="toggleChoreCompletion('${day.key}','${activeChoreKid}','${chore.id}')"`;
+        html += `<div class="chore-full-row ${isDone?'done':''}${isFuture?' future':''}"${onclick}>
+          <div class="chore-full-label">${esc(chore.label)}</div>
+          <div class="chore-full-tags">${chore.tags.join(' · ')}</div>
+          <div class="chore-full-cb">${isDone?'✓':''}</div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    return html;
+  }
+
+  document.getElementById('chore-tracker-body').innerHTML =
+    renderWeek(week1, 'Week One') + renderWeek(week2, 'Week Two');
+}
+
+function renderRewards() {
+  document.getElementById('reward-grid').innerHTML = REWARDS.map(r =>
+    `<div class="reward-tile"><span class="reward-star">⭐</span>${esc(r)}</div>`
+  ).join('');
+
+  const homeDays = recentHomeDays(7);
+  let html = `<div class="reward-rule-card">
+    <div class="rule-title">How to Earn a Reward</div>
+    <div class="rule-text">Complete at least <strong style="color:var(--cream)">3 chores</strong> on at least <strong style="color:var(--cream)">4 nights</strong> in a rolling 7-day period while at Dad's house.</div>`;
+
+  for (const kid of FAMILY.kids) {
+    const elig = rewardEligibility(kid.id, homeDays);
+    html += `<div class="kid-reward-row">
+      <div class="kid-reward-name">
+        <span>${kid.avatar} ${esc(kid.name)}</span>
+        <span class="kid-reward-pct">${elig.qualifying}/4 nights</span>
+      </div>
+      <div class="big-progress-bar" style="margin:4px 0;"><div class="big-progress-fill" style="width:${elig.pct}%"></div></div>
+      <div style="font-size:11px;margin-top:4px;color:${elig.eligible?'#6EE7B7':'var(--cream-dim)'}">
+        ${elig.eligible ? '⭐ Reward available!' : `${elig.needed - elig.qualifying} more qualifying night${elig.needed-elig.qualifying===1?'':'s'} needed`}
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+  document.getElementById('reward-progress-col').innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════
+   DASHBOARD CONTROLS
+═══════════════════════════════════════════ */
+let dashOpen = false;
+function openDashboard() {
+  dashOpen = true;
+  document.getElementById('dashboard-overlay').classList.add('open');
+  renderOverview();
+  renderSchedule();
+  renderChoreKidSelector();
+  renderChoreTracker();
+  renderRewards();
+}
+function closeDashboard() {
+  dashOpen = false;
+  document.getElementById('dashboard-overlay').classList.remove('open');
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.d-tab').forEach((t,i) => {
+    const names = ['overview','schedule','chores','rewards'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => {
+    p.classList.toggle('active', p.id === `tab-${name}`);
+  });
+}
+
+/* ═══════════════════════════════════════════
+   GOOGLE AUTH
+═══════════════════════════════════════════ */
+let tokenClient = null;
+let accessToken = null;
+
+function gsiLoaded() { if (CFG.clientId) initGoogleAuth(); }
+
+function initGoogleAuth() {
+  if (!CFG.clientId || typeof google === 'undefined') return;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CFG.clientId,
+    scope: [
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/photoslibrary.readonly',
+    ].join(' '),
+    callback: onToken,
+  });
+}
+
+function startSignIn() {
+  if (!CFG.clientId) { toggleSettings(); return; }
+  if (!tokenClient) initGoogleAuth();
+  tokenClient.requestAccessToken({ prompt:'select_account' });
+}
+
+function onToken(resp) {
+  if (resp.error) return console.error('Auth error:', resp);
+  accessToken = resp.access_token;
+  document.getElementById('auth-overlay').classList.add('hidden');
+  loadCalendar();
+  loadPhotos();
+}
+
+function signOut() {
+  if (accessToken) google.accounts.oauth2.revoke(accessToken, ()=>{});
+  accessToken = null;
+  document.getElementById('auth-overlay').classList.remove('hidden');
+  toggleSettings();
+}
+
+/* ═══════════════════════════════════════════
+   GOOGLE CALENDAR
+═══════════════════════════════════════════ */
+async function loadCalendar() {
+  const el = document.getElementById('cal-events');
+  el.innerHTML = '<div class="loading">Loading calendar…</div>';
+  try {
+    const now = new Date();
+    const max = new Date(now.getTime() + 7*86400000);
+    const calId = encodeURIComponent(CFG.calId || 'primary');
+    const params = new URLSearchParams({
+      timeMin:now.toISOString(), timeMax:max.toISOString(),
+      singleEvents:'true', orderBy:'startTime', maxResults:'8',
+    });
+    const r = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?${params}`,
+      { headers:{ Authorization:`Bearer ${accessToken}` } }
+    );
+    if (!r.ok) throw new Error(`${r.status}`);
+    const data = await r.json();
+    renderCalEvents(data.items || []);
+  } catch(e) {
+    el.innerHTML = `<div class="err">Calendar error: ${esc(e.message)}</div>`;
+  }
+  setTimeout(loadCalendar, 15*60*1000);
+}
+
+function renderCalEvents(events) {
+  const el = document.getElementById('cal-events');
+  if (!events.length) { el.innerHTML = '<div class="empty">No upcoming events 🎉</div>'; return; }
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today.getTime()+86400000);
+  const groups = {};
+  events.forEach(ev => {
+    const start = new Date(ev.start.dateTime || ev.start.date+'T00:00:00');
+    const dk = start.toDateString();
+    if (!groups[dk]) groups[dk] = { date:start, items:[] };
+    groups[dk].items.push({ ev, start });
+  });
+
+  let html = '';
+  for (const key of Object.keys(groups)) {
+    const g = groups[key]; const gDay = new Date(g.date); gDay.setHours(0,0,0,0);
+    const lbl = gDay.getTime()===today.getTime() ? 'Today'
+      : gDay.getTime()===tomorrow.getTime() ? 'Tomorrow'
+      : g.date.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    html += `<div class="day-header">${lbl}</div>`;
+    g.items.forEach(({ev,start}) => {
+      const t = ev.start.dateTime
+        ? start.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : 'All day';
+      html += `<div class="ev"><div class="ev-pip"></div><div><div class="ev-name">${esc(ev.summary||'Untitled')}</div><div class="ev-time">${t}</div></div></div>`;
+    });
+  }
+  el.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════
+   GOOGLE PHOTOS
+═══════════════════════════════════════════ */
+let photos = [], currentPhoto = 0, slideshowTimer = null;
+
+async function loadPhotos() {
+  try {
+    let url, opts;
+    if (CFG.albumId) {
+      url  = 'https://photoslibrary.googleapis.com/v1/mediaItems:search';
+      opts = { method:'POST', headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' }, body:JSON.stringify({albumId:CFG.albumId, pageSize:CFG.maxPhotos}) };
+    } else {
+      url  = `https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=${CFG.maxPhotos}`;
+      opts = { headers:{ Authorization:`Bearer ${accessToken}` } };
+    }
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    const imgs = (data.mediaItems||[]).filter(p => p.mimeType?.startsWith('image/'));
+    if (!imgs.length) return;
+    photos = imgs.sort(() => Math.random()-.5);
+    buildSlides();
+    startSlideshow();
+    setTimeout(loadPhotos, 55*60*1000);
+  } catch(e) { console.error('Photos error', e); }
+}
+
+function buildSlides() {
+  const bg = document.getElementById('photo-bg');
+  bg.innerHTML = '';
+  photos.forEach((p,i) => {
+    const d = document.createElement('div');
+    d.className = 'photo-slide'+(i===0?' active':'');
+    d.style.backgroundImage = `url('${p.baseUrl}=w1920-h1080-c')`;
+    bg.appendChild(d);
+  });
+  currentPhoto = 0;
+  buildDots();
+  updatePhotoMeta();
+}
+
+function buildDots() {
+  const max = Math.min(photos.length,16);
+  document.getElementById('photo-dots').innerHTML =
+    Array.from({length:max},(_,i) =>
+      `<div class="p-dot${i===0?' active':''}" onclick="goToPhoto(${i})"></div>`
+    ).join('');
+}
+
+function updatePhotoMeta() {
+  document.getElementById('photo-counter').textContent = photos.length ? `Photo ${currentPhoto+1} of ${photos.length}` : '–';
+  const p = photos[currentPhoto];
+  const cap = p ? (p.filename||'').replace(/\.[^.]+$/,'').replace(/[-_]/g,' ') : '';
+  document.getElementById('photo-caption').textContent = cap;
+  document.querySelectorAll('.p-dot').forEach((d,i) => d.classList.toggle('active', i===currentPhoto));
+}
+
+function goToPhoto(idx) {
+  if (!photos.length) return;
+  document.querySelectorAll('#photo-bg .photo-slide')[currentPhoto]?.classList.remove('active');
+  currentPhoto = ((idx%photos.length)+photos.length)%photos.length;
+  document.querySelectorAll('#photo-bg .photo-slide')[currentPhoto]?.classList.add('active');
+  updatePhotoMeta();
+}
+
+function nextPhoto() { goToPhoto(currentPhoto+1); }
+
+function startSlideshow() {
+  if (slideshowTimer) clearInterval(slideshowTimer);
+  slideshowTimer = setInterval(nextPhoto, CFG.slideshowInterval*1000);
+}
+
+/* ═══════════════════════════════════════════
+   SETTINGS PANEL
+═══════════════════════════════════════════ */
+function toggleSettings() {
+  const p = document.getElementById('settings-panel');
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) {
+    populateSettings();
+    document.getElementById('auth-overlay').style.opacity = '0.25';
+  } else {
+    document.getElementById('auth-overlay').style.opacity = '1';
+  }
+}
+
+/* ═══════════════════════════════════════════
+   KEYBOARD
+═══════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) {
+    if (e.key==='Escape') { closeDashboard(); document.getElementById('settings-panel').classList.remove('open'); }
+    return;
+  }
+  if (e.key==='ArrowRight' && !dashOpen) nextPhoto();
+  if (e.key==='ArrowLeft'  && !dashOpen) goToPhoto(currentPhoto-1);
+  if (e.key==='d' && !dashOpen) openDashboard();
+  if (e.key==='Escape') { closeDashboard(); document.getElementById('settings-panel').classList.remove('open'); }
+});
+
+/* ═══════════════════════════════════════════
+   UTILITY
+═══════════════════════════════════════════ */
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ═══════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════ */
+window.addEventListener('load', () => {
+  updateCustodyBadge();
+  renderTodayChores();
+  renderBirthdays();
+  setInterval(() => { updateCustodyBadge(); renderTodayChores(); }, 60000);
+});
+</script>
+
+
+</body></html>
