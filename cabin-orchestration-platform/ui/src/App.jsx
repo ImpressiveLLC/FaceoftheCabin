@@ -34,12 +34,13 @@ const LOCATIONS = {
   cabin: {
     id: "cabin",
     label: "Cabin",
-    apiBase:    import.meta.env.VITE_CABIN_API_BASE    || "http://cabin-hub:8080",
+    apiBase:    import.meta.env.VITE_CABIN_API_BASE    || "http://cabin-hub:8090",
     wsBase:     import.meta.env.VITE_CABIN_WS_BASE     || "ws://cabin-hub:9001",
-    grafanaUrl: import.meta.env.VITE_CABIN_GRAFANA_URL || "http://cabin-hub:3000",
+    grafanaUrl: import.meta.env.VITE_CABIN_GRAFANA_URL || "http://cabin-hub:3002",
     noderedUrl: import.meta.env.VITE_CABIN_NODERED_URL || "http://cabin-hub:1880",
     haUrl:      import.meta.env.VITE_CABIN_HA_URL      || "http://cabin-hub:8123",
     frigateUrl: import.meta.env.VITE_CABIN_FRIGATE_URL || "http://cabin-hub:5000",
+    z2mUrl:     import.meta.env.VITE_CABIN_Z2M_URL     || "http://cabin-hub:8080",
   },
   home: {
     id: "home",
@@ -280,7 +281,7 @@ function DeviceManagerPanel() {
             </button>
           );
         })}
-        <a href={`${LOCATIONS.cabin.apiBase.replace(":8080","")}`}
+        <a href={LOCATIONS.cabin.z2mUrl}
            className="dm-advanced-link" target="_blank" rel="noreferrer">
           Advanced (Z2M) <ExternalLink size={11}/>
         </a>
