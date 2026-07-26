@@ -49,7 +49,7 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      CLUSTER_ID: "cabin-cluster-01"
+      CLUSTER_ID: "4hZGyhWkQDe8FmA3Rtt_kw"
     ports:
       - "9092:9092"
     volumes:
