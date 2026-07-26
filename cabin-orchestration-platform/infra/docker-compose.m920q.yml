@@ -44,10 +44,31 @@ services:
     environment:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://cabin-kafka:9092
 
-  # ── Grafana: shift to 3002 (3000=homepage, 3001=uptime-kuma) ─────────
+  # ── Grafana: disable base (ports merge, not replace) then redefine ────
+  # Docker Compose merges ports arrays across files so the override port
+  # doesn't replace 3000 — it adds to it, causing a conflict with homepage.
+  # Solution: disable the base service and define cabin-grafana separately.
   grafana:
+    profiles: [disabled]
+
+  cabin-grafana:
+    image: grafana/grafana:latest
+    container_name: cabin-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-cabin_grafana}
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
     ports:
       - "3002:3000"
+    volumes:
+      - cabin_grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - default
+    depends_on:
+      - postgres
 
   # ── FaceoftheCabin Spring Boot backend ───────────────────────────────
   cabin-backend:
