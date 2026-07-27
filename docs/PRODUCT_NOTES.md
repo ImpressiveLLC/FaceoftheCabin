@@ -121,3 +121,69 @@ Sheet loads with cached data instantly, refreshes from API in background. No per
 - A future `docs/DEPLOY.md` already exists covering operational deployment.
 
 Each document has one job and one audience. They do not duplicate each other.
+
+---
+
+## 2026-07-27 — Four-Role Architecture Review
+
+_Multi-role review of the platform architecture brief completed before Claude Code handoff. Full brief in [`ROADMAP.md`](../ROADMAP.md)._
+
+### CIO — Strategic & Operational Review ✓
+
+The platform architecture is appropriately scoped for a family-scale self-hosted deployment. The M920q as a single-node host is a deliberate and reasonable trade-off — operational simplicity over HA. The Cloudflare Tunnel + Tailscale dual-layer network model is sound: public access for family surfaces, private mesh for admin.
+
+**Highest-priority remediation:** `smrekar-platform` is not yet in version control. Push to GitHub from `ilikethelights` before any Claude Code work on that codebase begins.
+
+Actions:
+- Push `smrekar-platform` to GitHub immediately
+- Register `unicornpingpong.com` at Porkbun
+- Document M920q `docker-compose.yml` in CabinAutomations repo (currently local-only)
+- Risk noted: Single point of failure on M920q — acceptable for now, revisit for redundancy
+
+### Product Lead — User Experience & Feature Review ✓
+
+The see/think/act model is the right product framing for the ontology. The Admin tab is a strong product decision — configuration without code is essential for long-term family adoption. The Kidde use case is the canonical demo scenario for the platform's discovery capability.
+
+Key decisions:
+- The `check_for_new` schedule must be user-configurable per entity from Admin UI — not YAML-only
+- Phone PWA for Family Hub should be scoped early — kids checking chores on phone is a key engagement driver
+- Ontology UI must use see/think/act vocabulary consistently — never expose `check_for_new` to family users; translate to "Discovery: Checking monthly"
+- RulesEnginePanel reductive UI (Active→Reset, Recent→Undo, filterable by time) is the right pattern for non-technical users
+
+### Data Architect — Schema, Lineage & FAIR Review ✓
+
+The canonical entity schema is well-formed and extensible. Three required additions before implementation:
+
+1. `ontology_version: "1.0"` at the ontology root level — migration tooling needs a version anchor
+2. `reuse_count` must be a **computed** field, not manually maintained — derived from querying the automation graph at read time
+3. `derived_from` must be a **DAG reference structure** — `{ entity_id, relationship_type, transformation }` — not a flat list. This enables horizontal trace across services.
+4. Add `data_class` field per entity: `raw | derived | conceptual | composite`
+5. Populate `search_aliases` generously including common misspellings — essential for LLM retrieval
+6. Every automation producing a state change must write a lineage record: `{ from_event, via_automation, to_state, timestamp }`
+
+### Ontology Lead — Knowledge Graph & Discovery Review ⭐
+
+**What is right:**
+- `check_for_new` as a first-class boolean on every entity is the right primitive — opt-in with clear default
+- The Tech ID Service as a named platform service (not a cron job) elevates discovery to product-level concern
+- Events as first-class ontology entities (not just schemas) means event schemas are versioned, discoverable, and traceable
+- The Kidde use case perfectly illustrates the ontology's job: bridge "I'm interested in this" to "here is what you can actually do with your specific ecosystem"
+
+**What needs strengthening:**
+- The ontology needs a **relationship vocabulary**: `replaces`, `extends`, `complements`, `monitors`, `controls`, `notifies`, `derives_from`, `triggers`, `depends_on` — these enable horizontal trace
+- Add **candidate entity type**: a device/service identified but not yet integrated. Prevents discovery findings from being lost
+- Entities must version themselves — each entity needs `version + changelog` so the audit trail can answer "when did `camera.driveway` gain `new_api_available: true` and why?"
+- **AI/RAG retrieval strategy decision pending:** start with YAML + embedding; migrate to graph DB when horizontal trace queries become complex
+
+**Discovery check schedule by entity type:**
+- Active devices → monthly
+- Candidate entities → weekly (actively being evaluated)
+- Services → quarterly
+- Deprecated entities → never
+
+**Ontology growth model:**
+- Grows three ways: (1) manual addition by admin, (2) automated discovery by Tech ID Service, (3) implicit inference by AI layer from usage patterns
+- Every growth event is itself an ontology event: `ontology.entity.created`, `ontology.entity.updated`, `ontology.entity.deprecated`
+- **Append-only for history** — deprecated entities flagged, never deleted
+
+**The ultimate vision (Ontology Lead final note):** The platform's long-term value is not its automations or its cameras or its family calendar. It is the accumulated knowledge graph of how this specific family's physical and digital environment works, what they've tried, what connects to what, and what they don't know yet. That knowledge graph — versioned, FAIR, AI-queryable, and actively maintained by the Tech ID Service — is what makes this platform irreplaceable. No commercial product can replicate it because it is built from their specific ecosystem, their specific devices, their specific history. That is the Northstar.
