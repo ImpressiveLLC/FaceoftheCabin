@@ -170,7 +170,6 @@
        LEFT: CALENDAR
     ═══════════════════════════════════════════ */
     #cal-card {
-      grid-column:1; grid-row:2;
       animation: slideLeft .8s .3s ease both;
     }
     @keyframes slideLeft {
@@ -237,10 +236,6 @@
       color:rgba(245,237,216,.78);
       text-shadow:0 2px 28px rgba(0,0,0,.85);
       text-align:center;
-    }
-    #today-custody-text {
-      font-size:11px; letter-spacing:1px; text-transform:uppercase;
-      color:var(--cream-ghost); text-align:center;
     }
 
     /* ═══════════════════════════════════════════
@@ -729,15 +724,25 @@
     }
 
     #settings-btn {
-      position:fixed; top:20px; left:20px; z-index:10000;
-      width:38px; height:38px; border-radius:50%;
+      position:fixed; bottom:86px; right:24px; z-index:10000;
+      display:flex; align-items:center; gap:10px;
       background:var(--glass); border:1px solid var(--glass-border);
-      color:var(--gold);
-      display:flex; align-items:center; justify-content:center;
-      cursor:pointer; backdrop-filter:blur(14px);
-      opacity:.75; transition:opacity .2s, transform .25s; font-size:16px;
+      border-radius:14px; padding:10px 16px;
+      color:var(--cream-dim); font-family:var(--font-ui);
+      font-size:12px; font-weight:500;
+      cursor:pointer; backdrop-filter:blur(16px);
+      transition:background .2s, color .2s, transform .15s;
     }
-    #settings-btn:hover { opacity:1; transform:rotate(25deg); }
+    #settings-btn:hover { background:rgba(255,255,255,.08); color:var(--cream); transform:translateY(-2px); }
+    #settings-btn .sfab-icon { font-size:15px; }
+
+    /* ── Left column: cal + custody stacked ── */
+    #left-col { grid-column:1; grid-row:2; display:flex; flex-direction:column; gap:12px; align-items:stretch; }
+    #custody-card.home .custody-status-label { color:var(--teal); }
+    #custody-card.away .custody-status-label { color:var(--cream-dim); }
+    #custody-card .card-label-icon.home-icon { background:rgba(75,200,200,.12); }
+    #custody-card .card-label-icon.away-icon { background:rgba(255,255,255,.06); }
+    #custody-next { font-size:11px; color:var(--cream-dim); margin-top:2px; }
 
     /* ═══════════════════════════════════════════
        UTILITY
@@ -851,7 +856,8 @@
     </div>
   </div>
 
-  <!-- LEFT: Calendar + Birthdays -->
+  <!-- LEFT: Calendar + Custody stacked -->
+  <div id="left-col">
   <div class="glass-card" id="cal-card">
     <div class="card-label cal-color">
       <div class="card-label-icon cal-color">📅</div>
@@ -888,10 +894,19 @@
     </div></div>
   </div>
 
+  <!-- Custody status card -->
+  <div class="glass-card" id="custody-card">
+    <div class="card-label">
+      <div class="card-label-icon" id="custody-icon-el">🏠</div>
+      <span class="custody-status-label" id="custody-card-status">Kids at Mom's today</span>
+    </div>
+    <div id="custody-next"></div>
+  </div>
+  </div><!-- /#left-col -->
+
   <!-- CENTER: Greeting -->
   <div id="center-area">
     <div id="greeting">Good afternoon, Smrekar family</div>
-    <div id="today-custody-text">The kids are at Mom's today</div>
   </div>
 
   <!-- RIGHT: Today's Chores -->
@@ -908,9 +923,9 @@
   <div id="bottom-bar">
     <div id="photo-counter">–</div>
     <div id="photo-dots"></div>
-    <div style="display:flex;align-items:center;gap:10px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button id="next-photo-btn" onclick="nextPhoto()">▶ Next Photo</button>
       <div id="photo-caption"></div>
-      <button id="next-photo-btn" onclick="nextPhoto()">▶ Next</button>
     </div>
   </div>
 
@@ -1531,13 +1546,35 @@ function renderBirthdays() {
    CUSTODY BADGE
 ═══════════════════════════════════════════ */
 function updateCustodyBadge() {
-  const home = isKidsHome(new Date());
+  const today = new Date();
+  const home = isKidsHome(today);
   const badge = document.getElementById('custody-badge');
   badge.className = 'custody-badge ' + (home ? 'home' : 'away');
   const dadName = getParents()[0]?.name || 'Dad';
   document.getElementById('custody-text').textContent = home ? `Kids at ${dadName}'s` : "Kids at Mom's";
-  document.getElementById('today-custody-text').textContent = home
-    ? `The kids are at ${dadName}'s tonight` : "The kids are at Mom's today";
+
+  // Left-column custody card
+  const card = document.getElementById('custody-card');
+  const statusEl = document.getElementById('custody-card-status');
+  const iconEl = document.getElementById('custody-icon-el');
+  const nextEl = document.getElementById('custody-next');
+  if (card) {
+    card.className = 'glass-card ' + (home ? 'home' : 'away');
+    iconEl.className = 'card-label-icon ' + (home ? 'home-icon' : 'away-icon');
+    iconEl.textContent = home ? '🏠' : '👋';
+    statusEl.textContent = home ? `Kids at ${dadName}'s tonight` : "Kids at Mom's today";
+    // Show next transition
+    let nextMsg = '';
+    for (let i = 1; i <= 14; i++) {
+      const d = addDays(today, i);
+      if (isKidsHome(d) !== home) {
+        const label = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+        nextMsg = home ? `Back to Mom's ${label}` : `Back to ${dadName}'s ${label}`;
+        break;
+      }
+    }
+    nextEl.textContent = nextMsg;
+  }
 }
 
 /* ═══════════════════════════════════════════
@@ -2300,7 +2337,10 @@ window.addEventListener('load', () => {
 </script>
 
 <!-- ── SETTINGS BTN (must be last in body — backdrop-filter on dashboard breaks z-index otherwise) ── -->
-<button id="settings-btn" onclick="toggleSettings()" title="Settings">⚙</button>
+<button id="settings-btn" onclick="toggleSettings()">
+  <span class="sfab-icon">⚙</span>
+  Settings
+</button>
 
 <!-- ── SETTINGS PANEL ── -->
 <div id="settings-panel" class="">
