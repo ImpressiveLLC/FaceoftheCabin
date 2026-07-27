@@ -935,6 +935,23 @@ body {
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
+.fh-launch-btn {
+  display: block;
+  text-align: center;
+  padding: 7px 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+.fh-launch-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
 .fh-quick-link {
   display: flex;
   align-items: center;

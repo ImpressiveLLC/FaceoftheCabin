@@ -46,23 +46,25 @@ const LOCATIONS = {
   cabin: {
     id: "cabin",
     label: "Cabin",
-    apiBase:    import.meta.env.VITE_CABIN_API_BASE    || "http://cabin-hub:8090",
-    wsBase:     import.meta.env.VITE_CABIN_WS_BASE     || "ws://cabin-hub:9001",
-    grafanaUrl: import.meta.env.VITE_CABIN_GRAFANA_URL || "http://cabin-hub:3002",
-    noderedUrl: import.meta.env.VITE_CABIN_NODERED_URL || "http://cabin-hub:1880",
-    haUrl:      import.meta.env.VITE_CABIN_HA_URL      || "http://cabin-hub:8123",
-    frigateUrl: import.meta.env.VITE_CABIN_FRIGATE_URL || "http://cabin-hub:5000",
-    z2mUrl:     import.meta.env.VITE_CABIN_Z2M_URL     || "http://cabin-hub:8080",
+    apiBase:       import.meta.env.VITE_CABIN_API_BASE       || "http://cabin-hub:8090",
+    wsBase:        import.meta.env.VITE_CABIN_WS_BASE        || "ws://cabin-hub:9001",
+    grafanaUrl:    import.meta.env.VITE_CABIN_GRAFANA_URL    || "http://cabin-hub:3002",
+    noderedUrl:    import.meta.env.VITE_CABIN_NODERED_URL    || "http://cabin-hub:1880",
+    haUrl:         import.meta.env.VITE_CABIN_HA_URL         || "http://cabin-hub:8123",
+    frigateUrl:    import.meta.env.VITE_CABIN_FRIGATE_URL    || "http://cabin-hub:5000",
+    z2mUrl:        import.meta.env.VITE_CABIN_Z2M_URL        || "http://cabin-hub:8080",
+    familyHubUrl:  import.meta.env.VITE_CABIN_FAMILY_HUB_URL || null,
   },
   home: {
     id: "home",
     label: "Home",
-    apiBase:    import.meta.env.VITE_HOME_API_BASE    || "http://home-hub:8080",
-    wsBase:     import.meta.env.VITE_HOME_WS_BASE     || "ws://home-hub:9001",
-    grafanaUrl: import.meta.env.VITE_HOME_GRAFANA_URL || "http://home-hub:3000",
-    noderedUrl: import.meta.env.VITE_HOME_NODERED_URL || "http://home-hub:1880",
-    haUrl:      import.meta.env.VITE_HOME_HA_URL      || "http://home-hub:8123",
-    frigateUrl: import.meta.env.VITE_HOME_FRIGATE_URL || "http://home-hub:5000",
+    apiBase:       import.meta.env.VITE_HOME_API_BASE       || "http://home-hub:8080",
+    wsBase:        import.meta.env.VITE_HOME_WS_BASE        || "ws://home-hub:9001",
+    grafanaUrl:    import.meta.env.VITE_HOME_GRAFANA_URL    || "http://home-hub:3000",
+    noderedUrl:    import.meta.env.VITE_HOME_NODERED_URL    || "http://home-hub:1880",
+    haUrl:         import.meta.env.VITE_HOME_HA_URL         || "http://home-hub:8123",
+    frigateUrl:    import.meta.env.VITE_HOME_FRIGATE_URL    || "http://home-hub:5000",
+    familyHubUrl:  import.meta.env.VITE_HOME_FAMILY_HUB_URL || null,
   },
 };
 
@@ -157,11 +159,12 @@ function FamilyHubLocationCard({ locId, locCfg, devices }) {
   const stateColor = alarm > 0 ? "var(--state-alarm)" : online === total && total > 0 ? "var(--state-online)" : "var(--state-warning)";
 
   const quickLinks = [
-    { label: "Home Assistant", url: locCfg.haUrl, icon: Home },
-    { label: "Zigbee2MQTT",   url: locCfg.z2mUrl, icon: Radio },
-    { label: "Grafana",       url: locCfg.grafanaUrl, icon: BarChart2 },
-    { label: "Node-RED",      url: locCfg.noderedUrl, icon: Cpu },
+    { label: "Home Assistant", url: locCfg.haUrl,      icon: Home },
+    { label: "Zigbee2MQTT",   url: locCfg.z2mUrl,     icon: Radio },
+    { label: "Grafana",       url: locCfg.grafanaUrl,  icon: BarChart2 },
+    { label: "Node-RED",      url: locCfg.noderedUrl,  icon: Cpu },
   ];
+  const familyHubUrl = locCfg.familyHubUrl;
 
   return (
     <div className="family-hub-card">
@@ -200,6 +203,12 @@ function FamilyHubLocationCard({ locId, locCfg, devices }) {
               ))}
               <button className="btn-ghost btn-ghost-xs" onClick={toggleTempUnit}>°{tempUnit}</button>
             </div>
+          )}
+
+          {familyHubUrl && (
+            <a href={familyHubUrl} target="_blank" rel="noreferrer" className="fh-launch-btn">
+              Open Family Hub ↗
+            </a>
           )}
 
           <div className="family-hub-links">

@@ -110,6 +110,7 @@ services:
         VITE_CABIN_FRIGATE_URL: http://100.77.44.113:5000
         VITE_CABIN_HA_URL: http://100.77.44.113:8123
         VITE_CABIN_Z2M_URL: http://100.77.44.113:8080
+        VITE_CABIN_FAMILY_HUB_URL: http://100.77.44.113:4081
     container_name: cabin-ui
     restart: unless-stopped
     ports:
