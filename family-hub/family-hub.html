@@ -122,20 +122,11 @@
       font-weight:400; letter-spacing:3.5px; text-transform:uppercase;
       color: var(--cream-dim);
     }
-    #custody-badge {
-      position:absolute; top:8px; right:0;
-      display:flex; align-items:center; gap:8px;
-      padding:8px 16px;
-      background: var(--glass);
-      border:1px solid var(--glass-border);
-      border-radius:40px;
-      backdrop-filter:blur(20px);
-      font-size:12px; font-weight:500; letter-spacing:.5px;
-      transition: all .4s;
+    /* custody-card repositioned to top-right of top-bar */
+    #custody-card {
+      position:absolute; top:0; right:0;
+      min-width:170px; max-width:210px;
     }
-    #custody-badge.home  { border-color:rgba(75,200,200,.35); color:var(--teal); }
-    #custody-badge.away  { border-color:rgba(255,255,255,.12); color:var(--cream-dim); }
-    #custody-badge .dot  { width:7px; height:7px; border-radius:50%; background:currentColor; }
 
     /* ═══════════════════════════════════════════
        GLASS CARD BASE
@@ -707,12 +698,13 @@
       background:var(--glass); border:1px solid var(--glass-border);
       border-radius:14px; padding:10px 18px;
       color:var(--cream-dim); font-family:var(--font-ui);
-      cursor:pointer; backdrop-filter:blur(16px);
+      cursor:pointer; backdrop-filter:blur(30px) saturate(1.5);
+      box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
       transition:background .15s, color .15s, transform .15s;
     }
     .br-fab:hover { background:rgba(255,255,255,.09); color:var(--cream); transform:translateY(-2px); }
-    #dashboard-fab { bottom:24px; }
-    #settings-btn  { bottom:78px; }
+    #dashboard-fab { bottom:72px; }
+    #settings-btn  { bottom:24px; }
     .br-fab .fab-label { font-size:13px; font-weight:600; color:var(--cream); line-height:1.2; }
     .br-fab .fab-sub   { font-size:10px; color:var(--cream-dim); margin-top:2px; }
     .br-fab .fab-icon  { font-size:14px; }
@@ -846,9 +838,12 @@
       <div id="clock"><span id="clock-time">2:31</span><span class="ampm" id="clock-ampm">PM</span></div>
       <div id="date-line">Sunday  ·  March 15, 2026</div>
     </div>
-    <div id="custody-badge" class="custody-badge away">
-      <div class="dot"></div>
-      <span id="custody-text">Kids at Mom's</span>
+    <div class="glass-card" id="custody-card">
+      <div class="card-label">
+        <div class="card-label-icon" id="custody-icon-el">🏠</div>
+        <span class="custody-status-label" id="custody-card-status">Kids at Mom's today</span>
+      </div>
+      <div id="custody-next"></div>
     </div>
   </div>
 
@@ -890,14 +885,6 @@
     </div></div>
   </div>
 
-  <!-- Custody status card -->
-  <div class="glass-card" id="custody-card">
-    <div class="card-label">
-      <div class="card-label-icon" id="custody-icon-el">🏠</div>
-      <span class="custody-status-label" id="custody-card-status">Kids at Mom's today</span>
-    </div>
-    <div id="custody-next"></div>
-  </div>
   </div><!-- /#left-col -->
 
   <!-- CENTER: Greeting -->
@@ -1549,12 +1536,8 @@ function renderBirthdays() {
 function updateCustodyBadge() {
   const today = new Date();
   const home = isKidsHome(today);
-  const badge = document.getElementById('custody-badge');
-  badge.className = 'custody-badge ' + (home ? 'home' : 'away');
   const dadName = getParents()[0]?.name || 'Dad';
-  document.getElementById('custody-text').textContent = home ? `Kids at ${dadName}'s` : "Kids at Mom's";
 
-  // Left-column custody card
   const card = document.getElementById('custody-card');
   const statusEl = document.getElementById('custody-card-status');
   const iconEl = document.getElementById('custody-icon-el');
