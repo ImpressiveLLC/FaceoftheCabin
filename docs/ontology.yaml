@@ -35,19 +35,16 @@
 #   entity_type:      owl:Class | owl:DatatypeProperty | owl:ObjectProperty
 #   layer:            layer taxonomy value (see above)
 #   primitive:        true = source value; false = derived or composite
-#   schema_version:   "0.1.0" | "0.3.0" — which schema this entry conforms to
-#   migration_status: complete | pending
-#   migration_priority: integer 1=highest (pending entries only; ranked by
-#                     active use then incidence count across platform)
+#   schema_version:   "0.3.0" — all entries now at current schema
+#   migration_status: complete
 #   data_class:       raw | derived | conceptual | composite
 #   data_type:        XSD primitive (xsd:string, xsd:boolean, xsd:integer,
 #                     xsd:decimal, xsd:date, xsd:anyURI, xsd:hexBinary)
 #                     or owl:Class for structured/composite entries
 #   constraint:       optional restrictions: {maxLength, pattern, enum,
-#                     format, locale, range}
+#                     format, locale, range, description}
 #   primitive_type_group: groups all representations of the same semantic concept
-#                     across different data types or encodings (e.g. date_of_birth
-#                     → date_of_birth_binary, date_of_birth_text_en)
+#                     across different data types or encodings
 #   ui_display_name:  literal string shown in the UI — authoritative display
 #                     anchor; may repeat across entries (uniqueness =
 #                     ui_display_name + data_type + id)
@@ -68,16 +65,12 @@
 #   transformation:   source→middle→target pipeline description
 #   relates_to:       supplemental groupings (ui_components, elements)
 #   notes:            implementation notes, constraints, known issues
-#
-# Entries with migration_status:pending retain v0.1.0 structure
-# (label, derives_from, used_by) until migrated. Migration order follows
-# migration_priority. Review monthly — see ROADMAP.md for checkpoints.
 # ─────────────────────────────────────────────────────────────────────────────
 
 version: "0.3.0"
 status: draft
 maintainer: FaceoftheCabin platform team
-last_updated: "2026-07-27"
+last_updated: "2026-07-28"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # HARDWARE ELEMENTS
@@ -87,12 +80,18 @@ last_updated: "2026-07-27"
 elements:
 
   - id: zigbee_ieee_address
+    entity_type: owl:DatatypeProperty
     layer: hardware
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 10
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:hexBinary
+    constraint:
+      description: 64-bit hardware address burned at manufacture; immutable
+      format: "0x{16 hex chars} (e.g. 0x00124b0014d8a1c3)"
+    ui_display_name: "(not shown)"
+    rendering:
       semantic: (not shown)
       systems: IEEE Address
       technical: ieee_address (e.g. 0x00124b0014d8a1c3)
@@ -101,20 +100,48 @@ elements:
       The globally unique 64-bit hardware address burned into every Zigbee
       chip at manufacture. Immutable. The lowest-level identity of a physical
       device, independent of any pairing, naming, or software state.
-    derives_from: []
-    used_by: [zigbee2mqtt, z2m_friendly_name, z2m_device_record]
+    relationships:
+      - target: z2m_friendly_name
+        type: consumed_by
+        cardinality: "1:N"
+      - target: zigbee_model
+        type: consumed_by
+        cardinality: "1:1"
+      - target: zigbee_vendor
+        type: consumed_by
+        cardinality: "1:1"
+      - target: linkquality
+        type: consumed_by
+        cardinality: "1:N"
+      - target: battery_percent
+        type: consumed_by
+        cardinality: "1:N"
+      - target: temperature_celsius
+        type: consumed_by
+        cardinality: "1:N"
+      - target: humidity_percent
+        type: consumed_by
+        cardinality: "1:N"
+      - target: contact_state
+        type: consumed_by
+        cardinality: "1:N"
     notes: >
       Never changes even if device is reset, re-paired, or renamed.
       Use as the stable foreign key when correlating across Z2M, HA, and
       FaceoftheCabin records. Not surfaced in UI except in technical view.
 
   - id: zigbee_model
+    entity_type: owl:DatatypeProperty
     layer: hardware
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 15
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      description: manufacturer model string as reported by device firmware
+    ui_display_name: "(not shown)"
+    rendering:
       semantic: (not shown)
       systems: Device Model
       technical: model (e.g. SNZB-02, SNZB-04)
@@ -122,8 +149,13 @@ elements:
     definition: >
       Manufacturer model string identifying the hardware capabilities and
       firmware baseline of a Zigbee device.
-    derives_from: [zigbee_ieee_address]
-    used_by: [z2m_device_type_inference, device_display_photo, data_dictionary]
+    relationships:
+      - target: zigbee_ieee_address
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_install_photo
+        type: consumed_by
+        cardinality: "1:1"
     notes: >
       Used to infer device type in Zigbee2MqttAdapter.inferType().
       Also used to look up spec sheet photos from Z2M device database
@@ -131,19 +163,29 @@ elements:
       as install-time thumbnail fallback when user has not taken a photo.
 
   - id: zigbee_vendor
+    entity_type: owl:DatatypeProperty
     layer: hardware
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 17
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      description: manufacturer name string as reported by device firmware
+    ui_display_name: "(not shown)"
+    rendering:
       semantic: (not shown)
       systems: Manufacturer
       technical: vendor (e.g. SONOFF, Aqara)
       compliance: Manufacturer
     definition: Manufacturer name string as reported by the Zigbee device.
-    derives_from: [zigbee_ieee_address]
-    used_by: [device_display_photo, data_dictionary]
+    relationships:
+      - target: zigbee_ieee_address
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_install_photo
+        type: consumed_by
+        cardinality: "1:1"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PROTOCOL ELEMENTS
@@ -151,12 +193,18 @@ elements:
 # ═══════════════════════════════════════════════════════════════════════════
 
   - id: z2m_friendly_name
+    entity_type: owl:DatatypeProperty
     layer: protocol
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 9
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      pattern: "^[a-z0-9_]+$"
+      description: snake_case only; no spaces; protocol-enforced by MQTT topic parsing
+    ui_display_name: "(not shown — use display_name instead)"
+    rendering:
       semantic: (not shown — use display_name instead)
       systems: Z2M Friendly Name
       technical: friendly_name (e.g. door_second_contact)
@@ -166,22 +214,41 @@ elements:
       in Zigbee2MQTT. Forms the MQTT topic path and is the stable internal
       key for all Z2M operations. Must use snake_case — spaces break MQTT
       topic parsing.
-    derives_from: [zigbee_ieee_address]
-    used_by: [mqtt_topic, fotc_device_id, z2m_device_record]
+    relationships:
+      - target: zigbee_ieee_address
+        type: derives_from
+        cardinality: "N:1"
+      - target: mqtt_topic
+        type: consumed_by
+        cardinality: "1:1"
+      - target: mqtt_availability_topic
+        type: consumed_by
+        cardinality: "1:1"
+      - target: fotc_device_id
+        type: consumed_by
+        cardinality: "1:1"
+      - target: display_name
+        type: consumed_by
+        cardinality: "1:1"
     notes: >
       This is a primitive that is intentionally NOT surfaced in any UI
       audience except technical. It is the seed from which display_name
       is derived. Changing this in Z2M renames the MQTT topic and requires
       re-mapping in FaceoftheCabin device metadata.
-      Constraint: snake_case only. No spaces. Protocol-enforced.
 
   - id: mqtt_topic
+    entity_type: owl:DatatypeProperty
     layer: protocol
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 12
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      pattern: "^zigbee2mqtt/[a-z0-9_]+$"
+      description: constructed from Z2M topic prefix + friendly_name
+    ui_display_name: "(not shown)"
+    rendering:
       semantic: (not shown)
       systems: MQTT Topic
       technical: zigbee2mqtt/{friendly_name}
@@ -189,16 +256,27 @@ elements:
     definition: >
       The MQTT publish/subscribe path for a device's state messages.
       Constructed from the Z2M topic prefix and the device friendly_name.
-    derives_from: [z2m_friendly_name]
-    used_by: [mqtt_bridge_service, z2m_adapter, fotc_backend]
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: consumed_by
+        cardinality: "1:N"
 
   - id: mqtt_availability_topic
+    entity_type: owl:DatatypeProperty
     layer: protocol
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 16
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      pattern: "^zigbee2mqtt/[a-z0-9_]+/availability$"
+      description: payload is JSON {state:\"online\"} or {state:\"offline\"}
+    ui_display_name: "Connection status"
+    rendering:
       semantic: Connection status
       systems: Availability
       technical: zigbee2mqtt/{friendly_name}/availability
@@ -207,8 +285,13 @@ elements:
       Z2M publishes {"state":"online"} or {"state":"offline"} to this topic
       when a device joins or leaves the Zigbee mesh. This is the authoritative
       online/offline signal — more reliable than inferring from data messages.
-    derives_from: [z2m_friendly_name]
-    used_by: [z2m_adapter_handle_availability, device_state]
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: consumed_by
+        cardinality: "1:1"
     notes: >
       FaceoftheCabin uses this as the primary state signal. Data message
       arrival (linkquality present) is a secondary signal. See
@@ -220,12 +303,18 @@ elements:
 # ═══════════════════════════════════════════════════════════════════════════
 
   - id: fotc_device_id
+    entity_type: owl:DatatypeProperty
     layer: integration
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 7
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      pattern: "^z2m-[a-z0-9_]+$"
+      description: integration-source prefix namespaces across multiple adapters
+    ui_display_name: "(not shown)"
+    rendering:
       semantic: (not shown)
       systems: Device ID
       technical: z2m-{friendly_name} (e.g. z2m-door_second_contact)
@@ -234,19 +323,36 @@ elements:
       FaceoftheCabin's internal stable identifier for a device. Prefixed
       with the integration source (z2m-, home-, etc.) to namespace across
       multiple integration adapters.
-    derives_from: [z2m_friendly_name]
-    used_by: [device_registry, device_status, api_devices_endpoint, ui_tile]
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: consumed_by
+        cardinality: "1:N"
+      - target: device_command
+        type: consumed_by
+        cardinality: "1:N"
+      - target: display_name
+        type: consumed_by
+        cardinality: "1:1"
     notes: >
       Never shown in semantic or systems UI. Technical and compliance views
       show it alongside display_name for cross-reference.
 
   - id: display_name
+    entity_type: owl:DatatypeProperty
     layer: integration
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 1
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      maxLength: 100
+      description: user-defined; UI falls back to cleaned z2m_friendly_name if absent
+    ui_display_name: "Back Door Sensor"
+    rendering:
       semantic: Device name (e.g. "Back Door Sensor")
       systems: Display Name
       technical: displayName (device metadata table)
@@ -255,8 +361,16 @@ elements:
       The human-readable name for a device as set by the user at install
       time or via the settings panel. Completely independent of z2m_friendly_name.
       This is what every non-technical audience sees everywhere in the platform.
-    derives_from: [z2m_friendly_name, user_input]
-    used_by: [ui_tile, ui_detail_sheet, notification_copy, audit_log]
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: fotc_device_id
+        type: depends_on
+        cardinality: "N:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
     notes: >
       Stored in device metadata table in Postgres. Seeded at first discovery
       with a cleaned version of friendly_name (underscores to spaces, title
@@ -264,12 +378,18 @@ elements:
       If not set, UI falls back to cleaned friendly_name — never raw snake_case.
 
   - id: device_room
+    entity_type: owl:DatatypeProperty
     layer: integration
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 18
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      maxLength: 80
+      description: user-defined free text; no controlled vocabulary enforced
+    ui_display_name: "Kitchen"
+    rendering:
       semantic: Room (e.g. "Kitchen", "Back Porch")
       systems: Zone / Room
       technical: room (device metadata table)
@@ -277,16 +397,26 @@ elements:
     definition: >
       User-defined spatial grouping for a device. Used to group tiles on the
       dashboard and provide location context in notifications.
-    derives_from: [user_input]
-    used_by: [ui_tile, notification_copy, audit_log, dashboard_grouping]
+    relationships:
+      - target: display_name
+        type: depends_on
+        cardinality: "N:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
 
   - id: device_install_photo
+    entity_type: owl:DatatypeProperty
     layer: integration
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 19
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:anyURI
+    constraint:
+      description: URL to user photo, Z2M spec image, or generic icon; fallback hierarchy applied
+    ui_display_name: "Photo"
+    rendering:
       semantic: Photo
       systems: Install Photo
       technical: photoUrl (device metadata table)
@@ -295,8 +425,13 @@ elements:
       Photo taken at device install time showing the physical device and its
       location. Used as tile background or thumbnail. Serves as visual memory
       aid for all audiences and installation evidence for compliance.
-    derives_from: [user_input, zigbee_model, zigbee_vendor]
-    used_by: [ui_tile, ui_detail_sheet, compliance_report]
+    relationships:
+      - target: zigbee_model
+        type: derives_from
+        cardinality: "N:1"
+      - target: zigbee_vendor
+        type: derives_from
+        cardinality: "N:1"
     notes: >
       Fallback hierarchy: user photo → Z2M device database spec image
       (keyed by zigbee_model) → generic device type icon.
@@ -308,12 +443,18 @@ elements:
 # ═══════════════════════════════════════════════════════════════════════════
 
   - id: device_state
+    entity_type: owl:DatatypeProperty
     layer: backend
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 2
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: [ONLINE, OFFLINE, UNKNOWN, ALARM]
+      description: UNKNOWN is transient — resolves within 5 min of backend start
+    ui_display_name: "Online"
+    rendering:
       semantic: Status (Online / Offline / Alert)
       systems: Device State (ONLINE / OFFLINE / UNKNOWN / ALARM)
       technical: state field on DeviceStatus
@@ -322,20 +463,36 @@ elements:
       The current operational state of a device. Derived from Z2M availability
       topic (primary) and data message presence (secondary). UNKNOWN means
       the platform has not yet received a state signal since last restart.
-    derives_from: [mqtt_availability_topic, linkquality]
-    used_by: [ui_tile_state, system_health_endpoint, notification_trigger, audit_log]
+    relationships:
+      - target: mqtt_availability_topic
+        type: derives_from
+        cardinality: "N:1"
+      - target: linkquality
+        type: derives_from
+        cardinality: "N:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
     notes: >
       UNKNOWN is a transient state, not a stable one. If a device stays
       UNKNOWN for >5 minutes after backend start, treat as a connectivity
       issue. See QA check: devices-z2m.
 
   - id: linkquality
+    entity_type: owl:DatatypeProperty
     layer: protocol
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 11
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:integer
+    constraint:
+      range:
+        min: 0
+        max: 255
+      description: Zigbee LQI — higher is better; >= 150 is good
+    ui_display_name: "Signal"
+    rendering:
       semantic: Signal (● ● ● / ● ● ○ / ● ○ ○)
       systems: Link Quality (0–255 LQI)
       technical: linkquality attribute (Zigbee LQI)
@@ -344,8 +501,13 @@ elements:
       Zigbee Link Quality Indicator. A 0–255 integer representing the RF
       signal quality between a device and its nearest mesh router or
       coordinator. Higher is better.
-    derives_from: [zigbee_ieee_address]
-    used_by: [device_state, ui_detail_sheet, data_dictionary]
+    relationships:
+      - target: zigbee_ieee_address
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: consumed_by
+        cardinality: "1:N"
     normal_range:
       good: ">= 150"
       fair: "100–149"
@@ -356,12 +518,20 @@ elements:
       in a data message confirms device is transmitting.
 
   - id: battery_percent
+    entity_type: owl:DatatypeProperty
     layer: protocol
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 5
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:integer
+    constraint:
+      range:
+        min: 0
+        max: 100
+      description: absent attribute must not be treated as 0% — device may not report battery
+    ui_display_name: "Battery"
+    rendering:
       semantic: Battery (e.g. "Battery low — replace soon")
       systems: Battery (%)
       technical: battery attribute (0–100)
@@ -369,8 +539,13 @@ elements:
     definition: >
       Remaining battery level as reported by the device, expressed as a
       percentage of full charge.
-    derives_from: [zigbee_ieee_address]
-    used_by: [ui_tile_badge, ui_detail_sheet, battery_alert, audit_log]
+    relationships:
+      - target: zigbee_ieee_address
+        type: derives_from
+        cardinality: "N:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
     normal_range:
       ok: ">= 20"
       warn: "10–19"
@@ -382,12 +557,20 @@ elements:
       not be treated as 0%.
 
   - id: temperature_celsius
+    entity_type: owl:DatatypeProperty
     layer: protocol
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 3
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:decimal
+    constraint:
+      range:
+        min: -40
+        max: 85
+      description: reported in Celsius by Z2M; UI renders °F by default for US users
+    ui_display_name: "Temperature"
+    rendering:
       semantic: Temperature (e.g. "Comfortable — 72°F")
       systems: Temperature (°C / °F)
       technical: temperature attribute (float, Celsius)
@@ -395,8 +578,10 @@ elements:
     definition: >
       Ambient temperature reading from a Zigbee temperature sensor,
       reported in degrees Celsius by Z2M.
-    derives_from: [zigbee_ieee_address]
-    used_by: [ui_tile_value, ui_detail_sheet, freeze_alert, data_dictionary]
+    relationships:
+      - target: zigbee_ieee_address
+        type: derives_from
+        cardinality: "N:1"
     normal_range:
       freeze_risk: "< 3.3"    # 38°F
       cold: "3.3–15.5"
@@ -410,12 +595,20 @@ elements:
       user role — safety-class reading.
 
   - id: humidity_percent
+    entity_type: owl:DatatypeProperty
     layer: protocol
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 4
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:decimal
+    constraint:
+      range:
+        min: 0
+        max: 100
+      description: percent relative humidity (%RH); >75% sustained is mold risk
+    ui_display_name: "Humidity"
+    rendering:
       semantic: Humidity (e.g. "Comfortable — 45%")
       systems: Relative Humidity (%)
       technical: humidity attribute (float, %RH)
@@ -423,8 +616,10 @@ elements:
     definition: >
       Relative humidity reading from a Zigbee humidity sensor, expressed
       as a percentage of saturation.
-    derives_from: [zigbee_ieee_address]
-    used_by: [ui_tile_value, ui_detail_sheet, mold_risk_alert, data_dictionary]
+    relationships:
+      - target: zigbee_ieee_address
+        type: derives_from
+        cardinality: "N:1"
     normal_range:
       dry: "< 30"
       comfortable: "30–60"
@@ -436,12 +631,17 @@ elements:
       trigger a water event alert regardless of contact sensor state.
 
   - id: contact_state
+    entity_type: owl:DatatypeProperty
     layer: protocol
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 6
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:boolean
+    constraint:
+      description: true = closed (safe); false = open (notable); polarity is not inverted
+    ui_display_name: "Open / Closed"
+    rendering:
       semantic: Open / Closed
       systems: Contact (true=closed, false=open)
       technical: contact attribute (boolean)
@@ -449,8 +649,13 @@ elements:
     definition: >
       Boolean state of a contact sensor — true when the magnetic contact
       is closed (door/window shut), false when open.
-    derives_from: [zigbee_ieee_address]
-    used_by: [ui_tile_value, ui_detail_sheet, entry_alert, audit_log]
+    relationships:
+      - target: zigbee_ieee_address
+        type: derives_from
+        cardinality: "N:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
     notes: >
       Polarity is: true=closed=safe, false=open=notable.
       Semantic rendering: true → "Closed ✓", false → "Open".
@@ -462,12 +667,18 @@ elements:
 # ═══════════════════════════════════════════════════════════════════════════
 
   - id: tailscale_ip
+    entity_type: owl:DatatypeProperty
     layer: network
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 8
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      pattern: "^100\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"
+      description: stable per-machine but not globally fixed; store in env vars, not committed files
+    ui_display_name: "(not shown)"
+    rendering:
       semantic: (not shown)
       systems: Tailscale IP
       technical: 100.x.x.x (Tailscale MagicDNS IP)
@@ -476,8 +687,10 @@ elements:
       The stable private IP address assigned to a machine within the
       Tailscale mesh VPN. Used for cross-machine service access without
       exposing services to the public internet.
-    derives_from: []
-    used_by: [env_mqtt_url, env_ha_url, vite_cabin_api_base, qa_runner]
+    relationships:
+      - target: machine_hostname
+        type: depends_on
+        cardinality: "N:1"
     notes: >
       cabin hub (M920q): 100.77.44.113
       ilikethelights (dev): detected at runtime via tailscale status
@@ -485,12 +698,17 @@ elements:
       hardcode in committed files — use env vars or machine profiles.
 
   - id: docker_network_cabin_default
+    entity_type: owl:DatatypeProperty
     layer: infra
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 23
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      description: Docker bridge network name; must match external_links network_mode in compose
+    ui_display_name: "(not shown)"
+    rendering:
       semantic: (not shown)
       systems: Cabin Docker Network
       technical: cabin_default (Docker bridge network)
@@ -500,20 +718,27 @@ elements:
       cabin stack (mosquitto, homeassistant, nodered, frigate, zigbee2mqtt,
       homepage, uptime-kuma, mediamtx). FaceoftheCabin's cabin-backend
       joins this network to reach mosquitto by container name.
-    derives_from: []
-    used_by: [cabin_backend_container, mosquitto_container]
+    relationships:
+      - target: machine_hostname
+        type: depends_on
+        cardinality: "N:1"
     notes: >
       Network name discovered during M920q deployment — was incorrectly
       assumed to be mosquitto_default in early overlay config. Correct
       name is cabin_default. See docker-compose.m920q.yml.
 
   - id: machine_hostname
+    entity_type: owl:DatatypeProperty
     layer: infra
     primitive: true
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 24
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      description: OS hostname as returned by platform.node(); add new machines to _MACHINES dict
+    ui_display_name: "(not shown)"
+    rendering:
       semantic: (not shown)
       systems: Machine Name
       technical: platform.node() hostname
@@ -522,8 +747,13 @@ elements:
       The OS hostname of a machine running FaceoftheCabin components.
       Used by the QA runner to auto-detect machine profile and apply
       the correct test suite and environment assumptions.
-    derives_from: []
-    used_by: [qa_runner_machine_detection, machine_profile]
+    relationships:
+      - target: tailscale_ip
+        type: consumed_by
+        cardinality: "1:1"
+      - target: docker_network_cabin_default
+        type: consumed_by
+        cardinality: "1:1"
     notes: >
       Known machines:
         ilikethelights — Windows dev machine, Minneapolis
@@ -537,12 +767,17 @@ elements:
 # ═══════════════════════════════════════════════════════════════════════════
 
   - id: device_command
+    entity_type: owl:Class
     layer: backend
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 13
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: composite
+    data_type: owl:Class
+    constraint:
+      description: "{command: string, payload: object}; must route through HA adapter, not direct Z2M"
+    ui_display_name: "Sound alarm"
+    rendering:
       semantic: Action (e.g. "Sound alarm", "Lock door")
       systems: Device Command
       technical: POST /api/devices/{deviceId}/command {command, payload}
@@ -551,8 +786,16 @@ elements:
       A user-initiated instruction sent to a physical device via the
       FaceoftheCabin backend, routed through Home Assistant for execution,
       logging, and automation awareness.
-    derives_from: [fotc_device_id, ha_service_call]
-    used_by: [ui_action_button, audit_log, ha_adapter]
+    relationships:
+      - target: fotc_device_id
+        type: depends_on
+        cardinality: "N:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+      - target: action_confirmation_copy
+        type: consumed_by
+        cardinality: "1:1"
     notes: >
       All commands route through HA adapter — not direct Z2M MQTT.
       This ensures HA automations are aware of manual commands and can
@@ -561,12 +804,17 @@ elements:
       user context, command, payload, and HA response status.
 
   - id: action_confirmation_copy
+    entity_type: owl:DatatypeProperty
     layer: frontend
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 22
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      description: required for all irreversible, safety-relevant, or liability-class actions
+    ui_display_name: "Confirmation message"
+    rendering:
       semantic: Confirmation message before irreversible action
       systems: Confirmation Dialog
       technical: confirmation prop on ActionButton component
@@ -575,8 +823,10 @@ elements:
       Plain-language consequence description shown to the user before any
       action that is irreversible, safety-relevant, or has liability
       implications. Required for: silence alarm, bypass sensor, unlock door.
-    derives_from: [device_command]
-    used_by: [ui_action_button, compliance_report]
+    relationships:
+      - target: device_command
+        type: derives_from
+        cardinality: "N:1"
     notes: >
       Examples:
         Silence leak alarm: "Silencing this alarm means water damage may
@@ -587,12 +837,17 @@ elements:
       per adjuster feedback from user test group session 2026-07-26.
 
   - id: audit_log
+    entity_type: owl:Class
     layer: backend
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 14
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: composite
+    data_type: owl:Class
+    constraint:
+      description: append-only; no update or delete permitted; immutable record
+    ui_display_name: "Activity history"
+    rendering:
       semantic: Activity history
       systems: Audit Log
       technical: device_audit_log table (Postgres)
@@ -601,8 +856,13 @@ elements:
       Append-only timestamped record of every device command, alert trigger,
       sensor state change, and system event. The compliance and liability
       record of platform activity.
-    derives_from: [device_command, device_state, notification_trigger]
-    used_by: [ui_detail_sheet_history, compliance_report, qa_runner]
+    relationships:
+      - target: device_command
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: derives_from
+        cardinality: "N:1"
     notes: >
       Promoted from Phase 2 to core requirement per adjuster and analyst
       feedback (user test group session 2026-07-26). Must be present when
@@ -615,12 +875,18 @@ elements:
 # ═══════════════════════════════════════════════════════════════════════════
 
   - id: semantic_layer_toggle
+    entity_type: owl:DatatypeProperty
     layer: ontology
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 21
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      enum: [semantic, systems, technical, compliance]
+      description: default = semantic for new users; toggle is additive, not a filter
+    ui_display_name: "View: Simple / Detailed / Technical"
+    rendering:
       semantic: "View: Simple / Detailed / Technical"
       systems: Audience Context Toggle
       technical: roleContext (localStorage, semantic|systems|technical|compliance)
@@ -629,8 +895,10 @@ elements:
       User preference controlling how all data elements are rendered across
       the platform. Persisted in localStorage. Determines which label
       and which attributes are visible for every element in every view.
-    derives_from: [user_input]
-    used_by: [format_attribute_util, ui_tile, ui_detail_sheet, data_dictionary_ui]
+    relationships:
+      - target: data_dictionary_ui
+        type: consumed_by
+        cardinality: "1:1"
     notes: >
       Default: semantic (plain English) for new users.
       The toggle is additive — technical view shows everything semantic
@@ -638,12 +906,15 @@ elements:
       hides useful information; it is a progressive disclosure mechanism.
 
   - id: data_dictionary_ui
+    entity_type: owl:Class
     layer: frontend
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: pending
-    migration_priority: 20
-    label:
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: composite
+    data_type: owl:Class
+    ui_display_name: "Help — What does this mean?"
+    rendering:
       semantic: Help — What does this mean?
       systems: Data Dictionary
       technical: /settings/dictionary route
@@ -653,8 +924,10 @@ elements:
       per the current audience context. Sourced from this ontology file.
       Accessible from the detail sheet ("What is linkquality?") and from
       the settings panel.
-    derives_from: [ontology_yaml, semantic_layer_toggle]
-    used_by: [ui_help, ui_detail_sheet_tooltip, settings_panel]
+    relationships:
+      - target: semantic_layer_toggle
+        type: depends_on
+        cardinality: "N:1"
     notes: >
       The data dictionary UI is the last thing built — it is powered by
       the same element definitions that drive the rendering layer.
@@ -679,7 +952,7 @@ elements:
     constraint:
       maxLength: 100
       pattern: "^[A-Za-z\\s'-]+$"
-    ui_display_name: "Smrekar"  # rendered value varies; this shows the default instance value
+    ui_display_name: "Smrekar"
     source: localStorage["smrekar_hub_cfg"].familyName (user input)
     rendering:
       semantic: Family name (e.g. "Smrekar")
@@ -698,9 +971,6 @@ elements:
       - target: hub_brand_block
         type: consumed_by
         cardinality: "1:1"
-      - target: ui_greeting
-        type: consumed_by
-        cardinality: "1:1"
       - target: custody_status_card
         type: consumed_by
         cardinality: "1:1"
@@ -708,7 +978,7 @@ elements:
       User types name in Settings → saved as CFG.familyName →
       updateGreeting() + updateBrand() propagate on every save and page load.
     relates_to:
-      ui_components: [hub_brand_block, ui_greeting, custody_status_card]
+      ui_components: [hub_brand_block, custody_status_card]
       elements: [hub_config]
     notes: >
       Stored under localStorage key "smrekar_hub_cfg". Default seeded as
@@ -747,9 +1017,6 @@ elements:
         type: derives_from
         cardinality: "1:1"
       - target: hub_brand_block
-        type: consumed_by
-        cardinality: "1:1"
-      - target: google_auth_init
         type: consumed_by
         cardinality: "1:1"
       - target: photo_slideshow
@@ -839,12 +1106,6 @@ elements:
       - target: reward_eligibility
         type: consumed_by
         cardinality: "1:N"
-      - target: ui_chore_kid_selector
-        type: consumed_by
-        cardinality: "1:N"
-      - target: ui_profiles_tab
-        type: consumed_by
-        cardinality: "1:N"
     transformation: >
       Admin enters profile in Family Profiles tab → saveProfiles() writes
       JSON array to localStorage["family_profiles"].
@@ -857,8 +1118,7 @@ elements:
       DEFAULT_PROFILES seeds Sam (kid, 11), Emma (kid, 9), Frankie (pet),
       Nathan (parent). Age field determines chore_assignment eligibility via
       choresByAge(). Profiles are fully configurable — no hardcoded names
-      in rendering logic. role field drives getKids()/getPets()/getParents()
-      helper functions.
+      in rendering logic.
 
 # ═══════════════════════════════════════════════════════════════════════════
 # FAMILY HUB — PARENTING SCHEDULE
@@ -897,12 +1157,8 @@ elements:
       - target: chore_assignment
         type: consumed_by
         cardinality: "1:N"
-      - target: ui_schedule_tab
-        type: consumed_by
-        cardinality: "1:1"
     transformation: >
-      User enters date in Settings → Parenting Schedule section →
-      saveSettings() calls saveSchedCfg(startDateStr, homeDays) →
+      User enters date in Settings → saveSettings() calls saveSchedCfg() →
       localStorage["smrekar_schedule_cfg"] = {start, homeDays}.
       On load: SCHEDULE_START = new Date(s.start + 'T12:00:00').
       Default: 2026-03-13 (a Friday, day 0 of the Smrekar schedule).
@@ -910,10 +1166,9 @@ elements:
       ui_components: [settings_panel, ui_schedule_tab]
       elements: [parenting_home_days, custody_status]
     notes: >
-      Set to noon (T12:00:00) to avoid daylight-saving boundary edge cases
-      where a date near midnight could shift by one day. The default anchor
-      (2026-03-13) is the Smrekar family's agreed reference date and should
-      not be changed unless the custody agreement changes.
+      Set to noon (T12:00:00) to avoid daylight-saving boundary edge cases.
+      The default anchor (2026-03-13) is the Smrekar family's agreed reference
+      date and should not be changed unless the custody agreement changes.
 
   - id: parenting_home_days
     entity_type: owl:DatatypeProperty
@@ -945,22 +1200,15 @@ elements:
       - target: custody_status
         type: consumed_by
         cardinality: "1:N"
-      - target: chore_assignment
-        type: consumed_by
-        cardinality: "1:N"
       - target: chore_daily_view
         type: consumed_by
         cardinality: "1:N"
       - target: reward_eligibility
         type: consumed_by
         cardinality: "1:N"
-      - target: ui_schedule_tab
-        type: consumed_by
-        cardinality: "1:1"
     transformation: >
-      Admin taps day chips in Settings → Parenting Schedule → cycle grid →
-      saveSettings() collects checked .sched-day-cb values →
-      saveSchedCfg() writes Set to localStorage and updates KIDS_HOME_DAYS live.
+      Admin taps day chips in Settings → saveSchedCfg() writes Set to
+      localStorage and updates KIDS_HOME_DAYS live.
       isKidsHome(date) = KIDS_HOME_DAYS.has(dayDiff % 14) where
       dayDiff = floor((date - SCHEDULE_START) / 86400000).
     relates_to:
@@ -968,8 +1216,7 @@ elements:
       elements: [parenting_schedule_anchor, custody_status]
     notes: >
       Default Smrekar schedule: [0,1,4,5,8,9,12,13] within each 14-day cycle.
-      Changing KIDS_HOME_DAYS immediately affects all chore, reward, and
-      schedule computations — no page reload required (hot-applied on save).
+      Hot-applied on save — no page reload required.
 
   - id: custody_status
     entity_type: owl:DatatypeProperty
@@ -1008,29 +1255,19 @@ elements:
       - target: ui_top_bar
         type: consumed_by
         cardinality: "1:1"
-      - target: ui_greeting
-        type: consumed_by
-        cardinality: "1:1"
-      - target: renderTodayChores
-        type: consumed_by
-        cardinality: "1:1"
     transformation: >
       Source: SCHEDULE_START (Date) + KIDS_HOME_DAYS (Set<number>).
       Middle: dayDiff = floor((ymd(today) - ymd(SCHEDULE_START)) / 86400000);
-              cycleDay = dayDiff % 14;
-              home = KIDS_HOME_DAYS.has(cycleDay).
-      Target: updateCustodyBadge() sets custody_status_card label/icon/color +
-              renderTodayChores() gates chore display on home state.
+              cycleDay = dayDiff % 14; home = KIDS_HOME_DAYS.has(cycleDay).
+      Target: updateCustodyBadge() sets custody_status_card + renderTodayChores().
       Refresh: setInterval(updateCustodyBadge, 60000).
     relates_to:
       ui_components: [custody_status_card, ui_top_bar]
       elements: [parenting_schedule_anchor, parenting_home_days,
                  next_custody_transition, chore_daily_view]
     notes: >
-      Home = true means the children are at Dad's tonight and chores apply.
-      Away = true means chores are paused and the chore card shows a
-      "Kids at Mom's" message. This boolean gates all chore and reward
-      computations for the current day.
+      Home = true gates all chore and reward computations for the current day.
+      Away = true: chore card shows "Kids at Mom's today" message.
 
   - id: next_custody_transition
     entity_type: owl:DatatypeProperty
@@ -1065,11 +1302,8 @@ elements:
         type: consumed_by
         cardinality: "1:1"
     transformation: >
-      Source: current home boolean + isKidsHome(date) for future dates.
-      Middle: for i in 1..14: if isKidsHome(addDays(today, i)) !== home → transition date.
-      Target: #custody-next textContent set to formatted date string.
-      Format: "Back to {dadName}'s {weekday} {month} {day}" or
-              "Back to Mom's {weekday} {month} {day}".
+      for i in 1..14: if isKidsHome(addDays(today, i)) !== home → transition date.
+      Target: #custody-next textContent = "Back to {dadName}'s {weekday} {month} {day}".
     relates_to:
       ui_components: [custody_status_card]
       elements: [custody_status, parenting_home_days]
@@ -1092,8 +1326,7 @@ elements:
     definition: >
       The glass card in the upper-right corner of the Family Hub display
       showing the current custody state (home or away icon, text label)
-      and next transition date below it. Styled identically to the calendar
-      and chores cards. Updates every minute via setInterval.
+      and next transition date below it. Updates every minute via setInterval.
     relationships:
       - target: custody_status
         type: derives_from
@@ -1110,15 +1343,11 @@ elements:
     transformation: >
       updateCustodyBadge() → sets card className (home|away), icon emoji
       (🏠|👋), #custody-card-status text, #custody-next text.
-      Teal color (#custody-card.home) when home; dim cream when away.
-      Card is position:absolute; top:0; right:0 inside #top-bar.
     relates_to:
       ui_components: [ui_top_bar]
       elements: [custody_status, next_custody_transition, hub_family_name]
     notes: >
       Replaced the former pill-style #custody-badge (removed 2026-07-27).
-      Previously also appeared as a floating text element (#today-custody-text)
-      in the center area — both removed in favor of this single authoritative card.
       Left column below calendar card freed for future use.
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1150,16 +1379,9 @@ elements:
       - target: chore_assignment
         type: consumed_by
         cardinality: "1:N"
-      - target: chore_daily_view
-        type: consumed_by
-        cardinality: "1:N"
-      - target: ui_chore_tracker_tab
-        type: consumed_by
-        cardinality: "1:N"
     transformation: >
-      Static constant in code. No transformation — this is source truth.
-      choresByAge(age) filters CHORES where minAge <= age to return the
-      eligible subset for a given child.
+      Static constant in code. choresByAge(age) filters CHORES where
+      minAge <= age to return the eligible subset for a given child.
     relates_to:
       ui_components: [ui_chore_tracker_tab, ui_today_chores_card]
       elements: [chore_assignment, family_profile]
@@ -1167,7 +1389,7 @@ elements:
       Current chore IDs: brush_teeth, make_bed, reading, clear_table,
       unload_dishwasher, take_trash, walk_frankie, homework (age >= 9);
       set_table, wipe_table, outfit_ready, lunch_backpack, put_away_laundry
-      (age < 9). The rotating daily extra is selected by dayOfMonth % rotating.length.
+      (age < 9). Rotating daily extra selected by dayOfMonth % rotating.length.
 
   - id: chore_assignment
     entity_type: owl:Class
@@ -1204,28 +1426,14 @@ elements:
       - target: reward_eligibility
         type: consumed_by
         cardinality: "1:N"
-      - target: ui_chore_tracker_tab
-        type: consumed_by
-        cardinality: "1:N"
-      - target: ui_today_chores_card
-        type: consumed_by
-        cardinality: "1:N"
     transformation: >
-      Source: kid.age (from family_profile) + dayKey (YYYY-MM-DD string).
-      Middle: daily = [brush_teeth, make_bed, reading] (always assigned).
-              rotating = age >= 9 ? [...senior chores] : [...junior chores].
-              extra = rotating[parseInt(dayKey.split('-')[2]) % rotating.length].
-              available = choresByAge(kid.age).
-              assignment = [...daily, extra].map(id => available.find(c => c.id === id)).filter(Boolean).
-      Target: rendered in chore_daily_view and ui_today_chores_card.
+      Source: kid.age + dayKey (YYYY-MM-DD).
+      daily = [brush_teeth, make_bed, reading] (always assigned).
+      rotating extra = rotating[parseInt(dayKey.split('-')[2]) % rotating.length].
+      assignment = [...daily, extra].filter available by choresByAge(kid.age).
     relates_to:
       ui_components: [ui_today_chores_card, ui_chore_tracker_tab]
       elements: [chore_definition, family_profile, chore_completion_state]
-    notes: >
-      The rotating extra ensures variety without requiring a calendar config.
-      Deterministic by day-of-month so it recomputes identically across
-      sessions. Daily chores (brush_teeth, make_bed, reading) are permanent
-      regardless of age.
 
   - id: chore_completion_state
     entity_type: owl:DatatypeProperty
@@ -1236,7 +1444,7 @@ elements:
     data_class: raw
     data_type: xsd:boolean
     constraint:
-      description: Keyed by date + kidId + choreId; default false when absent
+      description: keyed by date + kidId + choreId; default false when absent; no expiry
     ui_display_name: "Done ✓"
     source: localStorage["smrekar_chore_completion"] (nested JSON object)
     rendering:
@@ -1258,27 +1466,16 @@ elements:
       - target: reward_eligibility
         type: consumed_by
         cardinality: "1:N"
-      - target: ui_chore_tracker_tab
-        type: consumed_by
-        cardinality: "1:N"
-      - target: ui_today_chores_card
-        type: consumed_by
-        cardinality: "1:N"
     transformation: >
       User taps chore row → toggleChoreCompletion(dayKey, kidId, choreId) →
-      reads current state from localStorage → inverts boolean →
-      writes back: data[dayKey][kidId][choreId] = !current.
+      inverts boolean → writes back to localStorage.
       Read: getChoreState(dayKey, kidId, choreId) returns boolean (default false).
-      Count: countDayCompleted(dayKey, kidId) counts truthy entries for that day/kid.
     relates_to:
       ui_components: [ui_chore_tracker_tab, ui_today_chores_card]
       elements: [chore_assignment, reward_eligibility, chore_daily_view]
     notes: >
-      localStorage key: "smrekar_chore_completion".
       Structure: { "2026-07-27": { "sam": { "brush_teeth": true, ... }, ... } }.
-      No expiry — historical data stays indefinitely (used for reward lookback).
-      UI renders done rows with strikethrough and teal checkmark; incomplete
-      rows are tappable with a full cursor target area.
+      No expiry — historical data used for reward lookback window.
 
   - id: chore_daily_view
     entity_type: owl:Class
@@ -1319,22 +1516,13 @@ elements:
       - target: ui_chore_tracker_tab
         type: consumed_by
         cardinality: "1:1"
-    transformation: >
-      Source: todayKey = ymd(new Date()), yesterdayKey = ymd(addDays(today,-1)).
-      Middle: renders reward_progress_bar → today's chore rows (toggleable) →
-              yesterday carryover rows (incomplete chores from yesterdayKey
-              if isKidsHome(yesterday)) → collapsed history toggle.
-      Target: #chore-tracker-body innerHTML.
-      Refresh: on tab open (openDashboard) and after each toggleChoreCompletion.
     relates_to:
       ui_components: [ui_chore_tracker_tab, reward_progress_bar]
       elements: [chore_assignment, chore_completion_state, custody_status,
                  yesterday_carryover, reward_eligibility]
     notes: >
-      Carryover section (rose-tinted border) only appears when:
-        (a) kids were home yesterday (isKidsHome(yesterday) === true), AND
-        (b) at least one chore was left incomplete yesterday.
-      Carryover chores are tappable and update yesterdayKey's completion record.
+      Carryover section (rose-tinted border) only appears when kids were
+      home yesterday AND at least one chore was left incomplete.
 
   - id: yesterday_carryover
     entity_type: owl:Class
@@ -1356,7 +1544,7 @@ elements:
     definition: >
       The subset of yesterday's chore assignments that were not completed,
       surfaced in today's view as a carryover reminder — but only on days
-      when the kids were home yesterday (no carryover from Mom's nights).
+      when the kids were home yesterday.
     relationships:
       - target: chore_completion_state
         type: derives_from
@@ -1370,16 +1558,6 @@ elements:
       - target: chore_daily_view
         type: consumed_by
         cardinality: "1:1"
-      - target: ui_chore_tracker_tab
-        type: consumed_by
-        cardinality: "1:1"
-    transformation: >
-      Source: yesterdayKey = ymd(addDays(today, -1)).
-      Gate: isKidsHome(yesterday) must be true.
-      Middle: yChores = defaultAssignments(yesterdayKey, kidId) →
-              yCarryover = yChores.filter(c => !getChoreState(yesterdayKey, kidId, c.id)).
-      Target: rendered as a rose-bordered section above history toggle in
-              chore_daily_view.
     relates_to:
       ui_components: [ui_chore_tracker_tab]
       elements: [chore_completion_state, chore_assignment, custody_status]
@@ -1407,8 +1585,7 @@ elements:
       compliance: (not shown)
     definition: >
       A named privilege or treat that a child earns by meeting the chore
-      completion threshold over a rolling 7-day period. The reward options
-      are displayed in the Rewards tab for the child to choose from.
+      completion threshold over a rolling 7-day period.
     relationships:
       - target: ui_rewards_tab
         type: consumed_by
@@ -1440,7 +1617,6 @@ elements:
     definition: >
       Whether a child has earned a reward. Requires completing at least
       3 chores on at least 4 of the last 7 nights when the child was home.
-      Returns a progress object with count, percentage, and eligibility flag.
     relationships:
       - target: chore_completion_state
         type: derives_from
@@ -1454,29 +1630,17 @@ elements:
       - target: ui_rewards_tab
         type: consumed_by
         cardinality: "1:N"
-      - target: ui_today_chores_card
-        type: consumed_by
-        cardinality: "1:N"
-      - target: chore_daily_view
-        type: consumed_by
-        cardinality: "1:N"
     transformation: >
-      Source: recentHomeDays(7) → last 7 calendar days when isKidsHome() was true
-              (lookback window: 30 days max to find 7 home days).
-      Middle: qualifying = homeDays.filter(d => countDayCompleted(d.key, kidId) >= 3).length.
-              pct = min(100, (qualifying / 4) * 100).
-              eligible = qualifying >= 4.
-      Target: reward_progress_bar width (pct%), qualifying count label,
-              eligibility message, ⭐ unlock indicator.
+      recentHomeDays(7) → last 7 days when isKidsHome() was true (30-day lookback).
+      qualifying = homeDays.filter(d => countDayCompleted(d.key, kidId) >= 3).length.
+      pct = min(100, (qualifying / 4) * 100). eligible = qualifying >= 4.
     relates_to:
       ui_components: [reward_progress_bar, ui_rewards_tab, ui_today_chores_card]
       elements: [chore_completion_state, parenting_home_days, reward_definition]
     notes: >
-      Rolling 7-day window means reward resets naturally without admin action.
-      "3 chores per night" threshold is intentional — the daily set is 4 chores
-      (3 fixed + 1 rotating), so 3/4 is the qualifying threshold (not perfection).
-      countDayCompleted counts truthy entries in chore_completion_state for
-      a given dayKey and kidId.
+      Rolling 7-day window resets naturally without admin action.
+      3/4 qualifying threshold: daily set is 4 chores (3 fixed + 1 rotating),
+      so 3/4 is qualifying, not perfection.
 
   - id: reward_progress_bar
     entity_type: owl:Class
@@ -1494,10 +1658,8 @@ elements:
       technical: .crb-bar-fill width (pct%) in #chore-tracker-body
       compliance: (not shown)
     definition: >
-      A visual burndown bar displayed at the top of the Chore Tracker tab
-      showing how many qualifying nights a child has completed out of the 4
-      required for reward eligibility. Also displayed in the Rewards tab
-      per-kid. Gold bar on dark background.
+      A visual burndown bar showing how many qualifying nights a child has
+      completed out of 4 required for reward eligibility. Gold bar on dark background.
     relationships:
       - target: reward_eligibility
         type: derives_from
@@ -1508,18 +1670,12 @@ elements:
       - target: ui_rewards_tab
         type: consumed_by
         cardinality: "1:N"
-    transformation: >
-      Source: reward_eligibility.pct (0–100).
-      Middle: .crb-bar-fill { width: pct% } set via inline style.
-              Label: "{qualifying}/4 nights". Unlock message if eligible.
-      Target: visible in chore_daily_view header and ui_rewards_tab per-kid row.
     relates_to:
       ui_components: [ui_chore_tracker_tab, ui_rewards_tab]
       elements: [reward_eligibility]
 
 # ═══════════════════════════════════════════════════════════════════════════
 # FAMILY HUB — GOOGLE PHOTOS INTEGRATION
-# Elements describing the photo slideshow data pipeline.
 # Source: Google Photos Picker API → localStorage["smrekar_photos_meta"]
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1532,8 +1688,8 @@ elements:
     data_class: raw
     data_type: xsd:string
     constraint:
-      description: OAuth 2.0 Bearer token; format ya29.* (Google implicit grant)
-      format: OAuth2 Bearer
+      format: OAuth2 Bearer (Google implicit grant, ya29.* prefix)
+      description: intentionally NOT persisted to localStorage — security risk
     ui_display_name: "(not shown)"
     source: Google Sign-In (GSI) token client, implicit flow
     rendering:
@@ -1543,35 +1699,24 @@ elements:
       compliance: OAuth Bearer Token
     definition: >
       The short-lived OAuth 2.0 access token obtained from Google Sign-In via
-      the implicit grant flow. Used as a Bearer token in Authorization headers
-      for Google Calendar and Google Photos API requests.
+      the implicit grant flow. Used as a Bearer token for Google Calendar and
+      Google Photos API requests.
     relationships:
       - target: google_oauth_client_id
         type: derives_from
         cardinality: "N:1"
-      - target: calendar_fetch
-        type: consumed_by
-        cardinality: "1:1"
       - target: photo_metadata
         type: consumed_by
         cardinality: "1:N"
-      - target: google_photos_picker
+      - target: calendar_event
         type: consumed_by
-        cardinality: "1:1"
-    transformation: >
-      User clicks Sign In → startSignIn() initializes GSI token client →
-      user authorizes → onToken(tokenResponse) stores tokenResponse.access_token
-      in in-memory accessToken variable.
-      Token lifespan: ~1 hour. No refresh token (implicit flow).
-      On expiry: next API call fails; user must re-sign-in.
+        cardinality: "1:N"
     relates_to:
       ui_components: [ui_auth_overlay]
       elements: [google_oauth_client_id, photo_metadata, google_calendar_id]
     notes: >
-      Intentionally NOT persisted to localStorage — storing tokens in
-      localStorage is a security risk. The user must sign in per session.
-      Re-auth is lightweight (GSI caches credentials in the browser's
-      Google session) — usually a single click.
+      Token lifespan ~1 hour. Re-auth is lightweight — GSI caches credentials
+      in the browser's Google session, usually a single click.
 
   - id: google_oauth_client_id
     entity_type: owl:DatatypeProperty
@@ -1599,9 +1744,6 @@ elements:
       - target: hub_config
         type: consumed_by
         cardinality: "1:1"
-      - target: google_auth_init
-        type: consumed_by
-        cardinality: "1:1"
       - target: google_access_token
         type: consumed_by
         cardinality: "1:1"
@@ -1609,11 +1751,8 @@ elements:
       ui_components: [settings_panel]
       elements: [hub_config, google_access_token]
     notes: >
-      Created at console.cloud.google.com → APIs & Services → Credentials →
-      Web application. Authorized JavaScript origin must include the hub's
-      serving URL (e.g. http://localhost:4081 for M920q, hub.unicornpingpong.com
-      when Cloudflare tunnel is live). Must add smrekarfamilia@gmail.com as
-      test user while app remains in Testing mode.
+      Authorized JavaScript origin must include the hub's serving URL.
+      Must add smrekarfamilia@gmail.com as test user while app is in Testing mode.
 
   - id: photo_metadata
     entity_type: owl:Class
@@ -1632,9 +1771,8 @@ elements:
       compliance: (not shown)
     definition: >
       Persisted metadata for photos selected via the Google Photos Picker.
-      Stores the media item ID, authenticated base URL, filename, and MIME type
-      for each selected photo. Base URL is re-fetched on sign-in to get a
-      fresh authenticated URL.
+      Stores media item ID, authenticated base URL, filename, and MIME type.
+      Base URL is re-fetched on sign-in to get a fresh authenticated URL.
     relationships:
       - target: google_access_token
         type: derives_from
@@ -1642,28 +1780,17 @@ elements:
       - target: photo_slideshow
         type: consumed_by
         cardinality: "1:1"
-      - target: photo_restore
-        type: consumed_by
-        cardinality: "1:1"
     transformation: >
-      Source: browseAlbums() opens Google Photos Picker → user selects photos →
-              picker returns mediaItems [{id, baseUrl, filename, mimeType}].
-      Middle: savePhotoMeta() serializes array to localStorage["smrekar_photos_meta"].
-      Restore: restorePhotos() on sign-in → reads metadata → fetches each
-              baseUrl + "=w1920-h1080" with Authorization: Bearer {accessToken}
-              → creates Blob URLs for photo_slideshow.
-      Note: "=w1920-h1080" (no -c suffix) = fit-within-box, no crop.
-            "=w1920-h1080-c" (center-crop) is intentionally avoided — causes
-            photos to be cropped before reaching CSS, defeating contain layout.
+      browseAlbums() → picker → savePhotoMeta() → localStorage.
+      Restore: restorePhotos() on sign-in → fetch baseUrl+"=w1920-h1080"
+      with Bearer token → Blob URL → photo_slideshow.
+      "=w1920-h1080" (no -c suffix) = fit-within-box, no crop.
     relates_to:
       ui_components: [photo_slideshow, settings_panel]
       elements: [google_access_token, photo_google_base_url]
     notes: >
-      Blob URLs (createObjectURL) are in-memory only — not persisted.
-      On page reload, restorePhotos() re-fetches from baseUrl using the
-      new session's accessToken. If fetch fails (token expired, baseUrl
-      stale), shows "Saved photos expired — open Settings → Choose Photos…".
-      Max photos count controlled by CFG.maxPhotos (default 50).
+      Blob URLs are in-memory only. On page reload, restorePhotos() re-fetches.
+      Stale baseUrl shows "Saved photos expired — open Settings → Choose Photos…".
 
   - id: photo_google_base_url
     entity_type: owl:DatatypeProperty
@@ -1674,8 +1801,8 @@ elements:
     data_class: raw
     data_type: xsd:anyURI
     constraint:
-      description: Authenticated Google CDN URL; requires Authorization header + dimension suffix
-      format: https://lh3.googleusercontent.com/...
+      format: "https://lh3.googleusercontent.com/..."
+      description: requires Authorization header + dimension suffix; does not contain image data
     ui_display_name: "(not shown)"
     source: Google Photos API mediaItem.baseUrl
     rendering:
@@ -1685,8 +1812,7 @@ elements:
       compliance: (not shown)
     definition: >
       The authenticated base URL returned by Google Photos API for a media item.
-      Requires appending dimension parameters and an Authorization header for
-      image retrieval. Does not contain the image data itself.
+      Requires appending dimension parameters and an Authorization header.
     relationships:
       - target: google_access_token
         type: depends_on
@@ -1698,10 +1824,8 @@ elements:
         type: consumed_by
         cardinality: "1:N"
     transformation: >
-      baseUrl + "=w1920-h1080" → fetch(url, {headers:{Authorization:"Bearer "+accessToken}})
-      → Blob → createObjectURL() → CSS background-image on .photo-slide element.
-      CSS: background-size:contain; background-position:center; background-color:#060b10.
-      (contain prevents cropping; dark background fills letterbox areas.)
+      baseUrl+"=w1920-h1080" → fetch with Bearer token → Blob → createObjectURL()
+      → CSS background-image on .photo-slide; background-size:contain.
     relates_to:
       ui_components: [photo_slideshow]
       elements: [photo_metadata, google_access_token]
@@ -1724,8 +1848,7 @@ elements:
     definition: >
       The ambient background slideshow cycling through selected family photos.
       Photos are displayed full-screen behind all UI elements with a dark overlay
-      gradient. Navigation via Next Photo button or dot indicators. Interval
-      configurable (8–60 seconds) in Settings.
+      gradient. Interval configurable (8–60 seconds) in Settings.
     relationships:
       - target: photo_metadata
         type: derives_from
@@ -1733,32 +1856,15 @@ elements:
       - target: hub_config
         type: depends_on
         cardinality: "N:1"
-      - target: ui_photo_bg
-        type: consumed_by
-        cardinality: "1:1"
-      - target: ui_bottom_bar
-        type: consumed_by
-        cardinality: "1:1"
-    transformation: >
-      Source: photos[] array (Blob URLs from photo_restore or fresh picker).
-      Slideshow: startSlideshow() sets setInterval(nextPhoto, interval*1000).
-      Display: goToPhoto(n) → .photo-slide.active { background-image: url(blobUrl) }.
-              CSS: background-size:contain; background-position:center;
-                   background-repeat:no-repeat; background-color:#060b10.
-      Navigation: #next-photo-btn (bottom bar) → nextPhoto().
-                  #photo-dots (bottom bar) → goToPhoto(index).
-                  ArrowLeft/ArrowRight keys → keyboard nav.
     relates_to:
       ui_components: [ui_bottom_bar, ui_photo_bg]
       elements: [photo_metadata, hub_config]
     notes: >
-      Ken Burns zoom animation intentionally removed — full-frame contain
-      display is preferred to preserve photo context (wide landscape shots
-      were losing significant content under the previous cover+zoom approach).
+      Ken Burns zoom intentionally removed — contain display preserves photo
+      context that cover+zoom was cropping out.
 
 # ═══════════════════════════════════════════════════════════════════════════
 # FAMILY HUB — GOOGLE CALENDAR INTEGRATION
-# Elements describing the calendar data pipeline.
 # Source: Google Calendar API → rendered in #cal-events
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1771,8 +1877,8 @@ elements:
     data_class: raw
     data_type: xsd:string
     constraint:
-      description: Google Calendar email address or "primary"
       pattern: "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$|^primary$"
+      description: normalizeCalendarId() accepts raw email, embed URL, or iframe src
     ui_display_name: "Family calendar"
     source: localStorage["smrekar_hub_cfg"].calId (user input via Settings)
     rendering:
@@ -1782,23 +1888,15 @@ elements:
       compliance: (not shown)
     definition: >
       The Google Calendar ID (email address format) of the calendar to display.
-      Configured in Settings. Accepts the raw email, a calendar embed URL, or
-      an iframe embed src — all normalized to the email address by
-      normalizeCalendarId().
+      Accepts the raw email, a calendar embed URL, or an iframe embed src — all
+      normalized to the email address by normalizeCalendarId().
     relationships:
       - target: hub_config
-        type: consumed_by
-        cardinality: "1:1"
-      - target: calendar_fetch
         type: consumed_by
         cardinality: "1:1"
       - target: calendar_event
         type: consumed_by
         cardinality: "1:N"
-    transformation: >
-      User pastes email / URL / iframe → normalizeCalendarId() extracts email
-      via regex on "src=" embed attribute or direct email pattern →
-      stored as CFG.calId. Default: "primary" (signed-in user's default calendar).
     relates_to:
       ui_components: [settings_panel, ui_cal_card]
       elements: [hub_config, calendar_event]
@@ -1833,12 +1931,8 @@ elements:
         type: consumed_by
         cardinality: "1:1"
     transformation: >
-      Source: GET https://www.googleapis.com/calendar/v3/calendars/{calId}/events
-              ?timeMin={now}&timeMax={now+14days}&singleEvents=true&orderBy=startTime
-              Authorization: Bearer {accessToken}.
-      Middle: response.items → map to {title, start, allDay} →
-              grouped by date string for day headers in cal-events rendering.
-      Target: #cal-events innerHTML (day-header + ev rows).
+      GET /calendar/v3/calendars/{calId}/events?timeMin={now}&timeMax={now+14d}
+      → map to {title, start, allDay} → grouped by date → #cal-events innerHTML.
     relates_to:
       ui_components: [ui_cal_card]
       elements: [google_calendar_id, google_access_token]
@@ -1871,9 +1965,6 @@ elements:
       - target: hub_brand_block
         type: derives_from
         cardinality: "N:1"
-      - target: hub_family_name
-        type: depends_on
-        cardinality: "N:1"
       - target: custody_status_card
         type: derives_from
         cardinality: "N:1"
@@ -1898,8 +1989,7 @@ elements:
       compliance: (not shown)
     definition: >
       The left-column glass card showing upcoming Google Calendar events
-      (next 14 days, grouped by day) and a fixed birthday list derived
-      from family profiles. Refreshed on sign-in and every calendar poll interval.
+      (next 14 days, grouped by day) and a birthday list from family profiles.
     relationships:
       - target: calendar_event
         type: derives_from
@@ -1912,8 +2002,7 @@ elements:
       elements: [calendar_event, google_calendar_id, family_profile]
     notes: >
       Birthday dates are hardcoded per profile (mm/dd format) and rendered
-      with daysUntilBirthday() countdown. Future: source birthdays from
-      family_profile records when profiles become the authoritative source.
+      with daysUntilBirthday() countdown.
 
   - id: ui_today_chores_card
     entity_type: owl:Class
@@ -1932,9 +2021,8 @@ elements:
       compliance: (not shown)
     definition: >
       The right-column glass card on the main ambient display. Shows per-kid
-      chore completion status for today, with tap-to-complete checkboxes and
-      a reward progress bar. Visible on the main screen without opening the
-      Dashboard. Primary touch surface for kids checking off chores.
+      chore completion status for today with tap-to-complete checkboxes and
+      a reward progress bar. Primary touch surface for kids.
     relationships:
       - target: chore_assignment
         type: derives_from
@@ -1948,12 +2036,6 @@ elements:
       - target: reward_eligibility
         type: derives_from
         cardinality: "N:1"
-    transformation: >
-      renderTodayChores() → reads todayKey, isKidsHome(), per-kid chore
-      assignments and completion state → generates chore rows with
-      onclick=toggleChoreCompletion → reward strip with progress bar.
-      If kids away: shows "Kids at Mom's today" message.
-      Refreshed: on load, on sign-in, every minute via setInterval.
     relates_to:
       ui_components: [ui_chore_tracker_tab]
       elements: [chore_assignment, chore_completion_state, custody_status,
@@ -1976,9 +2058,7 @@ elements:
       compliance: (not shown)
     definition: >
       The Chore Tracker tab inside the Dashboard overlay. Shows reward progress
-      bar, today's chores (with completion checkboxes), yesterday carryover
-      (if any), and collapsible recent history. The primary admin and kid-facing
-      chore management surface.
+      bar, today's chores, yesterday carryover, and collapsible recent history.
     relationships:
       - target: chore_daily_view
         type: derives_from
@@ -2013,9 +2093,8 @@ elements:
       technical: "#reward-grid + #reward-progress-col (switchTab('rewards'))"
       compliance: (not shown)
     definition: >
-      The Rewards tab in the Dashboard overlay. Shows the reward menu (things
-      kids can earn), per-kid progress bars showing qualifying nights, and the
-      eligibility unlock message when a child has earned a reward.
+      The Rewards tab in the Dashboard overlay. Shows the reward menu, per-kid
+      progress bars showing qualifying nights, and the eligibility unlock message.
     relationships:
       - target: reward_definition
         type: derives_from
@@ -2049,7 +2128,6 @@ elements:
       The full-screen slide-up panel containing all administrative and
       family-interactive tabs: Overview, Schedule, Chores, Rewards, and
       Family Profiles. Opened via the Dashboard FAB button at lower-right.
-      Closed via ✕ button or Escape key.
     relationships:
       - target: custody_status
         type: depends_on
@@ -2063,18 +2141,14 @@ elements:
       - target: family_profile
         type: depends_on
         cardinality: "N:1"
-      - target: parenting_home_days
-        type: depends_on
-        cardinality: "N:1"
     relates_to:
       ui_components: [ui_chore_tracker_tab, ui_rewards_tab, ui_profiles_tab,
                       ui_schedule_tab]
       elements: []
     notes: >
-      z-index:70. Uses backdrop-filter:blur(18px) which creates a Chromium
-      compositing layer. Settings and Dashboard FAB buttons must be LAST in
-      the DOM (after #dashboard-overlay) or Chromium's compositing will paint
-      them behind the overlay regardless of z-index. Fixed 2026-07-26.
+      z-index:70. backdrop-filter:blur(18px) creates a Chromium compositing
+      layer. Settings and Dashboard FABs must be LAST in DOM body or Chromium
+      will paint them behind the overlay regardless of z-index. Fixed 2026-07-26.
 
   - id: settings_panel
     entity_type: owl:Class
@@ -2094,8 +2168,7 @@ elements:
     definition: >
       The slide-in settings panel (from the right edge). Contains all
       configurable fields: family name, Google OAuth client ID, calendar ID,
-      slideshow interval, max photos, parenting schedule (anchor date + 14-day
-      cycle grid), and theme picker. Opened via the Settings FAB at lower-right.
+      slideshow interval, max photos, parenting schedule, and theme picker.
     relationships:
       - target: hub_config
         type: derives_from
@@ -2116,8 +2189,6 @@ elements:
                  google_calendar_id, parenting_schedule_anchor,
                  parenting_home_days, hub_brand_block]
     notes: >
-      Must be last in DOM body (after #dashboard-overlay) due to Chromium
-      backdrop-filter compositing constraint — same as ui_dashboard_overlay.
-      Parenting schedule section added 2026-07-27: anchor date picker +
-      14-day cycle chip grid. Chips render with weekday+date labels relative
-      to anchor via renderSchedDayPicker().
+      Must be last in DOM body due to Chromium backdrop-filter compositing
+      constraint — same as ui_dashboard_overlay. Parenting schedule section
+      added 2026-07-27: anchor date picker + 14-day cycle chip grid.

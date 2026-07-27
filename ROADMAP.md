@@ -422,7 +422,8 @@ Work in `migration_priority` order. Update the count below after each session.
 | Review Date | Pending Count | Notes |
 |-------------|---------------|-------|
 | 2026-07-27  | 24 of 24      | v0.3.0 schema established; Family Hub (32 entries) complete |
-| 2026-08-27  | —             | _(scheduled)_ |
+| 2026-07-28  | 0 of 24       | All 24 legacy entries migrated; ontology fully at v0.3.0 |
+| 2026-08-27  | —             | _(scheduled review — verify no new pending entries)_ |
 | 2026-09-27  | —             | _(scheduled)_ |
 | 2026-10-27  | —             | _(scheduled)_ |
 
