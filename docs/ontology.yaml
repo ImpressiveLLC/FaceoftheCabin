@@ -47,10 +47,18 @@
 #   notes:        implementation notes, constraints, known issues
 # ─────────────────────────────────────────────────────────────────────────────
 
-version: "0.1.0"
+version: "0.2.0"
 status: draft
 maintainer: FaceoftheCabin platform team
-last_updated: "2026-07-26"
+last_updated: "2026-07-27"
+
+# Schema additions in v0.2.0:
+#   data_class:       raw | derived | conceptual | composite
+#   transformation:   how source data becomes this element (free text)
+#   source:           the origin system, API, or storage key
+#   relates_to:
+#     ui_components:  ids of UI components this element appears in
+#     elements:       ids of other ontology elements with semantic relationship
 
 # ═══════════════════════════════════════════════════════════════════════════
 # HARDWARE ELEMENTS
@@ -562,3 +570,946 @@ elements:
       Building the rendering layer first (formatAttribute utility) means
       the dictionary is a display view of already-existing structured data,
       not a separately maintained document.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FAMILY HUB — IDENTITY & CONFIGURATION
+# Elements that define who the hub belongs to and how it is configured.
+# Source: localStorage key "smrekar_hub_cfg" (CFG object in family-hub.html)
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: hub_family_name
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: localStorage["smrekar_hub_cfg"].familyName (user input)
+    label:
+      semantic: Family name (e.g. "Smrekar")
+      systems: Configured Family Name
+      technical: CFG.familyName (string)
+      compliance: Hub Owner Name
+    definition: >
+      The family name entered by the administrator in Settings. Drives all
+      personalized text across the Family Hub — greeting, brand block, and
+      custody status messages. Template variable enabling reuse across
+      different family units without code changes.
+    derives_from: [user_input]
+    used_by: [hub_brand_block, ui_greeting, custody_status_card, hub_config]
+    transformation: >
+      User types name in Settings → saved as CFG.familyName →
+      updateGreeting() + updateBrand() propagate on every save and page load.
+    relates_to:
+      ui_components: [hub_brand_block, ui_greeting, custody_status_card]
+      elements: [hub_config]
+    notes: >
+      Stored under localStorage key "smrekar_hub_cfg". Default seeded as
+      "Smrekar" in the Smrekar instance. Any other family deploying this
+      template sets this once in Settings and every personalized string
+      updates automatically. No code changes required for a new deployment.
+
+  - id: hub_config
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: localStorage["smrekar_hub_cfg"] (JSON object)
+    label:
+      semantic: App settings
+      systems: Hub Configuration
+      technical: CFG object (smrekar_hub_cfg localStorage key)
+      compliance: Configuration Record
+    definition: >
+      The persisted configuration object for the Family Hub. Stores all
+      admin-entered settings including family name, Google OAuth client ID,
+      calendar ID, slideshow interval, and max photos. Loaded at startup,
+      saved on Settings → Save.
+    derives_from: [hub_family_name, google_oauth_client_id, google_calendar_id,
+                   slideshow_interval, max_photos_count]
+    used_by: [hub_brand_block, google_auth_init, calendar_fetch,
+              photo_slideshow, settings_panel]
+    transformation: >
+      Admin fills settings panel fields → saveSettings() serializes to JSON →
+      localStorage.setItem("smrekar_hub_cfg", JSON.stringify(CFG)).
+      On load: JSON.parse(localStorage.getItem("smrekar_hub_cfg")) merged
+      with DEFAULTS object to fill any missing keys.
+    relates_to:
+      ui_components: [settings_panel]
+      elements: [hub_family_name, google_oauth_client_id, google_calendar_id]
+    notes: >
+      DEFAULTS object in code provides fallback values for all keys.
+      Calendar ID stored as extracted email (normalizeCalendarId strips
+      embed URLs and iframe src to just the email address).
+
+  - id: hub_brand_block
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: hub_family_name + hodgson-crest.svg (static asset)
+    label:
+      semantic: Family Hub logo and name
+      systems: Brand Block
+      technical: "#hub-brand div (top-bar, position:absolute top-left)"
+      compliance: (not shown)
+    definition: >
+      The visual identity element in the upper-left of the Family Hub display.
+      Comprises the Hodgson family crest SVG (78px) and the family name
+      ("Smrekar") above the subtitle "Family Hub" in gold. Driven by
+      hub_family_name so each family deployment shows their own name.
+    derives_from: [hub_family_name]
+    used_by: [ui_top_bar]
+    transformation: >
+      hub_family_name → updateBrand() sets #brand-family textContent.
+      SVG asset is static. Font and color driven by CSS vars (--font-display,
+      --gold). Called on page load, every minute via updateGreeting(), and
+      immediately on Settings save.
+    relates_to:
+      ui_components: [ui_top_bar]
+      elements: [hub_family_name, hub_config]
+    notes: >
+      SVG: family-hub/hodgson-crest.svg — three spruce trees after the
+      Hodgson family headstone carving. Gold stroke #C8A44A.
+      Logo width: 78px (50% larger than the original 52px ambient-crest).
+      Only the text is dynamic; the SVG is fixed per deployment.
+
+  - id: family_profile
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: localStorage["family_profiles"] (JSON array)
+    label:
+      semantic: Family member
+      systems: Family Profile
+      technical: profile object {id, name, role, age, avatar, color} in PROFILES_KEY
+      compliance: (not shown)
+    definition: >
+      A record representing one family member (parent, child, or pet).
+      Defines the individual's role, display name, avatar emoji, age (for
+      chore eligibility), and accent color. Used to personalize chores,
+      rewards, and schedule displays.
+    derives_from: [user_input]
+    used_by: [chore_assignment, reward_eligibility, ui_chore_kid_selector,
+              ui_profiles_tab, ui_overview_tab]
+    transformation: >
+      Admin enters profile in Family Profiles tab → saveProfiles() writes
+      JSON array to localStorage["family_profiles"].
+      getKids() filters role === 'kid', getParents() filters role === 'parent',
+      getPets() filters role === 'pet'.
+    relates_to:
+      ui_components: [ui_profiles_tab, ui_chore_kid_selector, ui_overview_tab]
+      elements: [chore_assignment, reward_eligibility, hub_config]
+    notes: >
+      DEFAULT_PROFILES seeds Sam (kid, 11), Emma (kid, 9), Frankie (pet),
+      Nathan (parent). Age field determines chore_assignment eligibility via
+      choresByAge(). Profiles are fully configurable — no hardcoded names
+      in rendering logic. role field drives getKids()/getPets()/getParents()
+      helper functions.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FAMILY HUB — PARENTING SCHEDULE
+# Elements defining and computing the 14-day custody cycle.
+# Source: localStorage["smrekar_schedule_cfg"] + hardcoded default anchor
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: parenting_schedule_anchor
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: localStorage["smrekar_schedule_cfg"].start (ISO date string)
+    label:
+      semantic: Schedule start date
+      systems: Custody Cycle Anchor Date
+      technical: SCHEDULE_START (Date object, loaded from smrekar_schedule_cfg.start)
+      compliance: Custody Agreement Reference Date
+    definition: >
+      The reference date marking day 0 of the 14-day parenting custody cycle.
+      All custody calculations count forward from this anchor using modular
+      arithmetic on the day difference. Configurable in Settings.
+    derives_from: [user_input]
+    used_by: [parenting_home_days, custody_status, chore_assignment,
+              ui_schedule_tab]
+    transformation: >
+      User enters date in Settings → Parenting Schedule section →
+      saveSettings() calls saveSchedCfg(startDateStr, homeDays) →
+      localStorage["smrekar_schedule_cfg"] = {start, homeDays}.
+      On load: SCHEDULE_START = new Date(s.start + 'T12:00:00').
+      Default: 2026-03-13 (a Friday, day 0 of the Smrekar schedule).
+    relates_to:
+      ui_components: [settings_panel, ui_schedule_tab]
+      elements: [parenting_home_days, custody_status]
+    notes: >
+      Set to noon (T12:00:00) to avoid daylight-saving boundary edge cases
+      where a date near midnight could shift by one day. The default anchor
+      (2026-03-13) is the Smrekar family's agreed reference date and should
+      not be changed unless the custody agreement changes.
+
+  - id: parenting_home_days
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: localStorage["smrekar_schedule_cfg"].homeDays (array of integers 0–13)
+    label:
+      semantic: "Nights at Dad's"
+      systems: Kids-Home Day Indices
+      technical: KIDS_HOME_DAYS (Set<number>, indices within 14-day cycle)
+      compliance: Custody Schedule Days
+    definition: >
+      The set of day indices within the 14-day cycle on which the children
+      are at the Dad's home. Index 0 = parenting_schedule_anchor date.
+      Configurable in Settings via the 14-day cycle day picker grid.
+    derives_from: [user_input, parenting_schedule_anchor]
+    used_by: [custody_status, chore_assignment, chore_daily_view,
+              reward_eligibility, ui_schedule_tab, ui_chore_tracker_tab]
+    transformation: >
+      Admin taps day chips in Settings → Parenting Schedule → cycle grid →
+      saveSettings() collects checked .sched-day-cb values →
+      saveSchedCfg() writes Set to localStorage and updates KIDS_HOME_DAYS live.
+      isKidsHome(date) = KIDS_HOME_DAYS.has(dayDiff % 14) where
+      dayDiff = floor((date - SCHEDULE_START) / 86400000).
+    relates_to:
+      ui_components: [settings_panel, ui_schedule_tab, ui_chore_tracker_tab]
+      elements: [parenting_schedule_anchor, custody_status]
+    notes: >
+      Default Smrekar schedule: [0,1,4,5,8,9,12,13] within each 14-day cycle.
+      Changing KIDS_HOME_DAYS immediately affects all chore, reward, and
+      schedule computations — no page reload required (hot-applied on save).
+
+  - id: custody_status
+    layer: frontend
+    primitive: false
+    data_class: derived
+    source: parenting_schedule_anchor + parenting_home_days + system clock
+    label:
+      semantic: "Kids at Dad's tonight" / "Kids at Mom's today"
+      systems: Custody Status (home | away)
+      technical: isKidsHome(new Date()) → boolean
+      compliance: Custody State Record
+    definition: >
+      The computed current custody state — whether the children are scheduled
+      to be at the Dad's home tonight or at the other parent's home. Derived
+      from the parenting schedule cycle and today's date. Updates every minute.
+    derives_from: [parenting_schedule_anchor, parenting_home_days]
+    used_by: [custody_status_card, chore_daily_view, ui_top_bar,
+              ui_greeting, renderTodayChores]
+    transformation: >
+      Source: SCHEDULE_START (Date) + KIDS_HOME_DAYS (Set<number>).
+      Middle: dayDiff = floor((ymd(today) - ymd(SCHEDULE_START)) / 86400000);
+              cycleDay = dayDiff % 14;
+              home = KIDS_HOME_DAYS.has(cycleDay).
+      Target: updateCustodyBadge() sets custody_status_card label/icon/color +
+              renderTodayChores() gates chore display on home state.
+      Refresh: setInterval(updateCustodyBadge, 60000).
+    relates_to:
+      ui_components: [custody_status_card, ui_top_bar]
+      elements: [parenting_schedule_anchor, parenting_home_days,
+                 next_custody_transition, chore_daily_view]
+    notes: >
+      Home = true means the children are at Dad's tonight and chores apply.
+      Away = true means chores are paused and the chore card shows a
+      "Kids at Mom's" message. This boolean gates all chore and reward
+      computations for the current day.
+
+  - id: next_custody_transition
+    layer: frontend
+    primitive: false
+    data_class: derived
+    source: custody_status + parenting_schedule_anchor + parenting_home_days
+    label:
+      semantic: "Back to Dad's Fri Aug 1" / "Back to Mom's Thu Jul 31"
+      systems: Next Custody Change Date
+      technical: computed in updateCustodyBadge() loop over addDays(today, i)
+      compliance: Next Scheduled Transition
+    definition: >
+      The next calendar date on which custody changes from the current state
+      (home→away or away→home). Displayed in the custody_status_card below
+      the current state label. Scanned forward up to 14 days from today.
+    derives_from: [custody_status, parenting_schedule_anchor, parenting_home_days]
+    used_by: [custody_status_card]
+    transformation: >
+      Source: current home boolean + isKidsHome(date) for future dates.
+      Middle: for i in 1..14: if isKidsHome(addDays(today, i)) !== home → transition date.
+      Target: #custody-next textContent set to formatted date string.
+      Format: "Back to {dadName}'s {weekday} {month} {day}" or
+              "Back to Mom's {weekday} {month} {day}".
+    relates_to:
+      ui_components: [custody_status_card]
+      elements: [custody_status, parenting_home_days]
+
+  - id: custody_status_card
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: custody_status + next_custody_transition + hub_family_name
+    label:
+      semantic: Kids at Dad's / Kids at Mom's card
+      systems: Custody Status Card
+      technical: "#custody-card .glass-card (position:absolute top-right of #top-bar)"
+      compliance: (not shown)
+    definition: >
+      The glass card in the upper-right corner of the Family Hub display
+      showing the current custody state (home or away icon, text label)
+      and next transition date below it. Styled identically to the calendar
+      and chores cards. Updates every minute via setInterval.
+    derives_from: [custody_status, next_custody_transition]
+    used_by: [ui_top_bar]
+    transformation: >
+      updateCustodyBadge() → sets card className (home|away), icon emoji
+      (🏠|👋), #custody-card-status text, #custody-next text.
+      Teal color (#custody-card.home) when home; dim cream when away.
+      Card is position:absolute; top:0; right:0 inside #top-bar.
+    relates_to:
+      ui_components: [ui_top_bar]
+      elements: [custody_status, next_custody_transition, hub_family_name]
+    notes: >
+      Replaced the former pill-style #custody-badge (removed 2026-07-27).
+      Previously also appeared as a floating text element (#today-custody-text)
+      in the center area — both removed in favor of this single authoritative card.
+      Left column below calendar card freed for future use.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FAMILY HUB — CHORES
+# Elements defining, assigning, tracking, and displaying daily chore state.
+# Source: CHORES constant array + localStorage["smrekar_chore_completion"]
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: chore_definition
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: CHORES constant array (hardcoded in family-hub.html)
+    label:
+      semantic: Chore (e.g. "Brush teeth", "Make bed")
+      systems: Chore Definition
+      technical: CHORES[{id, label, tags, minAge}] constant array
+      compliance: (not shown)
+    definition: >
+      A named household task with a minimum age threshold and tags indicating
+      category (hygiene, tidy, responsibility, learning, care).
+      Defines the universe of tasks that can be assigned to kids.
+    derives_from: []
+    used_by: [chore_assignment, chore_daily_view, ui_chore_tracker_tab]
+    transformation: >
+      Static constant in code. No transformation — this is source truth.
+      choresByAge(age) filters CHORES where minAge <= age to return the
+      eligible subset for a given child.
+    relates_to:
+      ui_components: [ui_chore_tracker_tab, ui_today_chores_card]
+      elements: [chore_assignment, family_profile]
+    notes: >
+      Current chore IDs: brush_teeth, make_bed, reading, clear_table,
+      unload_dishwasher, take_trash, walk_frankie, homework (age >= 9);
+      set_table, wipe_table, outfit_ready, lunch_backpack, put_away_laundry
+      (age < 9). The rotating daily extra is selected by dayOfMonth % rotating.length.
+
+  - id: chore_assignment
+    layer: frontend
+    primitive: false
+    data_class: derived
+    source: chore_definition + family_profile + parenting_home_days + system clock
+    label:
+      semantic: Today's chores for {kid name}
+      systems: Chore Assignment (day × kid)
+      technical: defaultAssignments(dayKey, kidId) → Chore[]
+      compliance: (not shown)
+    definition: >
+      The computed list of chores assigned to a specific child on a specific
+      calendar day. Derived from the child's age (for eligibility), the day
+      of the month (for rotating extra chore), and the fixed daily set.
+    derives_from: [chore_definition, family_profile]
+    used_by: [chore_daily_view, chore_completion_state, reward_eligibility,
+              ui_chore_tracker_tab, ui_today_chores_card]
+    transformation: >
+      Source: kid.age (from family_profile) + dayKey (YYYY-MM-DD string).
+      Middle: daily = [brush_teeth, make_bed, reading] (always assigned).
+              rotating = age >= 9 ? [...senior chores] : [...junior chores].
+              extra = rotating[parseInt(dayKey.split('-')[2]) % rotating.length].
+              available = choresByAge(kid.age).
+              assignment = [...daily, extra].map(id => available.find(c => c.id === id)).filter(Boolean).
+      Target: rendered in chore_daily_view and ui_today_chores_card.
+    relates_to:
+      ui_components: [ui_today_chores_card, ui_chore_tracker_tab]
+      elements: [chore_definition, family_profile, chore_completion_state]
+    notes: >
+      The rotating extra ensures variety without requiring a calendar config.
+      Deterministic by day-of-month so it recomputes identically across
+      sessions. Daily chores (brush_teeth, make_bed, reading) are permanent
+      regardless of age.
+
+  - id: chore_completion_state
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: localStorage["smrekar_chore_completion"] (nested JSON object)
+    label:
+      semantic: Done ✓ / Not done yet
+      systems: Chore Completion (day × kid × choreId → boolean)
+      technical: COMP_KEY["smrekar_chore_completion"][dayKey][kidId][choreId] → boolean
+      compliance: (not shown)
+    definition: >
+      The persisted record of which chores have been completed by which child
+      on which day. Stored as a nested JSON structure keyed by date, kid ID,
+      and chore ID. Written on every tap of a chore row.
+    derives_from: [user_input, chore_assignment]
+    used_by: [chore_daily_view, reward_eligibility, ui_chore_tracker_tab,
+              ui_today_chores_card]
+    transformation: >
+      User taps chore row → toggleChoreCompletion(dayKey, kidId, choreId) →
+      reads current state from localStorage → inverts boolean →
+      writes back: data[dayKey][kidId][choreId] = !current.
+      Read: getChoreState(dayKey, kidId, choreId) returns boolean (default false).
+      Count: countDayCompleted(dayKey, kidId) counts truthy entries for that day/kid.
+    relates_to:
+      ui_components: [ui_chore_tracker_tab, ui_today_chores_card]
+      elements: [chore_assignment, reward_eligibility, chore_daily_view]
+    notes: >
+      localStorage key: "smrekar_chore_completion".
+      Structure: { "2026-07-27": { "sam": { "brush_teeth": true, ... }, ... } }.
+      No expiry — historical data stays indefinitely (used for reward lookback).
+      UI renders done rows with strikethrough and teal checkmark; incomplete
+      rows are tappable with a full cursor target area.
+
+  - id: chore_daily_view
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: chore_assignment + chore_completion_state + custody_status + yesterday_carryover
+    label:
+      semantic: Today's chores and anything left from yesterday
+      systems: Daily Chore View (today + carryover)
+      technical: renderChoreTracker() → #chore-tracker-body innerHTML
+      compliance: (not shown)
+    definition: >
+      The primary chore interaction surface in the Dashboard's Chore Tracker
+      tab. Shows: reward progress bar at top, today's chores with completion
+      checkboxes, and any incomplete chores from yesterday (if kids were home).
+      Weekly history is collapsed below a toggle.
+    derives_from: [chore_assignment, chore_completion_state, custody_status,
+                   reward_eligibility, yesterday_carryover]
+    used_by: [ui_chore_tracker_tab]
+    transformation: >
+      Source: todayKey = ymd(new Date()), yesterdayKey = ymd(addDays(today,-1)).
+      Middle: renders reward_progress_bar → today's chore rows (toggleable) →
+              yesterday carryover rows (incomplete chores from yesterdayKey
+              if isKidsHome(yesterday)) → collapsed history toggle.
+      Target: #chore-tracker-body innerHTML.
+      Refresh: on tab open (openDashboard) and after each toggleChoreCompletion.
+    relates_to:
+      ui_components: [ui_chore_tracker_tab, reward_progress_bar]
+      elements: [chore_assignment, chore_completion_state, custody_status,
+                 yesterday_carryover, reward_eligibility]
+    notes: >
+      Carryover section (rose-tinted border) only appears when:
+        (a) kids were home yesterday (isKidsHome(yesterday) === true), AND
+        (b) at least one chore was left incomplete yesterday.
+      Carryover chores are tappable and update yesterdayKey's completion record.
+
+  - id: yesterday_carryover
+    layer: frontend
+    primitive: false
+    data_class: derived
+    source: chore_completion_state + parenting_home_days
+    label:
+      semantic: Left over from yesterday
+      systems: Yesterday Carryover Chores
+      technical: >
+        chores where !getChoreState(yesterdayKey, kidId, choreId)
+        AND isKidsHome(yesterday)
+      compliance: (not shown)
+    definition: >
+      The subset of yesterday's chore assignments that were not completed,
+      surfaced in today's view as a carryover reminder — but only on days
+      when the kids were home yesterday (no carryover from Mom's nights).
+    derives_from: [chore_completion_state, chore_assignment, parenting_home_days]
+    used_by: [chore_daily_view, ui_chore_tracker_tab]
+    transformation: >
+      Source: yesterdayKey = ymd(addDays(today, -1)).
+      Gate: isKidsHome(yesterday) must be true.
+      Middle: yChores = defaultAssignments(yesterdayKey, kidId) →
+              yCarryover = yChores.filter(c => !getChoreState(yesterdayKey, kidId, c.id)).
+      Target: rendered as a rose-bordered section above history toggle in
+              chore_daily_view.
+    relates_to:
+      ui_components: [ui_chore_tracker_tab]
+      elements: [chore_completion_state, chore_assignment, custody_status]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FAMILY HUB — REWARDS
+# Elements computing and displaying reward eligibility.
+# Source: chore_completion_state over rolling 7-day home-day window
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: reward_definition
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: REWARDS constant array (hardcoded in family-hub.html)
+    label:
+      semantic: Reward (e.g. "Choose the weekend movie")
+      systems: Reward Option
+      technical: REWARDS string[] constant array
+      compliance: (not shown)
+    definition: >
+      A named privilege or treat that a child earns by meeting the chore
+      completion threshold over a rolling 7-day period. The reward options
+      are displayed in the Rewards tab for the child to choose from.
+    derives_from: []
+    used_by: [ui_rewards_tab, reward_eligibility]
+    relates_to:
+      ui_components: [ui_rewards_tab]
+      elements: [reward_eligibility]
+
+  - id: reward_eligibility
+    layer: frontend
+    primitive: false
+    data_class: derived
+    source: chore_completion_state + parenting_home_days + system clock
+    label:
+      semantic: "3 of 4 nights — 1 more night needed" / "Reward unlocked! ⭐"
+      systems: Reward Eligibility (qualifying nights / 4 threshold)
+      technical: rewardEligibility(kidId, recentHomeDays(7)) → {qualifying, needed, eligible, pct}
+      compliance: (not shown)
+    definition: >
+      Whether a child has earned a reward. Requires completing at least
+      3 chores on at least 4 of the last 7 nights when the child was home.
+      Returns a progress object with count, percentage, and eligibility flag.
+    derives_from: [chore_completion_state, parenting_home_days]
+    used_by: [reward_progress_bar, ui_rewards_tab, ui_today_chores_card,
+              chore_daily_view]
+    transformation: >
+      Source: recentHomeDays(7) → last 7 calendar days when isKidsHome() was true
+              (lookback window: 30 days max to find 7 home days).
+      Middle: qualifying = homeDays.filter(d => countDayCompleted(d.key, kidId) >= 3).length.
+              pct = min(100, (qualifying / 4) * 100).
+              eligible = qualifying >= 4.
+      Target: reward_progress_bar width (pct%), qualifying count label,
+              eligibility message, ⭐ unlock indicator.
+    relates_to:
+      ui_components: [reward_progress_bar, ui_rewards_tab, ui_today_chores_card]
+      elements: [chore_completion_state, parenting_home_days, reward_definition]
+    notes: >
+      Rolling 7-day window means reward resets naturally without admin action.
+      "3 chores per night" threshold is intentional — the daily set is 4 chores
+      (3 fixed + 1 rotating), so 3/4 is the qualifying threshold (not perfection).
+      countDayCompleted counts truthy entries in chore_completion_state for
+      a given dayKey and kidId.
+
+  - id: reward_progress_bar
+    layer: frontend
+    primitive: false
+    data_class: derived
+    source: reward_eligibility
+    label:
+      semantic: Progress bar showing nights completed toward reward
+      systems: Reward Progress Indicator
+      technical: .crb-bar-fill width (pct%) in #chore-tracker-body
+      compliance: (not shown)
+    definition: >
+      A visual burndown bar displayed at the top of the Chore Tracker tab
+      showing how many qualifying nights a child has completed out of the 4
+      required for reward eligibility. Also displayed in the Rewards tab
+      per-kid. Gold bar on dark background.
+    derives_from: [reward_eligibility]
+    used_by: [chore_daily_view, ui_rewards_tab]
+    transformation: >
+      Source: reward_eligibility.pct (0–100).
+      Middle: .crb-bar-fill { width: pct% } set via inline style.
+              Label: "{qualifying}/4 nights". Unlock message if eligible.
+      Target: visible in chore_daily_view header and ui_rewards_tab per-kid row.
+    relates_to:
+      ui_components: [ui_chore_tracker_tab, ui_rewards_tab]
+      elements: [reward_eligibility]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FAMILY HUB — GOOGLE PHOTOS INTEGRATION
+# Elements describing the photo slideshow data pipeline.
+# Source: Google Photos Picker API → localStorage["smrekar_photos_meta"]
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: google_access_token
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: Google Sign-In (GSI) token client, implicit flow
+    label:
+      semantic: (not shown)
+      systems: Google Access Token
+      technical: accessToken variable (in-memory, not persisted)
+      compliance: OAuth Bearer Token
+    definition: >
+      The short-lived OAuth 2.0 access token obtained from Google Sign-In via
+      the implicit grant flow. Used as a Bearer token in Authorization headers
+      for Google Calendar and Google Photos API requests.
+    derives_from: [google_oauth_client_id, user_input]
+    used_by: [calendar_fetch, photo_restore, google_photos_picker]
+    transformation: >
+      User clicks Sign In → startSignIn() initializes GSI token client →
+      user authorizes → onToken(tokenResponse) stores tokenResponse.access_token
+      in in-memory accessToken variable.
+      Token lifespan: ~1 hour. No refresh token (implicit flow).
+      On expiry: next API call fails; user must re-sign-in.
+    relates_to:
+      ui_components: [ui_auth_overlay]
+      elements: [google_oauth_client_id, photo_metadata, google_calendar_id]
+    notes: >
+      Intentionally NOT persisted to localStorage — storing tokens in
+      localStorage is a security risk. The user must sign in per session.
+      Re-auth is lightweight (GSI caches credentials in the browser's
+      Google session) — usually a single click.
+
+  - id: google_oauth_client_id
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: localStorage["smrekar_hub_cfg"].clientId (user input via Settings)
+    label:
+      semantic: (not shown)
+      systems: Google OAuth Client ID
+      technical: CFG.clientId (string, xxxxx.apps.googleusercontent.com)
+      compliance: OAuth Application Credential
+    definition: >
+      The Web application OAuth 2.0 client ID created in Google Cloud Console.
+      Required to initialize Google Sign-In. Configured once by the administrator
+      in Settings and persisted in hub_config.
+    derives_from: [user_input]
+    used_by: [google_auth_init, google_access_token]
+    relates_to:
+      ui_components: [settings_panel]
+      elements: [hub_config, google_access_token]
+    notes: >
+      Created at console.cloud.google.com → APIs & Services → Credentials →
+      Web application. Authorized JavaScript origin must include the hub's
+      serving URL (e.g. http://localhost:4081 for M920q, hub.unicornpingpong.com
+      when Cloudflare tunnel is live). Must add smrekarfamilia@gmail.com as
+      test user while app remains in Testing mode.
+
+  - id: photo_metadata
+    layer: frontend
+    primitive: false
+    data_class: derived
+    source: Google Photos Picker API response + localStorage["smrekar_photos_meta"]
+    label:
+      semantic: Selected family photos
+      systems: Photo Metadata Records
+      technical: PHOTOS_KEY["smrekar_photos_meta"] → [{id, baseUrl, filename, mimeType}]
+      compliance: (not shown)
+    definition: >
+      Persisted metadata for photos selected via the Google Photos Picker.
+      Stores the media item ID, authenticated base URL, filename, and MIME type
+      for each selected photo. Base URL is re-fetched on sign-in to get a
+      fresh authenticated URL.
+    derives_from: [google_access_token, user_input]
+    used_by: [photo_slideshow, photo_restore]
+    transformation: >
+      Source: browseAlbums() opens Google Photos Picker → user selects photos →
+              picker returns mediaItems [{id, baseUrl, filename, mimeType}].
+      Middle: savePhotoMeta() serializes array to localStorage["smrekar_photos_meta"].
+      Restore: restorePhotos() on sign-in → reads metadata → fetches each
+              baseUrl + "=w1920-h1080" with Authorization: Bearer {accessToken}
+              → creates Blob URLs for photo_slideshow.
+      Note: "=w1920-h1080" (no -c suffix) = fit-within-box, no crop.
+            "=w1920-h1080-c" (center-crop) is intentionally avoided — causes
+            photos to be cropped before reaching CSS, defeating contain layout.
+    relates_to:
+      ui_components: [photo_slideshow, settings_panel]
+      elements: [google_access_token, photo_google_base_url]
+    notes: >
+      Blob URLs (createObjectURL) are in-memory only — not persisted.
+      On page reload, restorePhotos() re-fetches from baseUrl using the
+      new session's accessToken. If fetch fails (token expired, baseUrl
+      stale), shows "Saved photos expired — open Settings → Choose Photos…".
+      Max photos count controlled by CFG.maxPhotos (default 50).
+
+  - id: photo_google_base_url
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: Google Photos API mediaItem.baseUrl
+    label:
+      semantic: (not shown)
+      systems: Google Photos Base URL
+      technical: mediaItem.baseUrl (authenticated CDN URL)
+      compliance: (not shown)
+    definition: >
+      The authenticated base URL returned by Google Photos API for a media item.
+      Requires appending dimension parameters and an Authorization header for
+      image retrieval. Does not contain the image data itself.
+    derives_from: [google_access_token]
+    used_by: [photo_metadata, photo_slideshow]
+    transformation: >
+      baseUrl + "=w1920-h1080" → fetch(url, {headers:{Authorization:"Bearer "+accessToken}})
+      → Blob → createObjectURL() → CSS background-image on .photo-slide element.
+      CSS: background-size:contain; background-position:center; background-color:#060b10.
+      (contain prevents cropping; dark background fills letterbox areas.)
+    relates_to:
+      ui_components: [photo_slideshow]
+      elements: [photo_metadata, google_access_token]
+
+  - id: photo_slideshow
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: photo_metadata + photo_google_base_url + hub_config
+    label:
+      semantic: Family photo background
+      systems: Photo Slideshow
+      technical: "#photo-bg .photo-slide elements, startSlideshow(), goToPhoto()"
+      compliance: (not shown)
+    definition: >
+      The ambient background slideshow cycling through selected family photos.
+      Photos are displayed full-screen behind all UI elements with a dark overlay
+      gradient. Navigation via Next Photo button or dot indicators. Interval
+      configurable (8–60 seconds) in Settings.
+    derives_from: [photo_metadata, hub_config]
+    used_by: [ui_photo_bg]
+    transformation: >
+      Source: photos[] array (Blob URLs from photo_restore or fresh picker).
+      Slideshow: startSlideshow() sets setInterval(nextPhoto, interval*1000).
+      Display: goToPhoto(n) → .photo-slide.active { background-image: url(blobUrl) }.
+              CSS: background-size:contain; background-position:center;
+                   background-repeat:no-repeat; background-color:#060b10.
+      Navigation: #next-photo-btn (bottom bar) → nextPhoto().
+                  #photo-dots (bottom bar) → goToPhoto(index).
+                  ArrowLeft/ArrowRight keys → keyboard nav.
+    relates_to:
+      ui_components: [ui_bottom_bar, ui_photo_bg]
+      elements: [photo_metadata, hub_config]
+    notes: >
+      Ken Burns zoom animation intentionally removed — full-frame contain
+      display is preferred to preserve photo context (wide landscape shots
+      were losing significant content under the previous cover+zoom approach).
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FAMILY HUB — GOOGLE CALENDAR INTEGRATION
+# Elements describing the calendar data pipeline.
+# Source: Google Calendar API → rendered in #cal-events
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: google_calendar_id
+    layer: frontend
+    primitive: true
+    data_class: raw
+    source: localStorage["smrekar_hub_cfg"].calId (user input via Settings)
+    label:
+      semantic: Family calendar
+      systems: Calendar ID
+      technical: CFG.calId (string, e.g. smrekarfamilia@gmail.com)
+      compliance: (not shown)
+    definition: >
+      The Google Calendar ID (email address format) of the calendar to display.
+      Configured in Settings. Accepts the raw email, a calendar embed URL, or
+      an iframe embed src — all normalized to the email address by
+      normalizeCalendarId().
+    derives_from: [user_input]
+    used_by: [calendar_fetch, hub_config]
+    transformation: >
+      User pastes email / URL / iframe → normalizeCalendarId() extracts email
+      via regex on "src=" embed attribute or direct email pattern →
+      stored as CFG.calId. Default: "primary" (signed-in user's default calendar).
+    relates_to:
+      ui_components: [settings_panel, ui_cal_card]
+      elements: [hub_config, calendar_event]
+
+  - id: calendar_event
+    layer: frontend
+    primitive: false
+    data_class: derived
+    source: Google Calendar API v3 + google_access_token + google_calendar_id
+    label:
+      semantic: Upcoming event (name, time, day)
+      systems: Calendar Event
+      technical: Google Calendar API events.list response item
+      compliance: (not shown)
+    definition: >
+      A single event fetched from the Google Calendar API, representing
+      a scheduled family event within the next 14 days. Rendered in the
+      left-column calendar card grouped by day.
+    derives_from: [google_calendar_id, google_access_token]
+    used_by: [ui_cal_card]
+    transformation: >
+      Source: GET https://www.googleapis.com/calendar/v3/calendars/{calId}/events
+              ?timeMin={now}&timeMax={now+14days}&singleEvents=true&orderBy=startTime
+              Authorization: Bearer {accessToken}.
+      Middle: response.items → map to {title, start, allDay} →
+              grouped by date string for day headers in cal-events rendering.
+      Target: #cal-events innerHTML (day-header + ev rows).
+    relates_to:
+      ui_components: [ui_cal_card]
+      elements: [google_calendar_id, google_access_token]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FAMILY HUB — UI COMPONENTS
+# Top-level UI surfaces and their data dependencies.
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: ui_top_bar
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: system clock + hub_family_name + custody_status + next_custody_transition
+    label:
+      semantic: Top of screen — clock, logo, custody status
+      systems: Top Bar
+      technical: "#top-bar (grid-row:1, grid-column:1/-1)"
+      compliance: (not shown)
+    definition: >
+      The full-width top row of the Family Hub layout. Contains the hub brand
+      block (upper-left), the large clock and date (center), and the custody
+      status card (upper-right). Spans all three grid columns.
+    derives_from: [hub_brand_block, hub_family_name, custody_status_card]
+    used_by: []
+    relates_to:
+      ui_components: [hub_brand_block, custody_status_card]
+      elements: [hub_family_name, custody_status, next_custody_transition]
+
+  - id: ui_cal_card
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: calendar_event + family_profile (birthdays)
+    label:
+      semantic: Upcoming events and birthdays
+      systems: Calendar Card
+      technical: "#cal-card .glass-card (grid-column:1, inside #left-col)"
+      compliance: (not shown)
+    definition: >
+      The left-column glass card showing upcoming Google Calendar events
+      (next 14 days, grouped by day) and a fixed birthday list derived
+      from family profiles. Refreshed on sign-in and every calendar poll interval.
+    derives_from: [calendar_event, family_profile]
+    used_by: [ui_left_col]
+    relates_to:
+      ui_components: []
+      elements: [calendar_event, google_calendar_id, family_profile]
+    notes: >
+      Birthday dates are hardcoded per profile (mm/dd format) and rendered
+      with daysUntilBirthday() countdown. Future: source birthdays from
+      family_profile records when profiles become the authoritative source.
+
+  - id: ui_today_chores_card
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: chore_assignment + chore_completion_state + custody_status + reward_eligibility
+    label:
+      semantic: Today's Chores card (main display)
+      systems: Today's Chores Card
+      technical: "#chores-card .glass-card (grid-column:3, grid-row:2)"
+      compliance: (not shown)
+    definition: >
+      The right-column glass card on the main ambient display. Shows per-kid
+      chore completion status for today, with tap-to-complete checkboxes and
+      a reward progress bar. Visible on the main screen without opening the
+      Dashboard. Primary touch surface for kids checking off chores.
+    derives_from: [chore_assignment, chore_completion_state, custody_status,
+                   reward_eligibility]
+    used_by: []
+    transformation: >
+      renderTodayChores() → reads todayKey, isKidsHome(), per-kid chore
+      assignments and completion state → generates chore rows with
+      onclick=toggleChoreCompletion → reward strip with progress bar.
+      If kids away: shows "Kids at Mom's today" message.
+      Refreshed: on load, on sign-in, every minute via setInterval.
+    relates_to:
+      ui_components: [ui_chore_tracker_tab]
+      elements: [chore_assignment, chore_completion_state, custody_status,
+                 reward_eligibility, reward_progress_bar]
+
+  - id: ui_chore_tracker_tab
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: chore_daily_view + yesterday_carryover + reward_eligibility
+    label:
+      semantic: Chore Tracker (Dashboard tab)
+      systems: Chore Tracker Tab
+      technical: "#chore-tracker-body (Dashboard tab content, switchTab('chores'))"
+      compliance: (not shown)
+    definition: >
+      The Chore Tracker tab inside the Dashboard overlay. Shows reward progress
+      bar, today's chores (with completion checkboxes), yesterday carryover
+      (if any), and collapsible recent history. The primary admin and kid-facing
+      chore management surface.
+    derives_from: [chore_daily_view, yesterday_carryover, reward_eligibility]
+    used_by: [ui_dashboard_overlay]
+    relates_to:
+      ui_components: [ui_dashboard_overlay]
+      elements: [chore_daily_view, yesterday_carryover, reward_eligibility,
+                 reward_progress_bar, chore_completion_state]
+
+  - id: ui_rewards_tab
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: reward_definition + reward_eligibility
+    label:
+      semantic: Rewards (Dashboard tab)
+      systems: Rewards Tab
+      technical: "#reward-grid + #reward-progress-col (switchTab('rewards'))"
+      compliance: (not shown)
+    definition: >
+      The Rewards tab in the Dashboard overlay. Shows the reward menu (things
+      kids can earn), per-kid progress bars showing qualifying nights, and the
+      eligibility unlock message when a child has earned a reward.
+    derives_from: [reward_definition, reward_eligibility]
+    used_by: [ui_dashboard_overlay]
+    relates_to:
+      ui_components: [ui_dashboard_overlay]
+      elements: [reward_definition, reward_eligibility, reward_progress_bar]
+
+  - id: ui_dashboard_overlay
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: all dashboard tab elements
+    label:
+      semantic: Dashboard (full-screen panel)
+      systems: Dashboard Overlay
+      technical: "#dashboard-overlay (position:fixed, slides up from bottom)"
+      compliance: (not shown)
+    definition: >
+      The full-screen slide-up panel containing all administrative and
+      family-interactive tabs: Overview, Schedule, Chores, Rewards, and
+      Family Profiles. Opened via the Dashboard FAB button at lower-right.
+      Closed via ✕ button or Escape key.
+    derives_from: [custody_status, chore_daily_view, reward_eligibility,
+                   family_profile, parenting_home_days]
+    used_by: []
+    relates_to:
+      ui_components: [ui_chore_tracker_tab, ui_rewards_tab, ui_profiles_tab,
+                      ui_schedule_tab]
+      elements: []
+    notes: >
+      z-index:70. Uses backdrop-filter:blur(18px) which creates a Chromium
+      compositing layer. Settings and Dashboard FAB buttons must be LAST in
+      the DOM (after #dashboard-overlay) or Chromium's compositing will paint
+      them behind the overlay regardless of z-index. Fixed 2026-07-26.
+
+  - id: settings_panel
+    layer: frontend
+    primitive: false
+    data_class: composite
+    source: hub_config + parenting_schedule_anchor + parenting_home_days
+    label:
+      semantic: Settings
+      systems: Settings Panel
+      technical: "#settings-panel (position:fixed right slide-in, z-index:9999)"
+      compliance: (not shown)
+    definition: >
+      The slide-in settings panel (from the right edge). Contains all
+      configurable fields: family name, Google OAuth client ID, calendar ID,
+      slideshow interval, max photos, parenting schedule (anchor date + 14-day
+      cycle grid), and theme picker. Opened via the Settings FAB at lower-right.
+    derives_from: [hub_config, parenting_schedule_anchor, parenting_home_days]
+    used_by: []
+    transformation: >
+      populateSettings() fills all fields from CFG + SCHEDULE_START + KIDS_HOME_DAYS
+      when panel opens. saveSettings() reads all fields → writes back to CFG +
+      saveSchedCfg() + saveCfg() → triggers downstream updates.
+    relates_to:
+      ui_components: []
+      elements: [hub_config, hub_family_name, google_oauth_client_id,
+                 google_calendar_id, parenting_schedule_anchor,
+                 parenting_home_days, hub_brand_block]
+    notes: >
+      Must be last in DOM body (after #dashboard-overlay) due to Chromium
+      backdrop-filter compositing constraint — same as ui_dashboard_overlay.
+      Parenting schedule section added 2026-07-27: anchor date picker +
+      14-day cycle chip grid. Chips render with weekday+date labels relative
+      to anchor via renderSchedDayPicker().
