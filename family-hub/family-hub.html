@@ -700,6 +700,26 @@
     ═══════════════════════════════════════════ */
     .empty { font-size:12.5px; color:var(--cream-ghost); text-align:center; padding:12px 0; font-style:italic; }
     .loading { font-size:12px; color:var(--cream-ghost); text-align:center; padding:10px 0; animation:pulse 1.5s infinite; }
+
+    /* ═══════════════════════════════════════════
+       THEME PICKER
+    ═══════════════════════════════════════════ */
+    .theme-grid {
+      display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:4px;
+    }
+    .theme-pill {
+      display:flex; align-items:center; gap:9px;
+      background:rgba(255,255,255,.05); border:1px solid var(--glass-border);
+      border-radius:10px; padding:9px 12px;
+      cursor:pointer; font-size:12px; color:var(--cream-dim);
+      transition:all .15s; text-align:left;
+    }
+    .theme-pill:hover { border-color:var(--gold); color:var(--cream); }
+    .theme-pill.active { border-color:var(--gold); color:var(--gold); background:var(--gold-faint); }
+    .theme-swatch {
+      width:20px; height:20px; border-radius:50%; flex-shrink:0;
+      border:1px solid rgba(255,255,255,.15);
+    }
     @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:.9} }
     .err { font-size:11.5px; color:rgba(255,100,100,.7); text-align:center; padding:8px 0; }
 
@@ -1249,6 +1269,7 @@ function populateSettings() {
   document.getElementById('set-album-id').value   = photos.length ? `${photos.length} photos loaded` : savedMeta.length ? `${savedMeta.length} photos saved (restoring…)` : '';
   document.getElementById('set-interval').value   = CFG.slideshowInterval;
   document.getElementById('set-max-photos').value = CFG.maxPhotos;
+  renderThemeGrid();
 }
 
 /* ═══════════════════════════════════════════
@@ -1969,6 +1990,152 @@ function esc(s) {
 /* ═══════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════ */
+/* ═══════════════════════════════════════════
+   THEME SYSTEM  (mirrors ThemeProvider.jsx)
+═══════════════════════════════════════════ */
+const THEME_KEY = 'cabin-theme';
+
+// Maps cabin-ui theme vars → family-hub CSS vars
+const THEMES = {
+  deepspace: {
+    label: 'Deep Space', id: 'deepspace',
+    vars: {
+      '--night':'#080a0f', '--glass':'rgba(8,10,15,0.78)', '--glass-light':'rgba(255,255,255,0.04)',
+      '--glass-border':'rgba(0,163,255,0.18)', '--shadow':'0 10px 60px rgba(0,0,0,.9)',
+      '--gold':'#00a3ff', '--gold-glow':'rgba(0,163,255,0.24)', '--gold-faint':'rgba(0,163,255,0.10)',
+      '--teal':'#00a3ff', '--teal-glow':'rgba(0,163,255,0.18)',
+      '--rose':'#ff2d55', '--rose-glow':'rgba(255,45,85,0.18)',
+      '--cream':'#ffffff', '--cream-dim':'rgba(255,255,255,0.62)', '--cream-ghost':'rgba(255,255,255,0.28)',
+      '--radius':'0px', '--font-display':"'Chakra Petch','Helvetica Neue',sans-serif", '--font-ui':"'Chakra Petch','Helvetica Neue',sans-serif",
+    },
+    fonts: [{ id:'fh-font-deepspace', href:'https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Share+Tech+Mono&display=swap' }],
+  },
+  modern: {
+    label: 'Modern', id: 'modern',
+    vars: {
+      '--night':'#0d1117', '--glass':'rgba(22,27,34,0.72)', '--glass-light':'rgba(255,255,255,0.04)',
+      '--glass-border':'rgba(33,38,45,0.85)', '--shadow':'0 10px 60px rgba(0,0,0,.8)',
+      '--gold':'#1f6feb', '--gold-glow':'rgba(31,111,235,0.24)', '--gold-faint':'rgba(31,111,235,0.10)',
+      '--teal':'#3fb950', '--teal-glow':'rgba(63,185,80,0.18)',
+      '--rose':'#f85149', '--rose-glow':'rgba(248,81,73,0.18)',
+      '--cream':'#e6edf3', '--cream-dim':'rgba(230,237,243,0.62)', '--cream-ghost':'rgba(230,237,243,0.28)',
+      '--radius':'10px', '--font-display':"'Inter',system-ui,sans-serif", '--font-ui':"'Inter',system-ui,sans-serif",
+    },
+    fonts: [],
+  },
+  lcars: {
+    label: 'LCARS', id: 'lcars',
+    vars: {
+      '--night':'#000000', '--glass':'rgba(10,10,26,0.88)', '--glass-light':'rgba(255,153,0,0.04)',
+      '--glass-border':'rgba(204,102,0,0.45)', '--shadow':'0 10px 60px rgba(0,0,0,.95)',
+      '--gold':'#ff9900', '--gold-glow':'rgba(255,153,0,0.28)', '--gold-faint':'rgba(255,153,0,0.10)',
+      '--teal':'#99cc00', '--teal-glow':'rgba(153,204,0,0.18)',
+      '--rose':'#cc0000', '--rose-glow':'rgba(204,0,0,0.18)',
+      '--cream':'#ffcc66', '--cream-dim':'rgba(204,119,0,0.85)', '--cream-ghost':'rgba(136,85,0,0.85)',
+      '--radius':'18px', '--font-display':"'Antonio','Arial Narrow',sans-serif", '--font-ui':"'Antonio','Arial Narrow',sans-serif",
+    },
+    fonts: [{ id:'fh-font-lcars', href:'https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&display=swap' }],
+  },
+  monolith: {
+    label: 'Monolith', id: 'monolith',
+    vars: {
+      '--night':'#0a0a0a', '--glass':'rgba(17,17,17,0.72)', '--glass-light':'rgba(255,255,255,0.03)',
+      '--glass-border':'rgba(42,42,42,0.85)', '--shadow':'0 10px 60px rgba(0,0,0,.9)',
+      '--gold':'#888888', '--gold-glow':'rgba(136,136,136,0.20)', '--gold-faint':'rgba(136,136,136,0.08)',
+      '--teal':'#448844', '--teal-glow':'rgba(68,136,68,0.18)',
+      '--rose':'#884444', '--rose-glow':'rgba(136,68,68,0.18)',
+      '--cream':'#cccccc', '--cream-dim':'rgba(204,204,204,0.62)', '--cream-ghost':'rgba(204,204,204,0.28)',
+      '--radius':'2px', '--font-display':"'IBM Plex Mono','Courier New',monospace", '--font-ui':"'IBM Plex Mono','Courier New',monospace",
+    },
+    fonts: [{ id:'fh-font-monolith', href:'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap' }],
+  },
+  retrocrt: {
+    label: 'Retro-CRT', id: 'retrocrt',
+    vars: {
+      '--night':'#050a05', '--glass':'rgba(7,16,7,0.88)', '--glass-light':'rgba(0,255,65,0.04)',
+      '--glass-border':'rgba(0,255,65,0.18)', '--shadow':'0 10px 60px rgba(0,0,0,.95)',
+      '--gold':'#00ff41', '--gold-glow':'rgba(0,255,65,0.28)', '--gold-faint':'rgba(0,255,65,0.08)',
+      '--teal':'#00cc33', '--teal-glow':'rgba(0,204,51,0.18)',
+      '--rose':'#ff3300', '--rose-glow':'rgba(255,51,0,0.18)',
+      '--cream':'#00ff41', '--cream-dim':'rgba(0,255,65,0.70)', '--cream-ghost':'rgba(0,255,65,0.30)',
+      '--radius':'0px', '--font-display':"'VT323','Share Tech Mono',monospace", '--font-ui':"'VT323','Share Tech Mono',monospace",
+    },
+    fonts: [{ id:'fh-font-retrocrt', href:'https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap' }],
+  },
+  bluefin: {
+    label: 'Bluefin', id: 'bluefin',
+    vars: {
+      '--night':'#0a0f1a', '--glass':'rgba(15,25,41,0.72)', '--glass-light':'rgba(255,255,255,0.03)',
+      '--glass-border':'rgba(30,48,80,0.85)', '--shadow':'0 10px 60px rgba(0,0,0,.85)',
+      '--gold':'#4080c0', '--gold-glow':'rgba(64,128,192,0.24)', '--gold-faint':'rgba(64,128,192,0.10)',
+      '--teal':'#40a080', '--teal-glow':'rgba(64,160,128,0.18)',
+      '--rose':'#a04040', '--rose-glow':'rgba(160,64,64,0.18)',
+      '--cream':'#a0c8f0', '--cream-dim':'rgba(160,200,240,0.62)', '--cream-ghost':'rgba(160,200,240,0.28)',
+      '--radius':'6px', '--font-display':"'Roboto Mono','JetBrains Mono',monospace", '--font-ui':"'Roboto Mono','JetBrains Mono',monospace",
+    },
+    fonts: [{ id:'fh-font-bluefin', href:'https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;600&display=swap' }],
+  },
+  madscience: {
+    label: 'Mad Science', id: 'madscience',
+    vars: {
+      '--night':'#050508', '--glass':'rgba(13,10,26,0.82)', '--glass-light':'rgba(57,255,20,0.03)',
+      '--glass-border':'rgba(57,255,20,0.18)', '--shadow':'0 10px 60px rgba(0,0,0,.95)',
+      '--gold':'#39ff14', '--gold-glow':'rgba(57,255,20,0.28)', '--gold-faint':'rgba(57,255,20,0.08)',
+      '--teal':'#39ff14', '--teal-glow':'rgba(57,255,20,0.18)',
+      '--rose':'#ff006e', '--rose-glow':'rgba(255,0,110,0.18)',
+      '--cream':'#c8ffb0', '--cream-dim':'rgba(200,255,176,0.62)', '--cream-ghost':'rgba(200,255,176,0.28)',
+      '--radius':'2px', '--font-display':"'Share Tech Mono','Courier New',monospace", '--font-ui':"'Share Tech Mono','Courier New',monospace",
+    },
+    fonts: [{ id:'fh-font-madscience', href:'https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap' }],
+  },
+};
+
+let activeThemeId = localStorage.getItem(THEME_KEY) || 'deepspace';
+
+function applyTheme(id) {
+  const t = THEMES[id] || THEMES.deepspace;
+  activeThemeId = t.id;
+  const root = document.documentElement;
+  Object.entries(t.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+  root.setAttribute('data-theme', t.id);
+  localStorage.setItem(THEME_KEY, t.id);
+  // Font loading — add needed, remove unneeded
+  Object.values(THEMES).forEach(theme => {
+    (theme.fonts || []).forEach(font => {
+      const existing = document.getElementById(font.id);
+      if (theme.id === t.id) {
+        if (!existing) {
+          const el = document.createElement('link');
+          el.id = font.id; el.rel = 'stylesheet'; el.href = font.href;
+          document.head.appendChild(el);
+        }
+      } else {
+        existing?.remove();
+      }
+    });
+  });
+  // Re-render theme picker if open
+  const grid = document.getElementById('theme-grid');
+  if (grid) renderThemeGrid();
+}
+
+function renderThemeGrid() {
+  const grid = document.getElementById('theme-grid');
+  if (!grid) return;
+  grid.innerHTML = Object.values(THEMES).map(t => {
+    const bg = t.vars['--night'];
+    const accent = t.vars['--gold'];
+    const active = t.id === activeThemeId ? ' active' : '';
+    return `<button class="theme-pill${active}" onclick="applyTheme('${t.id}')">
+      <span class="theme-swatch" style="background:linear-gradient(135deg,${bg} 50%,${accent} 50%)"></span>
+      ${t.label}
+    </button>`;
+  }).join('');
+}
+
+// Apply saved theme immediately (before full load)
+applyTheme(activeThemeId);
+
 window.addEventListener('load', () => {
   document.getElementById('oauth-origin').textContent = window.location.origin;
   const normalizedCalId = normalizeCalendarId(CFG.calId);
@@ -2046,6 +2213,10 @@ window.addEventListener('load', () => {
         <div id="photos-status" style="font-size:12px;color:var(--cream-dim);line-height:1.5"></div>
         <button class="btn-ghost" style="margin-top:6px;font-size:11px;padding:4px 10px" onclick="browseAlbums()">Choose Photos…</button>
       </div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Theme</div>
+      <div class="theme-grid" id="theme-grid"></div>
     </div>
     <div class="s-actions">
       <button class="btn-gold" onclick="saveSettings()">Save Settings</button>
