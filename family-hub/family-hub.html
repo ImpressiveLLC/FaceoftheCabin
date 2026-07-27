@@ -53,18 +53,13 @@
     }
     .photo-slide {
       position:absolute; inset:0;
-      background-size:cover; background-position:center;
+      background-size:contain; background-position:center; background-repeat:no-repeat;
+      background-color:#060b10;
       opacity:0;
       transition: opacity 2.2s ease-in-out;
     }
     .photo-slide.active {
       opacity:1;
-      animation: kenburns 22s ease-in-out infinite alternate;
-    }
-    @keyframes kenburns {
-      0%   { transform: scale(1.00) translate(0%,0%); }
-      50%  { transform: scale(1.06) translate(-1.2%,0.6%); }
-      100% { transform: scale(1.04) translate(0.8%,-0.9%); }
     }
     #photo-overlay {
       position:fixed; inset:0; z-index:1;
@@ -1064,6 +1059,46 @@ function loadCfg() {
 
 function saveCfg() { localStorage.setItem(CFG_KEY, JSON.stringify(CFG)); }
 
+const PHOTOS_KEY = 'smrekar_photos_meta';
+function savePhotoMeta() {
+  localStorage.setItem(PHOTOS_KEY, JSON.stringify(
+    photos.map(({id, baseUrl, filename, mimeType}) => ({id, baseUrl, filename, mimeType}))
+  ));
+}
+function loadPhotoMeta() {
+  try { return JSON.parse(localStorage.getItem(PHOTOS_KEY) || 'null') || []; }
+  catch { return []; }
+}
+async function restorePhotos() {
+  const meta = loadPhotoMeta();
+  if (!meta.length) return;
+  setPhotosStatus(`Restoring ${meta.length} saved photos…`);
+  const loaded = [];
+  let idx = 0;
+  const worker = async () => {
+    while (idx < meta.length) {
+      const i = idx++, item = meta[i];
+      try {
+        const r = await fetch(`${item.baseUrl}=w1920-h1080-c`, { headers:{ Authorization:`Bearer ${accessToken}` } });
+        if (!r.ok) throw new Error(r.status);
+        const blob = await r.blob();
+        loaded.push({ ...item, displayUrl: URL.createObjectURL(blob) });
+        setPhotosStatus(`Restoring photos… ${loaded.length}/${meta.length}`);
+      } catch(e) { console.warn('Photo restore failed:', item.filename, e); }
+    }
+  };
+  await Promise.all(Array.from({length: Math.min(4, meta.length)}, worker));
+  if (!loaded.length) {
+    setPhotosStatus('Saved photos expired — open Settings → Browse to re-select.');
+    return;
+  }
+  photos.forEach(p => { if (p.displayUrl) URL.revokeObjectURL(p.displayUrl); });
+  photos = loaded.sort(() => Math.random() - .5);
+  buildSlides();
+  startSlideshow();
+  setPhotosStatus(`✓ ${photos.length} of ${meta.length} photos restored.`);
+}
+
 function googleError(status, data) {
   const detail = data?.error?.message || data?.error_description || data?.error || '';
   const reason = data?.error?.errors?.[0]?.reason;
@@ -1190,13 +1225,13 @@ async function loadPickedPhotos(sessionId) {
   buildSlides();
   startSlideshow();
   setPhotosStatus(`✓ ${photos.length} of ${selected.length} selected photos loaded.`);
+  savePhotoMeta();
 }
 
 function saveSettings() {
   CFG.familyName        = document.getElementById('set-fname').value.trim() || CFG.familyName;
   CFG.clientId          = document.getElementById('set-client-id').value.trim();
   CFG.calId             = normalizeCalendarId(document.getElementById('set-cal-id').value) || 'primary';
-  CFG.albumId           = '';
   CFG.slideshowInterval = parseInt(document.getElementById('set-interval').value) || 12;
   CFG.maxPhotos         = parseInt(document.getElementById('set-max-photos').value) || 50;
   saveCfg();
@@ -1210,7 +1245,8 @@ function populateSettings() {
   document.getElementById('set-fname').value      = CFG.familyName;
   document.getElementById('set-client-id').value  = CFG.clientId;
   document.getElementById('set-cal-id').value     = CFG.calId;
-  document.getElementById('set-album-id').value   = photos.length ? `${photos.length} photos selected` : '';
+  const savedMeta = loadPhotoMeta();
+  document.getElementById('set-album-id').value   = photos.length ? `${photos.length} photos loaded` : savedMeta.length ? `${savedMeta.length} photos saved (restoring…)` : '';
   document.getElementById('set-interval').value   = CFG.slideshowInterval;
   document.getElementById('set-max-photos').value = CFG.maxPhotos;
 }
@@ -1756,6 +1792,7 @@ function onToken(resp) {
   accessToken = resp.access_token;
   document.getElementById('auth-overlay').classList.add('hidden');
   loadCalendar();
+  restorePhotos();
 }
 
 async function cleanupPickerSession() {
@@ -1939,10 +1976,6 @@ window.addEventListener('load', () => {
     CFG.calId = normalizedCalId;
     saveCfg();
   }
-  if (CFG.albumId) {
-    CFG.albumId = '';
-    saveCfg();
-  }
   loadPhotos();
   updateCustodyBadge();
   renderTodayChores();
@@ -1988,6 +2021,7 @@ window.addEventListener('load', () => {
       <div class="s-field">
         <label>Calendar ID</label>
         <input id="set-cal-id" type="text" placeholder="smrekarfamilia@gmail.com">
+        <div class="s-hint">Paste a calendar email, URL, or the embed iframe — the email address will be extracted automatically. After saving, the field always shows the extracted email (e.g. <code>smrekarfamilia@gmail.com</code>).</div>
       </div>
     </div>
     <div class="s-section">
