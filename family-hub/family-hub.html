@@ -598,6 +598,51 @@
     .btn-ghost:hover { border-color:var(--gold); color:var(--gold); }
 
     /* ═══════════════════════════════════════════
+       FAMILY PROFILES TAB
+    ═══════════════════════════════════════════ */
+    .profiles-layout {
+      display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;
+    }
+    .profiles-list-col { flex:1; min-width:220px; }
+    .profiles-form-col {
+      flex:1; min-width:260px;
+      background:rgba(255,255,255,.04); border:1px solid rgba(200,164,74,.2);
+      border-radius:12px; padding:20px;
+    }
+    .profiles-section-title {
+      font-size:13px; letter-spacing:.08em; text-transform:uppercase;
+      color:var(--gold); margin-bottom:12px;
+    }
+    .profile-card {
+      display:flex; align-items:center; gap:12px;
+      background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+      border-radius:10px; padding:10px 14px; margin-bottom:8px;
+      cursor:default;
+    }
+    .profile-card-avatar { font-size:26px; line-height:1; }
+    .profile-card-info { flex:1; min-width:0; }
+    .profile-card-name { font-size:15px; font-weight:600; color:var(--cream); }
+    .profile-card-meta { font-size:11px; color:rgba(245,240,226,.45); margin-top:1px; }
+    .profile-card-swatch {
+      width:10px; height:10px; border-radius:50%; flex-shrink:0;
+    }
+    .profile-card-actions { display:flex; gap:6px; }
+    .profile-card-actions button {
+      background:none; border:1px solid rgba(255,255,255,.15); color:rgba(245,240,226,.6);
+      border-radius:6px; padding:3px 9px; font-size:11px; cursor:pointer;
+      transition:all .15s;
+    }
+    .profile-card-actions button:hover { border-color:var(--gold); color:var(--gold); }
+    .profile-card-actions button.del:hover { border-color:#e05555; color:#e05555; }
+    .avatar-picker { display:flex; align-items:center; gap:10px; }
+    .avatar-presets { display:flex; gap:6px; flex-wrap:wrap; }
+    .avatar-presets span {
+      font-size:22px; cursor:pointer; line-height:1;
+      transition:transform .1s;
+    }
+    .avatar-presets span:hover { transform:scale(1.25); }
+
+    /* ═══════════════════════════════════════════
        AUTH OVERLAY
     ═══════════════════════════════════════════ */
     #auth-overlay {
@@ -889,6 +934,7 @@
     <button class="d-tab" onclick="switchTab(&#39;schedule&#39;)">Parenting Days</button>
     <button class="d-tab" onclick="switchTab(&#39;chores&#39;)">Chore Tracker</button>
     <button class="d-tab" onclick="switchTab(&#39;rewards&#39;)">Rewards</button>
+    <button class="d-tab" onclick="switchTab(&#39;profiles&#39;)">Family</button>
   </div>
 
   <div id="dash-content">
@@ -930,6 +976,69 @@
         <div id="reward-progress-col"></div>
       </div>
     </div>
+    <!-- FAMILY PROFILES -->
+    <div class="tab-pane" id="tab-profiles">
+      <div class="profiles-layout">
+        <div class="profiles-list-col">
+          <div class="profiles-section-title">Family Members</div>
+          <div id="profiles-list"></div>
+          <button class="btn-gold" style="margin-top:14px" onclick="openProfileForm()">+ Add Member</button>
+        </div>
+        <div class="profiles-form-col" id="profiles-form-col" style="display:none">
+          <div class="profiles-section-title" id="profiles-form-title">New Member</div>
+          <input type="hidden" id="pf-id">
+          <div class="s-field">
+            <label>Name</label>
+            <input id="pf-name" type="text" placeholder="e.g. Sam">
+          </div>
+          <div class="s-field">
+            <label>Role</label>
+            <select id="pf-role" onchange="onProfileRoleChange()">
+              <option value="kid">Kid</option>
+              <option value="parent">Parent</option>
+              <option value="pet">Pet</option>
+            </select>
+          </div>
+          <div class="s-field" id="pf-age-row">
+            <label>Age</label>
+            <input id="pf-age" type="number" min="1" max="18" placeholder="e.g. 9">
+          </div>
+          <div class="s-field" id="pf-pettype-row" style="display:none">
+            <label>Pet type</label>
+            <input id="pf-pettype" type="text" placeholder="e.g. dog">
+          </div>
+          <div class="s-field">
+            <label>Birthday (MM/DD)</label>
+            <input id="pf-birthday" type="text" placeholder="09/24">
+          </div>
+          <div class="s-field">
+            <label>Avatar emoji</label>
+            <div class="avatar-picker">
+              <input id="pf-avatar" type="text" maxlength="2" placeholder="🧒" style="width:56px;font-size:22px;text-align:center">
+              <div class="avatar-presets">
+                <span onclick="document.getElementById('pf-avatar').value=this.textContent">🧒</span>
+                <span onclick="document.getElementById('pf-avatar').value=this.textContent">👧</span>
+                <span onclick="document.getElementById('pf-avatar').value=this.textContent">👦</span>
+                <span onclick="document.getElementById('pf-avatar').value=this.textContent">👨</span>
+                <span onclick="document.getElementById('pf-avatar').value=this.textContent">👩</span>
+                <span onclick="document.getElementById('pf-avatar').value=this.textContent">🐕</span>
+                <span onclick="document.getElementById('pf-avatar').value=this.textContent">🐈</span>
+                <span onclick="document.getElementById('pf-avatar').value=this.textContent">🐇</span>
+              </div>
+            </div>
+          </div>
+          <div class="s-field" id="pf-color-row">
+            <label>Accent color</label>
+            <input id="pf-color" type="color" value="#4AACE8" style="width:48px;height:32px;border:none;background:none;cursor:pointer">
+          </div>
+          <div class="s-actions" style="margin-top:8px">
+            <button class="btn-gold" onclick="saveProfile()">Save</button>
+            <button class="btn-ghost" onclick="closeProfileForm()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -942,17 +1051,23 @@
 /* ═══════════════════════════════════════════
    FAMILY DATA  (from starter)
 ═══════════════════════════════════════════ */
-const FAMILY = {
-  name: 'Smrekar',
-  calendarAccount: 'smrekarfamilia@gmail.com',
-  kids: [
-    { id:'sam',   name:'Sam',   age:9, birthday:'09/24', avatar:'🧒' },
-    { id:'emma',  name:'Emma',  age:6, birthday:'09/10', avatar:'👧' },
-  ],
-  pets: [
-    { id:'frankie', name:'Frankie', age:'6 months', birthday:'08/22', avatar:'🐶', species:'dog' },
-  ],
-};
+const PROFILES_KEY = 'family_profiles';
+const DEFAULT_PROFILES = [
+  { id:'sam',    name:'Sam',    role:'kid',    age:9,  birthday:'09/24', avatar:'🧒', color:'#4AACE8' },
+  { id:'emma',   name:'Emma',   role:'kid',    age:6,  birthday:'09/10', avatar:'👧', color:'#C87BC8' },
+  { id:'frankie',name:'Frankie',role:'pet',    type:'dog', birthday:'08/22', avatar:'🐕' },
+  { id:'nathan', name:'Nathan', role:'parent', avatar:'👨', color:'#C8A44A' },
+];
+
+let profiles = loadProfiles();
+function loadProfiles() {
+  try { return JSON.parse(localStorage.getItem(PROFILES_KEY) || 'null') || [...DEFAULT_PROFILES]; }
+  catch { return [...DEFAULT_PROFILES]; }
+}
+function saveProfiles() { localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles)); }
+function getKids()    { return profiles.filter(p => p.role === 'kid'); }
+function getPets()    { return profiles.filter(p => p.role === 'pet'); }
+function getParents() { return profiles.filter(p => p.role === 'parent'); }
 
 const CHORES = [
   { id:'set_table',        label:'Set the table & help serve',         points:1, minAge:6,  tags:['meal','daily'] },
@@ -1124,7 +1239,7 @@ function generateSchedule(days=28) {
 function choresByAge(age) { return CHORES.filter(c => c.minAge <= age); }
 
 function defaultAssignments(dayKey, kidId) {
-  const kid = FAMILY.kids.find(k => k.id === kidId);
+  const kid = getKids().find(k => k.id === kidId);
   if (!kid) return [];
   const available = choresByAge(kid.age);
   const daily = ['brush_teeth','make_bed','reading'];
@@ -1204,8 +1319,8 @@ function daysUntilBirthday(mmdd) {
 
 function renderBirthdays() {
   const all = [
-    ...FAMILY.kids.map(k => ({ name:k.name, avatar:k.avatar, mmdd:k.birthday })),
-    ...FAMILY.pets.map(p => ({ name:p.name, avatar:p.avatar, mmdd:p.birthday })),
+    ...getKids().map(k => ({ name:k.name, avatar:k.avatar, mmdd:k.birthday })),
+    ...getPets().map(p => ({ name:p.name, avatar:p.avatar, mmdd:p.birthday })),
   ];
 
   const items = all
@@ -1234,9 +1349,10 @@ function updateCustodyBadge() {
   const home = isKidsHome(new Date());
   const badge = document.getElementById('custody-badge');
   badge.className = 'custody-badge ' + (home ? 'home' : 'away');
-  document.getElementById('custody-text').textContent = home ? "Kids at Dad's" : "Kids at Mom's";
+  const dadName = getParents()[0]?.name || 'Dad';
+  document.getElementById('custody-text').textContent = home ? `Kids at ${dadName}'s` : "Kids at Mom's";
   document.getElementById('today-custody-text').textContent = home
-    ? 'The kids are home tonight' : 'The kids are at Mom\'s today';
+    ? `The kids are at ${dadName}'s tonight` : "The kids are at Mom's today";
 }
 
 /* ═══════════════════════════════════════════
@@ -1254,7 +1370,7 @@ function renderTodayChores() {
   }
 
   let html = '';
-  for (const kid of FAMILY.kids) {
+  for (const kid of getKids()) {
     const assigned = defaultAssignments(todayKey, kid.id);
     const done = assigned.filter(c => getChoreState(todayKey, kid.id, c.id)).length;
     const elig = rewardEligibility(kid.id, recentHomeDays(7));
@@ -1286,7 +1402,7 @@ function renderTodayChores() {
     </div></div>`;
 
     // divider between kids
-    if (kid !== FAMILY.kids[FAMILY.kids.length-1]) {
+    if (kid !== getKids()[getKids().length-1]) {
       html += '<div class="card-divider" style="margin:6px 0;"></div>';
     }
   }
@@ -1300,7 +1416,7 @@ function renderOverview() {
   const schedule = generateSchedule(28);
   const homeDays = recentHomeDays(7);
   let kidsHtml = '';
-  for (const kid of FAMILY.kids) {
+  for (const kid of getKids()) {
     const elig = rewardEligibility(kid.id, homeDays);
     kidsHtml += `<div class="dash-card kid-progress-card">
       <div class="dash-card-title">Kid Progress</div>
@@ -1352,7 +1468,7 @@ function renderSchedule() {
     </div>`).join('');
 }
 
-let activeChoreKid = FAMILY.kids[0].id;
+let activeChoreKid = getKids()[0]?.id;
 
 function renderChoreKidSelector() {
   document.getElementById('chore-kid-selector').innerHTML = FAMILY.kids.map(k =>
@@ -1418,7 +1534,7 @@ function renderRewards() {
     <div class="rule-title">How to Earn a Reward</div>
     <div class="rule-text">Complete at least <strong style="color:var(--cream)">3 chores</strong> on at least <strong style="color:var(--cream)">4 nights</strong> in a rolling 7-day period while at Dad's house.</div>`;
 
-  for (const kid of FAMILY.kids) {
+  for (const kid of getKids()) {
     const elig = rewardEligibility(kid.id, homeDays);
     html += `<div class="kid-reward-row">
       <div class="kid-reward-name">
@@ -1454,13 +1570,115 @@ function closeDashboard() {
 }
 
 function switchTab(name) {
-  document.querySelectorAll('.d-tab').forEach((t,i) => {
-    const names = ['overview','schedule','chores','rewards'];
-    t.classList.toggle('active', names[i] === name);
+  document.querySelectorAll('.d-tab').forEach(t => {
+    const tn = t.getAttribute('onclick').match(/switchTab\('?(\w+)'?\)/)?.[1];
+    t.classList.toggle('active', tn === name);
   });
   document.querySelectorAll('.tab-pane').forEach(p => {
     p.classList.toggle('active', p.id === `tab-${name}`);
   });
+  if (name === 'profiles') renderProfilesTab();
+}
+
+/* ═══════════════════════════════════════════
+   FAMILY PROFILES ADMIN
+═══════════════════════════════════════════ */
+function renderProfilesTab() {
+  const list = document.getElementById('profiles-list');
+  if (!list) return;
+  list.innerHTML = '';
+  profiles.forEach(p => {
+    const meta = [p.role];
+    if (p.age) meta.push(`age ${p.age}`);
+    if (p.birthday) meta.push(`🎂 ${p.birthday}`);
+    if (p.type) meta.push(p.type);
+    const card = document.createElement('div');
+    card.className = 'profile-card';
+    card.innerHTML = `
+      <div class="profile-card-avatar">${p.avatar || '👤'}</div>
+      <div class="profile-card-info">
+        <div class="profile-card-name">${p.name}</div>
+        <div class="profile-card-meta">${meta.join(' · ')}</div>
+      </div>
+      ${p.color ? `<div class="profile-card-swatch" style="background:${p.color}"></div>` : ''}
+      <div class="profile-card-actions">
+        <button onclick="editProfile('${p.id}')">Edit</button>
+        <button class="del" onclick="deleteProfile('${p.id}')">Delete</button>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+function openProfileForm(profile) {
+  const col = document.getElementById('profiles-form-col');
+  document.getElementById('profiles-form-title').textContent = profile ? 'Edit Member' : 'New Member';
+  document.getElementById('pf-id').value = profile?.id || '';
+  document.getElementById('pf-name').value = profile?.name || '';
+  document.getElementById('pf-role').value = profile?.role || 'kid';
+  document.getElementById('pf-age').value = profile?.age || '';
+  document.getElementById('pf-pettype').value = profile?.type || '';
+  document.getElementById('pf-birthday').value = profile?.birthday || '';
+  document.getElementById('pf-avatar').value = profile?.avatar || '';
+  document.getElementById('pf-color').value = profile?.color || '#4AACE8';
+  col.style.display = 'block';
+  onProfileRoleChange();
+}
+
+function closeProfileForm() {
+  document.getElementById('profiles-form-col').style.display = 'none';
+}
+
+function onProfileRoleChange() {
+  const role = document.getElementById('pf-role').value;
+  document.getElementById('pf-age-row').style.display = role === 'kid' ? '' : 'none';
+  document.getElementById('pf-pettype-row').style.display = role === 'pet' ? '' : 'none';
+  document.getElementById('pf-color-row').style.display = role === 'pet' ? 'none' : '';
+}
+
+function editProfile(id) {
+  const p = profiles.find(x => x.id === id);
+  if (p) openProfileForm(p);
+}
+
+function deleteProfile(id) {
+  const p = profiles.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`Remove ${p.name} from family profiles?`)) return;
+  profiles = profiles.filter(x => x.id !== id);
+  saveProfiles();
+  renderProfilesTab();
+}
+
+function saveProfile() {
+  const id = document.getElementById('pf-id').value;
+  const name = document.getElementById('pf-name').value.trim();
+  const role = document.getElementById('pf-role').value;
+  if (!name) { alert('Name is required'); return; }
+  const entry = {
+    id: id || name.toLowerCase().replace(/\s+/g,'-') + '-' + Date.now(),
+    name,
+    role,
+    birthday: document.getElementById('pf-birthday').value.trim(),
+    avatar: document.getElementById('pf-avatar').value.trim() || (role==='kid'?'🧒':role==='pet'?'🐾':'👤'),
+  };
+  if (role === 'kid') {
+    const age = parseInt(document.getElementById('pf-age').value);
+    if (!isNaN(age)) entry.age = age;
+    entry.color = document.getElementById('pf-color').value;
+  } else if (role === 'parent') {
+    entry.color = document.getElementById('pf-color').value;
+  } else if (role === 'pet') {
+    entry.type = document.getElementById('pf-pettype').value.trim();
+  }
+  if (id) {
+    const idx = profiles.findIndex(x => x.id === id);
+    if (idx >= 0) profiles[idx] = entry;
+  } else {
+    profiles.push(entry);
+  }
+  saveProfiles();
+  closeProfileForm();
+  renderProfilesTab();
 }
 
 /* ═══════════════════════════════════════════
