@@ -693,6 +693,7 @@
       position:fixed; top:20px; left:20px; z-index:10000;
       width:38px; height:38px; border-radius:50%;
       background:var(--glass); border:1px solid var(--glass-border);
+      color:var(--gold);
       display:flex; align-items:center; justify-content:center;
       cursor:pointer; backdrop-filter:blur(14px);
       opacity:.75; transition:opacity .2s, transform .25s; font-size:16px;
@@ -1069,6 +1070,17 @@ function googleError(status, data) {
   return [status, reason, detail].filter(Boolean).join(' · ');
 }
 
+function calendarErrorMarkup(message) {
+  if (message.includes('accessNotConfigured')) {
+    const project = message.match(/project\s+(\d+)/i)?.[1];
+    const href = project
+      ? `https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=${project}`
+      : 'https://console.cloud.google.com/apis/library/calendar-json.googleapis.com';
+    return `Calendar API is disabled for this OAuth project. <a href="${href}" target="_blank" rel="noopener">Enable Google Calendar API</a>, wait a few minutes, then sign in again.`;
+  }
+  return `Calendar error: ${esc(message)}`;
+}
+
 async function googleJson(response) {
   let data = {};
   try { data = await response.json(); } catch {}
@@ -1142,17 +1154,42 @@ async function loadPickedPhotos(sessionId) {
     picked.push(...(data.mediaItems || []));
     pageToken = data.nextPageToken || '';
   } while (pageToken && picked.length < CFG.maxPhotos);
-  photos = picked.slice(0, CFG.maxPhotos).map(item => ({
+  const selected = picked.slice(0, CFG.maxPhotos).map(item => ({
     id:item.id,
     baseUrl:item.mediaFile?.baseUrl,
     mimeType:item.mediaFile?.mimeType,
     filename:item.mediaFile?.filename,
   })).filter(item => item.baseUrl && item.mimeType?.startsWith('image/'));
-  if (!photos.length) throw new Error('No still images were selected');
+  if (!selected.length) throw new Error('No still images were selected');
+  setPhotosStatus(`Loading 0 of ${selected.length} selected photos…`);
+  const loaded = [];
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < selected.length) {
+      const index = nextIndex++;
+      const item = selected[index];
+      try {
+        const response = await fetch(
+          `${item.baseUrl}=w1920-h1080-c`,
+          { headers:{ Authorization:`Bearer ${accessToken}` } }
+        );
+        if (!response.ok) throw new Error(`${response.status}`);
+        const blob = await response.blob();
+        loaded.push({ ...item, displayUrl:URL.createObjectURL(blob) });
+        setPhotosStatus(`Loading ${loaded.length} of ${selected.length} selected photos…`);
+      } catch(e) {
+        console.error(`Photo ${item.filename || item.id} failed to load:`, e);
+      }
+    }
+  };
+  await Promise.all(Array.from({length:Math.min(4, selected.length)}, worker));
+  if (!loaded.length) throw new Error('Google returned no displayable photo bytes');
+  photos.forEach(item => { if (item.displayUrl) URL.revokeObjectURL(item.displayUrl); });
+  photos = loaded;
   photos.sort(() => Math.random() - .5);
   buildSlides();
   startSlideshow();
-  setPhotosStatus(`✓ ${photos.length} selected photos loaded.`);
+  setPhotosStatus(`✓ ${photos.length} of ${selected.length} selected photos loaded.`);
 }
 
 function saveSettings() {
@@ -1762,7 +1799,7 @@ async function loadCalendar() {
     const data = await googleJson(r);
     renderCalEvents(data.items || []);
   } catch(e) {
-    el.innerHTML = `<div class="err">Calendar error: ${esc(e.message)}</div>`;
+    el.innerHTML = `<div class="err">${calendarErrorMarkup(e.message)}</div>`;
   }
   setTimeout(loadCalendar, 15*60*1000);
 }
@@ -1818,7 +1855,7 @@ function buildSlides() {
   photos.forEach((p,i) => {
     const d = document.createElement('div');
     d.className = 'photo-slide'+(i===0?' active':'');
-    d.style.backgroundImage = `url('${p.baseUrl}=w1920-h1080-c')`;
+    d.style.backgroundImage = `url('${p.displayUrl}')`;
     bg.appendChild(d);
   });
   currentPhoto = 0;
