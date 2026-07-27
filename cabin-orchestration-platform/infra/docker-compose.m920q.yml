@@ -97,6 +97,18 @@ services:
       - postgres
       - kafka
 
+  # ── Smrekar Family Hub (nginx, static files) ─────────────────────────
+  family-hub:
+    build:
+      context: ../../family-hub
+      dockerfile: Dockerfile
+    container_name: family-hub
+    restart: unless-stopped
+    ports:
+      - "4081:80"
+    networks:
+      - default
+
   # ── FaceoftheCabin React UI (nginx, static build) ────────────────────
   cabin-ui:
     build:
@@ -110,7 +122,7 @@ services:
         VITE_CABIN_FRIGATE_URL: http://100.77.44.113:5000
         VITE_CABIN_HA_URL: http://100.77.44.113:8123
         VITE_CABIN_Z2M_URL: http://100.77.44.113:8080
-        VITE_CABIN_FAMILY_HUB_URL: http://100.77.44.113:4081
+        VITE_CABIN_FAMILY_HUB_URL: ${FAMILY_HUB_URL:-http://100.77.44.113:4081}
     container_name: cabin-ui
     restart: unless-stopped
     ports:
