@@ -1521,7 +1521,7 @@ function renderOverview() {
 
   // Frankie card
   let frankieHtml = '<div class="dash-card frankie-card"><div class="dash-card-title">Family Pet</div>';
-  for (const p of FAMILY.pets) {
+  for (const p of getPets()) {
     frankieHtml += `<div class="frankie-big">${p.avatar}</div>
       <div class="frankie-info"><strong style="color:var(--cream)">${esc(p.name)}</strong><br>${esc(p.age)} old<br>🎂 Birthday ${p.birthday} — ${daysUntilBirthday(p.birthday)} days away</div>`;
   }
@@ -1545,7 +1545,7 @@ function renderSchedule() {
 let activeChoreKid = getKids()[0]?.id;
 
 function renderChoreKidSelector() {
-  document.getElementById('chore-kid-selector').innerHTML = FAMILY.kids.map(k =>
+  document.getElementById('chore-kid-selector').innerHTML = getKids().map(k =>
     `<button class="kid-sel-btn ${activeChoreKid===k.id?'active':''}" onclick="selectChoreKid('${k.id}')">${k.avatar} ${k.name}</button>`
   ).join('');
 }
@@ -1558,7 +1558,7 @@ function selectChoreKid(kidId) {
 
 function renderChoreTracker() {
   const schedule = generateSchedule(28).filter(d => d.kidsHome);
-  const kid = FAMILY.kids.find(k => k.id === activeChoreKid);
+  const kid = getKids().find(k => k.id === activeChoreKid);
   const todayKey = ymd(new Date());
 
   // Two-week split
