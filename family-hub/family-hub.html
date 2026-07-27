@@ -1063,53 +1063,117 @@ function loadCfg() {
 
 function saveCfg() { localStorage.setItem(CFG_KEY, JSON.stringify(CFG)); }
 
+function googleError(status, data) {
+  const detail = data?.error?.message || data?.error_description || data?.error || '';
+  const reason = data?.error?.errors?.[0]?.reason;
+  return [status, reason, detail].filter(Boolean).join(' · ');
+}
+
+async function googleJson(response) {
+  let data = {};
+  try { data = await response.json(); } catch {}
+  if (!response.ok) throw new Error(googleError(response.status, data));
+  return data;
+}
+
+function normalizeCalendarId(value) {
+  let raw = String(value || '').trim();
+  const srcAttr = raw.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
+  if (srcAttr) raw = srcAttr[1].replace(/&amp;/g, '&');
+  try {
+    const url = new URL(raw);
+    if (url.hostname.endsWith('calendar.google.com')) raw = url.searchParams.get('src') || '';
+  } catch {}
+  try { raw = decodeURIComponent(raw); } catch {}
+  return raw.trim();
+}
+
 async function browseAlbums() {
   if (!accessToken) { alert('Sign in first, then open Settings to browse albums.'); return; }
   const list = document.getElementById('album-list');
   list.style.display = 'block';
-  list.innerHTML = '<div class="album-item" style="cursor:default;opacity:.5">Loading…</div>';
+  list.innerHTML = '<div class="album-item" style="cursor:default;opacity:.5">Opening Google Photos Picker…</div>';
+  const pickerWindow = window.open('about:blank', 'google-photos-picker');
   try {
-    const r = await fetch('https://photoslibrary.googleapis.com/v1/albums?pageSize=50',
-      { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!r.ok) throw new Error(r.status);
-    const data = await r.json();
-    const albums = data.albums || [];
-    list.innerHTML = albums.length
-      ? albums.map(a =>
-          `<div class="album-item" onclick="selectAlbum('${a.id}','${(a.title||'').replace(/'/g,"\\'")}')">
-            ${a.title || '(untitled)'}
-            <span class="album-count">${a.mediaItemsCount ? '· '+a.mediaItemsCount+' items' : ''}</span>
-          </div>`).join('')
-      : '<div class="album-item" style="cursor:default;opacity:.5">No albums found</div>';
+    if (!pickerWindow) throw new Error('Allow pop-ups for this site, then try again');
+    await cleanupPickerSession();
+    const session = await googleJson(await fetch(
+      'https://photospicker.googleapis.com/v1/sessions',
+      {
+        method:'POST',
+        headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+        body:JSON.stringify({ pickingConfig:{ maxItemCount:String(CFG.maxPhotos) } }),
+      }
+    ));
+    pickerWindow.location = `${session.pickerUri}/autoclose`;
+    const started = Date.now();
+    let state = session;
+    while (!state.mediaItemsSet) {
+      const timeoutSeconds = parseFloat(state.pollingConfig?.timeoutIn || '300');
+      if (timeoutSeconds <= 0 || Date.now() - started > 10*60*1000) throw new Error('Photo selection timed out');
+      const pollMs = Math.max(1000, parseFloat(state.pollingConfig?.pollInterval || '3') * 1000);
+      await new Promise(resolve => setTimeout(resolve, pollMs));
+      state = await googleJson(await fetch(
+        `https://photospicker.googleapis.com/v1/sessions/${encodeURIComponent(session.id)}`,
+        { headers:{ Authorization:`Bearer ${accessToken}` } }
+      ));
+    }
+    await loadPickedPhotos(session.id);
+    activePickerSessionId = session.id;
+    document.getElementById('set-album-id').value = `${photos.length} photos selected`;
+    list.innerHTML = `<div class="album-item" style="cursor:default">Loaded ${photos.length} selected photos</div>`;
   } catch(e) {
+    if (pickerWindow && !pickerWindow.closed) pickerWindow.close();
+    setPhotosStatus(`Picker error: ${e.message}`);
     list.innerHTML = `<div class="album-item" style="cursor:default;color:#e88">Error: ${e.message}</div>`;
   }
 }
 
-function selectAlbum(id, title) {
-  document.getElementById('set-album-id').value = id;
-  document.getElementById('album-list').style.display = 'none';
+async function loadPickedPhotos(sessionId) {
+  const picked = [];
+  let pageToken = '';
+  do {
+    const params = new URLSearchParams({ sessionId, pageSize:String(CFG.maxPhotos) });
+    if (pageToken) params.set('pageToken', pageToken);
+    const data = await googleJson(await fetch(
+      `https://photospicker.googleapis.com/v1/mediaItems?${params}`,
+      { headers:{ Authorization:`Bearer ${accessToken}` } }
+    ));
+    picked.push(...(data.mediaItems || []));
+    pageToken = data.nextPageToken || '';
+  } while (pageToken && picked.length < CFG.maxPhotos);
+  photos = picked.slice(0, CFG.maxPhotos).map(item => ({
+    id:item.id,
+    baseUrl:item.mediaFile?.baseUrl,
+    mimeType:item.mediaFile?.mimeType,
+    filename:item.mediaFile?.filename,
+  })).filter(item => item.baseUrl && item.mimeType?.startsWith('image/'));
+  if (!photos.length) throw new Error('No still images were selected');
+  photos.sort(() => Math.random() - .5);
+  buildSlides();
+  startSlideshow();
+  setPhotosStatus(`✓ ${photos.length} selected photos loaded.`);
 }
 
 function saveSettings() {
   CFG.familyName        = document.getElementById('set-fname').value.trim() || CFG.familyName;
   CFG.clientId          = document.getElementById('set-client-id').value.trim();
-  CFG.calId             = document.getElementById('set-cal-id').value.trim() || 'primary';
-  CFG.albumId           = document.getElementById('set-album-id').value.trim();
+  CFG.calId             = normalizeCalendarId(document.getElementById('set-cal-id').value) || 'primary';
+  CFG.albumId           = '';
   CFG.slideshowInterval = parseInt(document.getElementById('set-interval').value) || 12;
   CFG.maxPhotos         = parseInt(document.getElementById('set-max-photos').value) || 50;
   saveCfg();
   updateGreeting();
   startSlideshow();
   toggleSettings();
-  if (CFG.clientId && !tokenClient) initGoogleAuth();
+  if (CFG.clientId) initGoogleAuth();
 }
 
 function populateSettings() {
   document.getElementById('set-fname').value      = CFG.familyName;
   document.getElementById('set-client-id').value  = CFG.clientId;
   document.getElementById('set-cal-id').value     = CFG.calId;
-  document.getElementById('set-album-id').value   = CFG.albumId;
+  document.getElementById('set-album-id').value   = photos.length ? `${photos.length} photos selected` : '';
   document.getElementById('set-interval').value   = CFG.slideshowInterval;
   document.getElementById('set-max-photos').value = CFG.maxPhotos;
 }
@@ -1623,6 +1687,7 @@ function saveProfile() {
 ═══════════════════════════════════════════ */
 let tokenClient = null;
 let accessToken = null;
+let activePickerSessionId = null;
 
 function gsiLoaded() { if (CFG.clientId) initGoogleAuth(); }
 
@@ -1632,7 +1697,7 @@ function initGoogleAuth() {
     client_id: CFG.clientId,
     scope: [
       'https://www.googleapis.com/auth/calendar.readonly',
-      'https://www.googleapis.com/auth/photoslibrary.readonly',
+      'https://www.googleapis.com/auth/photospicker.mediaitems.readonly',
     ].join(' '),
     callback: onToken,
   });
@@ -1645,14 +1710,31 @@ function startSignIn() {
 }
 
 function onToken(resp) {
-  if (resp.error) return console.error('Auth error:', resp);
+  if (resp.error) {
+    console.error('Auth error:', resp);
+    document.getElementById('cal-events').innerHTML =
+      `<div class="err">Google sign-in error: ${esc(resp.error_description || resp.error)}</div>`;
+    return;
+  }
   accessToken = resp.access_token;
   document.getElementById('auth-overlay').classList.add('hidden');
   loadCalendar();
-  loadPhotos();
 }
 
-function signOut() {
+async function cleanupPickerSession() {
+  if (!activePickerSessionId || !accessToken) return;
+  const sessionId = activePickerSessionId;
+  activePickerSessionId = null;
+  try {
+    await fetch(
+      `https://photospicker.googleapis.com/v1/sessions/${encodeURIComponent(sessionId)}`,
+      { method:'DELETE', headers:{ Authorization:`Bearer ${accessToken}` } }
+    );
+  } catch {}
+}
+
+async function signOut() {
+  await cleanupPickerSession();
   if (accessToken) google.accounts.oauth2.revoke(accessToken, ()=>{});
   accessToken = null;
   document.getElementById('auth-overlay').classList.remove('hidden');
@@ -1677,8 +1759,7 @@ async function loadCalendar() {
       `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?${params}`,
       { headers:{ Authorization:`Bearer ${accessToken}` } }
     );
-    if (!r.ok) throw new Error(`${r.status}`);
-    const data = await r.json();
+    const data = await googleJson(r);
     renderCalEvents(data.items || []);
   } catch(e) {
     el.innerHTML = `<div class="err">Calendar error: ${esc(e.message)}</div>`;
@@ -1728,34 +1809,7 @@ function setPhotosStatus(msg) {
 }
 
 async function loadPhotos() {
-  if (!accessToken) return;
-  try {
-    let url, opts;
-    if (CFG.albumId) {
-      url  = 'https://photoslibrary.googleapis.com/v1/mediaItems:search';
-      opts = { method:'POST', headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' }, body:JSON.stringify({albumId:CFG.albumId, pageSize:CFG.maxPhotos}) };
-    } else {
-      url  = `https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=${CFG.maxPhotos}`;
-      opts = { headers:{ Authorization:`Bearer ${accessToken}` } };
-    }
-    const r = await fetch(url, opts);
-    if (!r.ok) {
-      const body = await r.text().catch(() => '');
-      setPhotosStatus(`Error ${r.status}${r.status===403?' — check you are signed in as smrekarfamilia and Photos API is enabled':''}: ${body.slice(0,120)}`);
-      throw new Error(r.status);
-    }
-    const data = await r.json();
-    const imgs = (data.mediaItems||[]).filter(p => p.mimeType?.startsWith('image/'));
-    if (!imgs.length) {
-      setPhotosStatus(CFG.albumId ? `Album "${CFG.albumId}" returned 0 images. Try Browse My Albums to pick a different one.` : 'No photos found in library.');
-      return;
-    }
-    setPhotosStatus(`✓ ${imgs.length} photos loaded.`);
-    photos = imgs.sort(() => Math.random()-.5);
-    buildSlides();
-    startSlideshow();
-    setTimeout(loadPhotos, 55*60*1000);
-  } catch(e) { console.error('Photos error', e); }
+  if (!photos.length) setPhotosStatus('Choose photos with Google Photos Picker.');
 }
 
 function buildSlides() {
@@ -1842,6 +1896,17 @@ function esc(s) {
    INIT
 ═══════════════════════════════════════════ */
 window.addEventListener('load', () => {
+  document.getElementById('oauth-origin').textContent = window.location.origin;
+  const normalizedCalId = normalizeCalendarId(CFG.calId);
+  if (normalizedCalId && normalizedCalId !== CFG.calId) {
+    CFG.calId = normalizedCalId;
+    saveCfg();
+  }
+  if (CFG.albumId) {
+    CFG.albumId = '';
+    saveCfg();
+  }
+  loadPhotos();
   updateCustodyBadge();
   renderTodayChores();
   renderBirthdays();
@@ -1878,7 +1943,7 @@ window.addEventListener('load', () => {
       <div class="s-field">
         <label>OAuth Client ID</label>
         <input id="set-client-id" type="text" placeholder="xxxxx.apps.googleusercontent.com">
-        <div class="s-hint">Create at <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a> → APIs &amp; Services → Credentials. Add the Tailscale MagicDNS URL as an authorized JavaScript origin. Grant Calendar/Photos access to <code>smrekarfamilia@gmail.com</code>.</div>
+        <div class="s-hint">Create a Web application client at <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a> → APIs &amp; Services → Credentials. Add <code id="oauth-origin"></code> as an authorized JavaScript origin (no redirect URI is used by this token flow). Keep the app in Testing and add <code>smrekarfamilia@gmail.com</code> as a test user.</div>
       </div>
     </div>
     <div class="s-section">
@@ -1891,9 +1956,10 @@ window.addEventListener('load', () => {
     <div class="s-section">
       <div class="s-section-title">Google Photos</div>
       <div class="s-field">
-        <label>Album ID (blank = recent photos)</label>
-        <input id="set-album-id" type="text" placeholder="Select below or paste ID">
-        <button class="btn-ghost" style="margin-top:6px;font-size:11px;padding:4px 10px" onclick="browseAlbums()">Browse My Albums…</button>
+        <label>Selected Photos</label>
+        <input id="set-album-id" type="text" placeholder="Use Google Photos Picker below" readonly>
+        <button class="btn-ghost" style="margin-top:6px;font-size:11px;padding:4px 10px" onclick="browseAlbums()">Choose Photos…</button>
+        <div class="s-hint">Google no longer allows apps to browse arbitrary albums. Choose photos for this display with the supported Google Photos Picker. Shared <code>photos.app.goo.gl</code> links are not album IDs.</div>
         <div id="album-list" style="display:none"></div>
       </div>
       <div class="s-field">
@@ -1907,7 +1973,7 @@ window.addEventListener('load', () => {
       <div class="s-field" id="photos-status-field" style="display:none">
         <label>Photos Status</label>
         <div id="photos-status" style="font-size:12px;color:var(--cream-dim);line-height:1.5"></div>
-        <button class="btn-ghost" style="margin-top:6px;font-size:11px;padding:4px 10px" onclick="loadPhotos()">Retry</button>
+        <button class="btn-ghost" style="margin-top:6px;font-size:11px;padding:4px 10px" onclick="browseAlbums()">Choose Photos…</button>
       </div>
     </div>
     <div class="s-actions">
