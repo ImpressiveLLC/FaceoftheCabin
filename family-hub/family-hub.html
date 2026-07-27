@@ -763,69 +763,6 @@
 </div>
 <div id="photo-overlay"></div>
 
-<!-- ── SETTINGS BTN ── -->
-<button id="settings-btn" onclick="toggleSettings()" title="Settings">⚙</button>
-
-<!-- ── SETTINGS PANEL ── -->
-<div id="settings-panel" class="">
-  <div class="settings-inner">
-    <div class="settings-head">
-      <div class="settings-title">Settings</div>
-      <button class="settings-close" onclick="toggleSettings()">✕</button>
-    </div>
-    <div class="s-section">
-      <div class="s-section-title">Display</div>
-      <div class="s-field"><label>Family Name</label><input id="set-fname" type="text" placeholder="e.g. Smrekar"></div>
-      <div class="s-field">
-        <label>Slideshow Interval</label>
-        <select id="set-interval">
-          <option value="8">8 seconds</option>
-          <option value="12" selected="">12 seconds</option>
-          <option value="20">20 seconds</option>
-          <option value="30">30 seconds</option>
-          <option value="60">1 minute</option>
-        </select>
-      </div>
-    </div>
-    <div class="s-section">
-      <div class="s-section-title">Google OAuth</div>
-      <div class="s-field">
-        <label>OAuth Client ID</label>
-        <input id="set-client-id" type="text" placeholder="xxxxx.apps.googleusercontent.com">
-        <div class="s-hint">Create at <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a> → APIs &amp; Services → Credentials. Add <code>http://127.0.0.1:5500</code> as an authorized JavaScript origin (no redirect URI needed). Grant Calendar/Photos access to <code>smrekarfamilia@gmail.com</code>.</div>
-      </div>
-    </div>
-    <div class="s-section">
-      <div class="s-section-title">Google Calendar</div>
-      <div class="s-field">
-        <label>Calendar ID</label>
-        <input id="set-cal-id" type="text" placeholder="smrekarfamilia@gmail.com">
-      </div>
-    </div>
-    <div class="s-section">
-      <div class="s-section-title">Google Photos</div>
-      <div class="s-field">
-        <label>Album ID (blank = recent photos)</label>
-        <input id="set-album-id" type="text" placeholder="Select below or paste ID">
-        <button class="btn-ghost" style="margin-top:6px;font-size:11px;padding:4px 10px" onclick="browseAlbums()">Browse My Albums…</button>
-        <div id="album-list" style="display:none"></div>
-      </div>
-      <div class="s-field">
-        <label>Max Photos</label>
-        <select id="set-max-photos">
-          <option value="20">20</option>
-          <option value="50" selected="">50</option>
-          <option value="100">100</option>
-        </select>
-      </div>
-    </div>
-    <div class="s-actions">
-      <button class="btn-gold" onclick="saveSettings()">Save Settings</button>
-      <button class="btn-ghost" onclick="signOut()">Sign Out</button>
-    </div>
-  </div>
-</div>
-
 <!-- ── AUTH OVERLAY ── -->
 <div id="auth-overlay" style="opacity: 1;">
   <img src="./hodgson-crest.svg" class="auth-crest" alt="Smrekar Crest">
@@ -1784,7 +1721,14 @@ function renderCalEvents(events) {
 ═══════════════════════════════════════════ */
 let photos = [], currentPhoto = 0, slideshowTimer = null;
 
+function setPhotosStatus(msg) {
+  const f = document.getElementById('photos-status-field');
+  const d = document.getElementById('photos-status');
+  if (f && d) { f.style.display = ''; d.textContent = msg; }
+}
+
 async function loadPhotos() {
+  if (!accessToken) return;
   try {
     let url, opts;
     if (CFG.albumId) {
@@ -1795,10 +1739,18 @@ async function loadPhotos() {
       opts = { headers:{ Authorization:`Bearer ${accessToken}` } };
     }
     const r = await fetch(url, opts);
-    if (!r.ok) throw new Error(r.status);
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      setPhotosStatus(`Error ${r.status}${r.status===403?' — check you are signed in as smrekarfamilia and Photos API is enabled':''}: ${body.slice(0,120)}`);
+      throw new Error(r.status);
+    }
     const data = await r.json();
     const imgs = (data.mediaItems||[]).filter(p => p.mimeType?.startsWith('image/'));
-    if (!imgs.length) return;
+    if (!imgs.length) {
+      setPhotosStatus(CFG.albumId ? `Album "${CFG.albumId}" returned 0 images. Try Browse My Albums to pick a different one.` : 'No photos found in library.');
+      return;
+    }
+    setPhotosStatus(`✓ ${imgs.length} photos loaded.`);
     photos = imgs.sort(() => Math.random()-.5);
     buildSlides();
     startSlideshow();
@@ -1897,5 +1849,72 @@ window.addEventListener('load', () => {
 });
 </script>
 
+<!-- ── SETTINGS BTN (must be last in body — backdrop-filter on dashboard breaks z-index otherwise) ── -->
+<button id="settings-btn" onclick="toggleSettings()" title="Settings">⚙</button>
+
+<!-- ── SETTINGS PANEL ── -->
+<div id="settings-panel" class="">
+  <div class="settings-inner">
+    <div class="settings-head">
+      <div class="settings-title">Settings</div>
+      <button class="settings-close" onclick="toggleSettings()">✕</button>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Display</div>
+      <div class="s-field"><label>Family Name</label><input id="set-fname" type="text" placeholder="e.g. Smrekar"></div>
+      <div class="s-field">
+        <label>Slideshow Interval</label>
+        <select id="set-interval">
+          <option value="8">8 seconds</option>
+          <option value="12" selected="">12 seconds</option>
+          <option value="20">20 seconds</option>
+          <option value="30">30 seconds</option>
+          <option value="60">1 minute</option>
+        </select>
+      </div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Google OAuth</div>
+      <div class="s-field">
+        <label>OAuth Client ID</label>
+        <input id="set-client-id" type="text" placeholder="xxxxx.apps.googleusercontent.com">
+        <div class="s-hint">Create at <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a> → APIs &amp; Services → Credentials. Add the Tailscale MagicDNS URL as an authorized JavaScript origin. Grant Calendar/Photos access to <code>smrekarfamilia@gmail.com</code>.</div>
+      </div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Google Calendar</div>
+      <div class="s-field">
+        <label>Calendar ID</label>
+        <input id="set-cal-id" type="text" placeholder="smrekarfamilia@gmail.com">
+      </div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Google Photos</div>
+      <div class="s-field">
+        <label>Album ID (blank = recent photos)</label>
+        <input id="set-album-id" type="text" placeholder="Select below or paste ID">
+        <button class="btn-ghost" style="margin-top:6px;font-size:11px;padding:4px 10px" onclick="browseAlbums()">Browse My Albums…</button>
+        <div id="album-list" style="display:none"></div>
+      </div>
+      <div class="s-field">
+        <label>Max Photos</label>
+        <select id="set-max-photos">
+          <option value="20">20</option>
+          <option value="50" selected="">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <div class="s-field" id="photos-status-field" style="display:none">
+        <label>Photos Status</label>
+        <div id="photos-status" style="font-size:12px;color:var(--cream-dim);line-height:1.5"></div>
+        <button class="btn-ghost" style="margin-top:6px;font-size:11px;padding:4px 10px" onclick="loadPhotos()">Retry</button>
+      </div>
+    </div>
+    <div class="s-actions">
+      <button class="btn-gold" onclick="saveSettings()">Save Settings</button>
+      <button class="btn-ghost" onclick="signOut()">Sign Out</button>
+    </div>
+  </div>
+</div>
 
 </body></html>
