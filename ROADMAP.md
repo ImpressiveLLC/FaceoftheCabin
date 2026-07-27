@@ -402,14 +402,55 @@ All 14 devices paired and renamed to canonical snake_case ontology IDs:
 
 ---
 
-## Review Checkpoint
+## Review Checkpoints
 
-**Next review:** 2026-08-27
-
-Items to verify at checkpoint:
+### Platform Review — 2026-08-27
 - [ ] `unicornpingpong.com` registered and Cloudflare tunnel live
 - [x] All platform code in `FaceoftheCabin` (smrekar-platform deprecated 2026-07-27)
 - [ ] M920q docker-compose.yml committed to CabinAutomations
 - [ ] Phase 1 blockers cleared
 - [ ] Tech ID Service discovery flags updated for any new device purchases
 - [ ] Ontology schema version still at `1.0` or bumped with changelog
+
+### Ontology Migration Review — Monthly (recurring until 0 pending remain)
+
+`docs/ontology.yaml` contains entries with `migration_status: pending` that must be upgraded
+to v0.3.0 schema (`entity_type`, `ui_display_name`, `data_type`, `constraint`,
+`rendering` replacing `label`, `relationships` replacing `derives_from`/`used_by`).
+Work in `migration_priority` order. Update the count below after each session.
+
+| Review Date | Pending Count | Notes |
+|-------------|---------------|-------|
+| 2026-07-27  | 24 of 24      | v0.3.0 schema established; Family Hub (32 entries) complete |
+| 2026-08-27  | —             | _(scheduled)_ |
+| 2026-09-27  | —             | _(scheduled)_ |
+| 2026-10-27  | —             | _(scheduled)_ |
+
+**Priority order (migrate highest first):**
+
+| Priority | ID | Reason |
+|----------|----|--------|
+| 1 | `display_name` | Active in UI, 4 consumers |
+| 2 | `device_state` | Active backend + UI, 4 consumers |
+| 3 | `temperature_celsius` | Active sensor, 4 consumers |
+| 4 | `humidity_percent` | Active sensor, 4 consumers |
+| 5 | `battery_percent` | Active sensor, 4 consumers |
+| 6 | `contact_state` | Active sensor, 4 consumers |
+| 7 | `fotc_device_id` | Active API + UI, 4 consumers |
+| 8 | `tailscale_ip` | Active infra, 4 consumers |
+| 9 | `z2m_friendly_name` | Active integration, 3 consumers |
+| 10 | `zigbee_ieee_address` | Active hardware FK, 3 consumers |
+| 11 | `linkquality` | Active sensor, 3 consumers |
+| 12 | `mqtt_topic` | Active protocol, 3 consumers |
+| 13 | `device_command` | Active/planned backend, 3 consumers |
+| 14 | `audit_log` | Partially implemented, 3 consumers |
+| 15 | `zigbee_model` | Active hardware, 3 consumers |
+| 16 | `mqtt_availability_topic` | Active protocol, 2 consumers |
+| 17 | `zigbee_vendor` | Active hardware, 2 consumers |
+| 18 | `device_room` | Planned metadata table, 4 consumers |
+| 19 | `device_install_photo` | Planned, 3 consumers |
+| 20 | `data_dictionary_ui` | Planned UI, 3 consumers |
+| 21 | `semantic_layer_toggle` | Planned UI, 4 consumers |
+| 22 | `action_confirmation_copy` | Planned safety UI, 2 consumers |
+| 23 | `docker_network_cabin_default` | Infra-only, 2 consumers |
+| 24 | `machine_hostname` | QA runner only, 2 consumers |
