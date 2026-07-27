@@ -49,7 +49,7 @@ Conceptually unified cabin intelligence service, technically decomposed:
 
 ### 3.3 Shared Platform Services — `api.unicornpingpong.com`
 
-Spring Boot backend + React frontend (`smrekar-platform` monorepo — **not yet pushed to GitHub**):
+Spring Boot backend + React frontend (lives in `FaceoftheCabin` — `cabin-backend` + `cabin-orchestration-platform/ui`):
 
 - Identity and roles (Google OAuth, `nhsmrekar@gmail.com`)
 - YAML ontology — canonical entity definitions, naming contract, discovery flags
@@ -321,7 +321,7 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 ### Phase 1 — Foundation
 
 - [x] Fix Family Hub overlay z-index bug
-- [ ] **[BLOCKER]** Push `smrekar-platform` monorepo to GitHub from home Windows machine (`ilikethelights`)
+- [x] All platform code unified in `FaceoftheCabin` (`smrekar-platform` deprecated)
 - [ ] **[BLOCKER]** Push current M920q `docker-compose.yml` to CabinAutomations repo (currently local-only at `/storage/containers/compose/cabin/`)
 - [ ] Register `unicornpingpong.com` at Porkbun, add to Cloudflare free tier
 - [ ] Add `cloudflared` container to M920q docker-compose, configure tunnel to `hub/cabin/api` subdomains
@@ -355,7 +355,7 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 
 ### Phase 5 — Platform UI
 
-- [ ] Build see/think/act UI shell in `smrekar-platform` React frontend
+- [ ] Build see/think/act UI shell in `cabin-orchestration-platform/ui` React frontend
 - [ ] Implement entity search: full-text across ontology IDs, labels, tags, and `search_aliases`
 - [ ] Implement lineage trace view: upstream (`derived_from`) and downstream (`consumed_by`) per entity
 - [ ] Implement discovery panel: entities with `check_for_new: true`, schedule, `last_checked`, current flags
@@ -408,7 +408,7 @@ All 14 devices paired and renamed to canonical snake_case ontology IDs:
 
 Items to verify at checkpoint:
 - [ ] `unicornpingpong.com` registered and Cloudflare tunnel live
-- [ ] `smrekar-platform` pushed to GitHub
+- [x] All platform code in `FaceoftheCabin` (smrekar-platform deprecated 2026-07-27)
 - [ ] M920q docker-compose.yml committed to CabinAutomations
 - [ ] Phase 1 blockers cleared
 - [ ] Tech ID Service discovery flags updated for any new device purchases

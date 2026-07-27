@@ -33,8 +33,6 @@ A family-scale, self-hosted platform unifying cabin automation and family coordi
 |------|-----|----------|
 | [FaceoftheCabin](https://github.com/ImpressiveLLC/FaceoftheCabin) | ImpressiveLLC | cabin-ui (React), cabin-backend (Spring Boot), family-hub (static HTML), infra (Docker Compose) |
 | [CabinAutomations](https://github.com/ImpressiveLLC/CabinAutomations) | ImpressiveLLC | Zigbee pairing, HA config, Node-RED flows |
-| [smrekar-platform](https://github.com/ImpressiveLLC/smrekar-platform) | ImpressiveLLC | Platform monorepo — identity, ontology API, shared UI shell ⚠️ _not yet pushed_ |
-
 **GitHub accounts:** `nhsmrekar` (primary dev) · `smrekarfamilia-sudo` (family org) · `ImpressiveLLC` (shared/platform)
 
 ---

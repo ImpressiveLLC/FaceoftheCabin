@@ -522,6 +522,26 @@
       background:var(--teal); border-color:var(--teal);
       box-shadow:0 0 10px rgba(75,200,200,.4);
     }
+    .chore-carryover { border-color:rgba(255,100,100,.25); }
+    .chore-reward-banner {
+      background:rgba(200,164,74,.08); border:1px solid rgba(200,164,74,.22);
+      border-radius:14px; padding:14px 16px; margin-bottom:14px;
+    }
+    .crb-label { font-size:10px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); margin-bottom:8px; }
+    .crb-row { display:flex; align-items:center; gap:12px; }
+    .crb-bar-wrap { flex:1; height:8px; background:rgba(255,255,255,.1); border-radius:99px; overflow:hidden; }
+    .crb-bar-fill { height:100%; background:var(--gold); border-radius:99px; transition:width .4s ease; }
+    .crb-count { font-size:12px; font-weight:600; color:var(--gold); flex-shrink:0; }
+    .crb-unlocked { font-size:12px; color:#6EE7B7; margin-top:6px; }
+    .crb-needed { font-size:12px; color:var(--cream-dim); margin-top:6px; }
+    .chore-history-toggle {
+      cursor:pointer; user-select:none; color:var(--cream-dim);
+      transition:.15s; padding:4px 0;
+    }
+    .chore-history-toggle:hover { color:var(--gold); }
+    .chore-history-toggle.open { color:var(--gold); }
+    .chore-history-body { margin-top:8px; }
+    .chore-history-body.hidden { display:none; }
 
     /* ── Rewards Tab ── */
     .rewards-layout { display:grid; grid-template-columns:1fr 340px; gap:20px; }
@@ -1578,45 +1598,103 @@ function selectChoreKid(kidId) {
 }
 
 function renderChoreTracker() {
-  const schedule = generateSchedule(28).filter(d => d.kidsHome);
+  const today = new Date();
+  const todayKey = ymd(today);
+  const yesterday = addDays(today, -1);
+  const yesterdayKey = ymd(yesterday);
   const kid = getKids().find(k => k.id === activeChoreKid);
-  const todayKey = ymd(new Date());
+  if (!kid) { document.getElementById('chore-tracker-body').innerHTML = '<div style="color:var(--cream-dim);padding:16px">Select a kid above.</div>'; return; }
 
-  // Two-week split
-  const week1 = schedule.slice(0,7);
-  const week2 = schedule.slice(7,14);
+  const todayHome = isKidsHome(today);
+  const yesterdayHome = isKidsHome(yesterday);
 
-  function renderWeek(days, label) {
-    let html = `<div class="chore-week-header">${label}</div>`;
-    for (const day of days) {
-      const assigned = defaultAssignments(day.key, activeChoreKid);
-      const doneCount = assigned.filter(c => getChoreState(day.key, activeChoreKid, c.id)).length;
-      const isT = day.key === todayKey;
-      const isFuture = day.key > todayKey;
-      html += `<div class="chore-day-block${isFuture?' future':''}">
+  // ── Reward burndown ──
+  const homeDays = recentHomeDays(7);
+  const elig = rewardEligibility(activeChoreKid, homeDays);
+  let html = `<div class="chore-reward-banner">
+    <div class="crb-label">Reward progress — rolling 7 days</div>
+    <div class="crb-row">
+      <div class="crb-bar-wrap"><div class="crb-bar-fill" style="width:${elig.pct}%"></div></div>
+      <div class="crb-count">${elig.qualifying}/4 nights</div>
+    </div>
+    ${elig.eligible
+      ? '<div class="crb-unlocked">⭐ Reward unlocked!</div>'
+      : `<div class="crb-needed">${elig.needed - elig.qualifying} more qualifying night${elig.needed-elig.qualifying===1?'':'s'} needed</div>`
+    }
+  </div>`;
+
+  // ── Today's chores ──
+  if (!todayHome) {
+    html += `<div class="chore-day-block"><div class="chore-day-name" style="color:var(--gold)">Today — Kids at Mom's</div><div style="color:var(--cream-dim);font-size:13px;margin-top:4px;">Chores resume when they're back.</div></div>`;
+  } else {
+    const todayChores = defaultAssignments(todayKey, activeChoreKid);
+    const todayDone = todayChores.filter(c => getChoreState(todayKey, activeChoreKid, c.id)).length;
+    html += `<div class="chore-day-block">
+      <div class="chore-day-title">
+        <div class="chore-day-name" style="color:var(--gold)">Today</div>
+        <div class="chore-day-count">${todayDone}/${todayChores.length} done</div>
+      </div>`;
+    for (const chore of todayChores) {
+      const isDone = getChoreState(todayKey, activeChoreKid, chore.id);
+      html += `<div class="chore-full-row ${isDone?'done':''}" onclick="toggleChoreCompletion('${todayKey}','${activeChoreKid}','${chore.id}')">
+        <div class="chore-full-cb">${isDone?'✓':''}</div>
+        <div class="chore-full-label">${esc(chore.label)}</div>
+        <div class="chore-full-tags">${chore.tags.join(' · ')}</div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  // ── Yesterday carryover (only if kids were home and there are incomplete chores) ──
+  if (yesterdayHome) {
+    const yChores = defaultAssignments(yesterdayKey, activeChoreKid);
+    const yCarryover = yChores.filter(c => !getChoreState(yesterdayKey, activeChoreKid, c.id));
+    if (yCarryover.length > 0) {
+      html += `<div class="chore-day-block chore-carryover">
         <div class="chore-day-title">
-          <div>
-            <div class="chore-day-name" style="color:${isT?'var(--gold)':'var(--cream)'}">${day.label}${isT?' — Today':''}${isFuture?' — Upcoming':''}</div>
-            <div class="chore-day-count">${doneCount} of ${assigned.length} done</div>
-          </div>
-          <div class="chore-day-badge">${doneCount} chores</div>
+          <div class="chore-day-name" style="color:var(--rose)">Carried over from yesterday</div>
+          <div class="chore-day-count">${yCarryover.length} incomplete</div>
         </div>`;
-      for (const chore of assigned) {
-        const isDone = getChoreState(day.key, activeChoreKid, chore.id);
-        const onclick = isFuture ? '' : ` onclick="toggleChoreCompletion('${day.key}','${activeChoreKid}','${chore.id}')"`;
-        html += `<div class="chore-full-row ${isDone?'done':''}${isFuture?' future':''}"${onclick}>
+      for (const chore of yCarryover) {
+        const isDone = getChoreState(yesterdayKey, activeChoreKid, chore.id);
+        html += `<div class="chore-full-row ${isDone?'done':''}" onclick="toggleChoreCompletion('${yesterdayKey}','${activeChoreKid}','${chore.id}')">
+          <div class="chore-full-cb">${isDone?'✓':''}</div>
           <div class="chore-full-label">${esc(chore.label)}</div>
           <div class="chore-full-tags">${chore.tags.join(' · ')}</div>
-          <div class="chore-full-cb">${isDone?'✓':''}</div>
         </div>`;
       }
       html += '</div>';
     }
-    return html;
   }
 
-  document.getElementById('chore-tracker-body').innerHTML =
-    renderWeek(week1, 'Week One') + renderWeek(week2, 'Week Two');
+  // ── Weekly history (collapsed toggle) ──
+  const schedule = generateSchedule(28).filter(d => d.kidsHome && d.key < todayKey);
+  if (schedule.length > 0) {
+    const recentDays = schedule.slice(-7).reverse();
+    html += `<div class="chore-week-header chore-history-toggle" onclick="this.nextElementSibling.classList.toggle('hidden');this.classList.toggle('open')">▸ Recent history</div>
+    <div class="chore-history-body hidden">`;
+    for (const day of recentDays) {
+      const assigned = defaultAssignments(day.key, activeChoreKid);
+      const doneCount = assigned.filter(c => getChoreState(day.key, activeChoreKid, c.id)).length;
+      html += `<div class="chore-day-block">
+        <div class="chore-day-title">
+          <div class="chore-day-name">${day.label}</div>
+          <div class="chore-day-count">${doneCount}/${assigned.length} done</div>
+        </div>`;
+      for (const chore of assigned) {
+        const isDone = getChoreState(day.key, activeChoreKid, chore.id);
+        html += `<div class="chore-full-row ${isDone?'done':''}" onclick="toggleChoreCompletion('${day.key}','${activeChoreKid}','${chore.id}')">
+          <div class="chore-full-cb">${isDone?'✓':''}</div>
+          <div class="chore-full-label">${esc(chore.label)}</div>
+          <div class="chore-full-tags">${chore.tags.join(' · ')}</div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  document.getElementById('chore-tracker-body').innerHTML = html;
 }
 
 function renderRewards() {
