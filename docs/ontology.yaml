@@ -385,25 +385,40 @@ elements:
     migration_status: complete
     data_class: raw
     data_type: xsd:string
+    primitive_type_group: device_location
     constraint:
       maxLength: 80
-      description: user-defined free text; no controlled vocabulary enforced
+      vocabulary: soft_enum
+      vocabulary_source: location_vocabulary_term (applies_to: device_room)
+      description: >
+        User structured selection from a curated room-name list. Values outside
+        the master list trigger a candidate_term_submission automatically.
     ui_display_name: "Kitchen"
     rendering:
       semantic: Room (e.g. "Kitchen", "Back Porch")
-      systems: Zone / Room
-      technical: room (device metadata table)
-      compliance: Installation Location
+      systems: Room / Zone (L1 — room-level location)
+      technical: room (device metadata table, snake_case; L1 of location_context)
+      compliance: Installation Location (L1)
     definition: >
-      User-defined spatial grouping for a device. Used to group tiles on the
-      dashboard and provide location context in notifications.
+      The room-level (L1) location of a device within the installation site.
+      User selects from a curated soft-enum list. Custom values auto-submit a
+      candidate_term_submission for master vocabulary review.
     relationships:
       - target: display_name
         type: depends_on
         cardinality: "N:1"
+      - target: device_location_zone
+        type: consumed_by
+        cardinality: "1:N"
+      - target: device_location_formatted
+        type: consumed_by
+        cardinality: "1:N"
       - target: audit_log
         type: consumed_by
         cardinality: "1:N"
+      - target: location_context
+        type: consumed_by
+        cardinality: "1:1"
 
   - id: device_install_photo
     entity_type: owl:DatatypeProperty
@@ -436,6 +451,368 @@ elements:
       Fallback hierarchy: user photo → Z2M device database spec image
       (keyed by zigbee_model) → generic device type icon.
       Prompted once at first device discovery. Stored as URL (local or CDN).
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LOCATION CONTEXT ELEMENTS
+# Structured multi-level location identity for every installed device.
+# Primitive type group: device_location (L1–L3 + derived formatted output)
+# Vocabulary feedback: custom values auto-submit candidate_term_submission
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: location_context
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: composite
+    data_type: owl:Class
+    primitive_type_group: device_location
+    ui_display_name: "Location"
+    rendering:
+      semantic: Where this device is installed
+      systems: Location Context (L1 · L2a · L2b · L3 · formatted)
+      technical: >
+        location_context aggregate: {device_room, device_location_zone,
+        device_location_qualifier, device_location_text, device_location_formatted}
+      compliance: Physical Installation Address
+    definition: >
+      The aggregate location identity for an installed device. Groups the full
+      five-level location attribute set (L1 room, L2a zone, L2b qualifier, L3
+      free text, derived formatted string) under one class so automations,
+      device naming pipelines, and UI surfaces can resolve any representation
+      from a single context reference.
+    relationships:
+      - target: device_room
+        type: extends
+        cardinality: "1:1"
+      - target: device_location_zone
+        type: extends
+        cardinality: "1:1"
+      - target: device_location_qualifier
+        type: extends
+        cardinality: "1:1"
+      - target: device_location_text
+        type: extends
+        cardinality: "1:1"
+      - target: device_location_formatted
+        type: extends
+        cardinality: "1:1"
+    notes: >
+      This class does not store data — it is a semantic grouping and the
+      resolution entry point for location-aware automations and naming pipelines.
+      All five member properties share primitive_type_group: device_location.
+
+  - id: device_location_zone
+    entity_type: owl:DatatypeProperty
+    layer: integration
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    primitive_type_group: device_location
+    constraint:
+      vocabulary: soft_enum
+      vocabulary_source: location_vocabulary_term (applies_to: device_location_zone)
+      description: >
+        Sub-room zone within device_room (L2a). User selects from curated list
+        per room type. Values not in master list auto-submit candidate_term_submission
+        with alert to user. Examples: "Floor", "Wall", "Ceiling", "Under sink",
+        "Breaker box area", "Counter", "Cabinet", "Window sill"
+    ui_display_name: "Zone within room"
+    rendering:
+      semantic: Area within the room (e.g. "Near the breaker box", "Under the sink")
+      systems: Location Zone (L2a — sub-room zone)
+      technical: location_zone (device metadata table; L2a of location_context)
+      compliance: Installation Zone
+    definition: >
+      The zone-level (L2a) sub-room location of a device. A structured
+      selection from a curated soft-enum vocabulary scoped to the parent
+      device_room. Custom values trigger a vocabulary candidacy submission
+      and user alert, and are excluded from automation logic until promoted.
+    relationships:
+      - target: device_room
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_location_qualifier
+        type: consumed_by
+        cardinality: "1:N"
+      - target: device_location_formatted
+        type: consumed_by
+        cardinality: "1:N"
+      - target: candidate_term_submission
+        type: triggers
+        cardinality: "1:N"
+      - target: location_context
+        type: consumed_by
+        cardinality: "1:1"
+    notes: >
+      Soft enum: the UI presents a dropdown of master terms for the selected
+      device_room. "Other — describe it" option opens a free-text field and
+      submits candidate_term_submission on save. Custom values are stored but
+      flagged as non-master; automations that reference device_location_zone
+      by value will not match a custom value until it is promoted to master.
+
+  - id: device_location_qualifier
+    entity_type: owl:DatatypeProperty
+    layer: integration
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    primitive_type_group: device_location
+    constraint:
+      vocabulary: soft_enum
+      vocabulary_source: location_vocabulary_term (applies_to: device_location_qualifier)
+      description: >
+        Positional descriptor within device_location_zone (L2b). User selects
+        from curated list per zone type. Examples: "North wall", "South wall",
+        "Left side", "Right side", "Above drain", "Eye level", "Floor level",
+        "Port 1", "Port 2". Custom values auto-submit candidate_term_submission.
+    ui_display_name: "Position within zone"
+    rendering:
+      semantic: Exact position (e.g. "North wall, about 4 feet up")
+      systems: Location Qualifier (L2b — positional within zone)
+      technical: location_qualifier (device metadata table; L2b of location_context)
+      compliance: Installation Qualifier
+    definition: >
+      The positional (L2b) descriptor within a zone. Answers "where exactly
+      within the zone." Soft enum scoped to parent device_location_zone.
+      Custom values trigger candidacy submission and user alert.
+    relationships:
+      - target: device_location_zone
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_location_formatted
+        type: consumed_by
+        cardinality: "1:N"
+      - target: candidate_term_submission
+        type: triggers
+        cardinality: "1:N"
+      - target: location_context
+        type: consumed_by
+        cardinality: "1:1"
+    notes: >
+      Same soft-enum + candidacy pattern as device_location_zone. Both L2a and
+      L2b custom values submit separate candidate_term_submission records with
+      distinct applies_to context so the review queue can distinguish them.
+
+  - id: device_location_text
+    entity_type: owl:DatatypeProperty
+    layer: integration
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    primitive_type_group: device_location
+    constraint:
+      maxLength: 500
+      description: >
+        Free text narrative (L3). Annotation only — excluded from all automation
+        logic and device naming derivations. Shown to semantic and compliance
+        audiences only.
+    ui_display_name: "Description"
+    rendering:
+      semantic: Description (e.g. "On the north wall next to the breaker box, about 4 feet up")
+      systems: Location Narrative (L3 — free text annotation)
+      technical: location_text (device metadata table; L3 of location_context; unstructured)
+      compliance: Installation Description
+    definition: >
+      A free-text narrative description of the device's physical location.
+      Intended for human readability (semantic and compliance audiences) only.
+      Not used in automation rules, device naming, or any derived computation.
+      The semantic audience fallback when L1+L2 structured context is insufficient.
+    relationships:
+      - target: device_location_qualifier
+        type: depends_on
+        cardinality: "N:1"
+      - target: location_context
+        type: consumed_by
+        cardinality: "1:1"
+    notes: >
+      L3 does NOT feed candidate_term_submission — it is deliberately unstructured
+      and is not a vocabulary candidate. If the user's L3 text suggests a new
+      structured concept, the reviewer promotes it by adding a master term to
+      location_vocabulary_term and linking it to L2a or L2b.
+
+  - id: device_location_formatted
+    entity_type: owl:DatatypeProperty
+    layer: integration
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:string
+    primitive_type_group: device_location
+    constraint:
+      description: >
+        System-generated; never user-entered. Multiple format variants produced
+        from the same L1+L2 source: snake_case (MQTT/Z2M), camelCase (JSON keys),
+        PascalCase (HA entity IDs), Title Case (display labels). Only master-list
+        L1 and L2 values are included; custom/candidate values are excluded until
+        promoted.
+    ui_display_name: "(system generated)"
+    rendering:
+      semantic: (not shown — system internal)
+      systems: Formatted Location String (protocol-safe variants)
+      technical: >
+        location_formatted_{variant} (device metadata table):
+        snake_case → "basement_mech_room_north_wall"
+        camelCase  → "basementMechRoomNorthWall"
+        PascalCase → "BasementMechRoomNorthWall"
+        label      → "Basement · Mech Room · North Wall"
+      compliance: (not shown)
+    definition: >
+      Protocol-safe location strings derived from device_room (L1),
+      device_location_zone (L2a), and device_location_qualifier (L2b).
+      Generated in multiple format variants to satisfy naming constraints across
+      MQTT topics, HA entity IDs, Z2M friendly_name seeds, and UI display labels.
+      Eliminates all manual format entry for device orchestration pipelines.
+    relationships:
+      - target: device_room
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_location_zone
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_location_qualifier
+        type: derives_from
+        cardinality: "N:1"
+      - target: z2m_friendly_name
+        type: consumed_by
+        cardinality: "1:1"
+      - target: fotc_device_id
+        type: consumed_by
+        cardinality: "1:1"
+      - target: location_context
+        type: consumed_by
+        cardinality: "1:1"
+    transformation: >
+      Source: device_room.value + device_location_zone.value +
+              device_location_qualifier.value (master-list values only).
+      Middle: normalize each segment → lowercase, strip punctuation, replace
+              spaces with underscores → join with _ for snake_case.
+              camelCase: capitalize each segment after first, join.
+              PascalCase: capitalize all segments, join.
+              label: Title Case segments joined with " · ".
+      Target: stored as location_formatted_{variant} columns in device metadata table.
+      Regenerated: on any L1/L2 change, on vocabulary term promotion.
+    notes: >
+      Custom (non-master) L1/L2 values are excluded from formatted output —
+      the pipeline produces an empty/partial string and raises a UI warning
+      ("Location not fully standardized — formatted name unavailable until
+      reviewed terms are approved"). This is intentional: it prevents
+      non-standard strings from entering MQTT topics or HA entity IDs.
+
+  - id: location_vocabulary_term
+    entity_type: owl:Class
+    layer: ontology
+    primitive: true
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Location vocabulary term"
+    rendering:
+      semantic: (not shown — admin only)
+      systems: Location Vocabulary Term
+      technical: >
+        location_vocabulary_term table: {id, value, applies_to,
+        parent_room_types[], status, usage_count, source}
+      compliance: Master Data Term Record
+    definition: >
+      A single entry in the master controlled vocabulary for location attributes.
+      Shared by all three location soft-enum properties (device_room, L2a, L2b).
+      Each term is scoped to one or more room types via parent_room_types, or
+      global (applies to all rooms). Terms have a lifecycle: candidate → master
+      → deprecated.
+    relationships:
+      - target: device_room
+        type: controls
+        cardinality: "1:N"
+      - target: device_location_zone
+        type: controls
+        cardinality: "1:N"
+      - target: device_location_qualifier
+        type: controls
+        cardinality: "1:N"
+      - target: candidate_term_submission
+        type: consumed_by
+        cardinality: "1:N"
+    notes: >
+      Fields per term:
+        id:               snake_case canonical ID
+        value:            display string (e.g. "Breaker box area")
+        applies_to:       device_room | device_location_zone | device_location_qualifier
+        parent_room_types: [] (empty = global; ["basement"] = basement only)
+        status:           master | candidate | deprecated
+        usage_count:      integer — computed from device metadata records
+        source:           system | user_submission
+      Deprecated terms remain in the table for historical device records.
+      Master terms are included in the UI dropdown. Candidates are queued
+      for review but not yet shown in the dropdown.
+
+  - id: candidate_term_submission
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Candidate vocabulary term"
+    rendering:
+      semantic: (not shown — admin only)
+      systems: Candidate Term Submission
+      technical: >
+        candidate_term_submission record: {id, term_value, applies_to,
+        context_device_id, context_room, submitted_at, review_status,
+        approved_as_term_id, submission_count}
+      compliance: Vocabulary Candidacy Record
+    definition: >
+      A record created automatically whenever a user enters a value not present
+      in the master location_vocabulary_term list for any soft-enum location
+      attribute. Queued for manual review; eventually automated promotion based
+      on submission frequency and semantic similarity to existing terms.
+    relationships:
+      - target: device_location_zone
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_location_qualifier
+        type: derives_from
+        cardinality: "N:1"
+      - target: location_vocabulary_term
+        type: consumed_by
+        cardinality: "N:1"
+    transformation: >
+      Trigger: user enters custom value in any soft-enum location field + saves.
+      Source: {term_value, applies_to (L2a or L2b), context_device_id,
+               context_room (device_room.value), submitted_at: now()}.
+      Middle: check existing submissions — if term_value+applies_to already
+              exists as candidate, increment submission_count only (no duplicate).
+              If new, create record with review_status: pending.
+      Alert: UI displays inline notice: "'{value}' isn't in our standard list.
+             It's been submitted for review — if approved, it'll appear in the
+             dropdown for all users."
+      Review queue: admin sees pending submissions ranked by submission_count desc.
+      Promotion: admin (or eventually: auto-promote at submission_count >= threshold)
+              sets review_status: approved, creates location_vocabulary_term with
+              status: master, source: user_submission. approved_as_term_id links back.
+      Rejection: review_status: rejected; term remains stored on the device record
+              but excluded from formatting pipeline and future dropdowns.
+    notes: >
+      submission_count deduplication: same term_value + applies_to across different
+      devices increments the count on one record (not N records). This makes the
+      review queue a ranked frequency list, not a flood of duplicates.
+      Automation candidacy: a term with review_status: candidate is NOT available
+      as an automation trigger value — only master terms qualify. This is enforced
+      at the automation rule editor layer.
+      Future: NLP/embedding similarity check on submission to flag near-duplicates
+      of existing master terms before creating a new candidate record (e.g.
+      "mech room" vs "mechanical room" → suggest existing term, ask user to confirm).
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DEVICE STATE ELEMENTS

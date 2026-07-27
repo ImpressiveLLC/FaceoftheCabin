@@ -328,6 +328,18 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 - [ ] Update Google OAuth authorized origin from `http://127.0.0.1:5500` to `https://hub.unicornpingpong.com`
 - [ ] Family Hub PWA manifest — installable on phone, offline clock/chores fallback
 
+### Phase 1.5 — Location Context & Vocabulary Feedback Loop
+
+- [ ] Build `location_vocabulary_term` table in Postgres (id, value, applies_to, parent_room_types, status, usage_count, source)
+- [ ] Seed master terms: common room names + zone/qualifier lists per room type
+- [ ] Build `candidate_term_submission` table + API endpoint (POST /ontology/vocabulary/candidates)
+- [ ] Wire soft-enum dropdowns in device setup UI: dropdown + "Other" → free text → auto-POST candidate on save
+- [ ] Build admin review queue UI: pending candidates ranked by submission_count, promote/reject actions
+- [ ] Build `device_location_formatted` derivation service: L1+L2 → snake_case / camelCase / PascalCase / label variants
+- [ ] Wire formatted output into Z2M friendly_name seed and fotc_device_id generation
+- [ ] NLP dedup check on candidate submission (embedding similarity vs existing master terms)
+- [ ] Auto-promotion rule: submission_count >= N (threshold TBD) triggers auto-promote candidate → master
+
 ### Phase 2 — Ontology Foundation
 
 - [ ] Create `/ontology` directory in CabinAutomations repo
@@ -423,6 +435,7 @@ Work in `migration_priority` order. Update the count below after each session.
 |-------------|---------------|-------|
 | 2026-07-27  | 24 of 24      | v0.3.0 schema established; Family Hub (32 entries) complete |
 | 2026-07-28  | 0 of 24       | All 24 legacy entries migrated; ontology fully at v0.3.0 |
+| 2026-07-28  | n/a           | +8 entries: location_context class, L1–L3 properties, device_location_formatted, location_vocabulary_term, candidate_term_submission |
 | 2026-08-27  | —             | _(scheduled review — verify no new pending entries)_ |
 | 2026-09-27  | —             | _(scheduled)_ |
 | 2026-10-27  | —             | _(scheduled)_ |
