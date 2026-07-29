@@ -45,7 +45,8 @@ A family-scale, self-hosted platform unifying cabin automation and family coordi
 | Tailscale IP | `100.77.44.113` |
 | Public access | Cloudflare Tunnel → `unicornpingpong.com` _(tunnel config in progress)_ |
 | Private mesh | Tailscale — cabin ↔ home, admin/SSH |
-| Domain registrar | Porkbun — `unicornpingpong.com` |
+| Domains | `unicornpingpong.com` — platform (hub/cabin/api subdomains) · `impressive.llc` — org domain |
+| Domain registrar | Porkbun |
 | DNS | Cloudflare free tier |
 | Monitoring | Uptime Kuma + Homepage on M920q |
 | Google OAuth owner | `nhsmrekar@gmail.com` |

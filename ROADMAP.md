@@ -63,7 +63,8 @@ Spring Boot backend + React frontend (lives in `FaceoftheCabin` — `cabin-backe
 
 | Component | Detail |
 |-----------|--------|
-| Domain | `unicornpingpong.com` (Porkbun ~$10/yr) |
+| Domains | `unicornpingpong.com` — platform (hub · cabin · api subdomains) |
+| | `impressive.llc` — org domain, aligns with ImpressiveLLC GitHub org |
 | DNS | Cloudflare free tier — nameservers from Porkbun |
 | Public access | Cloudflare Tunnel (`cloudflared` container on M920q) — bypasses Starlink CGNAT |
 | Private mesh | Tailscale — cabin ↔ home, admin/SSH. M920q stable IP: `100.77.44.113` |
