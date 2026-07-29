@@ -42,7 +42,10 @@ cameras:
       enabled: true
       retain:
         days: 7
-        mode: motion
+      events:
+        retain:
+          default: 7
+          mode: motion
     snapshots:
       enabled: true
       retain:
@@ -79,7 +82,10 @@ record:
   enabled: true
   retain:
     days: 7
-    mode: motion
+  events:
+    retain:
+      default: 7
+      mode: motion
 
 snapshots:
   enabled: true
