@@ -32,16 +32,31 @@ locally and drives the real page (not a mock). Covers:
 - The "last 50 notes are saved" hint is present
 - No JS console errors during the run
 
-**Run it:**
+**Run it — Docker (recommended, no host dependencies):**
 
 ```bash
 cd family-hub
-npm install     # first time only — installs Playwright
-npm test        # downloads the Chromium browser on first run if missing
+docker build -f test/Dockerfile -t family-hub-qa .
+docker run --rm family-hub-qa
 ```
 
-If Chromium isn't already cached, run `npx playwright install chromium` once
-before `npm test`.
+This is the form CI (or any machine — dev laptop, the M920q, a future
+runner) should use: everything (Node, Playwright, Chromium, its system
+deps) is pinned inside the image, so it's reproducible regardless of host
+OS. This is also how we caught and fixed a real layout bug during
+development — the host machine's OS wasn't officially supported by
+Playwright's local install, which is exactly the kind of drift Docker
+removes. Exit code is `0` on all-pass, `1` on any failure — safe to gate a
+pipeline on.
+
+**Run it — local Node (faster iteration while developing):**
+
+```bash
+cd family-hub
+npm install                        # first time only — installs Playwright
+npx playwright install chromium    # first time only — downloads the browser
+npm test
+```
 
 ### Manual QA checklist (not automated)
 

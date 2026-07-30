@@ -373,8 +373,7 @@ above, this should eventually be automatic on every push to `main`.
 - **Mechanism (proposed):** GitHub Actions workflow (`.github/workflows/deploy-family-hub.yml`)
   running on a **self-hosted runner on the M920q** (simplest — no need to
   open the Tailscale mesh to GitHub's cloud runners, no SSH secret to manage).
-    - Job: `git pull` (or checkout is redundant since runner is on-box —
-      just `docker compose -f infra/docker-compose.yml -f infra/docker-compose.m920q.yml up -d --build family-hub`)
+    - Job: `git pull` → **test gate:** `docker build -f family-hub/test/Dockerfile -t family-hub-qa family-hub/ && docker run --rm family-hub-qa` (see `docs/QA.md`; non-zero exit fails the job before anything deploys) → `docker compose -f infra/docker-compose.yml -f infra/docker-compose.m920q.yml up -d --build family-hub`
     - Alternative if a self-hosted runner is undesirable: GitHub Actions
       `ssh-action` from a cloud runner into the Tailscale IP, using a
       dedicated deploy-only SSH key (not the personal `nate` key) added to
@@ -385,7 +384,7 @@ above, this should eventually be automatic on every push to `main`.
   above) — one playbook, `--limit cabin` / `--limit home` per target, instead
   of two divergent scripts. Structure:
     - `ansible/inventory.yml` — hosts `cabin-hub` (100.77.44.113), `home-hub` (TBD), both reached over Tailscale
-    - `ansible/deploy-family-hub.yml` — playbook: git pull → docker compose up -d --build family-hub → health check (curl `/family-hub.html` returns 200)
+    - `ansible/deploy-family-hub.yml` — playbook: git pull → build + run `family-hub/test/Dockerfile` as a test gate (fail the play on nonzero exit) → docker compose up -d --build family-hub → health check (curl `/family-hub.html` returns 200)
     - `ansible/roles/docker-service/` — reusable role, parameterized by service name, so the same role later covers `cabin-ui`, `cabin-backend`, etc.
 - **Rollback:** keep it simple — `git revert` + re-run the playbook. No blue/green needed for a single-kiosk static file.
 - **Out of scope for v1:** backend (Spring Boot) and UI (React) deploys — those need a build step (`mvnw`/`npm run build`) the playbook would also need to own; start with `family-hub` since it's the lowest-risk (static file, no build) and prove the pipeline before extending.
