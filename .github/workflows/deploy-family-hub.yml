@@ -1,0 +1,64 @@
+name: Deploy to host
+
+# Runs on a SELF-HOSTED runner installed on the target machine (e.g. the
+# cabin M920q) — see ansible/README.md for one-time setup. This is
+# deliberate: the target is Tailscale-only behind CGNAT, so a GitHub-hosted
+# runner has no network path to it, and pushing SSH secrets into GitHub for
+# a home server is more attack surface than a free/personal-tier project
+# needs. The runner polls GitHub over its own outbound Tailscale connection;
+# nothing inbound, no secrets stored here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "family-hub/**"
+      - "cabin-orchestration-platform/**"
+      - ".github/workflows/deploy-family-hub.yml"
+  workflow_dispatch: {} # manual "run now" button in the Actions tab
+
+jobs:
+  deploy:
+    # Label set by the runner during registration (ansible/README.md).
+    # Add a second label (e.g. "home-hub") and a second runner on the home
+    # machine to reuse this same workflow there — see the matrix note below.
+    runs-on: [self-hosted, cabin-m920q]
+    steps:
+      - name: Pull latest
+        run: |
+          cd "$DEPLOY_PATH"
+          git fetch origin main
+          git reset --hard origin/main
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/opt/FaceoftheCabin' }}
+
+      - name: Rebuild and restart affected services
+        run: |
+          cd "$DEPLOY_PATH/cabin-orchestration-platform/infra"
+          docker compose pull
+          docker compose up -d --build
+          cd "$DEPLOY_PATH/family-hub"
+          docker compose build
+          docker compose up -d
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/opt/FaceoftheCabin' }}
+
+      - name: Prune old images
+        run: docker image prune -f
+
+# ── Template note for a second host (e.g. "home") ──────────────────────────
+# Duplicate this file as deploy-home.yml with:
+#   - runs-on: [self-hosted, home-hub]
+#   - DEPLOY_PATH pointed at the home machine's clone path
+#   - paths filter narrowed to locations/home/** if the two hosts should
+#     deploy independently of each other's changes
+#
+# ── Placeholder: web-hosted (non-self-hosted) target ───────────────────────
+# If a deployment target is ever a managed platform (Fly.io, Render, a VPS
+# with a public IP) instead of a self-hosted box behind Tailscale, this
+# workflow's self-hosted-runner assumption doesn't apply — that target
+# would use a GitHub-hosted runner + the platform's own deploy action/CLI
+# instead (no runner installation needed, since GitHub's runners can reach
+# a public host directly). Not built out here since nothing in this
+# project targets a web host today; noted so the template doesn't need a
+# structural rewrite if that changes.

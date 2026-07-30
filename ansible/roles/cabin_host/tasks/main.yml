@@ -1,0 +1,89 @@
+---
+# Ensures Docker, the repo clone, and a registered GitHub Actions
+# self-hosted runner all exist on the target host. Re-running this is safe:
+# apt/package tasks no-op if already satisfied, the git clone becomes a
+# fast-forward pull if the repo already exists, and the runner registration
+# is skipped if a runner service is already active.
+
+- name: Install Docker + Compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-compose-plugin
+      - git
+    state: present
+    update_cache: true
+
+- name: Ensure docker service is enabled and running
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Add deploy user to docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+
+- name: Clone or update the FaceoftheCabin repo
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_path }}"
+    version: main
+    force: false # never discard local changes on the host silently
+
+- name: Check whether a GitHub Actions runner is already registered
+  ansible.builtin.stat:
+    path: /opt/actions-runner/.runner
+  register: runner_config
+
+- name: Download GitHub Actions runner package
+  when: not runner_config.stat.exists
+  ansible.builtin.get_url:
+    url: "https://github.com/actions/runner/releases/download/v{{ github_runner_version }}/actions-runner-linux-x64-{{ github_runner_version }}.tar.gz"
+    dest: /tmp/actions-runner.tar.gz
+    mode: "0644"
+
+- name: Create runner install directory
+  when: not runner_config.stat.exists
+  ansible.builtin.file:
+    path: /opt/actions-runner
+    state: directory
+    owner: "{{ ansible_user }}"
+
+- name: Extract runner package
+  when: not runner_config.stat.exists
+  ansible.builtin.unarchive:
+    src: /tmp/actions-runner.tar.gz
+    dest: /opt/actions-runner
+    remote_src: true
+    owner: "{{ ansible_user }}"
+
+- name: Register the runner (requires github_runner_token, see site.yml header)
+  when: not runner_config.stat.exists
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.command:
+    cmd: >
+      ./config.sh --unattended
+      --url https://github.com/{{ github_repo }}
+      --token {{ github_runner_token }}
+      --name {{ inventory_hostname }}
+      --labels {{ 'cabin-m920q' if 'cabin' in group_names else 'home-hub' }}
+      --work _work
+    chdir: /opt/actions-runner
+  no_log: true # the token must never land in playbook output/logs
+
+- name: Install the runner as a systemd service
+  when: not runner_config.stat.exists
+  ansible.builtin.command:
+    cmd: ./svc.sh install
+    chdir: /opt/actions-runner
+
+- name: Start the runner service
+  when: not runner_config.stat.exists
+  ansible.builtin.command:
+    cmd: ./svc.sh start
+    chdir: /opt/actions-runner
+  # svc.sh (shipped by the runner package) wraps the generated systemd unit
+  # name for us — safer than guessing the unit name ourselves for `systemd:`.

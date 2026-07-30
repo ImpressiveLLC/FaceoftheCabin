@@ -1768,12 +1768,50 @@ elements:
       - target: observation_report
         type: consumed_by
         cardinality: "1:N"
+      - target: holiday_history_entry
+        type: consumed_by
+        cardinality: "1:N"
     transformation: >
-      ownerOfDate(date) checks holidayForDate(ymd(date)) first; if present,
-      its owner wins over the rule-computed value for that date only.
+      CRUD via openHolidayForm()/saveHoliday()/deleteHoliday(), persisted by
+      saveHolidaysState(). ownerOfDate(date) checks holidayForDate(ymd(date))
+      first; if present, its owner wins over the rule-computed value for
+      that date only. Every add/edit/delete also appends to
+      holiday_history_entry via logHolidayChange().
     relates_to:
       ui_components: [settings_panel]
-      elements: [parenting_schedule_rule_version, observation_report]
+      elements: [parenting_schedule_rule_version, observation_report, holiday_history_entry]
+
+  - id: holiday_history_entry
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Holiday change history"
+    source: localStorage["smrekar_holidays_history"] (append-only array)
+    rendering:
+      semantic: "Added \"Christmas Day\" (2026-12-25, Dad's) — 2026-07-30"
+      systems: Holiday Audit Entry
+      technical: "{ ts, action: 'add'|'edit'|'delete', id, date, name, owner, prevDate?, prevName?, prevOwner?, changedBy }"
+      compliance: Custody Exception Change Record
+    definition: >
+      One append-only log entry per add/edit/delete of a holiday_override,
+      timestamped and attributed to whichever signed-in user made the
+      change — same pattern as reward_history_entry. Visible in the
+      Holidays section's "Show History" toggle, most recent first, capped
+      to the last 25 shown.
+    relationships:
+      - target: holiday_override
+        type: derives_from
+        cardinality: "N:1"
+    transformation: >
+      logHolidayChange(action, holiday, prev) appends one entry per
+      saveHoliday()/deleteHoliday() call; never mutated or pruned once written.
+    relates_to:
+      ui_components: [settings_panel]
+      elements: [holiday_override]
 
   - id: custody_day_log
     entity_type: owl:Class
@@ -2116,23 +2154,24 @@ elements:
 # ═══════════════════════════════════════════════════════════════════════════
 
   - id: reward_definition
-    entity_type: owl:DatatypeProperty
+    entity_type: owl:Class
     layer: frontend
     primitive: true
     schema_version: "0.3.0"
     migration_status: complete
     data_class: raw
-    data_type: xsd:string
+    data_type: owl:Class
     ui_display_name: "Choose the weekend movie"
-    source: REWARDS constant array (hardcoded in family-hub.html)
+    source: localStorage["smrekar_rewards"] (array of { id, label })
     rendering:
       semantic: Reward (e.g. "Choose the weekend movie")
       systems: Reward Option
-      technical: REWARDS string[] constant array
+      technical: "REWARDS: {id, label}[], persisted via saveRewards()"
       compliance: (not shown)
     definition: >
       A named privilege or treat that a child earns by meeting the chore
-      completion threshold over a rolling 7-day period.
+      completion threshold over a rolling 7-day period. Fully user-managed —
+      not a fixed list — via add/edit/delete in the Rewards tab.
     relationships:
       - target: ui_rewards_tab
         type: consumed_by
@@ -2140,9 +2179,52 @@ elements:
       - target: reward_eligibility
         type: consumed_by
         cardinality: "1:1"
+      - target: reward_history_entry
+        type: consumed_by
+        cardinality: "1:N"
+    transformation: >
+      CRUD via openRewardForm()/saveReward()/deleteReward(), all persisted
+      by saveRewards(). Every add/edit/delete also appends to
+      reward_history_entry via logRewardChange() — this entity's current
+      state and its change history are two separate, related concepts.
     relates_to:
       ui_components: [ui_rewards_tab]
-      elements: [reward_eligibility]
+      elements: [reward_eligibility, reward_history_entry]
+    notes: >
+      Seeded on first run by migrating the original hardcoded 7-item list
+      into this stateful shape (ids seed-0..seed-6) — not re-seeded once a
+      device has its own saved REWARDS state.
+
+  - id: reward_history_entry
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Reward change history"
+    source: localStorage["smrekar_rewards_history"] (append-only array)
+    rendering:
+      semantic: "Added \"Extra bedtime story\" — 2026-07-30"
+      systems: Reward Audit Entry
+      technical: "{ ts, action: 'add'|'edit'|'delete', id, label, prevLabel?, changedBy }"
+      compliance: Reward Configuration Change Record
+    definition: >
+      One append-only log entry per add/edit/delete of a reward_definition,
+      timestamped and attributed to whichever signed-in user (or "local, not
+      signed in") made the change. Visible in the Rewards tab's "Show
+      History" toggle, most recent first, capped to the last 25 shown.
+    relationships:
+      - target: reward_definition
+        type: derives_from
+        cardinality: "N:1"
+    transformation: >
+      logRewardChange(action, reward, prevLabel) appends one entry per
+      saveReward()/deleteReward() call; never mutated or pruned once written.
+    relates_to:
+      ui_components: [ui_rewards_tab]
+      elements: [reward_definition]
 
   - id: reward_eligibility
     entity_type: owl:Class

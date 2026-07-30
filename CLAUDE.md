@@ -369,6 +369,10 @@ All items below are **complete and pushed to GitHub**:
 
 - No Python beyond the existing `watchdog.py`
 - No ARM/Pi hardware — both hubs are x86_64 Lenovo ThinkCentre M920q
-- Tailscale only — no WireGuard, no DuckDNS
+- Free/personal-tier remote access only — Tailscale (device platform, cameras/locks/valve)
+  and Cloudflare Tunnel on a free personal account (public-facing Family Hub) are both fine.
+  This isn't a "Tailscale only" covenant — the goal is keeping the whole template usable
+  below enterprise pricing so it stays free to replicate. Paid tiers are a bridge to cross
+  only if volume or interop needs force it, not a default to avoid on principle.
 - Do not replicate HA automation logic in this platform
 - Do not hardcode single-location assumptions — all components must be location-aware

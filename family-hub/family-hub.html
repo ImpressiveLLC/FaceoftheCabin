@@ -1174,9 +1174,15 @@ function loadScheduleRules() {
   try {
     // Migrate a pre-versioning single anchor if present, so a device that
     // only ever saw the old flat setting doesn't lose its own history.
+    // Written straight to SCHED_RULES_KEY and the legacy key removed
+    // immediately — once migrated there's no reason to keep the superseded
+    // copy sitting in storage indefinitely.
     const legacy = JSON.parse(localStorage.getItem(SCHED_CFG_KEY) || 'null');
     if (legacy && legacy.start) {
-      return [{ id:'rule-'+legacy.start, effectiveFrom:legacy.start, anchor:legacy.start, dayOwners:homeDaysToOwners(legacy.homeDays), label:'Migrated from previous single-anchor setting', createdAt:new Date().toISOString(), createdBy:'migration' }];
+      const migrated = [{ id:'rule-'+legacy.start, effectiveFrom:legacy.start, anchor:legacy.start, dayOwners:homeDaysToOwners(legacy.homeDays), label:'Migrated from previous single-anchor setting', createdAt:new Date().toISOString(), createdBy:'migration' }];
+      localStorage.setItem(SCHED_RULES_KEY, JSON.stringify(migrated));
+      localStorage.removeItem(SCHED_CFG_KEY);
+      return migrated;
     }
   } catch {}
   return DEFAULT_SCHEDULE_RULES.map(r => ({ ...r }));
@@ -1285,6 +1291,28 @@ function loadHolidaysState() {
 let HOLIDAYS = loadHolidaysState();
 function saveHolidaysState() { localStorage.setItem(HOLIDAYS_KEY, JSON.stringify(HOLIDAYS)); }
 function holidayForDate(dateKey) { return HOLIDAYS.find(h => h.date === dateKey); }
+
+const HOLIDAYS_HISTORY_KEY = 'smrekar_holidays_history';
+function loadHolidaysHistory() {
+  try { return JSON.parse(localStorage.getItem(HOLIDAYS_HISTORY_KEY) || '[]'); }
+  catch { return []; }
+}
+function logHolidayChange(action, holiday, prev) {
+  const history = loadHolidaysHistory();
+  history.push({
+    ts: new Date().toISOString(),
+    action, // 'add' | 'edit' | 'delete'
+    id: holiday.id,
+    date: holiday.date,
+    name: holiday.name,
+    owner: holiday.owner,
+    prevDate: prev?.date,
+    prevName: prev?.name,
+    prevOwner: prev?.owner,
+    changedBy: currentUserEmail || 'local (not signed in)',
+  });
+  localStorage.setItem(HOLIDAYS_HISTORY_KEY, JSON.stringify(history));
+}
 
 /* ── Custody day log — append-only, one entry per calendar date ──
    A materialized fact table (distinct from the rules above): walks every
@@ -1417,12 +1445,13 @@ function populateObsYearOptions() {
    HOLIDAYS ADMIN — add / edit / delete date-owner overrides
 ═══════════════════════════════════════════ */
 let holidayFormState = null; // null closed, 'new', or an existing holiday id
+let holidayHistoryOpen = false;
 
 function renderHolidays() {
   const list = document.getElementById('holidays-list');
   if (!list) return;
   const sorted = [...HOLIDAYS].sort((a, b) => a.date.localeCompare(b.date));
-  list.innerHTML = sorted.map(h => `
+  list.innerHTML = (sorted.map(h => `
     <div class="profile-card">
       <div class="profile-card-info">
         <div class="profile-card-name">${esc(h.name)}</div>
@@ -1432,10 +1461,30 @@ function renderHolidays() {
         <button onclick="editHoliday('${h.id}')">Edit</button>
         <button class="del" onclick="deleteHoliday('${h.id}')">Delete</button>
       </div>
-    </div>`).join('') || '<div class="s-hint">No holidays added yet.</div>';
+    </div>`).join('') || '<div class="s-hint">No holidays added yet.</div>')
+    + `<button class="btn-ghost" style="margin-top:8px;font-size:11px;padding:6px 12px" onclick="toggleHolidayHistory()">${holidayHistoryOpen ? 'Hide' : 'Show'} History</button>
+       ${holidayHistoryOpen ? holidayHistoryMarkup() : ''}`;
   const formContainer = document.getElementById('holiday-form-container');
   if (formContainer) formContainer.innerHTML = holidayFormState !== null ? holidayFormMarkup() : '';
 }
+
+function holidayHistoryMarkup() {
+  const history = [...loadHolidaysHistory()].reverse().slice(0, 25);
+  if (!history.length) return `<div class="s-hint" style="margin-top:10px">No changes logged yet.</div>`;
+  const fmtTs = iso => new Date(iso).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' });
+  const ownerLabel = o => o === 'dad' ? "Dad's" : "Mom's";
+  return `<div class="reward-rule-card" style="margin-top:10px">
+    <div class="rule-title">Holiday History</div>
+    ${history.map(h => `<div class="s-hint" style="margin-bottom:4px">
+      ${fmtTs(h.ts)} — <strong style="color:var(--cream)">${h.action}</strong>:
+      ${h.action === 'edit'
+        ? `"${esc(h.prevName)}" (${h.prevDate}, ${ownerLabel(h.prevOwner)}) → "${esc(h.name)}" (${h.date}, ${ownerLabel(h.owner)})`
+        : `"${esc(h.name)}" (${h.date}, ${ownerLabel(h.owner)})`}
+      <span style="opacity:.7">(${esc(h.changedBy)})</span>
+    </div>`).join('')}
+  </div>`;
+}
+function toggleHolidayHistory() { holidayHistoryOpen = !holidayHistoryOpen; renderHolidays(); }
 
 function holidayFormMarkup() {
   const editing = holidayFormState !== 'new' ? HOLIDAYS.find(h => h.id === holidayFormState) : null;
@@ -1473,11 +1522,15 @@ function saveHoliday() {
   const owner = document.getElementById('hol-owner').value;
   if (!date || !name) { alert('Date and name are required'); return; }
   if (holidayFormState === 'new') {
-    HOLIDAYS.push({ id:'holiday-'+Date.now(), date, name, owner, createdAt:new Date().toISOString(), createdBy: currentUserEmail || 'local (not signed in)' });
+    const holiday = { id:'holiday-'+Date.now(), date, name, owner, createdAt:new Date().toISOString(), createdBy: currentUserEmail || 'local (not signed in)' };
+    HOLIDAYS.push(holiday);
+    logHolidayChange('add', holiday);
   } else {
     const h = HOLIDAYS.find(x => x.id === holidayFormState);
     if (!h) return;
+    const prev = { date: h.date, name: h.name, owner: h.owner };
     Object.assign(h, { date, name, owner });
+    logHolidayChange('edit', h, prev);
   }
   saveHolidaysState();
   holidayFormState = null;
@@ -1492,6 +1545,7 @@ function deleteHoliday(id) {
   if (!confirm(`Remove holiday "${h.name}" (${h.date})?`)) return;
   HOLIDAYS = HOLIDAYS.filter(x => x.id !== id);
   saveHolidaysState();
+  logHolidayChange('delete', h);
   renderHolidays();
   renderSchedule();
   renderObservations();

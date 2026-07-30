@@ -1,0 +1,18 @@
+---
+# Placeholder role — intentionally not implemented.
+#
+# Nothing in this project targets a managed/web-hosted platform (Fly.io,
+# Render, Railway, a VPS with a public IP, etc.) today; everything runs on
+# self-hosted hardware behind Tailscale. This role exists so that if that
+# ever changes, there's a named place to add it rather than restructuring
+# the playbook. It would NOT use the self-hosted-runner pattern in
+# cabin_host — a web-hosted target is reachable directly by GitHub-hosted
+# runners, so its deploy step belongs in a separate GitHub Actions workflow
+# using that platform's own deploy action/CLI, not this Ansible playbook.
+
+- name: No-op — web-hosted deployment target not yet defined
+  ansible.builtin.debug:
+    msg: >
+      This role is a placeholder. If you're adding a web-hosted deployment
+      target, start by defining its platform-specific deploy workflow under
+      .github/workflows/, not by filling in this role.
