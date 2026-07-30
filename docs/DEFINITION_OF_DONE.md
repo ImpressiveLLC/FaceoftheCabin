@@ -5,7 +5,7 @@
 > substantial work session, not just when asked. Update the "Last verified"
 > line each time; don't let this doc go stale itself.
 
-**Last verified:** 2026-07-30, against commit `346d284` on `main` (post-merge with `origin/main`).
+**Last verified:** 2026-07-30, against commit `462b692` on `main` — deployed and confirmed live on the M920q's `family-hub` container (§8).
 
 ---
 
@@ -142,8 +142,12 @@ to silently resolve by picking one.
 
 ## 8. Deployment — pipeline reaches the M920q; quickstart is a reusable template
 
-- [ ] A documented, scripted path takes a git commit to a running container
-      on the M920q, with no manual `ssh` + `git pull` needed once set up.
+- [x] Changes reach a running container on the M920q — done **manually**
+      this round (`git push` → `ssh` → `git pull` → `docker compose build/up`
+      for just the `family-hub` service), not yet via the automated pipeline.
+- [ ] No manual `ssh` + `git pull` needed once set up — **not yet true**;
+      today's deploy was hands-on, the self-hosted runner from §6 was never
+      actually registered. That's the remaining gap on this line.
 - [ ] The same quickstart works as a **template** for a second host machine
       (e.g. the "home" location), parameterized rather than hardcoded to
       the cabin.
@@ -151,20 +155,23 @@ to silently resolve by picking one.
       targets, even if unused today — so the template doesn't have to be
       rewritten if that need shows up later.
 
-**Status — updated 2026-07-30, correcting the earlier limitation below:**
-Tailscale was already authenticated and connected on this machine
-(`ilikethelights`), and the M920q runs **Tailscale SSH** (identity-based,
-no separate key management) — confirmed reachable as user `nate` via
-`ssh nate@nates-little-m920q.tailb20f8b.ts.net`. This was used for
-read-only reconnaissance only (checked running containers, repo clone
-paths, git status of both on-host clones, and the `/storage/automation/ansible`
-directory — confirmed to exist but empty, matching what the user recalled).
-**Nothing has been written to the M920q yet** — no runner registration, no
-deploy, no file changes on the host. Given real access exists now, the
-right next step is running the Ansible playbook / runner registration for
-real (§6) rather than treating it as blocked — but that's a deliberate
-choice to make with the user present, not something to do silently mid
-side-conversation.
+**Status — updated 2026-07-30, 17:25 CDT:** Tailscale was already
+authenticated and connected on this machine (`ilikethelights`), and the
+M920q runs **Tailscale SSH** (identity-based, no separate key management) —
+reachable as user `nate` via `ssh nate@nates-little-m920q.tailb20f8b.ts.net`.
+With the user's explicit go-ahead, used it for a real deploy: pushed
+`main` (`e1ec494..462b692`) to `origin/main`, fast-forward pulled on
+`/home/nate/FaceoftheCabin` (the clone backing the "infra" compose
+project — confirmed via `docker compose ls`, distinct from the "cabin"
+project that runs HA/cameras/water valve — this deploy touched neither),
+rebuilt only the `family-hub` image, recreated only that container.
+**Verified against the actual served response** (`curl` on the container's
+real mapped port, not just container status) that the live page now
+contains the new features (Holidays & Vacations, Observations, the
+versioned schedule). This satisfies "changes are usable at the current
+endpoint" for this round of work. Still open: the self-hosted-runner
+automation from §6 was never registered, so *this* deploy was manual and
+the next one will be too unless that's set up.
 
 <details><summary>Earlier status (2026-07-30, superseded — kept for the record, don't delete history from this doc)</summary>
 
