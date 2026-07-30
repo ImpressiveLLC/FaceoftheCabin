@@ -21,7 +21,7 @@ A family-scale, self-hosted platform unifying cabin automation and family coordi
 
 | Product | Subdomain | Description |
 |---------|-----------|-------------|
-| **Family Hub** | `hub.unicornpingpong.com` | Ambient display: clock, parenting schedule, calendar, photos, chores, rewards |
+| **Family Hub** | `hub.unicornpingpong.com` | Ambient display: clock, parenting schedule, calendar, photos, chores, rewards, family notepad |
 | **FaceOfTheCabin** | `cabin.unicornpingpong.com` | Cabin automation: cameras, sensors, alerting, presence detection |
 | **Platform API** | `api.unicornpingpong.com` | Shared services: identity, ontology, event bus, audit trail |
 
@@ -64,6 +64,7 @@ A family-scale, self-hosted platform unifying cabin automation and family coordi
 | **Product Notes** | [`docs/PRODUCT_NOTES.md`](docs/PRODUCT_NOTES.md) | Dated design decisions, persona research, four-role architecture review |
 | **Ontology Contract** | [`docs/ontology.yaml`](docs/ontology.yaml) | Canonical entity definitions, device registry, naming contract |
 | **Platform README** | [`cabin-orchestration-platform/README.md`](cabin-orchestration-platform/README.md) | Technical architecture, backend/UI, Docker Compose reference |
+| **QA / Testing** | [`docs/QA.md`](docs/QA.md) | Per-feature test coverage, how to run automated checks, manual QA checklists |
 
 ---
 

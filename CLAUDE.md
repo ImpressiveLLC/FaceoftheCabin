@@ -345,6 +345,7 @@ All items below are **complete and pushed to GitHub**:
 - Nav rail alert state machine: unconfigured → watching → warn (<20 min) → critical (≥20 min)
 - `useDraggableOrder` — HTML5 DnD reorder, localStorage, ALARM auto-pin; works in both panels
 - **ThemeProvider** — 7 presets: Modern, LCARS, Monolith, Retro-CRT, Bluefin-mono, Mad Science, Deep Space (HAL 9000)
+- **Family Notepad** (`family-hub/family-hub.html`) — slide-in/out overlay, right edge, docked with `#chores-card`/`#dashboard-fab`/`#settings-btn`. Full behavioral spec in [`docs/PRODUCT_NOTES.md`](docs/PRODUCT_NOTES.md) § "2026-07-30 — Family Hub: Family Notepad Overlay". `localStorage`-backed (single-device, not synced — see limitation noted there).
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
@@ -352,6 +353,42 @@ All items below are **complete and pushed to GitHub**:
 - Notification service (email/SMS from automation alert events)
 - home-hub deployment
 - Production Docker Compose with env-var secrets
+- CI/CD deploy automation for `family-hub` (spec below, not yet built)
+- If Family Notepad needs to sync across devices: `/api/notes` endpoint + poll/WebSocket push (see limitation in PRODUCT_NOTES.md)
+
+---
+
+## To-do (spec only): CI/CD for family-hub deploy
+
+Today, deploying a `family-hub.html` change to the cabin M920q is the manual
+Quick Start in `README.md`: SSH in, `git pull`, `docker compose ... up -d --build family-hub`.
+That's fine for one person on one machine, but per the multi-machine workflow
+above, this should eventually be automatic on every push to `main`.
+
+**Not built yet.** Spec, for whoever picks this up:
+
+- **Trigger:** push to `main` on `ImpressiveLLC/FaceoftheCabin` that touches
+  `family-hub/**` (path filter — no need to redeploy the whole stack for a
+  static-HTML-only change).
+- **Mechanism (proposed):** GitHub Actions workflow (`.github/workflows/deploy-family-hub.yml`)
+  running on a **self-hosted runner on the M920q** (simplest — no need to
+  open the Tailscale mesh to GitHub's cloud runners, no SSH secret to manage).
+    - Job: `git pull` (or checkout is redundant since runner is on-box —
+      just `docker compose -f infra/docker-compose.yml -f infra/docker-compose.m920q.yml up -d --build family-hub`)
+    - Alternative if a self-hosted runner is undesirable: GitHub Actions
+      `ssh-action` from a cloud runner into the Tailscale IP, using a
+      dedicated deploy-only SSH key (not the personal `nate` key) added to
+      `authorized_keys` on the M920q with a forced command restricting it to
+      the deploy script only.
+- **Why Ansible over a raw shell script:** idempotent, and the same playbook
+  can extend to `home-hub` once that deployment happens (see "Pending next"
+  above) — one playbook, `--limit cabin` / `--limit home` per target, instead
+  of two divergent scripts. Structure:
+    - `ansible/inventory.yml` — hosts `cabin-hub` (100.77.44.113), `home-hub` (TBD), both reached over Tailscale
+    - `ansible/deploy-family-hub.yml` — playbook: git pull → docker compose up -d --build family-hub → health check (curl `/family-hub.html` returns 200)
+    - `ansible/roles/docker-service/` — reusable role, parameterized by service name, so the same role later covers `cabin-ui`, `cabin-backend`, etc.
+- **Rollback:** keep it simple — `git revert` + re-run the playbook. No blue/green needed for a single-kiosk static file.
+- **Out of scope for v1:** backend (Spring Boot) and UI (React) deploys — those need a build step (`mvnw`/`npm run build`) the playbook would also need to own; start with `family-hub` since it's the lowest-risk (static file, no build) and prove the pipeline before extending.
 
 ---
 
