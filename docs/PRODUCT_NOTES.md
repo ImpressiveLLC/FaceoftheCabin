@@ -187,3 +187,27 @@ The canonical entity schema is well-formed and extensible. Three required additi
 - **Append-only for history** — deprecated entities flagged, never deleted
 
 **The ultimate vision (Ontology Lead final note):** The platform's long-term value is not its automations or its cameras or its family calendar. It is the accumulated knowledge graph of how this specific family's physical and digital environment works, what they've tried, what connects to what, and what they don't know yet. That knowledge graph — versioned, FAIR, AI-queryable, and actively maintained by the Tech ID Service — is what makes this platform irreplaceable. No commercial product can replicate it because it is built from their specific ecosystem, their specific devices, their specific history. That is the Northstar.
+
+---
+
+## 2026-07-30 — Family Hub: Family Notepad Overlay
+
+### Spec
+
+A scrolling family notepad overlay on the right edge of `family-hub.html`, docked next to the existing right-side interaction elements (`#chores-card`, `#dashboard-fab`, `#settings-btn`).
+
+**Default state:** slid-in (collapsed). Shows a "last note received" indicator only — sender avatar/name, message snippet, relative timestamp.
+
+**New note arrival:** default action is to slide out (expand) automatically, showing the last 12 message lines. This persists until either a user selects the slide-in control, or 24 hours have elapsed since the note arrived — whichever comes first. The 24-hour rule is a hard override: even if no user interacts with the control, the panel is forced back to slid-in once a note has been visible for 24 hours.
+
+**Manual control:** any authorized (signed-in) user can slide in/out freely at any time, independent of the auto-expand/auto-collapse rules above.
+
+**Sizing rule:** slid-out width = the width of the *largest* interaction-element box on the right side of the UI; slid-in width = the width of the *smallest* interaction-element box on the right side of the UI. Measured at runtime via `getBoundingClientRect()` against `#chores-card` / `#dashboard-fab` / `#settings-btn` (see `computeNotepadWidths()`), not hardcoded — so it stays correct as those elements' CSS changes per breakpoint.
+
+**History:** slid-out view shows the last 12 messages. A "View old notes ▸" link opens a full scrollable history of the last 50 messages. Anything beyond 50 is dropped (oldest first). An inconspicuous caption near the history link confirms "The last 50 notes are saved."
+
+### Implementation notes
+
+Shipped as a self-contained addition to `family-hub/family-hub.html` (CSS + markup + vanilla JS), consistent with the file's existing single-file, no-build-step pattern. Storage is `localStorage` (`smrekar_family_notes` for messages, `smrekar_notepad_state` for open/collapsed + 24h-timer state), matching how chores, profiles, and settings already persist in this file.
+
+**Known limitation:** because storage is `localStorage`, notes and open/collapsed state are per-browser/per-device, not synced across family members' phones or the wall display. There is no backend note-sync surface yet (no `/api/notes` endpoint on `cabin-backend`). Acceptable for v1 since the display is primarily a single kiosk surface; revisit if/when the Family Hub is meant to be a true multi-device shared notepad — that would need a `/api/notes` endpoint + polling or WebSocket push, analogous to the existing device/event architecture.

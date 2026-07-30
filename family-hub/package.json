@@ -1,0 +1,11 @@
+{
+  "name": "family-hub-tests",
+  "private": true,
+  "description": "Basic automated QA for family-hub.html (static, no build step — this only covers test tooling).",
+  "scripts": {
+    "test": "node test/run.js"
+  },
+  "devDependencies": {
+    "playwright": "1.62.0"
+  }
+}

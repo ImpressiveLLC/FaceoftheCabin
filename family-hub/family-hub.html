@@ -711,6 +711,173 @@
     .br-fab .fab-sub   { font-size:10px; color:var(--cream-dim); margin-top:2px; }
     .br-fab .fab-icon  { font-size:14px; }
 
+    /* ═══════════════════════════════════════════
+       FAMILY NOTEPAD  (slide-in/slide-out overlay, right edge)
+       Widths are set at runtime (see computeNotepadWidths()) to match
+       the largest / smallest interaction-element boxes on the right
+       side of the UI — see --np-w-expanded / --np-w-collapsed below.
+    ═══════════════════════════════════════════ */
+    :root {
+      --np-w-expanded: 300px;
+      --np-w-collapsed: 96px;
+    }
+    #notepad-panel {
+      position:fixed; top:150px; right:0; z-index:9995;
+      display:flex; flex-direction:row; align-items:stretch;
+      width: var(--np-w-collapsed);
+      max-height:min(70vh, 620px);
+      background: var(--glass);
+      border:1px solid var(--glass-border);
+      border-right:none;
+      border-radius: var(--radius) 0 0 var(--radius);
+      backdrop-filter:blur(30px) saturate(1.5);
+      -webkit-backdrop-filter:blur(30px) saturate(1.5);
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
+      transition: width .42s cubic-bezier(.4,0,.2,1);
+      overflow:hidden;
+    }
+    #notepad-panel.open { width: var(--np-w-expanded); }
+
+    #notepad-handle {
+      flex:0 0 var(--np-w-collapsed); width:var(--np-w-collapsed);
+      display:flex; flex-direction:column; justify-content:center; gap:6px;
+      padding:14px 12px; cursor:pointer; user-select:none;
+      border-left:1px solid var(--glass-border);
+      transition:background .15s;
+    }
+    #notepad-handle:hover { background:rgba(255,255,255,.04); }
+    .np-handle-top { display:flex; align-items:center; gap:6px; }
+    .np-dot {
+      width:6px; height:6px; border-radius:50%; flex-shrink:0;
+      background:rgba(255,255,255,.2);
+    }
+    .np-dot.active { background:var(--gold); box-shadow:0 0 8px var(--gold); animation:npPulse 2s ease-in-out infinite; }
+    @keyframes npPulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+    .np-handle-label {
+      font-size:9px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+      color:var(--gold); opacity:.85;
+    }
+    .np-handle-preview {
+      font-size:11px; color:var(--cream-dim); line-height:1.4;
+      display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+    /* while open, the full list already shows this — avoid redundant text
+       next to the docked handle, keep just the label as a collapse target */
+    #notepad-panel.open .np-handle-preview { display:none; }
+
+    #notepad-main {
+      flex:1 1 auto; min-width:0; overflow:hidden;
+    }
+    #notepad-main-inner {
+      display:flex; flex-direction:column; height:100%;
+      padding:16px 16px 12px;
+      /* fixed to the fully-open content width so children never reflow
+         mid-transition; overflow is clipped by #notepad-main while collapsed */
+      width: calc(var(--np-w-expanded) - var(--np-w-collapsed));
+    }
+    #notepad-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-shrink:0; }
+    .np-title { font-family:var(--font-display); font-size:16px; font-weight:500; color:var(--cream); }
+    .np-close {
+      background:none; border:none; color:var(--cream-dim); cursor:pointer;
+      font-size:18px; padding:2px 6px; transition:color .2s; line-height:1;
+    }
+    .np-close:hover { color:var(--gold); }
+    .np-list {
+      flex:1 1 auto; overflow-y:auto; min-height:0;
+      display:flex; flex-direction:column; gap:2px;
+      margin-bottom:10px;
+      scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.1) transparent;
+    }
+    .np-list::-webkit-scrollbar { width:4px; }
+    .np-list::-webkit-scrollbar-track { background:transparent; }
+    .np-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,.1); border-radius:2px; }
+    .np-row {
+      display:flex; align-items:flex-start; gap:8px;
+      padding:7px 0; border-bottom:1px solid rgba(255,255,255,.05);
+    }
+    .np-row:last-child { border-bottom:none; }
+    .np-row-avatar { font-size:15px; flex-shrink:0; margin-top:1px; }
+    .np-row-body { flex:1; min-width:0; }
+    .np-row-top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+    .np-row-name { font-size:11px; font-weight:600; color:var(--cream); }
+    .np-row-time { font-size:9.5px; color:var(--cream-ghost); flex-shrink:0; }
+    .np-row-text { font-size:12.5px; color:var(--cream-dim); line-height:1.4; margin-top:1px; word-break:break-word; }
+
+    #notepad-compose { flex-shrink:0; display:flex; flex-direction:column; gap:6px; }
+    .np-author-row { display:flex; gap:5px; flex-wrap:wrap; }
+    .np-author-pill {
+      background:rgba(255,255,255,.05); border:1px solid var(--glass-border);
+      border-radius:50%; width:26px; height:26px; font-size:13px;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; transition:all .15s;
+    }
+    .np-author-pill.active { border-color:var(--gold); background:var(--gold-faint); }
+    .np-input {
+      width:100%; resize:none; background:rgba(255,255,255,.06);
+      border:1px solid var(--glass-border); border-radius:10px;
+      padding:8px 10px; color:var(--cream); font-family:var(--font-ui);
+      font-size:12.5px; outline:none; transition:border-color .2s;
+    }
+    .np-input:focus { border-color:rgba(232,184,75,.5); }
+    .np-input::placeholder { color:rgba(255,255,255,.25); }
+    .np-send {
+      align-self:flex-end; background:var(--gold); color:#0D0D0D; border:none;
+      padding:6px 16px; border-radius:20px; font-family:var(--font-ui);
+      font-size:12px; font-weight:600; cursor:pointer; transition:transform .15s;
+    }
+    .np-send:hover { transform:translateY(-1px); }
+    #notepad-footer {
+      flex-shrink:0; margin-top:10px; padding-top:8px;
+      border-top:1px solid var(--glass-border);
+      display:flex; flex-direction:column; gap:3px;
+    }
+    .np-history-link {
+      background:none; border:none; color:var(--teal); cursor:pointer;
+      font-family:var(--font-ui); font-size:11.5px; font-weight:500;
+      padding:0; text-align:left; transition:color .15s;
+    }
+    .np-history-link:hover { color:var(--cream); }
+    .np-save-hint { font-size:9.5px; color:var(--cream-ghost); opacity:.6; letter-spacing:.2px; }
+
+    @media (max-width: 900px) {
+      #notepad-panel { top:auto; bottom:128px; max-height:52vh; }
+      .np-list { max-height:32vh; }
+    }
+    @media (max-height: 700px) {
+      #notepad-panel { max-height:56vh; }
+    }
+
+    /* ── Note History overlay (full scrollable list, capped at 50) ── */
+    #note-history-overlay {
+      position:fixed; inset:0; z-index:9996;
+      background:rgba(8,12,18,.96);
+      backdrop-filter:blur(18px);
+      display:flex; flex-direction:column;
+      transform:translateY(100%);
+      transition:transform .4s cubic-bezier(.4,0,.2,1);
+      overflow:hidden;
+    }
+    #note-history-overlay.open { transform:translateY(0); }
+    #note-history-topbar {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:24px 36px 0; flex-shrink:0;
+    }
+    #note-history-title { font-family:var(--font-display); font-size:26px; font-weight:500; color:var(--cream); }
+    #note-history-close {
+      background:none; border:none; color:var(--cream-dim); font-size:22px;
+      cursor:pointer; padding:4px 8px; transition:color .2s; line-height:1;
+    }
+    #note-history-close:hover { color:var(--gold); }
+    #note-history-list {
+      flex:1; overflow-y:auto; padding:20px 36px 8px; max-width:640px;
+      scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.1) transparent;
+    }
+    #note-history-list .np-row { padding:11px 0; }
+    #note-history-list .np-row-name { font-size:13px; }
+    #note-history-list .np-row-text { font-size:14px; }
+    #note-history-list .np-row-avatar { font-size:18px; }
+
     /* ── Hub brand — upper left ── */
     #hub-brand {
       position:absolute; top:0; left:0;
@@ -2838,6 +3005,197 @@ function esc(s) {
 }
 
 /* ═══════════════════════════════════════════
+   FAMILY NOTEPAD
+═══════════════════════════════════════════ */
+const NOTES_KEY = 'smrekar_family_notes';
+const NOTEPAD_STATE_KEY = 'smrekar_notepad_state';
+const NOTES_MAX = 50;          // oldest notes beyond this are dropped
+const NOTES_RECENT_COUNT = 12; // "last 12 message lines" in the slide-out view
+const NOTE_VISIBLE_MS = 24 * 60 * 60 * 1000; // force slide-in 24h after a note arrives
+
+function loadNotes() {
+  try { return JSON.parse(localStorage.getItem(NOTES_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveNotes(notes) {
+  localStorage.setItem(NOTES_KEY, JSON.stringify(notes.slice(0, NOTES_MAX)));
+}
+
+function loadNotepadState() {
+  try {
+    return JSON.parse(localStorage.getItem(NOTEPAD_STATE_KEY) || 'null')
+      || { lastNoteTs: 0, forcedCollapseDone: true, open: false };
+  } catch { return { lastNoteTs: 0, forcedCollapseDone: true, open: false }; }
+}
+let notepadState = loadNotepadState();
+function saveNotepadState() { localStorage.setItem(NOTEPAD_STATE_KEY, JSON.stringify(notepadState)); }
+
+let selectedNoteAuthorId = profiles[0]?.id || null;
+
+function relTime(ts) {
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return 'yesterday';
+  if (day < 7) return `${day}d ago`;
+  const d = new Date(ts);
+  return `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
+}
+
+function noteRowHtml(n) {
+  const author = profiles.find(p => p.id === n.authorId);
+  const avatar = author?.avatar || '📝';
+  const name = author?.name || 'Family';
+  return `<div class="np-row">
+    <div class="np-row-avatar">${avatar}</div>
+    <div class="np-row-body">
+      <div class="np-row-top"><span class="np-row-name">${esc(name)}</span><span class="np-row-time">${relTime(n.ts)}</span></div>
+      <div class="np-row-text">${esc(n.text)}</div>
+    </div>
+  </div>`;
+}
+
+function renderNoteAuthorRow() {
+  const row = document.getElementById('notepad-author-row');
+  if (!row) return;
+  row.innerHTML = profiles.map(p =>
+    `<button type="button" class="np-author-pill${p.id === selectedNoteAuthorId ? ' active' : ''}" onclick="selectNoteAuthor('${p.id}')" title="${esc(p.name)}">${p.avatar || '🙂'}</button>`
+  ).join('');
+}
+function selectNoteAuthor(id) { selectedNoteAuthorId = id; renderNoteAuthorRow(); }
+
+function renderNotepadHandle(latest) {
+  const previewEl = document.getElementById('notepad-handle-preview');
+  const dotEl = document.getElementById('notepad-handle-dot');
+  if (!previewEl || !dotEl) return;
+  if (!latest) {
+    previewEl.textContent = 'No notes yet';
+    dotEl.classList.remove('active');
+    return;
+  }
+  const author = profiles.find(p => p.id === latest.authorId);
+  previewEl.textContent = `${author?.avatar || '📝'} ${author?.name || 'Family'}: ${latest.text}`;
+  dotEl.classList.toggle('active', !notepadState.open);
+}
+
+function renderNotepad() {
+  const notes = loadNotes();
+  const listEl = document.getElementById('notepad-list');
+  if (listEl) {
+    listEl.innerHTML = notes.length
+      ? notes.slice(0, NOTES_RECENT_COUNT).map(noteRowHtml).join('')
+      : '<div class="empty">No notes yet — leave one below.</div>';
+  }
+  renderNotepadHandle(notes[0]);
+  renderNoteAuthorRow();
+  if (isNoteHistoryOpen()) renderNoteHistory();
+}
+
+function sendNote() {
+  const input = document.getElementById('notepad-input');
+  const text = input.value.trim();
+  if (!text || !selectedNoteAuthorId) return;
+  const notes = loadNotes();
+  const note = {
+    id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    authorId: selectedNoteAuthorId,
+    text,
+    ts: Date.now(),
+  };
+  notes.unshift(note);
+  saveNotes(notes);
+  input.value = '';
+  onNewNoteArrived(note.ts);
+  renderNotepad();
+}
+
+function onNewNoteArrived(ts) {
+  notepadState.lastNoteTs = ts;
+  notepadState.forcedCollapseDone = false;
+  notepadState.open = true; // default action on a new note: slide out
+  saveNotepadState();
+  applyNotepadOpenState();
+}
+
+function applyNotepadOpenState() {
+  const panel = document.getElementById('notepad-panel');
+  const main = document.getElementById('notepad-main');
+  if (!panel) return;
+  panel.classList.toggle('open', !!notepadState.open);
+  if (main) main.inert = !notepadState.open; // no focus/interaction while slid in
+  renderNotepadHandle(loadNotes()[0]);
+}
+
+function toggleNotepad(force) {
+  notepadState.open = typeof force === 'boolean' ? force : !notepadState.open;
+  saveNotepadState();
+  applyNotepadOpenState();
+}
+
+function checkNotepadAutoCollapse() {
+  if (notepadState.forcedCollapseDone || !notepadState.lastNoteTs) return;
+  if (Date.now() - notepadState.lastNoteTs >= NOTE_VISIBLE_MS) {
+    notepadState.open = false; // 24h visible — slide in even without user action
+    notepadState.forcedCollapseDone = true;
+    saveNotepadState();
+    applyNotepadOpenState();
+  }
+}
+
+function isNoteHistoryOpen() {
+  return document.getElementById('note-history-overlay')?.classList.contains('open');
+}
+function openNoteHistory() {
+  document.getElementById('note-history-overlay').classList.add('open');
+  renderNoteHistory();
+}
+function closeNoteHistory() {
+  document.getElementById('note-history-overlay').classList.remove('open');
+}
+function renderNoteHistory() {
+  const notes = loadNotes();
+  const listEl = document.getElementById('note-history-list');
+  if (!listEl) return;
+  listEl.innerHTML = notes.length
+    ? notes.map(noteRowHtml).join('')
+    : '<div class="empty">No notes yet.</div>';
+}
+
+// Width of the notepad, slid-out = largest right-side interaction element;
+// slid-in = smallest right-side interaction element. Recomputed on resize
+// and whenever a watched element's own size changes (responsive layouts).
+const NOTEPAD_WIDTH_REF_IDS = ['chores-card', 'dashboard-fab', 'settings-btn'];
+function computeNotepadWidths() {
+  const widths = NOTEPAD_WIDTH_REF_IDS
+    .map(id => document.getElementById(id))
+    .filter(Boolean)
+    .map(el => el.getBoundingClientRect().width)
+    .filter(w => w > 0);
+  if (!widths.length) return;
+  document.documentElement.style.setProperty('--np-w-expanded', `${Math.round(Math.max(...widths))}px`);
+  document.documentElement.style.setProperty('--np-w-collapsed', `${Math.round(Math.min(...widths))}px`);
+}
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+window.addEventListener('resize', debounce(computeNotepadWidths, 150));
+if (window.ResizeObserver) {
+  const npResizeObserver = new ResizeObserver(debounce(computeNotepadWidths, 150));
+  window.addEventListener('load', () => {
+    NOTEPAD_WIDTH_REF_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) npResizeObserver.observe(el);
+    });
+  });
+}
+setInterval(checkNotepadAutoCollapse, 30000);
+
+/* ═══════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════ */
 /* ═══════════════════════════════════════════
@@ -2998,8 +3356,52 @@ window.addEventListener('load', () => {
   renderTodayChores();
   renderBirthdays();
   setInterval(() => { updateCustodyBadge(); renderTodayChores(); }, 60000);
+
+  computeNotepadWidths();
+  renderNotepad();
+  applyNotepadOpenState();
+  checkNotepadAutoCollapse();
 });
 </script>
+
+<!-- ── FAMILY NOTEPAD (slide-in/slide-out overlay) ── -->
+<div id="notepad-panel" role="complementary" aria-label="Family Notepad">
+  <div id="notepad-main">
+   <div id="notepad-main-inner">
+    <div id="notepad-head">
+      <div class="np-title">📝 Notepad</div>
+      <button class="np-close" onclick="toggleNotepad(false)" aria-label="Slide in">›</button>
+    </div>
+    <div id="notepad-list" class="np-list"></div>
+    <div id="notepad-compose">
+      <div id="notepad-author-row" class="np-author-row"></div>
+      <textarea id="notepad-input" class="np-input" placeholder="Leave a note for the family…" maxlength="500" rows="2"></textarea>
+      <button class="np-send" onclick="sendNote()">Send</button>
+    </div>
+    <div id="notepad-footer">
+      <button class="np-history-link" onclick="openNoteHistory()">View old notes ▸</button>
+      <div class="np-save-hint">The last 50 notes are saved</div>
+    </div>
+   </div>
+  </div>
+  <div id="notepad-handle" onclick="toggleNotepad()" title="Family Notepad">
+    <div class="np-handle-top">
+      <div id="notepad-handle-dot" class="np-dot"></div>
+      <div class="np-handle-label">Notepad</div>
+    </div>
+    <div id="notepad-handle-preview" class="np-handle-preview">No notes yet</div>
+  </div>
+</div>
+
+<!-- ── NOTE HISTORY OVERLAY (last 50 notes) ── -->
+<div id="note-history-overlay">
+  <div id="note-history-topbar">
+    <div id="note-history-title">Notepad History</div>
+    <button id="note-history-close" onclick="closeNoteHistory()">✕ Close</button>
+  </div>
+  <div id="note-history-list"></div>
+  <div class="np-save-hint" style="text-align:center;padding:8px 0 24px;">The last 50 notes are saved — older notes are not kept.</div>
+</div>
 
 <!-- ── SETTINGS BTN (must be last in body — backdrop-filter on dashboard breaks z-index otherwise) ── -->
 <button class="br-fab" id="settings-btn" onclick="toggleSettings()">
