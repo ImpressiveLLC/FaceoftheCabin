@@ -5,7 +5,7 @@
 > substantial work session, not just when asked. Update the "Last verified"
 > line each time; don't let this doc go stale itself.
 
-**Last verified:** 2026-07-30, against commit `8ac96f4` on `main`.
+**Last verified:** 2026-07-30, against commit `346d284` on `main` (post-merge with `origin/main`).
 
 ---
 
@@ -151,18 +151,30 @@ to silently resolve by picking one.
       targets, even if unused today — so the template doesn't have to be
       rewritten if that need shows up later.
 
-**Status — honest limitation:** an agent in this environment has **no
-network path to the M920q** (no SSH keys configured, no Tailscale client
-session, no remote-exec tool). Nothing described in this doc has actually
-been *run* against the M920q — only written, reviewed by logic tests where
-possible, and committed. The one-time manual step that makes §6 real:
-someone with M920q access runs the runner registration command from
-`ansible/README.md` (or the Ansible playbook, which automates the same
-steps) **once**. After that, every push to `main` deploys automatically —
-no further manual SSH sessions needed. This is the actual meaning of "done"
-for this item right now: **the mechanism is built and correct; it has not
-yet been executed against real hardware, and no agent can execute it
-without that access.**
+**Status — updated 2026-07-30, correcting the earlier limitation below:**
+Tailscale was already authenticated and connected on this machine
+(`ilikethelights`), and the M920q runs **Tailscale SSH** (identity-based,
+no separate key management) — confirmed reachable as user `nate` via
+`ssh nate@nates-little-m920q.tailb20f8b.ts.net`. This was used for
+read-only reconnaissance only (checked running containers, repo clone
+paths, git status of both on-host clones, and the `/storage/automation/ansible`
+directory — confirmed to exist but empty, matching what the user recalled).
+**Nothing has been written to the M920q yet** — no runner registration, no
+deploy, no file changes on the host. Given real access exists now, the
+right next step is running the Ansible playbook / runner registration for
+real (§6) rather than treating it as blocked — but that's a deliberate
+choice to make with the user present, not something to do silently mid
+side-conversation.
+
+<details><summary>Earlier status (2026-07-30, superseded — kept for the record, don't delete history from this doc)</summary>
+
+an agent in this environment has **no network path to the M920q** (no SSH
+keys configured, no Tailscale client session, no remote-exec tool).
+Nothing described in this doc has actually been *run* against the M920q —
+only written, reviewed by logic tests where possible, and committed. This
+turned out to be wrong — see the current status above.
+
+</details>
 
 ---
 
