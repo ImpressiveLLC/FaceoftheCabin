@@ -389,7 +389,7 @@ elements:
     constraint:
       maxLength: 80
       vocabulary: soft_enum
-      vocabulary_source: location_vocabulary_term (applies_to: device_room)
+      vocabulary_source: "location_vocabulary_term (applies_to: device_room)"
       description: >
         User structured selection from a curated room-name list. Values outside
         the master list trigger a candidate_term_submission automatically.
@@ -514,7 +514,7 @@ elements:
     primitive_type_group: device_location
     constraint:
       vocabulary: soft_enum
-      vocabulary_source: location_vocabulary_term (applies_to: device_location_zone)
+      vocabulary_source: "location_vocabulary_term (applies_to: device_location_zone)"
       description: >
         Sub-room zone within device_room (L2a). User selects from curated list
         per room type. Values not in master list auto-submit candidate_term_submission
@@ -565,7 +565,7 @@ elements:
     primitive_type_group: device_location
     constraint:
       vocabulary: soft_enum
-      vocabulary_source: location_vocabulary_term (applies_to: device_location_qualifier)
+      vocabulary_source: "location_vocabulary_term (applies_to: device_location_qualifier)"
       description: >
         Positional descriptor within device_location_zone (L2b). User selects
         from curated list per zone type. Examples: "North wall", "South wall",
@@ -1684,6 +1684,171 @@ elements:
     relates_to:
       ui_components: [custody_status_card]
       elements: [custody_status, parenting_home_days]
+
+  - id: parenting_schedule_rule_version
+    entity_type: owl:Class
+    layer: frontend
+    primitive: true
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Schedule version"
+    source: localStorage["smrekar_schedule_rules"] (array of rule objects)
+    rendering:
+      semantic: "Schedule effective from {date}"
+      systems: Custody Rule Version
+      technical: "{ id, effectiveFrom, anchor, homeDays, label, createdAt, createdBy }"
+      compliance: Custody Agreement Version Record
+    definition: >
+      One version of the 14-day custody rule, effective from a given date
+      forward. Supersedes parenting_schedule_anchor + parenting_home_days as
+      a single flat value — the schedule is now a list of these, so a change
+      to today's pattern never rewrites how past dates are computed.
+    relationships:
+      - target: parenting_schedule_anchor
+        type: replaces
+        cardinality: "1:N"
+      - target: parenting_home_days
+        type: replaces
+        cardinality: "1:N"
+      - target: custody_day_log
+        type: consumed_by
+        cardinality: "1:N"
+      - target: observation_report
+        type: consumed_by
+        cardinality: "1:N"
+    transformation: >
+      ruleForDate(dateKey) returns the latest version whose effectiveFrom
+      <= dateKey. Saving in Settings with the same effectiveFrom as the
+      current (latest) version amends it in place; a new date pushes a new
+      version. Earlier versions are never mutated once superseded.
+    relates_to:
+      ui_components: [settings_panel, ui_schedule_tab]
+      elements: [holiday_override, custody_day_log, observation_report]
+    notes: >
+      Seeded with two versions on first run: 2026-03-13 (original schedule,
+      homeDays [0,1,4,5,8,9,12,13]) and 2026-07-27 (50/50 schedule agreed
+      2026-07-27, homeDays [2,3,4,5,9,10] — Rachel Mon/Tue, Nate Wed/Thu,
+      alternating Fri-Sun). A device that only ever saw the pre-versioning
+      flat smrekar_schedule_cfg value migrates it into a single version.
+
+  - id: holiday_override
+    entity_type: owl:Class
+    layer: frontend
+    primitive: true
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Holiday / vacation"
+    source: localStorage["smrekar_holidays"] (array of holiday objects)
+    rendering:
+      semantic: "Christmas Day — Dad's"
+      systems: Holiday Owner Override
+      technical: "{ id, date, name, owner: 'mom'|'dad', createdAt, createdBy }"
+      compliance: Custody Exception Record
+    definition: >
+      A specific calendar date that belongs wholly to one parent regardless
+      of what the active schedule rule would otherwise assign — for named
+      holidays, school breaks, or agreed vacation days. Any signed-in user
+      can add, edit, or delete one from Settings.
+    relationships:
+      - target: parenting_schedule_rule_version
+        type: extends
+        cardinality: "N:1"
+      - target: custody_day_log
+        type: consumed_by
+        cardinality: "1:N"
+      - target: observation_report
+        type: consumed_by
+        cardinality: "1:N"
+    transformation: >
+      ownerOfDate(date) checks holidayForDate(ymd(date)) first; if present,
+      its owner wins over the rule-computed value for that date only.
+    relates_to:
+      ui_components: [settings_panel]
+      elements: [parenting_schedule_rule_version, observation_report]
+
+  - id: custody_day_log
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Custody day record"
+    source: localStorage["smrekar_custody_log"] (date → 'dad'|'mom' map)
+    rendering:
+      semantic: "Recorded nights: Dad 6, Mom 8"
+      systems: Custody Day Fact Table
+      technical: "materializeCustodyLog() → { 'YYYY-MM-DD': 'dad'|'mom', ... }"
+      compliance: Historical Custody Record
+    definition: >
+      A materialized, append-only record of which parent actually had the
+      children on each date, walked forward one day at a time from the
+      earliest known schedule version through today. Once a date is
+      recorded it is never overwritten by a later rule or holiday edit —
+      the factual record of how the schedule actually ran stays intact.
+    relationships:
+      - target: parenting_schedule_rule_version
+        type: derives_from
+        cardinality: "N:1"
+      - target: holiday_override
+        type: derives_from
+        cardinality: "N:1"
+      - target: observation_report
+        type: consumed_by
+        cardinality: "1:N"
+    transformation: >
+      On each app load, materializeCustodyLog() fills in any date from the
+      last-recorded day through today via ownerOfDate(date), then persists.
+    relates_to:
+      ui_components: [ui_schedule_tab]
+      elements: [observation_report]
+    notes: >
+      Local to whichever browser/device ran the materialization — not yet
+      synced across devices. See ROADMAP.md for moving this to the shared
+      Platform API backend if a cross-device record is needed.
+
+  - id: observation_report
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Observations"
+    source: custody_day_log (recorded) + parenting_schedule_rule_version + holiday_override (scheduled)
+    rendering:
+      semantic: "Recorded: Dad 6 · Mom 8 nights this cycle"
+      systems: Custody Pivot Report
+      technical: observationsReport(periodType, refDate) → { pastDad, pastMom, futureDad, futureMom }
+      compliance: Custody Distribution Report
+    definition: >
+      Pivot-style reporting of nights per parent over a selected period —
+      current 2-week cycle, trailing/upcoming 3 months, or a discrete
+      calendar year (Jan 1 - Dec 31). Splits each period into "recorded"
+      (dates up to today, from custody_day_log) and "scheduled" (future
+      dates, computed live from the active rule and any holidays).
+    relationships:
+      - target: custody_day_log
+        type: derives_from
+        cardinality: "N:1"
+      - target: parenting_schedule_rule_version
+        type: derives_from
+        cardinality: "N:1"
+      - target: holiday_override
+        type: derives_from
+        cardinality: "N:1"
+    relates_to:
+      ui_components: [settings_panel]
+      elements: [custody_day_log, parenting_schedule_rule_version, holiday_override]
+    notes: >
+      Available to any signed-in user, not admin-gated — intended as a
+      shared, symmetric record both parents can view, not a one-sided tool.
 
   - id: custody_status_card
     entity_type: owl:Class

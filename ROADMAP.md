@@ -386,7 +386,7 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 | Calendar / Photos | `smrekarfamilia@gmail.com` |
 | OAuth current origin | `http://nates-little-m920q.tailb20f8b.ts.net:4081` _(update to unicornpingpong.com)_ |
 | Zigbee coordinator | `/dev/serial/by-id` → `/dev/ttyACM0` · adapter: ember |
-| Parenting anchor | March 13 2026 · kids-home-days: `[0,1,4,5,8,9,12,13]` |
+| Parenting schedule | Versioned rules (see `docs/ontology.yaml` → `parenting_schedule_rule_version`): March 13 2026 original (`[0,1,4,5,8,9,12,13]`) superseded by July 27 2026 50/50 split (`[2,3,4,5,9,10]` = Wed/Thu/Fri/Sat wk A, Wed/Thu wk B; Rachel Mon/Tue always, Sun per week). Holidays override per-date via `holiday_override`. Historical dates always compute under whichever version was actually in effect. |
 | Domain registrar | Porkbun — `unicornpingpong.com` |
 | DNS | Cloudflare free tier |
 

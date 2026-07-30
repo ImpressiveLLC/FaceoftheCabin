@@ -946,8 +946,8 @@
 
     <!-- SCHEDULE -->
     <div class="tab-pane" id="tab-schedule">
-      <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;line-height:1.6;">
-        Parenting schedule starting <strong style="color:var(--cream)">Friday, March 13, 2026</strong>. 
+      <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;line-height:1.6;" id="sched-tab-intro">
+        Parenting schedule starting <strong style="color:var(--cream)" id="sched-tab-anchor-label"></strong>.
         Kids follow a rotating cycle — dark cards indicate days they're at Dad's.
       </p>
       <div class="schedule-grid" id="schedule-grid"></div>
@@ -956,6 +956,7 @@
         <span><span class="legend-dot" style="background:rgba(255,255,255,.2);"></span>Kids at Mom's</span>
         <span><span class="legend-dot" style="background:var(--gold);outline:2px solid var(--gold);border-radius:50%;"></span>Today</span>
       </div>
+      <div id="custody-counter" style="font-size:11px;color:var(--cream-dim);margin-top:10px"></div>
     </div>
 
     <!-- CHORES -->
@@ -1089,7 +1090,9 @@ const CHORES = [
   { id:'lunch_backpack',   label:'Help with lunch & load backpack',    points:1, minAge:6,  tags:['school','daily'] },
 ];
 
-const REWARDS = [
+const REWARDS_KEY = 'smrekar_rewards';
+const REWARDS_HISTORY_KEY = 'smrekar_rewards_history';
+const DEFAULT_REWARDS_SEED = [
   'Ice cream or treat choice',
   'Movie choice',
   'Friend play date choice',
@@ -1099,23 +1102,371 @@ const REWARDS = [
   '"You pick the meal" dinner',
 ];
 
-// Parenting schedule — loaded from localStorage, falls back to hardcoded defaults
-const SCHED_CFG_KEY = 'smrekar_schedule_cfg';
-function loadSchedCfg() {
+function loadRewards() {
   try {
-    const s = JSON.parse(localStorage.getItem(SCHED_CFG_KEY) || 'null');
-    if (!s) return null;
-    return { start: new Date(s.start + 'T12:00:00'), homeDays: new Set(s.homeDays) };
-  } catch { return null; }
+    const stored = JSON.parse(localStorage.getItem(REWARDS_KEY) || 'null');
+    if (stored) return stored;
+  } catch {}
+  // First run: migrate the hardcoded seed list into the stateful store.
+  return DEFAULT_REWARDS_SEED.map((label, i) => ({ id: `seed-${i}`, label }));
 }
-const _sched = loadSchedCfg();
-let SCHEDULE_START  = _sched ? _sched.start    : new Date('2026-03-13T12:00:00');
-let KIDS_HOME_DAYS  = _sched ? _sched.homeDays : new Set([0,1,4,5,8,9,12,13]);
+let REWARDS = loadRewards();
+function saveRewards() { localStorage.setItem(REWARDS_KEY, JSON.stringify(REWARDS)); }
 
+function loadRewardsHistory() {
+  try { return JSON.parse(localStorage.getItem(REWARDS_HISTORY_KEY) || '[]'); }
+  catch { return []; }
+}
+function logRewardChange(action, reward, prevLabel) {
+  const history = loadRewardsHistory();
+  history.push({
+    ts: new Date().toISOString(),
+    action, // 'add' | 'edit' | 'delete'
+    id: reward.id,
+    label: reward.label,
+    prevLabel: prevLabel || undefined,
+    changedBy: currentUserEmail || 'local (not signed in)',
+  });
+  localStorage.setItem(REWARDS_HISTORY_KEY, JSON.stringify(history));
+}
+
+/* ═══════════════════════════════════════════
+   PARENTING SCHEDULE — versioned rules
+   A "rule" is a 14-day repeating pattern effective from a given date forward.
+   Historical dates are always computed under whichever rule was in effect at
+   the time, so changing today's schedule never rewrites the past. Only the
+   current (latest) rule can be amended in place; every earlier version is
+   frozen once superseded. Holidays (below) override a rule for one date.
+═══════════════════════════════════════════ */
+const SCHED_CFG_KEY = 'smrekar_schedule_cfg'; // legacy single-anchor key, read once for migration
+const SCHED_RULES_KEY = 'smrekar_schedule_rules';
+const DEFAULT_SCHEDULE_RULES = [
+  { id:'rule-2026-03-13', effectiveFrom:'2026-03-13', anchor:'2026-03-13', homeDays:[0,1,4,5,8,9,12,13], label:'Original 2026 custody schedule', createdAt:'2026-03-13T12:00:00.000Z', createdBy:'seed' },
+  { id:'rule-2026-07-27', effectiveFrom:'2026-07-27', anchor:'2026-07-27', homeDays:[2,3,4,5,9,10], label:'50/50 schedule agreed 2026-07-27', createdAt:'2026-07-29T12:00:00.000Z', createdBy:'seed' },
+];
+
+function loadScheduleRules() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SCHED_RULES_KEY) || 'null');
+    if (stored && stored.length) return stored;
+  } catch {}
+  try {
+    // Migrate a pre-versioning single anchor if present, so a device that
+    // only ever saw the old flat setting doesn't lose its own history.
+    const legacy = JSON.parse(localStorage.getItem(SCHED_CFG_KEY) || 'null');
+    if (legacy && legacy.start) {
+      return [{ id:'rule-'+legacy.start, effectiveFrom:legacy.start, anchor:legacy.start, homeDays:legacy.homeDays, label:'Migrated from previous single-anchor setting', createdAt:new Date().toISOString(), createdBy:'migration' }];
+    }
+  } catch {}
+  return DEFAULT_SCHEDULE_RULES.map(r => ({ ...r }));
+}
+let SCHEDULE_RULES = loadScheduleRules().sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+function saveScheduleRules() {
+  SCHEDULE_RULES.sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+  localStorage.setItem(SCHED_RULES_KEY, JSON.stringify(SCHEDULE_RULES));
+}
+function currentRule() { return SCHEDULE_RULES[SCHEDULE_RULES.length - 1]; }
+// Latest rule whose effectiveFrom is on/before the given date, or null if
+// the date predates every known rule (no schedule data that far back).
+function ruleForDate(dateKey) {
+  let match = null;
+  for (const r of SCHEDULE_RULES) {
+    if (r.effectiveFrom <= dateKey) match = r; else break;
+  }
+  return match;
+}
+function ruleDayOwner(rule, date) {
+  if (!rule) return null;
+  // Both sides go through ymd() first (date-only string) so they parse with
+  // the same UTC-midnight convention — mixing that with a local-noon Date
+  // (as rule.anchor + 'T12:00:00' would) throws day-diff off by the local
+  // UTC offset.
+  const diff = Math.floor((new Date(ymd(date)) - new Date(rule.anchor)) / 86400000);
+  if (diff < 0) return null;
+  return new Set(rule.homeDays).has(diff % 14) ? 'dad' : 'mom';
+}
+
+// Backward-compat globals: "the rule currently being edited in Settings"
+// (the day-picker grid and its onchange handlers read these directly).
+let SCHEDULE_START = new Date(currentRule().anchor + 'T12:00:00');
+let KIDS_HOME_DAYS = new Set(currentRule().homeDays);
+
+// Canonical answer to "who has the kids on this date" — holiday override
+// first, else whichever rule was in effect. Returns 'dad' | 'mom' | null
+// (null = no rule reaches back that far).
+function ownerOfDate(date) {
+  const key = ymd(date);
+  const holiday = holidayForDate(key);
+  if (holiday) return holiday.owner;
+  return ruleDayOwner(ruleForDate(key), date);
+}
+function isKidsHome(date) { return ownerOfDate(date) === 'dad'; }
+
+// Same effectiveFrom as the current rule = amend it in place (fixing a typo,
+// tweaking this cycle's days). A different date = a brand-new rule version
+// effective forward from then; every prior version is left untouched so
+// historical days keep computing under whatever was actually in effect.
 function saveSchedCfg(startDateStr, homeDayArr) {
-  SCHEDULE_START = new Date(startDateStr + 'T12:00:00');
-  KIDS_HOME_DAYS = new Set(homeDayArr);
-  localStorage.setItem(SCHED_CFG_KEY, JSON.stringify({ start: startDateStr, homeDays: homeDayArr }));
+  const latest = currentRule();
+  if (latest && latest.effectiveFrom === startDateStr) {
+    latest.anchor = startDateStr;
+    latest.homeDays = homeDayArr;
+  } else {
+    SCHEDULE_RULES.push({
+      id: 'rule-' + startDateStr + '-' + Date.now(),
+      effectiveFrom: startDateStr,
+      anchor: startDateStr,
+      homeDays: homeDayArr,
+      label: '',
+      createdAt: new Date().toISOString(),
+      createdBy: currentUserEmail || 'local (not signed in)',
+    });
+  }
+  saveScheduleRules();
+  SCHEDULE_START = new Date(currentRule().anchor + 'T12:00:00');
+  KIDS_HOME_DAYS = new Set(currentRule().homeDays);
+  logScheduleChange(startDateStr, homeDayArr);
+}
+
+const SCHED_LOG_KEY = 'smrekar_schedule_log'; // append-only edit history, separate from the rules themselves
+function loadScheduleChangeLog() {
+  try { return JSON.parse(localStorage.getItem(SCHED_LOG_KEY) || '[]'); }
+  catch { return []; }
+}
+function logScheduleChange(startDateStr, homeDayArr) {
+  const log = loadScheduleChangeLog();
+  log.push({
+    ts: new Date().toISOString(),
+    changedBy: currentUserEmail || 'local (not signed in)',
+    start: startDateStr,
+    homeDays: homeDayArr,
+  });
+  localStorage.setItem(SCHED_LOG_KEY, JSON.stringify(log));
+}
+
+/* ═══════════════════════════════════════════
+   HOLIDAYS & VACATIONS — per-date owner override
+   Any signed-in user can add one: a specific date belongs wholly to Mom's
+   or Dad's side regardless of what the cycle rule would otherwise say.
+═══════════════════════════════════════════ */
+const HOLIDAYS_KEY = 'smrekar_holidays';
+function loadHolidaysState() {
+  try { return JSON.parse(localStorage.getItem(HOLIDAYS_KEY) || '[]'); }
+  catch { return []; }
+}
+let HOLIDAYS = loadHolidaysState();
+function saveHolidaysState() { localStorage.setItem(HOLIDAYS_KEY, JSON.stringify(HOLIDAYS)); }
+function holidayForDate(dateKey) { return HOLIDAYS.find(h => h.date === dateKey); }
+
+/* ── Custody day log — append-only, one entry per calendar date ──
+   A materialized fact table (distinct from the rules above): walks every
+   date from the earliest known rule's anchor through today, recording who
+   actually had the kids per ownerOfDate() at the time this runs. Re-running
+   is idempotent — it only ever fills in dates not already recorded, so a
+   later rule or holiday change can't silently rewrite an already-logged day. */
+const CUSTODY_LOG_KEY = 'smrekar_custody_log';
+function loadCustodyLog() {
+  try { return JSON.parse(localStorage.getItem(CUSTODY_LOG_KEY) || '{}'); }
+  catch { return {}; }
+}
+function saveCustodyLog(log) {
+  localStorage.setItem(CUSTODY_LOG_KEY, JSON.stringify(log));
+}
+function materializeCustodyLog() {
+  const log = loadCustodyLog();
+  const today = new Date(); today.setHours(12,0,0,0);
+  const earliestAnchor = new Date(SCHEDULE_RULES[0].anchor + 'T12:00:00');
+  const dates = Object.keys(log).sort();
+  let cursor = dates.length ? new Date(dates[dates.length - 1] + 'T12:00:00') : new Date(earliestAnchor);
+  cursor.setDate(cursor.getDate() + (dates.length ? 1 : 0));
+  let changed = false;
+  while (cursor <= today) {
+    const key = ymd(cursor);
+    if (!log[key]) {
+      const owner = ownerOfDate(cursor);
+      if (owner) { log[key] = owner; changed = true; }
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  if (changed) saveCustodyLog(log);
+  return log;
+}
+function custodyNightCounts(log) {
+  const counts = { dad: 0, mom: 0 };
+  Object.values(log).forEach(p => { if (counts[p] !== undefined) counts[p]++; });
+  return counts;
+}
+
+/* ═══════════════════════════════════════════
+   OBSERVATIONS — pivot reporting of nights per parent
+   "Recorded" = from the custody log (dates <= today). "Scheduled" = computed
+   live from the active rule + holidays for dates > today. Periods: current
+   2-week cycle, trailing/upcoming 3 months, or a discrete Jan 1–Dec 31 year.
+═══════════════════════════════════════════ */
+function observationsRangeFor(periodType, refDate) {
+  const ref = new Date(refDate); ref.setHours(12,0,0,0);
+  if (periodType === 'quarter') {
+    return { start: addDays(ref, -90), end: addDays(ref, 90), label: 'Trailing / upcoming 3 months' };
+  }
+  if (periodType === 'annual') {
+    const year = ref.getFullYear();
+    return { start: new Date(`${year}-01-01T12:00:00`), end: new Date(`${year}-12-31T12:00:00`), label: `Calendar year ${year} (Jan 1 – Dec 31)` };
+  }
+  // 'cycle' (default): the 14-day window of the rule in effect on refDate
+  const rule = ruleForDate(ymd(ref)) || currentRule();
+  const anchor = new Date(rule.anchor + 'T12:00:00');
+  const diff = Math.floor((ref - anchor) / 86400000);
+  const cycleIndex = Math.floor(diff / 14);
+  const start = addDays(anchor, cycleIndex * 14);
+  return { start, end: addDays(start, 13), label: 'Current 2-week cycle' };
+}
+
+function observationsReport(periodType, refDate = new Date()) {
+  const { start, end, label } = observationsRangeFor(periodType, refDate);
+  const today = new Date(); today.setHours(12,0,0,0);
+  const log = loadCustodyLog();
+  let pastDad = 0, pastMom = 0, futureDad = 0, futureMom = 0, unknownCount = 0;
+  let cursor = new Date(start);
+  while (cursor <= end) {
+    const isPast = cursor <= today;
+    const owner = isPast ? (log[ymd(cursor)] || ownerOfDate(cursor)) : ownerOfDate(cursor);
+    if (owner === 'dad') { isPast ? pastDad++ : futureDad++; }
+    else if (owner === 'mom') { isPast ? pastMom++ : futureMom++; }
+    else unknownCount++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return { label, start, end, pastDad, pastMom, futureDad, futureMom, unknownCount };
+}
+
+function renderObservations() {
+  const body = document.getElementById('observations-body');
+  if (!body) return;
+  const periodSel = document.getElementById('obs-period');
+  const yearSel = document.getElementById('obs-year');
+  const periodType = periodSel ? periodSel.value : 'cycle';
+  const refDate = (periodType === 'annual' && yearSel) ? new Date(`${yearSel.value}-06-15T12:00:00`) : new Date();
+  const r = observationsReport(periodType, refDate);
+  const fmt = d => d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  const pastTotal = r.pastDad + r.pastMom;
+  const futureTotal = r.futureDad + r.futureMom;
+  const pct = (n, total) => total ? Math.round(100 * n / total) : 0;
+  body.innerHTML = `
+    <div class="s-hint" style="margin-bottom:8px"><strong style="color:var(--cream)">${esc(r.label)}</strong> · ${fmt(r.start)} – ${fmt(r.end)}</div>
+    <div class="kid-reward-row">
+      <div class="kid-reward-name"><span>Recorded (past)</span></div>
+      <div style="font-size:12px;color:var(--cream-dim)">
+        Dad: ${r.pastDad}${pastTotal ? ` (${pct(r.pastDad,pastTotal)}%)` : ''} · Mom: ${r.pastMom}${pastTotal ? ` (${pct(r.pastMom,pastTotal)}%)` : ''}
+      </div>
+    </div>
+    <div class="kid-reward-row">
+      <div class="kid-reward-name"><span>Scheduled (future)</span></div>
+      <div style="font-size:12px;color:var(--cream-dim)">
+        Dad: ${r.futureDad}${futureTotal ? ` (${pct(r.futureDad,futureTotal)}%)` : ''} · Mom: ${r.futureMom}${futureTotal ? ` (${pct(r.futureMom,futureTotal)}%)` : ''}
+      </div>
+    </div>
+    ${r.unknownCount ? `<div class="s-hint">${r.unknownCount} day(s) in this range predate any recorded schedule.</div>` : ''}
+  `;
+}
+function onObsPeriodChange() {
+  const periodType = document.getElementById('obs-period').value;
+  const yearRow = document.getElementById('obs-year-row');
+  if (yearRow) yearRow.style.display = periodType === 'annual' ? '' : 'none';
+  renderObservations();
+}
+function populateObsYearOptions() {
+  const sel = document.getElementById('obs-year');
+  if (!sel || sel.options.length) return;
+  const thisYear = new Date().getFullYear();
+  for (let y = thisYear - 1; y <= thisYear + 1; y++) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    if (y === thisYear) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   HOLIDAYS ADMIN — add / edit / delete date-owner overrides
+═══════════════════════════════════════════ */
+let holidayFormState = null; // null closed, 'new', or an existing holiday id
+
+function renderHolidays() {
+  const list = document.getElementById('holidays-list');
+  if (!list) return;
+  const sorted = [...HOLIDAYS].sort((a, b) => a.date.localeCompare(b.date));
+  list.innerHTML = sorted.map(h => `
+    <div class="profile-card">
+      <div class="profile-card-info">
+        <div class="profile-card-name">${esc(h.name)}</div>
+        <div class="profile-card-meta">${h.date} · ${h.owner === 'dad' ? "Dad's" : "Mom's"}</div>
+      </div>
+      <div class="profile-card-actions">
+        <button onclick="editHoliday('${h.id}')">Edit</button>
+        <button class="del" onclick="deleteHoliday('${h.id}')">Delete</button>
+      </div>
+    </div>`).join('') || '<div class="s-hint">No holidays added yet.</div>';
+  const formContainer = document.getElementById('holiday-form-container');
+  if (formContainer) formContainer.innerHTML = holidayFormState !== null ? holidayFormMarkup() : '';
+}
+
+function holidayFormMarkup() {
+  const editing = holidayFormState !== 'new' ? HOLIDAYS.find(h => h.id === holidayFormState) : null;
+  return `<div class="reward-rule-card" style="margin-top:10px">
+    <div class="rule-title">${editing ? 'Edit Holiday' : 'New Holiday'}</div>
+    <div class="s-field">
+      <label>Date</label>
+      <input id="hol-date" type="date" value="${editing ? editing.date : ''}">
+    </div>
+    <div class="s-field">
+      <label>Name</label>
+      <input id="hol-name" type="text" value="${editing ? esc(editing.name) : ''}" placeholder="e.g. Christmas Day">
+    </div>
+    <div class="s-field">
+      <label>Whose day</label>
+      <select id="hol-owner">
+        <option value="dad" ${editing?.owner==='dad'?'selected':''}>Dad's</option>
+        <option value="mom" ${editing?.owner==='mom'?'selected':''}>Mom's</option>
+      </select>
+    </div>
+    <div class="s-actions" style="margin-top:8px">
+      <button class="btn-gold" onclick="saveHoliday()">Save</button>
+      <button class="btn-ghost" onclick="closeHolidayForm()">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function openHolidayForm(id) { holidayFormState = id || 'new'; renderHolidays(); }
+function closeHolidayForm() { holidayFormState = null; renderHolidays(); }
+function editHoliday(id) { openHolidayForm(id); }
+
+function saveHoliday() {
+  const date = document.getElementById('hol-date').value;
+  const name = document.getElementById('hol-name').value.trim();
+  const owner = document.getElementById('hol-owner').value;
+  if (!date || !name) { alert('Date and name are required'); return; }
+  if (holidayFormState === 'new') {
+    HOLIDAYS.push({ id:'holiday-'+Date.now(), date, name, owner, createdAt:new Date().toISOString(), createdBy: currentUserEmail || 'local (not signed in)' });
+  } else {
+    const h = HOLIDAYS.find(x => x.id === holidayFormState);
+    if (!h) return;
+    Object.assign(h, { date, name, owner });
+  }
+  saveHolidaysState();
+  holidayFormState = null;
+  renderHolidays();
+  renderSchedule();
+  renderObservations();
+}
+
+function deleteHoliday(id) {
+  const h = HOLIDAYS.find(x => x.id === id);
+  if (!h) return;
+  if (!confirm(`Remove holiday "${h.name}" (${h.date})?`)) return;
+  HOLIDAYS = HOLIDAYS.filter(x => x.id !== id);
+  saveHolidaysState();
+  renderHolidays();
+  renderSchedule();
+  renderObservations();
 }
 
 /* ═══════════════════════════════════════════
@@ -1323,6 +1674,8 @@ function saveSettings() {
   updateGreeting();
   startSlideshow();
   renderTodayChores();
+  renderSchedule();
+  renderObservations();
   toggleSettings();
   if (CFG.clientId) initGoogleAuth();
 }
@@ -1337,6 +1690,10 @@ function populateSettings() {
   document.getElementById('set-max-photos').value = CFG.maxPhotos;
   renderSchedDayPicker();
   renderThemeGrid();
+  renderAccessLog();
+  renderHolidays();
+  populateObsYearOptions();
+  renderObservations();
 }
 
 function renderSchedDayPicker() {
@@ -1672,6 +2029,19 @@ function renderSchedule() {
       <div style="font-size:8px;color:var(--cream-ghost);margin-bottom:2px;">${d.monthAbbr}</div>
       <div class="sched-status">${d.kidsHome?'HOME':'AWAY'}</div>
     </div>`).join('');
+
+  const anchorLabel = document.getElementById('sched-tab-anchor-label');
+  if (anchorLabel) anchorLabel.textContent = SCHEDULE_START.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+
+  const log = materializeCustodyLog();
+  const counts = custodyNightCounts(log);
+  const totalNights = counts.dad + counts.mom;
+  const counterEl = document.getElementById('custody-counter');
+  if (counterEl) {
+    counterEl.textContent = totalNights
+      ? `Tracked since ${ymd(SCHEDULE_START)}: Dad ${counts.dad} night${counts.dad===1?'':'s'} · Mom ${counts.mom} night${counts.mom===1?'':'s'} (${totalNights} tracked total)`
+      : '';
+  }
 }
 
 let activeChoreKid = getKids()[0]?.id;
@@ -1788,10 +2158,30 @@ function renderChoreTracker() {
   document.getElementById('chore-tracker-body').innerHTML = html;
 }
 
+/* ═══════════════════════════════════════════
+   REWARDS ADMIN — add / edit / delete, with a persisted change history
+═══════════════════════════════════════════ */
+let rewardFormState = null; // null closed, 'new', or an existing reward id
+let rewardHistoryOpen = false;
+
 function renderRewards() {
-  document.getElementById('reward-grid').innerHTML = REWARDS.map(r =>
-    `<div class="reward-tile"><span class="reward-star">⭐</span>${esc(r)}</div>`
-  ).join('');
+  const grid = document.getElementById('reward-grid');
+  grid.innerHTML = REWARDS.map(r => `
+    <div class="reward-tile">
+      <span class="reward-star">⭐</span>
+      <span style="flex:1">${esc(r.label)}</span>
+      <span class="profile-card-actions" style="margin-left:6px">
+        <button onclick="editReward('${r.id}')">Edit</button>
+        <button class="del" onclick="deleteReward('${r.id}')">Delete</button>
+      </span>
+    </div>`
+  ).join('') + `
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+      <button class="btn-gold" style="font-size:11px;padding:6px 12px" onclick="openRewardForm()">+ Add Reward</button>
+      <button class="btn-ghost" style="font-size:11px;padding:6px 12px" onclick="toggleRewardHistory()">${rewardHistoryOpen ? 'Hide' : 'Show'} History</button>
+    </div>
+    ${rewardFormState !== null ? rewardFormMarkup() : ''}
+    ${rewardHistoryOpen ? rewardHistoryMarkup() : ''}`;
 
   const homeDays = recentHomeDays(7);
   let html = `<div class="reward-rule-card">
@@ -1813,6 +2203,70 @@ function renderRewards() {
   }
   html += '</div>';
   document.getElementById('reward-progress-col').innerHTML = html;
+}
+
+function rewardFormMarkup() {
+  const editing = rewardFormState !== 'new' ? REWARDS.find(r => r.id === rewardFormState) : null;
+  return `<div class="reward-rule-card" style="margin-top:10px">
+    <div class="rule-title">${editing ? 'Edit Reward' : 'New Reward'}</div>
+    <div class="s-field">
+      <label>Description</label>
+      <input id="rw-label" type="text" value="${editing ? esc(editing.label) : ''}" placeholder="e.g. Extra bedtime story">
+    </div>
+    <div class="s-actions" style="margin-top:8px">
+      <button class="btn-gold" onclick="saveReward()">Save</button>
+      <button class="btn-ghost" onclick="closeRewardForm()">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function rewardHistoryMarkup() {
+  const history = [...loadRewardsHistory()].reverse().slice(0, 25);
+  if (!history.length) return `<div class="s-hint" style="margin-top:10px">No changes logged yet.</div>`;
+  const fmtTs = iso => new Date(iso).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' });
+  return `<div class="reward-rule-card" style="margin-top:10px">
+    <div class="rule-title">Reward History</div>
+    ${history.map(h => `<div class="s-hint" style="margin-bottom:4px">
+      ${fmtTs(h.ts)} — <strong style="color:var(--cream)">${h.action}</strong>:
+      ${h.action === 'edit' ? `"${esc(h.prevLabel)}" → "${esc(h.label)}"` : `"${esc(h.label)}"`}
+      <span style="opacity:.7">(${esc(h.changedBy)})</span>
+    </div>`).join('')}
+  </div>`;
+}
+
+function toggleRewardHistory() { rewardHistoryOpen = !rewardHistoryOpen; renderRewards(); }
+
+function openRewardForm(id) { rewardFormState = id || 'new'; renderRewards(); }
+function closeRewardForm() { rewardFormState = null; renderRewards(); }
+function editReward(id) { openRewardForm(id); }
+
+function saveReward() {
+  const label = document.getElementById('rw-label').value.trim();
+  if (!label) { alert('Description is required'); return; }
+  if (rewardFormState === 'new') {
+    const reward = { id: 'reward-' + Date.now(), label };
+    REWARDS.push(reward);
+    logRewardChange('add', reward);
+  } else {
+    const reward = REWARDS.find(r => r.id === rewardFormState);
+    if (!reward) return;
+    const prevLabel = reward.label;
+    reward.label = label;
+    logRewardChange('edit', reward, prevLabel);
+  }
+  saveRewards();
+  rewardFormState = null;
+  renderRewards();
+}
+
+function deleteReward(id) {
+  const reward = REWARDS.find(r => r.id === id);
+  if (!reward) return;
+  if (!confirm(`Remove "${reward.label}" from the reward menu?`)) return;
+  REWARDS = REWARDS.filter(r => r.id !== id);
+  saveRewards();
+  logRewardChange('delete', reward);
+  renderRewards();
 }
 
 /* ═══════════════════════════════════════════
@@ -1951,6 +2405,8 @@ function saveProfile() {
 let tokenClient = null;
 let accessToken = null;
 let activePickerSessionId = null;
+let currentUserEmail = null;
+let currentUserName = null;
 
 function gsiLoaded() { if (CFG.clientId) initGoogleAuth(); }
 
@@ -1959,6 +2415,8 @@ function initGoogleAuth() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CFG.clientId,
     scope: [
+      'openid',
+      'email',
       'https://www.googleapis.com/auth/calendar.readonly',
       'https://www.googleapis.com/auth/photospicker.mediaitems.readonly',
     ].join(' '),
@@ -1972,7 +2430,7 @@ function startSignIn() {
   tokenClient.requestAccessToken({ prompt:'select_account' });
 }
 
-function onToken(resp) {
+async function onToken(resp) {
   if (resp.error) {
     console.error('Auth error:', resp);
     document.getElementById('cal-events').innerHTML =
@@ -1981,8 +2439,29 @@ function onToken(resp) {
   }
   accessToken = resp.access_token;
   document.getElementById('auth-overlay').classList.add('hidden');
+  await loadCurrentUser();
+  startAccessSession();
   loadCalendar();
   restorePhotos();
+}
+
+// Identifies who's signed in, purely so schedule-change and access logs can
+// attribute entries to a real person instead of an anonymous browser.
+async function loadCurrentUser() {
+  currentUserEmail = null;
+  currentUserName = null;
+  if (!accessToken) return;
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return;
+    const info = await res.json();
+    currentUserEmail = info.email || null;
+    currentUserName = info.name || info.email || null;
+  } catch (e) {
+    console.warn('Could not resolve signed-in user info:', e);
+  }
 }
 
 async function cleanupPickerSession() {
@@ -1998,11 +2477,96 @@ async function cleanupPickerSession() {
 }
 
 async function signOut() {
+  endAccessSession();
   await cleanupPickerSession();
   if (accessToken) google.accounts.oauth2.revoke(accessToken, ()=>{});
   accessToken = null;
+  currentUserEmail = null;
+  currentUserName = null;
   document.getElementById('auth-overlay').classList.remove('hidden');
   toggleSettings();
+}
+
+/* ═══════════════════════════════════════════
+   ACCESS LOG — first-seen + session duration per signed-in user.
+   Plain product logging (who opened the hub, when, for how long), readable
+   and exportable by the admin account. Lives in this browser's localStorage
+   only — it does not sync across devices; see plan doc for moving this to
+   a shared backend if a cross-device record is ever needed.
+═══════════════════════════════════════════ */
+const ACCESS_LOG_KEY = 'smrekar_access_log';
+const ADMIN_EMAILS = ['nhsmrekar@gmail.com'];
+let accessHeartbeatId = null;
+
+function loadAccessLog() {
+  try { return JSON.parse(localStorage.getItem(ACCESS_LOG_KEY) || '{}'); }
+  catch { return {}; }
+}
+function saveAccessLog(log) { localStorage.setItem(ACCESS_LOG_KEY, JSON.stringify(log)); }
+
+function startAccessSession() {
+  if (!currentUserEmail) return;
+  const log = loadAccessLog();
+  const now = new Date().toISOString();
+  if (!log[currentUserEmail]) {
+    log[currentUserEmail] = { name: currentUserName, firstSeen: now, sessions: [] };
+  }
+  log[currentUserEmail].name = currentUserName;
+  log[currentUserEmail].sessions.push({ start: now, end: now });
+  saveAccessLog(log);
+  if (accessHeartbeatId) clearInterval(accessHeartbeatId);
+  accessHeartbeatId = setInterval(touchAccessSession, 20000);
+  renderAccessLog();
+}
+function touchAccessSession() {
+  if (!currentUserEmail) return;
+  const log = loadAccessLog();
+  const entry = log[currentUserEmail];
+  if (!entry || !entry.sessions.length) return;
+  entry.sessions[entry.sessions.length - 1].end = new Date().toISOString();
+  saveAccessLog(log);
+}
+function endAccessSession() {
+  touchAccessSession();
+  if (accessHeartbeatId) { clearInterval(accessHeartbeatId); accessHeartbeatId = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') touchAccessSession();
+});
+window.addEventListener('beforeunload', touchAccessSession);
+
+function isAdminUser() { return currentUserEmail && ADMIN_EMAILS.includes(currentUserEmail); }
+
+function renderAccessLog() {
+  const section = document.getElementById('access-log-section');
+  if (!section) return;
+  if (!isAdminUser()) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  const log = loadAccessLog();
+  const rows = Object.entries(log).map(([email, entry]) => {
+    const totalMs = entry.sessions.reduce((sum, s) => sum + (new Date(s.end) - new Date(s.start)), 0);
+    const lastSeen = entry.sessions.length ? entry.sessions[entry.sessions.length - 1].end : entry.firstSeen;
+    return { email, name: entry.name, firstSeen: entry.firstSeen, lastSeen, totalMs, sessionCount: entry.sessions.length };
+  }).sort((a, b) => new Date(a.firstSeen) - new Date(b.firstSeen));
+  const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? `${m}m` : `${Math.floor(m/60)}h ${m%60}m`; };
+  const fmtTs = iso => new Date(iso).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' });
+  document.getElementById('access-log-body').innerHTML = rows.length
+    ? rows.map(r => `<div class="s-hint" style="margin-bottom:6px;line-height:1.5">
+        <strong style="color:var(--cream)">${esc(r.name || r.email)}</strong> (${esc(r.email)})<br>
+        First accessed: ${fmtTs(r.firstSeen)} · Last seen: ${fmtTs(r.lastSeen)} · Total time: ${fmtDur(r.totalMs)} · ${r.sessionCount} session${r.sessionCount===1?'':'s'}
+      </div>`).join('')
+    : '<div class="s-hint">No access recorded yet.</div>';
+}
+
+function exportAccessLog() {
+  const log = loadAccessLog();
+  const blob = new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `smrekar-hub-access-log-${ymd(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /* ═══════════════════════════════════════════
@@ -2396,12 +2960,42 @@ window.addEventListener('load', () => {
       <div class="s-field">
         <label>Kids Home on These Cycle Days</label>
         <div id="sched-day-picker"></div>
-        <div class="s-hint">Tap to toggle. Highlighted = kids at Dad's. Changes take effect on Save.</div>
+        <div class="s-hint">Tap to toggle. Highlighted = Dad's days. Changing the anchor date to a new date starts a new schedule version from then forward — past days keep computing under whatever schedule was actually in effect. Changes take effect on Save.</div>
       </div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Holidays &amp; Vacations</div>
+      <div id="holidays-list"></div>
+      <button class="btn-gold" style="margin-top:10px;font-size:11px;padding:6px 12px" onclick="openHolidayForm()">+ Add Holiday</button>
+      <div id="holiday-form-container"></div>
+      <div class="s-hint">A holiday date overrides the regular cycle for that one day — belongs wholly to Mom's or Dad's side regardless of the rotation.</div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Observations</div>
+      <div class="s-field">
+        <label>Period</label>
+        <select id="obs-period" onchange="onObsPeriodChange()">
+          <option value="cycle">Current 2-week cycle</option>
+          <option value="quarter">3 months (trailing/upcoming)</option>
+          <option value="annual">Calendar year (Jan 1 – Dec 31)</option>
+        </select>
+      </div>
+      <div class="s-field" id="obs-year-row" style="display:none">
+        <label>Year</label>
+        <select id="obs-year" onchange="renderObservations()"></select>
+      </div>
+      <div id="observations-body"></div>
+      <div class="s-hint">Recorded days come from the daily custody log; scheduled days are computed from the active schedule version and any holiday overrides.</div>
     </div>
     <div class="s-section">
       <div class="s-section-title">Theme</div>
       <div class="theme-grid" id="theme-grid"></div>
+    </div>
+    <div class="s-section" id="access-log-section" style="display:none">
+      <div class="s-section-title">Access Log (admin only)</div>
+      <div id="access-log-body"></div>
+      <button class="btn-ghost" style="margin-top:6px;font-size:11px;padding:4px 10px" onclick="exportAccessLog()">Export JSON…</button>
+      <div class="s-hint">Visible only when signed in as an admin account. Logged locally in this browser — not yet synced across devices (see ROADMAP).</div>
     </div>
     <div class="s-actions">
       <button class="btn-gold" onclick="saveSettings()">Save Settings</button>
