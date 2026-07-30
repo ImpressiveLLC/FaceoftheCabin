@@ -722,10 +722,10 @@
       --np-w-collapsed: 96px;
     }
     #notepad-panel {
-      position:fixed; top:150px; right:0; z-index:9995;
+      position:fixed; top:var(--np-top, 150px); right:0; z-index:9995;
       display:flex; flex-direction:row; align-items:stretch;
       width: var(--np-w-collapsed);
-      max-height:min(70vh, 620px);
+      max-height:var(--np-max-height, min(70vh, 620px));
       background: var(--glass);
       border:1px solid var(--glass-border);
       border-right:none;
@@ -3179,13 +3179,54 @@ function computeNotepadWidths() {
   document.documentElement.style.setProperty('--np-w-expanded', `${Math.round(Math.max(...widths))}px`);
   document.documentElement.style.setProperty('--np-w-collapsed', `${Math.round(Math.min(...widths))}px`);
 }
+// The panel was fixed at a hardcoded top:150px, which visually covered
+// #chores-card (right column of the main grid) at most viewport sizes.
+// Anchor it below the chores card's actual rendered bottom edge instead —
+// same runtime-measurement approach as computeNotepadWidths() above, so it
+// stays correct as the chores list grows/shrinks with the number of kids.
+//
+// Pushing the top down isn't enough on its own, though: the panel's
+// max-height was a flat min(70vh,620px), and #dashboard-fab/#settings-btn
+// sit at a higher z-index (10000 vs. the panel's 9995) — so a taller
+// #chores-card could push the panel's bottom edge down into the FABs and
+// they'd win every click in the overlap. Compute an available height that
+// stops above the topmost FAB instead of a fixed constant.
+const NOTEPAD_TOP_FALLBACK = 150;
+const NOTEPAD_TOP_GAP = 16;
+const NOTEPAD_BOTTOM_GAP = 16;
+// Not-overlapping-the-FABs always wins over looking spacious — this floor
+// only guarantees the collapsed handle stays a clickable tap target
+// (~56px), it does not force room the layout doesn't actually have. On a
+// short viewport with a tall chores card (many kids/chores), the expanded
+// panel legitimately gets cramped; that's a real content/layout tension
+// worth a follow-up design pass, not something to paper over by re-creating
+// the FAB overlap this fix exists to prevent.
+const NOTEPAD_MIN_HEIGHT = 56;
+function computeNotepadTop() {
+  const choresEl = document.getElementById('chores-card');
+  const top = Math.max(
+    choresEl ? Math.round(choresEl.getBoundingClientRect().bottom + NOTEPAD_TOP_GAP) : NOTEPAD_TOP_FALLBACK,
+    NOTEPAD_TOP_FALLBACK
+  );
+  document.documentElement.style.setProperty('--np-top', `${top}px`);
+
+  const fabTops = ['dashboard-fab', 'settings-btn']
+    .map(id => document.getElementById(id))
+    .filter(Boolean)
+    .map(el => el.getBoundingClientRect().top);
+  if (fabTops.length) {
+    const available = Math.min(...fabTops) - NOTEPAD_BOTTOM_GAP - top;
+    const capped = Math.max(NOTEPAD_MIN_HEIGHT, Math.min(available, 620));
+    document.documentElement.style.setProperty('--np-max-height', `${Math.round(capped)}px`);
+  }
+}
 function debounce(fn, ms) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
-window.addEventListener('resize', debounce(computeNotepadWidths, 150));
+window.addEventListener('resize', debounce(() => { computeNotepadWidths(); computeNotepadTop(); }, 150));
 if (window.ResizeObserver) {
-  const npResizeObserver = new ResizeObserver(debounce(computeNotepadWidths, 150));
+  const npResizeObserver = new ResizeObserver(debounce(() => { computeNotepadWidths(); computeNotepadTop(); }, 150));
   window.addEventListener('load', () => {
     NOTEPAD_WIDTH_REF_IDS.forEach(id => {
       const el = document.getElementById(id);
@@ -3358,6 +3399,7 @@ window.addEventListener('load', () => {
   setInterval(() => { updateCustodyBadge(); renderTodayChores(); }, 60000);
 
   computeNotepadWidths();
+  computeNotepadTop();
   renderNotepad();
   applyNotepadOpenState();
   checkNotepadAutoCollapse();

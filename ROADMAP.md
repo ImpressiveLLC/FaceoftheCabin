@@ -323,6 +323,14 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 
 - [x] Fix Family Hub overlay z-index bug
 - [x] All platform code unified in `FaceoftheCabin` (`smrekar-platform` deprecated)
+- [ ] Family Notepad: `/api/notes` on `cabin-backend` (Postgres-backed, matches the existing
+      `api.unicornpingpong.com` shared-services scope in §3.3) so notes sync across every
+      device/browser instead of staying `localStorage`-per-browser. Poll-based delivery
+      (matches the file's existing `setInterval` patterns), not WebSocket/SSE, for v1.
+      Host-agnostic by construction — frontend calls a configurable API base URL, same
+      pattern the React UI already uses, so it works identically whether the backend runs
+      on the M920q, home hub, or a future cloud host. Full spec/rationale:
+      `docs/PRODUCT_NOTES.md` 2026-07-30 entry, "Known limitation" section.
 - [ ] **[BLOCKER]** Push current M920q `docker-compose.yml` to CabinAutomations repo (currently local-only at `/storage/containers/compose/cabin/`)
 - [ ] Register `unicornpingpong.com` at Porkbun, add to Cloudflare free tier
 - [ ] Add `cloudflared` container to M920q docker-compose, configure tunnel to `hub/cabin/api` subdomains
