@@ -526,6 +526,8 @@
     .sched-day-num { font-size:9px; color:var(--cream-dim); letter-spacing:.5px; text-transform:uppercase; }
     .sched-day-label { font-size:12px; color:var(--cream); font-weight:500; }
     .sched-day-chip.active .sched-day-label { color:var(--teal); }
+    .sched-day-owner { font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:.5px; }
+    .sched-day-chip.active .sched-day-owner { color:var(--teal); }
     .chore-carryover { border-color:rgba(255,100,100,.25); }
     .chore-reward-banner {
       background:rgba(200,164,74,.08); border:1px solid rgba(200,164,74,.22);
@@ -820,6 +822,7 @@
     Sign in with Google
   </button>
   <p class="auth-note">You'll need an OAuth Client ID. <button class="auth-cfg-link" onclick="toggleSettings()">Open Settings →</button></p>
+  <p id="auth-error" class="auth-note" style="display:none;color:#e08080"></p>
 </div>
 
 <!-- ── MAIN AMBIENT DISPLAY ── -->
@@ -1140,22 +1143,40 @@ function logRewardChange(action, reward, prevLabel) {
 ═══════════════════════════════════════════ */
 const SCHED_CFG_KEY = 'smrekar_schedule_cfg'; // legacy single-anchor key, read once for migration
 const SCHED_RULES_KEY = 'smrekar_schedule_rules';
+
+// dayOwners is explicit for all 14 indices ('dad' | 'mom') rather than a
+// "home days" set implying everything else is the other parent by default —
+// keeps the model symmetric and makes each day's ownership unambiguous.
+function homeDaysToOwners(homeDaysArr) {
+  const set = new Set(homeDaysArr || []);
+  const owners = {};
+  for (let i = 0; i < 14; i++) owners[i] = set.has(i) ? 'dad' : 'mom';
+  return owners;
+}
+// Back-compat: normalize any rule object that still only has the older
+// `homeDays` array shape (from before this dayOwners refactor) into the
+// explicit map, so previously-saved data keeps working.
+function normalizeRule(rule) {
+  if (rule.dayOwners) return rule;
+  return { ...rule, dayOwners: homeDaysToOwners(rule.homeDays) };
+}
+
 const DEFAULT_SCHEDULE_RULES = [
-  { id:'rule-2026-03-13', effectiveFrom:'2026-03-13', anchor:'2026-03-13', homeDays:[0,1,4,5,8,9,12,13], label:'Original 2026 custody schedule', createdAt:'2026-03-13T12:00:00.000Z', createdBy:'seed' },
-  { id:'rule-2026-07-27', effectiveFrom:'2026-07-27', anchor:'2026-07-27', homeDays:[2,3,4,5,9,10], label:'50/50 schedule agreed 2026-07-27', createdAt:'2026-07-29T12:00:00.000Z', createdBy:'seed' },
+  { id:'rule-2026-03-13', effectiveFrom:'2026-03-13', anchor:'2026-03-13', dayOwners:homeDaysToOwners([0,1,4,5,8,9,12,13]), label:'Original 2026 custody schedule', createdAt:'2026-03-13T12:00:00.000Z', createdBy:'seed' },
+  { id:'rule-2026-07-27', effectiveFrom:'2026-07-27', anchor:'2026-07-27', dayOwners:homeDaysToOwners([2,3,4,5,9,10]), label:'50/50 schedule agreed 2026-07-27', createdAt:'2026-07-29T12:00:00.000Z', createdBy:'seed' },
 ];
 
 function loadScheduleRules() {
   try {
     const stored = JSON.parse(localStorage.getItem(SCHED_RULES_KEY) || 'null');
-    if (stored && stored.length) return stored;
+    if (stored && stored.length) return stored.map(normalizeRule);
   } catch {}
   try {
     // Migrate a pre-versioning single anchor if present, so a device that
     // only ever saw the old flat setting doesn't lose its own history.
     const legacy = JSON.parse(localStorage.getItem(SCHED_CFG_KEY) || 'null');
     if (legacy && legacy.start) {
-      return [{ id:'rule-'+legacy.start, effectiveFrom:legacy.start, anchor:legacy.start, homeDays:legacy.homeDays, label:'Migrated from previous single-anchor setting', createdAt:new Date().toISOString(), createdBy:'migration' }];
+      return [{ id:'rule-'+legacy.start, effectiveFrom:legacy.start, anchor:legacy.start, dayOwners:homeDaysToOwners(legacy.homeDays), label:'Migrated from previous single-anchor setting', createdAt:new Date().toISOString(), createdBy:'migration' }];
     }
   } catch {}
   return DEFAULT_SCHEDULE_RULES.map(r => ({ ...r }));
@@ -1183,13 +1204,18 @@ function ruleDayOwner(rule, date) {
   // UTC offset.
   const diff = Math.floor((new Date(ymd(date)) - new Date(rule.anchor)) / 86400000);
   if (diff < 0) return null;
-  return new Set(rule.homeDays).has(diff % 14) ? 'dad' : 'mom';
+  return rule.dayOwners[diff % 14] || 'mom';
 }
 
 // Backward-compat globals: "the rule currently being edited in Settings"
 // (the day-picker grid and its onchange handlers read these directly).
+// KIDS_HOME_DAYS is derived from dayOwners purely for the checkbox UI —
+// dayOwners is the canonical storage.
 let SCHEDULE_START = new Date(currentRule().anchor + 'T12:00:00');
-let KIDS_HOME_DAYS = new Set(currentRule().homeDays);
+function dadDaySet(rule) {
+  return new Set(Object.entries(rule.dayOwners).filter(([, v]) => v === 'dad').map(([k]) => Number(k)));
+}
+let KIDS_HOME_DAYS = dadDaySet(currentRule());
 
 // Canonical answer to "who has the kids on this date" — holiday override
 // first, else whichever rule was in effect. Returns 'dad' | 'mom' | null
@@ -1207,16 +1233,18 @@ function isKidsHome(date) { return ownerOfDate(date) === 'dad'; }
 // effective forward from then; every prior version is left untouched so
 // historical days keep computing under whatever was actually in effect.
 function saveSchedCfg(startDateStr, homeDayArr) {
+  const dayOwners = homeDaysToOwners(homeDayArr);
   const latest = currentRule();
   if (latest && latest.effectiveFrom === startDateStr) {
     latest.anchor = startDateStr;
-    latest.homeDays = homeDayArr;
+    latest.dayOwners = dayOwners;
+    delete latest.homeDays;
   } else {
     SCHEDULE_RULES.push({
       id: 'rule-' + startDateStr + '-' + Date.now(),
       effectiveFrom: startDateStr,
       anchor: startDateStr,
-      homeDays: homeDayArr,
+      dayOwners,
       label: '',
       createdAt: new Date().toISOString(),
       createdBy: currentUserEmail || 'local (not signed in)',
@@ -1224,7 +1252,7 @@ function saveSchedCfg(startDateStr, homeDayArr) {
   }
   saveScheduleRules();
   SCHEDULE_START = new Date(currentRule().anchor + 'T12:00:00');
-  KIDS_HOME_DAYS = new Set(currentRule().homeDays);
+  KIDS_HOME_DAYS = dadDaySet(currentRule());
   logScheduleChange(startDateStr, homeDayArr);
 }
 
@@ -1239,7 +1267,7 @@ function logScheduleChange(startDateStr, homeDayArr) {
     ts: new Date().toISOString(),
     changedBy: currentUserEmail || 'local (not signed in)',
     start: startDateStr,
-    homeDays: homeDayArr,
+    dayOwners: homeDaysToOwners(homeDayArr),
   });
   localStorage.setItem(SCHED_LOG_KEY, JSON.stringify(log));
 }
@@ -1484,9 +1512,25 @@ const DEFAULTS = {
 
 let CFG = { ...DEFAULTS, ...loadCfg() };
 
+// Set when localStorage is unavailable or throws (private-browsing mode,
+// strict tracking-prevention purging site data, some in-app webviews). Used
+// to tell "not configured yet" apart from "storage is actively blocked" —
+// those look identical (CFG.clientId is '' either way) but need different
+// messages to the user.
+let storageBroken = false;
+function storageAvailable() {
+  try {
+    const k = '__smrekar_storage_test__';
+    localStorage.setItem(k, '1');
+    const ok = localStorage.getItem(k) === '1';
+    localStorage.removeItem(k);
+    return ok;
+  } catch { return false; }
+}
 function loadCfg() {
+  if (!storageAvailable()) { storageBroken = true; return {}; }
   try { return JSON.parse(localStorage.getItem(CFG_KEY) || '{}'); }
-  catch { return {}; }
+  catch { storageBroken = true; return {}; }
 }
 
 function saveCfg() { localStorage.setItem(CFG_KEY, JSON.stringify(CFG)); }
@@ -1706,10 +1750,12 @@ function renderSchedDayPicker() {
     const d = addDays(anchor, i);
     const label = `${WD[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`;
     const checked = KIDS_HOME_DAYS.has(i) ? 'checked' : '';
+    const ownerLabel = KIDS_HOME_DAYS.has(i) ? "Dad's" : "Mom's";
     html += `<label class="sched-day-chip ${KIDS_HOME_DAYS.has(i)?'active':''}">
-      <input type="checkbox" class="sched-day-cb" value="${i}" ${checked} onchange="this.closest('label').classList.toggle('active',this.checked)">
+      <input type="checkbox" class="sched-day-cb" value="${i}" ${checked} onchange="this.closest('label').classList.toggle('active',this.checked); this.closest('label').querySelector('.sched-day-owner').textContent = this.checked ? &quot;Dad's&quot; : &quot;Mom's&quot;;">
       <span class="sched-day-num">Day ${i}</span>
       <span class="sched-day-label">${label}</span>
+      <span class="sched-day-owner">${ownerLabel}</span>
     </label>`;
   }
   html += '</div>';
@@ -2425,9 +2471,26 @@ function initGoogleAuth() {
 }
 
 function startSignIn() {
-  if (!CFG.clientId) { toggleSettings(); return; }
+  if (!CFG.clientId) {
+    showAuthNote(storageBroken
+      ? "This browser is blocking or has cleared local storage, so the hub can't remember its Google sign-in setup here. Try opening this link directly in Safari or Chrome — not an in-app browser like Messages, Instagram, or Facebook — and make sure Private/Incognito mode is off, then try again."
+      : "No Google sign-in is set up on this device yet. Opening Settings so you can add it.");
+    toggleSettings();
+    return;
+  }
+  hideAuthNote();
   if (!tokenClient) initGoogleAuth();
   tokenClient.requestAccessToken({ prompt:'select_account' });
+}
+function showAuthNote(msg) {
+  const el = document.getElementById('auth-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideAuthNote() {
+  const el = document.getElementById('auth-error');
+  if (el) el.style.display = 'none';
 }
 
 async function onToken(resp) {

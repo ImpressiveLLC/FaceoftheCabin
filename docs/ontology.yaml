@@ -1698,13 +1698,16 @@ elements:
     rendering:
       semantic: "Schedule effective from {date}"
       systems: Custody Rule Version
-      technical: "{ id, effectiveFrom, anchor, homeDays, label, createdAt, createdBy }"
+      technical: "{ id, effectiveFrom, anchor, dayOwners, label, createdAt, createdBy }"
       compliance: Custody Agreement Version Record
     definition: >
       One version of the 14-day custody rule, effective from a given date
       forward. Supersedes parenting_schedule_anchor + parenting_home_days as
       a single flat value — the schedule is now a list of these, so a change
       to today's pattern never rewrites how past dates are computed.
+      dayOwners is an explicit map of all 14 cycle-day indices to 'dad' or
+      'mom' (not a "home days" set implying the complement by default) —
+      every day's ownership is unambiguous rather than implied.
     relationships:
       - target: parenting_schedule_anchor
         type: replaces
@@ -1728,10 +1731,12 @@ elements:
       elements: [holiday_override, custody_day_log, observation_report]
     notes: >
       Seeded with two versions on first run: 2026-03-13 (original schedule,
-      homeDays [0,1,4,5,8,9,12,13]) and 2026-07-27 (50/50 schedule agreed
-      2026-07-27, homeDays [2,3,4,5,9,10] — Rachel Mon/Tue, Nate Wed/Thu,
+      dad days [0,1,4,5,8,9,12,13]) and 2026-07-27 (50/50 schedule agreed
+      2026-07-27, dad days [2,3,4,5,9,10] — Rachel Mon/Tue, Nate Wed/Thu,
       alternating Fri-Sun). A device that only ever saw the pre-versioning
-      flat smrekar_schedule_cfg value migrates it into a single version.
+      flat smrekar_schedule_cfg value, or an earlier build of this app that
+      stored rules as a `homeDays` array instead of `dayOwners`, migrates
+      automatically into the current explicit-map shape via normalizeRule().
 
   - id: holiday_override
     entity_type: owl:Class

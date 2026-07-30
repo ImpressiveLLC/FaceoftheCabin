@@ -51,6 +51,42 @@ All in `C:\dev\FaceoftheCabin` (your other local clone — not the one under
 8. **`ROADMAP.md`** — updated the stored "Parenting anchor" table row to
    point at the new versioned-rule design instead of the old flat value.
 
+### 0.1 Follow-up session (later same day) — dayOwners refactor + sign-in fix
+
+A follow-up message asked for two more things. Both are done, on top of the
+work above (still local, still uncommitted at time of writing):
+
+- **`homeDays` → `dayOwners`.** Each rule now stores an explicit
+  `{ 0:'dad'|'mom', 1:'dad'|'mom', ... }` map for all 14 cycle-day indices,
+  instead of an array of just the "Dad's" day indices with everything else
+  implied to be Mom's. `ruleDayOwner()`, `saveSchedCfg()`, and the day-picker
+  UI (now labels each chip "Dad's"/"Mom's" explicitly, not just
+  highlighted/not) all updated. A `normalizeRule()` migration converts any
+  already-saved rule still in the old `homeDays` shape automatically —
+  nothing is lost if this ships to a browser that already ran last night's
+  version.
+- **Mobile sign-in bug.** Confirmed the diagnosis: `startSignIn()` silently
+  called `toggleSettings()` whenever `CFG.clientId` was empty, with zero
+  distinction between "never configured on this device" (normal) and
+  "storage is blocked/wiped" (a real failure — private browsing, strict
+  tracking prevention, or an in-app webview like Messages/Instagram/
+  Facebook can do this). Added `storageAvailable()` (a real write+read+remove
+  probe, not just a try/catch around JSON.parse) and a `storageBroken` flag
+  set the first time it fails. `startSignIn()` now shows an actual message
+  in the auth screen (`#auth-error`) explaining which case it hit, instead
+  of just silently opening Settings with no explanation. I did not find any
+  `@media` queries at all in this file, so a responsive-layout/tap-target
+  bug is unlikely to be the culprit — the code-path explanation fits what
+  was described.
+
+Both changes re-verified with an expanded Node logic-test pass (16 checks:
+old/new rule dates, the 14-key dayOwners invariant, legacy-shape migration,
+holiday override, rule amend-vs-version, and storage-failure detection) —
+all passing. Still no live browser check possible for the same sandbox
+reason as above; **please click through Settings → Parenting Schedule once
+for real**, and if you can, actually test the sign-in button from the
+affected phone/browser to confirm the new message appears.
+
 Everything above passed a Node-based logic test (19 checks, all passing —
 old-rule dates, new-rule dates across both weeks, holiday override, rule
 amend-vs-new-version behavior, immutability of superseded rules) since I
