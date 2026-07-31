@@ -199,6 +199,12 @@
       width:5px; height:5px; border-radius:50%; background:var(--gold);
       margin-top:5px; flex-shrink:0; box-shadow:0 0 7px var(--gold);
     }
+    /* Pac-Man theme: calendar dots flash like power pellets. Scoped by
+       [data-theme] (set in applyTheme()) so no other theme is affected —
+       higher specificity than the bare .ev-pip rule above wins regardless
+       of source order. */
+    @keyframes pacmanPelletFlash { 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.35; transform:scale(1.4);} }
+    [data-theme="pacman"] .ev-pip { animation: pacmanPelletFlash 1.1s ease-in-out infinite; }
     /* A long event title with white-space:nowrap and no min-width:0 on its
        flex parent doesn't truncate — it forces the flex item wider than the
        column's fixed 310px, spilling into the center content. This is the
@@ -1026,6 +1032,28 @@
     .album-item:hover { background:var(--glass-light); color:var(--gold); }
     .album-count { opacity:.5; font-size:11px; }
 
+    /* Upcoming Holidays — magazine-style: soonest first on the left,
+       scrolling right toward farther-future dates. */
+    .upcoming-holidays-controls { display:flex; gap:8px; margin:4px 0 8px; }
+    .upcoming-holidays-controls select { flex:1; min-width:0; }
+    .upcoming-holidays-scroll {
+      display:flex; gap:10px; overflow-x:auto; overflow-y:hidden;
+      scroll-snap-type:x proximity; padding-bottom:8px; scrollbar-width:thin;
+      scrollbar-color:rgba(255,255,255,.15) transparent;
+    }
+    .upcoming-holidays-scroll::-webkit-scrollbar { height:5px; }
+    .upcoming-holidays-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,.15); border-radius:3px; }
+    .upcoming-holiday-card {
+      flex:0 0 140px; scroll-snap-align:start;
+      background:rgba(255,255,255,.05); border:1px solid var(--glass-border);
+      border-radius:10px; padding:10px 12px;
+    }
+    .upcoming-holiday-card .uh-date { font-size:10px; color:var(--gold); text-transform:uppercase; letter-spacing:1px; }
+    .upcoming-holiday-card .uh-name { font-size:13px; color:var(--cream); font-weight:600; margin:4px 0 2px; line-height:1.3; }
+    .upcoming-holiday-card .uh-owner { font-size:11px; color:var(--cream-dim); }
+    .upcoming-holiday-card.dad { border-color:var(--teal-glow); }
+    .upcoming-holiday-card.mom { border-color:var(--gold-glow); }
+
     /* ═══════════════════════════════════════════
        RESPONSIVE OVERRIDES — deliberately last in the stylesheet.
        These override #app/#top-bar/#center-area/#left-col/#chores-card/
@@ -1726,6 +1754,35 @@ function renderHolidays() {
        ${holidayHistoryOpen ? holidayHistoryMarkup() : ''}`;
   const formContainer = document.getElementById('holiday-form-container');
   if (formContainer) formContainer.innerHTML = holidayFormState !== null ? holidayFormMarkup() : '';
+  renderUpcomingHolidays();
+}
+
+// Soonest-first, filterable by parent and date range, searchable by name —
+// a browsing view over HOLIDAYS distinct from the add/edit/delete list
+// above. Renders as a horizontally scrolling row (soonest on the left).
+function renderUpcomingHolidays() {
+  const el = document.getElementById('upcoming-holidays-scroll');
+  if (!el) return;
+  const ownerFilter = document.getElementById('upcoming-holiday-owner')?.value || 'all';
+  const rangeSel = document.getElementById('upcoming-holiday-range')?.value || '365';
+  const search = (document.getElementById('upcoming-holiday-search')?.value || '').trim().toLowerCase();
+  const todayKey = ymd(new Date());
+  const rangeEndKey = rangeSel === 'all' ? null : ymd(addDays(new Date(), parseInt(rangeSel, 10)));
+
+  const list = HOLIDAYS
+    .filter(h => h.date >= todayKey)
+    .filter(h => rangeEndKey === null || h.date <= rangeEndKey)
+    .filter(h => ownerFilter === 'all' || h.owner === ownerFilter)
+    .filter(h => !search || h.name.toLowerCase().includes(search))
+    .sort((a, b) => a.date.localeCompare(b.date)); // soonest first, left to right
+
+  el.innerHTML = list.length
+    ? list.map(h => `<div class="upcoming-holiday-card ${h.owner}">
+        <div class="uh-date">${new Date(h.date + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })}</div>
+        <div class="uh-name">${esc(h.name)}</div>
+        <div class="uh-owner">${h.owner === 'dad' ? "Dad's" : "Mom's"}</div>
+      </div>`).join('')
+    : '<div class="s-hint">No upcoming holidays in this range.</div>';
 }
 
 function holidayHistoryMarkup() {
@@ -3491,6 +3548,19 @@ const THEMES = {
     },
     fonts: [{ id:'fh-font-neon80s', href:'https://fonts.googleapis.com/css2?family=Monoton&family=Orbitron:wght@400;600;700&display=swap' }],
   },
+  pacman: {
+    label: 'Pac-Man', id: 'pacman',
+    vars: {
+      '--night':'#000000', '--glass':'rgba(0,0,20,0.85)', '--glass-light':'rgba(255,255,0,0.05)',
+      '--glass-border':'rgba(33,33,222,0.65)', '--shadow':'0 10px 50px rgba(255,255,0,.28), 0 0 60px rgba(33,33,222,.3)',
+      '--gold':'#ffff00', '--gold-glow':'rgba(255,255,0,0.4)', '--gold-faint':'rgba(255,255,0,0.12)',
+      '--teal':'#00ffde', '--teal-glow':'rgba(0,255,222,0.3)',
+      '--rose':'#ff0000', '--rose-glow':'rgba(255,0,0,0.3)',
+      '--cream':'#ffffff', '--cream-dim':'rgba(255,255,255,0.72)', '--cream-ghost':'rgba(255,255,255,0.32)',
+      '--radius':'16px', '--font-display':"'Press Start 2P','Chakra Petch',monospace", '--font-ui':"'VT323','Share Tech Mono',monospace",
+    },
+    fonts: [{ id:'fh-font-pacman', href:'https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap' }],
+  },
 };
 
 let activeThemeId = localStorage.getItem(THEME_KEY) || 'deepspace';
@@ -3685,6 +3755,25 @@ window.addEventListener('load', () => {
       <button class="btn-gold" style="margin-top:10px;font-size:11px;padding:6px 12px" onclick="openHolidayForm()">+ Add Holiday</button>
       <div id="holiday-form-container"></div>
       <div class="s-hint">A holiday date overrides the regular cycle for that one day — belongs wholly to Mom's or Dad's side regardless of the rotation.</div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Upcoming Holidays</div>
+      <div class="upcoming-holidays-controls">
+        <select id="upcoming-holiday-owner" onchange="renderUpcomingHolidays()">
+          <option value="all">All</option>
+          <option value="dad">Dad's</option>
+          <option value="mom">Mom's</option>
+        </select>
+        <select id="upcoming-holiday-range" onchange="renderUpcomingHolidays()">
+          <option value="90">Next 3 months</option>
+          <option value="180">Next 6 months</option>
+          <option value="365" selected>Next year</option>
+          <option value="all">All future</option>
+        </select>
+      </div>
+      <input id="upcoming-holiday-search" type="text" placeholder="Search by name…" oninput="renderUpcomingHolidays()" style="margin-bottom:8px">
+      <div id="upcoming-holidays-scroll" class="upcoming-holidays-scroll"></div>
+      <div class="s-hint">Soonest first, left to right. Filter by parent, narrow the date range, or search by name.</div>
     </div>
     <div class="s-section">
       <div class="s-section-title">Observations</div>

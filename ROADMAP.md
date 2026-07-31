@@ -323,14 +323,20 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 
 - [x] Fix Family Hub overlay z-index bug
 - [x] All platform code unified in `FaceoftheCabin` (`smrekar-platform` deprecated)
-- [ ] Family Notepad: `/api/notes` on `cabin-backend` (Postgres-backed, matches the existing
-      `api.unicornpingpong.com` shared-services scope in §3.3) so notes sync across every
-      device/browser instead of staying `localStorage`-per-browser. Poll-based delivery
-      (matches the file's existing `setInterval` patterns), not WebSocket/SSE, for v1.
-      Host-agnostic by construction — frontend calls a configurable API base URL, same
-      pattern the React UI already uses, so it works identically whether the backend runs
-      on the M920q, home hub, or a future cloud host. Full spec/rationale:
-      `docs/PRODUCT_NOTES.md` 2026-07-30 entry, "Known limitation" section.
+- [ ] Cross-device backend on `cabin-backend` (Postgres-backed, matches the existing
+      `api.unicornpingpong.com` shared-services scope in §3.3) — bundles two features that
+      hit the same root cause (`localStorage` is per-browser, not synced): Family Notepad
+      and chore completion (found 2026-07-31: "logout on device A, reauthenticate on device
+      B shows empty chores" is not a bug, verified the toggle->save->persist->reload path is
+      internally consistent — it's the storage architecture). Poll-based delivery (matches
+      the file's existing `setInterval` patterns), not WebSocket/SSE, for v1. Host-agnostic
+      by construction — frontend calls a configurable API base URL, same pattern the React
+      UI already uses. **Canonical spec is `docs/ontology.yaml`, not this line** — implementation
+      must trace back to those entities, not the other way around:
+      - Notes: `docs/PRODUCT_NOTES.md` 2026-07-30 entry ("Known limitation" section)
+      - Chores: ontology `chore_daily_success` / `chore_weekly_success` — persists the
+        already-correct client-side day/week success logic (3+/day, 4+/week, matching
+        `rewardEligibility()`) as stored facts instead of only deriving them live
 - [ ] **[BLOCKER]** Push current M920q `docker-compose.yml` to CabinAutomations repo (currently local-only at `/storage/containers/compose/cabin/`)
 - [ ] **[FOUND 2026-07-30]** `cabin-postgres` on the M920q is running on the
       fallback dev password (`cabin_dev_password`), not the real value in

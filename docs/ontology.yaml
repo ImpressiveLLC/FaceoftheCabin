@@ -1771,6 +1771,9 @@ elements:
       - target: holiday_history_entry
         type: consumed_by
         cardinality: "1:N"
+      - target: upcoming_holidays_view
+        type: consumed_by
+        cardinality: "1:N"
     transformation: >
       CRUD via openHolidayForm()/saveHoliday()/deleteHoliday(), persisted by
       saveHolidaysState(). ownerOfDate(date) checks holidayForDate(ymd(date))
@@ -1779,7 +1782,42 @@ elements:
       holiday_history_entry via logHolidayChange().
     relates_to:
       ui_components: [settings_panel]
-      elements: [parenting_schedule_rule_version, observation_report, holiday_history_entry]
+      elements: [parenting_schedule_rule_version, observation_report, holiday_history_entry, upcoming_holidays_view]
+
+  - id: upcoming_holidays_view
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Upcoming Holidays"
+    source: holiday_override, filtered to future dates and sorted
+    rendering:
+      semantic: "Christmas Day — Dec 25, 2026 — Dad's"
+      systems: Upcoming Holidays Browser (owner filter + date-range + search)
+      technical: "renderUpcomingHolidays() → #upcoming-holidays-scroll innerHTML"
+      compliance: Scheduled Custody Exception Report
+    definition: >
+      A browsing view over holiday_override distinct from the add/edit/
+      delete list — every future holiday (date >= today), soonest first,
+      filterable by owner (all/Dad's/Mom's), narrowable by date range (3mo/
+      6mo/1yr/all future), and searchable by name. Rendered as a
+      horizontally scrolling row (soonest on the left) rather than a
+      vertical list — a deliberate "magazine, left to right" layout choice.
+    relationships:
+      - target: holiday_override
+        type: derives_from
+        cardinality: "N:1"
+    transformation: >
+      Recomputed on every filter change: HOLIDAYS.filter(date >= today,
+      within range, matches owner, matches search).sort(date ascending).
+      No separate storage — always derived live from holiday_override, never
+      goes stale relative to it.
+    relates_to:
+      ui_components: [settings_panel]
+      elements: [holiday_override]
 
   - id: holiday_history_entry
     entity_type: owl:Class
@@ -1812,6 +1850,48 @@ elements:
     relates_to:
       ui_components: [settings_panel]
       elements: [holiday_override]
+
+  - id: theme_preference
+    entity_type: owl:DatatypeProperty
+    layer: frontend
+    primitive: true
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      enum: "deepspace | modern | lcars | monolith | retrocrt | bluefin | madscience | neon80s | pacman"
+    ui_display_name: "Theme"
+    source: localStorage["cabin-theme"]
+    rendering:
+      semantic: "e.g. \"80s Neon\" or \"Pac-Man\""
+      systems: Display Theme Selection
+      technical: "THEME_KEY; THEMES[id] → { vars: {CSS custom properties}, fonts: [] }"
+      compliance: (not shown)
+    definition: >
+      Which visual theme is active — a full palette + font-pair swap via CSS
+      custom properties (--night, --glass, --gold, --teal, --rose, --cream,
+      --radius, --font-display, --font-ui), applied by setting them on
+      document.documentElement and a data-theme attribute some theme-specific
+      CSS (e.g. Pac-Man's flashing calendar dots) hooks off of. Per-device —
+      not synced, same as every other localStorage-backed preference here.
+    transformation: >
+      applyTheme(id) sets each var via root.style.setProperty(), sets
+      root.dataset.theme = id, loads/unloads that theme's Google Fonts link
+      tags, and persists to localStorage. renderThemeGrid() reflects the
+      active choice in Settings.
+    relates_to:
+      ui_components: [settings_panel]
+      elements: []
+    notes: >
+      8 presets as of 2026-07-31, added incrementally across sessions:
+      deepspace (default), modern, lcars, monolith, retrocrt, bluefin,
+      madscience, neon80s ("80s Neon" — magenta/cyan/yellow, Monoton +
+      Orbitron, sharp 2px radius), pacman ("Pac-Man" — black/yellow/blue/red,
+      Press Start 2P + VT323, 16px radius, animated flashing .ev-pip dots
+      scoped to [data-theme="pacman"]). No ontology entry existed for this
+      system before 2026-07-31 despite 6 presets already shipped — added
+      retroactively per the "ontology is canonical, not optional" directive.
 
   - id: custody_day_log
     entity_type: owl:Class
@@ -2057,10 +2137,92 @@ elements:
       Read: getChoreState(dayKey, kidId, choreId) returns boolean (default false).
     relates_to:
       ui_components: [ui_chore_tracker_tab, ui_today_chores_card]
-      elements: [chore_assignment, reward_eligibility, chore_daily_view]
+      elements: [chore_assignment, reward_eligibility, chore_daily_view, chore_daily_success]
     notes: >
       Structure: { "2026-07-27": { "sam": { "brush_teeth": true, ... }, ... } }.
       No expiry — historical data used for reward lookback window.
+      KNOWN GAP (confirmed 2026-07-31, not a code bug): localStorage-only,
+      so completion recorded on one device/browser is invisible after
+      signing in on a different one — verified the toggle -> save -> persist
+      -> reload path is internally consistent; the per-browser storage
+      architecture is the actual cause. See chore_daily_success /
+      chore_weekly_success below for the queued fix.
+
+  - id: chore_daily_success
+    entity_type: owl:DatatypeProperty
+    layer: backend
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: planned
+    data_class: derived
+    data_type: xsd:boolean
+    ui_display_name: "Qualifying day"
+    source: chore_completion_state, aggregated server-side (queued — not built yet)
+    rendering:
+      semantic: "Qualifying day (3+ chores done)"
+      systems: Daily Chore Success Flag
+      technical: "countDayCompleted(dayKey,kidId) >= 3 — today this is derived
+        live, client-side, from chore_completion_state every time it's read"
+      compliance: Daily Chore Threshold Record
+    definition: >
+      Whether a kid completed enough chores (the existing >=3 threshold
+      already used by rewardEligibility()) on a given day to count as a
+      "successful day." The comparison logic already exists and is correct
+      — what's queued is persisting the *result* as a stored fact per day,
+      not only computing it live from raw per-chore-per-day records, same
+      reasoning as custody_day_log for the parenting schedule.
+    relationships:
+      - target: chore_completion_state
+        type: derives_from
+        cardinality: "N:1"
+      - target: chore_weekly_success
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: [ui_chore_tracker_tab, ui_today_chores_card]
+      elements: [chore_completion_state, chore_weekly_success]
+    notes: >
+      QUEUED, NOT YET BUILT (2026-07-31). Needs a real /api/chores endpoint
+      on cabin-backend (already running) backed by Postgres — same backend,
+      same reasoning, as the queued /api/notes work already in ROADMAP.md
+      Phase 1. One backend effort should cover raw completion records plus
+      both derived aggregates below.
+
+  - id: chore_weekly_success
+    entity_type: owl:DatatypeProperty
+    layer: backend
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: planned
+    data_class: derived
+    data_type: xsd:boolean
+    ui_display_name: "Reward-eligible week"
+    source: chore_daily_success, aggregated over a rolling 7-day home-day window
+    rendering:
+      semantic: "Reward unlocked this week"
+      systems: Weekly Chore Success Flag
+      technical: "rewardEligibility(kidId, homeDays) — today this is derived
+        live, client-side (qualifying >= 4 of the last 7 home days)"
+      compliance: Weekly Reward Eligibility Record
+    definition: >
+      Whether a kid qualified for a reward in a rolling 7-day window (the
+      existing >=4-qualifying-days threshold in reward_eligibility). Same
+      "persist the derived fact, don't only compute it live" reasoning as
+      chore_daily_success — lets a week's eligibility be looked up directly
+      instead of re-walking 7 days of raw completion data every time.
+    relationships:
+      - target: chore_daily_success
+        type: derives_from
+        cardinality: "N:1"
+      - target: reward_eligibility
+        type: extends
+        cardinality: "1:1"
+    relates_to:
+      ui_components: [ui_rewards_tab]
+      elements: [chore_daily_success, reward_eligibility]
+    notes: >
+      QUEUED, NOT YET BUILT (2026-07-31). Same /api/chores backend effort
+      as chore_daily_success.
 
   - id: chore_daily_view
     entity_type: owl:Class
