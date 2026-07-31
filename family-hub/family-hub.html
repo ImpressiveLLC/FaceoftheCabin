@@ -733,7 +733,7 @@
       backdrop-filter:blur(30px) saturate(1.5);
       -webkit-backdrop-filter:blur(30px) saturate(1.5);
       box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
-      transition: width .42s cubic-bezier(.4,0,.2,1);
+      transition: width .42s cubic-bezier(.4,0,.2,1), height .42s cubic-bezier(.4,0,.2,1);
       overflow:hidden;
     }
     #notepad-panel.open { width: var(--np-w-expanded); }
@@ -840,12 +840,38 @@
     .np-history-link:hover { color:var(--cream); }
     .np-save-hint { font-size:9.5px; color:var(--cream-ghost); opacity:.6; letter-spacing:.2px; }
 
+    /* Narrow / touch viewports: right-edge width-docking doesn't work well
+       against real content on a phone — the previous flat top:auto;
+       bottom:128px sat right on top of #dashboard-fab/#settings-btn,
+       reported as the notepad being "hidden under settings and dashboard."
+       Switch to a bottom-center bar instead: collapsed = short horizontal
+       strip, open = grows upward (height, not width). Position and height
+       are computed in JS (computeNotepadTop()'s isNarrow branch) using the
+       same above-the-FABs guarantee as desktop, plus visualViewport
+       awareness so the on-screen keyboard can't push the compose box
+       off-screen (the "scrolls out and doesn't allow entry" symptom). */
     @media (max-width: 900px) {
-      #notepad-panel { top:auto; bottom:128px; max-height:52vh; }
-      .np-list { max-height:32vh; }
-    }
-    @media (max-height: 700px) {
-      #notepad-panel { max-height:56vh; }
+      #notepad-panel {
+        top:auto; left:50%; right:auto; transform:translateX(-50%);
+        bottom:var(--np-bottom, 150px);
+        width:min(92vw, 420px);
+        height:56px;
+        max-height:var(--np-max-height, 60vh);
+        flex-direction:column-reverse;
+        border-radius:var(--radius);
+        border:1px solid var(--glass-border);
+      }
+      #notepad-panel.open { width:min(92vw, 420px); height:var(--np-max-height, 60vh); }
+      #notepad-handle {
+        flex:0 0 56px; width:100%; height:56px;
+        flex-direction:row; align-items:center; justify-content:space-between;
+        gap:10px; padding:8px 16px;
+        border-left:none; border-top:1px solid var(--glass-border);
+      }
+      .np-handle-preview { -webkit-line-clamp:1; }
+      #notepad-main { width:100%; flex:1 1 auto; overflow:hidden; }
+      #notepad-main-inner { width:100%; }
+      .np-list { max-height:none; }
     }
 
     /* ── Note History overlay (full scrollable list, capped at 50) ── */
@@ -3207,41 +3233,75 @@ function computeNotepadWidths() {
 // same runtime-measurement approach as computeNotepadWidths() above, so it
 // stays correct as the chores list grows/shrinks with the number of kids.
 //
-// Pushing the top down isn't enough on its own, though: the panel's
-// max-height was a flat min(70vh,620px), and #dashboard-fab/#settings-btn
-// sit at a higher z-index (10000 vs. the panel's 9995) — so a taller
-// #chores-card could push the panel's bottom edge down into the FABs and
-// they'd win every click in the overlap. Compute an available height that
-// stops above the topmost FAB instead of a fixed constant.
-const NOTEPAD_TOP_FALLBACK = 150;
+// Pushing the top down isn't enough on its own, though: #dashboard-fab and
+// #settings-btn sit at a higher z-index (10000 vs. the panel's 9995) — so a
+// taller #chores-card could push the panel's bottom edge down into the FABs
+// and they'd win every click in the overlap. NOT-OVERLAPPING-THE-FABS IS A
+// HARD CONSTRAINT — never crossed. Below that, the panel gets pushed back
+// UP above #chores-card as far as needed (up to a safe ceiling near the
+// clock/header) to guarantee real usable room, rather than shrinking down
+// to a barely-clickable sliver.
+//
+// Below 900px width — real touch devices, where this was reported as
+// unusable — the panel switches to a different CSS layout entirely
+// (bottom-center, growing upward; see the max-width:900px block), so this
+// desktop right-docked geometry only actually applies above that width.
+const NOTEPAD_TOP_ABSOLUTE_MIN = 90;  // never cover the clock/header
 const NOTEPAD_TOP_GAP = 16;
 const NOTEPAD_BOTTOM_GAP = 16;
-// Not-overlapping-the-FABs always wins over looking spacious — this floor
-// only guarantees the collapsed handle stays a clickable tap target
-// (~56px), it does not force room the layout doesn't actually have. On a
-// short viewport with a tall chores card (many kids/chores), the expanded
-// panel legitimately gets cramped; that's a real content/layout tension
-// worth a follow-up design pass, not something to paper over by re-creating
-// the FAB overlap this fix exists to prevent.
-const NOTEPAD_MIN_HEIGHT = 56;
+const NOTEPAD_MIN_HEIGHT = 260; // enough for compose box + a few note rows
 function computeNotepadTop() {
+  const isNarrow = window.innerWidth < 900;
   const choresEl = document.getElementById('chores-card');
-  const top = Math.max(
-    choresEl ? Math.round(choresEl.getBoundingClientRect().bottom + NOTEPAD_TOP_GAP) : NOTEPAD_TOP_FALLBACK,
-    NOTEPAD_TOP_FALLBACK
-  );
-  document.documentElement.style.setProperty('--np-top', `${top}px`);
-
   const fabTops = ['dashboard-fab', 'settings-btn']
     .map(id => document.getElementById(id))
     .filter(Boolean)
     .map(el => el.getBoundingClientRect().top);
-  if (fabTops.length) {
-    const available = Math.min(...fabTops) - NOTEPAD_BOTTOM_GAP - top;
-    const capped = Math.max(NOTEPAD_MIN_HEIGHT, Math.min(available, 620));
-    document.documentElement.style.setProperty('--np-max-height', `${Math.round(capped)}px`);
+  const keyboardInset = getKeyboardInset();
+  const viewportBottom = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+  const hardBottom = fabTops.length
+    ? Math.min(Math.min(...fabTops), viewportBottom) - NOTEPAD_BOTTOM_GAP
+    : viewportBottom - NOTEPAD_BOTTOM_GAP;
+
+  if (isNarrow) {
+    // Bottom-center mode: anchor by distance from the viewport's bottom
+    // edge, clearing both FABs and the on-screen keyboard (if up).
+    const bottomOffset = Math.max(NOTEPAD_BOTTOM_GAP, Math.round(window.innerHeight - hardBottom + keyboardInset));
+    document.documentElement.style.setProperty('--np-bottom', `${bottomOffset}px`);
+    const available = hardBottom - NOTEPAD_TOP_ABSOLUTE_MIN;
+    document.documentElement.style.setProperty('--np-max-height', `${Math.round(Math.max(NOTEPAD_MIN_HEIGHT, Math.min(available, 620)))}px`);
+    return;
   }
+
+  const preferredTop = choresEl
+    ? Math.round(choresEl.getBoundingClientRect().bottom + NOTEPAD_TOP_GAP)
+    : NOTEPAD_TOP_ABSOLUTE_MIN;
+  // Guarantee MIN_HEIGHT by pushing top back up if chores-card leaves too
+  // little room — usability above perfectly avoiding the chores card.
+  const top = Math.max(NOTEPAD_TOP_ABSOLUTE_MIN, Math.min(preferredTop, hardBottom - NOTEPAD_MIN_HEIGHT));
+  document.documentElement.style.setProperty('--np-top', `${top}px`);
+  const capped = Math.max(NOTEPAD_MIN_HEIGHT, Math.min(hardBottom - top, 620));
+  document.documentElement.style.setProperty('--np-max-height', `${Math.round(capped)}px`);
 }
+
+// iOS Safari (and some other mobile browsers) don't shrink the layout
+// viewport when the on-screen keyboard opens — only visualViewport does —
+// so a position:fixed element measured against window.innerHeight can end
+// up rendered behind the keyboard, invisible, even though its CSS position
+// is technically correct. This is exactly why the reported bug included
+// "scrolls out and doesn't allow entry" once composing a note.
+function getKeyboardInset() {
+  if (!window.visualViewport) return 0;
+  return Math.max(0, Math.round(window.innerHeight - window.visualViewport.height));
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', debounce(computeNotepadTop, 100));
+}
+document.addEventListener('focusin', e => {
+  if (e.target && e.target.id === 'notepad-input') {
+    setTimeout(() => e.target.scrollIntoView({ block: 'nearest' }), 300);
+  }
+});
 function debounce(fn, ms) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
@@ -3358,6 +3418,19 @@ const THEMES = {
       '--radius':'2px', '--font-display':"'Share Tech Mono','Courier New',monospace", '--font-ui':"'Share Tech Mono','Courier New',monospace",
     },
     fonts: [{ id:'fh-font-madscience', href:'https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap' }],
+  },
+  neon80s: {
+    label: '80s Neon', id: 'neon80s',
+    vars: {
+      '--night':'#0d0221', '--glass':'rgba(30,8,64,0.78)', '--glass-light':'rgba(255,0,255,0.05)',
+      '--glass-border':'rgba(255,45,212,0.4)', '--shadow':'0 10px 50px rgba(255,45,212,.4), 0 0 90px rgba(0,255,240,.12)',
+      '--gold':'#ff2dd4', '--gold-glow':'rgba(255,45,212,0.38)', '--gold-faint':'rgba(255,45,212,0.12)',
+      '--teal':'#00fff0', '--teal-glow':'rgba(0,255,240,0.32)',
+      '--rose':'#ffe600', '--rose-glow':'rgba(255,230,0,0.28)',
+      '--cream':'#f6f0ff', '--cream-dim':'rgba(246,240,255,0.68)', '--cream-ghost':'rgba(246,240,255,0.30)',
+      '--radius':'2px', '--font-display':"'Monoton','Chakra Petch',sans-serif", '--font-ui':"'Orbitron','Chakra Petch',sans-serif",
+    },
+    fonts: [{ id:'fh-font-neon80s', href:'https://fonts.googleapis.com/css2?family=Monoton&family=Orbitron:wght@400;600;700&display=swap' }],
   },
 };
 
