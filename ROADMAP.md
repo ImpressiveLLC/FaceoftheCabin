@@ -332,6 +332,20 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       on the M920q, home hub, or a future cloud host. Full spec/rationale:
       `docs/PRODUCT_NOTES.md` 2026-07-30 entry, "Known limitation" section.
 - [ ] **[BLOCKER]** Push current M920q `docker-compose.yml` to CabinAutomations repo (currently local-only at `/storage/containers/compose/cabin/`)
+- [ ] **[FOUND 2026-07-30]** `cabin-postgres` on the M920q is running on the
+      fallback dev password (`cabin_dev_password`), not the real value in
+      `cabin-orchestration-platform/.env` — that file isn't where Docker
+      Compose actually looks (`infra/.env`, per `.env.m920q.example`'s own
+      instructions; it drifted to the parent directory at some point).
+      **Not fixed** — Postgres only applies `POSTGRES_PASSWORD` at first
+      volume init, so moving/fixing the `.env` now could hand `cabin-backend`
+      a real password that doesn't match what's actually stored in the
+      existing data volume, breaking the DB connection. Needs a deliberate
+      call (reset the DB password to match, or re-init the volume) before
+      touching this, not a routine fix. More pressing given the plan to
+      eventually expose `api.unicornpingpong.com` publicly via Cloudflare
+      Tunnel — a default password matters a lot more once anything's
+      internet-reachable, not just on Tailscale.
 - [ ] Register `unicornpingpong.com` at Porkbun, add to Cloudflare free tier
 - [ ] Add `cloudflared` container to M920q docker-compose, configure tunnel to `hub/cabin/api` subdomains
 - [ ] Update Google OAuth authorized origin from `http://127.0.0.1:5500` to `https://hub.unicornpingpong.com`
