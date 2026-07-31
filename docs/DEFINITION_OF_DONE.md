@@ -5,7 +5,7 @@
 > substantial work session, not just when asked. Update the "Last verified"
 > line each time; don't let this doc go stale itself.
 
-**Last verified:** 2026-07-30, against commit `462b692` on `main` — deployed and confirmed live on the M920q's `family-hub` container (§8).
+**Last verified:** 2026-07-31, against commit `a1ec7ee` on `main` — deployed and confirmed live on the M920q's `family-hub` container (§8). Since `462b692`: chore-completion data layer verified consistent (not a bug — confirmed the cross-device gap instead, see §9), host-driven Google Client ID (no more per-device Settings entry), notepad rebuilt for touch devices + keyboard-awareness, Android layout collision root-caused and fixed (cascade-order bug in the fix itself, caught and corrected), calendar text-overflow fixed, 80s Neon + Pac-Man themes, Upcoming Holidays browser, and `chore_daily_success`/`chore_weekly_success` ontology entities for the queued backend. **Not closed out:** CI/CD runner still never registered (checked directly — `/opt/actions-runner` doesn't exist on the M920q; every deploy this session was manual), stale `H:\...\FaceoftheCabin` clone still unresolved.
 
 ---
 
@@ -222,3 +222,78 @@ from an earlier session.
 - **This document itself is versioned like code.** Update it in the same
   commit as whatever changed its status; don't let "Last verified" drift
   from reality.
+
+---
+
+## Next Session — Prioritized Plan
+
+> Ordered by leverage, not by request order. "Foundational" items unlock or
+> de-risk other work; doing them late means paying for the same gap twice
+> (once now, once when a dependent feature needs it). Sequencing notes
+> exist because some of these touch the same infrastructure — doing them
+> together avoids two separate risky changes to the same system.
+
+### Tier 1 — Foundational (do these first; everything else gets cheaper or safer after)
+
+1. **Register the CI/CD self-hosted runner.** Zero technical dependencies,
+   ~5 minutes of user time (grab a token from GitHub, run the Ansible
+   playbook or the manual command in `ansible/README.md`). Highest
+   effort-to-leverage ratio on this list: every deploy after this is
+   automatic instead of me manually SSHing in. Do this **before** the
+   backend work below, so that work ships through the pipeline instead of
+   manually too.
+2. **Build the cross-device backend** (`/api/notes` + `/api/chores` on
+   `cabin-backend`, Postgres-backed). This is the single highest-value item
+   on the list — one backend effort unblocks three separate things at
+   once: Family Notepad sync, chore-completion sync, and the personalization
+   feature (Tier 3, #1) which **cannot be built at all** without this
+   existing first. Every additional localStorage-only feature built before
+   this ships is more migration surface later — this should be the next
+   thing built, not deferred further.
+3. **Resolve the `cabin-postgres` default-password finding**, bundled with
+   #2 since both touch the same database — doing them as one change avoids
+   two separate risky touches to `cabin-backend`'s DB connection. Sequencing
+   matters here specifically: this should land **before** `api.unicornpingpong.com`
+   is ever exposed publicly via the Cloudflare Tunnel (a default password is
+   a much bigger deal reachable from the internet than on Tailscale-only).
+4. **Resolve the stale `H:\...\FaceoftheCabin` clone** (delete or reset to
+   `main`). Trivial effort, but it already caused one real mistake this
+   session (a doc edit landed in the wrong repo) — the risk compounds every
+   session it's left ambiguous.
+
+### Tier 2 — Near-term supporting work (moderate value, no blocking dependencies)
+
+5. **Real-device verification pass** — an actual Android phone/tablet for
+   the layout fixes, and specifically a touch-only device (no physical
+   keyboard) for the notepad's `visualViewport` keyboard-handling, which
+   Playwright cannot simulate. This is verification, not construction — low
+   effort, closes out confidence gaps flagged throughout tonight's session.
+6. **Confirm `cabin.`/`api.` Cloudflare subdomain status.** `hub.` is
+   confirmed live; whether the other two ROADMAP-planned subdomains are
+   already configured through the same tunnel is unverified, not assumed
+   done or not-done.
+7. **CLAUDE.md / README.md drift audit** against everything shipped this
+   session (schedule versioning, holidays, themes, notepad, host-driven
+   config) — housekeeping, keeps future sessions from re-deriving context
+   that's already been established.
+8. **Mark completed ROADMAP checklist items done** — the Google OAuth
+   authorized-origin update happened live during tonight's debugging and
+   should be checked off, not left showing as pending.
+
+### Tier 3 — Stretch / explicitly deferred (real, but not next)
+
+1. **Personalization / dynamic UI ranking** (auth-identified per-user
+   interaction history driving which card renders first). Hard-blocked on
+   Tier 1 #2 — per-user history can't live in per-device storage. Also
+   explicitly tabled by the user pending a design discussion ("panel of
+   professionals") on what counts as a usage signal and how ranking should
+   decay over time — that conversation should happen before any code, not
+   after.
+2. **Mobile layout philosophy formal review.** Already aligned in practice
+   (content-driven single-column flow, confirmed correct by the user
+   tonight) — revisiting is about confirming the decision formally, not
+   because there's an open disagreement driving urgent work.
+3. **Web-hosted (non-self-hosted) deployment target.** A placeholder role
+   already exists in the Ansible playbook for this. No current need drives
+   it — everything runs self-hosted today. Build only if an actual
+   cloud-hosting requirement shows up.
