@@ -102,6 +102,8 @@ services:
     build:
       context: ../../family-hub
       dockerfile: Dockerfile
+      args:
+        GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     container_name: family-hub
     restart: unless-stopped
     ports:

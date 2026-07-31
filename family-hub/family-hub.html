@@ -1213,6 +1213,14 @@
   </div>
 </div>
 
+<!-- ── HOST CONFIG ──
+     Generated at image build time from GOOGLE_CLIENT_ID (see Dockerfile +
+     docker-compose.m920q.yml) — not committed, not present at all when
+     running this file directly outside the built image (e.g. the test
+     suite's static server), which is why every read of it below is
+     optional-chained. -->
+<script src="./host-config.js"></script>
+
 <!-- ── GOOGLE IDENTITY ── -->
 <script src="https://accounts.google.com/gsi/client" async="" defer="" onload="gsiLoaded()"></script>
 
@@ -1732,6 +1740,13 @@ const DEFAULTS = {
 };
 
 let CFG = { ...DEFAULTS, ...loadCfg() };
+// The host this page was served from always wins over whatever a device
+// has locally saved — devices shouldn't each carry their own copy of an
+// app-level setting like this. A per-device localStorage override existed
+// before host-config.js did; once the host provides a value, that override
+// becomes permanently stale and would otherwise silently shadow it forever.
+const hostGoogleClientId = window.HOST_CONFIG?.googleClientId || '';
+if (hostGoogleClientId) CFG.clientId = hostGoogleClientId;
 
 // Set when localStorage is unavailable or throws (private-browsing mode,
 // strict tracking-prevention purging site data, some in-app webviews). Used
@@ -1927,7 +1942,11 @@ async function loadPickedPhotos(sessionId) {
 
 function saveSettings() {
   CFG.familyName        = document.getElementById('set-fname').value.trim() || CFG.familyName;
-  CFG.clientId          = document.getElementById('set-client-id').value.trim();
+  // Host-provided value always wins (see hostGoogleClientId above) — the
+  // field is read-only in that case anyway, but guard here too so a saved
+  // CFG object never locks in a stale per-device copy that would shadow a
+  // future host value on some other code path.
+  if (!hostGoogleClientId) CFG.clientId = document.getElementById('set-client-id').value.trim();
   CFG.calId             = normalizeCalendarId(document.getElementById('set-cal-id').value) || 'primary';
   CFG.slideshowInterval = parseInt(document.getElementById('set-interval').value) || 12;
   CFG.maxPhotos         = parseInt(document.getElementById('set-max-photos').value) || 50;
@@ -1947,7 +1966,10 @@ function saveSettings() {
 
 function populateSettings() {
   document.getElementById('set-fname').value      = CFG.familyName;
-  document.getElementById('set-client-id').value  = CFG.clientId;
+  const clientIdField = document.getElementById('set-client-id');
+  clientIdField.value = CFG.clientId;
+  clientIdField.readOnly = !!hostGoogleClientId;
+  document.getElementById('client-id-host-note').style.display = hostGoogleClientId ? '' : 'none';
   document.getElementById('set-cal-id').value     = CFG.calId;
   const savedMeta = loadPhotoMeta();
   document.getElementById('set-album-id').value   = photos.length ? `${photos.length} photos loaded` : savedMeta.length ? `${savedMeta.length} photos saved (restoring…)` : '';
@@ -3477,6 +3499,7 @@ window.addEventListener('load', () => {
       <div class="s-field">
         <label>OAuth Client ID</label>
         <input id="set-client-id" type="text" placeholder="xxxxx.apps.googleusercontent.com">
+        <div class="s-hint" id="client-id-host-note" style="display:none">Set by the host this page was served from (see <code>GOOGLE_CLIENT_ID</code> in <code>.env</code> on the M920q) — not editable per device. Every device loading the Family Hub from this host gets the same value automatically.</div>
         <div class="s-hint">Create a Web application client at <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a> → APIs &amp; Services → Credentials. Add <code id="oauth-origin"></code> as an authorized JavaScript origin (no redirect URI is used by this token flow). Keep the app in Testing and add <code>smrekarfamilia@gmail.com</code> as a test user.</div>
       </div>
     </div>
