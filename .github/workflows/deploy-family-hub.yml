@@ -38,18 +38,22 @@ jobs:
           # fallback if that's ever unset.
           DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
 
-      - name: Rebuild and restart family-hub
+      - name: Rebuild and restart family-hub + cabin-ui
         run: |
           cd "$DEPLOY_PATH/cabin-orchestration-platform/infra"
-          # family-hub has no docker-compose.yml of its own — it's one
-          # service inside this project's compose, and the M920q override
+          # Neither service has its own docker-compose.yml — both are
+          # services inside this project's compose, and the M920q override
           # (docker-compose.m920q.yml) is required: it disables services
           # that conflict with the separately-managed "cabin" stack
           # (HA/mosquitto/nodered/frigate already running there) and
-          # remaps ports. Scoped to just the family-hub service — this
-          # workflow doesn't touch cabin-backend/cabin-ui/postgres/etc.
-          docker compose -f docker-compose.yml -f docker-compose.m920q.yml build family-hub
-          docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d family-hub
+          # remaps ports. Scoped to these two specifically: both are
+          # stateless static builds, safe to rebuild on every relevant
+          # push. cabin-backend/postgres/kafka/grafana are deliberately
+          # NOT included here — those are stateful/sensitive enough to
+          # warrant their own considered rollout, not a blanket rebuild
+          # every time anything under cabin-orchestration-platform/** changes.
+          docker compose -f docker-compose.yml -f docker-compose.m920q.yml build family-hub cabin-ui
+          docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d family-hub cabin-ui
         env:
           DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
 

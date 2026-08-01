@@ -118,14 +118,27 @@ services:
       context: ../ui
       dockerfile: Dockerfile
       args:
-        VITE_CABIN_API_BASE: http://100.77.44.113:8090
+        # Public now (api.unicornpingpong.com — needs a Cloudflare Tunnel
+        # public hostname route added manually, see docs/EXECUTION_PLAN_2026-07-30.md /
+        # session notes; cloudflared here is token-managed, not a local
+        # config file this repo can drive). Core device list/status and the
+        # Family Hub link both need this to work for a non-Tailscale visitor.
+        VITE_CABIN_API_BASE: ${CABIN_API_URL:-https://api.unicornpingpong.com}
+        # Left Tailscale-only deliberately: raw MQTT pub/sub (device control
+        # channel, not just viewing), and every embed below is a direct
+        # admin/reconfiguration surface (Node-RED flow editor, Frigate NVR
+        # admin, full Home Assistant admin, Zigbee2MQTT admin) — a
+        # meaningfully different risk than the read-only status/link-out
+        # this round is actually about. Those specific panels just won't
+        # load for a non-Tailscale visitor; the rest of the app is
+        # unaffected. Revisit only if that's explicitly wanted too.
         VITE_CABIN_WS_BASE: ws://100.77.44.113:9001
         VITE_CABIN_GRAFANA_URL: http://100.77.44.113:3002
         VITE_CABIN_NODERED_URL: http://100.77.44.113:1880
         VITE_CABIN_FRIGATE_URL: http://100.77.44.113:5000
         VITE_CABIN_HA_URL: http://100.77.44.113:8123
         VITE_CABIN_Z2M_URL: http://100.77.44.113:8080
-        VITE_CABIN_FAMILY_HUB_URL: ${FAMILY_HUB_URL:-http://100.77.44.113:4081}
+        VITE_CABIN_FAMILY_HUB_URL: ${FAMILY_HUB_URL:-https://hub.unicornpingpong.com}
     container_name: cabin-ui
     restart: unless-stopped
     ports:

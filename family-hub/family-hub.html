@@ -476,6 +476,21 @@
     .frankie-card .frankie-big { font-size:48px; text-align:center; margin:10px 0; }
     .frankie-info { font-size:13px; color:var(--cream-dim); text-align:center; line-height:1.7; }
 
+    .location-link {
+      display:flex; align-items:center; gap:12px;
+      padding:11px 12px; border-radius:12px; margin-bottom:8px;
+      background:rgba(255,255,255,.04); border:1px solid var(--glass-border);
+      text-decoration:none; color:inherit; cursor:pointer; transition:all .15s;
+      min-height:52px;
+    }
+    .location-link:last-child { margin-bottom:0; }
+    .location-link:hover { border-color:var(--gold); background:var(--gold-faint); }
+    .location-link-icon { font-size:22px; flex-shrink:0; }
+    .location-link-name { display:block; font-size:14px; font-weight:600; color:var(--cream); }
+    .location-link-sub { display:block; font-size:11px; color:var(--cream-dim); margin-top:2px; }
+    .location-link-disabled { opacity:.4; cursor:default; }
+    .location-link-disabled:hover { border-color:var(--glass-border); background:rgba(255,255,255,.04); }
+
     /* ── Schedule Tab ── */
     .schedule-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
     .sched-day {
@@ -2602,7 +2617,27 @@ function renderOverview() {
   }
   frankieHtml += '</div>';
 
-  document.getElementById('bottom-overview-cards').innerHTML = weekHtml + frankieHtml;
+  document.getElementById('bottom-overview-cards').innerHTML = weekHtml + frankieHtml + locationLinksHtml();
+}
+
+// Link-out to FaceOfTheCabin (device/camera/automation platform — a
+// separate app, this is deliberately a link-out rather than an iframe:
+// cabin-ui already iframes the Family Hub back the other way, embedding
+// both directions would just nest two full app shells inside each other).
+// "Home" stays disabled until that location actually exists — placeholder
+// per the original request, not a dead link presented as live.
+function locationLinksHtml() {
+  return `<div class="dash-card location-links-card">
+    <div class="dash-card-title">🏡 Other Places</div>
+    <a class="location-link" href="https://cabin.unicornpingpong.com" target="_blank" rel="noopener">
+      <span class="location-link-icon">🏔️</span>
+      <span><span class="location-link-name">How's the cabin?</span><span class="location-link-sub">Cameras, sensors, alerts ↗</span></span>
+    </a>
+    <div class="location-link location-link-disabled" title="Not set up yet — cabin is the template for this">
+      <span class="location-link-icon">🏠</span>
+      <span><span class="location-link-name">How's the house?</span><span class="location-link-sub">Coming soon</span></span>
+    </div>
+  </div>`;
 }
 
 function renderSchedule() {
