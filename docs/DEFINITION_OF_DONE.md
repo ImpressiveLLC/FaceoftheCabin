@@ -1,9 +1,14 @@
-# Definition of Done — FaceoftheCabin / Family Hub
+# Definition of Done — FaceoftheCabin / Family Hub Sessions
 
-> Canonical. A change is not "done" when it works on one machine — it's done
-> when every item below holds. Re-run this checklist at the end of any
-> substantial work session, not just when asked. Update the "Last verified"
-> line each time; don't let this doc go stale itself.
+> Canonical, but scoped to **sessions, not the app.** This is not a claim
+> that the Family Hub is finished — it's the bar every individual work
+> session must clear before being considered closed, the same way a sprint
+> has an exit checklist independent of whether the whole product is done.
+> Treat each session as its own iteration cycle: re-run this checklist at
+> the end of any substantial one, not just when asked, regardless of how
+> much backlog (see "Next Session — Prioritized Plan" below) remains
+> unbuilt. Update the "Last verified" line each time; don't let this doc go
+> stale itself.
 
 **Last verified:** 2026-07-31, against commit `a1ec7ee` on `main` — deployed and confirmed live on the M920q's `family-hub` container (§8). Since `462b692`: chore-completion data layer verified consistent (not a bug — confirmed the cross-device gap instead, see §9), host-driven Google Client ID (no more per-device Settings entry), notepad rebuilt for touch devices + keyboard-awareness, Android layout collision root-caused and fixed (cascade-order bug in the fix itself, caught and corrected), calendar text-overflow fixed, 80s Neon + Pac-Man themes, Upcoming Holidays browser, and `chore_daily_success`/`chore_weekly_success` ontology entities for the queued backend. **Not closed out:** CI/CD runner still never registered (checked directly — `/opt/actions-runner` doesn't exist on the M920q; every deploy this session was manual), stale `H:\...\FaceoftheCabin` clone still unresolved.
 
