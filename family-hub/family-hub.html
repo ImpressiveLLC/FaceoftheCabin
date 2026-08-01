@@ -402,6 +402,17 @@
       display:flex; gap:4px; padding:18px 36px 0;
       flex-shrink:0; border-bottom:1px solid var(--glass-border);
       padding-bottom:0;
+      /* 5 tabs with generous padding + no overflow handling meant the last
+         tab ("Family") could be pushed fully off-screen on a narrow phone
+         with zero way to reach it — not just hard to notice, genuinely
+         unreachable. Scrollable with a hidden scrollbar, same pattern used
+         elsewhere in this file. */
+      overflow-x:auto; scrollbar-width:none;
+    }
+    #dash-tabs::-webkit-scrollbar { display:none; }
+    @media (max-width: 480px) {
+      #dash-tabs { padding-left:16px; padding-right:16px; }
+      .d-tab { padding:10px 12px 12px; font-size:12px; white-space:nowrap; }
     }
     .d-tab {
       background:none; border:none; cursor:pointer;
@@ -1055,6 +1066,47 @@
     .upcoming-holiday-card.mom { border-color:var(--gold-glow); }
 
     /* ═══════════════════════════════════════════
+       "WHO ARE YOU" — actor context, set once at Dashboard > Overview,
+       persists across tabs/activities until changed or a 5-minute idle
+       timeout. Not access control — anyone can pick anyone; same trust
+       model as a paper family planner on the fridge. Buttons sized well
+       past the old 26px avatar-only notepad pills this replaces as the
+       shared default.
+    ═══════════════════════════════════════════ */
+    .actor-picker-card {
+      background: var(--glass); border:1px solid var(--glass-border);
+      border-radius: var(--radius); padding:16px 18px; margin-bottom:14px;
+    }
+    .actor-picker-prompt {
+      font-family:var(--font-display); font-size:18px; font-weight:500;
+      color:var(--cream); margin-bottom:12px;
+    }
+    .actor-picker-grid { display:flex; flex-wrap:wrap; gap:10px; }
+    .actor-btn {
+      display:flex; align-items:center; gap:10px;
+      min-height:56px; padding:8px 18px 8px 10px;
+      background:rgba(255,255,255,.05); border:1px solid var(--glass-border);
+      border-radius:14px; cursor:pointer; transition:all .15s;
+      font-family:var(--font-ui); color:var(--cream);
+    }
+    .actor-btn:hover { border-color:var(--gold); background:var(--gold-faint); }
+    .actor-btn .actor-btn-avatar { font-size:26px; }
+    .actor-btn .actor-btn-name { font-size:15px; font-weight:600; }
+    .actor-current-row {
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .actor-current-info { display:flex; align-items:center; gap:12px; }
+    .actor-current-avatar { font-size:32px; }
+    .actor-current-label { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--gold); opacity:.85; }
+    .actor-current-name { font-size:18px; font-weight:600; color:var(--cream); font-family:var(--font-display); }
+    .actor-switch-btn {
+      background:none; border:1px solid var(--glass-border); color:var(--cream-dim);
+      border-radius:20px; padding:10px 20px; font-family:var(--font-ui);
+      font-size:13px; cursor:pointer; transition:all .15s; min-height:44px;
+    }
+    .actor-switch-btn:hover { border-color:var(--gold); color:var(--gold); }
+
+    /* ═══════════════════════════════════════════
        RESPONSIVE OVERRIDES — deliberately last in the stylesheet.
        These override #app/#top-bar/#center-area/#left-col/#chores-card/
        #bottom-bar, which are unconditional ID-selector rules defined
@@ -1223,6 +1275,7 @@
   <div id="dash-content">
     <!-- OVERVIEW -->
     <div class="tab-pane active" id="tab-overview">
+      <div id="actor-picker"></div>
       <div class="dash-grid-2" id="kids-overview-cards"></div>
       <div class="dash-grid-3" id="bottom-overview-cards"></div>
     </div>
@@ -1360,6 +1413,101 @@ function saveProfiles() { localStorage.setItem(PROFILES_KEY, JSON.stringify(prof
 function getKids()    { return profiles.filter(p => p.role === 'kid'); }
 function getPets()    { return profiles.filter(p => p.role === 'pet'); }
 function getParents() { return profiles.filter(p => p.role === 'parent'); }
+function getActorCandidates() { return profiles.filter(p => p.role === 'kid' || p.role === 'parent'); }
+
+/* ═══════════════════════════════════════════
+   "WHO ARE YOU" — ACTOR CONTEXT
+   Set once at Dashboard > Overview, persists across every tab/activity in
+   this browser tab until the user changes it or 5 minutes pass with no
+   interaction. Not access control — anyone can pick anyone, same trust
+   model as a shared family calendar. sessionStorage (not localStorage):
+   should NOT survive closing/reopening the browser on someone's phone,
+   but should survive an accidental reload on the always-on kiosk display
+   within the same tab session — the 5-minute idle timer is the real gate
+   there, not the tab boundary.
+═══════════════════════════════════════════ */
+const ACTOR_KEY = 'smrekar_current_actor';
+const ACTOR_TIMEOUT_MS = 5 * 60 * 1000;
+let currentActorId = null;
+
+function loadActorState() {
+  try { return JSON.parse(sessionStorage.getItem(ACTOR_KEY) || 'null'); }
+  catch { return null; }
+}
+function saveActorState(state) { sessionStorage.setItem(ACTOR_KEY, JSON.stringify(state)); }
+function clearActorState() { sessionStorage.removeItem(ACTOR_KEY); currentActorId = null; }
+
+function initActorState() {
+  const state = loadActorState();
+  if (state && getActorCandidates().some(p => p.id === state.id) && (Date.now() - state.lastActivity) < ACTOR_TIMEOUT_MS) {
+    currentActorId = state.id;
+  } else {
+    clearActorState();
+  }
+}
+
+// Sets the actor and propagates it as the default for every feature that
+// previously had its own separate, narrower "who's this for" selector
+// (notepad author, chore tracker's kid selector) — those still allow a
+// one-off local override, but now start from the shared choice.
+function setCurrentActor(id) {
+  currentActorId = id;
+  saveActorState({ id, lastActivity: Date.now() });
+  if (typeof selectedNoteAuthorId !== 'undefined') selectedNoteAuthorId = id;
+  if (typeof activeChoreKid !== 'undefined') activeChoreKid = id;
+  renderActorPicker();
+  renderNoteAuthorRow?.();
+  if (typeof renderChoreKidSelector === 'function') renderChoreKidSelector();
+  if (typeof renderTodayChores === 'function') renderTodayChores();
+}
+
+function touchActorActivity() {
+  if (!currentActorId) return;
+  saveActorState({ id: currentActorId, lastActivity: Date.now() });
+}
+
+function checkActorTimeout() {
+  if (!currentActorId) return;
+  const state = loadActorState();
+  if (!state || (Date.now() - state.lastActivity) >= ACTOR_TIMEOUT_MS) {
+    clearActorState();
+    if (dashOpen) closeDashboard();
+    renderActorPicker();
+  }
+}
+setInterval(checkActorTimeout, 30000);
+
+function renderActorPicker() {
+  const el = document.getElementById('actor-picker');
+  if (!el) return;
+  const actor = profiles.find(p => p.id === currentActorId);
+  if (!actor) {
+    el.innerHTML = `<div class="actor-picker-card">
+      <div class="actor-picker-prompt">Who are you?</div>
+      <div class="actor-picker-grid">
+        ${getActorCandidates().map(p => `
+          <button type="button" class="actor-btn" onclick="setCurrentActor('${p.id}')">
+            <span class="actor-btn-avatar">${p.avatar || '🙂'}</span>
+            <span class="actor-btn-name">${esc(p.name)}</span>
+          </button>`).join('')}
+      </div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = `<div class="actor-picker-card">
+    <div class="actor-current-row">
+      <div class="actor-current-info">
+        <span class="actor-current-avatar">${actor.avatar || '🙂'}</span>
+        <div>
+          <div class="actor-current-label">Viewing as</div>
+          <div class="actor-current-name">${esc(actor.name)}</div>
+        </div>
+      </div>
+      <button type="button" class="actor-switch-btn" onclick="clearActorState(); renderActorPicker();">Not you? Switch</button>
+    </div>
+  </div>`;
+}
+initActorState();
 
 const CHORES = [
   { id:'set_table',        label:'Set the table & help serve',         points:1, minAge:6,  tags:['meal','daily'] },
@@ -2407,6 +2555,7 @@ function renderTodayChores() {
    DASHBOARD SECTIONS
 ═══════════════════════════════════════════ */
 function renderOverview() {
+  renderActorPicker();
   const schedule = generateSchedule(28);
   const homeDays = recentHomeDays(7);
   let kidsHtml = '';
@@ -2475,7 +2624,10 @@ function renderSchedule() {
   }
 }
 
-let activeChoreKid = getKids()[0]?.id;
+// Only inherit the actor if they're a kid — a parent-actor viewing chores
+// still needs a kid selected to show anything (defaultAssignments() looks
+// the id up in getKids() specifically and returns nothing for a parent id).
+let activeChoreKid = (getKids().some(k => k.id === currentActorId) ? currentActorId : null) || getKids()[0]?.id;
 
 function renderChoreKidSelector() {
   document.getElementById('chore-kid-selector').innerHTML = getKids().map(k =>
@@ -2727,7 +2879,11 @@ function switchTab(name) {
     p.classList.toggle('active', p.id === `tab-${name}`);
   });
   if (name === 'profiles') renderProfilesTab();
+  if (name === 'overview') renderActorPicker(); // catches an actor timeout that happened while on another tab
+  touchActorActivity();
 }
+document.getElementById('dashboard-overlay').addEventListener('click', touchActorActivity);
+document.getElementById('dashboard-overlay').addEventListener('touchstart', touchActorActivity, { passive: true });
 
 /* ═══════════════════════════════════════════
    FAMILY PROFILES ADMIN
@@ -3194,7 +3350,7 @@ function loadNotepadState() {
 let notepadState = loadNotepadState();
 function saveNotepadState() { localStorage.setItem(NOTEPAD_STATE_KEY, JSON.stringify(notepadState)); }
 
-let selectedNoteAuthorId = profiles[0]?.id || null;
+let selectedNoteAuthorId = currentActorId || profiles[0]?.id || null;
 
 function relTime(ts) {
   const diff = Date.now() - ts;
