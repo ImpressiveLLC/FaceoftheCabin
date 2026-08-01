@@ -104,6 +104,7 @@ services:
       dockerfile: Dockerfile
       args:
         GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        ADMIN_EMAILS: ${ADMIN_EMAILS:-}
     container_name: family-hub
     restart: unless-stopped
     ports:

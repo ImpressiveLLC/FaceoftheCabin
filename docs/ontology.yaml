@@ -1954,6 +1954,46 @@ elements:
       system before 2026-07-31 despite 6 presets already shipped — added
       retroactively per the "ontology is canonical, not optional" directive.
 
+  - id: family_hub_access_log
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: owl:Class
+    constraint:
+      description: visible/exportable only to accounts in the host-configured admin list
+    ui_display_name: "Access Log (admin only)"
+    source: localStorage["smrekar_access_log"], gated by ADMIN_EMAILS
+    rendering:
+      semantic: "First accessed / last seen / total time per family member"
+      systems: Family Hub Access Log
+      technical: "ACCESS_LOG_KEY; startAccessSession()/touchAccessSession() write, isAdminUser() gates read"
+      compliance: Per-User Session Activity Record
+    definition: >
+      First-seen timestamp + session duration per signed-in Google account,
+      visible and JSON-exportable only to accounts in ADMIN_EMAILS. Distinct
+      from audit_log (a Postgres-backed device-command/state-change record
+      on the cabin-backend) — this is client-side, Family Hub-specific, and
+      per-browser (not yet synced — same cross-device gap as everything
+      else in localStorage, see chore_completion_state's notes).
+    relationships:
+      - target: current_actor
+        type: complements
+        cardinality: "N:N"
+    relates_to:
+      ui_components: [settings_panel]
+      elements: []
+    notes: >
+      ADMIN_EMAILS was a hardcoded array in family-hub.html source
+      (nhsmrekar@gmail.com only) until 2026-08-01 — meant a template fork
+      would've had to edit and rebuild the app just to change who's an
+      admin. Now host-driven via the same Docker-build-arg pattern as
+      GOOGLE_CLIENT_ID (see parenting_schedule_rule_version's sibling
+      entities for that precedent): ADMIN_EMAILS in .env, comma-separated,
+      baked into host-config.js as hostAdminEmails at build time.
+
   - id: custody_day_log
     entity_type: owl:Class
     layer: frontend

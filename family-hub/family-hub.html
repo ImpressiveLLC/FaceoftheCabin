@@ -2038,6 +2038,12 @@ let CFG = { ...DEFAULTS, ...loadCfg() };
 const hostGoogleClientId = window.HOST_CONFIG?.googleClientId || '';
 if (hostGoogleClientId) CFG.clientId = hostGoogleClientId;
 
+// Comma-separated admin emails from the host build, same reasoning as
+// hostGoogleClientId — see ADMIN_EMAILS/isAdminUser further down. Parsed
+// here (not there) so it lives next to the other HOST_CONFIG reads.
+const hostAdminEmails = (window.HOST_CONFIG?.adminEmails || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
 // Set when localStorage is unavailable or throws (private-browsing mode,
 // strict tracking-prevention purging site data, some in-app webviews). Used
 // to tell "not configured yet" apart from "storage is actively blocked" —
@@ -3099,7 +3105,11 @@ async function signOut() {
    a shared backend if a cross-device record is ever needed.
 ═══════════════════════════════════════════ */
 const ACCESS_LOG_KEY = 'smrekar_access_log';
-const ADMIN_EMAILS = ['nhsmrekar@gmail.com'];
+// Was a hardcoded array here — a template fork would've had to edit and
+// rebuild the app source just to change who's an admin. Now host-driven
+// (hostAdminEmails, set from ADMIN_EMAILS at Docker build time), matching
+// the same pattern GOOGLE_CLIENT_ID already uses.
+const ADMIN_EMAILS = hostAdminEmails;
 let accessHeartbeatId = null;
 
 function loadAccessLog() {

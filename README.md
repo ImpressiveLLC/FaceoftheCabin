@@ -65,6 +65,8 @@ A family-scale, self-hosted platform unifying cabin automation and family coordi
 | **Ontology Contract** | [`docs/ontology.yaml`](docs/ontology.yaml) | Canonical entity definitions, device registry, naming contract |
 | **Platform README** | [`cabin-orchestration-platform/README.md`](cabin-orchestration-platform/README.md) | Technical architecture, backend/UI, Docker Compose reference |
 | **QA / Testing** | [`docs/QA.md`](docs/QA.md) | Per-feature test coverage, how to run automated checks, manual QA checklists |
+| **Definition of Done** | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md) | Per-session (not per-app) exit checklist, prioritized next-session plan |
+| **Replicating This Template** | [`docs/REPLICATION.md`](docs/REPLICATION.md) | Standing up a fully independent instance — own accounts, domain, host, repo |
 
 ---
 
