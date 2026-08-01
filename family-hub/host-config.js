@@ -5,4 +5,4 @@
 // Playwright test suite, opening family-hub.html directly) — empty values
 // here just mean "no host-provided value," which family-hub.html already
 // handles for googleClientId and now handles for adminEmails too.
-window.HOST_CONFIG = { googleClientId: '', adminEmails: '' };
+window.HOST_CONFIG = { googleClientId: '', adminEmails: '', cabinApiUrl: '' };

@@ -205,6 +205,15 @@
        of source order. */
     @keyframes pacmanPelletFlash { 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.35; transform:scale(1.4);} }
     [data-theme="pacman"] .ev-pip { animation: pacmanPelletFlash 1.1s ease-in-out infinite; }
+    /* Pac-Man theme: more red "ghost" accent points — the theme's --rose is
+       already true red (#ff0000), it just wasn't touching many elements.
+       Unchecked chores get a red outline (eaten -> gold, like a pellet),
+       and small round avatar/emoji glyphs get a faint red halo. */
+    [data-theme="pacman"] .chore-cb { border-color:rgba(255,0,0,.55); }
+    [data-theme="pacman"] .chore-full-cb { border-color:rgba(255,0,0,.55); }
+    [data-theme="pacman"] .kid-avatar-sm,
+    [data-theme="pacman"] .bday-emoji,
+    [data-theme="pacman"] .auth-logo { filter:drop-shadow(0 0 5px rgba(255,0,0,.6)); }
     /* A long event title with white-space:nowrap and no min-width:0 on its
        flex parent doesn't truncate — it forces the flex item wider than the
        column's fixed 310px, spilling into the center content. This is the
@@ -267,8 +276,11 @@
       from { opacity:0; transform:translateX(16px); }
       to   { opacity:1; transform:translateX(0); }
     }
-    .card-label.chores-color { color: var(--teal); }
-    .card-label-icon.chores-color { background: var(--teal-glow); }
+    /* Uses --gold (not --teal) so the chores card's accent matches the
+       calendar's — in several themes --teal diverges sharply from --gold
+       and the two side-by-side cards read as mismatched. */
+    .card-label.chores-color { color: var(--gold); }
+    .card-label-icon.chores-color { background: var(--gold-faint); }
 
     /* Kid section within chores */
     .kid-section { display:flex; flex-direction:column; }
@@ -285,7 +297,7 @@
     }
     .kid-score {
       font-size:10px; font-weight:600; letter-spacing:.5px;
-      color:var(--teal); opacity:.9;
+      color:var(--gold); opacity:.9;
     }
     .chore-row {
       display:flex; align-items:center; gap:9px;
@@ -302,15 +314,15 @@
       font-size:10px; transition:all .22s cubic-bezier(.34,1.56,.64,1);
     }
     .chore-row.done .chore-cb {
-      background:var(--teal); border-color:var(--teal);
-      box-shadow:0 0 10px rgba(75,200,200,.45);
+      background:var(--gold); border-color:var(--gold);
+      box-shadow:0 0 10px var(--gold-glow);
     }
     .chore-label {
       font-size:12.5px; font-weight:400; color:var(--cream); flex:1;
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       line-height:1.3;
     }
-    .chore-pts { font-size:9px; color:var(--teal); opacity:.7; flex-shrink:0; }
+    .chore-pts { font-size:9px; color:var(--gold); opacity:.7; flex-shrink:0; }
 
     /* Reward progress strip */
     .reward-strip {
@@ -714,12 +726,22 @@
     .profile-card-actions button:hover { border-color:var(--gold); color:var(--gold); }
     .profile-card-actions button.del:hover { border-color:#e05555; color:#e05555; }
     .avatar-picker { display:flex; align-items:center; gap:10px; }
-    .avatar-presets { display:flex; gap:6px; flex-wrap:wrap; }
+    .avatar-search {
+      flex:1; background:rgba(255,255,255,.05); border:1px solid var(--glass-border);
+      border-radius:8px; padding:8px 12px; color:var(--cream); font-family:var(--font-ui);
+      font-size:13px; outline:none;
+    }
+    .avatar-search:focus { border-color:var(--gold); }
+    .avatar-presets {
+      display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;
+      max-height:150px; overflow-y:auto; padding:2px;
+    }
     .avatar-presets span {
       font-size:22px; cursor:pointer; line-height:1;
       transition:transform .1s;
     }
     .avatar-presets span:hover { transform:scale(1.25); }
+    .avatar-presets .avatar-empty { font-size:12px; color:var(--cream-dim); font-style:italic; }
 
     /* ═══════════════════════════════════════════
        AUTH OVERLAY
@@ -763,15 +785,29 @@
       transition:background .15s, color .15s, transform .15s;
     }
     .br-fab:hover { background:rgba(255,255,255,.09); color:var(--cream); transform:translateY(-2px); }
-    /* dashboard-fab is two lines (label + sub-label) vs settings-btn's one,
-       so their heights differ — the old 72px/24px pairing left only ~7px
-       of clearance between them, which different font rendering (reported
-       on Android) could easily collapse into an overlap. Wider margin. */
-    #dashboard-fab { bottom:88px; }
     #settings-btn  { bottom:24px; }
     .br-fab .fab-label { font-size:13px; font-weight:600; color:var(--cream); line-height:1.2; }
     .br-fab .fab-sub   { font-size:10px; color:var(--cream-dim); margin-top:2px; }
     .br-fab .fab-icon  { font-size:14px; }
+
+    /* Dashboard is the primary way into Chores/Rewards/Schedule (and, once
+       built, the "who are you" actor picker + friends & family view) — it
+       used to have the same visual weight as Settings, a secondary admin
+       button, easy to miss. Stays in the same proven bottom-right spot
+       (no collision-risk repositioning needed) but bigger and gold-
+       accented so it clearly reads as the primary entry point. Height grew
+       ~14px over the original — bottom bumped from 88 to 100px to keep the
+       gap over #settings-btn comfortably above the ~7px-clearance Android
+       overlap bug fixed earlier this project. */
+    #dashboard-fab {
+      bottom:100px;
+      padding:14px 26px; border-radius:18px;
+      border-color:var(--gold-faint);
+      box-shadow:var(--shadow), 0 0 0 1px var(--gold-faint), inset 0 1px 0 rgba(255,255,255,.07);
+    }
+    #dashboard-fab:hover { border-color:var(--gold); }
+    #dashboard-fab .fab-label { font-size:15px; }
+    #dashboard-fab .fab-sub { font-size:10.5px; }
 
     /* ═══════════════════════════════════════════
        FAMILY NOTEPAD  (slide-in/slide-out overlay, right edge)
@@ -1106,7 +1142,14 @@
     }
     .actor-btn:hover { border-color:var(--gold); background:var(--gold-faint); }
     .actor-btn .actor-btn-avatar { font-size:26px; }
+    .actor-btn .actor-btn-names { display:flex; flex-direction:column; align-items:flex-start; gap:1px; }
     .actor-btn .actor-btn-name { font-size:15px; font-weight:600; }
+    .actor-btn .actor-btn-relation { font-size:10.5px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:.5px; }
+    .actor-picker-group-label {
+      font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+      color:var(--cream-dim); margin:16px 0 10px;
+    }
+    .actor-current-relation { font-size:13px; font-weight:400; color:var(--cream-dim); }
     .actor-current-row {
       display:flex; align-items:center; justify-content:space-between; gap:12px;
     }
@@ -1141,7 +1184,7 @@
       #app {
         grid-template-columns: 1fr;
         grid-template-rows: auto auto auto auto auto;
-        padding: 18px 16px 90px; /* extra bottom padding clears the FABs */
+        padding: 18px 16px 110px; /* extra bottom padding clears the FABs — dashboard-fab grew a bit taller */
       }
       #top-bar { grid-column:1; grid-row:1; }
       #center-area { grid-column:1; grid-row:2; }
@@ -1349,6 +1392,7 @@
               <option value="kid">Kid</option>
               <option value="parent">Parent</option>
               <option value="pet">Pet</option>
+              <option value="guest">Friends & Family</option>
             </select>
           </div>
           <div class="s-field" id="pf-age-row">
@@ -1359,6 +1403,18 @@
             <label>Pet type</label>
             <input id="pf-pettype" type="text" placeholder="e.g. dog">
           </div>
+          <div class="s-field" id="pf-relation-row" style="display:none">
+            <label>Relation</label>
+            <select id="pf-relation">
+              <option value="Grandma">Grandma</option>
+              <option value="Grandpa">Grandpa</option>
+              <option value="Aunt">Aunt</option>
+              <option value="Uncle">Uncle</option>
+              <option value="Cousin">Cousin</option>
+              <option value="Friend">Friend</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
           <div class="s-field">
             <label>Birthday (MM/DD)</label>
             <input id="pf-birthday" type="text" placeholder="09/24">
@@ -1367,17 +1423,9 @@
             <label>Avatar emoji</label>
             <div class="avatar-picker">
               <input id="pf-avatar" type="text" maxlength="2" placeholder="🧒" style="width:56px;font-size:22px;text-align:center">
-              <div class="avatar-presets">
-                <span onclick="document.getElementById('pf-avatar').value=this.textContent">🧒</span>
-                <span onclick="document.getElementById('pf-avatar').value=this.textContent">👧</span>
-                <span onclick="document.getElementById('pf-avatar').value=this.textContent">👦</span>
-                <span onclick="document.getElementById('pf-avatar').value=this.textContent">👨</span>
-                <span onclick="document.getElementById('pf-avatar').value=this.textContent">👩</span>
-                <span onclick="document.getElementById('pf-avatar').value=this.textContent">🐕</span>
-                <span onclick="document.getElementById('pf-avatar').value=this.textContent">🐈</span>
-                <span onclick="document.getElementById('pf-avatar').value=this.textContent">🐇</span>
-              </div>
+              <input id="pf-avatar-search" type="text" class="avatar-search" placeholder="Search emoji… try &quot;unicorn&quot;, &quot;dinosaur&quot;, &quot;rocket&quot;" oninput="renderAvatarPresets(this.value)">
             </div>
+            <div class="avatar-presets" id="pf-avatar-presets"></div>
           </div>
           <div class="s-field" id="pf-color-row">
             <label>Accent color</label>
@@ -1428,7 +1476,8 @@ function saveProfiles() { localStorage.setItem(PROFILES_KEY, JSON.stringify(prof
 function getKids()    { return profiles.filter(p => p.role === 'kid'); }
 function getPets()    { return profiles.filter(p => p.role === 'pet'); }
 function getParents() { return profiles.filter(p => p.role === 'parent'); }
-function getActorCandidates() { return profiles.filter(p => p.role === 'kid' || p.role === 'parent'); }
+function getActorCandidates() { return profiles.filter(p => p.role === 'kid' || p.role === 'parent' || p.role === 'guest'); }
+function getExtendedFamily() { return profiles.filter(p => p.role === 'guest'); }
 
 /* ═══════════════════════════════════════════
    "WHO ARE YOU" — ACTOR CONTEXT
@@ -1497,15 +1546,26 @@ function renderActorPicker() {
   if (!el) return;
   const actor = profiles.find(p => p.id === currentActorId);
   if (!actor) {
+    const household = getActorCandidates().filter(p => p.role !== 'guest');
+    const extended = getExtendedFamily();
+    const actorBtn = p => `
+          <button type="button" class="actor-btn" onclick="setCurrentActor('${p.id}')">
+            <span class="actor-btn-avatar">${p.avatar || '🙂'}</span>
+            <span class="actor-btn-names">
+              <span class="actor-btn-name">${esc(p.name)}</span>
+              ${p.relation ? `<span class="actor-btn-relation">${esc(p.relation)}</span>` : ''}
+            </span>
+          </button>`;
     el.innerHTML = `<div class="actor-picker-card">
       <div class="actor-picker-prompt">Who are you?</div>
       <div class="actor-picker-grid">
-        ${getActorCandidates().map(p => `
-          <button type="button" class="actor-btn" onclick="setCurrentActor('${p.id}')">
-            <span class="actor-btn-avatar">${p.avatar || '🙂'}</span>
-            <span class="actor-btn-name">${esc(p.name)}</span>
-          </button>`).join('')}
+        ${household.map(actorBtn).join('')}
       </div>
+      ${extended.length ? `
+      <div class="actor-picker-group-label">Friends &amp; Family</div>
+      <div class="actor-picker-grid">
+        ${extended.map(actorBtn).join('')}
+      </div>` : ''}
     </div>`;
     return;
   }
@@ -1515,7 +1575,7 @@ function renderActorPicker() {
         <span class="actor-current-avatar">${actor.avatar || '🙂'}</span>
         <div>
           <div class="actor-current-label">Viewing as</div>
-          <div class="actor-current-name">${esc(actor.name)}</div>
+          <div class="actor-current-name">${esc(actor.name)}${actor.relation ? ` <span class="actor-current-relation">(${esc(actor.relation)})</span>` : ''}</div>
         </div>
       </div>
       <button type="button" class="actor-switch-btn" onclick="clearActorState(); renderActorPicker();">Not you? Switch</button>
@@ -2059,6 +2119,14 @@ if (hostGoogleClientId) CFG.clientId = hostGoogleClientId;
 const hostAdminEmails = (window.HOST_CONFIG?.adminEmails || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
+// cabin-backend's base URL, for the notes/chores sync endpoints — same
+// host-baked pattern. Deliberately NO fallback to the real public API here:
+// an empty value means "sync disabled" (falls back to the old localStorage-
+// only behavior further down), which matters for local dev/tests running
+// against the raw file with no backend — a hardcoded prod fallback would
+// mean a stray test run could actually write to production.
+const CABIN_API_URL = (window.HOST_CONFIG?.cabinApiUrl || '').replace(/\/+$/, '');
+
 // Set when localStorage is unavailable or throws (private-browsing mode,
 // strict tracking-prevention purging site data, some in-app webviews). Used
 // to tell "not configured yet" apart from "storage is actively blocked" —
@@ -2414,15 +2482,57 @@ function getChoreState(dayKey, kidId, choreId) {
   return !!(completion[`${dayKey}_${kidId}`] || {})[choreId];
 }
 
-function toggleChoreCompletion(dayKey, kidId, choreId) {
-  const k = `${dayKey}_${kidId}`;
-  if (!completion[k]) completion[k] = {};
-  completion[k][choreId] = !completion[k][choreId];
-  saveCompletion();
+function rerenderChoreViews() {
   renderTodayChores();
   renderChoreTracker();
   renderOverview();
   renderRewards();
+}
+
+/** Pulls the shared completion map from cabin-backend. Returns true on success. */
+async function refreshCompletionFromServer() {
+  if (!CABIN_API_URL || !accessToken) return false;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/chores/completion`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return false;
+    completion = await res.json();
+    saveCompletion();
+    return true;
+  } catch (e) {
+    console.warn('Could not sync chore completion from cabin-backend:', e);
+    return false;
+  }
+}
+
+async function toggleChoreCompletion(dayKey, kidId, choreId) {
+  const k = `${dayKey}_${kidId}`;
+  if (!completion[k]) completion[k] = {};
+  // Optimistic local flip so the tap feels instant; reconciled below against
+  // whatever the server actually recorded, in case another device toggled
+  // the same chore in between.
+  completion[k][choreId] = !completion[k][choreId];
+  saveCompletion();
+  rerenderChoreViews();
+
+  if (!CABIN_API_URL || !accessToken) return;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/chores/completion/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ dayKey, kidId, choreId }),
+    });
+    if (!res.ok) return;
+    const result = await res.json();
+    if (completion[k][choreId] !== result.done) {
+      completion[k][choreId] = result.done;
+      saveCompletion();
+      rerenderChoreViews();
+    }
+  } catch (e) {
+    console.warn('Could not sync chore completion to cabin-backend:', e);
+  }
 }
 
 function countDayCompleted(dayKey, kidId) {
@@ -2938,6 +3048,7 @@ function renderProfilesTab() {
     if (p.age) meta.push(`age ${p.age}`);
     if (p.birthday) meta.push(`🎂 ${p.birthday}`);
     if (p.type) meta.push(p.type);
+    if (p.relation) meta.push(p.relation);
     const card = document.createElement('div');
     card.className = 'profile-card';
     card.innerHTML = `
@@ -2955,6 +3066,71 @@ function renderProfilesTab() {
   });
 }
 
+// Avatar emoji picker — standard Unicode emoji (Smileys & People, Animals &
+// Nature, Fantasy, Travel & Places), keyword-tagged for the search box.
+// Not exhaustive (the full Unicode set is thousands of characters); this is
+// a curated, kid-avatar-weighted pack covering common requests (unicorns,
+// princesses, dinosaurs, spaceships) plus enough general variety to browse.
+const AVATAR_EMOJI_PACK = [
+  // People / family
+  { e:'🧒', k:'kid child' }, { e:'👧', k:'girl' }, { e:'👦', k:'boy' },
+  { e:'👨', k:'man dad father' }, { e:'👩', k:'woman mom mother' },
+  { e:'👵', k:'grandma grandmother' }, { e:'👴', k:'grandpa grandfather' },
+  { e:'🧑', k:'person' }, { e:'🙋', k:'hand raised person' }, { e:'👶', k:'baby' },
+  { e:'🧔', k:'beard person' }, { e:'👱', k:'blonde person' },
+  // Fantasy / kids' favorites
+  { e:'🦄', k:'unicorn magic fantasy horse' }, { e:'🐉', k:'dragon fantasy' },
+  { e:'🐲', k:'dragon face fantasy' }, { e:'🦖', k:'dinosaur trex rex' },
+  { e:'🦕', k:'dinosaur brontosaurus sauropod' },
+  { e:'👸', k:'princess royal crown' }, { e:'🤴', k:'prince royal crown' },
+  { e:'👑', k:'crown king queen royal' }, { e:'🧚', k:'fairy magic pixie' },
+  { e:'🧙', k:'wizard witch magic wand' }, { e:'🧜', k:'mermaid' },
+  { e:'🦸', k:'superhero hero' }, { e:'🦹', k:'supervillain villain' },
+  { e:'🧝', k:'elf fantasy' }, { e:'🧛', k:'vampire fantasy' },
+  { e:'🤖', k:'robot' }, { e:'👻', k:'ghost spooky' },
+  // Space
+  { e:'🚀', k:'rocket spaceship space launch' }, { e:'🛸', k:'ufo spaceship space alien' },
+  { e:'👽', k:'alien space' }, { e:'🌟', k:'star space sparkle' },
+  { e:'🌙', k:'moon space night' }, { e:'🪐', k:'planet saturn space' },
+  { e:'☄️', k:'comet space' }, { e:'🌎', k:'earth world globe space' },
+  { e:'⭐', k:'star' }, { e:'✨', k:'sparkle magic' },
+  // Animals
+  { e:'🐶', k:'dog puppy' }, { e:'🐱', k:'cat kitten' }, { e:'🐭', k:'mouse' },
+  { e:'🐹', k:'hamster' }, { e:'🐰', k:'rabbit bunny' }, { e:'🦊', k:'fox' },
+  { e:'🐻', k:'bear' }, { e:'🐼', k:'panda bear' }, { e:'🐨', k:'koala bear' },
+  { e:'🦁', k:'lion' }, { e:'🐯', k:'tiger' }, { e:'🐮', k:'cow' },
+  { e:'🐷', k:'pig' }, { e:'🐸', k:'frog' }, { e:'🐵', k:'monkey' },
+  { e:'🐔', k:'chicken' }, { e:'🐧', k:'penguin' }, { e:'🐦', k:'bird' },
+  { e:'🦋', k:'butterfly' }, { e:'🐢', k:'turtle' }, { e:'🐬', k:'dolphin' },
+  { e:'🐳', k:'whale' }, { e:'🦈', k:'shark' }, { e:'🐴', k:'horse' },
+  { e:'🦓', k:'zebra' }, { e:'🐘', k:'elephant' }, { e:'🦒', k:'giraffe' },
+  { e:'🐿️', k:'squirrel' }, { e:'🦔', k:'hedgehog' }, { e:'🐕', k:'dog' },
+  { e:'🐈', k:'cat' }, { e:'🐇', k:'rabbit bunny' }, { e:'🦆', k:'duck' },
+  { e:'🐺', k:'wolf' }, { e:'🦉', k:'owl' }, { e:'🦇', k:'bat' },
+  // Fun / misc
+  { e:'⚡', k:'lightning bolt' }, { e:'🔥', k:'fire flame' },
+  { e:'💎', k:'diamond gem' }, { e:'🌈', k:'rainbow' }, { e:'🎈', k:'balloon' },
+  { e:'🎨', k:'art paint palette' }, { e:'⚽', k:'soccer ball sport' },
+  { e:'🏀', k:'basketball sport' }, { e:'🎮', k:'video game controller' },
+  { e:'🎸', k:'guitar music' }, { e:'🎵', k:'music note' }, { e:'📚', k:'books reading' },
+  { e:'🚗', k:'car' }, { e:'🚂', k:'train' }, { e:'✈️', k:'plane airplane' },
+  { e:'⛵', k:'sailboat boat' }, { e:'🏰', k:'castle' }, { e:'🎪', k:'circus tent' },
+];
+
+function renderAvatarPresets(filter) {
+  const grid = document.getElementById('pf-avatar-presets');
+  if (!grid) return;
+  const q = (filter || '').trim().toLowerCase();
+  const matches = q
+    ? AVATAR_EMOJI_PACK.filter(x => x.k.includes(q) || x.e === q)
+    : AVATAR_EMOJI_PACK;
+  grid.innerHTML = matches.length
+    ? matches.map(x =>
+        `<span onclick="document.getElementById('pf-avatar').value='${x.e}'" title="${esc(x.k)}">${x.e}</span>`
+      ).join('')
+    : `<span class="avatar-empty">No emoji match "${esc(filter)}"</span>`;
+}
+
 function openProfileForm(profile) {
   const col = document.getElementById('profiles-form-col');
   document.getElementById('profiles-form-title').textContent = profile ? 'Edit Member' : 'New Member';
@@ -2966,6 +3142,9 @@ function openProfileForm(profile) {
   document.getElementById('pf-birthday').value = profile?.birthday || '';
   document.getElementById('pf-avatar').value = profile?.avatar || '';
   document.getElementById('pf-color').value = profile?.color || '#4AACE8';
+  document.getElementById('pf-relation').value = profile?.relation || 'Friend';
+  document.getElementById('pf-avatar-search').value = '';
+  renderAvatarPresets('');
   col.style.display = 'block';
   onProfileRoleChange();
 }
@@ -2978,6 +3157,7 @@ function onProfileRoleChange() {
   const role = document.getElementById('pf-role').value;
   document.getElementById('pf-age-row').style.display = role === 'kid' ? '' : 'none';
   document.getElementById('pf-pettype-row').style.display = role === 'pet' ? '' : 'none';
+  document.getElementById('pf-relation-row').style.display = role === 'guest' ? '' : 'none';
   document.getElementById('pf-color-row').style.display = role === 'pet' ? 'none' : '';
 }
 
@@ -3005,7 +3185,7 @@ function saveProfile() {
     name,
     role,
     birthday: document.getElementById('pf-birthday').value.trim(),
-    avatar: document.getElementById('pf-avatar').value.trim() || (role==='kid'?'🧒':role==='pet'?'🐾':'👤'),
+    avatar: document.getElementById('pf-avatar').value.trim() || (role==='kid'?'🧒':role==='pet'?'🐾':role==='guest'?'🙋':'👤'),
   };
   if (role === 'kid') {
     const age = parseInt(document.getElementById('pf-age').value);
@@ -3015,6 +3195,9 @@ function saveProfile() {
     entry.color = document.getElementById('pf-color').value;
   } else if (role === 'pet') {
     entry.type = document.getElementById('pf-pettype').value.trim();
+  } else if (role === 'guest') {
+    entry.relation = document.getElementById('pf-relation').value;
+    entry.color = document.getElementById('pf-color').value;
   }
   if (id) {
     const idx = profiles.findIndex(x => x.id === id);
@@ -3088,7 +3271,18 @@ async function onToken(resp) {
   startAccessSession();
   loadCalendar();
   restorePhotos();
+  refreshNotesFromServer().then(ok => { if (ok) renderNotepad(); });
+  refreshCompletionFromServer().then(ok => { if (ok) rerenderChoreViews(); });
 }
+
+// Cross-device sync poll — picks up notes/chore changes made on other
+// devices while this tab is open. Both refresh functions already no-op
+// when signed out or CABIN_API_URL isn't configured, so this is a safe
+// no-op too in those cases.
+setInterval(async () => {
+  if (await refreshNotesFromServer()) renderNotepad();
+  if (await refreshCompletionFromServer()) rerenderChoreViews();
+}, 20000);
 
 // Identifies who's signed in, purely so schedule-change and access logs can
 // attribute entries to a real person instead of an anonymous browser.
@@ -3378,12 +3572,36 @@ const NOTES_MAX = 50;          // oldest notes beyond this are dropped
 const NOTES_RECENT_COUNT = 12; // "last 12 message lines" in the slide-out view
 const NOTE_VISIBLE_MS = 24 * 60 * 60 * 1000; // force slide-in 24h after a note arrives
 
+// notesCache is the in-memory source of truth once the server has answered
+// at least once; loadNotes() falls back to the old localStorage copy until
+// then (or forever, if CABIN_API_URL isn't configured for this build/env —
+// see CABIN_API_URL's own comment above). localStorage is still written on
+// every change below, so it doubles as an offline mirror.
+let notesCache = null;
 function loadNotes() {
+  if (notesCache) return notesCache;
   try { return JSON.parse(localStorage.getItem(NOTES_KEY) || '[]'); }
   catch { return []; }
 }
 function saveNotes(notes) {
-  localStorage.setItem(NOTES_KEY, JSON.stringify(notes.slice(0, NOTES_MAX)));
+  notesCache = notes.slice(0, NOTES_MAX);
+  localStorage.setItem(NOTES_KEY, JSON.stringify(notesCache));
+}
+
+/** Pulls the shared note list from cabin-backend. Returns true on success. */
+async function refreshNotesFromServer() {
+  if (!CABIN_API_URL || !accessToken) return false;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/notes`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return false;
+    saveNotes(await res.json());
+    return true;
+  } catch (e) {
+    console.warn('Could not sync notes from cabin-backend:', e);
+    return false;
+  }
 }
 
 function loadNotepadState() {
@@ -3460,20 +3678,36 @@ function renderNotepad() {
   if (isNoteHistoryOpen()) renderNoteHistory();
 }
 
-function sendNote() {
+async function sendNote() {
   const input = document.getElementById('notepad-input');
   const text = input.value.trim();
   if (!text || !selectedNoteAuthorId) return;
-  const notes = loadNotes();
-  const note = {
-    id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    authorId: selectedNoteAuthorId,
-    text,
-    ts: Date.now(),
-  };
-  notes.unshift(note);
-  saveNotes(notes);
   input.value = '';
+
+  let note = null;
+  if (CABIN_API_URL && accessToken) {
+    try {
+      const res = await fetch(`${CABIN_API_URL}/api/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ authorId: selectedNoteAuthorId, text }),
+      });
+      if (res.ok) note = await res.json();
+    } catch (e) {
+      console.warn('Could not reach cabin-backend, saving this note locally only:', e);
+    }
+  }
+  // Sync disabled, signed out, or the request failed — still works offline,
+  // it just won't show up on other devices until they're back in sync.
+  if (!note) {
+    note = {
+      id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      authorId: selectedNoteAuthorId,
+      text,
+      ts: Date.now(),
+    };
+  }
+  saveNotes([note, ...loadNotes().filter(n => n.id !== note.id)]);
   onNewNoteArrived(note.ts);
   renderNotepad();
 }
@@ -3680,9 +3914,13 @@ const THEMES = {
       '--teal':'#99cc00', '--teal-glow':'rgba(153,204,0,0.18)',
       '--rose':'#cc0000', '--rose-glow':'rgba(204,0,0,0.18)',
       '--cream':'#ffcc66', '--cream-dim':'rgba(204,119,0,0.85)', '--cream-ghost':'rgba(136,85,0,0.85)',
-      '--radius':'18px', '--font-display':"'Antonio','Arial Narrow',sans-serif", '--font-ui':"'Antonio','Arial Narrow',sans-serif",
+      '--radius':'18px', '--font-display':"'Michroma','Arial',sans-serif", '--font-ui':"'Titillium Web','Arial',sans-serif",
     },
-    fonts: [{ id:'fh-font-lcars', href:'https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&display=swap' }],
+    /* Antonio (condensed) was hard to read at speed. Michroma is the same
+       wide, blocky sci-fi-console letterform LCARS is going for, without
+       the narrow squeeze; Titillium Web is a normal-width companion for
+       body/label text so small sizes stay legible. */
+    fonts: [{ id:'fh-font-lcars', href:'https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap' }],
   },
   monolith: {
     label: 'Monolith', id: 'monolith',
@@ -3706,8 +3944,12 @@ const THEMES = {
       '--teal':'#00cc33', '--teal-glow':'rgba(0,204,51,0.18)',
       '--rose':'#ff3300', '--rose-glow':'rgba(255,51,0,0.18)',
       '--cream':'#00ff41', '--cream-dim':'rgba(0,255,65,0.70)', '--cream-ghost':'rgba(0,255,65,0.30)',
-      '--radius':'0px', '--font-display':"'VT323','Share Tech Mono',monospace", '--font-ui':"'VT323','Share Tech Mono',monospace",
+      '--radius':'0px', '--font-display':"'Share Tech Mono','VT323',monospace", '--font-ui':"'VT323','Share Tech Mono',monospace",
     },
+    /* VT323 turns to jagged mush at the big clock's ~100px size — Share
+       Tech Mono is still an unmistakably terminal/CRT monospace but with
+       clean vector strokes, so headings stay readable; VT323 keeps doing
+       the gritty-terminal texture at the smaller UI sizes where it works. */
     fonts: [{ id:'fh-font-retrocrt', href:'https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap' }],
   },
   bluefin: {
@@ -3758,9 +4000,13 @@ const THEMES = {
       '--teal':'#00ffde', '--teal-glow':'rgba(0,255,222,0.3)',
       '--rose':'#ff0000', '--rose-glow':'rgba(255,0,0,0.3)',
       '--cream':'#ffffff', '--cream-dim':'rgba(255,255,255,0.72)', '--cream-ghost':'rgba(255,255,255,0.32)',
-      '--radius':'16px', '--font-display':"'Press Start 2P','Chakra Petch',monospace", '--font-ui':"'VT323','Share Tech Mono',monospace",
+      '--radius':'16px', '--font-display':"'Bungee','Chakra Petch',sans-serif", '--font-ui':"'VT323','Share Tech Mono',monospace",
     },
-    fonts: [{ id:'fh-font-pacman', href:'https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap' }],
+    /* Press Start 2P is a true pixel font — at the clock's ~100px size each
+       "pixel" becomes a visible square, unreadable. Bungee is the same
+       chunky arcade-marquee energy with smooth vector curves instead of
+       literal pixels, so it stays legible at heading sizes. */
+    fonts: [{ id:'fh-font-pacman', href:'https://fonts.googleapis.com/css2?family=Bungee&family=VT323&display=swap' }],
   },
 };
 

@@ -323,38 +323,45 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 
 - [x] Fix Family Hub overlay z-index bug
 - [x] All platform code unified in `FaceoftheCabin` (`smrekar-platform` deprecated)
-- [ ] Cross-device backend on `cabin-backend` (Postgres-backed, matches the existing
-      `api.unicornpingpong.com` shared-services scope in §3.3) — bundles two features that
-      hit the same root cause (`localStorage` is per-browser, not synced): Family Notepad
-      and chore completion (found 2026-07-31: "logout on device A, reauthenticate on device
-      B shows empty chores" is not a bug, verified the toggle->save->persist->reload path is
-      internally consistent — it's the storage architecture). Poll-based delivery (matches
-      the file's existing `setInterval` patterns), not WebSocket/SSE, for v1. Host-agnostic
-      by construction — frontend calls a configurable API base URL, same pattern the React
-      UI already uses. **Canonical spec is `docs/ontology.yaml`, not this line** — implementation
-      must trace back to those entities, not the other way around:
-      - Notes: `docs/PRODUCT_NOTES.md` 2026-07-30 entry ("Known limitation" section)
-      - Chores: ontology `chore_daily_success` / `chore_weekly_success` — persists the
-        already-correct client-side day/week success logic (3+/day, 4+/week, matching
-        `rewardEligibility()`) as stored facts instead of only deriving them live
+- [x] Cross-device backend on `cabin-backend` (Postgres-backed, matches the existing
+      `api.unicornpingpong.com` shared-services scope in §3.3). **Done 2026-08-01.**
+      Poll-based delivery (20s `setInterval`, matches the file's existing pattern), gated
+      by `GoogleAuthInterceptor` (valid Google access token required — first auth-gated,
+      first write, endpoints on this backend). Verified against a real local Postgres +
+      running backend, two isolated browser contexts standing in for two devices, both
+      directions, zero errors. Note the scope actually shipped: the raw per-chore
+      completion record syncs now; the `chore_daily_success`/`chore_weekly_success`
+      *derived* threshold flags (3+/day, 4+/week) are still computed live client-side
+      from that synced data, not separately persisted server-side — see those entities'
+      notes in `docs/ontology.yaml` for why that's a deliberate, smaller remaining gap,
+      not an oversight. `family_profile` itself also still isn't synced (localStorage/
+      per-device) — degrades gracefully (see `family_note`'s ontology notes), not fixed
+      here.
 - [ ] **[BLOCKER]** Push current M920q `docker-compose.yml` to CabinAutomations repo (currently local-only at `/storage/containers/compose/cabin/`)
-- [ ] **[FOUND 2026-07-30]** `cabin-postgres` on the M920q is running on the
-      fallback dev password (`cabin_dev_password`), not the real value in
-      `cabin-orchestration-platform/.env` — that file isn't where Docker
-      Compose actually looks (`infra/.env`, per `.env.m920q.example`'s own
-      instructions; it drifted to the parent directory at some point).
-      **Not fixed** — Postgres only applies `POSTGRES_PASSWORD` at first
-      volume init, so moving/fixing the `.env` now could hand `cabin-backend`
-      a real password that doesn't match what's actually stored in the
-      existing data volume, breaking the DB connection. Needs a deliberate
-      call (reset the DB password to match, or re-init the volume) before
-      touching this, not a routine fix. More pressing given the plan to
-      eventually expose `api.unicornpingpong.com` publicly via Cloudflare
-      Tunnel — a default password matters a lot more once anything's
-      internet-reachable, not just on Tailscale.
-- [ ] Register `unicornpingpong.com` at Porkbun, add to Cloudflare free tier
-- [ ] Add `cloudflared` container to M920q docker-compose, configure tunnel to `hub/cabin/api` subdomains
-- [ ] Update Google OAuth authorized origin from `http://127.0.0.1:5500` to `https://hub.unicornpingpong.com`
+- [ ] **[FOUND 2026-07-30, PINNED 2026-08-01]** `cabin-postgres` on the M920q is
+      running on the fallback dev password (`cabin_dev_password`), not a real
+      secret — it's a literal string in `docker-compose.yml` in the public repo,
+      published to the host on `5432:5432` (confirmed in the compose file, not
+      just Tailscale-internal), so anyone on the tailnet or LAN can connect
+      directly with a Postgres client, bypassing the app and its auth entirely.
+      **Not fixed** — Postgres only applies `POSTGRES_PASSWORD` at first volume
+      init, so the fix is `ALTER USER cabin WITH PASSWORD '...'` against the
+      live container first, then `.env` updated to match, then `cabin-backend`
+      restarted — not a routine env-var change. Now materially higher priority
+      than when first found: `api.unicornpingpong.com` is public as of this
+      session, and the cross-device backend above just gave `cabin-backend`
+      its first public *write* endpoints on top of that same database.
+      User explicitly deferred this to the next session (2026-08-01).
+- [x] Register `unicornpingpong.com` at Porkbun, add to Cloudflare free tier —
+      confirmed live: all three subdomains resolve and serve real responses.
+- [x] Add `cloudflared` container to M920q docker-compose, configure tunnel to
+      `hub/cabin/api` subdomains — confirmed 2026-08-01 via direct `curl`:
+      `hub.` serves family-hub.html, `cabin.` serves cabin-ui (200), `api.`
+      `/actuator/health` reports `{"status":"UP"}`.
+- [x] Update Google OAuth authorized origin from `http://127.0.0.1:5500` to
+      `https://hub.unicornpingpong.com` — done live during an earlier session's
+      debugging (root-caused a "doesn't comply with OAuth 2.0 policy" error to
+      the bare apex domain being authorized instead of the exact `hub.` origin).
 - [ ] Family Hub PWA manifest — installable on phone, offline clock/chores fallback
 
 ### Phase 1.5 — Location Context & Vocabulary Feedback Loop

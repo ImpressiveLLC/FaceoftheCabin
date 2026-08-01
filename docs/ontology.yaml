@@ -2212,11 +2212,15 @@ elements:
     constraint:
       description: keyed by date + kidId + choreId; default false when absent; no expiry
     ui_display_name: "Done ✓"
-    source: localStorage["smrekar_chore_completion"] (nested JSON object)
+    source: >
+      cabin-backend POST/GET /api/chores/completion (Postgres table
+      chore_completion), mirrored into localStorage["smrekar_chore_completion"]
+      as an offline cache/fallback when signed out or cabin-backend is
+      unreachable.
     rendering:
       semantic: Done ✓ / Not done yet
       systems: Chore Completion (day × kid × choreId → boolean)
-      technical: COMP_KEY["smrekar_chore_completion"][dayKey][kidId][choreId] → boolean
+      technical: completion[dayKey_kidId][choreId] → boolean (in-memory, backed by cabin-backend)
       compliance: (not shown)
     definition: >
       The persisted record of which chores have been completed by which child
@@ -2234,20 +2238,28 @@ elements:
         cardinality: "1:N"
     transformation: >
       User taps chore row → toggleChoreCompletion(dayKey, kidId, choreId) →
-      inverts boolean → writes back to localStorage.
-      Read: getChoreState(dayKey, kidId, choreId) returns boolean (default false).
+      optimistic local flip + re-render, then POST /api/chores/completion/toggle
+      (Bearer: signed-in Google access token, validated server-side against
+      Google's tokeninfo endpoint) → server toggles the Postgres row and
+      returns the authoritative boolean, reconciled back into the local copy
+      if a concurrent toggle from another device raced it.
+      Read: getChoreState(dayKey, kidId, choreId) returns boolean (default
+      false) from the in-memory cache; refreshCompletionFromServer() pulls
+      the full map from cabin-backend on sign-in and every 20s poll.
     relates_to:
       ui_components: [ui_chore_tracker_tab, ui_today_chores_card]
       elements: [chore_assignment, reward_eligibility, chore_daily_view, chore_daily_success]
     notes: >
       Structure: { "2026-07-27": { "sam": { "brush_teeth": true, ... }, ... } }.
       No expiry — historical data used for reward lookback window.
-      KNOWN GAP (confirmed 2026-07-31, not a code bug): localStorage-only,
-      so completion recorded on one device/browser is invisible after
-      signing in on a different one — verified the toggle -> save -> persist
-      -> reload path is internally consistent; the per-browser storage
-      architecture is the actual cause. See chore_daily_success /
-      chore_weekly_success below for the queued fix.
+      FIXED (2026-08-01): the localStorage-only cross-device gap flagged
+      2026-07-31 is closed for the raw per-chore boolean — see
+      cabin-orchestration-platform/backend's family/ package
+      (ChoreCompletionService, ChoresController). The >=3/>=4 threshold
+      *derivations* (chore_daily_success / chore_weekly_success below) are
+      still computed live client-side from this synced raw data, not
+      persisted server-side as their own materialized facts — that part is
+      still planned, see those entities' notes.
 
   - id: chore_daily_success
     entity_type: owl:DatatypeProperty
@@ -2283,11 +2295,16 @@ elements:
       ui_components: [ui_chore_tracker_tab, ui_today_chores_card]
       elements: [chore_completion_state, chore_weekly_success]
     notes: >
-      QUEUED, NOT YET BUILT (2026-07-31). Needs a real /api/chores endpoint
-      on cabin-backend (already running) backed by Postgres — same backend,
-      same reasoning, as the queued /api/notes work already in ROADMAP.md
-      Phase 1. One backend effort should cover raw completion records plus
-      both derived aggregates below.
+      PARTIALLY BUILT (2026-08-01): the raw layer this derives from
+      (chore_completion_state) now syncs cross-device via cabin-backend's
+      /api/chores/completion. This flag itself is still only computed live,
+      client-side (countDayCompleted(dayKey,kidId) >= 3), from that synced
+      data — not yet persisted server-side as its own stored fact. Still
+      queued if a materialized version is ever needed (e.g. for a future
+      history/analytics view that shouldn't have to re-walk raw completion
+      rows), but not required for the cross-device correctness gap that
+      prompted this — synced raw data + live client-side derivation already
+      produces the same answer on every device.
 
   - id: chore_weekly_success
     entity_type: owl:DatatypeProperty
@@ -2322,8 +2339,67 @@ elements:
       ui_components: [ui_rewards_tab]
       elements: [chore_daily_success, reward_eligibility]
     notes: >
-      QUEUED, NOT YET BUILT (2026-07-31). Same /api/chores backend effort
-      as chore_daily_success.
+      Same status as chore_daily_success (2026-08-01): its raw input now
+      syncs cross-device, this aggregate is still only derived live,
+      client-side, not persisted server-side as its own fact. Still queued
+      if a materialized version is ever needed.
+
+  - id: family_note
+    entity_type: owl:Class
+    layer: backend
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:complexType
+    constraint:
+      description: >
+        text non-empty; authorId must reference a family_profile id (not
+        enforced by a DB foreign key — profiles are per-device localStorage,
+        see notes below); newest-first; capped at 50, oldest pruned.
+    ui_display_name: "Family Note"
+    source: >
+      cabin-backend POST/GET /api/notes (Postgres table family_notes),
+      mirrored into localStorage["smrekar_family_notes"] as an offline
+      cache/fallback when signed out or cabin-backend is unreachable.
+    rendering:
+      semantic: "<author avatar> <author name>: <text>, <relative time>"
+      systems: Family Notepad entry (id, authorId, text, ts)
+      technical: "FamilyNote(id, authorId, text, ts) — Spring Data JdbcTemplate row in family_notes"
+      compliance: Family Notepad Message Record
+    definition: >
+      A single free-text message left on the shared family notepad —
+      "same trust as a fridge note," any signed-in actor can post as any
+      profile (selectedNoteAuthorId), not access-controlled per author.
+    relationships:
+      - target: family_profile
+        type: depends_on
+        cardinality: "N:1"
+    transformation: >
+      User types + sendNote() → POST /api/notes {authorId, text} (Bearer:
+      signed-in Google access token, validated server-side against Google's
+      tokeninfo endpoint) → server assigns id ("n_<epochMs>_<rand6>") and ts,
+      inserts, prunes anything past the newest 50, returns the created row.
+      Read: refreshNotesFromServer() pulls GET /api/notes on sign-in and
+      every 20s poll while signed in; loadNotes() serves the in-memory
+      cache (or the localStorage mirror before the first successful fetch).
+    relates_to:
+      ui_components: [ui_notepad]
+      elements: [family_profile]
+    notes: >
+      BUILT (2026-08-01) to close the cross-device gap noted in
+      chore_completion_state's history — same cabin-backend family/ package
+      (FamilyNoteService, NotesController) and the same GoogleAuthInterceptor
+      gate on /api/notes and /api/chores/**. KNOWN GAP NOT covered by this
+      work: family_profile itself (the id an authorId references) is still
+      localStorage-only, per device — the built-in kid/parent/pet defaults
+      share fixed ids across every fresh device by default, so this mostly
+      doesn't matter, but a profile added on one device (e.g. a Friends &
+      Family / guest entry) won't resolve to a name/avatar on another until
+      profiles are synced too. Degrades gracefully today (noteRowHtml falls
+      back to a generic "Family" label + 📝 for an unrecognized authorId),
+      not a hard failure — just a visual gap, and a candidate for a future
+      /api/profiles endpoint using the same pattern if it matters enough.
 
   - id: chore_daily_view
     entity_type: owl:Class

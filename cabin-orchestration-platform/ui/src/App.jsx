@@ -218,6 +218,9 @@ function FamilyHubLocationCard({ locId, locCfg, devices }) {
               </a>
             ))}
           </div>
+          <div className="tailscale-hint">
+            <Lock size={11} /> These are cabin-network admin tools — link only opens if you're on Tailscale.
+          </div>
         </>
       )}
     </div>
@@ -254,6 +257,9 @@ function FamilyConfigPanel() {
           <a href={`${haUrl}/config/integrations`} target="_blank" rel="noreferrer" className="btn-secondary">
             Manage in Home Assistant ↗
           </a>
+          <div className="tailscale-hint">
+            <Lock size={11} /> Won't load off Tailscale — Home Assistant admin is cabin-network-only.
+          </div>
         </ConfigCard>
         <ConfigCard title="Notification Preferences" icon={AlertTriangle}>
           <p className="config-desc">Configure alert escalation: MQTT → email/SMS thresholds.</p>
@@ -370,7 +376,8 @@ function DeviceManagerPanel() {
           );
         })}
         <a href={LOCATIONS.cabin.z2mUrl}
-           className="dm-advanced-link" target="_blank" rel="noreferrer">
+           className="dm-advanced-link" target="_blank" rel="noreferrer"
+           title="Requires Tailscale — Zigbee2MQTT admin is cabin-network-only">
           Advanced (Z2M) <ExternalLink size={11}/>
         </a>
       </div>
@@ -923,6 +930,9 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
 
       <div className="embed-section">
         <div className="embed-label">Grafana — {locCfg.label} Telemetry</div>
+        <div className="tailscale-hint">
+          <Lock size={11} /> Won't load off Tailscale — Grafana is cabin-network-only.
+        </div>
         <iframe
           title={`Grafana ${locCfg.label}`}
           src={`${locCfg.grafanaUrl}/d/${locCfg.id}-overview?kiosk=tv`}
@@ -1300,6 +1310,9 @@ function RulesPanel() {
       <div className="rules-layout">
         <div className="rules-nodered">
           <div className="embed-label">Node-RED — {locationCfg?.label || "Cabin"} Automation Flows</div>
+          <div className="tailscale-hint">
+            <Lock size={11} /> Won't load off Tailscale — the flow editor is cabin-network-only.
+          </div>
           <iframe title="Node-RED" src={noderedUrl} className="embed-frame" />
         </div>
         <div className="rules-sidebar">

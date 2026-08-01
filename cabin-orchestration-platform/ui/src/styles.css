@@ -222,6 +222,10 @@ body {
 }
 .config-desc { color: #8b949e; margin: 0 0 10px 0; font-size: 13px; }
 .config-hint { color: #6e7681; font-size: 12px; margin: 6px 0 0 0; }
+.tailscale-hint {
+  display: flex; align-items: center; gap: 5px;
+  color: #6e7681; font-size: 11px; margin: 6px 0 0 0;
+}
 .code-block {
   display: block;
   background: #0d1117;

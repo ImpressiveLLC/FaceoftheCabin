@@ -90,6 +90,11 @@ services:
       HOME_HA_TOKEN: ${HOME_HA_TOKEN:-}
       KAFKA_BOOTSTRAP: cabin-kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://cabin-postgres:5432/cabin
+      # Same Web Client ID family-hub signs in with (see family-hub's
+      # GOOGLE_CLIENT_ID below) — GoogleAuthInterceptor checks the "aud"
+      # claim on tokens sent to /api/notes and /api/chores against this, so
+      # a token from an unrelated Google app can't be used to write here.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     networks:
       - default         # project network: reaches cabin-postgres, cabin-kafka
       - cabin_default   # existing network: reaches mosquitto, nodered, z2m
@@ -105,6 +110,7 @@ services:
       args:
         GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
         ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+        CABIN_API_URL: ${CABIN_API_URL:-https://api.unicornpingpong.com}
     container_name: family-hub
     restart: unless-stopped
     ports:

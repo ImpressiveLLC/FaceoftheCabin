@@ -10,7 +10,28 @@
 > unbuilt. Update the "Last verified" line each time; don't let this doc go
 > stale itself.
 
-**Last verified:** 2026-08-01, against commit `73850da` on `main` — **deployed through the automated CI/CD pipeline for the first time**, confirmed live via the served page, not via SSH. Tier 1 #1 from the prioritized plan (CI/CD runner) is closed — see §6/§8. Since `a1ec7ee`: "Who are you?" actor context at Dashboard > Overview (with `current_actor` ontology entity), found and fixed a real bug where the Dashboard's 5-tab row could push "Family" fully off-screen on a phone, installed and registered the self-hosted runner (`gh auth login` device-flow + `gh api` for the registration token — no token/password ever typed), and caught two real gaps in the deploy pipeline only visible by actually running it: wrong `CABIN_REPO_PATH` default and a missing `-f docker-compose.m920q.yml` override. **Not closed out:** stale `H:\...\FaceoftheCabin` clone still unresolved; the cross-device backend (Tier 1 #2) is next.
+**Last verified:** 2026-08-01, this session's work committed and pending push/deploy
+(see §2/§6/§8 for the actual outcome of that step). Building on the prior
+`73850da` checkpoint (CI/CD runner closed, Tier 1 #1), this session: unified
+the calendar/chores-card accent color per theme, fixed Pac-Man/Retro-CRT
+heading-font jaggedness and widened the LCARS font, added Pac-Man red
+accents, enlarged/gold-accented the Dashboard button in place (a bottom-
+center relocation was tried and reverted — real collision risk with
+`#bottom-bar` on short-content mobile pages), added a "Friends & Family"
+actor role (full parity, per explicit user decision) with a searchable
+~90-emoji avatar pack, **built and verified the Tier 1 #2 cross-device
+backend** (`/api/notes` + `/api/chores` on `cabin-backend`, Postgres-backed,
+`GoogleAuthInterceptor`-gated — see Tier 1 #2 below for full detail), and
+added visible "requires Tailscale" hints to `cabin-ui`'s admin-surface
+embeds/links per an explicit decision to keep those Tailscale-only. Also
+surfaced two real findings that weren't asked for but are load-bearing:
+camera *viewing* doesn't actually exist in `cabin-ui` yet (`frigateUrl` is
+defined in config, never rendered — status tiles only, no video), and the
+`cabin-postgres` default-password gap is now higher-stakes than when first
+flagged (public write endpoints landed on that same DB this session) — user
+explicitly pinned that fix to the next session. **Not closed out:** stale
+`H:\...\FaceoftheCabin` clone still unresolved (Tier 1 #4); camera public
+viewing is a real next feature, not yet scoped.
 
 ---
 
@@ -23,18 +44,18 @@
       explicitly retired — never left as an ambiguous second "maybe current"
       copy.
 
-**Status:** `C:\dev\FaceoftheCabin` is the actively-maintained clone — clean,
-current with `main`. `H:\My Drive\cabin-orchestration-platform-expanded\FaceoftheCabin`
-is **stale** (commit `e4e3251`, far behind `main`) and had one uncommitted
-edit (a `CLAUDE.md` change made in error against the wrong clone earlier
-2026-07-30 — since re-applied to the real repo, see §3). Google Drive's
-virtual filesystem is a known-bad environment for git (no reliable file
-locking/atomic renames), which likely explains why this clone drifted and
-why a second, real clone exists on `C:\dev` at all. **Open decision for the
-user:** either delete the `H:\...\FaceoftheCabin` clone, or reset it to
-match `origin/main` and stop editing files there. Not deleted by an agent
-without confirmation — it's a destructive action outside the scope of a
-routine check-in.
+**Status — re-checked 2026-08-01:** `C:\dev\FaceoftheCabin` was exactly in
+sync with `origin/main` before this session's commit (`git fetch` showed
+zero commits either direction) — the only diffs were this session's own
+working-tree changes, now committed (see §2).
+`H:\My Drive\cabin-orchestration-platform-expanded\FaceoftheCabin` is
+**still stale** (commit `e4e3251`, unchanged since last check-in — far
+behind `main`) and still has an uncommitted `CLAUDE.md` edit plus untracked
+files (`.vscode/`, `ui/vite.config.js`). Nothing about this changed this
+session; re-verified, not re-decided. **Open decision for the user,
+unchanged:** delete the `H:\...\FaceoftheCabin` clone, or reset it to match
+`origin/main` and stop editing files there. Not touched by an agent without
+confirmation — destructive action outside the scope of a routine check-in.
 
 ---
 
@@ -62,12 +83,19 @@ session's pending commit). **Not pushed** — push only on explicit request.
 - [ ] Docs written *about* a change ship in the *same* commit as the change,
       not as a follow-up someone has to remember.
 
-**Status:** `ROADMAP.md`'s parenting-schedule row, `CLAUDE.md`'s remote-access
-constraint, and `docs/ontology.yaml`'s Family Hub section are current as of
-this check-in. Known pre-existing gap (not from this session, not yet
-fixed): one YAML entity (`custody_status`) has an invalid `semantic:` value
-(concatenated quoted strings) that breaks strict YAML parsers — flagged,
-not fixed, since it predates tonight's work and needs its own review pass.
+**Status:** `ROADMAP.md`'s Phase 1 checklist updated this session — checked
+off the cross-device backend, domain/Cloudflare Tunnel registration, and the
+Google OAuth origin fix (all actually done, previously left unchecked), and
+refreshed the `cabin-postgres` password note to match the elevated-priority
+framing agreed this session. `docs/ontology.yaml` updated: `chore_completion_state`
+now documents the real sync path (was localStorage-only), `chore_daily_success`/
+`chore_weekly_success` notes clarify what did vs. didn't ship, new `family_note`
+entity added with full CRUD/transformation detail. `README.md`'s Documentation
+Index and product table were checked, not touched — already accurate.
+Known pre-existing gap (not from this session, not yet fixed): one YAML
+entity (`custody_status`) has an invalid `semantic:` value (concatenated
+quoted strings) that breaks strict YAML parsers — flagged, not fixed, since
+it predates this work and needs its own review pass.
 
 ---
 
@@ -79,14 +107,15 @@ not fixed, since it predates tonight's work and needs its own review pass.
 - [ ] If the simplest correct answer is "wipe and reseed," do that instead
       of writing compatibility shims for data no one needs preserved.
 
-**Status:** `smrekar_schedule_cfg` (the pre-versioning flat anchor) is now
-deleted immediately upon migration into `smrekar_schedule_rules`, instead of
-being left behind unused. Current key inventory (11 keys, all actively
-read): `family_profiles`, `smrekar_rewards`, `smrekar_rewards_history`,
-`smrekar_schedule_rules`, `smrekar_schedule_log`, `smrekar_holidays`,
-`smrekar_custody_log`, `smrekar_hub_cfg`, `smrekar_photos_meta`,
-`smrekar_chore_completion`, `smrekar_access_log`, `cabin-theme`. None
-orphaned as of this check-in.
+**Status:** No new localStorage keys introduced this session — the
+cross-device backend deliberately *reuses* the existing
+`smrekar_family_notes`/`smrekar_chore_completion` keys as an offline mirror
+(populated from the server response, not a parallel key), so the key
+inventory from the last check-in is unchanged (still 11 keys, still none
+orphaned). What changed is what those two keys *mean*: they're now a cache
+of server state when signed in and CABIN_API_URL is configured, falling
+back to being the source of truth when signed out or unreachable — same
+key, same shape, different provenance depending on runtime state.
 
 ---
 
@@ -98,11 +127,23 @@ orphaned as of this check-in.
       recover or rebuild the pipeline from scratch.
 - [ ] Docs match the actual YAML — no describing a step that isn't there.
 
-**Status:** No CI/CD pipeline existed anywhere in either clone as of this
-session's start, despite being referenced as already having "a placeholder."
-See `.github/workflows/deploy-family-hub.yml` and
-`ansible/README.md` added this session — self-hosted-runner pattern (see §6
-for why), documented for recovery.
+**Status:** No CI/CD pipeline existed anywhere in either clone as of the
+session that built it, despite being referenced as already having "a
+placeholder." See `.github/workflows/deploy-family-hub.yml` and
+`ansible/README.md` — self-hosted-runner pattern (see §6 for why),
+documented for recovery.
+
+**Gap surfaced this session (2026-08-01):** the workflow's own comments
+explain it deliberately excludes `cabin-backend`/`postgres`/`kafka`/`grafana`
+from every automated push — deliberately, because those are stateful and
+warrant considered rollout, not a blanket rebuild. That reasoning still
+holds, but this session's core work (the cross-device backend) *lives* in
+`cabin-backend`, so it does **not** deploy automatically — it needs a manual
+`docker compose ... up -d --build cabin-backend` (see README's Quick Start)
+every time, same as before this pipeline existed. Not resolved here — an
+explicit choice to widen the pipeline's scope (even just to build-and-notify
+without auto-restarting) is a call for the user, not something to silently
+bake in.
 
 ---
 
@@ -159,11 +200,15 @@ own "success" status.
       `localStorage` keys / function names in code, not what they used to be.
 
 **Status:** Cross-checked this session — see §3. Subdomain list (`hub` /
-`cabin` / `api`) is consistent between README and ROADMAP. One open
-reconciliation from the previous session remains unresolved: the user
-recalled `monitoring`/`qa`/`config`/`familyhub` subdomains that aren't
-actually documented anywhere — still needs a human decision, not something
-to silently resolve by picking one.
+`cabin` / `api`) is consistent between README and ROADMAP, and now confirmed
+*live* (not just documented) as of this session's fresh `curl` checks — see
+§8. `docker-compose.m920q.yml` and `.env.m920q.example` cross-checked against
+each other for the new `CABIN_API_URL` (family-hub) and `GOOGLE_CLIENT_ID`
+(cabin-backend) wiring — both present and consistent. One open
+reconciliation from a previous session remains unresolved: the user recalled
+`monitoring`/`qa`/`config`/`familyhub` subdomains that aren't actually
+documented anywhere — still needs a human decision, not something to
+silently resolve by picking one.
 
 ---
 
@@ -235,10 +280,17 @@ turned out to be wrong — see the current status above.
       are represented at the same level of detail as older, pre-CRUD
       entities — no second-class documentation for newer features.
 
-**Status:** Audited this session — `reward_menu_item` and
-`holiday_override` entity CRUD coverage confirmed/added (see ontology diff
-this commit). `family_member_profile` already had CRUD-equivalent detail
-from an earlier session.
+**Status:** New `family_note` entity added this session with full CRUD/
+transformation/relationship detail (create via `sendNote()`, read via
+`refreshNotesFromServer()`/`loadNotes()`, matching the depth of older
+entities — no delete surface exists in the UI, so none documented).
+`chore_completion_state` updated in place rather than superseded — same
+entity, corrected `source`/`transformation` fields to name the real
+functions (`toggleChoreCompletion`, `refreshCompletionFromServer`) instead
+of the old localStorage-only description. `family_profile` (the entity
+`family_note.authorId` references) was reviewed, not changed — still
+localStorage-only, a known and documented gap, not silently left
+undocumented.
 
 ---
 
@@ -280,20 +332,31 @@ from an earlier session.
    with a real automated deploy (`73850da`), not just a green checkmark.
    Two real bugs found and fixed in the process (`CABIN_REPO_PATH`
    default, missing M920q compose override) — see §6/§8.
-2. **Build the cross-device backend** (`/api/notes` + `/api/chores` on
-   `cabin-backend`, Postgres-backed). This is the single highest-value item
-   on the list — one backend effort unblocks three separate things at
-   once: Family Notepad sync, chore-completion sync, and the personalization
-   feature (Tier 3, #1) which **cannot be built at all** without this
-   existing first. Every additional localStorage-only feature built before
-   this ships is more migration surface later — this should be the next
-   thing built, not deferred further.
-3. **Resolve the `cabin-postgres` default-password finding**, bundled with
-   #2 since both touch the same database — doing them as one change avoids
-   two separate risky touches to `cabin-backend`'s DB connection. Sequencing
-   matters here specifically: this should land **before** `api.unicornpingpong.com`
-   is ever exposed publicly via the Cloudflare Tunnel (a default password is
-   a much bigger deal reachable from the internet than on Tailscale-only).
+2. ~~**Build the cross-device backend** (`/api/notes` + `/api/chores` on
+   `cabin-backend`, Postgres-backed).~~ **Done 2026-08-01.** `FamilyNoteService`
+   /`ChoreCompletionService` + `NotesController`/`ChoresController` (new
+   `family/` package), gated by `GoogleAuthInterceptor` (valid Google access
+   token required, checked against Google's tokeninfo endpoint — the first
+   auth-gated, first *write*, endpoints this backend has). family-hub.html's
+   `sendNote()`/`toggleChoreCompletion()` now sync through it, with
+   localStorage kept as an offline mirror when signed out or cabin-backend is
+   unreachable. Verified against a real local Postgres + a real running
+   backend, two isolated browser contexts standing in for two devices — both
+   directions, both features, zero errors. Raw completion data syncs; the
+   `chore_daily_success`/`chore_weekly_success` *derived* threshold flags
+   (ontology) are still computed live client-side from that synced data, not
+   separately materialized server-side — that narrower piece is still
+   planned, not required for the cross-device gap this closes. Also NOT yet
+   synced: `family_profile` itself (still localStorage/per-device) — see
+   `family_note`'s ontology notes for the resulting (graceful, non-fatal)
+   edge case with a freshly-added Friends & Family profile.
+3. **Resolve the `cabin-postgres` default-password finding.** Was already
+   flagged as needing to land before `api.unicornpingpong.com` went public —
+   it's public now, and #2 just added the backend's first public *write*
+   endpoints on top of that same default-password database. This is now a
+   materially bigger deal than when first flagged: raises the priority of
+   this item, doesn't reduce it. Not resolved by #2 — deliberately left
+   alone rather than touch a possibly-live DB connection blind.
 4. **Resolve the stale `H:\...\FaceoftheCabin` clone** (delete or reset to
    `main`). Trivial effort, but it already caused one real mistake this
    session (a doc edit landed in the wrong repo) — the risk compounds every
