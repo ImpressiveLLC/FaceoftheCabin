@@ -33,36 +33,42 @@
     version: main
     force: false # never discard local changes on the host silently
 
+# /home/{{ ansible_user }}, not /opt — confirmed against the real host:
+# /opt itself is root:root 755, so even creating a new directory under it
+# needs root. Installing into the deploy user's home avoids needing
+# privilege escalation for anything except the two systemd steps at the end.
 - name: Check whether a GitHub Actions runner is already registered
   ansible.builtin.stat:
-    path: /opt/actions-runner/.runner
+    path: "/home/{{ ansible_user }}/actions-runner/.runner"
   register: runner_config
+  become: false
 
 - name: Download GitHub Actions runner package
   when: not runner_config.stat.exists
   ansible.builtin.get_url:
     url: "https://github.com/actions/runner/releases/download/v{{ github_runner_version }}/actions-runner-linux-x64-{{ github_runner_version }}.tar.gz"
-    dest: /tmp/actions-runner.tar.gz
+    dest: "/home/{{ ansible_user }}/actions-runner.tar.gz"
     mode: "0644"
+  become: false
 
 - name: Create runner install directory
   when: not runner_config.stat.exists
   ansible.builtin.file:
-    path: /opt/actions-runner
+    path: "/home/{{ ansible_user }}/actions-runner"
     state: directory
-    owner: "{{ ansible_user }}"
+  become: false
 
 - name: Extract runner package
   when: not runner_config.stat.exists
   ansible.builtin.unarchive:
-    src: /tmp/actions-runner.tar.gz
-    dest: /opt/actions-runner
+    src: "/home/{{ ansible_user }}/actions-runner.tar.gz"
+    dest: "/home/{{ ansible_user }}/actions-runner"
     remote_src: true
-    owner: "{{ ansible_user }}"
+  become: false
 
 - name: Register the runner (requires github_runner_token, see site.yml header)
   when: not runner_config.stat.exists
-  become_user: "{{ ansible_user }}"
+  become: false
   ansible.builtin.command:
     cmd: >
       ./config.sh --unattended
@@ -71,19 +77,23 @@
       --name {{ inventory_hostname }}
       --labels {{ 'cabin-m920q' if 'cabin' in group_names else 'home-hub' }}
       --work _work
-    chdir: /opt/actions-runner
+    chdir: "/home/{{ ansible_user }}/actions-runner"
   no_log: true # the token must never land in playbook output/logs
 
+# The only two steps that genuinely need root: svc.sh writes a systemd unit
+# under /etc/systemd/system/ and enables it. become defaults to true at the
+# play level (see site.yml) so these run with sudo as normal — everything
+# above explicitly opted out with become: false instead.
 - name: Install the runner as a systemd service
   when: not runner_config.stat.exists
   ansible.builtin.command:
     cmd: ./svc.sh install
-    chdir: /opt/actions-runner
+    chdir: "/home/{{ ansible_user }}/actions-runner"
 
 - name: Start the runner service
   when: not runner_config.stat.exists
   ansible.builtin.command:
     cmd: ./svc.sh start
-    chdir: /opt/actions-runner
+    chdir: "/home/{{ ansible_user }}/actions-runner"
   # svc.sh (shipped by the runner package) wraps the generated systemd unit
   # name for us — safer than guessing the unit name ourselves for `systemd:`.
