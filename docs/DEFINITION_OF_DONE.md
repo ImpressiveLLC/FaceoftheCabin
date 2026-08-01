@@ -68,9 +68,14 @@ confirmation — destructive action outside the scope of a routine check-in.
 - [ ] Push happens only with explicit user go-ahead — local commits are
       "done" for review purposes; `git push` is a separate, confirmed step.
 
-**Status:** All family-hub, ontology, ROADMAP, and CLAUDE.md work through
-this session is committed on `main` (`803c8b8`, `8ac96f4`, plus this
-session's pending commit). **Not pushed** — push only on explicit request.
+**Status — 2026-08-01:** All of this session's work committed on `main`
+(`6c7b3cc`, `d769022`) and **pushed**, on explicit request ("perform end of
+session DoD steps... confirm when all is live"). `git fetch` before
+committing showed `C:\dev\FaceoftheCabin` was already exactly in sync with
+`origin/main` (zero drift either direction) — the two new commits are
+additive, not a reconciliation. Nothing environment-specific or secret in
+either commit — checked the staged diff before committing, only source/docs/
+config-with-placeholder-defaults.
 
 ---
 
@@ -186,6 +191,40 @@ running the pipeline rather than trusting it was correct on paper:
 Third run (triggered by the fix itself, `73850da`) succeeded end to end —
 confirmed against the actual live served page, not just the workflow's
 own "success" status.
+
+**2026-08-01, this session's close-out:** pushed `6c7b3cc`, confirmed via
+SSH that the self-hosted runner picked it up automatically and rebuilt
+`family-hub`/`cabin-ui` within seconds. **Found a real gap doing this:**
+`cabin-backend` — where this session's actual core work lives — is
+deliberately excluded from the automated workflow (see §5), so despite the
+container showing a fresh restart time (a side effect of being `cabin-ui`'s
+Compose dependency picking up a changed env var), it was still running the
+*old* image — confirmed directly: `GET /api/notes` returned `404`, not
+`401`, meaning the new controllers weren't in the running jar at all.
+Rebuilt and redeployed `cabin-backend` manually (same command as README's
+Quick Start), then re-verified: `401` on `/api/notes` and
+`/api/chores/completion` with no token, `200` on an unrelated endpoint,
+both confirmed against `api.unicornpingpong.com` directly, not just
+`localhost` on the M920q.
+
+**Second real gap found in the same pass:** `hub.unicornpingpong.com`'s
+`host-config.js` — the file carrying `GOOGLE_CLIENT_ID`/`ADMIN_EMAILS`/the
+new `CABIN_API_URL` — was being cached by Cloudflare for 7 days as
+`immutable`, because nginx's blanket `.js` cache rule matched it too (fixed
+for every other static asset, wrong for a file regenerated per deploy).
+Fixed origin-side (`d769022`, exact-match `no-cache` location block,
+verified against `localhost` on the M920q directly). **Not fully closed:**
+Cloudflare's existing cached copy (missing `cabinApiUrl`, `cf-cache-status:
+HIT`) is still being served publicly as of this check-in — an origin header
+change doesn't retroactively invalidate an already-cached edge response.
+Real, current impact: any real visitor to `hub.unicornpingpong.com` right
+now gets `CABIN_API_URL=''`, silently disabling notes/chores sync for them
+specifically (degrades to the existing offline/localStorage-only path, not
+a crash) until either the cache naturally expires or is purged. **No
+Cloudflare API access from this environment to purge it directly** — needs
+a manual purge (Cloudflare dashboard → Caching → Configuration → Purge
+`host-config.js`, or purge everything) to take effect immediately instead
+of waiting out the remaining ~6.9-day TTL.
 
 ---
 
