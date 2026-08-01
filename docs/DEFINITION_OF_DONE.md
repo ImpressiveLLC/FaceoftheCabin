@@ -10,7 +10,7 @@
 > unbuilt. Update the "Last verified" line each time; don't let this doc go
 > stale itself.
 
-**Last verified:** 2026-07-31, against commit `a1ec7ee` on `main` — deployed and confirmed live on the M920q's `family-hub` container (§8). Since `462b692`: chore-completion data layer verified consistent (not a bug — confirmed the cross-device gap instead, see §9), host-driven Google Client ID (no more per-device Settings entry), notepad rebuilt for touch devices + keyboard-awareness, Android layout collision root-caused and fixed (cascade-order bug in the fix itself, caught and corrected), calendar text-overflow fixed, 80s Neon + Pac-Man themes, Upcoming Holidays browser, and `chore_daily_success`/`chore_weekly_success` ontology entities for the queued backend. **Not closed out:** CI/CD runner still never registered (checked directly — `/opt/actions-runner` doesn't exist on the M920q; every deploy this session was manual), stale `H:\...\FaceoftheCabin` clone still unresolved.
+**Last verified:** 2026-08-01, against commit `73850da` on `main` — **deployed through the automated CI/CD pipeline for the first time**, confirmed live via the served page, not via SSH. Tier 1 #1 from the prioritized plan (CI/CD runner) is closed — see §6/§8. Since `a1ec7ee`: "Who are you?" actor context at Dashboard > Overview (with `current_actor` ontology entity), found and fixed a real bug where the Dashboard's 5-tab row could push "Family" fully off-screen on a phone, installed and registered the self-hosted runner (`gh auth login` device-flow + `gh api` for the registration token — no token/password ever typed), and caught two real gaps in the deploy pipeline only visible by actually running it: wrong `CABIN_REPO_PATH` default and a missing `-f docker-compose.m920q.yml` override. **Not closed out:** stale `H:\...\FaceoftheCabin` clone still unresolved; the cross-device backend (Tier 1 #2) is next.
 
 ---
 
@@ -108,21 +108,43 @@ for why), documented for recovery.
 
 ## 6. CI/CD (incl. Ansible) is actually wired to pick up changes
 
-- [ ] A push to `main` (or a tag, per the workflow's trigger) results in the
+- [x] A push to `main` (or a tag, per the workflow's trigger) results in the
       pipeline running without manual intervention.
-- [ ] The mechanism is appropriate to the network topology — a target
+- [x] The mechanism is appropriate to the network topology — a target
       behind CGNAT/Tailscale-only needs a different approach (self-hosted
       runner, pull-based deploy) than a publicly reachable host (push-based
       SSH deploy).
-- [ ] The plan for *why* this mechanism was chosen is written down, not just
+- [x] The plan for *why* this mechanism was chosen is written down, not just
       the mechanism itself.
 
-**Status:** M920q is Tailscale-only, behind Starlink CGNAT — a GitHub-hosted
-runner cannot reach it, and pushing SSH keys/secrets to GitHub for a home
-server is more attack surface than needed for a free/personal-tier project.
-**Chosen approach: a self-hosted GitHub Actions runner installed on the
-M920q itself**, connected over Tailscale, polling GitHub — no inbound ports,
-no secrets stored in GitHub. See §8 for the one manual step this requires.
+**Status — closed out 2026-08-01.** M920q is Tailscale-only, behind
+Starlink CGNAT — a GitHub-hosted runner cannot reach it, and pushing SSH
+keys/secrets to GitHub for a home server is more attack surface than
+needed for a free/personal-tier project. **Chosen approach: a self-hosted
+GitHub Actions runner installed on the M920q itself**, connected over
+Tailscale, polling GitHub — no inbound ports, no secrets stored in GitHub.
+
+Registered and running as a systemd service (`nate` ran the one step that
+genuinely needs root — `sudo ./svc.sh install && ./svc.sh start` — nothing
+scripted around that boundary). **Verified with a real end-to-end test,
+not just "the service is active":** the first two actual runs both
+failed — caught and fixed two real gaps that only surfaced by actually
+running the pipeline rather than trusting it was correct on paper:
+- `CABIN_REPO_PATH` was never set, so the workflow fell back to the
+  documented default (`/opt/FaceoftheCabin`), which doesn't exist — same
+  root-needs-`/opt` issue already hit in the Ansible runner-install path.
+  Set via `gh variable set`; also corrected the workflow's fallback
+  default to match.
+- The deploy step ran plain `docker compose` with no `-f
+  docker-compose.m920q.yml` override and assumed `family-hub/` had its
+  own compose file — neither true. Would have tried starting a second
+  mosquitto/HA/etc. fighting the real ones already running in the
+  separately-managed "cabin" stack for ports. Corrected to the exact
+  scoped command used for every manual deploy tonight.
+
+Third run (triggered by the fix itself, `73850da`) succeeded end to end —
+confirmed against the actual live served page, not just the workflow's
+own "success" status.
 
 ---
 
@@ -147,18 +169,31 @@ to silently resolve by picking one.
 
 ## 8. Deployment — pipeline reaches the M920q; quickstart is a reusable template
 
-- [x] Changes reach a running container on the M920q — done **manually**
-      this round (`git push` → `ssh` → `git pull` → `docker compose build/up`
-      for just the `family-hub` service), not yet via the automated pipeline.
-- [ ] No manual `ssh` + `git pull` needed once set up — **not yet true**;
-      today's deploy was hands-on, the self-hosted runner from §6 was never
-      actually registered. That's the remaining gap on this line.
+- [x] Changes reach a running container on the M920q — automated as of
+      2026-08-01 (see §6). Manual `ssh` deploys from earlier in the session
+      are kept below as history, not because they're still how this works.
+- [x] No manual `ssh` + `git pull` needed once set up — **true now.** The
+      commit that fixed the workflow (`73850da`) deployed itself, through
+      the pipeline, with zero manual intervention — verified against the
+      live served page afterward.
 - [ ] The same quickstart works as a **template** for a second host machine
       (e.g. the "home" location), parameterized rather than hardcoded to
-      the cabin.
+      the cabin. Still genuinely untested — the Ansible role takes an
+      `ansible_user`/inventory-group parameter for this, but no second host
+      has actually run it.
 - [ ] A placeholder exists for web-hosted (non-self-hosted) deployment
       targets, even if unused today — so the template doesn't have to be
       rewritten if that need shows up later.
+
+**Status — closed out 2026-08-01:** registered the runner (§6), then
+actually exercised the pipeline instead of assuming a green checkmark
+meant it worked. First two real runs failed — `CABIN_REPO_PATH` was unset
+(fell back to a nonexistent `/opt/...` default) and the deploy step didn't
+use the M920q compose override, so it would have fought the already-running
+"cabin" stack for ports. Both fixed by actually reading the failure logs,
+not guessing. Third run, triggered by the fix commit itself, succeeded
+fully automated — confirmed against `curl` on the live served page, same
+verification bar as every manual deploy earlier tonight.
 
 **Status — updated 2026-07-30, 17:25 CDT:** Tailscale was already
 authenticated and connected on this machine (`ilikethelights`), and the
@@ -240,13 +275,11 @@ from an earlier session.
 
 ### Tier 1 — Foundational (do these first; everything else gets cheaper or safer after)
 
-1. **Register the CI/CD self-hosted runner.** Zero technical dependencies,
-   ~5 minutes of user time (grab a token from GitHub, run the Ansible
-   playbook or the manual command in `ansible/README.md`). Highest
-   effort-to-leverage ratio on this list: every deploy after this is
-   automatic instead of me manually SSHing in. Do this **before** the
-   backend work below, so that work ships through the pipeline instead of
-   manually too.
+1. ~~**Register the CI/CD self-hosted runner.**~~ **Done 2026-08-01.**
+   Runner registered and running as a systemd service; pipeline verified
+   with a real automated deploy (`73850da`), not just a green checkmark.
+   Two real bugs found and fixed in the process (`CABIN_REPO_PATH`
+   default, missing M920q compose override) — see §6/§8.
 2. **Build the cross-device backend** (`/api/notes` + `/api/chores` on
    `cabin-backend`, Postgres-backed). This is the single highest-value item
    on the list — one backend effort unblocks three separate things at
