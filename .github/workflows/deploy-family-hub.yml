@@ -30,18 +30,28 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/opt/FaceoftheCabin' }}
+          # /opt needs root just to create a directory in — confirmed
+          # against the real M920q while setting this up. The repo lives
+          # in the deploy user's home instead; the CABIN_REPO_PATH repo
+          # variable (Settings -> Secrets and variables -> Actions ->
+          # Variables) is the actual source of truth, this is only the
+          # fallback if that's ever unset.
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
 
-      - name: Rebuild and restart affected services
+      - name: Rebuild and restart family-hub
         run: |
           cd "$DEPLOY_PATH/cabin-orchestration-platform/infra"
-          docker compose pull
-          docker compose up -d --build
-          cd "$DEPLOY_PATH/family-hub"
-          docker compose build
-          docker compose up -d
+          # family-hub has no docker-compose.yml of its own — it's one
+          # service inside this project's compose, and the M920q override
+          # (docker-compose.m920q.yml) is required: it disables services
+          # that conflict with the separately-managed "cabin" stack
+          # (HA/mosquitto/nodered/frigate already running there) and
+          # remaps ports. Scoped to just the family-hub service — this
+          # workflow doesn't touch cabin-backend/cabin-ui/postgres/etc.
+          docker compose -f docker-compose.yml -f docker-compose.m920q.yml build family-hub
+          docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d family-hub
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/opt/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
 
       - name: Prune old images
         run: docker image prune -f
