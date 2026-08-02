@@ -10,6 +10,84 @@
 > unbuilt. Update the "Last verified" line each time; don't let this doc go
 > stale itself.
 
+## HANDOFF (2026-08-02, end of a long session — read this first)
+
+This session ran from the `cabin-postgres` password rotation through a
+full four-phase camera-event pipeline. **Everything below is committed
+and pushed to `origin/main`** (local HEAD `5260bab` at handoff time,
+confirmed zero drift vs. origin via `git fetch` + `git log
+HEAD..origin/main` / `origin/main..HEAD`, both empty). No uncommitted
+changes, no stray local processes left running (checked `netstat` for
+the ports used during testing — clean).
+
+**What's actually live on the M920q right now:** family-hub, cabin-ui,
+and cabin-backend all rebuilt and verified against the real public
+endpoints (`hub.`/`cabin.`/`api.unicornpingpong.com`) as of Phase 4. The
+M920q's own clone was last confirmed at commit `4920440` (see below) —
+**docs-only commits after that (including this one) will NOT auto-deploy**,
+since the CI/CD workflow only triggers on `family-hub/**` or
+`cabin-orchestration-platform/**` changes. That's expected, not a gap —
+nothing in the docs-only tail needs deploying.
+
+**⚠️ Found at handoff, not reviewed:** three commits exist on `main`
+(`4eb757b`, `86e7e24`, `4920440`) that this session did not make —
+authored directly by the user (not `Co-Authored-By: Claude`), timestamped
+during this same session, adding a NEW, previously-undiscussed
+`cabin-orchestration-platform/infra/cabin-security/` directory (a
+Home Assistant "cabin intrusion" automation package, Node-RED flows, and
+a Python MQTT-publish bridge script). **This session never reviewed,
+tested, or cross-checked these against the MQTT event pipeline built the
+same day** (`MqttBridgeService` in `cabin-backend`, which now
+subscribes to `cabin/camera/#` and has specific expectations about
+Frigate's topic shapes) — there is a real, unverified possibility of MQTT
+topic overlap or interaction between the two. **First thing a new session
+should do**: read those three commits' diffs, understand what they do,
+and check for any collision with `cabin/camera/#` or other topics
+`MqttBridgeService` handles.
+
+**Open items, in priority order:**
+1. **Ansible not installed on the M920q** — blocks finishing Tier 1's
+   Ansible Vault work (the role/playbook/workflow are built and committed,
+   just never executed for real). One command:
+   `sudo apt install -y ansible-core` (NOT the pip route — hits PEP 668).
+   Once done: create the vault (`ansible/README.md`'s Secrets section has
+   the exact steps), the real secret values are already staged in
+   `/tmp/vault_plaintext.yml` on the M920q from this session, run
+   `playbooks/rotate-secrets.yml` for real, confirm the "fails loudly on a
+   bad rotation" behavior actually works before trusting it.
+2. **Google OAuth authorized origin** — `cabin.unicornpingpong.com` needs
+   adding as an authorized JavaScript origin on the same OAuth client
+   `hub.unicornpingpong.com` already uses (Google Cloud Console → APIs &
+   Services → Credentials). Without this, cabin-ui's "Sign in with Google"
+   (Camera Events panel) shows Google's own origin-mismatch error — not a
+   code bug, a one-click console fix.
+3. **`driveway` Reolink camera still off the network** — confirmed via a
+   full subnet ping sweep (only the router and the M920q itself answer on
+   192.168.2.0/24), not just a wrong-IP guess. User confirmed it's
+   powered; likely a lost WiFi association. Needs physical presence at
+   the cabin (checking for a camera-broadcast setup network, the router's
+   own client list, or a manual re-pair via the Reolink app) — explicitly
+   paused until the user is back on-site.
+4. **Camera video viewing (Phase 6)** — fully planned (`ROADMAP.md` Phase
+   6, three new `planned`-status ontology entities), zero code written,
+   deliberately deferred to a session with more budget. Read those
+   ontology entities and the Phase 6 checklist before starting — they
+   contain real, already-gathered facts (Frigate's actual live config
+   values, disk capacity) that would otherwise need re-discovering.
+5. **`cabin-postgres` default password** — actually resolved this session
+   (see Tier 1 #3 below), just listed here for visibility since it was
+   the session's starting point.
+
+**How to orient in a fresh session:** `docs/ontology.yaml` is current and
+fully valid YAML (three pre-existing parse bugs fixed this session) —
+every entity touched this session is `migration_status: complete` or
+`planned` accurately, with a `notes:` field explaining exactly what's
+built vs. not and why. `ROADMAP.md`'s Phase 1/2/6 checkboxes reflect
+reality. This file's Tier lists below are current as of this handoff.
+Don't re-derive context that's already sitting in these three files.
+
+---
+
 **Last verified:** 2026-08-01, this session's work committed and pending push/deploy
 (see §2/§6/§8 for the actual outcome of that step). Building on the prior
 `73850da` checkpoint (CI/CD runner closed, Tier 1 #1), this session: unified
