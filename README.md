@@ -43,7 +43,7 @@ A family-scale, self-hosted platform unifying cabin automation and family coordi
 |------|-------|
 | Primary server | Lenovo M920q · Ubuntu · Docker Compose at `/storage/containers/compose/cabin/` |
 | Tailscale IP | `100.77.44.113` |
-| Public access | Cloudflare Tunnel → `unicornpingpong.com` _(tunnel config in progress)_ |
+| Public access | Cloudflare Tunnel → `unicornpingpong.com` — live, all three subdomains |
 | Private mesh | Tailscale — cabin ↔ home, admin/SSH |
 | Domains | `unicornpingpong.com` — platform (hub/cabin/api subdomains) · `impressive.llc` — org domain |
 | Domain registrar | Porkbun |
@@ -53,6 +53,7 @@ A family-scale, self-hosted platform unifying cabin automation and family coordi
 | Calendar / Photos | `smrekarfamilia@gmail.com` |
 | Zigbee coordinator | `/dev/ttyACM0` · adapter: ember · 14 devices paired |
 | Parenting schedule anchor | March 13 2026 · 14-day cycle · kids-home-days: [0,1,4,5,8,9,12,13] |
+| Secrets | Ansible Vault (`ansible/group_vars/*/vault.yml`) — see `ansible/README.md`'s Secrets section, not hand-edited `.env` |
 
 ---
 

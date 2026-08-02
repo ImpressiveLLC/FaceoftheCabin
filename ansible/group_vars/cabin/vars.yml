@@ -1,0 +1,24 @@
+---
+# Plain (non-vaulted) config + the indirection layer that names each
+# vault-sourced secret without requiring decryption just to see what
+# variables exist. Safe to commit — no actual secret values live here.
+
+postgres_password: "{{ vault_postgres_password }}"
+grafana_password: "{{ vault_grafana_password }}"
+ha_token: "{{ vault_ha_token }}"
+home_ha_token: "{{ vault_home_ha_token }}"
+camera_password: "{{ vault_camera_password }}"
+
+# Non-secret config, templated into .env alongside the vaulted values so
+# infra/.env has one generation source instead of being partly-managed.
+family_hub_url: "https://hub.unicornpingpong.com"
+cabin_api_url: "https://api.unicornpingpong.com"
+# Not a secret (Web application Client IDs are visible client-side by
+# design — see .env.m920q.example) — real value confirmed 2026-08-02 via
+# the live family-hub container's baked host-config.js, since the .env
+# this value originally came from had already gone stale/empty (see
+# rotate-secrets.yml's comments and ansible/README.md's Secrets section
+# for the drift this was found fixing).
+google_client_id: "434674277184-7666hg0mhh9o3k0dk1rhv17c6o05qvtt.apps.googleusercontent.com"
+admin_emails: "nhsmrekar@gmail.com"
+home_ha_url: ""

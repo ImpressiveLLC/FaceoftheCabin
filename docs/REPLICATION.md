@@ -82,9 +82,14 @@ whoever forks the repo — not bugs, just template points:
 4. **Host machine**: install Docker + Compose, join it to your mesh VPN.
 5. **Domain + tunnel**: point your domain at your DNS/tunnel provider,
    configure it to forward to your host's Family Hub port.
-6. **`.env`**: copy `cabin-orchestration-platform/infra/.env.m920q.example`
-   to `.env` in that same directory, fill in your own values — including
-   the new `GOOGLE_CLIENT_ID` and `ADMIN_EMAILS` from step 3.
+6. **Secrets**: `.env` is Ansible Vault-managed now, not hand-copied from
+   the example file — follow `ansible/README.md`'s Secrets section
+   end to end (create your own vault password, `ansible-vault create
+   ansible/group_vars/cabin/vault.yml`, fill in your own
+   `POSTGRES_PASSWORD`/`GRAFANA_PASSWORD`/`HA_TOKEN` values, plus your new
+   `GOOGLE_CLIENT_ID`/`ADMIN_EMAILS` from step 3 in
+   `group_vars/cabin/vars.yml`). Your vault password is a brand-new secret
+   for this instance — never reuse the original instance's.
 7. **Bring up the stack**: `docker compose -f docker-compose.yml -f
    docker-compose.m920q.yml up -d --build` — or write your own override
    file (copy `docker-compose.m920q.yml` as a starting point) if your host

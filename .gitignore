@@ -1,3 +1,10 @@
 node_modules/
 test-results/
 playwright-report/
+
+# Ansible Vault password — decrypts every secret in ansible/group_vars/.
+# Must live outside this repo (see ansible/README.md's Secrets section);
+# this entry is a safety net in case it's ever created inside the tree by
+# mistake, not the primary control.
+.ansible_vault_pass
+*.vault_pass

@@ -20,3 +20,16 @@
     github_repo: "ImpressiveLLC/FaceoftheCabin"
   roles:
     - cabin_host
+
+# Separate play, not become:true — templating .env only needs the deploy
+# user's own permissions (see roles/secrets' own comments), and running it
+# unprivileged limits what a mistake in this role could touch. Requires
+# --vault-password-file to decrypt group_vars/*/vault.yml; skip with
+# --skip-tags secrets if running site.yml somewhere without vault access
+# (e.g. a fresh host before the vault password file has been placed there).
+- name: Template infra/.env from Ansible Vault
+  hosts: cabin:home
+  become: false
+  tags: [secrets]
+  roles:
+    - secrets
