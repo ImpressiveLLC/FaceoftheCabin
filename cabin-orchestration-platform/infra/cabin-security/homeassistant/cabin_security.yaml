@@ -3,6 +3,10 @@ input_boolean:
     name: Cabin Security Armed Away
     icon: mdi:shield-home
 
+shell_command:
+  cabin_security_publish: >-
+    python /config/cabin_security_mqtt_publish.py "{{ topic }}" "{{ payload }}"
+
 automation:
   - id: cabin_security_publish_arm_state
     alias: Cabin Security - Publish Arm Away State
@@ -11,12 +15,10 @@ automation:
       - trigger: state
         entity_id: input_boolean.cabin_security_armed_away
     actions:
-      - action: mqtt.publish
+      - action: shell_command.cabin_security_publish
         data:
           topic: cabin/security/armed_away
           payload: "{{ 'ON' if is_state('input_boolean.cabin_security_armed_away', 'on') else 'OFF' }}"
-          qos: 1
-          retain: true
 
   - id: cabin_security_publish_nate_presence
     alias: Cabin Security - Publish Nate Presence
@@ -28,12 +30,10 @@ automation:
       - condition: template
         value_template: "{{ states('person.natecabin') in ['home', 'not_home'] }}"
     actions:
-      - action: mqtt.publish
+      - action: shell_command.cabin_security_publish
         data:
           topic: cabin/presence/nate
           payload: "{{ states('person.natecabin') }}"
-          qos: 1
-          retain: true
 
   - id: cabin_security_publish_state_at_startup
     alias: Cabin Security - Publish State At Startup
@@ -43,19 +43,15 @@ automation:
         event: start
     actions:
       - delay: "00:00:05"
-      - action: mqtt.publish
+      - action: shell_command.cabin_security_publish
         data:
           topic: cabin/security/armed_away
           payload: "{{ 'ON' if is_state('input_boolean.cabin_security_armed_away', 'on') else 'OFF' }}"
-          qos: 1
-          retain: true
       - if:
           - condition: template
             value_template: "{{ states('person.natecabin') in ['home', 'not_home'] }}"
         then:
-          - action: mqtt.publish
+          - action: shell_command.cabin_security_publish
             data:
               topic: cabin/presence/nate
               payload: "{{ states('person.natecabin') }}"
-              qos: 1
-              retain: true
