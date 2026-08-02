@@ -88,6 +88,52 @@ Don't re-derive context that's already sitting in these three files.
 
 ---
 
+### SECOND CHECK-IN (2026-08-02, later the same day — full §1-§9 re-walk)
+
+Prompted by the direct question "does that include the DoD at the end of
+each session?" — the HANDOFF section above covers git/deploy/open-items,
+but §1-§9's individual `Status:` blocks hadn't all been re-verified in
+this pass. Went through all nine; most concrete outcomes:
+
+- **Corrected a real error in this very file:** §1 previously claimed the
+  `H:\My Drive\...\FaceoftheCabin` clone was "deleted." Actually checked
+  this time (`ls`, not memory) — it's still physically on disk. What's
+  true instead: it was never a functioning git repo (`.git` is an empty
+  `info/` folder, no `HEAD`/`objects`/`refs`), so there's nothing to drift.
+  Harmless leftover, not a git-reconciliation problem. Lesson: an earlier
+  session's "confirmed deleted" was apparently never independently
+  verified before being written down — worth remembering that a status
+  block is a claim, not automatically a fact, even one written by a prior
+  Claude Code session.
+- **Ansible install attempted, still blocked** — tried `sudo apt-get
+  install -y ansible-core` over the same Tailscale SSH session used all
+  along; `nate` does not have passwordless sudo, so it fails with "a
+  terminal is required to authenticate." This is not fixable from an
+  agent session (no interactive password prompt available, and entering
+  a sudo password on the user's behalf isn't something to do even if it
+  were). **Still needs the user to run it themselves, interactively:**
+  `sudo apt install -y ansible-core`.
+- **Verified the camera pipeline is genuinely live**, not just
+  committed: `docker port cabin-backend` on the M920q showed the real
+  mapping (`8090`, not the `8080` first guessed), and
+  `curl http://localhost:8090/api/events` returned real current data —
+  live `DETECTION_NEW`/`MOTION_ON` rows for `outdoor_4` (the Blink
+  camera) with recent timestamps. Full detail in §5/§6's updated Status
+  blocks.
+- `docs/ontology.yaml` re-validated clean (80 elements, all camera/secret
+  entities present by `id`) and §3/§9 updated with the actual entity-by-
+  entity detail of what was added and why. §4 confirmed via `git diff`
+  that zero new `localStorage` keys were introduced across the whole
+  camera-pipeline commit range. §7 found and fixed one real drift:
+  `README.md` line 3 still said "(in progress)" despite line 79 already
+  correctly saying "live" — line 3 was missed in an earlier pass.
+
+None of this changes the "Open items" priority list above — Ansible and
+Google OAuth origin are still both user-action blockers, `driveway` is
+still paused pending physical access, Phase 6 is still unbuilt by design.
+
+---
+
 **Last verified:** 2026-08-01, this session's work committed and pending push/deploy
 (see §2/§6/§8 for the actual outcome of that step). Building on the prior
 `73850da` checkpoint (CI/CD runner closed, Tier 1 #1), this session: unified
@@ -126,14 +172,27 @@ viewing is a real next feature, not yet scoped.
 sync with `origin/main` before this session's commit (`git fetch` showed
 zero commits either direction) — the only diffs were this session's own
 working-tree changes, now committed (see §2).
-`H:\My Drive\cabin-orchestration-platform-expanded\FaceoftheCabin` is
-**still stale** (commit `e4e3251`, unchanged since last check-in — far
-behind `main`) and still has an uncommitted `CLAUDE.md` edit plus untracked
-files (`.vscode/`, `ui/vite.config.js`). Nothing about this changed this
-session; re-verified, not re-decided. **Open decision for the user,
-unchanged:** delete the `H:\...\FaceoftheCabin` clone, or reset it to match
-`origin/main` and stop editing files there. Not touched by an agent without
-confirmation — destructive action outside the scope of a routine check-in.
+`H:\My Drive\cabin-orchestration-platform-expanded\FaceoftheCabin` —
+**corrected 2026-08-02, second check-in:** an earlier status here claimed
+this was deleted; that was wrong — actually checked this time (`ls`, not
+assumed) and the directory still physically exists on disk (Drive hasn't
+synced a deletion). What's actually true: it was never a functioning git
+clone to begin with — `H:\My Drive\cabin-orchestration-platform-expanded\.git`
+contains only an empty `info/` folder (no `HEAD`, no `objects`, no `refs`),
+so `git status`/`git remote -v` both fail with "not a git repository" at
+both the outer Drive root and the `FaceoftheCabin` subfolder. Zero drift
+risk either way — there's no working `.git` there to diverge from
+`origin/main`. Leftover files on a Drive path Claude Code's environment
+still reports as its default working directory, but not a git concern.
+Not re-flagging as an open item; if the user wants the stale files
+actually removed from disk that's a separate, low-priority cleanup, not a
+git-reconciliation problem.
+
+**Re-checked again at end-of-session 2026-08-02** (camera-event-pipeline
+work): `git fetch` + `git log HEAD..origin/main` / `origin/main..HEAD`
+both empty at every commit boundary through `28569aa` — zero drift
+maintained across the whole four-phase build, not just checked once at
+the start.
 
 ---
 
@@ -180,6 +239,25 @@ entity (`custody_status`) has an invalid `semantic:` value (concatenated
 quoted strings) that breaks strict YAML parsers — flagged, not fixed, since
 it predates this work and needs its own review pass.
 
+**Update, 2026-08-02 (camera pipeline session):** that `custody_status` gap
+plus two more of the same shape (a "Back to Dad's/Mom's" entity, a
+rewards-progress entity) were all fixed this session — all three changed
+from concatenated `"A" / "B"` strings to a single quoted `"A / B"` value.
+Five new entities added across the camera-pipeline commits: `platform_secret`
+(`f47c8e5` — Ansible Vault; `migration_status: partial`, honestly reflects
+that Postgres rotation is built but Grafana/HA token rotation isn't yet),
+`cabin_camera_event` (`2865b90` — the real MQTT→Kafka→Postgres→API pipeline;
+`migration_status: complete`, it's actually built and live), and three
+Phase 6 planning-only entities `cabin_camera_continuous_recording` /
+`cabin_camera_event_clip` / `cabin_camera_live_view` (`5260bab`; all three
+correctly marked `migration_status: planned` — no code exists yet, see
+ROADMAP.md Phase 6). Re-validated end to end
+just now: `python3 -c "import yaml; yaml.safe_load(...)"` parses clean,
+80 elements, all of `platform_secret` / `cabin_camera_event` /
+`cabin_camera_continuous_recording` / `cabin_camera_event_clip` /
+`cabin_camera_live_view` / `family_note` / `chore_completion_state`
+confirmed present by `id`.
+
 ---
 
 ## 4. Local storage is optimized — no accumulating cruft
@@ -199,6 +277,16 @@ orphaned). What changed is what those two keys *mean*: they're now a cache
 of server state when signed in and CABIN_API_URL is configured, falling
 back to being the source of truth when signed out or unreachable — same
 key, same shape, different provenance depending on runtime state.
+
+**Update, 2026-08-02 (camera pipeline session):** checked, not just
+assumed — `git diff 6c7b3cc..28569aa` across `App.jsx` and
+`family-hub.html` (the whole camera-pipeline range) has zero new
+`localStorage.setItem`/`getItem`/`removeItem` calls. The new
+`cabinActivityDetail` toggle (full/coarse/off) lives on the existing `CFG`
+settings object and rides along in whatever single key that object already
+persists under — not a new key. cabin-ui's Google auth token lives in React
+state only (lost on refresh, by design — matches "standalone sign-in," not
+a persistent session). Key inventory unchanged from last check-in.
 
 ---
 
@@ -227,6 +315,28 @@ every time, same as before this pipeline existed. Not resolved here — an
 explicit choice to widen the pipeline's scope (even just to build-and-notify
 without auto-restarting) is a call for the user, not something to silently
 bake in.
+
+**Update, 2026-08-02 (camera pipeline session):** same gap, same reasoning,
+still not resolved — the entire Phase 2 camera event pipeline
+(`MqttBridgeService`, `EventConsumer`, `CabinEventService`, `EventController`)
+lives in `cabin-backend`, so none of it auto-deployed via the workflow.
+It *was* manually rebuilt and deployed on the M920q, and this session
+verified it's genuinely live, not just committed: `nate@` checkout is at
+`4920440` (2 commits behind local `HEAD`, both doc-only — no code drift),
+`cabin-backend` container shows a real restart at `2026-08-02 13:53:12`,
+and `curl http://localhost:8090/api/events` from the host (correct port —
+first attempt at `8080` 404'd, `docker port cabin-backend` showed the real
+mapping is `8090`) returned real, current data: live `DETECTION_NEW` /
+`MOTION_ON` events for `outdoor_4` (the Blink camera) with timestamps
+within the last few hours, confirming the full Frigate → MQTT → Kafka →
+Postgres → API round-trip works against real hardware, not just test
+fixtures. Also visible in that same response: a handful of older rows
+shaped like `{"eventType":"MOTION_DETECTED","sourceDeviceId":"events",...}`
+with the raw Frigate `before`/`after` payload still nested inside — this is
+data written by the *pre-fix* `MqttBridgeService` (back when it
+misparsed the `events` topic as a camera ID), sitting harmlessly alongside
+correctly-parsed rows. Expected, not a bug: the fix is prospective, and
+nothing reads `sourceDeviceId` in a way that would break on the old shape.
 
 ---
 
@@ -408,6 +518,22 @@ of the old localStorage-only description. `family_profile` (the entity
 `family_note.authorId` references) was reviewed, not changed — still
 localStorage-only, a known and documented gap, not silently left
 undocumented.
+
+**Update, 2026-08-02 (camera pipeline session):** five more entities added,
+same discipline applied. `platform_secret` documents the Vault-backed
+CRUD (create via `rotate-secrets.yml`, read via `env.j2` templating on
+deploy, no UI surface — it's an ops entity, not user-facing, and says so).
+`cabin_camera_event` documents the real pipeline: create via Frigate
+publishing to MQTT (`handleFrigateDetectionEvent()`), read via
+`GET /api/events` (`CabinEventService.recent()`), no update/delete surface
+(events are append-only by design, matches the `ON CONFLICT DO NOTHING`
+insert in code) — `transformation` field names both real functions, not
+prose. The three Phase 6 entities (`cabin_camera_continuous_recording`,
+`cabin_camera_event_clip`, `cabin_camera_live_view`) are deliberately
+**not** written as if built — each states plainly in `notes` that this is
+planned capability with a ROADMAP.md pointer, rather than describing
+hypothetical functions as if they exist. This keeps the "no second-class
+documentation" bar without crossing into documenting fiction as fact.
 
 ---
 

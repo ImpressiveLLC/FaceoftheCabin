@@ -1,6 +1,6 @@
 # Smrekar Platform
 
-**ImpressiveLLC / FaceoftheCabin** · unicornpingpong.com _(in progress)_
+**ImpressiveLLC / FaceoftheCabin** · unicornpingpong.com _(live — hub/cabin/api all public)_
 
 A family-scale, self-hosted platform unifying cabin automation and family coordination under a shared event bus, identity layer, and living ontology. Deployed on a Lenovo M920q at the cabin, exposed via Cloudflare Tunnel, connected privately via Tailscale.
 
