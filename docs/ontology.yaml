@@ -1138,6 +1138,74 @@ elements:
       Unknown hostnames get a best-effort profile. Add new machines to
       qa/cabin_qa.py _MACHINES dict when they become regular access points.
 
+  - id: platform_secret
+    entity_type: owl:Class
+    layer: infra
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: partial
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      description: >
+        never committed to git in plaintext; lives only in each host's own
+        infra/.env (gitignored) or, for build-time values, a Docker build
+        ARG sourced from that same .env
+    ui_display_name: "(not shown — operator-only concept)"
+    source: >
+      infra/.env on each deployment host, hand-maintained; no central store
+      or vault exists yet
+    rendering:
+      semantic: (not shown)
+      systems: Platform Secret / Credential
+      technical: environment variable, read via docker-compose interpolation
+        and/or a service's own config (Spring's ${VAR:-default}, family-hub's
+        Dockerfile ARG)
+      compliance: Credential Record
+    definition: >
+      Any password, token, or client secret one platform component needs to
+      authenticate to another — POSTGRES_PASSWORD, GRAFANA_PASSWORD,
+      HA_TOKEN, GOOGLE_CLIENT_ID (public, not secret, but host-scoped the
+      same way), the GitHub Actions runner registration token, etc. Modeled
+      as one entity because they share the same lifecycle problem —
+      generation, storage, rotation, and which device/service consumes
+      which value — regardless of which specific credential it is.
+    relationships:
+      - target: machine_hostname
+        type: scoped_to
+        cardinality: "N:1"
+      - target: docker_network_cabin_default
+        type: consumed_by
+        cardinality: "N:N"
+    relates_to:
+      ui_components: []
+      elements: [machine_hostname, docker_network_cabin_default]
+    notes: >
+      CURRENT STATE (2026-08-02): entirely manual. Generation is ad hoc
+      (openssl rand or hand-typed), storage is a plain .env file per host
+      (never committed — the one guardrail already in place), rotation is a
+      human SSHing in and running the change by hand. See the cabin-postgres
+      password rotation this session for exactly what that looks like end
+      to end: ALTER USER against the live container (Postgres only applies
+      POSTGRES_PASSWORD at first volume init, so an env-var change alone
+      does nothing), .env updated to match, every dependent service
+      (cabin-backend, cabin-grafana) manually recreated with its real auth
+      path verified afterward, not assumed. No central secret store, no
+      automated rotation, no per-secret audit trail of who changed what
+      when.
+
+      TARGET STATE, not yet built: Ansible Vault (or equivalent) as the
+      actual definition-first source of truth this entity should point to —
+      a role that generates, stores, and templates these values into each
+      host's .env, so a rotation is "run the role," not a human hand-editing
+      a file. The only Ansible role that exists today
+      (ansible/roles/cabin_host) installs the GitHub Actions runner; it has
+      no secrets responsibility. Recorded here because this was flagged as
+      an ontology gap on 2026-08-02 — a definition-first concept (which
+      secret, which device/service consumes it, which storage backs it)
+      that governs every credential the platform already depends on, but
+      was undocumented in both this file and ROADMAP.md until now.
+
 # ═══════════════════════════════════════════════════════════════════════════
 # ACTION ELEMENTS
 # Controllable behaviors and their constraints

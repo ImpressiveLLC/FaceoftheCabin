@@ -392,6 +392,17 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 - [ ] Define `candidate` entity type for discovered-but-not-yet-integrated devices
 - [ ] Wire `derived_from` as DAG reference structure: `{ entity_id, relationship_type, transformation }`
 - [ ] Add `data_class` field: `raw | derived | conceptual | composite`
+- [ ] **[FOUND 2026-08-02]** `platform_secret` entity added to `docs/ontology.yaml`
+      (infra layer) — the definition-first model for every credential the
+      platform depends on (POSTGRES_PASSWORD, GRAFANA_PASSWORD, HA_TOKEN,
+      GOOGLE_CLIENT_ID, GitHub runner registration token). Documents current
+      state honestly (entirely manual — ad hoc generation, plain `.env`
+      storage, hand-run rotation) and names the target: an Ansible Vault (or
+      equivalent) role that generates/stores/templates these values, so
+      rotation is "run the role" instead of SSHing in by hand — see the
+      `cabin-postgres` rotation (2026-08-02) for what the manual version
+      costs. Not built — this is the ontology entry the future automation
+      should implement against, not the automation itself.
 
 ### Phase 3 — Event Pipeline
 
