@@ -338,20 +338,27 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       per-device) — degrades gracefully (see `family_note`'s ontology notes), not fixed
       here.
 - [ ] **[BLOCKER]** Push current M920q `docker-compose.yml` to CabinAutomations repo (currently local-only at `/storage/containers/compose/cabin/`)
-- [ ] **[FOUND 2026-07-30, PINNED 2026-08-01]** `cabin-postgres` on the M920q is
-      running on the fallback dev password (`cabin_dev_password`), not a real
-      secret — it's a literal string in `docker-compose.yml` in the public repo,
-      published to the host on `5432:5432` (confirmed in the compose file, not
-      just Tailscale-internal), so anyone on the tailnet or LAN can connect
-      directly with a Postgres client, bypassing the app and its auth entirely.
-      **Not fixed** — Postgres only applies `POSTGRES_PASSWORD` at first volume
-      init, so the fix is `ALTER USER cabin WITH PASSWORD '...'` against the
-      live container first, then `.env` updated to match, then `cabin-backend`
-      restarted — not a routine env-var change. Now materially higher priority
-      than when first found: `api.unicornpingpong.com` is public as of this
-      session, and the cross-device backend above just gave `cabin-backend`
-      its first public *write* endpoints on top of that same database.
-      User explicitly deferred this to the next session (2026-08-01).
+- [x] **[FOUND 2026-07-30, FIXED 2026-08-02]** `cabin-postgres` was running on
+      the fallback dev password (`cabin_dev_password`), a literal string in the
+      public repo. Fixed live against the running container: `ALTER USER cabin
+      WITH PASSWORD '...'` (Postgres only applies `POSTGRES_PASSWORD` at first
+      volume init, so an env-var change alone would've done nothing), then
+      `.env` updated to match so a future recreate doesn't drift back. Verified
+      the *real* auth path, not the deceptive one — `docker exec ... -h
+      localhost` hits `pg_hba.conf`'s `trust` rule for loopback and succeeds
+      with any password, old or new; the actual dependent services
+      (`cabin-backend`, `cabin-grafana`) connect over the Docker network alias
+      and correctly hit the `scram-sha-256` rule. Confirmed both reconnected
+      successfully with the new password (`cabin-backend`'s `/actuator/health`
+      showed `db: UP`, Grafana's `CabinDB` datasource health check returned
+      `Database Connection OK`) before considering this closed.
+      **Bonus fix found in the same pass:** `cabin-grafana` never actually
+      received `POSTGRES_PASSWORD` as an env var, despite its own provisioning
+      YAML referencing `${POSTGRES_PASSWORD}` — Grafana only expands
+      provisioning-file env vars present in its own container, not anywhere
+      else in the compose file, so the `CabinDB` datasource had likely never
+      authenticated correctly. Added the missing env var alongside the
+      password rotation.
 - [x] Register `unicornpingpong.com` at Porkbun, add to Cloudflare free tier —
       confirmed live: all three subdomains resolve and serve real responses.
 - [x] Add `cloudflared` container to M920q docker-compose, configure tunnel to

@@ -389,17 +389,39 @@ undocumented.
    synced: `family_profile` itself (still localStorage/per-device) — see
    `family_note`'s ontology notes for the resulting (graceful, non-fatal)
    edge case with a freshly-added Friends & Family profile.
-3. **Resolve the `cabin-postgres` default-password finding.** Was already
-   flagged as needing to land before `api.unicornpingpong.com` went public —
-   it's public now, and #2 just added the backend's first public *write*
-   endpoints on top of that same default-password database. This is now a
-   materially bigger deal than when first flagged: raises the priority of
-   this item, doesn't reduce it. Not resolved by #2 — deliberately left
-   alone rather than touch a possibly-live DB connection blind.
-4. **Resolve the stale `H:\...\FaceoftheCabin` clone** (delete or reset to
-   `main`). Trivial effort, but it already caused one real mistake this
-   session (a doc edit landed in the wrong repo) — the risk compounds every
-   session it's left ambiguous.
+3. ~~**Resolve the `cabin-postgres` default-password finding.**~~ **Done
+   2026-08-02.** `ALTER USER cabin WITH PASSWORD '...'` against the live
+   container, `.env` updated to match, `cabin-backend` + `cabin-grafana`
+   recreated to pick it up. Verified against the connection path that
+   actually matters — `cabin-postgres`'s `pg_hba.conf` `trust`-authenticates
+   anything from loopback (127.0.0.1/::1), which is why a naive `docker exec
+   ... -h localhost` test would have "passed" with the *old* password too;
+   the real dependent services connect over the Docker network alias and
+   correctly require `scram-sha-256`, confirmed via both `cabin-backend`'s
+   health endpoint (`db: UP`) and Grafana's datasource health check
+   (`Database Connection OK`) — not just "the command didn't error."
+   Bonus fix in the same pass: `cabin-grafana` never actually received
+   `POSTGRES_PASSWORD` as an env var despite its provisioning YAML
+   referencing it, so the `CabinDB` datasource had likely never
+   authenticated correctly at all — fixed alongside the rotation.
+   Unplanned side effect worth knowing about: `docker compose up -d
+   cabin-backend cabin-grafana` also recreated `cabin-postgres` itself (a
+   `depends_on` config-drift side effect, same class of thing as
+   `GOOGLE_CLIENT_ID` reaching `cabin-backend` via `cabin-ui`'s dependency
+   chain in an earlier session) — confirmed the data volume was untouched
+   (all 8 tables present, including this session's `family_notes`/
+   `chore_completion`) before treating this as resolved. **Still entirely
+   manual** — no Ansible role or automation generates/rotates this password;
+   the only Ansible role in this repo (`ansible/roles/cabin_host`) installs
+   the GitHub Actions runner, nothing secrets-related. If "Ansible-managed
+   secrets" is wanted going forward, that's new work (e.g. Ansible Vault +
+   a role that generates and templates the password into `.env`), not
+   something already wired up that this rotation used.
+4. ~~**Resolve the stale `H:\...\FaceoftheCabin` clone**~~ **Done
+   2026-08-02.** User confirmed no longer using Google Drive for git at all;
+   deleted (content fully removed — CLAUDE.md, untracked `.vscode/`/
+   `vite.config.js`, `.git` — an empty folder shell remains at that path,
+   locked by Drive's sync process with nothing inside it, harmless).
 
 ### Tier 2 — Near-term supporting work (moderate value, no blocking dependencies)
 
