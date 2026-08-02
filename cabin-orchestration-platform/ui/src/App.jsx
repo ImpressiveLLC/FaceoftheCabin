@@ -69,12 +69,136 @@ const LOCATIONS = {
 };
 
 // ─── Panel definitions ─────────────────────────────────────────────────────
+// ─── Google Sign-In — cabin-ui's OWN standalone flow ───────────────────────
+// Deliberately separate from Family Hub's sign-in (a different app, a
+// different session) even though it reuses the same Web-application OAuth
+// client (VITE_CABIN_GOOGLE_CLIENT_ID, same underlying Google Cloud client
+// as family-hub's GOOGLE_CLIENT_ID — needs cabin.unicornpingpong.com added
+// as an authorized JS origin on that client). Gates UI visibility only —
+// /api/events itself stays unauthenticated server-side, same precedent as
+// /api/devices; this is a client-side "who's looking" gate, not a second
+// auth layer on the API.
+function useGoogleAuth() {
+  const clientId = import.meta.env.VITE_CABIN_GOOGLE_CLIENT_ID || "";
+  const [accessToken, setAccessToken] = useState(() => sessionStorage.getItem("cabinAccessToken") || null);
+  const [userEmail, setUserEmail] = useState(() => sessionStorage.getItem("cabinUserEmail") || null);
+  const tokenClientRef = useRef(null);
+
+  const ensureTokenClient = useCallback(() => {
+    if (tokenClientRef.current || !window.google?.accounts?.oauth2 || !clientId) return tokenClientRef.current;
+    tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: "openid email",
+      callback: async (resp) => {
+        if (resp.error) return;
+        setAccessToken(resp.access_token);
+        sessionStorage.setItem("cabinAccessToken", resp.access_token);
+        try {
+          const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+            headers: { Authorization: `Bearer ${resp.access_token}` },
+          });
+          const info = await res.json();
+          if (info.email) {
+            setUserEmail(info.email);
+            sessionStorage.setItem("cabinUserEmail", info.email);
+          }
+        } catch { /* email display is cosmetic — sign-in already succeeded */ }
+      },
+    });
+    return tokenClientRef.current;
+  }, [clientId]);
+
+  const signIn = useCallback(() => {
+    const client = ensureTokenClient();
+    client?.requestAccessToken({ prompt: "select_account" });
+  }, [ensureTokenClient]);
+
+  const signOut = useCallback(() => {
+    setAccessToken(null);
+    setUserEmail(null);
+    sessionStorage.removeItem("cabinAccessToken");
+    sessionStorage.removeItem("cabinUserEmail");
+  }, []);
+
+  return { accessToken, userEmail, signedIn: !!accessToken, signIn, signOut, configured: !!clientId };
+}
+
+// ─── Panel: Camera Events ───────────────────────────────────────────────────
+function CameraEventsPanel({ auth }) {
+  const { locationCfg } = useApp();
+  const apiBase = locationCfg?.apiBase || LOCATIONS.cabin.apiBase;
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    fetch(`${apiBase}/api/events?limit=30&window=24h`)
+      .then(r => r.json()).then(setEvents).catch(() => setEvents([]))
+      .finally(() => setLoading(false));
+  }, [apiBase]);
+
+  useEffect(() => {
+    if (!auth.signedIn) return;
+    refresh();
+    const t = setInterval(refresh, 20000);
+    return () => clearInterval(t);
+  }, [auth.signedIn, refresh]);
+
+  if (!auth.configured) {
+    return (
+      <div className="panel-content">
+        <div className="panel-header-bar"><h2>Camera Events</h2></div>
+        <p className="config-desc">Google Sign-In isn't configured on this host yet (VITE_CABIN_GOOGLE_CLIENT_ID unset at build time).</p>
+      </div>
+    );
+  }
+
+  if (!auth.signedIn) {
+    return (
+      <div className="panel-content">
+        <div className="panel-header-bar"><h2>Camera Events</h2></div>
+        <p className="config-desc">Sign in to view camera activity.</p>
+        <button className="btn-primary" onClick={auth.signIn}>Sign in with Google</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel-content">
+      <div className="panel-header-bar">
+        <h2>Camera Events</h2>
+        <div className="toolbar-right">
+          {auth.userEmail && <span className="config-desc">{auth.userEmail}</span>}
+          <button className="btn-secondary" onClick={auth.signOut}>Sign out</button>
+        </div>
+      </div>
+      {loading && events.length === 0 && <p className="config-desc">Loading…</p>}
+      {!loading && events.length === 0 && <p className="config-desc">No camera activity in the last 24 hours.</p>}
+      <div className="camera-events-list">
+        {events.map(e => (
+          <div key={e.eventId} className="camera-event-row">
+            <Camera size={16} />
+            <div>
+              <div className="camera-event-title">
+                {e.sourceDeviceId} — {e.eventType.replace("DETECTION_", "").replace("MOTION_", "motion ").toLowerCase()}
+                {e.payload?.label ? ` (${e.payload.label}${e.payload.score ? `, ${Math.round(e.payload.score * 100)}%` : ""})` : ""}
+              </div>
+              <div className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const PANELS = [
   { id: "FAMILY_HUB",     label: "Family Hub",      icon: Home },
   { id: "FAMILY_CONFIG",  label: "Family Config",   icon: Settings },
   { id: "DEVICE_MANAGER", label: "Devices",         icon: Cpu },
   { id: "MONITORING",     label: "Monitoring",      icon: Activity },
   { id: "RULES_ENGINE",   label: "Rules & Alerts",  icon: Zap },
+  { id: "CAMERA_EVENTS",  label: "Camera Events",   icon: Camera },
 ];
 
 // ─── Context ───────────────────────────────────────────────────────────────
@@ -1607,7 +1731,13 @@ function NavRail({ active, onSelect, alertLevels }) {
 
 // ─── Root App ──────────────────────────────────────────────────────────────
 function App() {
-  const [activePanel,    setActivePanel]    = useState("MONITORING");
+  // ?panel=CAMERA_EVENTS in the URL opens directly to that panel — lets
+  // Family Hub's "How's the cabin?" link-out jump straight to camera
+  // activity instead of always landing on the default Monitoring panel.
+  const [activePanel,    setActivePanel]    = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get("panel");
+    return PANELS.some(p => p.id === requested) ? requested : "MONITORING";
+  });
   const [activeLocation, setActiveLocation] = useState("cabin");
   const [devices,        setDevices]        = useState([]);
   const [config,         setConfig]         = useState({});
@@ -1615,6 +1745,7 @@ function App() {
   const { levels: alertLevels, cfg: alertCfg, enableAlert, resetAlert } = useNavAlerts();
   const { profile: activeProfile, setProfile, options: presenceOptions } = usePresence();
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile);
+  const cameraAuth = useGoogleAuth();
 
   // locationCfg is null when "both" — individual components handle that case.
   const locationCfg = activeLocation !== "both" ? LOCATIONS[activeLocation] : null;
@@ -1683,6 +1814,7 @@ function App() {
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} />}
             {activePanel === "RULES_ENGINE"   && <RulesPanel />}
+            {activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
           </div>
         </main>
       </div>

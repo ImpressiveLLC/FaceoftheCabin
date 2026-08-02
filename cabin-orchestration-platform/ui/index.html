@@ -7,6 +7,11 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Google Sign-In for cabin-ui's own authenticated views (Camera
+         Events) — see useGoogleAuth() in App.jsx. Same pattern
+         family-hub.html uses, loaded here since cabin-ui has its own
+         standalone sign-in flow rather than reusing Family Hub's. -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script type="module" src="/src/App.jsx"></script>
   </body>
 </html>

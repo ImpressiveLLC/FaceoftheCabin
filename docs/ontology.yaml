@@ -1283,10 +1283,27 @@ elements:
       docker-compose.yml — this would have blocked EventConsumer on the
       real M920q too, not just local dev, since it's also single-broker.
 
-      NOT YET BUILT: cabin-ui's authenticated events panel (Phase 3) and
-      Family Hub's public near-real-time activity widget (Phase 4) — see
-      the session plan for both. `/api/events` is unauthenticated today,
-      matching /api/devices's existing precedent.
+      Phase 3 BUILT 2026-08-02: cabin-ui's own standalone Google Sign-In
+      (useGoogleAuth() in App.jsx, separate from Family Hub's — reuses the
+      same OAuth client via VITE_CABIN_GOOGLE_CLIENT_ID, needs
+      cabin.unicornpingpong.com added as an authorized JS origin on that
+      client, a manual one-time step) gates a new Camera Events panel.
+      /api/events itself stays unauthenticated — this is a client-side
+      visibility gate, not a second server-side auth layer, a deliberate
+      scope decision to avoid redundant gating. Deep-linkable via
+      ?panel=CAMERA_EVENTS; Family Hub's "How's the cabin?" link-out now
+      points there directly instead of cabin-ui's default landing panel.
+      In the same pass, found and fixed cabin-ui's Dockerfile silently
+      dropping VITE_CABIN_HA_URL/VITE_CABIN_Z2M_URL/VITE_CABIN_FAMILY_HUB_URL
+      — declared as compose build args but never given matching ARG/ENV
+      lines in the Dockerfile, so the deployed app had been using
+      hardcoded fallback defaults (a non-resolvable cabin-hub hostname,
+      null for the Family Hub link) instead of the real values this whole
+      time. Same root-cause shape as GOOGLE_CLIENT_ID/ADMIN_EMAILS going
+      missing in family-hub's .env from the secrets-rotation session.
+
+      NOT YET BUILT: Family Hub's public near-real-time activity widget
+      (Phase 4).
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ACTION ELEMENTS

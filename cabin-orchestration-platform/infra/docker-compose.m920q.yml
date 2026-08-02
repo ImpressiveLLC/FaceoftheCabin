@@ -152,6 +152,11 @@ services:
         VITE_CABIN_HA_URL: http://100.77.44.113:8123
         VITE_CABIN_Z2M_URL: http://100.77.44.113:8080
         VITE_CABIN_FAMILY_HUB_URL: ${FAMILY_HUB_URL:-https://hub.unicornpingpong.com}
+        # Same Web-application OAuth client family-hub uses (see that
+        # service's GOOGLE_CLIENT_ID above) — needs
+        # cabin.unicornpingpong.com added as an authorized JS origin on
+        # that same Google Cloud client, a manual one-time step.
+        VITE_CABIN_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     container_name: cabin-ui
     restart: unless-stopped
     ports:
