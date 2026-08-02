@@ -1,0 +1,5 @@
+# Ansible Vault's encrypted format is a plain-text armor over binary
+# ciphertext -- CRLF normalization on a Windows checkout risks silently
+# corrupting it in a way that only surfaces the next time someone tries to
+# decrypt (verified once by hand this session; not relying on luck again).
+ansible/group_vars/**/vault.yml -text
