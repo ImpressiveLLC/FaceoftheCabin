@@ -72,15 +72,22 @@ public class MqttBridgeService implements MqttCallback {
     public void messageArrived(String topic, MqttMessage message) {
         try {
             String payload = new String(message.getPayload());
-            Map<String, Object> data = mapper.readValue(payload, Map.class);
+            log.debug("MQTT message arrived: topic={} payload={}", topic, payload);
             String[] parts = topic.split("/");
 
+            if (parts.length >= 3 && "camera".equals(parts[1])) {
+                // Frigate's camera/# topics are NOT uniformly JSON — `available`
+                // and `{camera}/motion` are plain text ("online"/"ON"), only
+                // `events` is JSON. Parsing happens per-branch below, not here.
+                handleCameraTopic(parts, payload);
+                return;
+            }
+
+            Map<String, Object> data = mapper.readValue(payload, Map.class);
             if (parts.length >= 3 && "device".equals(parts[1])) {
                 String deviceId = parts[2];
                 String msgType = parts.length >= 4 ? parts[3] : "state";
                 handleDeviceMessage(deviceId, msgType, data);
-            } else if (parts.length >= 3 && "camera".equals(parts[1])) {
-                handleCameraEvent(parts[2], data);
             } else if (parts.length >= 3 && "event".equals(parts[1])) {
                 handleDirectEvent(parts[2], data);
             }
@@ -110,10 +117,51 @@ public class MqttBridgeService implements MqttCallback {
         eventPublisher.publish(event);
     }
 
-    private void handleCameraEvent(String cameraId, Map<String, Object> data) {
-        CabinEvent event = new CabinEvent(
-            UUID.randomUUID().toString(), cameraId, "MOTION_DETECTED", "INFO", Instant.now(), data);
-        eventPublisher.publish(event);
+    // Frigate's real topic shapes under cabin/camera/ (confirmed against a
+    // live Frigate deployment 2026-08-02, not assumed from docs alone):
+    //   cabin/camera/available          -- "online"/"offline", plain text
+    //   cabin/camera/{name}/motion      -- "ON"/"OFF", plain text
+    //   cabin/camera/{name}/{label}     -- object count, plain text number
+    //   cabin/camera/events             -- the rich JSON detection stream;
+    //                                       camera/label live INSIDE the
+    //                                       payload, not the topic path
+    // The previous version of this bridge treated whatever followed
+    // cabin/camera/ as a camera ID and JSON-parsed every payload — wrong
+    // for all four of these (parts[2]=="events" isn't a camera name, and
+    // three of the four payloads aren't JSON at all).
+    private void handleCameraTopic(String[] parts, String payload) {
+        if (parts.length == 3 && "events".equals(parts[2])) {
+            handleFrigateDetectionEvent(payload);
+        } else if (parts.length == 4 && "motion".equals(parts[3])) {
+            String cameraId = parts[2];
+            String state = "ON".equalsIgnoreCase(payload.trim()) ? "MOTION_ON" : "MOTION_OFF";
+            eventPublisher.publish(new CabinEvent(
+                UUID.randomUUID().toString(), cameraId, state,
+                "INFO", Instant.now(), Map.of("camera", cameraId)));
+        }
+        // available / per-label count topics: status-only, not published as
+        // events — available doesn't name a camera, and count topics fire
+        // far too often to be useful "events" (they mirror the JSON stream
+        // Frigate already sends on cabin/camera/events).
+    }
+
+    @SuppressWarnings("unchecked")
+    private void handleFrigateDetectionEvent(String payload) {
+        try {
+            Map<String, Object> data = mapper.readValue(payload, Map.class);
+            String type = String.valueOf(data.getOrDefault("type", "unknown"));
+            Map<String, Object> after = (Map<String, Object>) data.getOrDefault("after", Map.of());
+            String camera = String.valueOf(after.getOrDefault("camera", "unknown"));
+            String label = String.valueOf(after.getOrDefault("label", "object"));
+            CabinEvent event = new CabinEvent(
+                UUID.randomUUID().toString(), camera,
+                "DETECTION_" + type.toUpperCase(),
+                "INFO", Instant.now(),
+                Map.of("label", label, "score", after.getOrDefault("score", 0), "type", type));
+            eventPublisher.publish(event);
+        } catch (Exception e) {
+            log.warn("Failed to parse Frigate detection event: {}", e.getMessage());
+        }
     }
 
     private void handleDirectEvent(String severity, Map<String, Object> data) {

@@ -50,6 +50,18 @@ services:
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       CLUSTER_ID: "4hZGyhWkQDe8FmA3Rtt_kw"
+      # Found 2026-08-02: Kafka's internal __consumer_offsets topic defaults
+      # to replication factor 3, which silently fails to create on this
+      # single-broker (KAFKA_NODE_ID: 1) cluster — no error surfaces
+      # anywhere except every consumer group hanging forever with zero
+      # partitions assigned (FIND_COORDINATOR calls just time out). This
+      # blocked EventConsumer (cabin-orchestrator/kafka/EventConsumer.java)
+      # from ever receiving anything despite EventPublisher successfully
+      # producing — a real, standard single-broker-dev-Kafka gotcha, not
+      # specific to this session's code.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
     ports:
       - "9092:9092"
     volumes:

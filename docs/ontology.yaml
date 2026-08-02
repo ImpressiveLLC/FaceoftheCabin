@@ -1221,6 +1221,73 @@ elements:
       git history at all — see the CabinAutomations-repo blocker in
       docs/DEFINITION_OF_DONE.md).
 
+  - id: cabin_camera_event
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Camera Activity Event"
+    source: >
+      Frigate (MQTT, cabin/camera/# topics) -> MqttBridgeService ->
+      EventPublisher (Kafka topic cabin.events.raw) -> EventConsumer ->
+      CabinEventService -> Postgres cabin_event table
+    rendering:
+      semantic: "<camera> saw <label> (<score>) / motion <on|off> at <camera>"
+      systems: Camera Detection/Motion Event
+      technical: "CabinEvent(eventId, sourceDeviceId=camera name, eventType=DETECTION_NEW|DETECTION_UPDATE|DETECTION_END|MOTION_ON|MOTION_OFF, severity, timestamp, payload)"
+      compliance: Camera Activity Record
+    definition: >
+      A single motion or object-detection event from a Frigate-managed
+      camera, normalized from Frigate's MQTT event stream into the
+      platform's own CabinEvent shape. Two distinct topic shapes feed this:
+      cabin/camera/events (rich JSON, camera+label+score live inside the
+      payload — Frigate's own detection pipeline) and
+      cabin/camera/{name}/motion (plain "ON"/"OFF" — a lighter presence
+      signal). cabin/camera/available (bridge online/offline) is NOT
+      persisted as an event — it doesn't name a camera and isn't itself an
+      activity signal.
+    relationships:
+      - target: platform_secret
+        type: depends_on
+        cardinality: "N:1" # CAMERA_PASSWORD gates the RTSP source Frigate reads from
+    relates_to:
+      ui_components: [] # Phase 3/4 (cabin-ui events panel, Family Hub public widget) not yet built
+      elements: []
+    notes: >
+      BUILT 2026-08-02. MqttBridgeService's camera-topic handling was
+      rewritten in the same pass — the previous version JSON-parsed every
+      cabin/camera/# payload uniformly and treated whatever followed
+      cabin/camera/ as a camera ID, which is wrong for three of Frigate's
+      four real topic shapes (available and {name}/motion are plain text,
+      not JSON; events is flat, not per-camera). Verified against a real
+      MQTT publish to the M920q's own mosquitto broker, round-tripped
+      through Kafka and Postgres, confirmed via direct SQL query and the
+      live API response, not just "no exception was thrown."
+
+      Two unrelated infrastructure bugs were found and fixed getting this
+      working, not specific to this feature but blocking it entirely:
+      (1) EventController's @RequestParam args had no explicit name=,
+      which throws IllegalArgumentException the first time such an
+      endpoint is actually invoked without the compiler's -parameters flag
+      — added globally to backend/pom.xml, since this silently affected
+      every other unnamed @RequestParam in the codebase (e.g.
+      DeviceController), just never previously exercised by a real
+      request. (2) Kafka's internal __consumer_offsets topic defaults to
+      replication factor 3, which silently fails to create on this
+      single-broker cluster — no error surfaces anywhere except every
+      consumer group hanging forever with zero partitions assigned.
+      Fixed via KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 in
+      docker-compose.yml — this would have blocked EventConsumer on the
+      real M920q too, not just local dev, since it's also single-broker.
+
+      NOT YET BUILT: cabin-ui's authenticated events panel (Phase 3) and
+      Family Hub's public near-real-time activity widget (Phase 4) — see
+      the session plan for both. `/api/events` is unauthenticated today,
+      matching /api/devices's existing precedent.
+
 # ═══════════════════════════════════════════════════════════════════════════
 # ACTION ELEMENTS
 # Controllable behaviors and their constraints

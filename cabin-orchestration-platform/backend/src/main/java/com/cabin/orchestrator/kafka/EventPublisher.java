@@ -46,11 +46,15 @@ public class EventPublisher {
     }
 
     public void publish(CabinEvent event) {
-        if (producer == null) return;
+        if (producer == null) { log.warn("publish() called but producer is null (Kafka unavailable at startup)"); return; }
         try {
             String value = mapper.writeValueAsString(event);
+            log.debug("Publishing to {}: {}", TOPIC, value);
             producer.send(new ProducerRecord<>(TOPIC, event.sourceDeviceId(), value),
-                (meta, ex) -> { if (ex != null) log.warn("Kafka send failed: {}", ex.getMessage()); });
+                (meta, ex) -> {
+                    if (ex != null) log.warn("Kafka send failed: {}", ex.getMessage());
+                    else log.debug("Kafka send acked: topic={} partition={} offset={}", meta.topic(), meta.partition(), meta.offset());
+                });
         } catch (Exception e) {
             log.warn("Event serialization failed: {}", e.getMessage());
         }

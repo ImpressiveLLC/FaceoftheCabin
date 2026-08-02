@@ -93,6 +93,15 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <configuration>
           <release>21</release>
+          <parameters>true</parameters>
+          <!-- Found 2026-08-02: any @RequestParam/@PathVariable without an
+               explicit name= relies on this flag to resolve the parameter
+               name via reflection at runtime. Without it, Spring throws
+               IllegalArgumentException the first time such an endpoint is
+               actually called. EventController's new /api/events hit this
+               first, but it silently affected every other unnamed
+               @RequestParam in the codebase (e.g. DeviceController) too,
+               just never previously exercised by a real request. -->
           <compilerArgs><arg>--enable-preview</arg></compilerArgs>
         </configuration>
       </plugin>
