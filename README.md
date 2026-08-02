@@ -27,6 +27,30 @@ A family-scale, self-hosted platform unifying cabin automation and family coordi
 
 ---
 
+## ⚠️ Security note: camera activity on Family Hub
+
+Family Hub's Overview page shows a live camera-activity widget from
+FaceOfTheCabin — by default it shows **which camera, what was detected,
+and when**, refreshed every 20 seconds, visible to **anyone looking at the
+screen, no sign-in required**. This is genuinely useful (at a glance, is
+anyone at the cabin right now) but it is also, unavoidably, a presence/
+absence indicator — the same information that tells you "someone's home"
+also tells anyone else looking that "no one's home right now."
+
+**This is configurable, not fixed.** Settings → Cabin Camera Activity has
+three levels:
+- **Full detail** (default) — camera, object, timestamp.
+- **Activity only** — just "recent activity: yes/no," no camera name, no
+  object, no precise time.
+- **Off** — hides the widget entirely.
+
+If this display sits somewhere more people can casually glance at than
+just your own family (a shared space, a device you don't fully control
+who sees), turn it down. The same warning is shown directly next to the
+widget itself, with a link straight to this setting.
+
+---
+
 ## Repository Map
 
 | Repo | Org | Contents |

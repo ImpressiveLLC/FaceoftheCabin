@@ -502,6 +502,16 @@
     .location-link-sub { display:block; font-size:11px; color:var(--cream-dim); margin-top:2px; }
     .location-link-disabled { opacity:.4; cursor:default; }
     .location-link-disabled:hover { border-color:var(--glass-border); background:rgba(255,255,255,.04); }
+    .cabin-activity-row {
+      margin-top:8px; padding:9px 12px; border-radius:10px;
+      background:rgba(255,255,255,.03); border:1px solid var(--glass-border);
+      font-size:12px; color:var(--cream-dim);
+    }
+    .cabin-activity-empty { opacity:.6; font-style:italic; }
+    .cabin-activity-warning {
+      margin-top:8px; font-size:10.5px; line-height:1.5; color:var(--cream-ghost);
+    }
+    .cabin-activity-warning a { color:var(--gold); text-decoration:underline; cursor:pointer; }
 
     /* ── Schedule Tab ── */
     .schedule-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
@@ -2100,6 +2110,12 @@ const DEFAULTS = {
   clientId: '',
   calId: 'smrekarfamilia@gmail.com',
   albumId: '',
+  // 'full' (camera + object + time), 'coarse' (activity yes/no only, no
+  // camera/object names), or 'off' (hide the widget entirely). Defaults
+  // to 'full' per an explicit choice weighed against the privacy tradeoff
+  // (camera activity reveals presence/absence patterns) — see the warning
+  // shown next to the widget itself and in README.md.
+  cabinActivityDetail: 'full',
   slideshowInterval: 12,
   maxPhotos: 50,
 };
@@ -2329,6 +2345,7 @@ function saveSettings() {
   CFG.calId             = normalizeCalendarId(document.getElementById('set-cal-id').value) || 'primary';
   CFG.slideshowInterval = parseInt(document.getElementById('set-interval').value) || 12;
   CFG.maxPhotos         = parseInt(document.getElementById('set-max-photos').value) || 50;
+  CFG.cabinActivityDetail = document.getElementById('set-cabin-activity').value || 'full';
   // Save parenting schedule
   const startVal = document.getElementById('set-sched-start').value;
   const homeDays = [...document.querySelectorAll('.sched-day-cb:checked')].map(cb => parseInt(cb.value));
@@ -2339,6 +2356,7 @@ function saveSettings() {
   renderTodayChores();
   renderSchedule();
   renderObservations();
+  renderCabinActivityWidget();
   toggleSettings();
   if (CFG.clientId) initGoogleAuth();
 }
@@ -2354,6 +2372,7 @@ function populateSettings() {
   document.getElementById('set-album-id').value   = photos.length ? `${photos.length} photos loaded` : savedMeta.length ? `${savedMeta.length} photos saved (restoring…)` : '';
   document.getElementById('set-interval').value   = CFG.slideshowInterval;
   document.getElementById('set-max-photos').value = CFG.maxPhotos;
+  document.getElementById('set-cabin-activity').value = CFG.cabinActivityDetail || 'full';
   renderSchedDayPicker();
   renderThemeGrid();
   renderAccessLog();
@@ -2728,6 +2747,7 @@ function renderOverview() {
   frankieHtml += '</div>';
 
   document.getElementById('bottom-overview-cards').innerHTML = weekHtml + frankieHtml + locationLinksHtml();
+  renderCabinActivityWidget(); // locationLinksHtml() just rebuilt an empty skeleton — repaint it from cache immediately, don't wait for the next poll
 }
 
 // Link-out to FaceOfTheCabin (device/camera/automation platform — a
@@ -2747,7 +2767,52 @@ function locationLinksHtml() {
       <span class="location-link-icon">🏠</span>
       <span><span class="location-link-name">How's the house?</span><span class="location-link-sub">Coming soon</span></span>
     </div>
+    <div id="cabin-activity-widget"></div>
+    ${CFG.cabinActivityDetail !== 'off' ? `
+    <div class="cabin-activity-warning">
+      ⚠️ Shows real-time camera activity — reveals presence patterns.
+      <a href="javascript:void(0)" onclick="toggleSettings()">Adjust in Settings →</a>
+    </div>` : ''}
   </div>`;
+}
+
+// Public, unauthenticated — this is the "near-real-time, non-event-log"
+// tier from the plan, deliberately separate from cabin-ui's authenticated
+// Camera Events panel (which shows real history behind sign-in). Detail
+// level is user-controlled (CFG.cabinActivityDetail) precisely because
+// this widget is visible to anyone looking at this screen, not just
+// signed-in family — see the warning rendered alongside it above.
+const CABIN_ACTIVITY_WINDOW_MIN = 10;
+let cabinActivityCache = null;
+
+async function refreshCabinActivity() {
+  if (!CABIN_API_URL || CFG.cabinActivityDetail === 'off') return;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/events?limit=1&window=${CABIN_ACTIVITY_WINDOW_MIN}m`);
+    if (!res.ok) return;
+    const events = await res.json();
+    cabinActivityCache = events[0] || null;
+    renderCabinActivityWidget();
+  } catch (e) {
+    console.warn('Could not refresh cabin activity:', e);
+  }
+}
+
+function renderCabinActivityWidget() {
+  const el = document.getElementById('cabin-activity-widget');
+  if (!el) return;
+  if (!CABIN_API_URL || CFG.cabinActivityDetail === 'off') { el.innerHTML = ''; return; }
+  if (!cabinActivityCache) {
+    el.innerHTML = `<div class="cabin-activity-row cabin-activity-empty">🎥 No recent cabin activity</div>`;
+    return;
+  }
+  const ev = cabinActivityCache;
+  const label = ev.payload?.label;
+  const when = relTime(new Date(ev.timestamp).getTime());
+  const text = CFG.cabinActivityDetail === 'full'
+    ? `${ev.sourceDeviceId}${label ? `: ${label}` : ''} — ${when}`
+    : `Recent activity — ${when}`;
+  el.innerHTML = `<div class="cabin-activity-row">🎥 ${esc(text)}</div>`;
 }
 
 function renderSchedule() {
@@ -3283,6 +3348,13 @@ setInterval(async () => {
   if (await refreshNotesFromServer()) renderNotepad();
   if (await refreshCompletionFromServer()) rerenderChoreViews();
 }, 20000);
+
+// Cabin activity widget — unlike the poll above, this one is NOT gated on
+// being signed in (it's the public, no-auth tier of the camera-events
+// work; notes/chores sync is the authenticated tier). Runs immediately on
+// load too, rather than waiting for the first 20s tick.
+refreshCabinActivity();
+setInterval(refreshCabinActivity, 20000);
 
 // Identifies who's signed in, purely so schedule-change and access logs can
 // attribute entries to a real person instead of an anonymous browser.
@@ -4176,6 +4248,22 @@ window.addEventListener('load', () => {
           <option value="50" selected="">50</option>
           <option value="100">100</option>
         </select>
+      </div>
+      <div class="s-field">
+        <label>Cabin Camera Activity ⚠️</label>
+        <select id="set-cabin-activity">
+          <option value="full">Full detail (camera, object, time)</option>
+          <option value="coarse">Activity only (no camera/object names)</option>
+          <option value="off">Off (hide from Overview)</option>
+        </select>
+        <div class="s-hint">
+          Shows near-real-time camera motion from the cabin on the Overview
+          page. This reveals whether someone is physically at the cabin
+          right now — full detail is the most useful day to day, but it's
+          also the most informative to anyone else who happens to see this
+          screen. "Activity only" drops the camera name/object/exact time;
+          "Off" hides the widget entirely.
+        </div>
       </div>
       <div class="s-field" id="photos-status-field" style="display:none">
         <label>Photos Status</label>

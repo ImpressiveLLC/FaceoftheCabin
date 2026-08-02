@@ -1302,8 +1302,25 @@ elements:
       time. Same root-cause shape as GOOGLE_CLIENT_ID/ADMIN_EMAILS going
       missing in family-hub's .env from the secrets-rotation session.
 
-      NOT YET BUILT: Family Hub's public near-real-time activity widget
-      (Phase 4).
+      Phase 4 BUILT 2026-08-02: Family Hub's public, unauthenticated
+      near-real-time widget (near the "How's the cabin?" link-out on
+      Overview), polling /api/events?limit=1&window=10m every 20s —
+      deliberately a live-status snapshot, not a browsable history (that's
+      cabin-ui's authenticated panel from Phase 3). User-controlled detail
+      level (CFG.cabinActivityDetail: 'full'|'coarse'|'off', Settings ->
+      Cabin Camera Activity) exists specifically because this widget is
+      visible to anyone looking at the screen, unauthenticated — 'full'
+      shows camera/object/time, 'coarse' drops camera+object entirely
+      (just "recent activity: yes/no" with a relative time), 'off' hides
+      it. A warning is rendered next to the widget itself linking to that
+      setting, and README.md carries the same warning prominently. All
+      three levels and the warning's visibility toggle verified via a real
+      mocked-backend Playwright run, not just read through.
+
+      All four phases of the 2026-08-02 camera-event-pipeline plan are now
+      built. Driveway camera (network-unreachable, needs physical
+      checking) is the only remaining gap, and everything here is
+      camera-count-agnostic — no code change needed once it's back online.
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ACTION ELEMENTS
