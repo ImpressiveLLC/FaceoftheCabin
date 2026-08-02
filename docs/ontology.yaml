@@ -1322,6 +1322,166 @@ elements:
       checking) is the only remaining gap, and everything here is
       camera-count-agnostic — no code change needed once it's back online.
 
+  - id: cabin_camera_continuous_recording
+    entity_type: owl:Class
+    layer: infra
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: planned
+    data_class: raw
+    data_type: xsd:complexType
+    constraint:
+      description: >
+        stored on the M920q's secondary disk (/storage, /dev/sda1, 931.5GB,
+        separate from the boot NVMe — very likely the physical WD drive);
+        retention is a configured day count, currently 0 (disabled)
+    ui_display_name: "Continuous Recording"
+    source: >
+      Frigate's own record.continuous config (per-camera or global) in
+      /storage/services/frigate/config.yml on the M920q — a file with zero
+      git history, see the CabinAutomations blocker in
+      docs/DEFINITION_OF_DONE.md
+    rendering:
+      semantic: "24/7 camera footage, browsable by date/time"
+      systems: Continuous (DTM) Recording
+      technical: "Frigate record.continuous.days (currently 0.0 = disabled); segments stored under /media/frigate in the frigate container, backed by /storage on the host"
+      compliance: Continuous Video Retention Record
+    definition: >
+      Unedited camera footage recorded around the clock, independent of
+      any detected event — distinct from cabin_camera_event_clip, which is
+      only the buffered window around a specific detection. This is what
+      "(d) review of all DTM-based video" in the 2026-08-02 planning
+      conversation refers to — a full timeline, not a curated event list.
+    relationships:
+      - target: cabin_camera_live_view
+        type: consumed_by
+        cardinality: "1:N" # live view's "review what I just watched" need is satisfied by this, not a separate capture mechanism
+      - target: platform_secret
+        type: depends_on
+        cardinality: "N:1" # CAMERA_PASSWORD gates the RTSP source
+    relates_to:
+      ui_components: [] # not yet built — planned as a cabin-ui DTM timeline/scrubber view
+      elements: [cabin_camera_event, cabin_camera_event_clip]
+    notes: >
+      PLANNED 2026-08-02, NOT BUILT. Confirmed live via Frigate's own
+      GET /api/config (the actual running merged config, not the checked-in
+      template, which can drift from it — see cabin_camera_event's notes
+      on the two files having already drifted once): record.continuous.days
+      is 0.0 globally AND per-camera for outdoor_4 — meaning despite
+      record.enabled: true, nothing is actually being retained today.
+      Storage headroom confirmed via `df -h`: /storage is 931.5GB
+      (/dev/sda1), 826GB free, 5% used, as of 2026-08-02 — healthy, but
+      the actual GB/day cost of continuous recording depends on real
+      motion levels per camera and hasn't been measured yet; treat any
+      retention-window recommendation as an estimate to validate once
+      turned on, not a guarantee. VAAPI hardware encoding is already
+      configured (ffmpeg.hwaccel_args: preset-vaapi), which helps the CPU
+      cost of this.
+
+  - id: cabin_camera_event_clip
+    entity_type: owl:Class
+    layer: infra
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: planned
+    data_class: derived
+    data_type: xsd:complexType
+    constraint:
+      description: >
+        bounded clip anchored to a cabin_camera_event's start/end time,
+        pre_capture seconds before + post_capture seconds after; stored
+        alongside continuous recording under the same Frigate media path
+    ui_display_name: "Event Clip"
+    source: >
+      Frigate's record.alerts / record.detections config (pre_capture,
+      post_capture, retain.days) — same config file as
+      cabin_camera_continuous_recording
+    rendering:
+      semantic: "Video clip: <camera> — <label>, <pre_capture>s before to <post_capture>s after"
+      systems: Event-Anchored Recording
+      technical: "Frigate record.alerts/detections.{pre_capture,post_capture,retain.days} — currently 5s/5s/10days for both tiers"
+      compliance: Event-Triggered Video Retention Record
+    definition: >
+      A trimmed video clip automatically created around a single detection
+      event — NOT the same as cabin_camera_continuous_recording (which is
+      unedited, always-on footage). This is what "(b) stores video of the
+      events minus 15 seconds and post event of one minute" in the
+      2026-08-02 planning conversation refers to: pre_capture=15,
+      post_capture=60, changed from Frigate's current default of 5/5.
+    relationships:
+      - target: cabin_camera_event
+        type: extends
+        cardinality: "1:1" # each persisted CabinEvent gains a reference to its clip once this is built
+      - target: cabin_camera_continuous_recording
+        type: complements
+        cardinality: "N:1"
+    relates_to:
+      ui_components: [] # not yet built — planned as a thumbnail/clip-link extension to cabin-ui's existing CameraEventsPanel
+      elements: [cabin_camera_event]
+    notes: >
+      PLANNED 2026-08-02, NOT BUILT. Current live values (confirmed via
+      Frigate's GET /api/config, both the "alerts" and "detections" review
+      tiers, globally and for outdoor_4 specifically): pre_capture=5,
+      post_capture=5, retain.days=10. Open decision for whoever builds
+      this: change both review tiers to 15/60, or only "alerts" (Frigate's
+      higher-significance tier) — not obvious either way, not decided
+      here. cabin_camera_event (the metadata record, already built
+      2026-08-02) does not currently reference this entity at all — Phase
+      2's pipeline only ever carried camera/label/score/timestamp, no
+      clip/image reference, by deliberate scope decision at the time.
+
+  - id: cabin_camera_live_view
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: planned
+    data_class: derived
+    data_type: xsd:complexType
+    constraint:
+      description: >
+        on-demand streaming session, not itself persisted — the underlying
+        video is retained via cabin_camera_continuous_recording, not a
+        separate save-on-view mechanism
+    ui_display_name: "Live Camera View"
+    source: >
+      Frigate's per-camera live.streams config + its MSE/jsmpeg (or
+      go2rtc, if configured) live-streaming endpoint
+    rendering:
+      semantic: "Live view: <camera>"
+      systems: On-Demand Live Stream
+      technical: "Frigate live.streams[camera] (confirmed configured for outdoor_4); go2rtc currently unconfigured (empty {} in live config) — Frigate falls back to its own MSE/jsmpeg live view"
+      compliance: Live Video Access Record
+    definition: >
+      An on-demand live video session for one camera, viewable through
+      cabin-ui — the "(a) live view that acts like Blink" requirement from
+      the 2026-08-02 planning conversation. Unlike Blink's cloud-clip
+      model (which explicitly starts recording when you open live view),
+      this does NOT need its own capture-trigger mechanism: once
+      cabin_camera_continuous_recording is enabled or a
+      cabin_camera_event_clip already covers the event, "what did I just
+      watch" is already retained and reviewable — live view here is a
+      viewing session only.
+    relationships:
+      - target: cabin_camera_continuous_recording
+        type: depends_on
+        cardinality: "N:1" # "the session gets stored" is satisfied by this being on, not by live_view itself
+    relates_to:
+      ui_components: [] # not yet built — planned as a cabin-ui panel addition
+      elements: [cabin_camera_continuous_recording]
+    notes: >
+      PLANNED 2026-08-02, NOT BUILT. Key architectural point recorded here
+      so it isn't relitigated later: a Blink-style "recording starts when
+      you open the app" trigger is unnecessary complexity for an
+      always-on NVR setup like Frigate's — it only makes sense for Blink
+      because Blink cameras are otherwise idle/cloud-only. Once
+      cabin_camera_continuous_recording is actually turned on (currently
+      it isn't — see that entity's notes), every live-view session is
+      already covered by the continuous timeline with zero extra work.
+      go2rtc (Frigate's lower-latency WebRTC relay) is unconfigured
+      (confirmed via live config: empty {}) — a nice-to-have for latency,
+      not required for this to function.
+
 # ═══════════════════════════════════════════════════════════════════════════
 # ACTION ELEMENTS
 # Controllable behaviors and their constraints
@@ -1853,7 +2013,7 @@ elements:
     ui_display_name: "Kids at Dad's tonight"
     source: parenting_schedule_anchor + parenting_home_days + system clock
     rendering:
-      semantic: "Kids at Dad's tonight" / "Kids at Mom's today"
+      semantic: "Kids at Dad's tonight / Kids at Mom's today"
       systems: Custody Status (home | away)
       technical: isKidsHome(new Date()) → boolean
       compliance: Custody State Record
@@ -1902,7 +2062,7 @@ elements:
     ui_display_name: "Back to Dad's Fri Aug 1"
     source: custody_status + parenting_schedule_anchor + parenting_home_days
     rendering:
-      semantic: "Back to Dad's Fri Aug 1" / "Back to Mom's Thu Jul 31"
+      semantic: "Back to Dad's Fri Aug 1 / Back to Mom's Thu Jul 31"
       systems: Next Custody Change Date
       technical: computed in updateCustodyBadge() loop over addDays(today, i)
       compliance: Next Scheduled Transition
@@ -2762,7 +2922,7 @@ elements:
     ui_display_name: "3 of 4 nights — 1 more night needed"
     source: chore_completion_state + parenting_home_days + system clock
     rendering:
-      semantic: "3 of 4 nights — 1 more night needed" / "Reward unlocked! ⭐"
+      semantic: "3 of 4 nights — 1 more night needed / Reward unlocked! ⭐"
       systems: Reward Eligibility (qualifying nights / 4 threshold)
       technical: rewardEligibility(kidId, recentHomeDays(7)) → {qualifying, needed, eligible, pct}
       compliance: (not shown)

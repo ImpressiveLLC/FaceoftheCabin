@@ -459,3 +459,14 @@ undocumented.
    already exists in the Ansible playbook for this. No current need drives
    it — everything runs self-hosted today. Build only if an actual
    cloud-hosting requirement shows up.
+4. **Camera video viewing** (live view, event clips with pre/post buffer,
+   continuous DTM recording review) — explicitly deferred by the user to a
+   session with more budget. Fully planned first, per their explicit
+   request: see `ROADMAP.md` Phase 6 and `docs/ontology.yaml`'s
+   `cabin_camera_live_view`/`cabin_camera_event_clip`/
+   `cabin_camera_continuous_recording` entities, all grounded in Frigate's
+   actual live config (pulled via its real `/api/config`, not assumed) —
+   continuous recording is currently disabled (0-day retention), event
+   clips currently use 5s/5s pre/post (not the requested 15s/60s), and
+   `/storage` is confirmed as a separate 931.5GB disk (likely the WD
+   drive), 826GB free as of 2026-08-02. Not started — planning only.

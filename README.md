@@ -49,6 +49,15 @@ just your own family (a shared space, a device you don't fully control
 who sees), turn it down. The same warning is shown directly next to the
 widget itself, with a link straight to this setting.
 
+**Planned, not yet built (see `ROADMAP.md` Phase 6):** actual video —
+live camera viewing, event clips, and continuous (24/7) recording browsing
+— none of which exist yet. Everything above is metadata only (camera
+name, detected object, timestamp), never an image or video frame. When
+video viewing ships, it's planned as an authenticated cabin-ui feature,
+not an extension of this public, no-sign-in widget — this note will be
+updated again at that point, since video access is meaningfully more
+sensitive than what's described above.
+
 ---
 
 ## Repository Map
