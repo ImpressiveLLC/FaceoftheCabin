@@ -1202,14 +1202,23 @@ elements:
       .github/workflows/rotate-secrets.yml on the self-hosted runner, plus
       workflow_dispatch for an on-demand "rotate now."
 
-      NOT YET LIVE-VALIDATED: Ansible itself isn't installed on the M920q
-      yet — the runner user has no passwordless sudo and this host's Python
-      has neither pip nor ensurepip, so bootstrapping it needs one human-run
-      privileged command (documented in ansible/README.md), same one-time-
-      root boundary this project already draws around the runner's own
-      svc.sh install step. The playbook has been authored and reviewed but
-      not yet executed against the real host — do not treat this as proven
-      until that gap is closed and a real end-to-end rotation has been run.
+      LIVE-VALIDATED 2026-08-02 (later the same day): Ansible installed on
+      the M920q via `sudo apt install -y ansible-core` (the pip3 route hits
+      PEP 668 on this host — documented as the non-working option in
+      ansible/README.md, kept for the record). Ran a real end-to-end
+      rotation against the live host: generated a new password, `ALTER
+      USER` against cabin-postgres, re-encrypted the vault, re-templated
+      .env, recreated cabin-backend + cabin-grafana, validated via
+      /actuator/health (db: UP). Confirmed no data loss — event row count
+      and oldest timestamp unchanged across the restart (cabin-postgres
+      itself was incidentally recreated too, as a side effect of `docker
+      compose up` on its dependents; harmless, since POSTGRES_PASSWORD only
+      applies at first volume init). Two real bugs found only by actually
+      running it, not from reading the YAML: the playbooks/ subdirectory
+      broke include_role's default search path for roles/secrets (fixed
+      via a new ansible/ansible.cfg), and env.j2's header comment
+      referenced a non-existent Ansible magic variable. Both fixed, then
+      the rotation was re-run successfully end to end.
 
       SCOPE: GRAFANA_PASSWORD/HA_TOKEN rotation is NOT built — they need
       different mechanics (Grafana's admin API, HA's own long-lived-token

@@ -139,15 +139,36 @@ Grafana/HA-side change, then re-run the `site.yml --tags secrets` step above.
 `.github/workflows/rotate-secrets.yml` runs the rotation playbook monthly
 on the self-hosted runner (plus a manual `workflow_dispatch` trigger for
 "rotate now"). Requires Ansible and `~/.ansible_vault_pass` to already
-exist **on the M920q itself** — Ansible isn't installed there yet as of
-this writing (the runner user has no passwordless sudo, and this host's
-Python has neither `pip` nor `ensurepip`, so bootstrapping it needs one
-human-run privileged command, same one-time-root pattern as the runner's
-own `svc.sh install` step):
+exist **on the M920q itself** — both done as of 2026-08-02:
+`ansible-core` installed via `sudo apt install -y ansible-core` (the `pip3`
+route below hits PEP 668 "externally managed environment" on this host —
+don't use it, it's kept only as a record of what *doesn't* work):
 ```bash
-sudo apt install -y python3-pip
-pip3 install --user ansible-core
+# doesn't work on this host, see above:
+# sudo apt install -y python3-pip && pip3 install --user ansible-core
+sudo apt install -y ansible-core
 ```
+
+**Verified live, end to end, 2026-08-02:** ran both `site.yml --tags
+secrets` (templated `.env` from the vault) and a full real
+`playbooks/rotate-secrets.yml` run (generate → `ALTER USER` on the live
+`cabin-postgres` → re-encrypt vault → re-template `.env` → recreate
+`cabin-backend`/`cabin-grafana` → validate). Self-validated (`db: UP`),
+and independently confirmed event history was untouched (`cabin-postgres`
+got recreated as a side effect of `docker compose up` on its dependents —
+expected and harmless, `POSTGRES_PASSWORD` only applies at first volume
+init, doesn't wipe the volume). Found and fixed two real bugs only
+visible by actually running it, not from reading the YAML: `playbooks/`
+being one directory deeper than `ansible/roles/` broke `include_role`'s
+default search path (fixed via `ansible/ansible.cfg`'s `roles_path`), and
+`env.j2`'s header comment referenced a non-existent Ansible magic
+variable (`inventory_hostname_group` → `group_names | first`). Also:
+self-targeting the M920q via its own Tailscale hostname in
+`inventory.ini` doesn't work when Ansible runs *on* the M920q itself
+(hairpin — no local port-22 listener from its own perspective) — run with
+`-c local -e ansible_become=false` when operating directly on the host,
+plain `ansible-playbook -i inventory.ini ...` (no override) when running
+from a separate machine with SSH access.
 
 ## What this does NOT do
 

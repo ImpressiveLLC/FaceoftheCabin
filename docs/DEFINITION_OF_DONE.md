@@ -46,15 +46,23 @@ and check for any collision with `cabin/camera/#` or other topics
 `MqttBridgeService` handles.
 
 **Open items, in priority order:**
-1. **Ansible not installed on the M920q** — blocks finishing Tier 1's
-   Ansible Vault work (the role/playbook/workflow are built and committed,
-   just never executed for real). One command:
-   `sudo apt install -y ansible-core` (NOT the pip route — hits PEP 668).
-   Once done: create the vault (`ansible/README.md`'s Secrets section has
-   the exact steps), the real secret values are already staged in
-   `/tmp/vault_plaintext.yml` on the M920q from this session, run
-   `playbooks/rotate-secrets.yml` for real, confirm the "fails loudly on a
-   bad rotation" behavior actually works before trusting it.
+1. ~~**Ansible not installed on the M920q**~~ — **done, 2026-08-02, second
+   check-in.** User ran `sudo apt install -y ansible-core` (confirmed
+   `ansible-core 2.20.1`). Vault created and populated from the plaintext
+   secrets staged earlier (`/tmp/vault_plaintext.yml`, now deleted).
+   `site.yml --tags secrets` and a full real `rotate-secrets.yml` run both
+   executed successfully against the live M920q — self-validated (`db:
+   UP`), no data loss confirmed independently. Found and fixed two real
+   bugs (`ansible/ansible.cfg` for the role search path,
+   `env.j2`'s undefined-variable comment) that only surfaced by actually
+   running it. **One process note, not a technical gap:** a `git diff`
+   run to sanity-check the password rotation printed both the old and new
+   `POSTGRES_PASSWORD` values in plaintext into the session transcript —
+   caught immediately, fixed by rotating again right after (so the
+   exposed value is no longer the live credential) and being careful to
+   use presence/absence-only comparisons from then on. Worth remembering
+   for any future credential-adjacent debugging: diff by boolean/hash, not
+   by raw value, even when it feels like "just checking a diff."
 2. **Google OAuth authorized origin** — `cabin.unicornpingpong.com` needs
    adding as an authorized JavaScript origin on the same OAuth client
    `hub.unicornpingpong.com` already uses (Google Cloud Console → APIs &

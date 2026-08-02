@@ -401,8 +401,15 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       equivalent) role that generates/stores/templates these values, so
       rotation is "run the role" instead of SSHing in by hand — see the
       `cabin-postgres` rotation (2026-08-02) for what the manual version
-      costs. Not built — this is the ontology entry the future automation
-      should implement against, not the automation itself.
+      costs. **Built and verified live, 2026-08-02** (same day, later
+      session): `ansible/roles/secrets` + `ansible/playbooks/rotate-secrets.yml`
+      — a real end-to-end rotation ran against the M920q (generate → `ALTER
+      USER` → re-encrypt vault → re-template `.env` → restart dependents →
+      validate `db: UP`), see `ansible/README.md`'s Secrets section for the
+      exact commands and the two real bugs found running it for the first
+      time. `GRAFANA_PASSWORD`/`HA_TOKEN` rotation remains manual — different
+      mechanics needed (Grafana admin API, HA's own token UI), documented as
+      a follow-up, not silently skipped.
 
 ### Phase 3 — Event Pipeline
 
