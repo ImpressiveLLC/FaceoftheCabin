@@ -77,6 +77,22 @@ and check for any collision with `cabin/camera/#` or other topics
 5. **`cabin-postgres` default password** — actually resolved this session
    (see Tier 1 #3 below), just listed here for visibility since it was
    the session's starting point.
+6. **`CabinAutomations` has two divergent clones on the M920q** — found
+   2026-08-02 during the second check-in below, not previously known.
+   `/home/nate/repos/CabinAutomations` (the one referenced elsewhere in
+   this doc and in Claude Code's own memory) is exactly in sync with
+   `origin/main` (`3dbc5ca`). A **separate** clone,
+   `/home/nate/CabinAutomations`, sits one commit ahead of origin
+   (`f44a544`, authored by the user 2026-07-29, "add cabin docker-compose
+   with all services") that was **never pushed**. Diffed and read — just
+   adds `infra/docker-compose.cabin.yml` (172 lines), no hardcoded
+   secrets (all `${VAR}` references or empty strings). Not pushed by an
+   agent without asking first — this is the user's own uncommitted work,
+   and it's unclear whether it's still wanted or was superseded by
+   in-progress work elsewhere. **User should say**: push it from that
+   clone, or confirm it's stale/superseded and can be discarded. Either
+   way, having two same-repo clones on one host is worth consolidating to
+   one canonical path once this is resolved.
 
 **How to orient in a fresh session:** `docs/ontology.yaml` is current and
 fully valid YAML (three pre-existing parse bugs fixed this session) —
