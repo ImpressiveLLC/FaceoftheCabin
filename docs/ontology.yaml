@@ -1619,6 +1619,110 @@ elements:
       MJPEG endpoint instead, simpler and needing no extra config — see
       `source` above.
 
+  - id: cabin_camera_overnight_alert
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:complexType
+    constraint:
+      description: >
+        gated on armed-away + not-home state (reuses the same MQTT-published
+        state cabin-security's intrusion flow already tracks) plus a 5-minute
+        cooldown; only fires for alert-tier labels, not every detection
+    ui_display_name: "Overnight Camera Alert"
+    source: >
+      New Node-RED tab ("Camera Overnight Alerts"), added 2026-08-03 via
+      Node-RED's Admin API (POST /flow, then PUT /flow/:id for iteration)
+      rather than hand-editing flows.json directly — the user was
+      concurrently editing a separate flow (the water-shutoff automation)
+      live in the Node-RED UI at the time, so a file-level edit risked
+      losing their in-progress work or getting silently overwritten by the
+      editor's own autosave.
+    rendering:
+      semantic: "Cabin Alert: <label> at <camera>"
+      systems: Overnight Security Push Notification
+      technical: "MQTT cabin/camera/events -> Node-RED function chain -> HTTP POST to ntfy.sh/{private topic}"
+      compliance: Security Alert Delivery Record
+    definition: >
+      A push notification sent when Frigate detects an alert-tier object
+      (person, car, bicycle, motorcycle, bus, bear, dog, or cat — see
+      cabin_camera_event's objects.track/review.alerts.labels config)
+      while the cabin is armed-away and the user isn't present. Answers
+      the user's explicit ask: "I know I'll get an alert if someone is
+      stealing something right in front of the cabin overnight."
+    relationships:
+      - target: cabin_camera_event
+        type: depends_on
+        cardinality: "N:1"
+      - target: platform_secret
+        type: depends_on
+        cardinality: "1:1" # the ntfy.sh topic name functions as a shared secret -- anyone who knows it can read the channel, since ntfy.sh topics aren't access-controlled by default
+    relates_to:
+      ui_components: []
+      elements: [cabin_camera_event]
+    notes: >
+      BUILT 2026-08-03. Delivery mechanism: ntfy.sh (free, no account,
+      no app-pairing needed) chosen over Home Assistant's Companion App
+      push notifications specifically because no mobile_app config entry
+      existed yet (confirmed via HA's own .storage/core.config_entries —
+      the Companion App has never been paired to this HA instance), and
+      pairing it would need Tailscale on the user's phone or another
+      remote-access path first. ntfy.sh needed only an app install and a
+      topic subscription — no account, no pairing — so it could ship the
+      same night.
+
+      Gating deliberately reuses the SAME MQTT-published state the
+      existing cabin-security intrusion flow already tracks
+      (cabin/security/node_red_armed, cabin/presence/nate) rather than
+      inventing new logic — subscribed independently in this new tab
+      rather than sharing Node-RED flow-context directly, since flow
+      context is tab-scoped by default and these are two separate tabs;
+      MQTT pub/sub is the intentional decoupling point, matching how the
+      existing flow was already designed to be consumable by other flows.
+
+      REAL BUG FOUND AND FIXED during a live test, worth recording:
+      immediately after deploying via the Admin API, the "remember armed
+      state" / "remember presence" function nodes hadn't yet received
+      their retained MQTT messages, so flow.get('armedAway') and
+      flow.get('natePresence') both read undefined and the very first
+      test detection was incorrectly gated out. Confirmed via node.warn()
+      tracing (node.status() alone isn't visible outside the Node-RED
+      UI) that the MQTT subscriptions themselves worked fine against a
+      FRESH publish — this was specifically a retained-message-delivery
+      timing gap right after a partial Admin-API deploy, not a broken
+      subscription. Self-resolves in practice within a minute or two of
+      Node-RED being up, since the WiFi-presence automation
+      (cabin_security_presence.yaml's command_line binary_sensor, added
+      earlier this session) publishes cabin/presence/nate every 60s
+      regardless, but worth knowing about if a deploy is ever tested
+      immediately afterward again.
+
+      KNOWN GAP, not fixed here (pre-existing, already documented
+      elsewhere): cabin/security/node_red_armed has no live, ongoing
+      publisher — it was set via a one-off manual mosquitto_pub when the
+      user enabled the intrusion flow directly in Node-RED. If that
+      retained value is ever lost (e.g. a broker restart without
+      persistence), there's no automation to republish it, and BOTH this
+      alert flow and the existing intrusion flow would silently stay
+      gated closed until manually republished. Same fragility already
+      flagged for the intrusion flow itself; this entity inherits it
+      rather than introducing something new.
+
+      Verified end-to-end with real MQTT test events (not just code
+      review): a "person at front_door" test correctly passed every gate
+      and produced a real ntfy.sh push (confirmed via ntfy's own message
+      API showing the delivered notification); a second "dog at
+      driveway" test 30s later was correctly suppressed by the 5-minute
+      cooldown (confirmed via the same API showing no new message).
+      "Truck" was requested but is not a valid label for the currently
+      loaded default detection model (confirmed via its real labelmap.txt
+      — no distinct truck class exists in this model's label set, only
+      car/bus/motorcycle/bicycle for vehicles) — flagged to the user
+      directly rather than silently dropped without explanation.
+
   - id: smart_appliance_fridge_liebherr
     entity_type: owl:Class
     layer: integration
