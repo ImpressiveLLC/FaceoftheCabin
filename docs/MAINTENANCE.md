@@ -318,6 +318,27 @@ Ansible bug.
 
 See "Secrets" above.
 
+### Manual MQTT test publishes leave permanent fake events behind (found 2026-08-03)
+
+Testing the overnight camera alert flow via `mosquitto_pub` directly
+against the live `cabin/camera/events` topic worked correctly for
+verifying the pipeline, but `MqttBridgeService` has no way to
+distinguish a real Frigate detection from a manually-injected test
+message on the same topic — every test publish became a permanent,
+real-looking `cabin_event` row (complete with a plausible `person`/`dog`
+label and confidence score), indistinguishable from a genuine detection
+in `/api/events` or the Camera Events panel. Found when the user
+reasonably asked why "detected" events had no video — they were never
+real detections, just leftover test artifacts nobody cleaned up.
+**Lesson**: after any live MQTT test against a production topic, delete
+the resulting event rows explicitly (`DELETE FROM cabin_event WHERE
+event_id IN (...)`, exact IDs only, never a broad time-range or label
+match) — don't leave test data mixed into a table real users see through
+the actual product UI. This action correctly requires explicit user
+confirmation (Claude Code's auto-mode classifier blocks unconfirmed
+`DELETE`s against a live database) — that's working as intended, not a
+tool to route around.
+
 ---
 
 ## Monitoring
