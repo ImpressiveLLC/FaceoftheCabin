@@ -49,14 +49,29 @@ just your own family (a shared space, a device you don't fully control
 who sees), turn it down. The same warning is shown directly next to the
 widget itself, with a link straight to this setting.
 
-**Planned, not yet built (see `ROADMAP.md` Phase 6):** actual video —
-live camera viewing, event clips, and continuous (24/7) recording browsing
-— none of which exist yet. Everything above is metadata only (camera
-name, detected object, timestamp), never an image or video frame. When
-video viewing ships, it's planned as an authenticated cabin-ui feature,
-not an extension of this public, no-sign-in widget — this note will be
-updated again at that point, since video access is meaningfully more
-sensitive than what's described above.
+**Video viewing (built 2026-08-02, see `ROADMAP.md` Phase 6) is a
+separate, more sensitive surface from the widget above.** cabin-ui's
+Camera Events panel — authenticated, Google sign-in required, **not**
+part of this public Family Hub widget — now shows real snapshots and
+event clips, plus a live per-camera view. This is a meaningfully bigger
+exposure than the metadata-only widget above: an image or video frame is
+categorically more sensitive than "motion detected at 3:14pm." Concretely:
+
+- **Event clips**: 15 seconds before to 60 seconds after each detected
+  event, kept 10 days.
+- **Continuous (24/7) recording**: every camera's full feed, kept 5 days
+  — a deliberately short retention window given one camera's recording
+  stream is full 4K resolution (storage cost scales fast; extended only
+  after real usage is measured, not a guessed number).
+- **Live view**: on-demand streaming, not itself separately recorded —
+  covered by continuous recording above.
+
+None of this is reachable from the public, no-sign-in Family Hub widget
+described earlier in this note — it lives entirely behind cabin-ui's own
+Google sign-in (`cabin.unicornpingpong.com`), gated server-side on every
+request, not just hidden client-side. If you ever add another signed-in
+user to cabin-ui, they get this same video access — there's no separate,
+finer-grained permission tier for video vs. the rest of cabin-ui today.
 
 ---
 

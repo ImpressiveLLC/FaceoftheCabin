@@ -436,77 +436,57 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 
 ### Phase 6 — Camera Video Viewing
 
-> Planned 2026-08-02, not yet built (explicitly deferred to a session with
-> more budget) — but grounded in Frigate's *actual current config*
-> (pulled live via `GET /api/config` on the running instance, not assumed
-> from generic docs), so the checklist below is real work, not guesses.
-> See `docs/ontology.yaml`'s `cabin_camera_live_view` /
+> Planned 2026-08-02, **built later the same day** once the user confirmed
+> they wanted to proceed. Grounded in Frigate's *actual current config* and
+> *actual installed source* throughout (pulled live via `GET /api/config`
+> and by reading `frigate/api/media.py` directly on the M920q, not assumed
+> from generic docs). See `docs/ontology.yaml`'s `cabin_camera_live_view` /
 > `cabin_camera_event_clip` / `cabin_camera_continuous_recording` entities
-> for the full definitions this checklist implements.
+> for full detail, including what's still genuinely unverified (a real
+> signed-in browser session hasn't rendered a thumbnail/clip/live view yet
+> — no qualifying recent event existed at deploy time to test against).
 >
-> Key finding that reframes the scope: **Frigate already does most of the
-> underlying video engineering** (continuous recording, event pre/post
-> buffers, live streaming) — this phase is mostly *configuration* plus a
-> *viewing layer* in cabin-ui/cabin-backend, not building a video pipeline
-> from scratch.
+> Key finding that reframed the scope, confirmed correct: **Frigate already
+> did most of the underlying video engineering** — this phase ended up
+> being mostly configuration plus a proxy/viewing layer in
+> cabin-backend/cabin-ui, not a video pipeline built from scratch.
 
-- [ ] **(b) Event clip pre/post buffer** — change from Frigate's current
-      default (`pre_capture: 5s` / `post_capture: 5s`, both the `alerts`
-      and `detections` review tiers) to `pre_capture: 15` /
-      `post_capture: 60` in `/storage/services/frigate/config.yml`'s
-      `record.alerts` and `record.detections` sections (confirmed exact
-      current values via the live config, not the checked-in template).
-      Decide: both tiers, or just `alerts` (Frigate's "this matters"
-      tier) — a real call to make when building this, not obvious either
-      way.
-- [ ] **(d) Continuous (DTM) recording** — currently **disabled**:
-      `record.continuous.days: 0.0` in the live config, meaning nothing is
-      actually being retained today despite `record.enabled: true`
-      globally. Needs a real retention value. Storage math to ground the
-      choice: `/storage` (where Frigate writes) is `/dev/sda1`, a
-      931.5GB volume separate from the boot NVMe — very likely the WD
-      drive referenced — currently 826GB free (5% used). VAAPI hardware
-      encoding is already configured (`hwaccel_args: preset-vaapi`),
-      which helps continuous-recording CPU load. Pick a retention window
-      (e.g. 14-30 days) as a starting estimate, turn it on, then actually
-      measure real GB/day against real motion levels before trusting the
-      estimate — don't just set-and-forget a guessed number.
-- [ ] **(a) Live view "like Blink"** — architecture insight: once (d) is
-      on, this mostly falls out for free. Frigate already has a live
-      stream per camera (`live.streams` mapped per camera, confirmed in
-      the live config) usable today via its own UI. There's no need for a
-      separate "start recording when I open live view" trigger, the way
-      Blink's cloud-clip model requires — continuous recording already
-      covers whatever time range someone was watching live, so "review
-      what I just watched" is just scrubbing the continuous timeline to
-      that time range (see (d)/(c)). `go2rtc` is currently unconfigured
-      (empty `{}` in the live config) — Frigate falls back to its own
-      MSE/jsmpeg live view, which works but isn't the lowest-latency
-      option; adding go2rtc per camera is a nice-to-have, not a blocker.
-- [ ] **(c) Persisted-event review UI** — extend cabin-ui's already-built
-      Camera Events panel (`CameraEventsPanel` in `App.jsx`, currently
-      metadata-only: camera/label/score/time, no image or video) to show
-      a thumbnail and link/embed the actual clip per event, plus real
-      pagination/filtering across the full history, not just the most
-      recent 20-30. Requires new cabin-backend endpoints that proxy
-      Frigate's own clip/snapshot/live-stream APIs — Frigate itself stays
-      Tailscale-only (it's a reconfiguration surface, same reasoning as
-      Node-RED/HA), but *viewing* clips through the already-public,
-      already-authenticated cabin-ui panel is a different, narrower
-      exposure than exposing Frigate's own admin UI. Open scope question
-      for whoever builds this: should Family Hub's public widget (Phase 4,
-      already shipped) ever gain a thumbnail too, or does richer video
-      review stay cabin-ui-only, authenticated? Recommend the latter —
-      video/clip access is meaningfully more sensitive than the
-      metadata-only widget already shipped — but this is a real decision,
-      not decided here.
-- [ ] Update `README.md`'s camera-activity security note (already exists,
-      added alongside Phase 4) to also cover video/clip storage and
-      retention, once this ships — more surface than the metadata-only
-      widget it currently describes.
-- [ ] Not blocked on the `driveway` camera coming back online — same
-      camera-count-agnostic design as Phases 2-4; applies to whichever
-      cameras are configured in Frigate whenever this gets built.
+- [x] **(b) Event clip pre/post buffer** — changed to `pre_capture: 15` /
+      `post_capture: 60`, both `alerts` and `detections` review tiers
+      (decided: both, not just `alerts`).
+- [x] **(d) Continuous (DTM) recording** — enabled at `continuous.days: 5`
+      — deliberately conservative, decided directly with the user, not the
+      originally-floated 14-30 days: `driveway`'s record role turned out
+      to use its 4K main stream (missed at planning time), which at
+      realistic 4K bitrates could be 80-160+ GB/day once that camera
+      reconnects (currently off-network). Re-measure real GB/day before
+      extending retention, don't trust this as more than a starting
+      estimate.
+- [x] **(a) Live view "like Blink"** — built via Frigate's plain MJPEG
+      endpoint (`GET /api/{camera}`, simpler than the MSE/jsmpeg/go2rtc
+      mechanism assumed at planning time, no go2rtc config needed),
+      proxied through cabin-backend and rendered as a plain `<img>` tag in
+      cabin-ui. One real wrinkle: `<img>` can't set an Authorization
+      header, and this stream is unbounded so it can't be blob-fetched —
+      `GoogleAuthInterceptor` now also accepts the token as an
+      `?access_token=` query param for this one case.
+- [x] **(c) Persisted-event review UI**, mostly — `CameraEventsPanel` now
+      shows a real thumbnail (authenticated blob-fetch) and an expandable
+      clip player per event. **Not done**: real pagination/filtering
+      across full history (still capped at the most recent 30). Also
+      fixed a real gap found while building this: `MqttBridgeService`
+      never captured Frigate's own event id at all, so even stored clips
+      would have been permanently unreachable — now captured as
+      `frigateEventId`. Scope question resolved: video/clip access stays
+      cabin-ui-only, authenticated (not added to Family Hub's public
+      widget) — gated behind `GoogleAuthInterceptor`, matching
+      notes/chores/profiles.
+- [x] Update `README.md`'s camera-activity security note to also cover
+      video/clip storage and retention.
+- [x] Not blocked on the `driveway` camera coming back online — confirmed
+      camera-count-agnostic in practice: the whole pipeline (event
+      capture, clip config, media proxy) applies uniformly regardless of
+      which cameras are actually live.
 
 ---
 
