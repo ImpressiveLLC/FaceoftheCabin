@@ -6,7 +6,7 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * Only /api/notes, /api/chores, and /api/profiles require a Google token — every other
+ * Only /api/notes, /api/chores, /api/profiles, and /api/camera require a Google token — every other
  * endpoint (device status, dashboard config, events) stays open, matching
  * how it already worked before this interceptor existed.
  *
@@ -33,6 +33,6 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         if (!googleAuthEnabled) return;
         registry.addInterceptor(authInterceptor)
-            .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**");
+            .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**");
     }
 }

@@ -35,12 +35,11 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ") || header.length() <= 7) {
+        String token = extractToken(request);
+        if (token == null) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Missing bearer token");
             return false;
         }
-        String token = header.substring(7);
         try {
             Map<?, ?> info = http.getForObject(
                 "https://oauth2.googleapis.com/tokeninfo?access_token={token}", Map.class, token);
@@ -58,5 +57,23 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token validation failed");
             return false;
         }
+    }
+
+    // Header is the primary path (used by every existing fetch()-based
+    // caller). Query param exists only for /api/camera/{camera}/live's
+    // <img> tag, which can't set a custom Authorization header -- MJPEG
+    // multipart streams can't be blob-fetched the way a snapshot/clip can
+    // (see CameraMediaController's javadoc). Same token, same validation
+    // either way, just a different transport for the one case that needs it.
+    private String extractToken(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ") && header.length() > 7) {
+            return header.substring(7);
+        }
+        String queryToken = request.getParameter("access_token");
+        if (queryToken != null && !queryToken.isBlank()) {
+            return queryToken;
+        }
+        return null;
     }
 }

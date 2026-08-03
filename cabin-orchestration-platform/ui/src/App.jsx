@@ -123,12 +123,84 @@ function useGoogleAuth() {
   return { accessToken, userEmail, signedIn: !!accessToken, signIn, signOut, configured: !!clientId };
 }
 
+// ─── Camera media: authenticated snapshot/clip fetch ──────────────────────
+// /api/camera/** requires a Google bearer token (see WebConfig.java) — a
+// plain <img src="..."> or <video src="..."> can't set that header, so we
+// fetch as a blob with fetch() (which can) and hand the component an
+// object URL instead. Revokes the previous URL on cleanup/change so this
+// doesn't leak memory as someone scrolls through a long event list.
+function useAuthedMediaUrl(url, accessToken) {
+  const [objectUrl, setObjectUrl] = useState(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!url || !accessToken) { setObjectUrl(null); return; }
+    let cancelled = false;
+    let currentUrl = null;
+    setError(false);
+    fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then(res => { if (!res.ok) throw new Error(res.status); return res.blob(); })
+      .then(blob => {
+        if (cancelled) return;
+        currentUrl = URL.createObjectURL(blob);
+        setObjectUrl(currentUrl);
+      })
+      .catch(() => { if (!cancelled) setError(true); });
+    return () => {
+      cancelled = true;
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+    };
+  }, [url, accessToken]);
+
+  return { objectUrl, error };
+}
+
+function CameraEventThumbnail({ apiBase, accessToken, frigateEventId }) {
+  const { objectUrl, error } = useAuthedMediaUrl(
+    frigateEventId ? `${apiBase}/api/camera/events/${frigateEventId}/snapshot` : null,
+    accessToken
+  );
+  if (!frigateEventId || error) {
+    return <div className="camera-event-thumb camera-event-thumb-empty"><Camera size={18} /></div>;
+  }
+  return objectUrl
+    ? <img className="camera-event-thumb" src={objectUrl} alt="" />
+    : <div className="camera-event-thumb camera-event-thumb-loading" />;
+}
+
+function CameraEventClip({ apiBase, accessToken, frigateEventId }) {
+  const { objectUrl, error } = useAuthedMediaUrl(
+    `${apiBase}/api/camera/events/${frigateEventId}/clip`,
+    accessToken
+  );
+  if (error) return <p className="config-desc">Clip not available for this event.</p>;
+  if (!objectUrl) return <p className="config-desc">Loading clip…</p>;
+  return <video className="camera-clip-player" src={objectUrl} controls autoPlay muted />;
+}
+
+// Live view uses a plain <img> against Frigate's MJPEG multipart stream —
+// that's the standard way browsers render multipart/x-mixed-replace, but
+// it means the token has to travel as a query param (see
+// GoogleAuthInterceptor's extractToken()) since <img> can't set headers
+// and this stream is unbounded, unlike snapshot/clip above which can be
+// blob-fetched in full.
+function CameraLiveView({ apiBase, accessToken, cameraName }) {
+  const src = `${apiBase}/api/camera/${cameraName}/live?access_token=${encodeURIComponent(accessToken)}`;
+  return (
+    <div className="camera-live-view">
+      <img key={cameraName} src={src} alt={`Live: ${cameraName}`} />
+    </div>
+  );
+}
+
 // ─── Panel: Camera Events ───────────────────────────────────────────────────
 function CameraEventsPanel({ auth }) {
   const { locationCfg } = useApp();
   const apiBase = locationCfg?.apiBase || LOCATIONS.cabin.apiBase;
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [expandedEventId, setExpandedEventId] = useState(null);
+  const [liveCamera, setLiveCamera] = useState(null);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -163,6 +235,12 @@ function CameraEventsPanel({ auth }) {
     );
   }
 
+  // Cameras worth offering a "watch live" button for — derived from
+  // whichever cameras have actually produced an event recently, since
+  // there's no dedicated "list configured cameras" endpoint yet. A real
+  // limitation if a camera has never fired an event, not a bug.
+  const knownCameras = [...new Set(events.map(e => e.sourceDeviceId).filter(Boolean))];
+
   return (
     <div className="panel-content">
       <div className="panel-header-bar">
@@ -172,21 +250,56 @@ function CameraEventsPanel({ auth }) {
           <button className="btn-secondary" onClick={auth.signOut}>Sign out</button>
         </div>
       </div>
+
+      {knownCameras.length > 0 && (
+        <div className="camera-live-section">
+          <div className="camera-live-buttons">
+            {knownCameras.map(cam => (
+              <button
+                key={cam}
+                className={`btn-secondary${liveCamera === cam ? " active" : ""}`}
+                onClick={() => setLiveCamera(liveCamera === cam ? null : cam)}
+              >
+                <Radio size={14} /> {liveCamera === cam ? `Stop ${cam}` : `Watch ${cam} live`}
+              </button>
+            ))}
+          </div>
+          {liveCamera && (
+            <CameraLiveView apiBase={apiBase} accessToken={auth.accessToken} cameraName={liveCamera} />
+          )}
+        </div>
+      )}
+
       {loading && events.length === 0 && <p className="config-desc">Loading…</p>}
       {!loading && events.length === 0 && <p className="config-desc">No camera activity in the last 24 hours.</p>}
       <div className="camera-events-list">
-        {events.map(e => (
-          <div key={e.eventId} className="camera-event-row">
-            <Camera size={16} />
-            <div>
-              <div className="camera-event-title">
-                {e.sourceDeviceId} — {e.eventType.replace("DETECTION_", "").replace("MOTION_", "motion ").toLowerCase()}
-                {e.payload?.label ? ` (${e.payload.label}${e.payload.score ? `, ${Math.round(e.payload.score * 100)}%` : ""})` : ""}
+        {events.map(e => {
+          const frigateEventId = e.payload?.frigateEventId;
+          const isExpanded = expandedEventId === e.eventId;
+          const canExpand = !!frigateEventId && e.payload?.hasClip;
+          return (
+            <div key={e.eventId} className="camera-event-item">
+              <div
+                className={`camera-event-row${canExpand ? " clickable" : ""}`}
+                onClick={() => canExpand && setExpandedEventId(isExpanded ? null : e.eventId)}
+              >
+                <CameraEventThumbnail apiBase={apiBase} accessToken={auth.accessToken} frigateEventId={e.payload?.hasSnapshot ? frigateEventId : null} />
+                <div>
+                  <div className="camera-event-title">
+                    {e.sourceDeviceId} — {e.eventType.replace("DETECTION_", "").replace("MOTION_", "motion ").toLowerCase()}
+                    {e.payload?.label ? ` (${e.payload.label}${e.payload.score ? `, ${Math.round(e.payload.score * 100)}%` : ""})` : ""}
+                  </div>
+                  <div className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</div>
+                </div>
               </div>
-              <div className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</div>
+              {isExpanded && (
+                <div className="camera-clip-expanded">
+                  <CameraEventClip apiBase={apiBase} accessToken={auth.accessToken} frigateEventId={frigateEventId} />
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

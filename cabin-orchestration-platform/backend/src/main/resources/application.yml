@@ -39,6 +39,14 @@ cabin:
       freezeRiskTempF: 38
     cameras:
       defaultProtocol: rtsp
+      # Frigate reached by Docker network hostname -- cabin-backend is on
+      # cabin_default (confirmed via `docker inspect`), the same network
+      # Frigate itself runs on, alongside its own infra_default network.
+      # Frigate stays Tailscale-only for its own admin UI/API generally,
+      # but this specific proxy (snapshot/clip/live-view media only, not
+      # config) is what lets cabin-ui's authenticated Camera Events panel
+      # show real video without exposing Frigate's full surface publicly.
+      frigateUrl: ${FRIGATE_URL:http://frigate:5000}
 
 management:
   endpoints:

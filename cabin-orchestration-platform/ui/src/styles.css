@@ -299,6 +299,37 @@ body {
 .camera-event-title { color: #e6edf3; font-size: 13px; }
 .camera-event-time { color: #6e7681; font-size: 11px; margin-top: 2px; }
 
+.camera-event-item { display: flex; flex-direction: column; }
+.camera-event-row.clickable { cursor: pointer; }
+.camera-event-row.clickable:hover { border-color: #388bfd; }
+
+.camera-event-thumb {
+  width: 56px; height: 42px; flex-shrink: 0; object-fit: cover;
+  border-radius: 6px; background: #161b22;
+}
+.camera-event-thumb-empty, .camera-event-thumb-loading {
+  display: flex; align-items: center; justify-content: center;
+  color: #6e7681;
+}
+
+.camera-clip-expanded {
+  padding: 10px 14px 14px; background: #0d1117;
+  border: 1px solid #21262d; border-top: none;
+  border-radius: 0 0 8px 8px; margin-top: -1px;
+}
+.camera-clip-player { width: 100%; max-height: 360px; border-radius: 6px; background: #000; }
+
+.camera-live-section {
+  margin-top: 12px; padding-bottom: 12px; border-bottom: 1px solid #21262d;
+}
+.camera-live-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.camera-live-buttons .btn-secondary.active { border-color: #388bfd; color: #79c0ff; }
+.camera-live-view { margin-top: 10px; }
+.camera-live-view img {
+  width: 100%; max-height: 400px; object-fit: contain;
+  border-radius: 8px; background: #000; border: 1px solid #21262d;
+}
+
 /* ─── WebSocket Status ─────────────────────────────────────────────────── */
 .ws-indicator {
   display: flex; align-items: center; gap: 4px;

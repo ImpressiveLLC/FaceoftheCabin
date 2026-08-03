@@ -153,11 +153,22 @@ public class MqttBridgeService implements MqttCallback {
             Map<String, Object> after = (Map<String, Object>) data.getOrDefault("after", Map.of());
             String camera = String.valueOf(after.getOrDefault("camera", "unknown"));
             String label = String.valueOf(after.getOrDefault("label", "object"));
+            // Frigate's own event id (TrackedObject.to_dict()'s "id" field) --
+            // required to fetch that specific event's snapshot/clip via
+            // Frigate's /api/events/{id}/... endpoints. Not the same as this
+            // CabinEvent's own random UUID below.
+            Object frigateEventId = after.get("id");
+            Map<String, Object> eventPayload = new HashMap<>();
+            eventPayload.put("label", label);
+            eventPayload.put("score", after.getOrDefault("score", 0));
+            eventPayload.put("type", type);
+            if (frigateEventId != null) eventPayload.put("frigateEventId", frigateEventId);
+            eventPayload.put("hasSnapshot", after.getOrDefault("has_snapshot", false));
+            eventPayload.put("hasClip", after.getOrDefault("has_clip", false));
             CabinEvent event = new CabinEvent(
                 UUID.randomUUID().toString(), camera,
                 "DETECTION_" + type.toUpperCase(),
-                "INFO", Instant.now(),
-                Map.of("label", label, "score", after.getOrDefault("score", 0), "type", type));
+                "INFO", Instant.now(), eventPayload);
             eventPublisher.publish(event);
         } catch (Exception e) {
             log.warn("Failed to parse Frigate detection event: {}", e.getMessage());
