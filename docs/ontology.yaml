@@ -1491,6 +1491,96 @@ elements:
       (confirmed via live config: empty {}) — a nice-to-have for latency,
       not required for this to function.
 
+  - id: smart_appliance_fridge_liebherr
+    entity_type: owl:Class
+    layer: integration
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: planned
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Kitchen Fridge (Liebherr)"
+    source: >
+      Liebherr SmartDevice cloud API, via HA core's built-in `liebherr`
+      integration (config_flow, iot_class: cloud_polling — confirmed
+      present in the installed HA 2026.7.0 image, manifest.json checked
+      directly)
+    rendering:
+      semantic: "Kitchen fridge"
+      systems: Liebherr SmartDevice
+      technical: "HA integration domain 'liebherr' (pyliebherrhomeapi) — not yet added as a config entry"
+      compliance: (not shown)
+    definition: >
+      The cabin's Liebherr refrigerator, already connected to Liebherr's
+      own SmartDevice cloud (the user already receives its notifications
+      on their phone via Liebherr's own app) — this entity is about
+      bringing that existing connection into the platform's own HA
+      instance, not first-time device setup.
+    relationships:
+      - target: platform_secret
+        type: depends_on
+        cardinality: "1:1" # SmartDevice account credentials, entered via HA's config flow UI, not stored in this repo
+    relates_to:
+      ui_components: []
+      elements: [platform_secret]
+    notes: >
+      NOT YET REGISTERED, 2026-08-02. Requires the user's own SmartDevice
+      account login through HA's config flow UI (Settings → Devices &
+      Services → Add Integration → Liebherr) — no separate developer/API
+      registration needed, unlike Home Connect below. Not something an
+      agent session can complete: no browser access to the Tailscale-only
+      local HA UI, and account password entry isn't something to do on
+      the user's behalf regardless. Once added, revisit this entity with
+      the real entity IDs HA assigns (temperature sensors, door/alarm
+      binary sensors, etc. — exact shape unknown until the integration is
+      actually live, per this project's "don't document fiction as fact"
+      standard).
+
+  - id: smart_appliance_dishwasher_bosch
+    entity_type: owl:Class
+    layer: integration
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: planned
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Kitchen Dishwasher (Bosch)"
+    source: >
+      Bosch/Siemens Home Connect cloud API, via HA core's built-in
+      `home_connect` integration (config_flow, iot_class: cloud_push,
+      requires `application_credentials` — confirmed present in the
+      installed HA 2026.7.0 image, manifest.json checked directly)
+    rendering:
+      semantic: "Kitchen dishwasher"
+      systems: Bosch Home Connect
+      technical: "HA integration domain 'home_connect' (aiohomeconnect) — not yet added as a config entry, no application_credentials configured yet"
+      compliance: (not shown)
+    definition: >
+      The cabin's Bosch dishwasher, connectable via Bosch's Home Connect
+      platform (shared across Bosch/Siemens/Neff/Balay appliances).
+    relationships:
+      - target: platform_secret
+        type: depends_on
+        cardinality: "1:1" # a Home Connect Developer OAuth client_id/secret, plus the user's own account OAuth consent
+    relates_to:
+      ui_components: []
+      elements: [platform_secret]
+    notes: >
+      NOT YET REGISTERED, 2026-08-02. Two steps needed, both requiring
+      the user directly — neither is something an agent session can do:
+      (1) register a "Home Connect Developer" application at
+      developer.home-connect.com to obtain an OAuth Client ID/Secret
+      (separate from just having the consumer Home Connect app account);
+      (2) add the Home Connect integration in HA (Settings → Devices &
+      Services), entering that Client ID/Secret as an
+      application_credentials entry, then completing OAuth consent in a
+      real browser session against their Home Connect account. Once the
+      user has the Client ID/Secret, an agent session COULD stage the
+      application_credentials config entry itself (that part doesn't need
+      a browser) — the OAuth consent step still needs the user's own
+      login. Revisit with real entity IDs once live, same caveat as the
+      Liebherr entity above.
+
 # ═══════════════════════════════════════════════════════════════════════════
 # ACTION ELEMENTS
 # Controllable behaviors and their constraints
