@@ -1554,12 +1554,22 @@ elements:
       elements: [cabin_camera_continuous_recording]
     notes: >
       BUILT 2026-08-02 (later the same day as the original planning entry
-      below). CameraEventsPanel offers a "watch live" button per camera
-      it's seen an event from (no dedicated "list configured cameras"
-      endpoint exists yet, so this is derived from event history, not
-      Frigate's real camera config — a known simplification, not every
-      configured camera necessarily gets a button if it's never fired an
-      event). Auth is the one genuinely tricky part here, worth recording:
+      below). CameraEventsPanel offers a "watch live" button per camera.
+
+      BUG FOUND AND FIXED, 2026-08-02, same evening: the button list was
+      originally derived from event history's sourceDeviceId (a known
+      simplification at build time — "no dedicated camera-list endpoint
+      exists yet"). That simplification broke for real the moment the
+      cameras got renamed a few hours later (see cabin_camera_event's
+      rename note): historical events keep their old sourceDeviceId
+      forever by design, but Frigate itself only recognizes the new
+      names, so the button proxied to a camera Frigate no longer had —
+      broken image icon, caught by the user actually testing it live.
+      Fixed at the root: new GET /api/camera/list on cabin-backend parses
+      Frigate's own GET /api/config directly for the real, current camera
+      names + enabled state — no longer derived from anything historical.
+
+      Auth is the other genuinely tricky part here, worth recording:
       /api/camera/** requires a Google bearer token, but an <img> tag
       can't set custom headers, and this MJPEG stream is unbounded so it
       can't be blob-fetched the way snapshot/clip (finite) can be —
