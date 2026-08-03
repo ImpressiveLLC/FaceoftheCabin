@@ -1500,6 +1500,16 @@ elements:
       cabin_camera_continuous_recording's notes on its ongoing
       mediamtx 404 issue). Needs a real test once a fresh event exists.
 
+      CORS PREFLIGHT BUG, found and fixed 2026-08-03 (see
+      docs/DEFINITION_OF_DONE.md's FOURTH CHECK-IN): this is very likely
+      *why* the real-browser test above hadn't succeeded —
+      GoogleAuthInterceptor rejected every CORS preflight OPTIONS request
+      to /api/camera/** with 401, since it checked for a Bearer token on
+      OPTIONS the same as any other method — a preflight never carries
+      one. curl-based testing never caught it, since curl doesn't enforce
+      the browser rule that a preflight response itself must be a plain
+      2xx. Fixed by exempting OPTIONS from the token check entirely.
+
       ORIGINAL PLANNING NOTE (2026-08-02, earlier the same day, kept for
       the record): Current live values were pre_capture=5, post_capture=5,
       retain.days=10 for both review tiers. Open decision: change both
@@ -1582,6 +1592,18 @@ elements:
       reconnected too, not just outdoor_4 (which is currently
       crash-looping on mediamtx 404s — see
       cabin_camera_continuous_recording's notes).
+
+      CORS PREFLIGHT BUG, found and fixed 2026-08-03 (see
+      docs/DEFINITION_OF_DONE.md's FOURTH CHECK-IN): this is very likely
+      *why* the real-browser test above hadn't succeeded, for the query-
+      param path too — GoogleAuthInterceptor rejected every CORS
+      preflight OPTIONS request to /api/camera/** with 401, since it
+      checked for a Bearer token on OPTIONS the same as any other method
+      — a preflight never carries one, regardless of whether the real
+      request would use the header or query-param transport. curl-based
+      testing never caught it, since curl doesn't enforce the browser
+      rule that a preflight response itself must be a plain 2xx. Fixed
+      by exempting OPTIONS from the token check entirely.
 
       ORIGINAL PLANNING NOTE (2026-08-02, earlier the same day, kept for
       the record): key architectural point recorded here so it isn't
@@ -2079,6 +2101,18 @@ elements:
       exercised against the live public API — deliberately not tested by
       temporarily disabling auth on a real, publicly-reachable service to
       do so; needs a real signed-in browser session to finish verifying.
+
+      CORS PREFLIGHT BUG, found and fixed 2026-08-03 (see
+      docs/DEFINITION_OF_DONE.md's FOURTH CHECK-IN): this is very likely
+      *why* full CRUD verification above was never completed —
+      GoogleAuthInterceptor rejected every CORS preflight OPTIONS request
+      with 401, since it checked for a Bearer token on OPTIONS the same
+      as any other method — a preflight never carries one. This silently
+      broke this entity's sync from any real browser (curl-based testing
+      never caught it, since curl doesn't enforce the browser rule that a
+      preflight response itself must be a plain 2xx). Fixed by exempting
+      OPTIONS from the token check entirely. Real signed-in verification
+      still needed now that the actual blocker is gone.
 
   - id: current_actor
     entity_type: owl:DatatypeProperty
@@ -2864,6 +2898,18 @@ elements:
       persisted server-side as their own materialized facts — that part is
       still planned, see those entities' notes.
 
+      CORS PREFLIGHT BUG, found and fixed 2026-08-03 (see
+      docs/DEFINITION_OF_DONE.md's FOURTH CHECK-IN): GoogleAuthInterceptor
+      rejected every CORS preflight OPTIONS request with 401, since it
+      checked for a Bearer token on OPTIONS the same as any other method —
+      a preflight never carries one. This silently broke this entity's
+      sync from any real browser this entire time (curl-based testing
+      never caught it, since curl doesn't enforce the browser rule that a
+      preflight response itself must be a plain 2xx). Fixed by exempting
+      OPTIONS from the token check entirely. Don't trust any earlier
+      "verified working" claim about this entity's sync in this file
+      without checking whether it predates the fix.
+
   - id: chore_daily_success
     entity_type: owl:DatatypeProperty
     layer: backend
@@ -3006,6 +3052,18 @@ elements:
       back to a generic "Family" label + 📝 for an unrecognized authorId),
       not a hard failure — just a visual gap, and a candidate for a future
       /api/profiles endpoint using the same pattern if it matters enough.
+
+      CORS PREFLIGHT BUG, found and fixed 2026-08-03 (see
+      docs/DEFINITION_OF_DONE.md's FOURTH CHECK-IN): GoogleAuthInterceptor
+      rejected every CORS preflight OPTIONS request with 401, since it
+      checked for a Bearer token on OPTIONS the same as any other method —
+      a preflight never carries one. This silently broke this entity's
+      sync from any real browser this entire time (curl-based testing
+      never caught it, since curl doesn't enforce the browser rule that a
+      preflight response itself must be a plain 2xx). Fixed by exempting
+      OPTIONS from the token check entirely. Don't trust any earlier
+      "verified working" claim about this entity's sync in this file
+      without checking whether it predates the fix.
 
   - id: chore_daily_view
     entity_type: owl:Class

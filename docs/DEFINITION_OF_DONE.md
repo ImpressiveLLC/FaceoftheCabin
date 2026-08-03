@@ -261,6 +261,69 @@ proxy; the Blink camera's (now `driveway`) ongoing mediamtx crash-loop
 
 ---
 
+### FOURTH CHECK-IN (2026-08-03, just after midnight — a real, significant bug found and fixed)
+
+**⚠️ Read this one first if you're picking up after this session.** While
+testing the camera panel with the user in a real browser, found and fixed
+a bug that had silently broken *every* authenticated cross-origin API
+call — notes sync, chores sync, profile sync, and camera media — for
+however long `GoogleAuthInterceptor` has existed. Not a regression from
+tonight's camera work specifically; this was there from the start.
+
+**The bug:** `GoogleAuthInterceptor.preHandle()` ran the same
+Bearer-token check on every request matching its gated paths
+(`/api/notes/**`, `/api/chores/**`, `/api/profiles/**`, `/api/camera/**`),
+including CORS preflight `OPTIONS` requests. A preflight never carries a
+real credential — that's not what it's for, it's the browser asking
+"are you going to allow this" before sending the real request — so it
+always failed with 401. Browsers require the preflight response itself
+to be a plain 2xx or they refuse to send the real request at all,
+**regardless of which CORS headers are present on a non-2xx response.**
+`curl` doesn't enforce this rule, which is exactly why extensive
+`curl`-based "verification" throughout this entire session — for
+`/api/notes`, `/api/profiles`, and tonight's camera work — repeatedly
+(and wrongly) looked correct.
+
+**How it was actually found**, since the process matters as much as the
+fix: server-side curl testing looked fine from every angle (direct to
+origin, through the tunnel, through Cloudflare, from multiple machines)
+— all consistently misleading. Chased Cloudflare Bot Fight Mode, the
+leaked-credential check, and WAF as red herrings first (the user
+disabled both on my recommendation — neither was the actual cause;
+sorry for the wasted detour). Even reproduced a *different*, unrelated
+bug in Claude Code's own sandboxed browser tool along the way (it blocks
+any cross-origin fetch carrying a custom Authorization header,
+confirmed against a totally unrelated external domain — a tool
+limitation, not a finding about this app). What actually broke it open:
+asking the user to check Firefox's Network tab and copy the *exact* real
+error, which read `(Reason: CORS preflight response did not succeed).
+Status code: 401.` — that status code was the whole answer. No amount of
+further curl-based testing would ever have found this; it required a
+real browser's real preflight and reading the *exact* wording of a real
+error.
+
+**Real impact:** every one of notes/chores/profiles cross-device sync
+has likely never actually worked from a real browser, this whole
+session — each has a graceful offline/localStorage fallback on fetch
+failure, which is exactly why nobody noticed. The failure was invisible,
+not a crash. **Needs real re-verification now that it's fixed** — don't
+assume any earlier "verified working" claim about these features in
+this document actually exercised a real cross-origin browser call; check
+`git log` for when `GoogleAuthInterceptor` was created relative to when
+each feature was supposedly verified.
+
+**Fix:** `GoogleAuthInterceptor` now returns `true` immediately for
+`OPTIONS` requests, before any token check, letting Spring's CORS
+handling respond with a clean 2xx to the preflight. Real
+GET/POST/PATCH/DELETE requests are unaffected — still correctly return
+401 without a valid token (verified via curl both ways after the fix).
+Deployed and confirmed live (`ffc798c`); the actual OPTIONS preflight
+now returns `200 OK` with correct CORS headers where it previously
+returned `401`. Real-browser re-verification from the user in progress
+as of this entry.
+
+---
+
 **Last verified:** 2026-08-01, this session's work committed and pending push/deploy
 (see §2/§6/§8 for the actual outcome of that step). Building on the prior
 `73850da` checkpoint (CI/CD runner closed, Tier 1 #1), this session: unified
