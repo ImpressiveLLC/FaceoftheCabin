@@ -330,6 +330,53 @@ body {
   border-radius: 8px; background: #000; border: 1px solid #21262d;
 }
 
+/* ─── Opportunity Map ───────────────────────────────────────────────────── */
+.opportunity-show-dismissed { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.opportunity-list { display: flex; flex-direction: column; gap: 14px; }
+
+.opportunity-card {
+  background: #161b22; border: 1px solid #21262d; border-radius: 10px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.opportunity-card.opportunity-dismissed { opacity: .5; }
+
+.opportunity-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.opportunity-type-badge {
+  background: #1f6feb; color: #fff; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 999px;
+}
+.opportunity-confidence { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.opportunity-confidence-high   { background: rgba(63,185,80,.15);  color: #3fb950; }
+.opportunity-confidence-medium { background: rgba(210,153,34,.15); color: #d29922; }
+.opportunity-confidence-low    { background: rgba(139,148,158,.15); color: #8b949e; }
+.opportunity-status {
+  font-size: 11px; color: #8b949e; text-transform: capitalize;
+  border: 1px solid #21262d; padding: 2px 8px; border-radius: 999px;
+}
+
+.opportunity-summary { margin: 0; font-size: 14px; line-height: 1.5; }
+
+.opportunity-lineage { display: flex; gap: 6px; flex-wrap: wrap; }
+.opportunity-lineage-chip {
+  font-size: 11px; color: #79c0ff; background: rgba(56,139,253,.12);
+  border: 1px solid rgba(56,139,253,.3); padding: 2px 8px; border-radius: 999px;
+}
+
+.opportunity-see-more {
+  align-self: flex-start; background: none; border: none; color: #58a6ff;
+  font-size: 12px; cursor: pointer; padding: 0;
+}
+.opportunity-detail {
+  background: #0d1117; border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px;
+}
+.opportunity-sources { margin: 0 0 8px; padding-left: 18px; font-size: 12px; }
+.opportunity-sources a { color: #58a6ff; word-break: break-all; }
+
+.opportunity-think-row, .opportunity-act-row {
+  display: flex; gap: 8px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid #21262d;
+}
+.opportunity-self-serve-detail { margin: 0; }
+
 /* ─── WebSocket Status ─────────────────────────────────────────────────── */
 .ws-indicator {
   display: flex; align-items: center; gap: 4px;

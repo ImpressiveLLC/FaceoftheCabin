@@ -34,74 +34,100 @@ public class TechIdFindingService {
     void init() {
         jdbc.execute("""
             CREATE TABLE IF NOT EXISTS tech_id_finding (
-              id           VARCHAR(64) PRIMARY KEY,
-              entity_id    VARCHAR(128) NOT NULL,
-              provider     VARCHAR(128) NOT NULL,
-              finding_type VARCHAR(64) NOT NULL,
-              summary      TEXT NOT NULL,
-              confidence   VARCHAR(16) NOT NULL,
-              sources      TEXT NOT NULL,
-              status       VARCHAR(32) NOT NULL DEFAULT 'new',
-              checked_at   BIGINT NOT NULL,
-              created_at   BIGINT NOT NULL
+              id                  VARCHAR(64) PRIMARY KEY,
+              entity_id           VARCHAR(128) NOT NULL,
+              related_entity_ids  TEXT NOT NULL DEFAULT '[]',
+              provider            VARCHAR(128) NOT NULL,
+              finding_type        VARCHAR(64) NOT NULL,
+              summary             TEXT NOT NULL,
+              confidence          VARCHAR(16) NOT NULL,
+              sources             TEXT NOT NULL,
+              actionable_mode     VARCHAR(32),
+              actionable_detail   TEXT,
+              actionable_url      TEXT,
+              status              VARCHAR(32) NOT NULL DEFAULT 'new',
+              checked_at          BIGINT NOT NULL,
+              created_at          BIGINT NOT NULL
             )""");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_tech_id_finding_entity ON tech_id_finding (entity_id, created_at DESC)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_tech_id_finding_status ON tech_id_finding (status)");
     }
 
-    public TechIdFinding submit(String entityId, String provider, String findingType, String summary,
-                                 String confidence, List<String> sources, long checkedAt) {
+    public TechIdFinding submit(String entityId, List<String> relatedEntityIds, String provider, String findingType,
+                                 String summary, String confidence, List<String> sources,
+                                 TechIdFinding.Actionable actionable, long checkedAt) {
         try {
             TechIdFinding finding = new TechIdFinding(
-                UUID.randomUUID().toString(), entityId, provider, findingType, summary,
-                confidence, sources, "new", checkedAt, System.currentTimeMillis());
+                UUID.randomUUID().toString(), entityId, relatedEntityIds, provider, findingType, summary,
+                confidence, sources, actionable, "new", checkedAt, System.currentTimeMillis());
             jdbc.update("""
                 INSERT INTO tech_id_finding
-                  (id, entity_id, provider, finding_type, summary, confidence, sources, status, checked_at, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
+                  (id, entity_id, related_entity_ids, provider, finding_type, summary, confidence, sources,
+                   actionable_mode, actionable_detail, actionable_url, status, checked_at, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
-                finding.id(), finding.entityId(), finding.provider(), finding.findingType(), finding.summary(),
-                finding.confidence(), mapper.writeValueAsString(finding.sources()), finding.status(),
-                finding.checkedAt(), finding.createdAt());
+                finding.id(), finding.entityId(), mapper.writeValueAsString(finding.relatedEntityIds()),
+                finding.provider(), finding.findingType(), finding.summary(), finding.confidence(),
+                mapper.writeValueAsString(finding.sources()),
+                actionable != null ? actionable.mode() : null,
+                actionable != null ? actionable.detail() : null,
+                actionable != null ? actionable.url() : null,
+                finding.status(), finding.checkedAt(), finding.createdAt());
             return finding;
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new IllegalArgumentException("Could not serialize sources", e);
+            throw new IllegalArgumentException("Could not serialize sources/relatedEntityIds", e);
         }
     }
 
     public List<TechIdFinding> recent(String entityId, int limit) {
         String sql = entityId != null
-            ? "SELECT * FROM tech_id_finding WHERE entity_id = ? ORDER BY created_at DESC LIMIT ?"
+            ? "SELECT * FROM tech_id_finding WHERE entity_id = ? OR related_entity_ids LIKE ? ORDER BY created_at DESC LIMIT ?"
             : "SELECT * FROM tech_id_finding ORDER BY created_at DESC LIMIT ?";
         List<Map<String, Object>> rows = entityId != null
-            ? jdbc.queryForList(sql, entityId, limit)
+            ? jdbc.queryForList(sql, entityId, "%\"" + entityId + "\"%", limit)
             : jdbc.queryForList(sql, limit);
         return rows.stream().map(this::fromRow).toList();
+    }
+
+    public TechIdFinding byId(String id) {
+        return jdbc.queryForList("SELECT * FROM tech_id_finding WHERE id = ?", id)
+            .stream().map(this::fromRow).findFirst().orElse(null);
     }
 
     public TechIdFinding updateStatus(String id, String status) {
         int rows = jdbc.update("UPDATE tech_id_finding SET status = ? WHERE id = ?", status, id);
         if (rows == 0) return null;
-        return jdbc.queryForList("SELECT * FROM tech_id_finding WHERE id = ?", id)
-            .stream().map(this::fromRow).findFirst().orElse(null);
+        return byId(id);
     }
 
     @SuppressWarnings("unchecked")
     private TechIdFinding fromRow(Map<String, Object> row) {
         List<String> sources;
+        List<String> relatedEntityIds;
         try {
             sources = mapper.readValue((String) row.get("sources"), List.class);
         } catch (Exception e) {
             sources = List.of();
         }
+        try {
+            relatedEntityIds = mapper.readValue((String) row.get("related_entity_ids"), List.class);
+        } catch (Exception e) {
+            relatedEntityIds = List.of();
+        }
+        String actionableMode = (String) row.get("actionable_mode");
+        TechIdFinding.Actionable actionable = actionableMode != null
+            ? new TechIdFinding.Actionable(actionableMode, (String) row.get("actionable_detail"), (String) row.get("actionable_url"))
+            : null;
         return new TechIdFinding(
             (String) row.get("id"),
             (String) row.get("entity_id"),
+            relatedEntityIds,
             (String) row.get("provider"),
             (String) row.get("finding_type"),
             (String) row.get("summary"),
             (String) row.get("confidence"),
             sources,
+            actionable,
             (String) row.get("status"),
             ((Number) row.get("checked_at")).longValue(),
             ((Number) row.get("created_at")).longValue());

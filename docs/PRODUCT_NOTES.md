@@ -215,3 +215,141 @@ Shipped as a self-contained addition to `family-hub/family-hub.html` (CSS + mark
 Two real caveats, both currently open (see `docs/DEFINITION_OF_DONE.md`'s HANDOFF section for detail): note **attribution** required an explicitly-selected "Who am I?" actor as of a 2026-08-02 fix (previously silently defaulted to the first profile — a real bug, not intentional); and the public `hub.unicornpingpong.com` deployment has intermittently served a stale Cloudflare-cached `host-config.js` missing `cabinApiUrl`, which silently degrades real visitors to the offline-only fallback without any visible error — check that specifically before assuming sync "just works" on the public URL.
 
 Original design direction (still accurate, now built as described): `/api/notes` on the existing `cabin-backend` (already running, already the designated `api.unicornpingpong.com` shared-services host per ROADMAP §3.3 — no new backend needed), Postgres-backed, poll-based delivery to match this file's existing `setInterval` patterns rather than introducing WebSocket/SSE for v1.
+
+---
+
+## 2026-08-03 — Opportunity Map: UX & Architecture Review
+
+_Requested directly by the user: "let's let the UX lead and application
+architect personas weigh in" on how the Tech ID Service's findings
+should surface to a real person, after the backend ingestion API
+(`TechIdFinding`, `POST`/`GET`/`PATCH /api/tech-id/findings`) shipped
+earlier the same day. Two-role review, same format as the 2026-07-27
+Four-Role Architecture Review above._
+
+### UX Lead — Interaction & Naming Review ✓
+
+**Product-facing name is "Opportunity," not "Tech ID Finding."**
+`tech_id_finding` stays the code/table/API name (no second rename in
+one day) but every user-facing surface says "Opportunity" — consistent
+with the Name Management Decision (2026-07-26): the technical identifier
+and the display identity are different layers on purpose, and only the
+Technician audience should ever see `tech_id_finding` at all.
+
+**Reuse the existing Detail Sheet three-zone shape** (2026-07-26) rather
+than invent a new interaction pattern — an Opportunity card is a
+variant of the same tile→sheet model already specified for devices:
+
+1. **Header** — opportunity-type badge (New API / Deprecation / Better
+   Integration / Competitive Product / Complementary Device), one-line
+   summary, confidence badge, and **lineage chips**: one per related
+   ontology entity, resolved to that entity's `ui_display_name` (never
+   the raw id — see the Application Architect section below for how),
+   each chip reading "because you have: {device}." This is the concrete
+   answer to the user's requirement that recommendations "reference the
+   device or analogous device substitute that is directly part of the
+   user's current platform" — if a finding can't point at a real,
+   resolvable entity already in `docs/ontology.yaml`, the UX Lead's
+   position is it shouldn't render as a first-class Opportunity at all.
+2. **See more (expand)** — full research summary, every source link,
+   `checked_at`. This is **See**: the right detail at the right depth,
+   only on demand, not dumped into the card by default.
+3. **Act row** — up to three buttons, shown conditionally, mapped
+   1:1 to the user's own three named paths:
+   - **"Buy it elsewhere ↗"** — opens the first `source` link (or
+     `actionable.url` if the finding is purchase-specific) in a new tab.
+     Lighter-touch than the destructive-action consequence dialogs from
+     the Action Model Decision (this isn't destructive), but still a
+     one-line "leaving unicornpingpong.com" notice before the tab opens
+     — an outbound link is still an intentional act, and the resulting
+     action gets logged either way (see Architect section).
+   - **"Request this for the platform"** — always available; submits a
+     capability request. Does not silently vanish into a queue: the
+     confirmation copy says plainly "this becomes a candidate entity
+     the platform operator can review," matching the Ontology Lead's
+     2026-07-27 candidate-entity recommendation, not a black box.
+   - **"Do it now"** — **only rendered when `actionable.mode ==
+     "self_serve"`** on the finding. Shows `actionable.detail` inline
+     (a short how-to, using capabilities the platform or an owned
+     device already has) with `actionable.url` as an optional deep
+     link. This is deliberately the *rare* button — most findings won't
+     have it, and that's fine; showing it only when genuinely true is
+     what makes it trustworthy when it does appear.
+
+**Think must not be a silent swipe.** Dismissing an Opportunity requires
+a one-tap reason (not interested / already have it / not applicable) —
+same principle as the Insurance Adjuster's disclosure-copy requirement
+from 2026-07-26: an audit trail that only records "gone" isn't an audit
+trail. "Think: include" doesn't need a reason (positive signal is
+self-explanatory) but still logs.
+
+**Every tap is loggable, and the user should feel that, not just have
+it be true in the database.** A small "logged" micro-confirmation
+(non-blocking, auto-dismissing) after any Act button — this is the
+UX Lead's answer to making the audit-log requirement legible to the
+person doing the tapping, not just useful to whoever runs the later
+analysis.
+
+### Application Architect — Data, Lineage & Logging Review ✓
+
+**Lineage is a first-class field, not implied by the primary
+`entityId`.** `TechIdFinding` gained `relatedEntityIds: string[]`
+alongside the existing `entityId` — a finding about one device that's
+only interesting *because* of a second, already-owned device (the
+canonical Kidde CO Alarm example: the alarm entity plus the Frigate
+camera entity that provides an OCR fallback) needs to reference both.
+Both fields are lineage claims, and the constraint is explicit in the
+record's own javadoc: every id **must** correspond to a real entity in
+`docs/ontology.yaml`.
+
+**Honest gap, not a silent one: this constraint is not server-validated
+today.** Enforcing it would mean `cabin-backend` holding a live,
+queryable index of `docs/ontology.yaml` at submission time — which
+becomes possible only once the ontology file is actually reachable at
+runtime (see the mount decision below), and even then, validating a
+third-party provider's claim (paid tier, bring-your-own-AI) versus just
+the reference routine's is a real, not-yet-designed access-control
+question. Documented here rather than pretending the constraint is
+enforced.
+
+**New capability that makes the "never show a raw id" UX requirement
+achievable: `OntologyLookupService` + `GET /api/ontology/entities`.**
+`docs/ontology.yaml` was never reachable from the running
+`cabin-backend` container before today — the Docker build context is
+`../backend` only. Rather than bake the whole file into the image (a
+rebuild every doc edit) or duplicate entity display names into
+Postgres (a second source of truth to drift), it's bind-mounted
+read-only (`docker-compose.m920q.yml`: `../../docs:/app/docs:ro`) and
+parsed fresh per request with SnakeYAML — already on the classpath
+transitively via Spring Boot's own `application.yml` support, so no new
+dependency. This is infrastructure the still-unbuilt data-dictionary UI
+(2026-07-26 build order, item 12) will also need — built once, for both.
+Degrades gracefully (`found: false`, best-effort humanized label) if
+the mount is ever missing, rather than 500ing the whole panel.
+
+**The action log is the same audit-log pattern already required for
+device commands, applied to the opportunity surface — not a new
+pattern invented for this feature.** New table `tech_id_finding_action`
+(`id, findingId, actionType, actorEmail, detail, createdAt`), append-
+only, one row per See/Think/Act interaction. `actorEmail` is resolved
+from the already-validated Google token
+(`GoogleAuthInterceptor` now stashes it on the request after checking
+the token, avoiding a second network round-trip) rather than trusted
+from the client. This is literally what the user asked for in their own
+words: "any new inputs on actions taken from that opportunity map
+should be logged as ontology attribute field entries in the db for
+opportunity analysis" — `tech_id_finding_action` rows, joined against
+`tech_id_finding.entity_id`/`related_entity_ids`, are exactly that
+analysis surface once enough volume exists to query.
+
+**Auth tiering got one more distinction.** The submission endpoint's
+shared-secret bypass in `GoogleAuthInterceptor` was a path *prefix*
+match (`/api/tech-id/findings*`), which would have also waved through
+the new `POST /{id}/actions` — a human action-logging endpoint that
+must be attributed to a real signed-in person. Tightened to an *exact*
+path match on the collection endpoint only; every sub-path (`PATCH
+/{id}`, `POST /{id}/actions`, `GET /{id}/actions`) now correctly
+requires a human token. Caught by re-reading the interceptor's own
+bypass condition while wiring the new endpoint in, not by a report —
+worth a second pass any time a new sub-path gets added under an
+existing bypassed prefix.

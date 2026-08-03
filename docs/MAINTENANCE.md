@@ -25,12 +25,21 @@ For the strategic/architectural brief, see [`../ROADMAP.md`](../ROADMAP.md).*
 - **family-hub** (static HTML, no build step) — the ambient Family Hub
   display. Deployed as-is, no compilation.
 - **cabin-ui** (React + Vite) — the cabin-side control app, includes the
-  authenticated Camera Events panel.
+  authenticated Camera Events panel and the Opportunity Map panel (Tech
+  ID Service findings, presented per the See/Think/Act model — see
+  `docs/PRODUCT_NOTES.md`'s 2026-08-03 review).
 - **cabin-backend** (Spring Boot) — the shared API: notes, chores,
   profiles, camera media proxy, device status, event ingestion, Tech ID
-  Service findings intake (`/api/tech-id/findings` — see below). Talks to
-  Postgres (state), Kafka (event bus), and MQTT (device/camera telemetry
-  in).
+  Service findings intake and action log (`/api/tech-id/findings` — see
+  below), ontology entity lookup (`/api/ontology/entities` — resolves
+  raw entity ids to display names, backing the Opportunity Map's
+  lineage chips; parses `docs/ontology.yaml` directly via a **read-only
+  bind mount**, `../../docs:/app/docs:ro` in
+  `docker-compose.m920q.yml` — the Docker build context is
+  `../backend` only, so this file is not otherwise reachable inside the
+  container; missing the mount degrades lookups to a best-effort
+  humanized label rather than failing). Talks to Postgres (state),
+  Kafka (event bus), and MQTT (device/camera telemetry in).
 - **Frigate** — NVR: camera detection, recording, live streaming. Publishes
   detection/motion events to MQTT.
 - **Home Assistant + Node-RED** — device automation (leak/freeze sensors,

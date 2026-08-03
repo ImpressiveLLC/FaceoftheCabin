@@ -106,6 +106,12 @@ services:
       # default (submission returns 503 until an operator sets this).
       # See docs/REPLICATION.md §8.
       TECH_ID_API_KEY: ${TECH_ID_API_KEY:-}
+    volumes:
+      # Read-only mount so OntologyLookupService can resolve entity ids to
+      # display names for the Opportunity Map (and future data-dictionary
+      # UI) without baking docs/ into the image -- the build context is
+      # ../backend only. See OntologyLookupService's javadoc.
+      - ../../docs:/app/docs:ro
     networks:
       - default         # project network: reaches cabin-postgres, cabin-kafka
       - cabin_default   # existing network: reaches mosquitto, nodered, z2m

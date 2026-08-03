@@ -4101,36 +4101,52 @@ elements:
       description: >
         entityId, provider, findingType, summary, confidence are required
         on submission; status one of new|reviewed|actioned|dismissed,
-        starts new; entityId is a free-text reference to an ontology
-        entity id (not a DB foreign key — findings can target entities
-        added after this table existed, and providers shouldn't need a
-        synced copy of the whole ontology to submit).
-    ui_display_name: "Tech ID Finding"
+        starts new; entityId and every id in relatedEntityIds are
+        free-text references to ontology entity ids (not DB foreign
+        keys — findings can target entities added after this table
+        existed, and providers shouldn't need a synced copy of the
+        whole ontology to submit). Every such id is a lineage claim and
+        SHOULD correspond to a real entity in this file — not
+        server-validated today, see notes.
+    ui_display_name: "Opportunity"
     source: >
-      cabin-backend POST/GET/PATCH /api/tech-id/findings (Postgres table
-      tech_id_finding). See ROADMAP.md's "Tech ID Service — Provider
-      Model" section for the full design this table implements.
+      cabin-backend POST/GET/PATCH /api/tech-id/findings, plus
+      POST/GET /api/tech-id/findings/{id}/actions for the interaction
+      log (Postgres tables tech_id_finding and tech_id_finding_action —
+      see that entity below). See ROADMAP.md's "Tech ID Service —
+      Provider Model" section and docs/PRODUCT_NOTES.md's 2026-08-03
+      "Opportunity Map: UX & Architecture Review" for the full design.
     rendering:
       semantic: "[<provider>] <entityId>: <summary> (<confidence>, <status>)"
-      systems: Tech ID Service finding record
-      technical: "TechIdFinding(id, entityId, provider, findingType, summary, confidence, sources[], status, checkedAt, createdAt) — JdbcTemplate row in tech_id_finding"
+      systems: Tech ID Service finding record, surfaced as an "Opportunity" card
+      technical: "TechIdFinding(id, entityId, relatedEntityIds[], provider, findingType, summary, confidence, sources[], actionable{mode,detail,url}, status, checkedAt, createdAt) — JdbcTemplate row in tech_id_finding"
       compliance: (not shown)
     definition: >
-      A single research finding about a cataloged ontology entity,
-      submitted by any tech-scanning provider — this platform's own
-      scheduled Claude Code routine, an operator's paid higher-tier
-      scanning service, or an instance owner's bring-your-own-AI
-      pipeline. Deliberately provider-agnostic: `provider` is free text,
-      not an enum, so a new source never needs a schema or code change.
-      This is the "keep things fresh" mechanism behind Northstar Goal #6
-      (self-improving discovery) — see also nvr_frigate,
-      camera_front_door_reolink, and camera_driveway_blink's `discovery:`
-      blocks, which were populated by hand this session as the schema's
-      first real use, ahead of this ingestion API existing.
+      A single research finding about a cataloged ontology entity (and
+      optionally related ones — see relatedEntityIds), submitted by any
+      tech-scanning provider — this platform's own scheduled Claude Code
+      routine, an operator's paid higher-tier scanning service, or an
+      instance owner's bring-your-own-AI pipeline. Deliberately
+      provider-agnostic: `provider` is free text, not an enum, so a new
+      source never needs a schema or code change. This is the "keep
+      things fresh" mechanism behind Northstar Goal #6 (self-improving
+      discovery) — see also nvr_frigate, camera_front_door_reolink, and
+      camera_driveway_blink's `discovery:` blocks, which were populated
+      by hand this session as the schema's first real use, ahead of this
+      ingestion API existing. Product-facing name is "Opportunity" — the
+      cabin-ui Opportunity Map panel presents these via the platform's
+      See/Think/Act model: See (card + "see more" expand), Think
+      (worth exploring / not for us, with a required dismiss reason),
+      Act (buy elsewhere / request for the platform / do it now via
+      `actionable`, when the finding maps to something already possible
+      with owned capabilities).
     relationships:
       - target: nvr_frigate
         type: relates_to
         cardinality: "N:1"
+      - target: tech_id_finding_action
+        type: derives_from
+        cardinality: "1:N"
     transformation: >
       Provider calls POST /api/tech-id/findings with header
       X-Tech-Id-Api-Key matching cabin.techid.apiKey (503 if unset on
@@ -4138,25 +4154,158 @@ elements:
       and createdAt, defaults status="new", inserts. Read: GET
       /api/tech-id/findings?entityId=&limit= is open (unauthenticated),
       same precedent as /api/events and /api/devices — findings aren't
-      more sensitive than event/device data. Adjudication: PATCH
-      /api/tech-id/findings/{id} {status} requires a valid Google bearer
-      token (GoogleAuthInterceptor) — a human reviewing/actioning/
-      dismissing a machine-submitted claim, per the "adjudication and
-      decision making" step the user explicitly asked for. Reconciling
-      an actioned finding into the target entity's own `discovery:`
-      fields in this file is a separate, still-manual step — not
-      automatic on PATCH.
+      more sensitive than event/device data; entityId matches either the
+      primary entityId or any relatedEntityIds entry. Adjudication:
+      PATCH /api/tech-id/findings/{id} {status} requires a valid Google
+      bearer token (GoogleAuthInterceptor) — a human reviewing/
+      actioning/dismissing a machine-submitted claim. Every See/Think/Act
+      interaction also POSTs to /api/tech-id/findings/{id}/actions (see
+      tech_id_finding_action below). Reconciling an actioned finding
+      into the target entity's own `discovery:` fields in this file is a
+      separate, still-manual step — not automatic on PATCH.
     relates_to:
-      ui_components: []
-      elements: [nvr_frigate, camera_front_door_reolink, camera_driveway_blink]
+      ui_components: [opportunity_map_panel]
+      elements: [nvr_frigate, camera_front_door_reolink, camera_driveway_blink, tech_id_finding_action, ontology_entity_lookup_api]
     notes: >
-      Built 2026-08-03. No provider is actually wired up to call POST
-      yet (the reference Claude Code routine is blocked on the user
-      granting claude.ai's GitHub App access to ImpressiveLLC/FaceoftheCabin
-      — see MAINTENANCE.md Known Issues) — this entity documents a real,
-      running, but currently-empty table. See CORS-preflight-bug pointer
-      note pattern used on family_note/cabin_camera_event_clip/etc: this
-      endpoint's POST/PATCH are Bearer-token-gated writes reachable
-      cross-origin, so the same OPTIONS-exemption fix in
-      GoogleAuthInterceptor applies here too (built in from day one this
-      time, not retrofitted after a bug report).
+      Built 2026-08-03. UPDATE same day: the reference Claude Code
+      routine (RemoteTrigger id trig_0188XfA9eewXVEoumKr7tmkC, monthly,
+      0 8 1 * * UTC) is now live — see MAINTENANCE.md Known Issues for
+      how the earlier GitHub-access 403 got resolved. It reports via a
+      PR against this file's discovery: fields today, not POST to this
+      endpoint — its cloud sandbox has no path to the vaulted
+      TECH_ID_API_KEY, so no provider is actually calling POST yet. This
+      entity documents a real, running, but currently-empty table. See
+      CORS-preflight-bug pointer note pattern used on family_note/
+      cabin_camera_event_clip/etc: this endpoint's POST/PATCH are
+      Bearer-token-gated writes reachable cross-origin, so the same
+      OPTIONS-exemption fix in GoogleAuthInterceptor applies here too
+      (built in from day one this time, not retrofitted after a bug
+      report). ORIGINAL PLANNING NOTE (2026-08-03, superseded by the
+      update above but preserved as history): "No provider is actually
+      wired up to call POST yet (the reference Claude Code routine is
+      blocked on the user granting claude.ai's GitHub App access to
+      ImpressiveLLC/FaceoftheCabin)."
+
+  - id: tech_id_finding_action
+    entity_type: owl:Class
+    layer: backend
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:complexType
+    constraint:
+      description: >
+        actionType one of see_expand|think_include|think_dismiss|
+        act_purchase_elsewhere|act_request_core|act_do_it_now
+        (free text at the code level, but the API validates against
+        this exact set today); actorEmail resolved server-side from the
+        caller's already-validated Google token, never trusted from the
+        request body; append-only, no update/delete endpoint exists.
+    ui_display_name: "Opportunity Action"
+    source: >
+      cabin-backend POST/GET /api/tech-id/findings/{id}/actions
+      (Postgres table tech_id_finding_action).
+    rendering:
+      semantic: "<actor> <action> on <opportunity summary>, <relative time>"
+      systems: Opportunity Map interaction log entry
+      technical: "TechIdFindingAction(id, findingId, actionType, actorEmail, detail, createdAt) — JdbcTemplate row in tech_id_finding_action"
+      compliance: Opportunity Map audit log entry
+    definition: >
+      One human interaction with an Opportunity (tech_id_finding),
+      recorded so any action taken from the Opportunity Map is durable
+      data, not just an executed-and-forgotten click — the user's own
+      explicit requirement: "any new inputs on actions taken from that
+      opportunity map should be logged as ontology attribute field
+      entries in the db for opportunity analysis." Same append-only,
+      immutable-audit-log pattern already required for device commands
+      (docs/PRODUCT_NOTES.md's 2026-08-01 Action Model Decision),
+      applied to the opportunity surface rather than a new pattern.
+    relationships:
+      - target: tech_id_finding
+        type: depends_on
+        cardinality: "N:1"
+    transformation: >
+      Every See/Think/Act tap in the Opportunity Map panel (cabin-ui)
+      calls POST /api/tech-id/findings/{id}/actions {actionType, detail}
+      with a Google bearer token (GoogleAuthInterceptor — this sub-path
+      is NOT covered by the findings-collection endpoint's shared-secret
+      bypass, an exact-path match added specifically so this stays
+      human-only). Server reads the verified email off the request
+      (stashed by GoogleAuthInterceptor.REQUEST_ATTR_EMAIL during token
+      validation, avoiding a second Google round-trip) rather than
+      trusting a client-supplied actor. GET /{id}/actions requires the
+      same token — unlike tech_id_finding itself, this table holds real
+      account emails, so it is not open like /api/events.
+    relates_to:
+      ui_components: [opportunity_map_panel]
+      elements: [tech_id_finding]
+    notes: >
+      Built 2026-08-03, currently empty (no findings exist yet for a
+      human to act on — the reference routine reports via PR, not this
+      API's POST /api/tech-id/findings, see that entity's notes). This
+      is the "opportunity analysis" surface: querying this table joined
+      against tech_id_finding.entity_id/related_entity_ids is how a
+      future admin view answers "which opportunities do people actually
+      act on, and how" — not built yet, deliberately left as a query
+      surface rather than a premature dashboard.
+
+  - id: ontology_entity_lookup_api
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: derived
+    data_type: owl:Class
+    constraint:
+      description: >
+        Read-only. Degrades to a best-effort humanized label
+        (snake_case id -> Title Case, found:false) if docs/ontology.yaml
+        isn't reachable in the running container, rather than failing
+        the request.
+    ui_display_name: "Ontology Entity Lookup"
+    source: >
+      cabin-backend GET /api/ontology/entities?ids=a,b,c
+      (OntologyLookupService, parses docs/ontology.yaml directly via
+      SnakeYAML — no Postgres table, this file IS the source of truth).
+    rendering:
+      semantic: (not user-facing directly — powers other UI's display names)
+      systems: Ontology entity display-name resolver
+      technical: "OntologyEntitySummary(id, uiDisplayName, entityType, found) — GET /api/ontology/entities"
+      compliance: (not shown)
+    definition: >
+      Resolves raw ontology entity ids to their ui_display_name (and
+      entity_type) so no UI surface ever has to render a snake_case id
+      directly — built specifically to make the Opportunity Map's
+      lineage chips ("because you have: {device}") show real display
+      names instead of raw ids, per docs/PRODUCT_NOTES.md's 2026-07-26
+      Name Management Decision. Also the backend piece the still-unbuilt
+      data dictionary UI (2026-07-26 build order, item 12) will need —
+      built once, for both.
+    relationships:
+      - target: tech_id_finding
+        type: depends_on
+        cardinality: "1:N"
+    transformation: >
+      cabin-backend's Docker build context is ../backend only (see
+      infra/docker-compose.m920q.yml) — this file is NOT baked into the
+      image. Instead docs/ is bind-mounted read-only
+      (../../docs:/app/docs:ro) into cabin-backend, and
+      OntologyLookupService parses it fresh on every request with
+      SnakeYAML (already on the classpath transitively via Spring
+      Boot's own application.yml support — no new pom.xml dependency).
+      No caching — this platform is family-scale traffic, and "always
+      current" was judged more valuable than a cache-invalidation scheme.
+    relates_to:
+      ui_components: [opportunity_map_panel]
+      elements: [tech_id_finding]
+    notes: >
+      Built 2026-08-03 specifically to unblock the Opportunity Map's
+      lineage-display requirement. Known gap: if a fork's
+      docker-compose override doesn't include the docs/ bind mount
+      (e.g. a from-scratch REPLICATION.md setup that copied only the
+      cabin-orchestration-platform/ subtree), every lookup silently
+      degrades to found:false rather than erroring — correct behavior,
+      but worth checking explicitly during a New Instance Acceptance
+      Test (REPLICATION.md §5) once this capability is added there.

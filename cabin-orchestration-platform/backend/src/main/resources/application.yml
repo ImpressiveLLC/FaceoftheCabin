@@ -56,6 +56,11 @@ cabin:
     # is a write endpoint reachable from the open internet. See
     # docs/REPLICATION.md's Tech ID Service section for setup.
     apiKey: ${TECH_ID_API_KEY:}
+  # Path docs/ontology.yaml is readable at inside the running container --
+  # see OntologyLookupService's javadoc for why this needs a bind mount
+  # (docker-compose.m920q.yml) rather than being baked into the image.
+  ontology:
+    path: ${ONTOLOGY_PATH:/app/docs/ontology.yaml}
 
 management:
   endpoints:

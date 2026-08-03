@@ -550,11 +550,13 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 - [x] Build findings ingestion API (`POST`/`GET`/`PATCH /api/tech-id/findings`, shared-secret-gated submission, Google-auth-gated adjudication)
 - [x] Wire up the reference Claude Code routine as an actual `RemoteTrigger` scheduled scan (PR-based; live-findings POST is opportunistic, blocked on a secret-injection mechanism for cloud-routine sandboxes — see Known Issues)
 - [ ] Give the reference routine a real path to `TECH_ID_API_KEY` (or an equivalent per-provider token) so its findings land in the live table, not just a PR
+- [x] Build the Opportunity Map: cabin-ui panel presenting findings as ontology-linked, actionable "Opportunities" per the See/Think/Act model, with lineage chips resolved to real device names (`OntologyLookupService`, `GET /api/ontology/entities`) and every interaction logged (`tech_id_finding_action` table, `POST /api/tech-id/findings/{id}/actions`) — see `docs/PRODUCT_NOTES.md`'s 2026-08-03 UX Lead / Application Architect review for the full design
+- [ ] Server-side validation that a submitted finding's `entityId`/`relatedEntityIds` actually exist in `docs/ontology.yaml` — currently a documented, unenforced convention
 - [ ] Implement Kidde use case as first end-to-end integration test (browse → scan → finding → adjudicate → ontology update)
 - [ ] Build the reconciliation step: adjudicated (`actioned`) findings write back into `docs/ontology.yaml`'s `discovery:` fields — today this is manual
 - [ ] Publish `ontology.entity.updated` events when discovery flags change
 - [ ] Connect to notification service: push alert when `new_api_available` or `new_alternatives` flip true
-- [ ] Admin UI: findings review queue (list `status: new`, adjudicate inline) and `check_for_new` schedule configurable per entity (not YAML-only)
+- [ ] `check_for_new` schedule configurable per entity from Admin UI (not YAML-only) — the Opportunity Map covers the "review queue" half of the old combined item, scheduling is what remains
 
 ### Phase 5 — Platform UI
 

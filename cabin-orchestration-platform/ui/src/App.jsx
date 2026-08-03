@@ -1,12 +1,15 @@
 /**
  * Cabin Orchestration Platform — Shell UI
  *
- * Five docked/expandable panels:
+ * Docked/expandable panels:
  *   FAMILY_HUB     — Smrekar Familia Hub iframe (read-only bridge)
  *   FAMILY_CONFIG  — Family settings, notification preferences, Google OAuth
  *   DEVICE_MANAGER — Add / edit / remove / activate devices (drag-reorder)
  *   MONITORING     — Live WebSocket telemetry tiles + Grafana embed
  *   RULES_ENGINE   — Node-RED embed + rule CRUD + Kafka topic browser
+ *   CAMERA_EVENTS  — Authenticated camera snapshots/clips/live view
+ *   OPPORTUNITY_MAP — Tech ID Service findings as actionable, ontology-
+ *                     linked "Opportunities" (See/Think/Act)
  *
  * Location switcher: Cabin | Home | Both
  * Both hubs are reachable via Tailscale (cabin-hub / home-hub).
@@ -23,7 +26,8 @@ import {
   RefreshCw, Plus, Trash2, ToggleLeft, ToggleRight,
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
   Eye, Edit2, UserPlus, Minus, ExternalLink,
-  Radio, Clock, Battery, MapPin, GripVertical, BarChart2
+  Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
+  Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send
 } from "lucide-react";
 import "./styles.css";
 
@@ -318,6 +322,214 @@ function CameraEventsPanel({ auth }) {
   );
 }
 
+// ─── Panel: Opportunity Map ─────────────────────────────────────────────────
+// See docs/PRODUCT_NOTES.md's 2026-08-03 "Opportunity Map: UX & Architecture
+// Review" for the full design this implements. Findings (backend name:
+// TechIdFinding) surface here as "Opportunities" — every user-facing label
+// in this panel says Opportunity, never the technical name.
+const FINDING_TYPE_LABELS = {
+  new_api: "New API",
+  deprecation: "Deprecation",
+  better_integration: "Better Integration",
+  competitive_product: "Competitive Product",
+  complementary_device: "Complementary Device",
+};
+const DISMISS_REASONS = [
+  { key: "not_interested", label: "Not interested" },
+  { key: "already_have_it", label: "Already have it" },
+  { key: "not_applicable", label: "Not applicable" },
+];
+
+// Resolves raw ontology entity ids (lineage on a finding) to display-safe
+// labels via GET /api/ontology/entities — never render a snake_case id
+// directly, per docs/PRODUCT_NOTES.md's Name Management Decision.
+function useOntologyLabels(apiBase, ids) {
+  const [labels, setLabels] = useState({});
+  const key = ids.join(",");
+  useEffect(() => {
+    if (!key) return;
+    fetch(`${apiBase}/api/ontology/entities?ids=${encodeURIComponent(key)}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(list => {
+        setLabels(prev => {
+          const next = { ...prev };
+          for (const e of list) next[e.id] = e.uiDisplayName || e.id;
+          return next;
+        });
+      })
+      .catch(() => {});
+  }, [apiBase, key]);
+  return labels;
+}
+
+function OpportunityCard({ apiBase, auth, opportunity, entityLabels, onChanged }) {
+  const [expanded, setExpanded] = useState(false);
+  const [choosingReason, setChoosingReason] = useState(false);
+  const lineageIds = [opportunity.entityId, ...(opportunity.relatedEntityIds || [])].filter(Boolean);
+
+  const logAction = (actionType, detail) => {
+    if (!auth.accessToken) return Promise.resolve();
+    return fetch(`${apiBase}/api/tech-id/findings/${opportunity.id}/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.accessToken}` },
+      body: JSON.stringify({ actionType, detail: detail || null }),
+    }).catch(() => {});
+  };
+
+  const setStatus = (status) => {
+    if (!auth.accessToken) return Promise.resolve();
+    return fetch(`${apiBase}/api/tech-id/findings/${opportunity.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.accessToken}` },
+      body: JSON.stringify({ status }),
+    }).catch(() => {});
+  };
+
+  const toggleExpand = () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next) logAction("see_expand", null);
+  };
+
+  const include = () => { setStatus("reviewed").then(onChanged); logAction("think_include", null); };
+  const dismissWithReason = (reason) => {
+    setChoosingReason(false);
+    setStatus("dismissed").then(onChanged);
+    logAction("think_dismiss", reason);
+  };
+
+  const buyElsewhere = () => {
+    const url = opportunity.actionable?.url || opportunity.sources?.[0];
+    logAction("act_purchase_elsewhere", url || null);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  };
+  const requestCore = () => logAction("act_request_core", opportunity.summary);
+  const doItNow = () => {
+    logAction("act_do_it_now", opportunity.actionable?.detail || null);
+    if (opportunity.actionable?.url) window.open(opportunity.actionable.url, "_blank", "noopener,noreferrer");
+  };
+
+  const canSelfServe = opportunity.actionable?.mode === "self_serve";
+  const dimmed = opportunity.status === "dismissed";
+
+  return (
+    <div className={`opportunity-card${dimmed ? " opportunity-dismissed" : ""}`}>
+      <div className="opportunity-header">
+        <span className="opportunity-type-badge">{FINDING_TYPE_LABELS[opportunity.findingType] || opportunity.findingType}</span>
+        <span className={`opportunity-confidence opportunity-confidence-${opportunity.confidence}`}>{opportunity.confidence} confidence</span>
+        {opportunity.status !== "new" && <span className="opportunity-status">{opportunity.status}</span>}
+      </div>
+      <p className="opportunity-summary">{opportunity.summary}</p>
+      {lineageIds.length > 0 && (
+        <div className="opportunity-lineage">
+          {lineageIds.map(id => (
+            <span key={id} className="opportunity-lineage-chip">because you have: {entityLabels[id] || id}</span>
+          ))}
+        </div>
+      )}
+
+      <button className="opportunity-see-more" onClick={toggleExpand}>
+        {expanded ? "See less" : "See more"}
+      </button>
+      {expanded && (
+        <div className="opportunity-detail">
+          {opportunity.sources?.length > 0 && (
+            <ul className="opportunity-sources">
+              {opportunity.sources.map((s, i) => (
+                <li key={i}><a href={s} target="_blank" rel="noopener noreferrer">{s}</a></li>
+              ))}
+            </ul>
+          )}
+          <div className="config-desc">Checked {new Date(opportunity.checkedAt).toLocaleDateString()} · via {opportunity.provider}</div>
+        </div>
+      )}
+
+      {!auth.signedIn ? (
+        <p className="config-desc">Sign in to think through or act on this opportunity.</p>
+      ) : (
+        <>
+          <div className="opportunity-think-row">
+            {!choosingReason ? (
+              <>
+                <button className="btn-secondary" onClick={include}><ThumbsUp size={14} /> Worth exploring</button>
+                <button className="btn-secondary" onClick={() => setChoosingReason(true)}><ThumbsDown size={14} /> Not for us</button>
+              </>
+            ) : (
+              DISMISS_REASONS.map(r => (
+                <button key={r.key} className="btn-secondary" onClick={() => dismissWithReason(r.key)}>{r.label}</button>
+              ))
+            )}
+          </div>
+          <div className="opportunity-act-row">
+            <button className="btn-secondary" onClick={buyElsewhere}><ShoppingCart size={14} /> Buy it elsewhere ↗</button>
+            <button className="btn-secondary" onClick={requestCore}><Send size={14} /> Request this for the platform</button>
+            {canSelfServe && (
+              <button className="btn-primary" onClick={doItNow}><Wrench size={14} /> Do it now</button>
+            )}
+          </div>
+          {canSelfServe && <p className="config-desc opportunity-self-serve-detail">{opportunity.actionable.detail}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function OpportunityMapPanel({ auth }) {
+  const { locationCfg } = useApp();
+  const apiBase = locationCfg?.apiBase || LOCATIONS.cabin.apiBase;
+  const [opportunities, setOpportunities] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showDismissed, setShowDismissed] = useState(false);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    fetch(`${apiBase}/api/tech-id/findings?limit=50`)
+      .then(r => r.json()).then(setOpportunities).catch(() => setOpportunities([]))
+      .finally(() => setLoading(false));
+  }, [apiBase]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const allEntityIds = useMemo(() => {
+    const ids = new Set();
+    for (const o of opportunities) {
+      if (o.entityId) ids.add(o.entityId);
+      for (const id of (o.relatedEntityIds || [])) ids.add(id);
+    }
+    return [...ids];
+  }, [opportunities]);
+  const entityLabels = useOntologyLabels(apiBase, allEntityIds);
+
+  const visible = showDismissed ? opportunities : opportunities.filter(o => o.status !== "dismissed");
+
+  return (
+    <div className="panel-content">
+      <div className="panel-header-bar">
+        <h2>Opportunities</h2>
+        <div className="toolbar-right">
+          {!auth.signedIn && auth.configured && (
+            <button className="btn-secondary" onClick={auth.signIn}>Sign in to think/act</button>
+          )}
+          <label className="config-desc opportunity-show-dismissed">
+            <input type="checkbox" checked={showDismissed} onChange={e => setShowDismissed(e.target.checked)} /> Show dismissed
+          </label>
+        </div>
+      </div>
+      <p className="config-desc">
+        Findings from the platform's monthly Tech ID Service scan — new capabilities,
+        deprecations, or better ways to use devices and services you already have.
+      </p>
+      {loading && visible.length === 0 && <p className="config-desc">Loading…</p>}
+      {!loading && visible.length === 0 && <p className="config-desc">No opportunities yet — the next monthly scan will surface anything it finds here.</p>}
+      <div className="opportunity-list">
+        {visible.map(o => (
+          <OpportunityCard key={o.id} apiBase={apiBase} auth={auth} opportunity={o} entityLabels={entityLabels} onChanged={refresh} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const PANELS = [
   { id: "FAMILY_HUB",     label: "Family Hub",      icon: Home },
   { id: "FAMILY_CONFIG",  label: "Family Config",   icon: Settings },
@@ -325,6 +537,7 @@ const PANELS = [
   { id: "MONITORING",     label: "Monitoring",      icon: Activity },
   { id: "RULES_ENGINE",   label: "Rules & Alerts",  icon: Zap },
   { id: "CAMERA_EVENTS",  label: "Camera Events",   icon: Camera },
+  { id: "OPPORTUNITY_MAP", label: "Opportunities",  icon: Lightbulb },
 ];
 
 // ─── Context ───────────────────────────────────────────────────────────────
@@ -1941,6 +2154,7 @@ function App() {
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} />}
             {activePanel === "RULES_ENGINE"   && <RulesPanel />}
             {activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
+            {activePanel === "OPPORTUNITY_MAP" && <OpportunityMapPanel auth={cameraAuth} />}
           </div>
         </main>
       </div>
