@@ -236,16 +236,28 @@ clone (all three at `535045f`, clean working trees). In rough order:
    Developer OAuth client_id/secret + account consent for Bosch). Exact
    steps given to the user; ontology entities added either way.
 
+**Update, same session, right after the above:** the "`front_door` camera
+showed up as a disabled stub, previously unknown" item was resolved
+immediately — user clarified both real cameras (Reolink + Blink) sit next
+to the front door and cover the driveway from different angles, neither
+name device-preferential, one will eventually move to cover the rear
+(no ETA). Renamed accordingly: Reolink `driveway` → `front_door`, Blink
+`outdoor_4` → `driveway`, deleted the disabled `.201` stub entirely (it
+was based on a mistaken "third camera, not yet purchased" assumption).
+Applied to the live Frigate config (backed up first), restarted, verified
+healthy with no new errors beyond the already-known pre-existing ones.
+Historical CabinEvent rows keep their old sourceDeviceId values by
+design — not migrated, user confirmed that's fine. See
+`docs/ontology.yaml`'s `cabin_camera_event` entity for the full detail.
+
 **Open items, carried forward:** Google OAuth authorized origin for
 `cabin.unicornpingpong.com` (still needed for cabin-ui sign-in to work at
-all — camera events *and* profile sync both depend on this); `driveway`
-camera still paused pending physical access; `front_door` camera showed
-up in the live Frigate config as a disabled stub, previously unknown to
-any session — not investigated further, worth asking the user about;
-Liebherr/Home Connect account linking (user action); real signed-in
-verification of both the profile sync and the camera media proxy;
-`outdoor_4`'s ongoing mediamtx crash-loop (pre-existing, not new, but
-still unresolved).
+all — camera events *and* profile sync both depend on this); the Reolink
+camera (now `front_door`) still off-network, paused pending physical
+access; Liebherr/Home Connect account linking (user action); real
+signed-in verification of both the profile sync and the camera media
+proxy; the Blink camera's (now `driveway`) ongoing mediamtx crash-loop
+(pre-existing, not new, but still unresolved).
 
 ---
 

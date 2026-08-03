@@ -1327,9 +1327,28 @@ elements:
       mocked-backend Playwright run, not just read through.
 
       All four phases of the 2026-08-02 camera-event-pipeline plan are now
-      built. Driveway camera (network-unreachable, needs physical
+      built. The Reolink camera (network-unreachable, needs physical
       checking) is the only remaining gap, and everything here is
       camera-count-agnostic — no code change needed once it's back online.
+
+      CAMERA RENAMED 2026-08-02 (later the same day, during Phase 6):
+      Frigate's two real cameras were renamed — the Reolink (was
+      "driveway") is now "front_door", and the Blink camera (was
+      "outdoor_4") is now "driveway". Both physically sit next to the
+      front door and cover the driveway area from different angles; the
+      old "front_door" name belonged to a disabled config stanza for a
+      camera that was never actually purchased, which caused real
+      confusion in a later session before the user clarified it directly.
+      One of the two real cameras will eventually be relocated to cover
+      the building's rear (no ETA). All references to "outdoor_4" and
+      "driveway" elsewhere in this file's historical notes describe what
+      was true *at the time they were written* — not retroactively
+      updated, since they're an accurate record of that point in time.
+      CabinEvent rows already persisted under the old sourceDeviceId
+      values ("driveway", "outdoor_4") were NOT migrated — this was a
+      deliberate, confirmed decision (a rename creates a new camera
+      identity from Frigate's own perspective regardless), so historical
+      events keep their original names, only new events use the new ones.
 
   - id: cabin_camera_continuous_recording
     entity_type: owl:Class
