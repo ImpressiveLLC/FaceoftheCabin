@@ -89,7 +89,7 @@ finer-grained permission tier for video vs. the rest of cabin-ui today.
 
 | Item | Value |
 |------|-------|
-| Primary server | Lenovo M920q · Ubuntu · Docker Compose at `/storage/containers/compose/cabin/` |
+| Primary server | Lenovo M920q · Ubuntu · Docker Compose at `/home/nate/FaceoftheCabin/cabin-orchestration-platform/infra/` (`/storage/containers/compose/cabin/` is a stale path from an earlier setup — confirmed unused, only a leftover `.env` and old `CabinAutomations` copy remain there) |
 | Tailscale IP | `100.77.44.113` |
 | Public access | Cloudflare Tunnel → `unicornpingpong.com` — live, all three subdomains |
 | Private mesh | Tailscale — cabin ↔ home, admin/SSH |
@@ -100,21 +100,24 @@ finer-grained permission tier for video vs. the rest of cabin-ui today.
 | Google OAuth owner | `nhsmrekar@gmail.com` |
 | Calendar / Photos | `smrekarfamilia@gmail.com` |
 | Zigbee coordinator | `/dev/ttyACM0` · adapter: ember · 14 devices paired |
-| Parenting schedule anchor | March 13 2026 · 14-day cycle · kids-home-days: [0,1,4,5,8,9,12,13] |
+| Parenting schedule | Versioned rules — current: 50/50 split since July 27 2026 (see `ROADMAP.md`'s Environment & Credentials Reference for the full detail; `docs/ontology.yaml`'s `parenting_schedule_rule_version` is the source of truth) |
 | Secrets | Ansible Vault (`ansible/group_vars/*/vault.yml`) — see `ansible/README.md`'s Secrets section, not hand-edited `.env` |
 
 ---
 
 ## Documentation Index
 
-| Document | Location | Contents |
-|----------|----------|----------|
-| **Platform Roadmap** | [`ROADMAP.md`](ROADMAP.md) | Strategic brief, architecture, ontology design, event pipeline, priority task list |
-| **Product Notes** | [`docs/PRODUCT_NOTES.md`](docs/PRODUCT_NOTES.md) | Dated design decisions, persona research, four-role architecture review |
-| **Ontology Contract** | [`docs/ontology.yaml`](docs/ontology.yaml) | Canonical entity definitions, device registry, naming contract |
-| **Platform README** | [`cabin-orchestration-platform/README.md`](cabin-orchestration-platform/README.md) | Technical architecture, backend/UI, Docker Compose reference |
-| **QA / Testing** | [`docs/QA.md`](docs/QA.md) | Per-feature test coverage, how to run automated checks, manual QA checklists |
-| **Definition of Done** | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md) | Per-session (not per-app) exit checklist, prioritized next-session plan |
+| Document | Location | Audience | Contents |
+|----------|----------|----------|----------|
+| **User Guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Family members, guests | Day-to-day usage: identity, profiles, notepad, chores, camera privacy |
+| **Maintenance & Ops** | [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) | Operators, developers | Deployment, secrets, known issues, incident response |
+| **Replication Guide** | [`docs/REPLICATION.md`](docs/REPLICATION.md) | New-instance implementers | Standing up an independent instance from scratch |
+| **Platform Roadmap** | [`ROADMAP.md`](ROADMAP.md) | Technical, product, strategic | Strategic brief, architecture, ontology design, priority task list |
+| **Product Notes** | [`docs/PRODUCT_NOTES.md`](docs/PRODUCT_NOTES.md) | Product, design | Dated design decisions, persona research, architecture reviews |
+| **Ontology Contract** | [`docs/ontology.yaml`](docs/ontology.yaml) | Technical | Canonical entity definitions, device registry, naming contract |
+| **Platform README** | [`cabin-orchestration-platform/README.md`](cabin-orchestration-platform/README.md) | Technical | Backend/UI architecture, Docker Compose reference |
+| **QA / Testing** | [`docs/QA.md`](docs/QA.md) | Technical | Per-feature test coverage, automated + manual checklists |
+| **Definition of Done** | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md) | Internal (session process) | Per-session exit checklist — not a product or architecture doc |
 | **Replicating This Template** | [`docs/REPLICATION.md`](docs/REPLICATION.md) | Standing up a fully independent instance — own accounts, domain, host, repo |
 
 ---

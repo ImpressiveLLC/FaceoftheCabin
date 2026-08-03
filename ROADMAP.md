@@ -24,7 +24,15 @@
 
 - Ambient full-screen display: clock, parenting schedule, Google Calendar events, Google Photos slideshow
 - Kids' chore tracking with per-child reward progress (Sam age 9, Emma age 6)
-- Parenting schedule logic: March 13 2026 anchor, 14-day cycle, kids-home-days: `[0,1,4,5,8,9,12,13]`
+- Parenting schedule logic: versioned rules (see `docs/ontology.yaml`'s
+  `parenting_schedule_rule_version`) — March 13 2026 original anchor,
+  14-day cycle, kids-home-days `[0,1,4,5,8,9,12,13]`, **superseded July 27
+  2026** by a 50/50 split (`[2,3,4,5,9,10]` = Wed/Thu/Fri/Sat week A,
+  Wed/Thu week B; Rachel has Mon/Tue always, Sun alternates). Historical
+  dates always compute under whichever version was actually in effect at
+  the time, not today's rule applied retroactively. Holidays override
+  per-date via `holiday_override`. See the Environment & Credentials
+  Reference table below for the full current detail.
 - Admin tab: edit rewards, chore list, reward rules (min chores/night, qualifying nights/week) — no code required
 - Google OAuth via GSI token client — owner: `nhsmrekar@gmail.com`, calendar/photos: `smrekarfamilia@gmail.com`
 - **Known resolved:** overlay z-index stacking context bug — backdrop-filter on `#dashboard-overlay` compositing conflict. Fix: settings-btn/panel moved to end of body (DOM paint order fix)
