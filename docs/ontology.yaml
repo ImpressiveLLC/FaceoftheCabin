@@ -1811,24 +1811,31 @@ elements:
 
   - id: family_profile
     entity_type: owl:Class
-    layer: frontend
+    layer: backend
     primitive: true
     schema_version: "0.3.0"
     migration_status: complete
     data_class: raw
     data_type: owl:Class
     ui_display_name: "Family member"
-    source: localStorage["family_profiles"] (JSON array)
+    source: >
+      Postgres family_profiles table via cabin-backend's /api/profiles
+      (built 2026-08-02, in response to a review's core finding that
+      profiles were browser-local only — a Friends & Family guest added
+      on one device never appeared on another). localStorage["family_profiles"]
+      is now an offline mirror/cache, same role as NOTES_KEY for family_note —
+      not the source of truth when signed in and CABIN_API_URL is reachable.
     rendering:
       semantic: Family member
       systems: Family Profile
-      technical: profile object {id, name, role, age, avatar, color} in PROFILES_KEY
+      technical: "FamilyProfile(id, name, role, birthday, avatar, color, age, type, relation, sortOrder, active, createdAt, updatedAt) — Spring Data JdbcTemplate row in family_profiles"
       compliance: (not shown)
     definition: >
-      A record representing one family member (parent, child, or pet).
-      Defines the individual's role, display name, avatar emoji, age (for
-      chore eligibility), and accent color. Used to personalize chores,
-      rewards, and schedule displays.
+      A record representing one family member (parent, child, pet, or
+      Friends & Family guest). Defines the individual's role, display
+      name, avatar emoji, age (for chore eligibility), relationship (for
+      guests), and accent color. Used to personalize chores, rewards,
+      schedule displays, and note/actor attribution.
     relationships:
       - target: chore_assignment
         type: consumed_by
@@ -1836,19 +1843,46 @@ elements:
       - target: reward_eligibility
         type: consumed_by
         cardinality: "1:N"
+      - target: family_note
+        type: consumed_by
+        cardinality: "1:N"
     transformation: >
-      Admin enters profile in Family Profiles tab → saveProfiles() writes
-      JSON array to localStorage["family_profiles"].
-      getKids() filters role === 'kid', getParents() filters role === 'parent',
-      getPets() filters role === 'pet'.
+      Admin enters profile in Family Profiles tab → saveProfile() POSTs
+      (new) or PATCHes (existing) to /api/profiles when signed in and
+      CABIN_API_URL is configured, always also updating the local
+      `profiles` array + localStorage regardless (offline-friendly,
+      matches sendNote()'s pattern). deleteProfile() calls
+      DELETE /api/profiles/{id}, which the backend treats as a soft
+      delete (active=false) so historical family_note authorship still
+      resolves for an archived guest. refreshProfilesFromServer() polls
+      GET /api/profiles every 20s (same interval as notes/chores) and on
+      sign-in; getKids()/getParents()/getPets() still just filter the
+      resulting array by role, unchanged.
     relates_to:
       ui_components: [ui_profiles_tab, ui_chore_kid_selector, ui_overview_tab, current_actor]
-      elements: [chore_assignment, reward_eligibility, hub_config, current_actor]
+      elements: [chore_assignment, reward_eligibility, hub_config, current_actor, family_note]
     notes: >
-      DEFAULT_PROFILES seeds Sam (kid, 11), Emma (kid, 9), Frankie (pet),
-      Nathan (parent). Age field determines chore_assignment eligibility via
-      choresByAge(). Profiles are fully configurable — no hardcoded names
-      in rendering logic.
+      DEFAULT_PROFILES seeds Sam (kid, 9), Emma (kid, 6), Frankie (pet),
+      Nathan (parent) — the backend seeds the exact same four, once, only
+      if the table is empty (FamilyProfileService.seedIfEmpty()), so a
+      fresh instance's first sync doesn't appear to add duplicates or
+      lose anyone already showing from the localStorage fallback. Age
+      field determines chore_assignment eligibility via choresByAge().
+      Profiles are fully configurable — no hardcoded names in rendering
+      logic.
+
+      MIGRATION SAFEGUARD (2026-08-02): the very first sync on any given
+      device, after this backend shipped, checks for locally-saved
+      profiles the server doesn't know about yet (e.g. a Friends & Family
+      guest created during this session's own earlier testing, before
+      this backend existed) and POSTs them up rather than letting the
+      server's list silently overwrite/discard them. Verified: backend
+      compiles clean, table auto-creates and seeds correctly on the real
+      M920q (confirmed via direct Postgres query), auth gate returns 401
+      without a token. Full authenticated CRUD round-trip not yet
+      exercised against the live public API — deliberately not tested by
+      temporarily disabling auth on a real, publicly-reachable service to
+      do so; needs a real signed-in browser session to finish verifying.
 
   - id: current_actor
     entity_type: owl:DatatypeProperty
