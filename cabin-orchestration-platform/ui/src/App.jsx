@@ -82,11 +82,46 @@ const LOCATIONS = {
 // /api/events itself stays unauthenticated server-side, same precedent as
 // /api/devices; this is a client-side "who's looking" gate, not a second
 // auth layer on the API.
+//
+// Found 2026-08-03 (external review): a stored token was reused across
+// page loads with no expiry tracking, so a genuinely expired token still
+// rendered as "signed in" (email shown, "Sign out" button present) while
+// every authenticated request silently 401'd and callers converted that
+// into an empty array/list — camera controls just vanished with no
+// explanation. Fixed by tracking `expires_in`, refusing to resurrect an
+// already-expired stored token on load, and centralizing every
+// authenticated request through `authedFetch`, which clears the session
+// and flips `sessionExpired` the moment any call comes back 401.
+function loadStoredGoogleSession() {
+  const token = sessionStorage.getItem("cabinAccessToken");
+  const email = sessionStorage.getItem("cabinUserEmail");
+  const expiresAtRaw = sessionStorage.getItem("cabinTokenExpiresAt");
+  const expiresAt = expiresAtRaw ? Number(expiresAtRaw) : null;
+  // No tracked expiry (a session stored before this fix shipped) is
+  // treated the same as an expired one -- fail closed, not open.
+  if (token && (!expiresAt || Date.now() >= expiresAt)) {
+    sessionStorage.removeItem("cabinAccessToken");
+    sessionStorage.removeItem("cabinUserEmail");
+    sessionStorage.removeItem("cabinTokenExpiresAt");
+    return { token: null, email: null };
+  }
+  return { token, email };
+}
+
 function useGoogleAuth() {
   const clientId = import.meta.env.VITE_CABIN_GOOGLE_CLIENT_ID || "";
-  const [accessToken, setAccessToken] = useState(() => sessionStorage.getItem("cabinAccessToken") || null);
-  const [userEmail, setUserEmail] = useState(() => sessionStorage.getItem("cabinUserEmail") || null);
+  const [accessToken, setAccessToken] = useState(() => loadStoredGoogleSession().token);
+  const [userEmail, setUserEmail] = useState(() => loadStoredGoogleSession().email);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const tokenClientRef = useRef(null);
+
+  const clearSession = useCallback(() => {
+    setAccessToken(null);
+    setUserEmail(null);
+    sessionStorage.removeItem("cabinAccessToken");
+    sessionStorage.removeItem("cabinUserEmail");
+    sessionStorage.removeItem("cabinTokenExpiresAt");
+  }, []);
 
   const ensureTokenClient = useCallback(() => {
     if (tokenClientRef.current || !window.google?.accounts?.oauth2 || !clientId) return tokenClientRef.current;
@@ -95,8 +130,15 @@ function useGoogleAuth() {
       scope: "openid email",
       callback: async (resp) => {
         if (resp.error) return;
+        setSessionExpired(false);
         setAccessToken(resp.access_token);
         sessionStorage.setItem("cabinAccessToken", resp.access_token);
+        // expires_in is seconds-from-now per Google's token response; a
+        // small safety margin (30s) means we treat it as expired slightly
+        // before Google actually would, so a request never races the
+        // exact expiry instant.
+        const expiresAt = Date.now() + (Math.max(Number(resp.expires_in) || 3600, 60) - 30) * 1000;
+        sessionStorage.setItem("cabinTokenExpiresAt", String(expiresAt));
         try {
           const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
             headers: { Authorization: `Bearer ${resp.access_token}` },
@@ -118,13 +160,39 @@ function useGoogleAuth() {
   }, [ensureTokenClient]);
 
   const signOut = useCallback(() => {
-    setAccessToken(null);
-    setUserEmail(null);
-    sessionStorage.removeItem("cabinAccessToken");
-    sessionStorage.removeItem("cabinUserEmail");
-  }, []);
+    setSessionExpired(false);
+    clearSession();
+  }, [clearSession]);
 
-  return { accessToken, userEmail, signedIn: !!accessToken, signIn, signOut, configured: !!clientId };
+  // Called by authedFetch on a 401 -- the token looked valid client-side
+  // (present, not past its tracked expiry) but the server rejected it
+  // anyway (revoked, clock skew, etc.). Clearing accessToken here also
+  // stops any in-flight media: CameraLiveView's <img src> and
+  // useAuthedMediaUrl's effect both key off accessToken being present.
+  const handleUnauthorized = useCallback(() => {
+    clearSession();
+    setSessionExpired(true);
+  }, [clearSession]);
+
+  // Every authenticated call in this app should go through this instead
+  // of a raw fetch() + manual Authorization header, so a 401 is handled
+  // once, consistently, instead of each caller independently swallowing
+  // it into an empty array with no visible explanation.
+  const authedFetch = useCallback((url, options = {}) => {
+    if (!accessToken) return Promise.reject(new Error("Not signed in"));
+    return fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), Authorization: `Bearer ${accessToken}` },
+    }).then(res => {
+      if (res.status === 401) handleUnauthorized();
+      return res;
+    });
+  }, [accessToken, handleUnauthorized]);
+
+  return {
+    accessToken, userEmail, signedIn: !!accessToken, sessionExpired,
+    signIn, signOut, authedFetch, configured: !!clientId,
+  };
 }
 
 // ─── Camera media: authenticated snapshot/clip fetch ──────────────────────
@@ -133,16 +201,16 @@ function useGoogleAuth() {
 // fetch as a blob with fetch() (which can) and hand the component an
 // object URL instead. Revokes the previous URL on cleanup/change so this
 // doesn't leak memory as someone scrolls through a long event list.
-function useAuthedMediaUrl(url, accessToken) {
+function useAuthedMediaUrl(url, authedFetch) {
   const [objectUrl, setObjectUrl] = useState(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!url || !accessToken) { setObjectUrl(null); return; }
+    if (!url) { setObjectUrl(null); return; }
     let cancelled = false;
     let currentUrl = null;
     setError(false);
-    fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+    authedFetch(url)
       .then(res => { if (!res.ok) throw new Error(res.status); return res.blob(); })
       .then(blob => {
         if (cancelled) return;
@@ -154,15 +222,15 @@ function useAuthedMediaUrl(url, accessToken) {
       cancelled = true;
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
-  }, [url, accessToken]);
+  }, [url, authedFetch]);
 
   return { objectUrl, error };
 }
 
-function CameraEventThumbnail({ apiBase, accessToken, frigateEventId }) {
+function CameraEventThumbnail({ apiBase, authedFetch, frigateEventId }) {
   const { objectUrl, error } = useAuthedMediaUrl(
     frigateEventId ? `${apiBase}/api/camera/events/${frigateEventId}/snapshot` : null,
-    accessToken
+    authedFetch
   );
   if (!frigateEventId || error) {
     return <div className="camera-event-thumb camera-event-thumb-empty"><Camera size={18} /></div>;
@@ -172,10 +240,10 @@ function CameraEventThumbnail({ apiBase, accessToken, frigateEventId }) {
     : <div className="camera-event-thumb camera-event-thumb-loading" />;
 }
 
-function CameraEventClip({ apiBase, accessToken, frigateEventId }) {
+function CameraEventClip({ apiBase, authedFetch, frigateEventId }) {
   const { objectUrl, error } = useAuthedMediaUrl(
     `${apiBase}/api/camera/events/${frigateEventId}/clip`,
-    accessToken
+    authedFetch
   );
   if (error) return <p className="config-desc">Clip not available for this event.</p>;
   if (!objectUrl) return <p className="config-desc">Loading clip…</p>;
@@ -188,11 +256,55 @@ function CameraEventClip({ apiBase, accessToken, frigateEventId }) {
 // GoogleAuthInterceptor's extractToken()) since <img> can't set headers
 // and this stream is unbounded, unlike snapshot/clip above which can be
 // blob-fetched in full.
+//
+// Found 2026-08-03 (external review): a camera whose Frigate stream is
+// down still produces a "completed" <img> load event with
+// naturalWidth/naturalHeight of 0 — no error event fires, so the old
+// version rendered an empty box with no explanation and the "Stop
+// {camera}" button stayed up as if it were working. Fixed with an
+// explicit status state: onLoad checks natural dimensions (zero-size
+// "success" is treated as a failure, not a success), onError catches a
+// hard failure, and a bounded timeout catches a request that never
+// resolves either way.
 function CameraLiveView({ apiBase, accessToken, cameraName }) {
+  const [status, setStatus] = useState("loading"); // loading | ok | error
+  const timeoutRef = useRef(null);
   const src = `${apiBase}/api/camera/${cameraName}/live?access_token=${encodeURIComponent(accessToken)}`;
+
+  useEffect(() => {
+    setStatus("loading");
+    timeoutRef.current = setTimeout(() => {
+      setStatus(prev => (prev === "loading" ? "error" : prev));
+    }, 8000);
+    return () => clearTimeout(timeoutRef.current);
+  }, [src]);
+
+  const handleLoad = (e) => {
+    clearTimeout(timeoutRef.current);
+    const ok = e.target.naturalWidth > 0 && e.target.naturalHeight > 0;
+    setStatus(ok ? "ok" : "error");
+  };
+  const handleError = () => {
+    clearTimeout(timeoutRef.current);
+    setStatus("error");
+  };
+
   return (
     <div className="camera-live-view">
-      <img key={cameraName} src={src} alt={`Live: ${cameraName}`} />
+      <img
+        key={src}
+        src={src}
+        alt={`Live: ${cameraName}`}
+        onLoad={handleLoad}
+        onError={handleError}
+        style={status === "error" ? { display: "none" } : undefined}
+      />
+      {status === "loading" && <p className="config-desc camera-live-status">Connecting to {cameraName}…</p>}
+      {status === "error" && (
+        <p className="config-desc camera-live-status camera-live-error">
+          Camera unavailable — {cameraName}'s stream didn't load. It may be offline or misconfigured.
+        </p>
+      )}
     </div>
   );
 }
@@ -206,6 +318,7 @@ function CameraEventsPanel({ auth }) {
   const [expandedEventId, setExpandedEventId] = useState(null);
   const [liveCamera, setLiveCamera] = useState(null);
   const [cameras, setCameras] = useState([]);
+  const [cameraListError, setCameraListError] = useState(null);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -221,15 +334,29 @@ function CameraEventsPanel({ auth }) {
   // recognizes the new names, so "watch live" against an old name 404'd
   // (a real bug, found via live testing after the rename, not caught by
   // review beforehand).
+  //
+  // Found 2026-08-03 (external review): a failed/401 fetch here used to
+  // just fall back to an empty camera list with zero explanation, which
+  // is indistinguishable in the UI from "this host has no cameras
+  // configured." Now surfaces a real error message, and goes through
+  // auth.authedFetch so an expired token clears the session instead of
+  // this request silently 401ing forever.
   const refreshCameraList = useCallback(() => {
     if (!auth.accessToken) return;
-    fetch(`${apiBase}/api/camera/list`, {
-      headers: { Authorization: `Bearer ${auth.accessToken}` },
-    })
-      .then(r => r.ok ? r.json() : [])
+    setCameraListError(null);
+    auth.authedFetch(`${apiBase}/api/camera/list`)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(list => setCameras(list.filter(c => c.enabled).map(c => c.name)))
-      .catch(() => setCameras([]));
-  }, [apiBase, auth.accessToken]);
+      .catch(err => {
+        setCameras([]);
+        // A 401 already triggers the "session expired" banner via
+        // auth.sessionExpired — no need to duplicate that message here.
+        if (!auth.sessionExpired) setCameraListError(err.message);
+      });
+  }, [apiBase, auth]);
 
   useEffect(() => {
     if (!auth.signedIn) return;
@@ -252,7 +379,11 @@ function CameraEventsPanel({ auth }) {
     return (
       <div className="panel-content">
         <div className="panel-header-bar"><h2>Camera Events</h2></div>
-        <p className="config-desc">Sign in to view camera activity.</p>
+        {auth.sessionExpired ? (
+          <p className="config-desc camera-live-error">Session expired — sign in again.</p>
+        ) : (
+          <p className="config-desc">Sign in to view camera activity.</p>
+        )}
         <button className="btn-primary" onClick={auth.signIn}>Sign in with Google</button>
       </div>
     );
@@ -268,6 +399,9 @@ function CameraEventsPanel({ auth }) {
         </div>
       </div>
 
+      {cameraListError && (
+        <p className="config-desc camera-live-error">Couldn't load the camera list ({cameraListError}).</p>
+      )}
       {cameras.length > 0 && (
         <div className="camera-live-section">
           <div className="camera-live-buttons">
@@ -300,7 +434,7 @@ function CameraEventsPanel({ auth }) {
                 className={`camera-event-row${canExpand ? " clickable" : ""}`}
                 onClick={() => canExpand && setExpandedEventId(isExpanded ? null : e.eventId)}
               >
-                <CameraEventThumbnail apiBase={apiBase} accessToken={auth.accessToken} frigateEventId={e.payload?.hasSnapshot ? frigateEventId : null} />
+                <CameraEventThumbnail apiBase={apiBase} authedFetch={auth.authedFetch} frigateEventId={e.payload?.hasSnapshot ? frigateEventId : null} />
                 <div>
                   <div className="camera-event-title">
                     {e.sourceDeviceId} — {e.eventType.replace("DETECTION_", "").replace("MOTION_", "motion ").toLowerCase()}
@@ -311,7 +445,7 @@ function CameraEventsPanel({ auth }) {
               </div>
               {isExpanded && (
                 <div className="camera-clip-expanded">
-                  <CameraEventClip apiBase={apiBase} accessToken={auth.accessToken} frigateEventId={frigateEventId} />
+                  <CameraEventClip apiBase={apiBase} authedFetch={auth.authedFetch} frigateEventId={frigateEventId} />
                 </div>
               )}
             </div>
@@ -367,20 +501,24 @@ function OpportunityCard({ apiBase, auth, opportunity, entityLabels, onChanged }
   const [choosingReason, setChoosingReason] = useState(false);
   const lineageIds = [opportunity.entityId, ...(opportunity.relatedEntityIds || [])].filter(Boolean);
 
+  // Routed through auth.authedFetch (not a raw fetch + manual header) so
+  // an expired token is handled the same way everywhere in the app: the
+  // session clears and auth.sessionExpired flips, instead of this POST
+  // just silently 401ing with no visible effect.
   const logAction = (actionType, detail) => {
     if (!auth.accessToken) return Promise.resolve();
-    return fetch(`${apiBase}/api/tech-id/findings/${opportunity.id}/actions`, {
+    return auth.authedFetch(`${apiBase}/api/tech-id/findings/${opportunity.id}/actions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.accessToken}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ actionType, detail: detail || null }),
     }).catch(() => {});
   };
 
   const setStatus = (status) => {
     if (!auth.accessToken) return Promise.resolve();
-    return fetch(`${apiBase}/api/tech-id/findings/${opportunity.id}`, {
+    return auth.authedFetch(`${apiBase}/api/tech-id/findings/${opportunity.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.accessToken}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     }).catch(() => {});
   };
@@ -445,7 +583,10 @@ function OpportunityCard({ apiBase, auth, opportunity, entityLabels, onChanged }
       )}
 
       {!auth.signedIn ? (
-        <p className="config-desc">Sign in to think through or act on this opportunity.</p>
+        <p className="config-desc">
+          {auth.sessionExpired ? "Session expired — sign in again to " : "Sign in to "}
+          think through or act on this opportunity.
+        </p>
       ) : (
         <>
           <div className="opportunity-think-row">
@@ -2089,23 +2230,33 @@ function App() {
   // locationCfg is null when "both" — individual components handle that case.
   const locationCfg = activeLocation !== "both" ? LOCATIONS[activeLocation] : null;
 
+  // Found 2026-08-03 (external review): the "API offline" badge pinged
+  // /actuator/health directly, which has no CORS configuration at all
+  // (unlike every business endpoint, which carries @CrossOrigin) -- the
+  // browser blocked reading that response every time regardless of
+  // whether the backend was actually up, so the badge was permanently
+  // wrong. Rather than add CORS to Actuator just to drive a status
+  // badge, "connected" is now derived from whether the device fetch this
+  // panel already depends on actually succeeded.
   const refreshDevices = useCallback(() => {
     // Fetch from cabin hub always; also fetch home hub when viewing home or both.
     const fetches = [];
     if (activeLocation === "cabin" || activeLocation === "both") {
       fetches.push(
         fetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
-          .then(r => r.json()).catch(() => [])
+          .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       );
     }
     if (activeLocation === "home" || activeLocation === "both") {
       fetches.push(
         fetch(`${LOCATIONS.home.apiBase}/api/devices`)
-          .then(r => r.json()).catch(() => [])
+          .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       );
     }
-    Promise.all(fetches).then(results => {
-      setDevices(results.flat());
+    Promise.allSettled(fetches).then(results => {
+      const succeeded = results.filter(r => r.status === "fulfilled");
+      setDevices(succeeded.map(r => r.value).flat());
+      setConnected(results.length > 0 && succeeded.length === results.length);
     });
   }, [activeLocation]);
 
@@ -2115,8 +2266,6 @@ function App() {
     fetch(`${apiBase}/api/dashboard/config`)
       .then(r => r.json()).then(setConfig).catch(() => {});
     const t = setInterval(refreshDevices, 15000);
-    fetch(`${apiBase}/actuator/health`)
-      .then(() => setConnected(true)).catch(() => setConnected(false));
     return () => clearInterval(t);
   }, [refreshDevices, locationCfg]);
 

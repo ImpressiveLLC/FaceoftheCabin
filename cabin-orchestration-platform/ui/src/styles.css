@@ -329,6 +329,8 @@ body {
   width: 100%; max-height: 400px; object-fit: contain;
   border-radius: 8px; background: #000; border: 1px solid #21262d;
 }
+.camera-live-status { margin-top: 8px; }
+.camera-live-error { color: #f85149; }
 
 /* ─── Opportunity Map ───────────────────────────────────────────────────── */
 .opportunity-show-dismissed { display: flex; align-items: center; gap: 6px; cursor: pointer; }

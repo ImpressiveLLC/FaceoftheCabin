@@ -1826,6 +1826,13 @@ elements:
         only evaluated for better use of what's already owned. Sources:
         community.reolink.com/topic/14753, support.reolink.com (RLC-820A
         FAQs).
+    notes: >
+      CONFIRMED 2026-08-03 via Frigate's own ffmpeg logs: `Connection to
+      tcp://192.168.2.200:554 failed: No route to host` — genuine
+      network-layer unreachability from the M920q's LAN, not a
+      credentials or Frigate config problem. Still requires physical/
+      on-site checking (power, cabling, whether its static IP reset);
+      nothing further to try remotely.
 
   - id: camera_driveway_blink
     entity_type: owl:Class
@@ -1882,6 +1889,18 @@ elements:
         real fix, not evaluated in depth this pass. Sources:
         home-assistant.io/integrations/blink,
         github.com/femmeXFMR/blink-rtsp-mqtt-bridge.
+    notes: >
+      UPDATE 2026-08-03: the "active, unresolved crash-loop issue"
+      referenced above was root-caused the same day (an external review
+      of the camera panel prompted the investigation) — not actually a
+      crash loop, blinkbridge's process stayed up but silently disabled
+      its own stream server after a transient Blink cloud-API failure
+      and never retried, so camera_fps sat at 0.0 for hours with no
+      restart-policy trigger to catch it (the container never exited).
+      Fixed for now with `docker restart blinkbridge`; no automated
+      self-recovery exists yet for this specific failure mode. Full
+      timeline in MAINTENANCE.md's "Blink camera silently stopped
+      producing frames" entry.
 
   - id: smart_appliance_fridge_liebherr
     entity_type: owl:Class

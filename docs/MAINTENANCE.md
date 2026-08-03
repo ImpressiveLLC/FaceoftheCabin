@@ -215,6 +215,56 @@ Restart after any config change: `docker restart frigate`, then verify:
 curl -s http://localhost:5000/api/config | python3 -c "import sys,json; print(list(json.load(sys.stdin)['cameras'].keys()))"
 ```
 
+**There are two Frigate container definitions on this host — only one is
+real.** Confirmed 2026-08-03 after an external review flagged an
+apparent "config disagrees with git" drift. `docker-compose.yml`'s own
+bundled `frigate:` service (container name `cabin-frigate`, config
+`cabin-orchestration-platform/infra/frigate.yml`, git-tracked) exists in
+this repo but has never actually been started (`docker inspect
+cabin-frigate` shows `Status=created`, `RestartCount=0`) — it's inert,
+using zero resources, but its config file is genuinely stale (still has
+the pre-rename camera names/settings) and reads as a live source of
+truth if you don't check container state first. **The container that
+actually matters is `frigate`** (no `cabin-` prefix), managed outside
+this repo by CabinAutomations, config at `/storage/services/frigate/config.yml`
+per the section above — `cabin-backend`'s `FRIGATE_URL` defaults to
+`http://frigate:5000`, which resolves to this one on the shared
+`cabin_default` Docker network. When debugging a camera/Frigate issue,
+always check `docker ps` for which container is actually running before
+trusting any config file's contents. Not yet cleaned up (removing the
+orphaned service from `docker-compose.yml` is a real infra edit,
+flagged for the user to confirm rather than done unilaterally) — this
+note exists so the next person doesn't lose time to the same confusion.
+
+**Blink camera (`driveway`) went dark for hours with no auto-recovery
+— found and fixed 2026-08-03.** External review's "no camera-event
+pipeline activity" finding traced to `docker exec frigate curl
+localhost:5000/api/stats`: both cameras showed `camera_fps: 0.0` — no
+incoming video at all, so zero detections were possible regardless of
+anything downstream (MQTT, Kafka, Postgres were all healthy and
+correctly wired the whole time). Two independent causes:
+- `front_door` (Reolink, 192.168.2.200): `ffmpeg` logs showed `No route
+  to host` — the existing, already-documented off-network issue above,
+  unrelated to this incident, still needs on-site checking.
+- `driveway` (Blink): `blinkbridge`'s logs showed a transient failure
+  reaching Blink's own cloud API (`rest-e003.immedia-semi.com`, "Cannot
+  connect to host") around 05:17 UTC that morning, after which
+  `blinkbridge` logged `too many failures, disabling` and never
+  retried — the container itself never crashed or restarted
+  (`RestartCount=0`), it just gave up internally and sat idle for
+  hours, so no restart policy would have caught it. `mediamtx` logs
+  confirmed nothing was publishing to `rtsp://mediamtx:8554/outdoor_4_-_dhee`
+  (Frigate's configured source for this camera) the whole time, hence
+  its own repeating `404 Not Found` / `Unable to read frames` errors.
+  **Fixed with `docker restart blinkbridge`** — re-authenticated with
+  Blink immediately, stream resumed, Frigate's `camera_fps` went from
+  `0.0` to `5.1` within seconds. **Not yet fixed**: `blinkbridge` has no
+  self-healing behavior for this specific failure mode (an internal
+  "give up" state that a container restart clears but nothing else
+  does) — worth an Uptime Kuma check against `mediamtx`'s stream health
+  or Frigate's own `camera_fps` so this doesn't require someone to
+  notice "no events in days" before catching it next time.
+
 ---
 
 ## Overnight Camera Alerts (Node-RED)
@@ -387,6 +437,60 @@ remotely-visible trigger definition was rejected as unsafe, and no
 secrets/env-injection field was found on the trigger schema during
 setup. The prompt checks for `TECH_ID_API_KEY` as a sandbox env var and
 POSTs opportunistically if present, but nothing sets it today.
+
+### Camera panel: stale auth looked signed-in, failures rendered as silent blanks (found and fixed 2026-08-03)
+
+An external code review of cabin-ui's Camera Events panel (no code
+changed by the reviewer — read-only findings from a real browser
+session) found the underlying bugs were in cabin-ui's own error
+handling, not the backend or Frigate:
+
+- **Expired Google token treated as authenticated.** `useGoogleAuth`
+  stored the access token in `sessionStorage` with no expiry tracking,
+  so a genuinely expired token still rendered "signed in" (email shown,
+  "Sign out" present) while every authenticated request 401'd and
+  callers quietly converted that into an empty list. **Fixed**: token
+  storage now includes `expires_in` (with a 30s safety margin); a
+  stored token already past that expiry is refused on load, not
+  resurrected; and every authenticated call now goes through one
+  `authedFetch` helper that clears the session and sets
+  `sessionExpired` on any `401`, instead of each caller independently
+  swallowing the failure.
+- **A dead camera stream rendered as an unexplained blank box.**
+  `CameraLiveView`'s `<img>` against Frigate's MJPEG stream had no
+  `onLoad`/`onError` handling — a broken stream produced a "completed"
+  load event with `naturalWidth`/`naturalHeight` of `0`, which looked
+  identical to a working-but-quiet camera. **Fixed**: explicit
+  `loading`/`ok`/`error` status, a zero-dimension "load" now counts as
+  a failure, an 8s bounded timeout catches a request that never
+  resolves either way, and an error state renders "Camera unavailable"
+  instead of nothing.
+- **The "API offline" badge was checking the wrong thing.** It pinged
+  `/actuator/health` directly from the browser, which — unlike every
+  business endpoint (`@CrossOrigin`) — has no CORS configuration, so the
+  browser blocked reading the response every time regardless of whether
+  the backend was actually up. **Fixed**: "connected" is now derived
+  from whether the `/api/devices` fetch this panel already depends on
+  actually succeeded, rather than a second, separately-broken check.
+  Deliberately did not add CORS to Actuator just to drive a status
+  badge — that would widen Actuator's exposure for a cosmetic fix.
+
+See `cabin-orchestration-platform/ui/src/App.jsx`'s `useGoogleAuth`,
+`CameraLiveView`, and `App()`'s `refreshDevices` for the fixed code —
+each carries an inline comment dated the same day explaining the bug.
+
+### Blink camera silently stopped producing frames for hours, no auto-recovery (found and fixed 2026-08-03)
+
+Same external review flagged `/api/events` returning empty and asked
+whether Frigate detection, MQTT, or the event adapter were at fault.
+Root-caused via `docker exec frigate curl localhost:5000/api/stats`:
+both cameras showed `camera_fps: 0.0` — genuinely no incoming video, so
+MQTT/Kafka/Postgres (all confirmed healthy) had nothing to carry. Full
+detail and fix in "Cameras (Frigate)" above — summary: `blinkbridge`
+disabled itself after a transient Blink cloud-API failure and never
+retried; `docker restart blinkbridge` recovered it immediately
+(`camera_fps` `0.0` → `5.1`). `front_door`'s `0.0` is the separate,
+already-documented off-network issue, not part of this incident.
 
 ---
 
