@@ -2,7 +2,14 @@
 
 **ImpressiveLLC / FaceoftheCabin** · unicornpingpong.com _(live — hub/cabin/api all public)_
 
-A family-scale, self-hosted platform unifying cabin automation and family coordination under a shared event bus, identity layer, and living ontology. Deployed on a Lenovo M920q at the cabin, exposed via Cloudflare Tunnel, connected privately via Tailscale.
+A self-hosted platform unifying home/property automation and family
+coordination under a shared event bus, identity layer, and living
+ontology — built for one family's real deployment (a Lenovo M920q at a
+cabin, exposed via Cloudflare Tunnel, administered privately via
+Tailscale) and designed from the start to be replicated independently
+for another family, another property, or another team's use case. See
+[`docs/REPLICATION.md`](docs/REPLICATION.md) for what that actually
+takes.
 
 ---
 
@@ -13,7 +20,8 @@ A family-scale, self-hosted platform unifying cabin automation and family coordi
 3. **Living ontology as primary differentiator** — every data point is findable, traceable, and actionable across all platform verticals
 4. **FAIR data throughout** — Findable, Accessible, Interoperable, Reusable — enabling AI/RAG/LLM at any layer
 5. **Event-driven architecture** — camera → detection → normalized event → automation → action, with full audit trail
-6. **Self-improving discovery** — the platform actively monitors for new integrations, APIs, and alternatives for every cataloged device/service, and notifies the owner proactively
+6. **Self-improving discovery** — monthly, scheduled checks against industry-standard vendor sources and DIY/pro community pages, surfacing "next best idea" upgrade opportunities per cataloged device/service, not just new-purchase alerts. *Fully specified in `ROADMAP.md`'s Tech ID Service section; not yet built — see that doc for honest status.*
+7. **Radical device flexibility** — no device, protocol, or vendor is a hard architectural assumption; every integration follows the same ontology-first onboarding pattern (`docs/REPLICATION.md`)
 
 ---
 

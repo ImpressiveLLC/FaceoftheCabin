@@ -14,7 +14,8 @@
 3. Living ontology as the platform's primary differentiator — every data point is findable, traceable, actionable across all platform verticals and horizontal architecture and data derivatives
 4. FAIR data principles throughout: Findable, Accessible, Interoperable, Reusable — enabling AI/RAG/LLM at any layer
 5. Event-driven architecture: camera → detection → normalized event → automation → action, with full audit trail
-6. Self-improving discovery: the platform actively monitors for new integrations based on ontology definitions for any non-deprecated device or service; scheduled rechecks via online resources including APIs, webhooks, and alternatives for owned devices; proactively notifies the owner of alternatives or new comparable products and services
+6. Self-improving discovery: the platform actively monitors for new integrations based on ontology definitions for any non-deprecated device or service; scheduled rechecks — monthly for active devices — against industry-standard vendor sources and DIY/pro community pages, surfacing "next best idea" opportunities per component (upgrade paths, better-utilized configurations, new comparable products) rather than just flagging new purchases. See [The Tech ID Service](#the-tech-id-service) — fully specified, not yet built.
+7. Radical device flexibility: no device, protocol, or vendor is a hard architectural assumption — every integration goes through the same ontology-first pattern (register the entity, document what's blocking full integration, verify against real installed source, only mark complete after a live test). See `docs/REPLICATION.md`'s device onboarding section for the concrete, repeatable process, evidenced by this project's own Zigbee/Frigate/HA-integration/appliance work.
 
 ---
 
@@ -251,10 +252,28 @@ ontology_entry:
 
 ### The Tech ID Service
 
+> **Status: fully specified, not yet built.** Everything in this section
+> is a design, not a running capability — Phase 4 below has zero
+> completed items. Flagged explicitly here because the prose below reads
+> confidently enough that it's easy to mistake for a shipped feature; it
+> isn't one yet. This is the platform's most concrete answer to "AI-driven
+> tech opportunity updates" — the user's own framing, 2026-08-03: checking
+> "industry standard and DIY pro pages" on a schedule for "next best
+> ideas" per component, so every cataloged device/service gets evaluated
+> for whether it's being under-utilized or has a better integration path
+> available now than when it was first registered.
+
 A background platform service that:
 
 - Maintains a registry of all ontology entities with `check_for_new: true`
-- Runs scheduled checks (web search + vendor API polling + community feeds like HACS) per entity schedule
+- Runs scheduled checks per entity schedule against: official vendor
+  API/changelog pages, community integration hubs (HACS, Home Assistant's
+  own integration release notes), and DIY/pro forums and build logs
+  (r/homeassistant, r/homeautomation, vendor-specific communities) —
+  "industry standard and DIY pro pages," in the user's own framing —
+  looking specifically for whether an owned device/service could be
+  better utilized than its current configuration, not just whether a
+  newer product exists
 - Updates discovery flags in the ontology when new information is found
 - Publishes `ontology.entity.updated` platform event when flags change
 - Surfaces discoveries as actionable notifications: _"Reolink released a new webhook API — 2 of your devices may benefit"_
@@ -427,6 +446,15 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 - [ ] Implement lineage record on every state-change: `{ from_event, via_automation, to_state, timestamp }`
 
 ### Phase 4 — Tech ID Service
+
+> **Not started.** Fully specified above (see "The Tech ID Service"),
+> zero items built. This is the platform's concrete implementation of
+> Northstar Goal #6 (self-improving discovery / "next best idea"
+> scanning) — a real differentiator on paper, genuinely absent in
+> practice. Realistic next-session scope: a minimal version covering one
+> entity type end to end (e.g. cameras, given the depth of real Frigate
+> integration work already done) rather than the full generalized
+> service in one pass.
 
 - [ ] Build `tech_id_service` container: reads ontology, runs scheduled discovery per entity
 - [ ] Implement Kidde use case as first integration test
