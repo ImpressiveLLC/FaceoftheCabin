@@ -102,6 +102,10 @@ services:
       # claim on tokens sent to /api/notes and /api/chores against this, so
       # a token from an unrelated Google app can't be used to write here.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Tech ID Service findings-submission key -- optional, empty by
+      # default (submission returns 503 until an operator sets this).
+      # See docs/REPLICATION.md §8.
+      TECH_ID_API_KEY: ${TECH_ID_API_KEY:-}
     networks:
       - default         # project network: reaches cabin-postgres, cabin-kafka
       - cabin_default   # existing network: reaches mosquitto, nodered, z2m

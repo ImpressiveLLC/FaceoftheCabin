@@ -4088,3 +4088,75 @@ elements:
       Must be last in DOM body due to Chromium backdrop-filter compositing
       constraint — same as ui_dashboard_overlay. Parenting schedule section
       added 2026-07-27: anchor date picker + 14-day cycle chip grid.
+
+  - id: tech_id_finding
+    entity_type: owl:Class
+    layer: backend
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:complexType
+    constraint:
+      description: >
+        entityId, provider, findingType, summary, confidence are required
+        on submission; status one of new|reviewed|actioned|dismissed,
+        starts new; entityId is a free-text reference to an ontology
+        entity id (not a DB foreign key — findings can target entities
+        added after this table existed, and providers shouldn't need a
+        synced copy of the whole ontology to submit).
+    ui_display_name: "Tech ID Finding"
+    source: >
+      cabin-backend POST/GET/PATCH /api/tech-id/findings (Postgres table
+      tech_id_finding). See ROADMAP.md's "Tech ID Service — Provider
+      Model" section for the full design this table implements.
+    rendering:
+      semantic: "[<provider>] <entityId>: <summary> (<confidence>, <status>)"
+      systems: Tech ID Service finding record
+      technical: "TechIdFinding(id, entityId, provider, findingType, summary, confidence, sources[], status, checkedAt, createdAt) — JdbcTemplate row in tech_id_finding"
+      compliance: (not shown)
+    definition: >
+      A single research finding about a cataloged ontology entity,
+      submitted by any tech-scanning provider — this platform's own
+      scheduled Claude Code routine, an operator's paid higher-tier
+      scanning service, or an instance owner's bring-your-own-AI
+      pipeline. Deliberately provider-agnostic: `provider` is free text,
+      not an enum, so a new source never needs a schema or code change.
+      This is the "keep things fresh" mechanism behind Northstar Goal #6
+      (self-improving discovery) — see also nvr_frigate,
+      camera_front_door_reolink, and camera_driveway_blink's `discovery:`
+      blocks, which were populated by hand this session as the schema's
+      first real use, ahead of this ingestion API existing.
+    relationships:
+      - target: nvr_frigate
+        type: relates_to
+        cardinality: "N:1"
+    transformation: >
+      Provider calls POST /api/tech-id/findings with header
+      X-Tech-Id-Api-Key matching cabin.techid.apiKey (503 if unset on
+      this instance — opt-in, not default-on) → server assigns id (UUID)
+      and createdAt, defaults status="new", inserts. Read: GET
+      /api/tech-id/findings?entityId=&limit= is open (unauthenticated),
+      same precedent as /api/events and /api/devices — findings aren't
+      more sensitive than event/device data. Adjudication: PATCH
+      /api/tech-id/findings/{id} {status} requires a valid Google bearer
+      token (GoogleAuthInterceptor) — a human reviewing/actioning/
+      dismissing a machine-submitted claim, per the "adjudication and
+      decision making" step the user explicitly asked for. Reconciling
+      an actioned finding into the target entity's own `discovery:`
+      fields in this file is a separate, still-manual step — not
+      automatic on PATCH.
+    relates_to:
+      ui_components: []
+      elements: [nvr_frigate, camera_front_door_reolink, camera_driveway_blink]
+    notes: >
+      Built 2026-08-03. No provider is actually wired up to call POST
+      yet (the reference Claude Code routine is blocked on the user
+      granting claude.ai's GitHub App access to ImpressiveLLC/FaceoftheCabin
+      — see MAINTENANCE.md Known Issues) — this entity documents a real,
+      running, but currently-empty table. See CORS-preflight-bug pointer
+      note pattern used on family_note/cabin_camera_event_clip/etc: this
+      endpoint's POST/PATCH are Bearer-token-gated writes reachable
+      cross-origin, so the same OPTIONS-exemption fix in
+      GoogleAuthInterceptor applies here too (built in from day one this
+      time, not retrofitted after a bug report).

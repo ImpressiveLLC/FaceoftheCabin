@@ -192,7 +192,68 @@ Worth being explicit about, since this differs meaningfully by surface:
   presence/hash. This project had a real, if brief, incident where a
   password appeared in a session transcript this way.
 
-## 8. What this guide deliberately doesn't cover
+## 8. Tech ID Service — choosing a scanning tier
+
+See `ROADMAP.md`'s "Tech ID Service — Provider Model" for the full
+design; this section is only the practical setup choice for a new
+instance. The findings API (`POST`/`GET`/`PATCH
+/api/tech-id/findings`) ships with every instance regardless of which
+option below you pick — it's the one piece that isn't optional.
+
+**Step 1 — decide who does the scanning.** Three options, not mutually
+exclusive (an instance can run more than one provider concurrently; the
+API doesn't distinguish):
+
+1. **Use the free reference routine** — a scheduled Claude Code cloud
+   routine (or any equivalent scheduled job) that runs against your own
+   repo/ontology on a recurring cron and POSTs findings to your own
+   instance. This is what the original instance runs. No extra cost
+   beyond whatever AI usage the routine itself consumes.
+2. **Pay the platform operator for a higher tier** — if you'd rather not
+   run your own scanning job, ask about an operator-run scanning
+   service pointed at your instance's `/api/tech-id/findings`. This is
+   a commercial relationship between you and whoever operates that
+   tier, not something this template configures for you.
+3. **Bring your own AI/research pipeline** — point any script, agent, or
+   vendor research API you already pay for at your own instance's
+   endpoint instead. Cheaper, volume-priced models work fine here — the
+   findings contract (`entityId`, `provider`, `findingType`, `summary`,
+   `confidence`, `sources[]`) doesn't care which model produced a
+   finding, only that it's shaped correctly.
+
+**Step 2 — set the shared secret.** In `group_vars/cabin/vars.yml` (or
+your instance's equivalent vault-backed vars file), set
+`tech_id_api_key` and reference it from `.env` as `TECH_ID_API_KEY`
+(mirrors the existing `POSTGRES_PASSWORD`/`HA_TOKEN` pattern — see
+`ansible/README.md`'s Secrets section). Leaving it unset is a valid
+choice: submission returns `503` and the instance simply never receives
+automated findings, which is fine if you don't want this capability at
+all yet.
+
+**Step 3 — configure the scheduled kickoff.** This is a *time-based*
+trigger, not a git-driven one — it should fire on a cron schedule
+regardless of whether anything changed in the repo that day. If using
+the reference routine, this means setting up a `RemoteTrigger` cloud
+routine (or your CI provider's own scheduled-pipeline feature) with:
+your repo URL, a cron expression (the original instance uses monthly:
+`0 8 1 * *`, UTC), and a prompt that has the routine research your
+cataloged ontology entities and `POST` results — with the
+`X-Tech-Id-Api-Key` header — to `https://<your-api-domain>/api/tech-id/findings`
+rather than (or in addition to) opening a PR directly against
+`ontology.yaml`. **Requires granting your CI/scheduling provider's app
+access to your fork** — for a GitHub-App-based scheduler this is a
+one-time step in that provider's own settings, scoped to your specific
+repo/org, distinct from any other GitHub App permission.
+
+**Step 4 — adjudicate.** Findings land in the `new` state and don't
+change anything on their own. A signed-in human reviews them (`PATCH
+/api/tech-id/findings/{id}`, `status: reviewed | actioned | dismissed`)
+and, for anything actually worth keeping, updates the corresponding
+entity's `discovery:` fields in `docs/ontology.yaml` by hand — this
+reconciliation step is intentionally manual today (see `ROADMAP.md`
+Phase 4's open items).
+
+## 9. What this guide deliberately doesn't cover
 
 Family-specific product configuration (parenting schedule, chores,
 rewards, holidays) — that's all done through the running app itself once

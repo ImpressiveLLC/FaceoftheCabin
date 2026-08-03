@@ -49,6 +49,17 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
+        // /api/tech-id/findings carries its own, method-specific gating
+        // (TechIdController): POST checks a shared-secret API key since
+        // submitters are automated providers, not signed-in humans; GET
+        // is intentionally open, matching /api/events. Only PATCH (human
+        // adjudication of a finding) needs this interceptor's Google-
+        // token check -- Spring's addPathPatterns is method-agnostic, so
+        // that split has to happen here instead of in WebConfig.
+        if (request.getRequestURI().startsWith(request.getContextPath() + "/api/tech-id/findings")
+                && ("GET".equalsIgnoreCase(request.getMethod()) || "POST".equalsIgnoreCase(request.getMethod()))) {
+            return true;
+        }
         String token = extractToken(request);
         if (token == null) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Missing bearer token");

@@ -8,6 +8,13 @@ grafana_password: "{{ vault_grafana_password }}"
 ha_token: "{{ vault_ha_token }}"
 home_ha_token: "{{ vault_home_ha_token }}"
 camera_password: "{{ vault_camera_password }}"
+# Optional — Tech ID Service findings-submission key (see
+# docs/REPLICATION.md §8). Defaults to empty rather than requiring a
+# vault edit up front: an unset key is a valid, working state (the
+# backend just refuses submissions with 503 until an operator opts in).
+# Add `vault_tech_id_api_key` to vault.yml and remove the default here
+# once you actually want a provider to be able to submit findings.
+tech_id_api_key: "{{ vault_tech_id_api_key | default('') }}"
 
 # Non-secret config, templated into .env alongside the vaulted values so
 # infra/.env has one generation source instead of being partly-managed.

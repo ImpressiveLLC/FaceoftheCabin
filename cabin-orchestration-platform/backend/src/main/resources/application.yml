@@ -47,6 +47,15 @@ cabin:
       # config) is what lets cabin-ui's authenticated Camera Events panel
       # show real video without exposing Frigate's full surface publicly.
       frigateUrl: ${FRIGATE_URL:http://frigate:5000}
+  techid:
+    # Shared secret any Tech ID Service provider (this instance's own
+    # scheduled Claude Code routine, an operator's paid scanning tier, or
+    # an instance owner's bring-your-own-AI pipeline) must present via
+    # X-Tech-Id-Api-Key to POST /api/tech-id/findings. Unset by default --
+    # submission is refused (503) until an operator opts in, since this
+    # is a write endpoint reachable from the open internet. See
+    # docs/REPLICATION.md's Tech ID Service section for setup.
+    apiKey: ${TECH_ID_API_KEY:}
 
 management:
   endpoints:

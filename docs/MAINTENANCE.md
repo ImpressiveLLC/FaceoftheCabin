@@ -27,7 +27,8 @@ For the strategic/architectural brief, see [`../ROADMAP.md`](../ROADMAP.md).*
 - **cabin-ui** (React + Vite) — the cabin-side control app, includes the
   authenticated Camera Events panel.
 - **cabin-backend** (Spring Boot) — the shared API: notes, chores,
-  profiles, camera media proxy, device status, event ingestion. Talks to
+  profiles, camera media proxy, device status, event ingestion, Tech ID
+  Service findings intake (`/api/tech-id/findings` — see below). Talks to
   Postgres (state), Kafka (event bus), and MQTT (device/camera telemetry
   in).
 - **Frigate** — NVR: camera detection, recording, live streaming. Publishes
@@ -87,11 +88,19 @@ Issues" below for cases where everything *looked* fine and wasn't.
 ## Secrets
 
 Every credential (`POSTGRES_PASSWORD`, `GRAFANA_PASSWORD`, `HA_TOKEN`,
-`CAMERA_PASSWORD`) is Ansible Vault-managed — encrypted at rest,
-committed to git (that's the point of Vault), templated into `infra/.env`
-by the `secrets` role rather than hand-edited. Full setup and rotation
-instructions: [`../ansible/README.md`](../ansible/README.md)'s Secrets
-section.
+`CAMERA_PASSWORD`, `TECH_ID_API_KEY`) is Ansible Vault-managed — encrypted
+at rest, committed to git (that's the point of Vault), templated into
+`infra/.env` by the `secrets` role rather than hand-edited. Full setup and
+rotation instructions: [`../ansible/README.md`](../ansible/README.md)'s
+Secrets section.
+
+`TECH_ID_API_KEY` (→ `cabin.techid.apiKey`) gates `POST
+/api/tech-id/findings` — the shared secret any Tech ID Service provider
+(this instance's own scheduled scan, an operator's paid tier, or an
+instance owner's own AI pipeline) presents via `X-Tech-Id-Api-Key` to
+submit findings. Unset by default; submission returns `503` until an
+operator opts in. See `ROADMAP.md`'s "Tech ID Service — Provider Model"
+and `REPLICATION.md` §8 for the full design and setup steps.
 
 **Quick reference:**
 ```bash
@@ -338,6 +347,22 @@ the actual product UI. This action correctly requires explicit user
 confirmation (Claude Code's auto-mode classifier blocks unconfirmed
 `DELETE`s against a live database) — that's working as intended, not a
 tool to route around.
+
+### `RemoteTrigger` scheduled routine returns 403 without explicit repo access grant (found 2026-08-03)
+
+Creating a claude.ai cloud routine (the mechanism behind the Tech ID
+Service's reference scheduled scan — see `ROADMAP.md`'s "Tech ID Service
+— Provider Model") against `ImpressiveLLC/FaceoftheCabin` fails with
+`HTTP 403: "You don't have access to a repository this routine uses."`
+even when the requesting user has full push access to the repo via git/
+SSH. This is a separate authorization: claude.ai's own GitHub App
+integration must be explicitly granted access to the specific repo
+(more so for an org-owned repo like `ImpressiveLLC` than a personal
+account) via claude.ai's own connector/repository settings — not
+something fixable from this codebase or CLI. **Not yet resolved as of
+this writing**; the routine's full config (name, monthly cron
+`0 8 1 * *` UTC, target repo, model, allowed tools) is designed and
+ready to create the moment access is granted.
 
 ---
 

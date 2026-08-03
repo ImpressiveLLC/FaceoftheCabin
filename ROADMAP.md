@@ -282,6 +282,86 @@ A background platform service that:
 **Ontology growth events:** `ontology.entity.created` · `ontology.entity.updated` · `ontology.entity.deprecated`
 **Ontology is append-only for history** — deprecated entities are flagged, never deleted.
 
+### Tech ID Service — Provider Model
+
+> **Status: the ingestion API is real and live** (`POST`/`GET`/`PATCH
+> /api/tech-id/findings`, `com.cabin.orchestrator.techid` package,
+> `tech_id_finding` Postgres table). The scheduled-scan *provider* side —
+> a routine that actually calls out to an AI/research service and POSTs
+> results here — is not yet wired up for any provider. Everything below
+> this line describes the model this API was built to support.
+
+The scanning work itself (deciding what's new, reading a vendor
+changelog, judging whether a DIY forum post describes something real)
+was never meant to live inside `cabin-backend` — that would hard-wire
+one AI vendor's account into every deployment of this platform, which
+directly contradicts the "replicable by other, unrelated instance
+owners" goal (`docs/REPLICATION.md`). Instead the platform defines one
+normalized **findings contract** any provider can fill in, and stays
+agnostic about who did the research:
+
+```
+TechIdFinding { entityId, provider, findingType, summary, confidence, sources[], status, checkedAt, createdAt }
+```
+
+`provider` is free text, not an enum — accepting insights "from
+anywhere possible" (the point of the finding record's design) means the
+platform never needs a code change to recognize a new source. Three
+providers are expected to exist side by side:
+
+1. **The reference Claude Code routine** — this repo's own scheduled
+   scan (see "Scheduled kickoff" below), included at no extra cost as
+   the default/reference implementation. Anyone standing up a fresh
+   instance from this template gets this for free.
+2. **An operator-run, higher-tier scanning service** — the commercial
+   path: an instance owner who wants deeper or more frequent coverage
+   than the free reference routine pays the platform operator for a
+   richer scan (more source categories, tighter schedule, human-curated
+   query tuning) that still just POSTs `TechIdFinding` rows to their own
+   instance's `/api/tech-id/findings`. From the API's point of view this
+   is indistinguishable from provider 1 or 3 — it's a business-model
+   choice, not an architectural one.
+3. **Bring-your-own-AI** — an instance owner who'd rather run their own
+   scan (a cheaper, volume-priced model instead of Claude, an in-house
+   script, a different vendor's research API entirely) points that
+   pipeline at their own instance's endpoint instead. The platform's job
+   stops at *ingesting and adjudicating* findings, not at mandating who
+   produces them.
+
+**Submission (any provider):** `POST /api/tech-id/findings` with header
+`X-Tech-Id-Api-Key: <cabin.techid.apiKey>`. One shared secret per
+instance gates *whether* a caller may submit at all; `provider` is a
+self-reported label, not a checked identity — there's no per-provider
+credential registry, by design, since that would recreate the
+single-vendor lock-in this model exists to avoid. Unset by default
+(returns `503`) — an operator must opt in.
+
+**Reading:** `GET /api/tech-id/findings?entityId=&limit=` is open,
+matching the existing `/api/events`/`/api/devices` precedent — findings
+aren't more sensitive than event/device data.
+
+**Adjudication:** `PATCH /api/tech-id/findings/{id}` (`status`: `new` →
+`reviewed`/`actioned`/`dismissed`) requires a signed-in human via
+`GoogleAuthInterceptor` — this is the "decision making" step a machine
+provider hands off to a person. A finding landing in the table is a
+*claim*, not an automatic action; nothing here writes back into
+`docs/ontology.yaml`'s `discovery:` fields automatically. Reconciling an
+adjudicated finding into the versioned ontology (today: a human editing
+`ontology.yaml` directly, as done for `nvr_frigate` and the two camera
+entities this session) is a deliberate, separate, slower step — fast/
+live findings vs. slow/versioned ontology history, on purpose.
+
+**Scheduled kickoff, as its own trigger type:** the reference routine
+runs on a recurring cron schedule (a `RemoteTrigger` cloud routine, or
+any equivalent scheduler an instance operator prefers), not on a git
+push, PR, or CI event — "kickoff" here means *time-based*, decoupled
+from whether any code changed. This matters because the platform's
+existing automation triggers (`docs/ontology.yaml`'s event-driven
+automations, GitHub Actions in `.github/workflows/`) are all git- or
+sensor-driven; a monthly tech-opportunity scan needed a genuinely new
+trigger *category* — see `docs/REPLICATION.md`'s Tech ID Service setup
+section for how an instance operator configures one.
+
 ### The Kidde CO Alarm — Canonical Discovery Use Case
 
 > _This is the platform's canonical demo scenario for the Tech ID Service._
@@ -447,20 +527,25 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 
 ### Phase 4 — Tech ID Service
 
-> **Not started.** Fully specified above (see "The Tech ID Service"),
-> zero items built. This is the platform's concrete implementation of
-> Northstar Goal #6 (self-improving discovery / "next best idea"
-> scanning) — a real differentiator on paper, genuinely absent in
-> practice. Realistic next-session scope: a minimal version covering one
-> entity type end to end (e.g. cameras, given the depth of real Frigate
-> integration work already done) rather than the full generalized
-> service in one pass.
+> **Ingestion API built; scanning/provider side not started.** See "Tech
+> ID Service — Provider Model" above for what's real vs. designed. The
+> `TechIdFinding` record, `tech_id_finding` table, and `POST`/`GET`/
+> `PATCH /api/tech-id/findings` endpoints exist and compile/run today.
+> No provider (reference routine, operator tier, or bring-your-own-AI)
+> is actually wired up to call `POST` yet — the ontology's `discovery:`
+> fields on `nvr_frigate`/the two camera entities were populated by hand
+> this session (real WebSearch findings, manually transcribed), not by
+> this API. This is the platform's concrete implementation of Northstar
+> Goal #6 (self-improving discovery / "next best idea" scanning).
 
-- [ ] Build `tech_id_service` container: reads ontology, runs scheduled discovery per entity
-- [ ] Implement Kidde use case as first integration test
+- [x] Define provider-agnostic findings schema (`TechIdFinding`)
+- [x] Build findings ingestion API (`POST`/`GET`/`PATCH /api/tech-id/findings`, shared-secret-gated submission, Google-auth-gated adjudication)
+- [ ] Wire up the reference Claude Code routine as an actual `RemoteTrigger` scheduled scan that POSTs real findings (blocked on the user granting claude.ai GitHub App access to `ImpressiveLLC/FaceoftheCabin` — see `docs/MAINTENANCE.md` Known Issues)
+- [ ] Implement Kidde use case as first end-to-end integration test (browse → scan → finding → adjudicate → ontology update)
+- [ ] Build the reconciliation step: adjudicated (`actioned`) findings write back into `docs/ontology.yaml`'s `discovery:` fields — today this is manual
 - [ ] Publish `ontology.entity.updated` events when discovery flags change
 - [ ] Connect to notification service: push alert when `new_api_available` or `new_alternatives` flip true
-- [ ] Admin UI: `check_for_new` schedule configurable per entity (not YAML-only)
+- [ ] Admin UI: findings review queue (list `status: new`, adjudicate inline) and `check_for_new` schedule configurable per entity (not YAML-only)
 
 ### Phase 5 — Platform UI
 
