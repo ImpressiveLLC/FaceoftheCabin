@@ -1887,13 +1887,13 @@ elements:
         cardinality: "1:N"
     transformation: >
       setCurrentActor(id) writes { id, lastActivity: Date.now() } to
-      sessionStorage and propagates to selectedNoteAuthorId /
-      activeChoreKid. touchActorActivity() refreshes lastActivity on any
-      click/touch inside #dashboard-overlay. checkActorTimeout() runs every
-      30s; if 5 minutes have passed since lastActivity, clears the actor
-      and (if the Dashboard is open) closes it back to the ambient Home
-      view — renderActorPicker() then shows the "Who are you?" prompt again
-      on next entry to Overview.
+      sessionStorage and propagates to activeChoreKid.
+      touchActorActivity() refreshes lastActivity on any click/touch
+      inside #dashboard-overlay. checkActorTimeout() runs every 30s; if 3
+      minutes have passed since lastActivity, clears the actor and (if
+      the Dashboard is open) closes it back to the ambient Home view —
+      renderActorPicker() then shows the "Who are you?" prompt again on
+      next entry to Overview.
     relates_to:
       ui_components: [ui_overview_tab, ui_notepad, ui_chore_kid_selector]
       elements: [family_profile]
@@ -1901,7 +1901,7 @@ elements:
       sessionStorage, not localStorage, deliberately — should not survive
       closing and reopening the browser on someone's personal phone, but
       should survive an accidental same-tab reload on the always-on kiosk
-      display (the 5-minute idle timer is the real reset mechanism there,
+      display (the 3-minute idle timer is the real reset mechanism there,
       not the tab/session boundary). Added 2026-07-31 in response to a
       real, verified bug: the Dashboard's 5-tab row (#dash-tabs) had no
       overflow handling, so the "Family" tab — the existing profile
@@ -1910,6 +1910,26 @@ elements:
       this feature (scrollable tab row, hidden scrollbar, same pattern used
       elsewhere in this file) since it directly blocked reaching the
       current_actor candidate list's source of truth.
+
+      UPDATED 2026-08-02, following an external review of Family Hub
+      identity/attribution: two real bugs fixed. (1) Timeout was actually
+      5 minutes, not 3 — corrected to match original intent. (2) The
+      notepad used to maintain its own independent selectedNoteAuthorId
+      variable, seeded with `currentActorId || profiles[0]?.id` — meaning
+      a note sent with no one selected as "Who am I?" silently attributed
+      to whichever profile happened to be first in the list, and picking
+      a note-author pill could diverge from (and outlive the expiry of)
+      the global acting context. That variable is now gone entirely — the
+      notepad reads currentActorId directly and has no author state of
+      its own. sendNote() now revalidates via checkActorTimeout() at the
+      moment of submission (not just whatever the last 30s poll saw), and
+      the composer (#notepad-input, .np-send) is disabled with a
+      "Who's leaving this note?" prompt (#notepad-author-prompt) whenever
+      currentActorId is null — typed text is never discarded, only held
+      until an identity is chosen. Verified live via Playwright
+      (family-hub/test/run.js, 23/23 passing, 7 new assertions covering
+      the blocked/unblocked states and correct attribution) and via
+      direct in-browser JS execution.
 
 # ═══════════════════════════════════════════════════════════════════════════
 # FAMILY HUB — PARENTING SCHEDULE
@@ -2723,7 +2743,10 @@ elements:
     definition: >
       A single free-text message left on the shared family notepad —
       "same trust as a fridge note," any signed-in actor can post as any
-      profile (selectedNoteAuthorId), not access-controlled per author.
+      profile (attributed via the shared currentActorId acting context —
+      see current_actor's 2026-08-02 update — not access-controlled per
+      author). Requires an explicitly selected actor; never silently
+      defaults to a profile no one chose.
     relationships:
       - target: family_profile
         type: depends_on

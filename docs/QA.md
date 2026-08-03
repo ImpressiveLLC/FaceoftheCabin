@@ -72,9 +72,15 @@ npm test
       the system clock advances 24h+), confirm it slides in on its own —
       the automated test fakes the elapsed time for speed, so this is the
       one behavior worth confirming against a real clock at least once
-- [ ] Multi-tab/device check: open the same URL in two browsers — notes and
-      open/collapsed state do **not** sync between them today (localStorage
-      is per-browser; this is a known limitation, see PRODUCT_NOTES.md)
+- [ ] Multi-tab/device check: open the same URL in two browsers, signed in on
+      both — note **content** now syncs cross-device via `/api/notes` on
+      `cabin-backend` (built 2026-08-01), polled every 20s; confirm a note
+      sent on one device appears on the other within that window. The
+      panel's open/collapsed **UI state** does not sync and isn't meant to
+      — that's still deliberately per-browser (`notepadState`, localStorage
+      only). If `CABIN_API_URL` isn't reachable or the visitor isn't signed
+      in, notes silently fall back to the old localStorage-only behavior —
+      worth checking that fallback explicitly too, not just the happy path.
 
 ### Known gaps
 

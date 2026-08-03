@@ -345,7 +345,7 @@ All items below are **complete and pushed to GitHub**:
 - Nav rail alert state machine: unconfigured → watching → warn (<20 min) → critical (≥20 min)
 - `useDraggableOrder` — HTML5 DnD reorder, localStorage, ALARM auto-pin; works in both panels
 - **ThemeProvider** — 7 presets: Modern, LCARS, Monolith, Retro-CRT, Bluefin-mono, Mad Science, Deep Space (HAL 9000)
-- **Family Notepad** (`family-hub/family-hub.html`) — slide-in/out overlay, right edge, docked with `#chores-card`/`#dashboard-fab`/`#settings-btn`. Full behavioral spec in [`docs/PRODUCT_NOTES.md`](docs/PRODUCT_NOTES.md) § "2026-07-30 — Family Hub: Family Notepad Overlay". `localStorage`-backed (single-device, not synced — see limitation noted there).
+- **Family Notepad** (`family-hub/family-hub.html`) — slide-in/out overlay, right edge, docked with `#chores-card`/`#dashboard-fab`/`#settings-btn`. Full behavioral spec in [`docs/PRODUCT_NOTES.md`](docs/PRODUCT_NOTES.md) § "2026-07-30 — Family Hub: Family Notepad Overlay". Postgres-backed via `cabin-backend`'s `/api/notes` as of 2026-08-01 (cross-device, Google-token gated) — `localStorage` is now an offline mirror/fallback, not the source of truth. Note authorship requires an explicitly-selected "Who am I?" actor as of 2026-08-02 (see PRODUCT_NOTES.md) — never silently defaults.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds

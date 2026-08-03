@@ -921,6 +921,9 @@
       cursor:pointer; transition:all .15s;
     }
     .np-author-pill.active { border-color:var(--gold); background:var(--gold-faint); }
+    .np-author-prompt {
+      font-size:11.5px; color:var(--gold); font-weight:600;
+    }
     .np-input {
       width:100%; resize:none; background:rgba(255,255,255,.06);
       border:1px solid var(--glass-border); border-radius:10px;
@@ -929,12 +932,14 @@
     }
     .np-input:focus { border-color:rgba(232,184,75,.5); }
     .np-input::placeholder { color:rgba(255,255,255,.25); }
+    .np-input:disabled { opacity:.5; cursor:not-allowed; }
     .np-send {
       align-self:flex-end; background:var(--gold); color:#0D0D0D; border:none;
       padding:6px 16px; border-radius:20px; font-family:var(--font-ui);
       font-size:12px; font-weight:600; cursor:pointer; transition:transform .15s;
     }
     .np-send:hover { transform:translateY(-1px); }
+    .np-send:disabled { opacity:.4; cursor:not-allowed; transform:none; }
     #notepad-footer {
       flex-shrink:0; margin-top:10px; padding-top:8px;
       border-top:1px solid var(--glass-border);
@@ -1492,16 +1497,16 @@ function getExtendedFamily() { return profiles.filter(p => p.role === 'guest'); 
 /* ═══════════════════════════════════════════
    "WHO ARE YOU" — ACTOR CONTEXT
    Set once at Dashboard > Overview, persists across every tab/activity in
-   this browser tab until the user changes it or 5 minutes pass with no
+   this browser tab until the user changes it or 3 minutes pass with no
    interaction. Not access control — anyone can pick anyone, same trust
    model as a shared family calendar. sessionStorage (not localStorage):
    should NOT survive closing/reopening the browser on someone's phone,
    but should survive an accidental reload on the always-on kiosk display
-   within the same tab session — the 5-minute idle timer is the real gate
+   within the same tab session — the 3-minute idle timer is the real gate
    there, not the tab boundary.
 ═══════════════════════════════════════════ */
 const ACTOR_KEY = 'smrekar_current_actor';
-const ACTOR_TIMEOUT_MS = 5 * 60 * 1000;
+const ACTOR_TIMEOUT_MS = 3 * 60 * 1000;
 let currentActorId = null;
 
 function loadActorState() {
@@ -1527,7 +1532,6 @@ function initActorState() {
 function setCurrentActor(id) {
   currentActorId = id;
   saveActorState({ id, lastActivity: Date.now() });
-  if (typeof selectedNoteAuthorId !== 'undefined') selectedNoteAuthorId = id;
   if (typeof activeChoreKid !== 'undefined') activeChoreKid = id;
   renderActorPicker();
   renderNoteAuthorRow?.();
@@ -3685,8 +3689,6 @@ function loadNotepadState() {
 let notepadState = loadNotepadState();
 function saveNotepadState() { localStorage.setItem(NOTEPAD_STATE_KEY, JSON.stringify(notepadState)); }
 
-let selectedNoteAuthorId = currentActorId || profiles[0]?.id || null;
-
 function relTime(ts) {
   const diff = Date.now() - ts;
   const min = Math.floor(diff / 60000);
@@ -3714,14 +3716,23 @@ function noteRowHtml(n) {
   </div>`;
 }
 
+// The notepad has no author state of its own — it always reflects the
+// shared "Who am I?" acting context (currentActorId). Picking a pill here
+// calls the same setCurrentActor() the dashboard picker uses, so it can
+// never silently diverge from or outlive the global actor.
 function renderNoteAuthorRow() {
   const row = document.getElementById('notepad-author-row');
+  const prompt = document.getElementById('notepad-author-prompt');
+  const input = document.getElementById('notepad-input');
+  const sendBtn = document.querySelector('.np-send');
   if (!row) return;
   row.innerHTML = profiles.map(p =>
-    `<button type="button" class="np-author-pill${p.id === selectedNoteAuthorId ? ' active' : ''}" onclick="selectNoteAuthor('${p.id}')" title="${esc(p.name)}">${p.avatar || '🙂'}</button>`
+    `<button type="button" class="np-author-pill${p.id === currentActorId ? ' active' : ''}" onclick="setCurrentActor('${p.id}')" title="${esc(p.name)}">${p.avatar || '🙂'}</button>`
   ).join('');
+  if (prompt) prompt.style.display = currentActorId ? 'none' : '';
+  if (input) input.disabled = !currentActorId;
+  if (sendBtn) sendBtn.disabled = !currentActorId;
 }
-function selectNoteAuthor(id) { selectedNoteAuthorId = id; renderNoteAuthorRow(); }
 
 function renderNotepadHandle(latest) {
   const previewEl = document.getElementById('notepad-handle-preview');
@@ -3753,7 +3764,18 @@ function renderNotepad() {
 async function sendNote() {
   const input = document.getElementById('notepad-input');
   const text = input.value.trim();
-  if (!text || !selectedNoteAuthorId) return;
+  if (!text) return;
+
+  // Revalidate right at submit time, not just whenever the 30s interval
+  // last checked — the actor may have expired since the composer was
+  // opened. Never discard what was typed: if there's no valid actor,
+  // just show the prompt and leave the draft in place.
+  checkActorTimeout();
+  if (!currentActorId) {
+    renderNoteAuthorRow();
+    return;
+  }
+  const authorId = currentActorId;
   input.value = '';
 
   let note = null;
@@ -3762,7 +3784,7 @@ async function sendNote() {
       const res = await fetch(`${CABIN_API_URL}/api/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ authorId: selectedNoteAuthorId, text }),
+        body: JSON.stringify({ authorId, text }),
       });
       if (res.ok) note = await res.json();
     } catch (e) {
@@ -3774,7 +3796,7 @@ async function sendNote() {
   if (!note) {
     note = {
       id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      authorId: selectedNoteAuthorId,
+      authorId,
       text,
       ts: Date.now(),
     };
@@ -4159,6 +4181,7 @@ window.addEventListener('load', () => {
     </div>
     <div id="notepad-list" class="np-list"></div>
     <div id="notepad-compose">
+      <div id="notepad-author-prompt" class="np-author-prompt" style="display:none">Who's leaving this note?</div>
       <div id="notepad-author-row" class="np-author-row"></div>
       <textarea id="notepad-input" class="np-input" placeholder="Leave a note for the family…" maxlength="500" rows="2"></textarea>
       <button class="np-send" onclick="sendNote()">Send</button>

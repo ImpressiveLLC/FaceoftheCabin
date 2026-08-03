@@ -76,12 +76,45 @@ function check(label, actual, expected) {
   await page.waitForTimeout(500);
   check('handle click slides panel out', await page.locator('#notepad-panel').evaluate(el => el.classList.contains('open')), true);
 
+  // Sending a note requires an explicit acting identity first -- no
+  // silent default to the first profile (see docs/DEFINITION_OF_DONE.md's
+  // 2026-08-02 note-attribution fix).
+  check('composer is blocked with no actor selected',
+    await page.locator('#notepad-input').isDisabled(), true);
+  check('send button is disabled with no actor selected',
+    await page.locator('.np-send').isDisabled(), true);
+  check('"who\'s leaving this note" prompt is visible with no actor selected',
+    await page.locator('#notepad-author-prompt').isVisible(), true);
+
+  // Pick an identity via the notepad's own author row -- this must set the
+  // *global* acting context (setCurrentActor), not a note-local variable.
+  await page.locator('.np-author-pill').first().click();
+  await page.waitForTimeout(100);
+  check('prompt hides once an actor is selected',
+    await page.locator('#notepad-author-prompt').isVisible(), false);
+  check('composer enables once an actor is selected',
+    await page.locator('#notepad-input').isDisabled(), false);
+
   // Compose a note.
   await page.locator('#notepad-input').fill('Pick up milk on the way home!');
   await page.locator('.np-send').click();
   await page.waitForTimeout(200);
   check('sent note appears in the list', await page.locator('#notepad-list .np-row').count() >= 1, true);
   check('input clears after send', await page.locator('#notepad-input').inputValue(), '');
+  check('sent note is attributed to the selected actor, not a hardcoded default',
+    await page.evaluate(() => loadNotes()[0].authorId), await page.evaluate(() => currentActorId));
+
+  // Actor expiry must clear note attribution too -- they're the same
+  // variable now, not two that can independently drift.
+  await page.evaluate(() => clearActorState());
+  await page.evaluate(() => renderNoteAuthorRow());
+  check('composer re-blocks after the actor is cleared',
+    await page.locator('#notepad-input').isDisabled(), true);
+
+  // Re-select an actor so the rest of the suite (which assumes a working
+  // composer) isn't left in the blocked state.
+  await page.locator('.np-author-pill').first().click();
+  await page.waitForTimeout(100);
 
   // Manual slide-in control (chevron).
   await page.locator('.np-close').click();
