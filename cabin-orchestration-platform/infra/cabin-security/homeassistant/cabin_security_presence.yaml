@@ -1,0 +1,67 @@
+# Nate's WiFi-presence detection for person.natecabin — feeds the
+# `cabin/presence/nate` topic that the cabin-security intrusion flow's
+# "armed + Nate away" gate depends on (see ../README.md and
+# ../nodered/flows.json). Added 2026-08-02 at the user's request: "we
+# need to have my phone on the wifi network be my presence."
+#
+# Router is a Starlink Gen3 gateway with no HA-supported integration, so
+# this uses a direct LAN ARP check (check_nate_phone_wifi.sh) via
+# command_line rather than a router-specific device_tracker platform —
+# HA's nmap_tracker integration would also work but is config-flow-only
+# in this HA version (2026.7.0, confirmed via the installed component's
+# manifest.json — no YAML path), so it can't be package-managed the same
+# way the rest of this repo's HA config is. This stays fully YAML/git
+# tracked instead, consistent with that constraint.
+#
+# Reuses shell_command.cabin_security_publish from cabin_security.yaml
+# (same package directory, merged by HA's packages loader) — its
+# allow-list already permits exactly `cabin/presence/nate` with
+# `home`/`not_home` payloads, so no changes needed there.
+#
+# Debounce is intentionally ASYMMETRIC: "home" publishes immediately on
+# detection, but "not_home" requires 3 continuous minutes of
+# non-detection first. The dangerous failure mode here is a false
+# "away" while Nate is actually home (armed system + a door event would
+# then mean real audible sirens) — a brief WiFi hiccup should never be
+# able to cause that. A false "home" (system doesn't arm when it should)
+# is the safe-side failure and doesn't need the same protection.
+
+command_line:
+  - binary_sensor:
+      name: Nate Phone On WiFi
+      command: "/config/check_nate_phone_wifi.sh"
+      payload_on: "ON"
+      payload_off: "OFF"
+      command_timeout: 30
+      scan_interval: 60
+
+automation:
+  - id: cabin_security_publish_nate_presence_from_phone
+    alias: Cabin Security - Publish Nate Presence From Phone WiFi
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.nate_phone_on_wifi
+        to: "on"
+      - trigger: state
+        entity_id: binary_sensor.nate_phone_on_wifi
+        to: "off"
+        for: "00:03:00"
+    actions:
+      - action: shell_command.cabin_security_publish
+        data:
+          topic: cabin/presence/nate
+          payload: "{{ 'home' if trigger.to_state.state == 'on' else 'not_home' }}"
+
+  - id: cabin_security_publish_presence_at_startup
+    alias: Cabin Security - Publish Phone-Based Presence At Startup
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    actions:
+      - delay: "00:00:10" # let the first command_line poll complete
+      - action: shell_command.cabin_security_publish
+        data:
+          topic: cabin/presence/nate
+          payload: "{{ 'home' if is_state('binary_sensor.nate_phone_on_wifi', 'on') else 'not_home' }}"

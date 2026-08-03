@@ -3,3 +3,10 @@
 # corrupting it in a way that only surfaces the next time someone tries to
 # decrypt (verified once by hand this session; not relying on luck again).
 ansible/group_vars/**/vault.yml -text
+
+# Shell scripts run with #!/bin/sh on Linux hosts -- CRLF line endings
+# break the shebang line and every subsequent line silently (found this
+# risk while adding check_nate_phone_wifi.sh from a Windows checkout;
+# forcing LF here rather than relying on this session's git config).
+*.sh text eol=lf
+

@@ -19,7 +19,37 @@ is actionable. A ten-minute cooldown suppresses repeat triggers.
 
 - `homeassistant/cabin_security.yaml`: Home Assistant helper plus retained
   MQTT publication of arm and presence state.
+- `homeassistant/cabin_security_presence.yaml` +
+  `homeassistant/check_nate_phone_wifi.sh`: WiFi-based presence detection
+  for `person.natecabin`, feeding `cabin/presence/nate`. Added 2026-08-02.
+  See the file's own header comment for why this is a direct LAN ARP
+  check via `command_line` rather than a router integration (no
+  HA-supported integration exists for the Starlink Gen3 gateway, and
+  HA's own `nmap_tracker` is config-flow-only in this HA version, not
+  YAML/package-manageable).
 - `nodered/flows.json`: Node-RED flow using only core nodes.
+
+## Known live drift — not yet reconciled
+
+As of 2026-08-02, the **live** Node-RED flow on the M920q (edited directly
+in the Node-RED editor) has diverged from what's checked in here:
+
+- The committed `cabin_security.yaml` publishes arm state to
+  `cabin/security/armed_away`; the live flow was repointed to listen on a
+  different topic, `cabin/security/node_red_armed`, instead. The
+  `input_boolean.cabin_security_armed_away` helper's HA-side toggle no
+  longer controls anything live as a result.
+- A new `cabin/security/enabled` gate exists live (both this and
+  `node_red_armed` are currently retained `ON`, set via a one-off manual
+  MQTT publish — no HA automation publishes either topic).
+- The live siren output nodes are no longer node-disabled (the README's
+  original "dry-run only" design), and a 2-minute auto-shutoff exists on
+  the live flow that isn't in this file.
+
+User confirmed (2026-08-02) this was intentional — enabled directly via
+Node-RED. Not reconciled back into git yet; flagged here so the next
+person reading this file doesn't trust the "dry-run only" framing above
+without checking the live state first.
 
 ## Safety staging
 
