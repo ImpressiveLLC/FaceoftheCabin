@@ -201,6 +201,7 @@ function CameraEventsPanel({ auth }) {
   const [loading, setLoading] = useState(false);
   const [expandedEventId, setExpandedEventId] = useState(null);
   const [liveCamera, setLiveCamera] = useState(null);
+  const [cameras, setCameras] = useState([]);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -209,12 +210,30 @@ function CameraEventsPanel({ auth }) {
       .finally(() => setLoading(false));
   }, [apiBase]);
 
+  // Real, current camera names from Frigate's own config — NOT derived
+  // from event history. That was the original approach and broke the
+  // moment cameras got renamed 2026-08-02: historical events keep their
+  // old sourceDeviceId forever by design, but Frigate itself only
+  // recognizes the new names, so "watch live" against an old name 404'd
+  // (a real bug, found via live testing after the rename, not caught by
+  // review beforehand).
+  const refreshCameraList = useCallback(() => {
+    if (!auth.accessToken) return;
+    fetch(`${apiBase}/api/camera/list`, {
+      headers: { Authorization: `Bearer ${auth.accessToken}` },
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then(list => setCameras(list.filter(c => c.enabled).map(c => c.name)))
+      .catch(() => setCameras([]));
+  }, [apiBase, auth.accessToken]);
+
   useEffect(() => {
     if (!auth.signedIn) return;
     refresh();
+    refreshCameraList();
     const t = setInterval(refresh, 20000);
     return () => clearInterval(t);
-  }, [auth.signedIn, refresh]);
+  }, [auth.signedIn, refresh, refreshCameraList]);
 
   if (!auth.configured) {
     return (
@@ -235,12 +254,6 @@ function CameraEventsPanel({ auth }) {
     );
   }
 
-  // Cameras worth offering a "watch live" button for — derived from
-  // whichever cameras have actually produced an event recently, since
-  // there's no dedicated "list configured cameras" endpoint yet. A real
-  // limitation if a camera has never fired an event, not a bug.
-  const knownCameras = [...new Set(events.map(e => e.sourceDeviceId).filter(Boolean))];
-
   return (
     <div className="panel-content">
       <div className="panel-header-bar">
@@ -251,10 +264,10 @@ function CameraEventsPanel({ auth }) {
         </div>
       </div>
 
-      {knownCameras.length > 0 && (
+      {cameras.length > 0 && (
         <div className="camera-live-section">
           <div className="camera-live-buttons">
-            {knownCameras.map(cam => (
+            {cameras.map(cam => (
               <button
                 key={cam}
                 className={`btn-secondary${liveCamera === cam ? " active" : ""}`}

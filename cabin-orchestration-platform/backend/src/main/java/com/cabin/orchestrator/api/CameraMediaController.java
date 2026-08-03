@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.api;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +20,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Proxies camera media (snapshot, clip, live stream) from Frigate through
@@ -51,6 +57,43 @@ public class CameraMediaController {
     private final HttpClient http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(5))
         .build();
+
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    /**
+     * Real, current camera names from Frigate's own config — not derived
+     * from event history (that was the original approach in cabin-ui's
+     * "watch live" button list; it broke the moment cameras got renamed
+     * 2026-08-02, since historical events keep their old sourceDeviceId
+     * forever by design, but Frigate itself only recognizes the new
+     * names — a real bug found via live testing, not caught by review).
+     */
+    @GetMapping(value = "/list")
+    public List<Map<String, Object>> list() {
+        List<Map<String, Object>> cameras = new ArrayList<>();
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(frigateUrl + "/api/config"))
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                log.warn("Frigate config fetch returned {}", resp.statusCode());
+                return cameras;
+            }
+            JsonNode root = mapper.readTree(resp.body());
+            JsonNode camerasNode = root.path("cameras");
+            Iterator<String> names = camerasNode.fieldNames();
+            while (names.hasNext()) {
+                String name = names.next();
+                boolean enabled = camerasNode.path(name).path("enabled").asBoolean(false);
+                cameras.add(Map.of("name", name, "enabled", enabled));
+            }
+        } catch (IOException | InterruptedException e) {
+            log.warn("Failed to fetch camera list from Frigate: {}", e.getMessage());
+        }
+        return cameras;
+    }
 
     @GetMapping(value = "/events/{frigateEventId}/snapshot")
     public ResponseEntity<byte[]> snapshot(@PathVariable String frigateEventId) {
