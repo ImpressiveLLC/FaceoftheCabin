@@ -527,20 +527,29 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 
 ### Phase 4 — Tech ID Service
 
-> **Ingestion API built; scanning/provider side not started.** See "Tech
+> **Ingestion API built; reference routine live, PR-based.** See "Tech
 > ID Service — Provider Model" above for what's real vs. designed. The
 > `TechIdFinding` record, `tech_id_finding` table, and `POST`/`GET`/
 > `PATCH /api/tech-id/findings` endpoints exist and compile/run today.
-> No provider (reference routine, operator tier, or bring-your-own-AI)
-> is actually wired up to call `POST` yet — the ontology's `discovery:`
-> fields on `nvr_frigate`/the two camera entities were populated by hand
-> this session (real WebSearch findings, manually transcribed), not by
-> this API. This is the platform's concrete implementation of Northstar
-> Goal #6 (self-improving discovery / "next best idea" scanning).
+> The reference Claude Code routine (`RemoteTrigger` id
+> `trig_0188XfA9eewXVEoumKr7tmkC`, monthly, `0 8 1 * *` UTC) is created
+> and enabled — it researches `check_for_new: true` entities and opens
+> a PR against `docs/ontology.yaml`'s `discovery:` fields directly,
+> **not** by calling `POST /api/tech-id/findings` yet: the routine's
+> cloud sandbox has repo access but no path to the Ansible-vaulted
+> `TECH_ID_API_KEY`, so hardcoding a real secret into a stored,
+> remotely-visible trigger definition was rejected as unsafe. The
+> prompt does POST opportunistically if `TECH_ID_API_KEY` happens to be
+> present as an env var in its sandbox (it isn't, today) — see
+> `docs/MAINTENANCE.md`'s Known Issues for the resolved GitHub-access
+> story and the still-open secret-injection gap. This is the platform's
+> concrete implementation of Northstar Goal #6 (self-improving
+> discovery / "next best idea" scanning).
 
 - [x] Define provider-agnostic findings schema (`TechIdFinding`)
 - [x] Build findings ingestion API (`POST`/`GET`/`PATCH /api/tech-id/findings`, shared-secret-gated submission, Google-auth-gated adjudication)
-- [ ] Wire up the reference Claude Code routine as an actual `RemoteTrigger` scheduled scan that POSTs real findings (blocked on the user granting claude.ai GitHub App access to `ImpressiveLLC/FaceoftheCabin` — see `docs/MAINTENANCE.md` Known Issues)
+- [x] Wire up the reference Claude Code routine as an actual `RemoteTrigger` scheduled scan (PR-based; live-findings POST is opportunistic, blocked on a secret-injection mechanism for cloud-routine sandboxes — see Known Issues)
+- [ ] Give the reference routine a real path to `TECH_ID_API_KEY` (or an equivalent per-provider token) so its findings land in the live table, not just a PR
 - [ ] Implement Kidde use case as first end-to-end integration test (browse → scan → finding → adjudicate → ontology update)
 - [ ] Build the reconciliation step: adjudicated (`actioned`) findings write back into `docs/ontology.yaml`'s `discovery:` fields — today this is manual
 - [ ] Publish `ontology.entity.updated` events when discovery flags change

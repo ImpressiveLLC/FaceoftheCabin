@@ -348,21 +348,36 @@ confirmation (Claude Code's auto-mode classifier blocks unconfirmed
 `DELETE`s against a live database) — that's working as intended, not a
 tool to route around.
 
-### `RemoteTrigger` scheduled routine returns 403 without explicit repo access grant (found 2026-08-03)
+### `RemoteTrigger` scheduled routine returns 403 without explicit repo access grant (found and resolved 2026-08-03)
 
 Creating a claude.ai cloud routine (the mechanism behind the Tech ID
 Service's reference scheduled scan — see `ROADMAP.md`'s "Tech ID Service
-— Provider Model") against `ImpressiveLLC/FaceoftheCabin` fails with
+— Provider Model") against `ImpressiveLLC/FaceoftheCabin` failed with
 `HTTP 403: "You don't have access to a repository this routine uses."`
-even when the requesting user has full push access to the repo via git/
-SSH. This is a separate authorization: claude.ai's own GitHub App
-integration must be explicitly granted access to the specific repo
-(more so for an org-owned repo like `ImpressiveLLC` than a personal
-account) via claude.ai's own connector/repository settings — not
-something fixable from this codebase or CLI. **Not yet resolved as of
-this writing**; the routine's full config (name, monthly cron
-`0 8 1 * *` UTC, target repo, model, allowed tools) is designed and
-ready to create the moment access is granted.
+even with full push access to the repo via git/SSH. Root cause: the
+general claude.ai GitHub connector (repo read/search) is a separate
+grant from the GitHub App's own per-repo access used by Code
+environments/routines — the latter needs explicit approval for an
+org-owned repo (`ImpressiveLLC`), which a personal-account connector
+doesn't cover. **Resolved**: the org owner opened a regular (non-
+scheduled) Code session against the repo from claude.ai, which
+succeeded once GitHub access was actually in place and provisioned a
+real environment. Routines require `job_config.ccr.environment_id` (or
+`self_hosted_runner_pool_id`) — confirmed via a live `400` from the
+`RemoteTrigger create` API when a bare repo URL was tried instead — and
+that Code session's own chat UUID turned out to double as its
+`environment_id`, so no separate lookup UI was needed once the session
+existed. The reference routine (`trig_0188XfA9eewXVEoumKr7tmkC`,
+monthly, `0 8 1 * *` UTC) is now live using that environment.
+
+**Still open**: the routine's cloud sandbox has repo access but no path
+to the Ansible-vaulted `TECH_ID_API_KEY`, so it currently reports
+findings via a PR against `docs/ontology.yaml` rather than `POST
+/api/tech-id/findings` — hardcoding a real secret into a stored,
+remotely-visible trigger definition was rejected as unsafe, and no
+secrets/env-injection field was found on the trigger schema during
+setup. The prompt checks for `TECH_ID_API_KEY` as a sandbox env var and
+POSTs opportunistically if present, but nothing sets it today.
 
 ---
 
