@@ -54,11 +54,44 @@ public class CameraMediaController {
     @Value("${cabin.devices.cameras.frigateUrl:http://frigate:5000}")
     private String frigateUrl;
 
+    // Blink cameras (unlike the Reolink, which is continuously live over
+    // native RTSP) are motion-triggered, not truly live -- blinkbridge
+    // synthesizes Frigate's normal feed from Blink's own motion clips.
+    // "Watch live" for a Blink camera instead triggers a real, on-demand
+    // Blink liveview session via blinkbridge's control API (added
+    // 2026-08-03 -- see blinkbridge's own patches.py/main.py for why this
+    // was needed and how the session is relayed into the same mediamtx
+    // path Frigate already reads from). Unset/empty by default -- a
+    // camera not listed here is assumed to already be truly live (like
+    // the Reolink), and start/stop become harmless no-ops for it.
+    @Value("${cabin.devices.cameras.blinkBridgeUrl:http://blinkbridge:8811}")
+    private String blinkBridgeUrl;
+
+    // "cabinCameraName:blinkDeviceName" pairs, comma-separated -- e.g.
+    // "driveway:Outdoor 4 - DHEE". The right-hand side is Blink's own
+    // device name (used as blinkbridge's URL path segment), which is
+    // unrelated to and doesn't need to match this platform's camera
+    // naming (see docs/ontology.yaml's camera rename history for why
+    // those two naming layers are deliberately kept separate).
+    @Value("${cabin.devices.cameras.blinkCameraMap:}")
+    private String blinkCameraMapRaw;
+
     private final HttpClient http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(5))
         .build();
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    private java.util.Map<String, String> blinkCameraMap() {
+        java.util.Map<String, String> map = new java.util.HashMap<>();
+        if (blinkCameraMapRaw == null || blinkCameraMapRaw.isBlank()) return map;
+        for (String pair : blinkCameraMapRaw.split(",")) {
+            int idx = pair.indexOf(':');
+            if (idx <= 0) continue;
+            map.put(pair.substring(0, idx).trim(), pair.substring(idx + 1).trim());
+        }
+        return map;
+    }
 
     /**
      * Real, current camera names from Frigate's own config — not derived
@@ -134,6 +167,49 @@ public class CameraMediaController {
         return ResponseEntity.ok()
             .contentType(MediaType.valueOf("multipart/x-mixed-replace; boundary=frame"))
             .body(body);
+    }
+
+    /**
+     * POST /api/camera/{cameraName}/liveview/start
+     * Triggers a real, on-demand Blink liveview session for cameras
+     * listed in cabin.devices.cameras.blinkCameraMap. A no-op (ok:true,
+     * skipped:true) for any other camera -- e.g. the Reolink, which is
+     * already continuously live over native RTSP and has nothing to
+     * "start." cabin-ui calls this right before rendering the live
+     * <img> for a camera; see App.jsx's CameraEventsPanel.
+     */
+    @PostMapping(value = "/{cameraName}/liveview/start")
+    public ResponseEntity<?> startLiveview(@PathVariable String cameraName) {
+        return proxyLiveviewControl(cameraName, "start");
+    }
+
+    /** POST /api/camera/{cameraName}/liveview/stop -- see startLiveview's javadoc. Called when the viewer closes the live view. */
+    @PostMapping(value = "/{cameraName}/liveview/stop")
+    public ResponseEntity<?> stopLiveview(@PathVariable String cameraName) {
+        return proxyLiveviewControl(cameraName, "stop");
+    }
+
+    private ResponseEntity<?> proxyLiveviewControl(String cameraName, String action) {
+        String blinkName = blinkCameraMap().get(cameraName);
+        if (blinkName == null) {
+            return ResponseEntity.ok(Map.of("ok", true, "skipped", true));
+        }
+        try {
+            String encoded = java.net.URLEncoder.encode(blinkName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+            HttpRequest req = HttpRequest.newBuilder(URI.create(blinkBridgeUrl + "/liveview/" + encoded + "/" + action))
+                .timeout(Duration.ofSeconds(20))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                log.warn("blinkbridge liveview {} for {} returned {}", action, cameraName, resp.statusCode());
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("ok", false));
+            }
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(resp.body());
+        } catch (IOException | InterruptedException e) {
+            log.warn("Failed to reach blinkbridge for liveview {} on {}: {}", action, cameraName, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("ok", false, "error", "blinkbridge unreachable"));
+        }
     }
 
     private ResponseEntity<byte[]> proxyBytes(String path, MediaType contentType) {

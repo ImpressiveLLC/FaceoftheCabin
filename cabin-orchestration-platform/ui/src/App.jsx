@@ -320,6 +320,21 @@ function CameraEventsPanel({ auth }) {
   const [cameras, setCameras] = useState([]);
   const [cameraListError, setCameraListError] = useState(null);
 
+  // Triggers/ends a real on-demand liveview session for Blink-backed
+  // cameras (a no-op server-side for the Reolink, which is already
+  // continuously live) whenever liveCamera changes -- see
+  // CameraMediaController's startLiveview/stopLiveview and blinkbridge's
+  // own liveview control API (added 2026-08-03). The effect's own
+  // cleanup naturally covers every way this needs to stop: switching to
+  // a different camera, clicking "Stop", or leaving this panel entirely.
+  useEffect(() => {
+    if (!liveCamera || !auth.accessToken) return;
+    auth.authedFetch(`${apiBase}/api/camera/${liveCamera}/liveview/start`, { method: "POST" }).catch(() => {});
+    return () => {
+      auth.authedFetch(`${apiBase}/api/camera/${liveCamera}/liveview/stop`, { method: "POST" }).catch(() => {});
+    };
+  }, [liveCamera, apiBase, auth]);
+
   const refresh = useCallback(() => {
     setLoading(true);
     fetch(`${apiBase}/api/events?limit=30&window=24h`)

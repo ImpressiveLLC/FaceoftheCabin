@@ -1619,6 +1619,42 @@ elements:
       MJPEG endpoint instead, simpler and needing no extra config — see
       `source` above.
 
+      REAL BLINK LIVEVIEW ADDED 2026-08-03: the assumption above --
+      "always-on NVR, no per-view trigger needed" -- turned out to be
+      wrong specifically for camera_driveway_blink. Its feed was never
+      truly live: blinkbridge only republishes Blink's motion-triggered
+      clips on a loop, so "watch live" during the day could show a
+      frozen frame from the last nighttime motion event, hours stale
+      (found via user report: "camera view is still nighttime and it's
+      daytime now"). Fixed by adding a real, on-demand liveview path:
+      cabin-ui's watch-live button now calls POST
+      /api/camera/{cameraName}/liveview/start (CameraMediaController),
+      which -- only for cameras listed in
+      cabin.devices.cameras.blinkCameraMap -- calls blinkbridge's own
+      new liveview control API, which opens a genuine blinkpy
+      BlinkLiveStream session with Blink's cloud and relays it into the
+      same mediamtx path Frigate already reads from, replacing the
+      motion-clip loop for the session's duration only (on-demand, not
+      always-on -- explicit user decision, since Blink battery cameras
+      aren't built for continuous streaming). Confirmed working against
+      the real camera: a snapshot pulled from Frigate mid-session showed
+      genuine current daylight footage, not a cached clip. Session auto-
+      falls-back to the motion loop if Blink's own liveview server ends
+      it early (observed happening twice during testing) or after a 5-
+      minute hard cap if nothing ever calls .../liveview/stop.
+
+      Found and fixed a real bug in the third-party `blinkpy` library
+      while building this: `BlinkLiveStream.recv()` reads its protocol
+      header/payload with `StreamReader.read(n)`, which asyncio does not
+      guarantee returns exactly `n` bytes -- reliably killed every
+      liveview session within a few seconds on a real network
+      connection. Confirmed present in blinkpy 0.25.7 (installed) and
+      0.25.9 (latest on PyPI at the time) -- not something upgrading
+      would have fixed. Patched at runtime (readexactly() instead of
+      read()) via a small monkey-patch in blinkbridge's own source
+      rather than forking blinkpy — see MAINTENANCE.md's Cameras section
+      for exactly where.
+
   - id: cabin_camera_overnight_alert
     entity_type: owl:Class
     layer: integration

@@ -265,6 +265,94 @@ correctly wired the whole time). Two independent causes:
   or Frigate's own `camera_fps` so this doesn't require someone to
   notice "no events in days" before catching it next time.
 
+### Real on-demand liveview for the Blink camera (built 2026-08-03)
+
+**The bug this fixes**: `driveway`'s "live view" was never actually
+live. `blinkbridge` only republishes Blink's motion-triggered clips on
+a loop (see the Frigate config section above), so watching "live"
+during the day could show a stale frame from hours-old nighttime
+motion — reported directly by the user ("camera view is still
+nighttime and it's daytime now, so it's not live") after the previous
+incident's fix already had the camera streaming again.
+
+**The fix**: an actual on-demand Blink liveview session, triggered only
+while someone is watching (explicit decision — Blink battery cameras
+aren't built for continuous streaming; see
+`docs/ontology.yaml`'s `cabin_camera_live_view` entry for the full
+write-up). Three pieces:
+
+1. **`blinkbridge` itself** (source at `/storage/services/blinkbridge-src`
+   on the M920q — **also zero git history**, same known gap as
+   `frigate/config.yml`, backed up to a timestamped copy in the same
+   directory before this session's edits). Added:
+   - A small `aiohttp.web` control API (`POST /liveview/{camera}/start`
+     and `/stop`, port `8811`, reachable only from other containers on
+     `cabin_default`, no host port published) that opens a real
+     `blinkpy` `BlinkLiveStream` session and relays it into the same
+     `mediamtx` path Frigate already reads from — nothing downstream
+     (Frigate config, cabin-backend) needed to change.
+   - Automatic fallback: if Blink's own liveview server ends the
+     session early (observed twice during testing — see the `blinkpy`
+     bug below), or after a 5-minute hard cap if nothing calls `/stop`,
+     the motion-clip loop resumes on its own. Before this, a camera
+     stuck in a dead live session had no recovery path but a manual
+     `/stop` call.
+   - **Found and fixed a real bug in the third-party `blinkpy`
+     library** while building this: its `BlinkLiveStream.recv()` reads
+     protocol data with `StreamReader.read(n)`, which asyncio does
+     **not** guarantee returns exactly `n` bytes — reliably killed
+     every liveview session within ~5 seconds against the real camera
+     ("Insufficient data for payload"). Confirmed present in both the
+     installed version (0.25.7) and the latest on PyPI (0.25.9) at the
+     time — upgrading would not have helped. Patched at runtime via
+     `blinkbridge/patches.py` (`readexactly()` instead of `read()`,
+     applied by monkey-patching the class at import time) rather than
+     forking `blinkpy` — delete that file if a future `blinkpy` release
+     fixes this upstream.
+2. **`cabin-backend`**: `CameraMediaController` gained
+   `POST /api/camera/{cameraName}/liveview/start|stop`, gated the same
+   as the rest of `/api/camera/**`. Config-driven and camera-agnostic —
+   `cabin.devices.cameras.blinkCameraMap` (`TECH_ID`-style
+   `cabinName:blinkDeviceName` pairs, e.g. `driveway:Outdoor 4 - DHEE`)
+   maps this platform's camera names to Blink's own device names. Any
+   camera not in that map (the Reolink) gets a harmless no-op —
+   correct, since it's already continuously live over native RTSP and
+   has nothing to "start."
+3. **`cabin-ui`**: `CameraEventsPanel`'s existing "Watch live" toggle
+   now fires the start/stop calls via a `useEffect` keyed on
+   `liveCamera` — switching cameras, clicking "Stop," or leaving the
+   panel all correctly end the previous session through the same
+   cleanup path, no special-casing needed per trigger.
+
+**Verified against the real camera**, not just code review: a snapshot
+pulled directly from Frigate mid-session showed genuine, current
+daylight footage (sunlit trees, visible ground debris) — a stark
+contrast from the stale nighttime IR frame every attempt showed before
+the `blinkpy` patch.
+
+**Rebuild/redeploy procedure** (for the next time `blinkbridge`
+needs a code change):
+```bash
+# On the M920q, after editing /storage/services/blinkbridge-src/blinkbridge/*.py
+cp -r /storage/services/blinkbridge-src /storage/services/blinkbridge-src.bak-$(date +%Y%m%d-%H%M%S)
+docker build -t cabin-blinkbridge:new /storage/services/blinkbridge-src
+PASS=$(docker inspect blinkbridge --format '{{range .Config.Env}}{{println .}}{{end}}' | grep ^BLINK_PASSWORD= | cut -d= -f2-)
+docker stop blinkbridge && docker rm blinkbridge
+docker run -d --name blinkbridge --network cabin_default --restart unless-stopped \
+  -v /storage/services/blinkbridge:/config \
+  -v /storage/cameras/blinkbridge:/working \
+  -e BLINKBRIDGE_CONFIG=/config/config.json \
+  -e BLINK_USERNAME=nhsmrekar@gmail.com \
+  -e "BLINK_PASSWORD=$PASS" \
+  cabin-blinkbridge:new
+unset PASS
+```
+Never print `$PASS` — keep it inside the remote shell only. (This
+project had a real incident where `docker inspect`'s full environment
+output was dumped without filtering and printed a live password into a
+session transcript — see the Secrets section's "never diff a secret by
+raw value" note; the same discipline applies here.)
+
 ---
 
 ## Overnight Camera Alerts (Node-RED)

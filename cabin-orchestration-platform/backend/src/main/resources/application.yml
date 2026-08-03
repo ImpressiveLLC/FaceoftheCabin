@@ -47,6 +47,15 @@ cabin:
       # config) is what lets cabin-ui's authenticated Camera Events panel
       # show real video without exposing Frigate's full surface publicly.
       frigateUrl: ${FRIGATE_URL:http://frigate:5000}
+      # blinkbridge's own liveview control API (added 2026-08-03) --
+      # cabin_default-only, no host port published, so this default
+      # container-name URL is expected to just work without overriding.
+      blinkBridgeUrl: ${BLINKBRIDGE_URL:http://blinkbridge:8811}
+      # "cabinCameraName:blinkDeviceName" pairs, comma-separated. Empty
+      # by default -- an instance with no Blink camera needs nothing
+      # here, and startLiveview/stopLiveview become harmless no-ops for
+      # every camera. See CameraMediaController's javadoc.
+      blinkCameraMap: ${BLINK_CAMERA_MAP:driveway:Outdoor 4 - DHEE}
   techid:
     # Shared secret any Tech ID Service provider (this instance's own
     # scheduled Claude Code routine, an operator's paid scanning tier, or
