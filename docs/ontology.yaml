@@ -1723,6 +1723,166 @@ elements:
       car/bus/motorcycle/bicycle for vehicles) — flagged to the user
       directly rather than silently dropped without explanation.
 
+  - id: nvr_frigate
+    entity_type: owl:Class
+    layer: infra
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Frigate NVR"
+    source: "Frigate v0.17-0, self-hosted on the M920q, running against a live-config-confirmed camera set (front_door, driveway)"
+    rendering:
+      semantic: "Camera recording/detection system"
+      systems: Frigate NVR
+      technical: "docker container 'frigate', config at /storage/services/frigate/config.yml"
+      compliance: (not shown)
+    definition: >
+      The self-hosted NVR handling detection, recording, and live view for
+      both cabin cameras. Shared infrastructure, not tied to either
+      individual camera.
+    relationships:
+      - target: cabin_camera_event
+        type: controls
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [cabin_camera_event, cabin_camera_continuous_recording]
+    discovery:
+      check_for_new: true
+      check_schedule: monthly
+      last_checked: "2026-08-03"
+      new_alternatives: false
+      other_options: true
+      new_api_available: false
+      deprecated: false
+      notes: >
+        FIRST REAL CHECK (2026-08-03, via live web search, not assumed —
+        see ROADMAP.md's Tech ID Service for why this matters). Findings:
+        (1) Running version is v0.17-0; current stable is v0.17.2 — a
+        minor-version update, worth doing for bug fixes, not urgent.
+        (2) Frigate's GenAI review/object-description feature (per-camera
+        MQTT-toggleable) is ALREADY fully configured in the live config
+        with a detailed, real activity-context-scoring prompt (Level 0-2
+        suspicious-activity assessment) — but genai.enabled is false. This
+        is the single most actionable finding: an already-built,
+        already-configured capability is sitting unused. Turning it on
+        would add AI-scored review levels (normal/suspicious/critical) on
+        top of the raw object-detection alerts already built tonight —
+        genuinely "better utilizing an existing component," not a new
+        purchase. (3) Frigate+'s base detection model was updated to
+        2026.0 (fewer false positives/negatives) — relevant to tuning the
+        person/vehicle/animal labels added 2026-08-03; worth re-evaluating
+        false-positive rates after a model update, not assumed to still be
+        accurate. Sources: github.com/blakeblackshear/frigate/releases,
+        github.com/blakeblackshear/frigate/discussions/21659,
+        docs.frigate.video/frigate/updating.
+
+  - id: camera_front_door_reolink
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Front Door Camera (Reolink RLC-820A)"
+    source: "Physical Reolink RLC-820A PoE camera, IP 192.168.2.200, currently off-network (see MAINTENANCE.md)"
+    rendering:
+      semantic: "Front door camera"
+      systems: Reolink RLC-820A
+      technical: "RTSP sub (640x480, detect) + main (4K, record) streams via admin:4417@192.168.2.200:554"
+      compliance: (not shown)
+    definition: >
+      4K PoE dome camera covering the front-door/driveway area, integrated
+      into Frigate via native RTSP/ONVIF (no bridge needed, unlike the
+      Blink camera).
+    relationships:
+      - target: nvr_frigate
+        type: monitors
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [cabin_camera_event]
+    discovery:
+      check_for_new: true
+      check_schedule: monthly
+      last_checked: "2026-08-03"
+      new_alternatives: false
+      other_options: false
+      new_api_available: true
+      deprecated: false
+      notes: >
+        FIRST REAL CHECK (2026-08-03, via live web search). Findings: (1)
+        Reolink has shipped newer RLC-810A/820A firmware with an added
+        webhook function and improved exposure/night-vision correction —
+        can't confirm whether this camera is on the latest firmware while
+        it's off-network; check once it's physically reconnected. (2)
+        Confirmed: no native HomeKit support on this model — RTSP/ONVIF
+        is genuinely the right integration path already in use, not a
+        gap to fix. (3) No comparable-product alternative search performed
+        yet — out of scope for this pass, camera is not being replaced,
+        only evaluated for better use of what's already owned. Sources:
+        community.reolink.com/topic/14753, support.reolink.com (RLC-820A
+        FAQs).
+
+  - id: camera_driveway_blink
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Driveway Camera (Blink Outdoor 4)"
+    source: "Physical Blink Outdoor 4 ('DHEE'), bridged via blinkbridge -> mediamtx -> Frigate RTSP relay"
+    rendering:
+      semantic: "Driveway camera"
+      systems: Blink Outdoor 4
+      technical: "Synthetic RTSP feed via blinkbridge, single stream (no sub/main split), motion-gated at the source"
+      compliance: (not shown)
+    definition: >
+      Battery-powered Blink camera covering the same front-door/driveway
+      area from a different angle than the Reolink, integrated via a
+      third-party bridge since Blink has no native local RTSP/API.
+    relationships:
+      - target: nvr_frigate
+        type: monitors
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [cabin_camera_event]
+    discovery:
+      check_for_new: true
+      check_schedule: monthly
+      last_checked: "2026-08-03"
+      new_alternatives: true
+      other_options: true
+      new_api_available: false
+      deprecated: false
+      notes: >
+        FIRST REAL CHECK (2026-08-03, via live web search). Findings: (1)
+        Home Assistant has an OFFICIAL Blink integration (cloud-based,
+        not local) providing an alarm-panel entity (arm/disarm the Blink
+        system), a camera entity per linked device, and — genuinely new
+        capability not currently exposed — WiFi-strength and battery-level
+        sensors. The current blinkbridge setup only provides video; it
+        exposes none of this telemetry. Adding the official HA integration
+        alongside the existing Frigate bridge (not replacing it) would be
+        a real, concrete "better utilize what's already owned" win — you'd
+        get battery/WiFi health monitoring for a camera whose bridge has
+        an active, unresolved crash-loop issue (see MAINTENANCE.md),
+        without touching the working video pipeline. (2) Confirmed: RTSP
+        support on Blink is genuinely limited/absent for battery-powered
+        models like this one — the blinkbridge approach is the correct
+        workaround, not a gap. (3) Community-maintained alternative bridges
+        exist (e.g. blink-rtsp-mqtt-bridge on GitHub) — worth knowing about
+        if the current blinkbridge's crash-loop issue is ever pursued as a
+        real fix, not evaluated in depth this pass. Sources:
+        home-assistant.io/integrations/blink,
+        github.com/femmeXFMR/blink-rtsp-mqtt-bridge.
+
   - id: smart_appliance_fridge_liebherr
     entity_type: owl:Class
     layer: integration
