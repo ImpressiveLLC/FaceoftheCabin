@@ -1487,7 +1487,55 @@ function loadProfiles() {
   try { return JSON.parse(localStorage.getItem(PROFILES_KEY) || 'null') || [...DEFAULT_PROFILES]; }
   catch { return [...DEFAULT_PROFILES]; }
 }
+// localStorage remains an offline mirror of server state, same pattern as
+// notes/chores — written on every change below regardless of sync status.
 function saveProfiles() { localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles)); }
+
+// Once per page load: any locally-saved profile the server doesn't know
+// about yet (e.g. a Friends & Family guest added before this backend
+// existed) gets pushed up instead of being silently discarded the first
+// time this device syncs — a real data-loss risk otherwise, since the
+// server's list would just overwrite `profiles` below.
+let profilesMigrated = false;
+
+/** Pulls the shared profile list from cabin-backend. Returns true on success. */
+async function refreshProfilesFromServer() {
+  if (!CABIN_API_URL || !accessToken) return false;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/profiles`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return false;
+    let serverProfiles = await res.json();
+
+    if (!profilesMigrated) {
+      const serverIds = new Set(serverProfiles.map(p => p.id));
+      const localOnly = profiles.filter(p => !serverIds.has(p.id));
+      for (const p of localOnly) {
+        try {
+          const createRes = await fetch(`${CABIN_API_URL}/api/profiles`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify(p),
+          });
+          if (createRes.ok) serverProfiles.push(await createRes.json());
+          else serverProfiles.push(p);
+        } catch (e) {
+          console.warn('Could not migrate local-only profile to cabin-backend, kept locally:', p.id, e);
+          serverProfiles.push(p);
+        }
+      }
+      profilesMigrated = true;
+    }
+
+    profiles = serverProfiles;
+    saveProfiles();
+    return true;
+  } catch (e) {
+    console.warn('Could not sync profiles from cabin-backend:', e);
+    return false;
+  }
+}
 function getKids()    { return profiles.filter(p => p.role === 'kid'); }
 function getPets()    { return profiles.filter(p => p.role === 'pet'); }
 function getParents() { return profiles.filter(p => p.role === 'parent'); }
@@ -2512,6 +2560,13 @@ function rerenderChoreViews() {
   renderRewards();
 }
 
+function rerenderProfileViews() {
+  renderActorPicker();
+  renderNoteAuthorRow?.();
+  if (typeof renderProfilesTab === 'function') renderProfilesTab();
+  if (typeof renderChoreKidSelector === 'function') renderChoreKidSelector();
+}
+
 /** Pulls the shared completion map from cabin-backend. Returns true on success. */
 async function refreshCompletionFromServer() {
   if (!CABIN_API_URL || !accessToken) return false;
@@ -3235,16 +3290,29 @@ function editProfile(id) {
   if (p) openProfileForm(p);
 }
 
-function deleteProfile(id) {
+async function deleteProfile(id) {
   const p = profiles.find(x => x.id === id);
   if (!p) return;
   if (!confirm(`Remove ${p.name} from family profiles?`)) return;
+
+  if (CABIN_API_URL && accessToken) {
+    try {
+      const res = await fetch(`${CABIN_API_URL}/api/profiles/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) console.warn('Profile delete did not sync to cabin-backend, removed locally only:', res.status);
+    } catch (e) {
+      console.warn('Could not reach cabin-backend, removing this profile locally only:', e);
+    }
+  }
+
   profiles = profiles.filter(x => x.id !== id);
   saveProfiles();
   renderProfilesTab();
 }
 
-function saveProfile() {
+async function saveProfile() {
   const id = document.getElementById('pf-id').value;
   const name = document.getElementById('pf-name').value.trim();
   const role = document.getElementById('pf-role').value;
@@ -3268,6 +3336,20 @@ function saveProfile() {
     entry.relation = document.getElementById('pf-relation').value;
     entry.color = document.getElementById('pf-color').value;
   }
+
+  if (CABIN_API_URL && accessToken) {
+    try {
+      const res = await fetch(`${CABIN_API_URL}/api/profiles${id ? '/' + id : ''}`, {
+        method: id ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify(entry),
+      });
+      if (!res.ok) console.warn('Profile did not sync to cabin-backend, saved locally only:', res.status);
+    } catch (e) {
+      console.warn('Could not reach cabin-backend, saving this profile locally only:', e);
+    }
+  }
+
   if (id) {
     const idx = profiles.findIndex(x => x.id === id);
     if (idx >= 0) profiles[idx] = entry;
@@ -3342,15 +3424,17 @@ async function onToken(resp) {
   restorePhotos();
   refreshNotesFromServer().then(ok => { if (ok) renderNotepad(); });
   refreshCompletionFromServer().then(ok => { if (ok) rerenderChoreViews(); });
+  refreshProfilesFromServer().then(ok => { if (ok) rerenderProfileViews(); });
 }
 
-// Cross-device sync poll — picks up notes/chore changes made on other
-// devices while this tab is open. Both refresh functions already no-op
-// when signed out or CABIN_API_URL isn't configured, so this is a safe
-// no-op too in those cases.
+// Cross-device sync poll — picks up notes/chore/profile changes made on
+// other devices while this tab is open. All refresh functions already
+// no-op when signed out or CABIN_API_URL isn't configured, so this is a
+// safe no-op too in those cases.
 setInterval(async () => {
   if (await refreshNotesFromServer()) renderNotepad();
   if (await refreshCompletionFromServer()) rerenderChoreViews();
+  if (await refreshProfilesFromServer()) rerenderProfileViews();
 }, 20000);
 
 // Cabin activity widget — unlike the poll above, this one is NOT gated on
