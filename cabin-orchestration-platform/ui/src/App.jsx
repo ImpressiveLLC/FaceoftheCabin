@@ -189,10 +189,26 @@ function useGoogleAuth() {
     });
   }, [accessToken, handleUnauthorized]);
 
-  return {
+  // Found 2026-08-03: this hook's return value was a fresh object literal
+  // on every render, which is invisible for consumers that only read
+  // primitive fields off it -- but the new liveview useEffect below
+  // depends on the whole `auth` object, and React's effect-dependency
+  // comparison is reference-based. Without this memo, `auth` "changed"
+  // (a new object, same values) on every App() re-render -- and App()
+  // re-renders constantly from its own 15s device-refresh interval and
+  // friends -- so the liveview effect's cleanup+rerun (stop, then start)
+  // fired every few seconds instead of only on a real sign-in/out. Real
+  // symptom in production: /liveview/start and /stop calls looping every
+  // 5-15s, so the live relay never got more than a few seconds to
+  // stabilize before being torn down and restarted -- the camera view
+  // never had a chance to show anything but the last frame from before
+  // the loop started. `refreshCameraList` in CameraEventsPanel had the
+  // same latent bug (excessive re-fetching), just less visible since
+  // repeating a GET is cheaper than repeatedly restarting a live session.
+  return useMemo(() => ({
     accessToken, userEmail, signedIn: !!accessToken, sessionExpired,
     signIn, signOut, authedFetch, configured: !!clientId,
-  };
+  }), [accessToken, userEmail, sessionExpired, signIn, signOut, authedFetch, clientId]);
 }
 
 // ─── Camera media: authenticated snapshot/clip fetch ──────────────────────
