@@ -158,6 +158,97 @@ still paused pending physical access, Phase 6 is still unbuilt by design.
 
 ---
 
+### THIRD CHECK-IN (2026-08-02, still later the same day — a lot shipped)
+
+Everything below is committed and pushed through `535045f`, confirmed
+zero drift across `C:\dev\FaceoftheCabin`, `origin/main`, and the M920q's
+clone (all three at `535045f`, clean working trees). In rough order:
+
+1. **Ansible fully closed out** — user ran the apt install; a real
+   end-to-end secrets rotation ran against the live M920q and
+   self-validated. Two real bugs found/fixed running it for the first
+   time (`ansible.cfg` role search path, an undefined template var). One
+   process note: a `git diff` briefly printed both old and new
+   `POSTGRES_PASSWORD` values into this session's transcript — caught,
+   fixed by rotating again immediately, and saved to memory as a standing
+   rule (never diff secrets by raw value).
+2. **`CabinAutomations` unpushed-commit finding resolved** — a second,
+   divergent clone on the M920q had a real unpushed commit
+   (`docker-compose.cabin.yml`); user confirmed it was wanted, pushed.
+3. **External identity/attribution review, verified and acted on** — the
+   user shared a review (from a separate process/tool) of Family Hub's
+   identity model. Verified its core claims directly against the code
+   before trusting them (found they were accurate): note authorship
+   silently defaulted to the first profile with no "Who am I?" selected,
+   and could diverge from/outlive the acting context's expiry. Fixed:
+   composer now blocks with a "Who's leaving this note?" prompt until an
+   actor is chosen, never discards typed text, revalidates at submit
+   time. Actor timeout corrected 5min → 3min per user confirmation.
+4. **Family profile backend built** (the review's P1) — `/api/profiles`
+   on `cabin-backend`, same JdbcTemplate pattern as notes/chores, with a
+   one-time migration safeguard so any already-existing local-only
+   profile (e.g. a Friends & Family guest from earlier testing) gets
+   pushed up instead of silently overwritten by the first sync. Deployed
+   and verified: table auto-seeds correctly, auth gate returns 401
+   without a token. **Not yet verified**: full authenticated CRUD
+   round-trip — deliberately not tested by disabling auth on the live
+   public API to do so; needs a real signed-in browser session.
+5. **Cabin-security presence detection built** — WiFi-based presence for
+   `person.natecabin` (Android phone, MAC-based LAN check via
+   `command_line` + `nmap`, since the Starlink router has no HA-supported
+   integration and HA's own `nmap_tracker` is config-flow-only in this
+   HA version). Deployed, confirmed live and correctly reporting
+   `not_home` (matches reality). Found and documented, not fixed
+   (user-owned, out of scope to touch uninvited): the live Node-RED
+   intrusion-alarm flow has drifted from git — a different arm-state
+   topic than the committed HA automation publishes to, live siren
+   outputs no longer disabled — user confirmed this was intentional
+   (enabled directly in Node-RED).
+6. **Phase 6 camera video viewing, built** — Frigate config: pre/post
+   capture widened to 15s/60s (both tiers), continuous recording enabled
+   at a deliberately conservative 5-day retention (driveway's record
+   role turned out to be full 4K, changing the storage math significantly
+   from what was assumed at planning time — decided directly with the
+   user given the real risk of filling a disk other services depend on).
+   New `CameraMediaController` on cabin-backend proxies Frigate's real
+   snapshot/clip/live endpoints (confirmed by reading Frigate's installed
+   source directly, not assumed) — Frigate reached by Docker hostname
+   since cabin-backend is already on its network. Found and fixed a real
+   gap: `MqttBridgeService` never captured Frigate's own event id, so
+   even stored clips would've been permanently unreachable. cabin-ui's
+   Camera Events panel now shows real thumbnails and an expandable clip
+   player, plus a live-view button per camera. **Not yet verified**: a
+   real signed-in session actually rendering media — no qualifying
+   recent event existed at deploy time (`outdoor_4` is currently
+   crash-looping on `mediamtx` 404s, a pre-existing issue confirmed via
+   logs from hours before this session touched anything, not a
+   regression). One real mistake worth remembering: backticks inside a
+   double-quoted SSH command got expanded by the *local* shell before
+   transmission, splicing local disk stats into the Frigate config and
+   breaking its YAML — caught immediately (restored from backup, redid
+   the edit via a locally-written file instead of an inline heredoc), no
+   lasting damage, but a sharp reminder to never use backticks inside a
+   double-quoted outer string when building remote commands.
+7. **Liebherr fridge / Bosch dishwasher — documented, not registered.**
+   Both integrations exist in the installed HA version, but neither is
+   configured — both need account credentials/OAuth consent only the
+   user can provide (SmartDevice login for Liebherr; a Home Connect
+   Developer OAuth client_id/secret + account consent for Bosch). Exact
+   steps given to the user; ontology entities added either way.
+
+**Open items, carried forward:** Google OAuth authorized origin for
+`cabin.unicornpingpong.com` (still needed for cabin-ui sign-in to work at
+all — camera events *and* profile sync both depend on this); `driveway`
+camera still paused pending physical access; `front_door` camera showed
+up in the live Frigate config as a disabled stub, previously unknown to
+any session — not investigated further, worth asking the user about;
+Liebherr/Home Connect account linking (user action); real signed-in
+verification of both the profile sync and the camera media proxy;
+`outdoor_4`'s ongoing mediamtx crash-loop (pre-existing, not new, but
+still unresolved).
+
+---
+
 **Last verified:** 2026-08-01, this session's work committed and pending push/deploy
 (see §2/§6/§8 for the actual outcome of that step). Building on the prior
 `73850da` checkpoint (CI/CD runner closed, Tier 1 #1), this session: unified
