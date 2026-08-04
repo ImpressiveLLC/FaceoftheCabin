@@ -57,6 +57,23 @@ services:
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-cabin_grafana}
+      # TEMPORARY, 2026-08-04: disabled the password login form entirely.
+      # Cloudflare Access was confirmed NOT actually gating
+      # grafana.unicornpingpong.com (a fresh, cookie-free request reached
+      # Grafana's own login page directly, no Access challenge) at the
+      # same time Grafana's own Google OAuth was separately failing with
+      # a Google-side 403 for reasons not yet found (test user confirmed
+      # present, People API enabled, redirect URI/client/scopes all
+      # correctly formed). Rather than leave a guessable admin password
+      # reachable from the open internet overnight with neither gate
+      # confirmed working, this closes the actual exploitable surface:
+      # nobody can log in via password (including the admin), and the
+      # still-broken Google button also can't be exploited by a random
+      # attacker (they wouldn't be on the OAuth consent screen's test
+      # user list either way). Re-enable once Access is confirmed
+      # actually enforcing (see docs/MAINTENANCE.md's Grafana section)
+      # -- delete this whole flag, don't just flip it to "false".
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
       GF_SECURITY_ALLOW_EMBEDDING: "true"   # required for iframe embed in cabin-ui
       # Found 2026-08-03 (user report: "won't load off Tailscale"):
       # %(domain)s and %(http_port)s in root_url are template variables
