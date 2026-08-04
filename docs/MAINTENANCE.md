@@ -393,9 +393,11 @@ gated closed until manually republished.
 
 ## Grafana — Off-Tailscale Access via Cloudflare + Google OAuth
 
-**Status as of 2026-08-04: code/config side done and deployed; several
-steps only the account owner can do (Google Cloud Console, Cloudflare
-dashboard) are still open.** Grafana was Tailscale-only by design,
+**Status as of 2026-08-04, end of session: all infrastructure is
+deployed, but neither of the two intended access gates is confirmed
+working — Grafana's password login was deliberately disabled as a
+result. See "Current real state" below before touching this again.**
+Grafana was Tailscale-only by design,
 alongside HA/Node-RED/Zigbee2MQTT (see "Public vs. private surface, by
 design" at the top of this doc) — this is a deliberate, one-off
 exception for Grafana specifically, made after the redirect-bug fix
@@ -447,65 +449,73 @@ same-account, different mechanism.
   an email *not* in `ADMIN_EMAILS` is genuinely refused, not just
   untested.
 
-### What's still open — only the account owner can do these
+### Current real state (end of session, 2026-08-04)
 
-1. **Rotate the Cloudflare Tunnel token first.** It was accidentally
-   printed in full during this work (`docker inspect cloudflared
-   --format '{{.Config.Cmd}}'`, before the lesson below was learned) —
-   treat it as compromised. Cloudflare Zero Trust dashboard → Networks
-   → Tunnels → the tunnel → Configure → rotate/regenerate the token,
-   then on the M920q: `docker rm -f cloudflared && docker run -d
-   --name cloudflared --restart unless-stopped --network cabin_default
-   cloudflare/cloudflared:latest tunnel --no-autoupdate run --token
-   <NEW_TOKEN>` (confirm the exact image/network flags against the
-   currently-running container's config first, filtering for
-   non-secret fields only — see the credential-handling lesson two
-   entries below).
-2. **Get the Google OAuth Client Secret.** Google Cloud Console → APIs
-   & Services → Credentials → the existing Web application OAuth
-   client (same one `GOOGLE_CLIENT_ID` comes from) → "Client secret."
-3. **Add it to the vault yourself** — don't paste it into a chat with
-   any AI assistant, including this one; that puts a real secret in a
-   transcript the same way the tunnel token above ended up exposed.
-   On the M920q:
-   ```bash
-   cd ~/FaceoftheCabin/ansible
-   ansible-vault edit group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass
-   # add: vault_google_client_secret: "<paste here>"
-   ansible-playbook -i inventory.ini site.yml --limit cabin --vault-password-file ~/.ansible_vault_pass --tags secrets
-   ```
-4. **Add the OAuth redirect URI.** Same Google Cloud Console
-   Credentials page, same client → Authorized redirect URIs → add
-   `https://grafana.unicornpingpong.com/grafana/login/google` exactly
-   (Grafana's OAuth callback path, with the `/grafana` sub-path prefix
-   from `GF_SERVER_SERVE_FROM_SUB_PATH`). Google will likely reject a
-   raw IP or plain-HTTP URI here — this is exactly why Grafana needed a
-   real hostname to make OAuth possible at all.
-5. **Cloudflare Zero Trust dashboard**:
-   - Networks → Tunnels → the tunnel → add a **Public Hostname**:
-     `grafana.unicornpingpong.com` → service `http://cabin-grafana:3000`
-     (internal Docker DNS name, not the host's `3002` port — see
-     "Design" above for why that's reachable directly).
-   - Access → Applications → **Add an application** (Self-hosted) for
-     `grafana.unicornpingpong.com`. Policy: Allow, matching **emails**
-     (list the same accounts as `ADMIN_EMAILS`), identity method
-     **One-Time PIN** — deliberately not "Login with Google" here, per
-     the "Design" section above (keeps the Google prompt to exactly
-     once, at Grafana's own login).
-6. **Redeploy and test end to end**:
-   ```bash
-   ssh nate@nates-little-m920q.tailb20f8b.ts.net
-   cd ~/FaceoftheCabin/cabin-orchestration-platform/infra
-   docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-grafana
-   docker compose -f docker-compose.yml -f docker-compose.m920q.yml build cabin-ui
-   docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-ui
-   ```
-   Then from a browser with **no Tailscale connection active**, visit
-   `https://grafana.unicornpingpong.com/grafana/` — should prompt
-   Cloudflare Access's One-Time PIN first, then Grafana's own "Sign in
-   with Google." Also test with an email genuinely outside
-   `ADMIN_EMAILS` to confirm the allow-list is actually enforced at
-   both layers, not just the one that happens to work.
+All the infrastructure setup described above was actually completed
+this session — Cloudflare Tunnel token rotated (multiple times; see
+the dedicated Cloudflare Tunnel setup lesson below), `GOOGLE_CLIENT_SECRET`
+retrieved and added to the vault, redirect URI added in Google Cloud
+Console, Cloudflare Tunnel Public Hostname added
+(`grafana.unicornpingpong.com` → `http://cabin-grafana:3000`), and a
+Cloudflare Access Application + Policy created (Allow, Emails matching
+`ADMIN_EMAILS`, One-Time PIN). **Despite all of that being in place,
+neither access gate is confirmed actually working:**
+
+- **Cloudflare Access is not gating the hostname.** A fresh,
+  cookie-free request to `https://grafana.unicornpingpong.com/grafana/login`
+  returns Grafana's own login page directly (`200`, real Grafana HTML)
+  with no Access challenge at all — confirmed at the very end of the
+  session. It briefly *appeared* to be enforcing earlier (an in-browser
+  test showed a challenge), but the last direct verification says
+  otherwise. Not yet root-caused — possible leads for next time: the
+  Application's domain-match config, whether the Application needs an
+  explicit "publish" step beyond "saved," or a Cloudflare-side
+  propagation delay that a longer wait would resolve (unlike everything
+  else in this saga, this one hasn't been given a clean multi-minute
+  settle-and-retest).
+- **Grafana's own Google OAuth login fails with a Google-side 403**
+  ("We're sorry, but you do not have access to this page. That's all
+  we know.") for `nhsmrekar@gmail.com` — the same account that already
+  works fine for cabin-ui/family-hub through the same OAuth client.
+  Ruled out, confirmed NOT the cause: the account is listed as a Test
+  user on the OAuth consent screen; the Google People API is enabled
+  on the project; the outgoing authorization request itself
+  (`client_id`, `redirect_uri`, `scope`, PKCE params) is correctly
+  formed and matches what's registered. Root cause not found. One
+  untested lead: this request uses `access_type=offline` (requesting a
+  refresh token) with `prompt=consent`, a meaningfully different
+  request shape than cabin-ui's implicit-flow `openid email` scopes —
+  worth checking whether offline/refresh-token access has a stricter
+  or different requirement for Testing-mode apps that hasn't been hit
+  by the simpler flow.
+
+**Because neither gate is confirmed working, Grafana's password login
+was deliberately disabled** (`GF_AUTH_DISABLE_LOGIN_FORM: "true"` in
+`docker-compose.m920q.yml`, commit `6794ae0`) rather than leave a
+guessable admin password reachable from the open internet overnight.
+Confirmed via `curl`: password login now returns `400
+auth.client.notConfigured`. **This means nobody — including the
+admin — can currently log into Grafana at all**, by any method, until
+one of the two gates above is fixed. `hub`/`cabin`/`api` are
+unaffected; this only touches Grafana.
+
+**Next session, in order:**
+1. Give the Cloudflare Access question a real multi-minute settle
+   period and retest with a fresh, cookie-free `curl` (or private
+   browser window) before assuming it's still broken — this specific
+   check was never given the "wait and retry" treatment everything
+   else in this session's Cloudflare work needed.
+2. If Access still isn't gating after that, re-check the Application's
+   exact domain-match configuration in Zero Trust → Access →
+   Applications.
+3. Separately, investigate the Google 403 — the `access_type=offline`
+   lead above is the most promising untried thread. Chrome/Firefox
+   DevTools' Network tab on the actual failed request may show a more
+   specific error than the generic page does.
+4. Once **at least one** gate is confirmed genuinely working, decide
+   whether to re-enable `GF_AUTH_DISABLE_LOGIN_FORM` as a fallback or
+   leave it off now that a real gate exists — don't re-enable it
+   reflexively without that decision.
 
 ---
 

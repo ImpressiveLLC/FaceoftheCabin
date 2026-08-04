@@ -117,10 +117,14 @@ accumulate.*
 
 - **Reolink (`front_door`) camera still physically off-network** — needs
   on-site checking (power, WiFi re-pairing). Not fixable remotely.
-- **Blink (`driveway`) camera's `mediamtx` crash-loop** — pre-existing,
-  low-priority (detection still works when Blink's cloud has recent
-  motion; only affects idle-state log noise and live-view availability
-  when idle).
+- **Grafana has NO working login at all right now** — password login
+  deliberately disabled (open internet exposure, neither access gate
+  confirmed working); Cloudflare Access isn't gating the hostname
+  despite being configured, and Grafana's own Google OAuth 403s for a
+  reason not yet found. See `MAINTENANCE.md`'s Grafana section,
+  "Current real state," for the full diagnosis and next-session order
+  of operations. Highest-priority item for next session — this is a
+  real outage, not a nice-to-have.
 - **Liebherr fridge / Bosch dishwasher account linking** — both need the
   user's own account credentials (SmartDevice login; a Home Connect
   Developer OAuth client_id/secret + account consent). See
@@ -133,6 +137,7 @@ accumulate.*
 
 ---
 
-**Last full session close-out:** 2026-08-03. See git log for the actual
+**Last full session close-out:** 2026-08-04 (ended with a known,
+documented outage — see punch list above; not a clean close). See git log for the actual
 session-by-session record — that's the authoritative history now, not
 this file.

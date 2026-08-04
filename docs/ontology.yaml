@@ -4363,4 +4363,61 @@ elements:
       cabin-orchestration-platform/ subtree), every lookup silently
       degrades to found:false rather than erroring — correct behavior,
       but worth checking explicitly during a New Instance Acceptance
+
+  - id: cabin_grafana_public_access
+    entity_type: owl:Class
+    layer: infra
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: broken
+    data_class: derived
+    data_type: owl:Class
+    constraint:
+      description: >
+        Two independent access gates are meant to sit in front of
+        Grafana once public: Cloudflare Access (edge, email One-Time
+        PIN) and Grafana's own Google OAuth login. As of 2026-08-04
+        neither is confirmed working -- see notes. Grafana's password
+        login is deliberately disabled as a result
+        (GF_AUTH_DISABLE_LOGIN_FORM=true) rather than leave a guessable
+        credential reachable with no confirmed gate in front of it.
+    ui_display_name: "Grafana Remote Access"
+    source: >
+      Cloudflare Tunnel Public Hostname (grafana.unicornpingpong.com ->
+      http://cabin-grafana:3000) + Cloudflare Access Application/Policy
+      + cabin-grafana's GF_AUTH_GOOGLE_* config (docker-compose.m920q.yml).
+    rendering:
+      semantic: "Grafana telemetry, reachable from anywhere (not just the cabin network)"
+      systems: Cloudflare Tunnel public route + Access policy + Grafana Google OAuth
+      technical: "Tunnel ingress rule (Cloudflare-side config, not in this repo) + GF_AUTH_GOOGLE_ENABLED/CLIENT_ID/CLIENT_SECRET/ALLOWED_EMAILS + GF_AUTH_DISABLE_LOGIN_FORM"
+      compliance: Remote Dashboard Access Record
+    definition: >
+      Grafana was Tailscale-only by design, same as every other
+      admin/reconfiguration surface (HA, Node-RED, Zigbee2MQTT) --
+      built 2026-08-04 as an explicit, one-off exception after the
+      user asked for real off-Tailscale reachability (not just a
+      working Tailscale link, which a separate same-day bug fix had
+      already restored). The other three admin surfaces are
+      unchanged and remain Tailscale-only.
+    relationships:
+      - target: cabin_camera_live_view
+        type: relates_to
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      BUILT BUT NOT WORKING, 2026-08-04. All infrastructure is
+      deployed (Tunnel route, Access Application/Policy, Google OAuth
+      config, vaulted client secret) but neither access gate is
+      confirmed functioning: a fresh, cookie-free request to
+      /grafana/login reaches Grafana's own login page directly with no
+      Cloudflare Access challenge at all, and Grafana's own Google
+      sign-in fails with a Google-side 403 for a reason not yet found
+      (test user present, People API enabled, request well-formed --
+      see MAINTENANCE.md's Grafana section, "Current real state," for
+      the full diagnosis). Password login disabled as a safety measure
+      in the meantime -- nobody, including the admin, can currently
+      log into Grafana by any method. Highest-priority open item for
+      the next session.
       Test (REPLICATION.md §5) once this capability is added there.
