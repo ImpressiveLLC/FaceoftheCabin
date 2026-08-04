@@ -71,9 +71,38 @@ services:
       # reached cabin-grafana over the Tailscale IP just fine; only the
       # redirect Location header was wrong. Fixed by making root_url
       # fully explicit instead of template-substituted.
-      GF_SERVER_ROOT_URL: "http://${GRAFANA_EXTERNAL_HOST:-100.77.44.113}:3002/grafana"
+      # UPDATED 2026-08-04: moved off the Tailscale IP to a real HTTPS
+      # hostname behind Cloudflare Tunnel + Access, so Grafana is reachable
+      # without a Tailscale client (the whole point of this change -- see
+      # docs/MAINTENANCE.md's Grafana section). GRAFANA_EXTERNAL_HOST's
+      # meaning changed with it: was "Tailscale IP for the http://ip:3002
+      # redirect fix," now "public hostname for the https:// redirect."
+      # Nothing had overridden it yet, so changing the default is safe.
+      GF_SERVER_ROOT_URL: "https://${GRAFANA_EXTERNAL_HOST:-grafana.unicornpingpong.com}/grafana"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Google OAuth (added 2026-08-04, same move as above). Reuses the
+      # SAME Google Cloud OAuth client as family-hub/cabin-ui
+      # (GOOGLE_CLIENT_ID) rather than registering a second app -- "one
+      # OAuth client to manage, one place to see who's authorized" was the
+      # explicit requirement, not literal zero-click SSO across apps
+      # (Grafana's OAuth is its own server-side redirect; being already
+      # signed into that Google account in-browser just makes it a fast
+      # click-through, not a shared session). GOOGLE_CLIENT_SECRET empty
+      # (the default) leaves this block effectively inert -- Grafana falls
+      # back to its own admin/password login, never locked out.
+      GF_AUTH_GOOGLE_ENABLED: "true"
+      GF_AUTH_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GF_AUTH_GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GF_AUTH_GOOGLE_SCOPES: "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email"
+      GF_AUTH_GOOGLE_ALLOW_SIGN_UP: "true"
+      # NOT YET VERIFIED end-to-end -- `allowed_emails` is a real Grafana
+      # Google-OAuth setting in reasonably recent releases, but this
+      # hasn't been confirmed against whatever `grafana/grafana:latest`
+      # resolves to at actual deploy time. Confirm on first real login
+      # (docs/MAINTENANCE.md's checklist) that an email NOT in ADMIN_EMAILS
+      # is genuinely refused, not just untested.
+      GF_AUTH_GOOGLE_ALLOWED_EMAILS: ${ADMIN_EMAILS:-}
       # grafana/provisioning/datasources/timescale.yml references
       # ${POSTGRES_PASSWORD} for the CabinDB datasource, but this container
       # never actually received that env var — found 2026-08-02 while
@@ -169,7 +198,17 @@ services:
         # load for a non-Tailscale visitor; the rest of the app is
         # unaffected. Revisit only if that's explicitly wanted too.
         VITE_CABIN_WS_BASE: ws://100.77.44.113:9001
-        VITE_CABIN_GRAFANA_URL: http://100.77.44.113:3002
+        # UPDATED 2026-08-04: Grafana explicitly moved OUT of the
+        # Tailscale-only group above, per direct user request ("won't
+        # load off Tailscale" was actually a broken redirect, not this
+        # boundary — but once fixed, the user still wanted real off-
+        # Tailscale reachability). Now behind Cloudflare Tunnel + Access,
+        # gated by the same Google OAuth client as this app rather than
+        # network location. Node-RED/Frigate/HA above are UNCHANGED —
+        # this was a Grafana-specific decision, not a blanket policy
+        # change to the Tailscale-only boundary for admin surfaces. See
+        # docs/MAINTENANCE.md's Grafana section.
+        VITE_CABIN_GRAFANA_URL: https://${GRAFANA_EXTERNAL_HOST:-grafana.unicornpingpong.com}
         VITE_CABIN_NODERED_URL: http://100.77.44.113:1880
         VITE_CABIN_FRIGATE_URL: http://100.77.44.113:5000
         VITE_CABIN_HA_URL: http://100.77.44.113:8123

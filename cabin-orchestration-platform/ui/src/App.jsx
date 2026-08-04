@@ -1565,8 +1565,17 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
 
       <div className="embed-section">
         <div className="embed-label">Grafana — {locCfg.label} Telemetry</div>
+        {/* UPDATED 2026-08-04: Grafana moved behind Cloudflare Tunnel +
+            Access with its own Google OAuth (same client as this app,
+            not Tailscale-gated anymore -- see docs/MAINTENANCE.md's
+            Grafana section). The old "Won't load off Tailscale" label
+            is gone since it's no longer true. Note this iframe still
+            isn't guaranteed to auto-load: it has its own, separate
+            Grafana session from cabin-ui's -- the first time in a given
+            browser, this embed may show Grafana's own Google sign-in
+            prompt inside the frame rather than the dashboard directly. */}
         <div className="tailscale-hint">
-          <Lock size={11} /> Won't load off Tailscale — Grafana is cabin-network-only.
+          <Lock size={11} /> Requires Google sign-in (same account as this app) — may prompt inside the frame on first load.
         </div>
         <iframe
           title={`Grafana ${locCfg.label}`}

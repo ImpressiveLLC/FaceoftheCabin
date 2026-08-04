@@ -391,6 +391,124 @@ gated closed until manually republished.
 
 ---
 
+## Grafana — Off-Tailscale Access via Cloudflare + Google OAuth
+
+**Status as of 2026-08-04: code/config side done and deployed; several
+steps only the account owner can do (Google Cloud Console, Cloudflare
+dashboard) are still open.** Grafana was Tailscale-only by design,
+alongside HA/Node-RED/Zigbee2MQTT (see "Public vs. private surface, by
+design" at the top of this doc) — this is a deliberate, one-off
+exception for Grafana specifically, made after the redirect-bug fix
+above prompted the user to ask for real off-Tailscale reachability, not
+just a working Tailscale link. **Node-RED, Frigate's admin UI, HA, and
+Zigbee2MQTT are unchanged** — still Tailscale-only, still not exposed
+through the tunnel.
+
+**Design**: Grafana gets its own HTTPS hostname
+(`grafana.unicornpingpong.com`) through the existing Cloudflare Tunnel
+(`cloudflared` and `cabin-grafana` already share the `infra_default`
+Docker network, so the tunnel routes straight to
+`http://cabin-grafana:3000` internally — no host port involved), gated
+by a Cloudflare Access policy at the edge (email-based One-Time PIN,
+**not** Google — see below for why), then Grafana's own login requires
+Google OAuth using the **same** Google Cloud OAuth client
+family-hub/cabin-ui already use (`GOOGLE_CLIENT_ID`), not a second
+registered app. Explicit user requirement: "I don't want to oauth
+twice." Realistic version of that: one OAuth *client* to manage (done),
+not literal zero-click SSO across apps (Grafana's OAuth is its own
+server-side redirect — not something this setup collapses into cabin-
+ui's session). Cloudflare Access uses email OTP rather than its own
+Google sign-in specifically so the *Google* OAuth prompt only ever
+happens once, at Grafana's own login — stacking two separate Google
+sign-in prompts (Access, then Grafana) would have been a real "OAuth
+twice" in the way the user meant it, even though technically
+same-account, different mechanism.
+
+### What's done (code side)
+
+- `ansible/group_vars/cabin/vars.yml` / `roles/secrets/templates/env.j2`
+  / `.env.m920q.example`: new `GOOGLE_CLIENT_SECRET` — a **real** secret
+  (unlike `GOOGLE_CLIENT_ID`, which is safe client-side by design),
+  needed because Grafana's OAuth is a server-side authorization-code
+  flow. Empty by default; Grafana's Google auth block stays inert
+  (falls back to its own admin/password login) until this is set.
+- `docker-compose.m920q.yml`'s `cabin-grafana` service: `GF_AUTH_GOOGLE_*`
+  block (enabled, reuses `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`,
+  `GF_AUTH_GOOGLE_ALLOWED_EMAILS` reuses `ADMIN_EMAILS`), and
+  `GF_SERVER_ROOT_URL` updated to `https://grafana.unicornpingpong.com/grafana`
+  (was the Tailscale IP — see the redirect-bug entry above).
+- `cabin-ui`'s `VITE_CABIN_GRAFANA_URL` build arg updated to match, so
+  the embedded dashboard panel and the "Grafana" quick-link both point
+  at the new hostname.
+- **Not yet verified**: `GF_AUTH_GOOGLE_ALLOWED_EMAILS` is a real
+  Grafana setting in reasonably recent releases, but this hasn't been
+  confirmed against whatever `grafana/grafana:latest` resolves to at
+  actual deploy time. Confirm on first real login (step 6 below) that
+  an email *not* in `ADMIN_EMAILS` is genuinely refused, not just
+  untested.
+
+### What's still open — only the account owner can do these
+
+1. **Rotate the Cloudflare Tunnel token first.** It was accidentally
+   printed in full during this work (`docker inspect cloudflared
+   --format '{{.Config.Cmd}}'`, before the lesson below was learned) —
+   treat it as compromised. Cloudflare Zero Trust dashboard → Networks
+   → Tunnels → the tunnel → Configure → rotate/regenerate the token,
+   then on the M920q: `docker rm -f cloudflared && docker run -d
+   --name cloudflared --restart unless-stopped --network cabin_default
+   cloudflare/cloudflared:latest tunnel --no-autoupdate run --token
+   <NEW_TOKEN>` (confirm the exact image/network flags against the
+   currently-running container's config first, filtering for
+   non-secret fields only — see the credential-handling lesson two
+   entries below).
+2. **Get the Google OAuth Client Secret.** Google Cloud Console → APIs
+   & Services → Credentials → the existing Web application OAuth
+   client (same one `GOOGLE_CLIENT_ID` comes from) → "Client secret."
+3. **Add it to the vault yourself** — don't paste it into a chat with
+   any AI assistant, including this one; that puts a real secret in a
+   transcript the same way the tunnel token above ended up exposed.
+   On the M920q:
+   ```bash
+   cd ~/FaceoftheCabin/ansible
+   ansible-vault edit group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass
+   # add: vault_google_client_secret: "<paste here>"
+   ansible-playbook -i inventory.ini site.yml --limit cabin --vault-password-file ~/.ansible_vault_pass --tags secrets
+   ```
+4. **Add the OAuth redirect URI.** Same Google Cloud Console
+   Credentials page, same client → Authorized redirect URIs → add
+   `https://grafana.unicornpingpong.com/grafana/login/google` exactly
+   (Grafana's OAuth callback path, with the `/grafana` sub-path prefix
+   from `GF_SERVER_SERVE_FROM_SUB_PATH`). Google will likely reject a
+   raw IP or plain-HTTP URI here — this is exactly why Grafana needed a
+   real hostname to make OAuth possible at all.
+5. **Cloudflare Zero Trust dashboard**:
+   - Networks → Tunnels → the tunnel → add a **Public Hostname**:
+     `grafana.unicornpingpong.com` → service `http://cabin-grafana:3000`
+     (internal Docker DNS name, not the host's `3002` port — see
+     "Design" above for why that's reachable directly).
+   - Access → Applications → **Add an application** (Self-hosted) for
+     `grafana.unicornpingpong.com`. Policy: Allow, matching **emails**
+     (list the same accounts as `ADMIN_EMAILS`), identity method
+     **One-Time PIN** — deliberately not "Login with Google" here, per
+     the "Design" section above (keeps the Google prompt to exactly
+     once, at Grafana's own login).
+6. **Redeploy and test end to end**:
+   ```bash
+   ssh nate@nates-little-m920q.tailb20f8b.ts.net
+   cd ~/FaceoftheCabin/cabin-orchestration-platform/infra
+   docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-grafana
+   docker compose -f docker-compose.yml -f docker-compose.m920q.yml build cabin-ui
+   docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-ui
+   ```
+   Then from a browser with **no Tailscale connection active**, visit
+   `https://grafana.unicornpingpong.com/grafana/` — should prompt
+   Cloudflare Access's One-Time PIN first, then Grafana's own "Sign in
+   with Google." Also test with an email genuinely outside
+   `ADMIN_EMAILS` to confirm the allow-list is actually enforced at
+   both layers, not just the one that happens to work.
+
+---
+
 ## Known Issues & Operational Lessons
 
 *A working incident log — real problems found and fixed, kept here so
@@ -421,6 +539,13 @@ remap. **Lesson**: when a Docker port mapping remaps the external port
 (`3002:3000`), any app-level "what's my own URL" template variable
 needs to be told the *external* port explicitly — it cannot infer the
 remap from inside the container.
+
+**Follow-up, 2026-08-04**: once this redirect bug was fixed, the user
+asked a fair follow-up — did they actually want Tailscale-only, or did
+they want Grafana reachable from anywhere? They chose the latter.
+`GRAFANA_EXTERNAL_HOST`'s meaning and default changed accordingly (now
+a public hostname, not the Tailscale IP) — see the new "Grafana — Off-
+Tailscale Access" section below for the real fix that followed this one.
 
 ### CORS preflight requests were silently rejected (found 2026-08-03)
 

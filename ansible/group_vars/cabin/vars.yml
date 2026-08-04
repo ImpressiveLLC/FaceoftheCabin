@@ -27,5 +27,15 @@ cabin_api_url: "https://api.unicornpingpong.com"
 # rotate-secrets.yml's comments and ansible/README.md's Secrets section
 # for the drift this was found fixing).
 google_client_id: "434674277184-7666hg0mhh9o3k0dk1rhv17c6o05qvtt.apps.googleusercontent.com"
+# Optional — needed only for server-side OAuth flows (Grafana's own
+# Google login, added 2026-08-04) as opposed to the client-side implicit
+# flow family-hub/cabin-ui use, which never needs a secret. Unlike
+# google_client_id, this genuinely is a secret (a server-side OAuth flow
+# can impersonate the app with it) — get it from Google Cloud Console →
+# APIs & Services → Credentials → the existing Web application client →
+# "Client secret". Add `vault_google_client_secret` to vault.yml; empty
+# is a valid, working state (Grafana's Google auth just stays disabled
+# — see docker-compose.m920q.yml's cabin-grafana GF_AUTH_GOOGLE_ENABLED).
+google_client_secret: "{{ vault_google_client_secret | default('') }}"
 admin_emails: "nhsmrekar@gmail.com"
 home_ha_url: ""
