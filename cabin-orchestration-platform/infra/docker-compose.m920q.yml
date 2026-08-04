@@ -58,7 +58,20 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-cabin_grafana}
       GF_SECURITY_ALLOW_EMBEDDING: "true"   # required for iframe embed in cabin-ui
-      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/grafana"
+      # Found 2026-08-03 (user report: "won't load off Tailscale"):
+      # %(domain)s and %(http_port)s in root_url are template variables
+      # Grafana fills from its OWN [server] domain/http_port settings --
+      # neither was ever set here, so they defaulted to domain=localhost
+      # and http_port=3000 (Grafana's internal container port, with no
+      # idea this host remaps it to 3002). Every request to the real,
+      # externally-reachable address (any browser, Tailscale or not) got
+      # redirected to http://localhost:3000/grafana/ -- "localhost" on
+      # the VIEWER'S OWN machine, which obviously has nothing listening
+      # there. Not a network/firewall/Tailscale problem at all -- curl
+      # reached cabin-grafana over the Tailscale IP just fine; only the
+      # redirect Location header was wrong. Fixed by making root_url
+      # fully explicit instead of template-substituted.
+      GF_SERVER_ROOT_URL: "http://${GRAFANA_EXTERNAL_HOST:-100.77.44.113}:3002/grafana"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       # grafana/provisioning/datasources/timescale.yml references

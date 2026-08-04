@@ -396,6 +396,32 @@ gated closed until manually republished.
 *A working incident log — real problems found and fixed, kept here so
 the next person (or session) doesn't have to rediscover them.*
 
+### Grafana redirected every remote request to "localhost" (found and fixed 2026-08-03)
+
+Reported as "won't load off Tailscale" — cabin-ui already carries an
+honest warning label next to the Grafana embed to that effect
+(`App.jsx`: "Won't load off Tailscale — Grafana is cabin-network-only"),
+so the report read at first like a case of that label finally getting
+noticed, not a bug. It was a bug. `GF_SERVER_ROOT_URL` was set to
+`"%(protocol)s://%(domain)s:%(http_port)s/grafana"` — Grafana fills
+`%(domain)s`/`%(http_port)s` from its own `[server]` settings, neither
+of which was ever configured, so they silently defaulted to
+`domain=localhost` and `http_port=3000` (Grafana's *internal* container
+port — it has no idea this host remaps it to `3002`). Confirmed via
+`curl -I http://100.77.44.113:3002/`: connection succeeded fine (so it
+was never actually a Tailscale/network/firewall issue), but the
+response was `301` to `http://localhost:3000/grafana/` — "localhost"
+meaning the *viewer's own machine*, which has nothing listening on port
+3000. Every real browser hit this same redirect and failed to load,
+regardless of network path. **Fixed** by making `GF_SERVER_ROOT_URL`
+fully explicit (`http://${GRAFANA_EXTERNAL_HOST:-100.77.44.113}:3002/grafana`,
+new optional env var, see `.env.m920q.example`) instead of relying on
+template substitution that had no way to know about the host's port
+remap. **Lesson**: when a Docker port mapping remaps the external port
+(`3002:3000`), any app-level "what's my own URL" template variable
+needs to be told the *external* port explicitly — it cannot infer the
+remap from inside the container.
+
 ### CORS preflight requests were silently rejected (found 2026-08-03)
 
 `GoogleAuthInterceptor` checked for a valid Bearer token on *every*
