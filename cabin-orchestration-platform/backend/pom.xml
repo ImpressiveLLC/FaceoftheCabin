@@ -10,6 +10,7 @@
   <properties>
     <java.version>21</java.version>
     <spring.boot.version>3.3.5</spring.boot.version>
+    <testcontainers.version>1.21.4</testcontainers.version>
   </properties>
 
   <dependencyManagement>
@@ -20,6 +21,31 @@
         <version>${spring.boot.version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <!-- Forces a newer docker-java than the 3.3.6 testcontainers 1.21.4
+           pulls in transitively. That older release's Docker-detection
+           probe hardcodes API version 1.32, which this host's Docker
+           Engine (MinAPIVersion 1.40) rejects outright. Confirmed via raw
+           curl against the daemon socket that both unversioned and
+           explicit-1.44 requests succeed; only the hardcoded 1.32 probe
+           fails. -->
+      <dependency>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java-api</artifactId>
+        <version>3.7.1</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java-transport</artifactId>
+        <version>3.7.1</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java-transport-zerodep</artifactId>
+        <version>3.7.1</version>
+        <scope>test</scope>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -72,6 +98,34 @@
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Explicit versions, not BOM-managed: spring-boot-dependencies (above)
+         also pins org.testcontainers artifacts to an older release (1.19.8),
+         and as the first-imported BOM it wins dependencyManagement's
+         first-import-wins precedence over a testcontainers-bom import
+         listed after it. That stale pin fails against this host's very
+         new Docker Engine (MinAPIVersion 1.40): a hardcoded "client
+         version 1.32" probe gets rejected. Found by testing raw HTTP
+         against the daemon's socket directly and comparing to what got
+         resolved into ~/.m2. Pinning here bypasses the BOM precedence
+         question entirely. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>kafka</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -87,6 +141,17 @@
             </goals>
           </execution>
         </executions>
+      </plugin>
+      <plugin>
+        <!-- Explicit version required: without spring-boot-starter-parent
+             (this pom only imports spring-boot-dependencies for dependency
+             versions, not plugin versions), Maven falls back to a very old
+             default Surefire (2.17, pre-dates JUnit 5 entirely) that
+             silently discovers zero tests and reports BUILD SUCCESS —
+             found the hard way running this project's first-ever tests. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

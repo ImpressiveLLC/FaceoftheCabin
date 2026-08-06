@@ -29,12 +29,21 @@ public class NtfyAlertPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(NtfyAlertPublisher.class);
 
-    @Value("${cabin.alerts.ntfyTopic:}")
-    private String ntfyTopic;
+    private final String ntfyTopic;
+    private final String ntfyBaseUrl;
 
     private final HttpClient http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(5))
         .build();
+
+    public NtfyAlertPublisher(
+            @Value("${cabin.alerts.ntfyTopic:}") String ntfyTopic,
+            // Overridable so tests can point this at a local server instead
+            // of ntfy.sh — not something an operator needs to change.
+            @Value("${cabin.alerts.ntfyBaseUrl:https://ntfy.sh}") String ntfyBaseUrl) {
+        this.ntfyTopic = ntfyTopic;
+        this.ntfyBaseUrl = ntfyBaseUrl;
+    }
 
     public void publishIfCritical(CabinEvent event) {
         if (!"CRITICAL".equals(event.severity())) return;
@@ -44,7 +53,7 @@ public class NtfyAlertPublisher {
         }
         try {
             String message = event.sourceDeviceId() + ": " + event.eventType();
-            HttpRequest req = HttpRequest.newBuilder(URI.create("https://ntfy.sh/" + ntfyTopic))
+            HttpRequest req = HttpRequest.newBuilder(URI.create(ntfyBaseUrl + "/" + ntfyTopic))
                 .timeout(Duration.ofSeconds(10))
                 .header("Title", "Cabin Alert")
                 .header("Priority", "urgent")
