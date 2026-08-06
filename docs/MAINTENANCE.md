@@ -275,6 +275,44 @@ correctly wired the whole time). Two independent causes:
   one-off, so it's been promoted to the open punch list rather than left
   as a suggestion buried in this note.
 
+  **Root cause fully diagnosed, same day, after it went dark a third time
+  within hours of the restart above.** `blinkbridge` is a third-party tool
+  (`github.com/roger-/blinkbridge`, cloned locally at
+  `/storage/services/blinkbridge-src` on the M920q) whose own README
+  already describes exactly the "poll and download the latest clip, ~30s
+  lag by design" model — it was never trying to be truly live, and its own
+  TODO list admits "Better error handling" is unfinished. The actual bug,
+  read directly from `blinkbridge/main.py`: `config/config.json` sets
+  `max_failures: 3`, `restart_delay_seconds: 60`. On the 3rd failure
+  within that window, the code does `self.stream_servers.pop(camera_name)`
+  and logs "too many failures, disabling" — **nothing in the codebase ever
+  adds the camera back.** The only recovery path is a full container
+  restart. Confirmed via full log review that Blink's own API throws
+  intermittent, clearly transient errors (`"throttled"`,
+  `"Cannot connect to host rest-e003.immedia-semi.com"`) every 15
+  minutes to a few hours — normal flakiness for a free-tier cloud API, not
+  evidence of a lapsed trial or account problem, since re-authentication
+  and streaming both succeed cleanly every time it's restarted. Three
+  transient blips in a row (not unusual against this API) is enough to
+  kill the camera for good until a human notices.
+
+  **The fix, in two parts, deliberately not conflated:**
+  1. **Immediate**: patch `main.py` so hitting `max_failures` retries with
+     backoff instead of permanently disabling — small, scoped change to
+     code with direct git access, targets the actual bug (permanent
+     give-up) rather than the symptom (camera dark).
+  2. **Separate, bigger question, intentionally not bundled into the
+     patch above**: whether to decouple reliable clip-recording from the
+     RTSP-live-relay entirely, since the live relay (FFmpeg muxing,
+     liveview session handoff) is where most of the remaining complexity
+     and fragility lives, and "recording first" doesn't structurally
+     require it. The user recalled agreeing to exactly this direction in
+     an earlier session — **that decision was never written down anywhere
+     in this repo** and had to be reconstructed from memory alone. See
+     `CLAUDE.md`'s new "Decisions made where Claude can't commit" section
+     for the process fix that's meant to prevent this specific failure
+     mode from recurring.
+
 ### Real on-demand liveview for the Blink camera (built 2026-08-03)
 
 **The bug this fixes**: `driveway`'s "live view" was never actually

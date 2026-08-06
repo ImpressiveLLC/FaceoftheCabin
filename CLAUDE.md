@@ -27,6 +27,21 @@ This platform is designed to be worked on across multiple machines. The rule is 
 
 **If Claude can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
 
+**Decisions made where Claude can't commit (Claude web at the cabin — no
+Claude Code on the M920q) need an explicit hand-back, not just a good
+conversation.** Found 2026-08-06: a real, discussed, agreed decision about
+`blinkbridge`'s architecture was made in a cabin Claude-web session and
+then genuinely lost — nothing in the repo recorded it, and the next
+Claude Code session had to reconstruct it from the user's memory alone.
+The context-loading side of this was already solved (paste CLAUDE.md's
+URL at the start of a cabin web session — see the cabin-context guidance
+this file is meant to satisfy), but nothing closed the loop on the way
+back out. **If you reach a real decision, plan, or agreement in a session
+that can't commit to git directly, tell the user exactly what to paste
+into `docs/DEFINITION_OF_DONE.md`'s "Next Session — Open Items" list
+before the session ends.** A decision that exists only in a chat
+transcript does not exist for the next session, Code or web.
+
 ---
 
 ## What this repo is
