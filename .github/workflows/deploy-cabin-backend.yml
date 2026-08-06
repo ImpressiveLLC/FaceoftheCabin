@@ -1,0 +1,145 @@
+name: Deploy cabin-backend (tested, health-checked, auto-rollback)
+
+# Same self-hosted-runner model as deploy-family-hub.yml (see that file's
+# header comment for why: Tailscale-only target behind CGNAT, no secrets
+# pushed to GitHub). Split into its own workflow rather than folded into
+# deploy-family-hub.yml because cabin-backend is stateful/sensitive enough
+# to warrant a considered rollout -- deploy-family-hub.yml's own comment
+# already said as much when it explicitly excluded cabin-backend from its
+# blanket rebuild-on-push.
+#
+# What "considered" means here, concretely:
+#   1. mvn test must pass before anything is built or touched. If it
+#      doesn't, the job stops here -- the currently running container is
+#      never touched, so a failing change simply never deploys. That IS
+#      the "revert" behavior: nothing to revert because nothing changed.
+#   2. The image is tagged by git short SHA, not :latest. A deploy is
+#      always a new, distinct, immutable artifact -- never an in-place
+#      mutation of the running one.
+#   3. The new container is health-checked against /actuator/health
+#      before it's trusted. If it doesn't become healthy within the
+#      timeout, the previous image is redeployed automatically and the
+#      job still fails (red in the Actions tab) so the failure is visible,
+#      but the service itself is left running on the last-known-good
+#      image rather than down.
+#   4. Every run's full log (build output, test results, health-check
+#      polling, which path was taken) is preserved permanently by GitHub
+#      Actions -- that's the "preserved as a candidate" record; the
+#      commit itself is already preserved by git regardless of whether
+#      this workflow ever deploys it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cabin-orchestration-platform/backend/**"
+      - "cabin-orchestration-platform/infra/docker-compose.yml"
+      - "cabin-orchestration-platform/infra/docker-compose.m920q.yml"
+      - ".github/workflows/deploy-cabin-backend.yml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, cabin-m920q]
+    steps:
+      - name: Pull latest
+        run: |
+          cd "$DEPLOY_PATH"
+          git fetch origin main
+          git reset --hard origin/main
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+
+      - name: Run tests (mvn test) -- deploy stops here on failure
+        run: |
+          cd "$DEPLOY_PATH/cabin-orchestration-platform/backend"
+          # Portable Temurin 21 installed 2026-08-06 specifically for this
+          # workflow -- the host's system Java (openjdk-25-jre-headless)
+          # lacks --release 21 cross-compilation data and has no javac at
+          # all (JRE, not JDK). User-space install, doesn't touch system
+          # Java. If this path is missing, that install needs redoing --
+          # see the "Add MVP severity tiering" and "Add this project's
+          # first automated tests" commits' messages for the full story.
+          export JAVA_HOME="$JDK_PATH"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          if [ ! -x "$JAVA_HOME/bin/java" ]; then
+            echo "::error::Portable JDK not found at $JDK_PATH -- see this step's comment."
+            exit 1
+          fi
+          mvn test
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          JDK_PATH: ${{ vars.CABIN_BACKEND_JDK_PATH || '/home/nate/.jdks/jdk-21.0.12+8' }}
+
+      - name: Build, deploy, health-check, roll back on failure
+        run: |
+          cd "$DEPLOY_PATH/cabin-orchestration-platform/infra"
+          COMPOSE="docker compose -f docker-compose.yml -f docker-compose.m920q.yml"
+
+          SHA=$(git -C "$DEPLOY_PATH" rev-parse --short HEAD)
+          echo "Deploying cabin-backend:$SHA"
+
+          # One-time bridge for the very first run of this workflow: earlier
+          # manual deploys (before this file existed) built and ran the
+          # image under compose's old auto-generated name,
+          # infra-cabin-backend:latest, since no explicit `image:` was set
+          # yet. Give it the new name too so a rollback target always
+          # exists even on this workflow's first-ever run. No-op once
+          # cabin-backend:latest already exists from a prior run of this
+          # workflow.
+          if ! docker image inspect cabin-backend:latest >/dev/null 2>&1; then
+            docker tag infra-cabin-backend:latest cabin-backend:latest 2>/dev/null || true
+          fi
+
+          # Whatever image cabin-backend is running right now -- this is
+          # what we roll back to if the new one doesn't come up healthy.
+          # Empty if the container doesn't exist yet (first-ever run
+          # overall, no bridge tag either), which is a valid state:
+          # nothing to roll back to, so a health-check failure just leaves
+          # it stopped rather than run something undefined.
+          PREVIOUS_IMAGE=$(docker inspect --format '{{.Config.Image}}' cabin-backend 2>/dev/null || true)
+          PREVIOUS_TAG="${PREVIOUS_IMAGE##*:}"
+          echo "Previous image: ${PREVIOUS_IMAGE:-<none, first deploy>}"
+
+          IMAGE_TAG="$SHA" $COMPOSE build cabin-backend
+          IMAGE_TAG="$SHA" $COMPOSE up -d cabin-backend
+
+          echo "Waiting for cabin-backend to become healthy..."
+          HEALTHY=false
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8090/actuator/health | grep -q '"status":"UP"'; then
+              HEALTHY=true
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$HEALTHY" = true ]; then
+            echo "cabin-backend:$SHA is healthy. Promoting to :latest."
+            docker tag "cabin-backend:$SHA" "cabin-backend:latest"
+            echo "DEPLOY SUCCEEDED: cabin-backend:$SHA"
+          else
+            echo "::error::cabin-backend:$SHA failed its health check within 60s."
+            docker logs cabin-backend --tail 100 || true
+            if [ -n "$PREVIOUS_IMAGE" ]; then
+              echo "Rolling back to $PREVIOUS_IMAGE (tag: $PREVIOUS_TAG)"
+              # Redeploy through compose, not a hand-built `docker run` --
+              # compose is what actually knows cabin-backend's correct
+              # runtime environment/network/volumes (docker-compose.yml +
+              # docker-compose.m920q.yml), which live in the compose files,
+              # not in image metadata. Only the tag changes.
+              IMAGE_TAG="$PREVIOUS_TAG" $COMPOSE up -d cabin-backend
+              echo "DEPLOY FAILED, rolled back to previous image: $PREVIOUS_IMAGE"
+            else
+              echo "::error::No previous image to roll back to (first-ever deploy) -- cabin-backend is now stopped, needs manual intervention."
+            fi
+            exit 1
+          fi
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+
+      - name: Prune dangling (untagged) images only
+        # Deliberately NOT -a: keeps every SHA-tagged image (including
+        # older ones) available for a manual rollback later. Untagged
+        # intermediate build layers are safe to drop every run.
+        run: docker image prune -f

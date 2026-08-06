@@ -142,6 +142,14 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+    # Explicit, SHA-taggable name -- without this, `docker compose build`
+    # auto-names the image `infra-cabin-backend:latest` (project dir +
+    # service name), which can't hold more than one version at a time.
+    # deploy-cabin-backend.yml sets IMAGE_TAG=<git sha> per deploy so the
+    # previous image stays addressable for rollback; unset (plain
+    # `docker compose up -d cabin-backend`, e.g. for local/manual work)
+    # falls back to :latest exactly like before this existed.
+    image: cabin-backend:${IMAGE_TAG:-latest}
     container_name: cabin-backend
     restart: unless-stopped
     ports:
