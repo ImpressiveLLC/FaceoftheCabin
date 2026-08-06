@@ -49,6 +49,9 @@ function check(label, actual, expected) {
 
   await page.goto(`http://localhost:${PORT}/family-hub.html`, { waitUntil: 'load' });
   await page.waitForTimeout(400);
+  // The remaining journey exercises the signed-in hub surface; auth itself is
+  // covered separately in the mobile layering check below.
+  await page.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
 
   // Default state is slid-in (collapsed), not open.
   check('default state is slid-in',
@@ -163,6 +166,51 @@ function check(label, actual, expected) {
   check('"last 50 notes are saved" hint is present', await page.locator('#note-history-overlay .np-save-hint').isVisible(), true);
 
   check('no JS errors during the run', jsErrors, []);
+
+  // Phone journey: every high-frequency family action must be visible and
+  // reachable without hunting through tabs or losing the current hub context.
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const mobileJsErrors = [];
+  mobile.on('pageerror', e => mobileJsErrors.push(e.message));
+  mobile.on('console', msg => { if (msg.type() === 'error') mobileJsErrors.push(msg.text()); });
+  await mobile.goto(`http://localhost:${PORT}/family-hub.html`, { waitUntil: 'load' });
+  await mobile.waitForTimeout(400);
+
+  check('sign-in context hides quick actions until the hub is available', await mobile.locator('#mobile-action-dock').isVisible(), false);
+  await mobile.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
+
+  check('mobile quick-action dock is visible', await mobile.locator('#mobile-action-dock').isVisible(), true);
+  check('mobile dock exposes four single-tap actions', await mobile.locator('#mobile-action-dock .mobile-action').count(), 4);
+  check('desktop dashboard FAB is replaced on mobile', await mobile.locator('#dashboard-fab').isVisible(), false);
+  check('mobile page has no horizontal document overflow', await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+
+  await mobile.getByRole('button', { name: 'View the parenting schedule' }).click();
+  await mobile.waitForTimeout(150);
+  check('schedule action opens dashboard', await mobile.locator('#dashboard-overlay').getAttribute('aria-hidden'), 'false');
+  check('schedule action lands directly in Parenting Days', await mobile.locator('#tab-schedule').evaluate(el => el.classList.contains('active')), true);
+  check('schedule remains horizontally scrollable instead of squeezing days unreadably',
+    await mobile.locator('#schedule-grid').evaluate(el => el.scrollWidth > el.clientWidth), true);
+
+  await mobile.locator('#dash-close').click();
+  await mobile.getByRole('button', { name: 'Read or send a family note' }).click();
+  await mobile.waitForTimeout(150);
+  check('notes action opens composer in the same hub context', await mobile.locator('#notepad-panel').evaluate(el => el.classList.contains('open')), true);
+  const noteBox = await mobile.locator('#notepad-panel').boundingBox();
+  const dockBox = await mobile.locator('#mobile-action-dock').boundingBox();
+  check('open note composer stays above the mobile action dock', noteBox.y + noteBox.height <= dockBox.y + 1, true);
+
+  await mobile.getByRole('button', { name: 'Open the family dashboard' }).click();
+  await mobile.waitForTimeout(150);
+  check('overview secondary cards collapse for one-screen scanning', await mobile.locator('#tab-overview .dash-card.mobile-collapsed').count() > 0, true);
+  check('next-seven-days schedule stays expanded by default',
+    await mobile.locator('#tab-overview .dash-card').filter({ hasText: 'Next 7 Days' }).evaluate(el => !el.classList.contains('mobile-collapsed')), true);
+  check('unconfigured cabin activity explains why instead of disappearing',
+    (await mobile.locator('#cabin-activity-widget').innerText()).includes('not connected on this device'), true);
+  check('unavailable house capability explains its status onscreen',
+    (await mobile.locator('.location-link-disabled').innerText()).includes('working template'), true);
+  check('no JS errors during mobile journey', mobileJsErrors, []);
+
+  await mobile.close();
 
   await browser.close();
   await new Promise(r => server.close(r));

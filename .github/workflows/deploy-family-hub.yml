@@ -38,6 +38,15 @@ jobs:
           # fallback if that's ever unset.
           DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
 
+      - name: Validate Family Hub desktop and mobile journeys
+        run: |
+          cd "$DEPLOY_PATH/family-hub"
+          QA_TAG="family-hub-qa:$(git -C "$DEPLOY_PATH" rev-parse --short HEAD)"
+          docker build -f test/Dockerfile -t "$QA_TAG" .
+          docker run --rm "$QA_TAG"
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+
       - name: Rebuild and restart family-hub + cabin-ui
         run: |
           cd "$DEPLOY_PATH/cabin-orchestration-platform/infra"

@@ -513,6 +513,18 @@
     }
     .cabin-activity-warning a { color:var(--gold); text-decoration:underline; cursor:pointer; }
 
+    .context-explainer {
+      margin-top:8px; padding:10px 12px; border-radius:11px;
+      background:rgba(74,172,232,.07); border:1px solid rgba(74,172,232,.18);
+      color:var(--cream-dim); font-size:11px; line-height:1.5;
+    }
+    .context-explainer strong { color:var(--cream); }
+    .context-explainer button {
+      appearance:none; border:0; background:none; color:var(--gold);
+      padding:0; font:inherit; font-weight:600; text-decoration:underline;
+      cursor:pointer;
+    }
+
     /* ── Schedule Tab ── */
     .schedule-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
     .sched-day {
@@ -652,7 +664,7 @@
     ═══════════════════════════════════════════ */
     #settings-panel {
       position:fixed; top:0; right:-430px; width:410px;
-      height:100vh; height:100dvh; z-index:9999;
+      height:100vh; height:100dvh; z-index:20001;
       max-width:100vw;
       background:rgba(8,12,18,.98); border-left:1px solid var(--glass-border);
       backdrop-filter:blur(24px);
@@ -757,7 +769,10 @@
        AUTH OVERLAY
     ═══════════════════════════════════════════ */
     #auth-overlay {
-      position:fixed; inset:0; z-index:60;
+      /* Sign-in is the entry context: no ambient or quick action may appear
+         actionable above it. Settings remains one layer higher because the
+         sign-in explanation deliberately links there for configuration. */
+      position:fixed; inset:0; z-index:20000;
       background:rgba(8,12,18,.93);
       /* backdrop-filter removed: creates stacking context that conflicts with animation */
       display:flex; flex-direction:column;
@@ -765,6 +780,10 @@
       animation: appFadeIn .7s ease both;
     }
     #auth-overlay.hidden { display:none; }
+    #auth-overlay:not(.hidden) ~ #mobile-action-dock,
+    #auth-overlay:not(.hidden) ~ #dashboard-fab,
+    #auth-overlay:not(.hidden) ~ #notepad-panel,
+    #auth-overlay:not(.hidden) ~ #settings-btn { visibility:hidden; }
     .auth-logo { font-size:52px; }
     .auth-h1 { font-family:var(--font-display); font-size:54px; font-weight:400; color:var(--cream); letter-spacing:-1px; }
     .auth-sub { font-size:15px; color:var(--cream-dim); text-align:center; max-width:360px; line-height:1.65; }
@@ -1179,6 +1198,12 @@
     }
     .actor-switch-btn:hover { border-color:var(--gold); color:var(--gold); }
 
+    /* Phone/tablet primary actions stay reachable without forcing users to
+       rediscover them inside a full-screen dashboard. Hidden on ambient
+       displays, where the existing right-side controls remain appropriate. */
+    #mobile-action-dock { display:none; }
+    .mobile-collapse-indicator { display:none; }
+
     /* ═══════════════════════════════════════════
        RESPONSIVE OVERRIDES — deliberately last in the stylesheet.
        These override #app/#top-bar/#center-area/#left-col/#chores-card/
@@ -1199,13 +1224,65 @@
       #app {
         grid-template-columns: 1fr;
         grid-template-rows: auto auto auto auto auto;
-        padding: 18px 16px 110px; /* extra bottom padding clears the FABs — dashboard-fab grew a bit taller */
+        padding: 18px 16px calc(104px + env(safe-area-inset-bottom));
       }
       #top-bar { grid-column:1; grid-row:1; }
       #center-area { grid-column:1; grid-row:2; }
       #left-col { grid-column:1; grid-row:3; }
       #chores-card { grid-column:1; grid-row:4; }
       #bottom-bar { grid-column:1; grid-row:5; padding-right:0; }
+
+      #dashboard-fab, #settings-btn { display:none; }
+      #mobile-action-dock {
+        position:fixed; left:10px; right:10px; bottom:calc(8px + env(safe-area-inset-bottom));
+        z-index:10000; display:grid; grid-template-columns:repeat(4,1fr); gap:6px;
+        padding:7px; border:1px solid var(--glass-border); border-radius:18px;
+        background:rgba(2,4,9,.94); backdrop-filter:blur(26px) saturate(1.4);
+        -webkit-backdrop-filter:blur(26px) saturate(1.4);
+        box-shadow:0 12px 40px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.06);
+      }
+      .mobile-action {
+        appearance:none; border:0; border-radius:12px; min-height:56px;
+        padding:7px 4px; background:transparent; color:var(--cream-dim);
+        font-family:var(--font-ui); cursor:pointer; display:flex;
+        flex-direction:column; align-items:center; justify-content:center; gap:2px;
+      }
+      .mobile-action:active, .mobile-action:focus-visible {
+        background:var(--gold-faint); color:var(--gold); outline:2px solid var(--gold);
+        outline-offset:-2px;
+      }
+      .mobile-action-icon { font-size:18px; line-height:1; }
+      .mobile-action-label { font-size:11px; font-weight:650; }
+
+      #dash-topbar { padding:16px 16px 0; }
+      #dash-title { font-size:21px; }
+      #dash-close { min-height:44px; min-width:44px; }
+      #dash-content { padding:16px 16px calc(88px + env(safe-area-inset-bottom)); }
+      .dash-grid-2, .dash-grid-3 { grid-template-columns:1fr; gap:10px; }
+      .dash-grid-3 { margin-top:10px; }
+      .dash-card { padding:14px 15px; }
+      .dash-card-title.mobile-collapsible {
+        min-height:44px; margin:-8px -6px 0; padding:8px 6px;
+        display:flex; align-items:center; justify-content:space-between; gap:10px;
+        cursor:pointer; touch-action:manipulation;
+      }
+      .mobile-collapse-indicator { display:inline; font-size:16px; transition:transform .2s; }
+      .dash-card.mobile-collapsed .mobile-collapse-indicator { transform:rotate(-90deg); }
+      .dash-card.mobile-collapsed .dash-card-body { display:none; }
+
+      .schedule-grid {
+        grid-template-columns:repeat(7,minmax(58px,1fr));
+        overflow-x:auto; overscroll-behavior-inline:contain;
+        scroll-snap-type:x proximity; padding-bottom:8px;
+      }
+      .sched-day { scroll-snap-align:start; padding:10px 6px; }
+      .schedule-legend { flex-wrap:wrap; gap:8px 14px; }
+    }
+
+    @media (max-width: 420px) {
+      #mobile-action-dock { left:6px; right:6px; gap:2px; }
+      .mobile-action { min-height:54px; }
+      .mobile-action-label { font-size:10.5px; }
     }
   </style>
 <style id="googleidentityservice_button_styles">.qJTHM{-moz-user-select:none;-webkit-user-select:none;-ms-user-select:none;color:#202124;direction:ltr;-webkit-touch-callout:none;font-family:"Roboto-Regular",arial,sans-serif;-webkit-font-smoothing:antialiased;font-weight:400;margin:0;overflow:hidden;-webkit-text-size-adjust:100%}.ynRLnc{left:-9999px;position:absolute;top:-9999px}.L6cTce{display:none}.bltWBb{overflow-wrap:break-word;word-break:break-word}.hSRGPd{color:#1a73e8;cursor:pointer;font-weight:500;text-decoration:none}.Bz112c-W3lGp{height:16px;width:16px}.Bz112c-E3DyYd{height:20px;width:20px}.Bz112c-r9oPif{height:24px;width:24px}.Bz112c-u2z5K{height:36px;width:36px}.Bz112c-uaxL4e{border-radius:10px}.LgbsSe-Bz112c{display:block}.S9gUrf-YoZ4jf{border:none;margin:0;padding:0}.S9gUrf-YoZ4jf *{border:none;margin:0;padding:0}.fFW7wc-ibnC6b>.aZ2wEe>div{border-color:#4285f4}.P1ekSe-ZMv3u{-webkit-transition:height linear .2s;transition:height linear .2s}.P1ekSe-ZMv3u>div:nth-child(1){background-color:#1a73e8!important;-webkit-transition:width linear .3s;transition:width linear .3s}.P1ekSe-ZMv3u>div:nth-child(2){background-image:-webkit-gradient(linear,left top,right top,from(rgba(255,255,255,.7)),to(rgba(255,255,255,.7))),-webkit-gradient(linear,left top,right top,from(#1a73e8),to(#1a73e8))!important;background-image:-webkit-linear-gradient(left,rgba(255,255,255,.7),rgba(255,255,255,.7)),-webkit-linear-gradient(left,#1a73e8,#1a73e8)!important;background-image:linear-gradient(to right,rgba(255,255,255,.7),rgba(255,255,255,.7)),linear-gradient(to right,#1a73e8,#1a73e8)!important}.P1ekSe-ZMv3u>div:nth-child(3){background-image:-webkit-gradient(linear,left top,right top,from(rgba(255,255,255,.7)),to(rgba(255,255,255,.7))),-webkit-gradient(linear,left top,right top,from(#1a73e8),to(#1a73e8))!important;background-image:-webkit-linear-gradient(left,rgba(255,255,255,.7),rgba(255,255,255,.7)),-webkit-linear-gradient(left,#1a73e8,#1a73e8)!important;background-image:linear-gradient(to right,rgba(255,255,255,.7),rgba(255,255,255,.7)),linear-gradient(to right,#1a73e8,#1a73e8)!important}.haAclf{display:inline-block}.nsm7Bb-HzV7m-LgbsSe{border-radius:4px;box-sizing:border-box;-webkit-transition:background-color .218s,border-color .218s;transition:background-color .218s,border-color .218s;-moz-user-select:none;-webkit-user-select:none;-ms-user-select:none;-webkit-appearance:none;background-color:#fff;background-image:none;border:1px solid #dadce0;color:#3c4043;cursor:pointer;font-family:"Google Sans",arial,sans-serif;font-size:14px;height:40px;letter-spacing:.25px;outline:none;overflow:hidden;padding:0 12px;position:relative;text-align:center;vertical-align:middle;white-space:nowrap;width:auto}@media screen and (-ms-high-contrast:active){.nsm7Bb-HzV7m-LgbsSe{border:2px solid windowText;color:windowText}}@media screen and (preferes-contrast:more){.nsm7Bb-HzV7m-LgbsSe{color:#000}}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe{font-size:14px;height:32px;letter-spacing:.25px;padding:0 10px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe{font-size:11px;height:20px;letter-spacing:.3px;padding:0 8px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe{padding:0;width:40px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.pSzOP-SxQuSe{width:32px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.purZT-SxQuSe{width:20px}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK{border-radius:20px}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK.pSzOP-SxQuSe{border-radius:16px}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK.purZT-SxQuSe{border-radius:10px}.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc{border:none;color:#fff}.nsm7Bb-HzV7m-LgbsSe.MFS4be-v3pZbf-Ia7Qfc{background-color:#1a73e8}.nsm7Bb-HzV7m-LgbsSe.MFS4be-JaPV2b-Ia7Qfc{background-color:#202124;color:#e8eaed}@media screen and (prefers-contrast:more){.nsm7Bb-HzV7m-LgbsSe.MFS4be-JaPV2b-Ia7Qfc{color:#fff}}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{height:18px;margin-right:8px;min-width:18px;width:18px}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{height:14px;min-width:14px;width:14px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{height:10px;min-width:10px;width:10px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-Bz112c{margin-left:8px;margin-right:-4px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{margin:0;padding:10px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.pSzOP-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{padding:8px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{padding:4px}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-top-left-radius:3px;border-bottom-left-radius:3px;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;-webkit-box-align:center;-webkit-align-items:center;align-items:center;background-color:#fff;height:36px;margin-left:-10px;margin-right:12px;min-width:36px;width:36px}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf .nsm7Bb-HzV7m-LgbsSe-Bz112c,.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf .nsm7Bb-HzV7m-LgbsSe-Bz112c{margin:0;padding:0}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{height:28px;margin-left:-8px;margin-right:10px;min-width:28px;width:28px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{height:16px;margin-left:-6px;margin-right:8px;min-width:16px;width:16px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:3px;margin-left:2px;margin-right:0;padding:0}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:18px}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:14px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:8px}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-bN97Pc-sM5MNb{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-align-items:center;-webkit-box-align:center;align-items:center;-webkit-flex-direction:row;-webkit-box-orient:horizontal;-webkit-box-direction:normal;flex-direction:row;-webkit-box-pack:justify;-webkit-justify-content:space-between;justify-content:space-between;-webkit-flex-wrap:nowrap;flex-wrap:nowrap;height:100%;position:relative;width:100%}.nsm7Bb-HzV7m-LgbsSe .oXtfBe-l4eHX{-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-BPrWId{-webkit-flex-grow:1;-webkit-box-flex:1;flex-grow:1;font-family:"Google Sans",arial,sans-serif;font-weight:500;overflow:hidden;text-overflow:ellipsis;vertical-align:top}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-BPrWId{font-weight:300}.nsm7Bb-HzV7m-LgbsSe .oXtfBe-l4eHX .nsm7Bb-HzV7m-LgbsSe-BPrWId{-webkit-flex-grow:0;-webkit-box-flex:0;flex-grow:0}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-MJoBVe{-webkit-transition:background-color .218s;transition:background-color .218s;bottom:0;left:0;position:absolute;right:0;top:0}.nsm7Bb-HzV7m-LgbsSe:hover,.nsm7Bb-HzV7m-LgbsSe:focus{box-shadow:none;border-color:rgb(210,227,252);outline:none}.nsm7Bb-HzV7m-LgbsSe:focus-within{outline:2px solid #00639b;border-color:transparent}.nsm7Bb-HzV7m-LgbsSe:hover .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(66,133,244,.08)}.nsm7Bb-HzV7m-LgbsSe:active .nsm7Bb-HzV7m-LgbsSe-MJoBVe,.nsm7Bb-HzV7m-LgbsSe:focus .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(66,133,244,.1)}.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc:hover .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(255,255,255,.24)}.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc:active .nsm7Bb-HzV7m-LgbsSe-MJoBVe,.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc:focus .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(255,255,255,.32)}.nsm7Bb-HzV7m-LgbsSe .n1UuX-DkfjY{border-radius:50%;display:-webkit-box;display:-webkit-flex;display:flex;height:20px;margin-left:-4px;margin-right:8px;min-width:20px;width:20px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId{font-family:"Roboto";font-size:12px;text-align:left}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .ssJRIf,.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff .fmcmS{overflow:hidden;text-overflow:ellipsis}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-align-items:center;-webkit-box-align:center;align-items:center;color:#5f6368;fill:#5f6368;font-size:11px;font-weight:400}.nsm7Bb-HzV7m-LgbsSe.jVeSEe.MFS4be-Ia7Qfc .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff{color:#e8eaed;fill:#e8eaed}@media screen and (prefers-contrast:more){.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff,.nsm7Bb-HzV7m-LgbsSe.jVeSEe.MFS4be-Ia7Qfc .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff{color:#000;fill:#000}}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff .Bz112c{height:18px;margin:-3px -3px -3px 2px;min-width:18px;width:18px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-top-left-radius:0;border-bottom-left-radius:0;border-top-right-radius:3px;border-bottom-right-radius:3px;margin-left:12px;margin-right:-10px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:18px}.L5Fo6c-sM5MNb{border:0;display:block;left:0;position:relative;top:0}.L5Fo6c-bF1uUb{border-radius:4px;bottom:0;cursor:pointer;left:0;position:absolute;right:0;top:0}.L5Fo6c-bF1uUb:focus{border:none;outline:none}sentinel{}</style></head>
@@ -1322,6 +1399,24 @@
 
 </div><!-- /#app -->
 
+<!-- Phone/tablet action dock: the family's two daily jobs plus clear routes
+     to the broader dashboard and settings. These actions preserve the hub
+     underneath, so closing an overlay always returns to the same context. -->
+<nav id="mobile-action-dock" aria-label="Family Hub quick actions">
+  <button class="mobile-action" type="button" onclick="openDashboardTo('schedule')" aria-label="View the parenting schedule">
+    <span class="mobile-action-icon" aria-hidden="true">📅</span><span class="mobile-action-label">Schedule</span>
+  </button>
+  <button class="mobile-action" type="button" onclick="openMobileNote()" aria-label="Read or send a family note">
+    <span class="mobile-action-icon" aria-hidden="true">📝</span><span class="mobile-action-label">Notes</span>
+  </button>
+  <button class="mobile-action" type="button" onclick="openDashboardTo('overview')" aria-label="Open the family dashboard">
+    <span class="mobile-action-icon" aria-hidden="true">✨</span><span class="mobile-action-label">Dashboard</span>
+  </button>
+  <button class="mobile-action" type="button" onclick="toggleSettings()" aria-label="Open Family Hub settings">
+    <span class="mobile-action-icon" aria-hidden="true">⚙️</span><span class="mobile-action-label">Settings</span>
+  </button>
+</nav>
+
 <!-- ── BOTTOM-RIGHT FABS ── -->
 <button class="br-fab" id="dashboard-fab" onclick="openDashboard()">
   <div>
@@ -1331,18 +1426,18 @@
 </button>
 
 <!-- ── DASHBOARD OVERLAY ── -->
-<div id="dashboard-overlay">
+<div id="dashboard-overlay" role="dialog" aria-modal="true" aria-labelledby="dash-title" aria-hidden="true">
   <div id="dash-topbar">
     <div id="dash-title"><img src="./hodgson-crest.svg" class="title-crest" alt="">Smrekar Family Hub</div>
-    <button id="dash-close" onclick="closeDashboard()">✕ Close</button>
+    <button id="dash-close" onclick="closeDashboard()" aria-label="Close dashboard and return to Family Hub">✕ Close</button>
   </div>
 
   <div id="dash-tabs">
-    <button class="d-tab active" onclick="switchTab(&#39;overview&#39;)">Overview</button>
-    <button class="d-tab" onclick="switchTab(&#39;schedule&#39;)">Parenting Days</button>
-    <button class="d-tab" onclick="switchTab(&#39;chores&#39;)">Chore Tracker</button>
-    <button class="d-tab" onclick="switchTab(&#39;rewards&#39;)">Rewards</button>
-    <button class="d-tab" onclick="switchTab(&#39;profiles&#39;)">Family</button>
+    <button class="d-tab active" onclick="switchTab(&#39;overview&#39;)" aria-controls="tab-overview">Overview</button>
+    <button class="d-tab" onclick="switchTab(&#39;schedule&#39;)" aria-controls="tab-schedule">Parenting Days</button>
+    <button class="d-tab" onclick="switchTab(&#39;chores&#39;)" aria-controls="tab-chores">Chore Tracker</button>
+    <button class="d-tab" onclick="switchTab(&#39;rewards&#39;)" aria-controls="tab-rewards">Rewards</button>
+    <button class="d-tab" onclick="switchTab(&#39;profiles&#39;)" aria-controls="tab-profiles">Family</button>
   </div>
 
   <div id="dash-content">
@@ -2807,6 +2902,43 @@ function renderOverview() {
 
   document.getElementById('bottom-overview-cards').innerHTML = weekHtml + frankieHtml + locationLinksHtml();
   renderCabinActivityWidget(); // locationLinksHtml() just rebuilt an empty skeleton — repaint it from cache immediately, don't wait for the next poll
+  enhanceMobileOverviewCards();
+}
+
+// Mobile overview cards collapse in place, retaining the user's current tab
+// and scroll context. The next-seven-days card begins expanded because it is
+// the family's highest-frequency "see, think, act" information.
+function enhanceMobileOverviewCards() {
+  document.querySelectorAll('#tab-overview .dash-card').forEach((card, index) => {
+    if (card.dataset.collapsibleReady) return;
+    const title = card.querySelector('.dash-card-title');
+    if (!title) return;
+    const body = document.createElement('div');
+    body.className = 'dash-card-body';
+    while (title.nextSibling) body.appendChild(title.nextSibling);
+    card.appendChild(body);
+    title.classList.add('mobile-collapsible');
+    title.setAttribute('role', 'button');
+    title.setAttribute('tabindex', '0');
+    title.setAttribute('aria-expanded', 'true');
+    title.insertAdjacentHTML('beforeend', '<span class="mobile-collapse-indicator" aria-hidden="true">⌄</span>');
+    const toggle = () => {
+      if (window.innerWidth > 900) return;
+      const collapsed = card.classList.toggle('mobile-collapsed');
+      title.setAttribute('aria-expanded', String(!collapsed));
+    };
+    title.addEventListener('click', toggle);
+    title.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+    // Preserve one-screen scanability while keeping the schedule visible.
+    const isScheduleCard = /Next 7 Days/i.test(title.textContent);
+    if (window.innerWidth <= 900 && !isScheduleCard && index > 0) {
+      card.classList.add('mobile-collapsed');
+      title.setAttribute('aria-expanded', 'false');
+    }
+    card.dataset.collapsibleReady = 'true';
+  });
 }
 
 // Link-out to FaceOfTheCabin (device/camera/automation platform — a
@@ -2822,9 +2954,9 @@ function locationLinksHtml() {
       <span class="location-link-icon">🏔️</span>
       <span><span class="location-link-name">How's the cabin?</span><span class="location-link-sub">Cameras, sensors, alerts ↗</span></span>
     </a>
-    <div class="location-link location-link-disabled" title="Not set up yet — cabin is the template for this">
+    <div class="location-link location-link-disabled" aria-disabled="true">
       <span class="location-link-icon">🏠</span>
-      <span><span class="location-link-name">How's the house?</span><span class="location-link-sub">Coming soon</span></span>
+      <span><span class="location-link-name">How's the house?</span><span class="location-link-sub">Not available yet — the cabin integration is the working template.</span></span>
     </div>
     <div id="cabin-activity-widget"></div>
     ${CFG.cabinActivityDetail !== 'off' ? `
@@ -2843,16 +2975,21 @@ function locationLinksHtml() {
 // signed-in family — see the warning rendered alongside it above.
 const CABIN_ACTIVITY_WINDOW_MIN = 10;
 let cabinActivityCache = null;
+let cabinActivityState = 'loading';
 
 async function refreshCabinActivity() {
-  if (!CABIN_API_URL || CFG.cabinActivityDetail === 'off') return;
+  if (!CABIN_API_URL) { cabinActivityState = 'unconfigured'; renderCabinActivityWidget(); return; }
+  if (CFG.cabinActivityDetail === 'off') { cabinActivityState = 'hidden'; renderCabinActivityWidget(); return; }
   try {
     const res = await fetch(`${CABIN_API_URL}/api/events?limit=1&window=${CABIN_ACTIVITY_WINDOW_MIN}m`);
-    if (!res.ok) return;
+    if (!res.ok) { cabinActivityState = 'unavailable'; renderCabinActivityWidget(); return; }
     const events = await res.json();
     cabinActivityCache = events[0] || null;
+    cabinActivityState = cabinActivityCache ? 'ready' : 'empty';
     renderCabinActivityWidget();
   } catch (e) {
+    cabinActivityState = 'unavailable';
+    renderCabinActivityWidget();
     console.warn('Could not refresh cabin activity:', e);
   }
 }
@@ -2860,9 +2997,20 @@ async function refreshCabinActivity() {
 function renderCabinActivityWidget() {
   const el = document.getElementById('cabin-activity-widget');
   if (!el) return;
-  if (!CABIN_API_URL || CFG.cabinActivityDetail === 'off') { el.innerHTML = ''; return; }
+  if (cabinActivityState === 'unconfigured') {
+    el.innerHTML = `<div class="context-explainer"><strong>Cabin activity is not connected on this device.</strong><br>The host needs a cabin API address. <button type="button" onclick="toggleSettings()">Why is this unavailable?</button></div>`;
+    return;
+  }
+  if (cabinActivityState === 'hidden') {
+    el.innerHTML = `<div class="context-explainer"><strong>Cabin activity is hidden for privacy.</strong><br>You can change the detail level in Settings. <button type="button" onclick="toggleSettings()">Review privacy setting</button></div>`;
+    return;
+  }
+  if (cabinActivityState === 'unavailable') {
+    el.innerHTML = `<div class="context-explainer"><strong>Cabin activity cannot be reached right now.</strong><br>The dashboard still works; check the cabin connection or try again. <button type="button" onclick="refreshCabinActivity()">Try again</button></div>`;
+    return;
+  }
   if (!cabinActivityCache) {
-    el.innerHTML = `<div class="cabin-activity-row cabin-activity-empty">🎥 No recent cabin activity</div>`;
+    el.innerHTML = `<div class="cabin-activity-row cabin-activity-empty">🎥 No activity reported in the last ${CABIN_ACTIVITY_WINDOW_MIN} minutes</div>`;
     return;
   }
   const ev = cabinActivityCache;
@@ -3133,22 +3281,44 @@ function deleteReward(id) {
 let dashOpen = false;
 function openDashboard() {
   dashOpen = true;
-  document.getElementById('dashboard-overlay').classList.add('open');
+  const overlay = document.getElementById('dashboard-overlay');
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
   renderOverview();
   renderSchedule();
   renderChoreKidSelector();
   renderChoreTracker();
   renderRewards();
 }
+function openDashboardTo(name) {
+  openDashboard();
+  switchTab(name);
+  requestAnimationFrame(() => {
+    document.getElementById(`tab-${name}`)?.scrollIntoView({ block:'start' });
+    document.querySelector(`.d-tab[aria-controls="tab-${name}"]`)?.focus({ preventScroll:true });
+  });
+}
 function closeDashboard() {
   dashOpen = false;
-  document.getElementById('dashboard-overlay').classList.remove('open');
+  const overlay = document.getElementById('dashboard-overlay');
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
+function openMobileNote() {
+  closeDashboard();
+  toggleNotepad(true);
+  requestAnimationFrame(() => {
+    const target = currentActorId ? document.getElementById('notepad-input') : document.querySelector('.np-author-pill');
+    target?.focus({ preventScroll:true });
+  });
 }
 
 function switchTab(name) {
   document.querySelectorAll('.d-tab').forEach(t => {
     const tn = t.getAttribute('onclick').match(/switchTab\('?(\w+)'?\)/)?.[1];
     t.classList.toggle('active', tn === name);
+    t.setAttribute('aria-selected', String(tn === name));
   });
   document.querySelectorAll('.tab-pane').forEach(p => {
     p.classList.toggle('active', p.id === `tab-${name}`);
@@ -3901,9 +4071,12 @@ function onNewNoteArrived(ts) {
 function applyNotepadOpenState() {
   const panel = document.getElementById('notepad-panel');
   const main = document.getElementById('notepad-main');
+  const handle = document.getElementById('notepad-handle');
   if (!panel) return;
   panel.classList.toggle('open', !!notepadState.open);
   if (main) main.inert = !notepadState.open; // no focus/interaction while slid in
+  if (main) main.setAttribute('aria-hidden', String(!notepadState.open));
+  if (handle) handle.setAttribute('aria-expanded', String(!!notepadState.open));
   renderNotepadHandle(loadNotes()[0]);
 }
 
@@ -3982,7 +4155,7 @@ const NOTEPAD_MIN_HEIGHT = 260; // enough for compose box + a few note rows
 function computeNotepadTop() {
   const isNarrow = window.innerWidth < 900;
   const choresEl = document.getElementById('chores-card');
-  const fabTops = ['dashboard-fab', 'settings-btn']
+  const fabTops = ['dashboard-fab', 'settings-btn', 'mobile-action-dock']
     .map(id => document.getElementById(id))
     .filter(Boolean)
     .map(el => el.getBoundingClientRect().top);
@@ -4276,7 +4449,8 @@ window.addEventListener('load', () => {
     </div>
    </div>
   </div>
-  <div id="notepad-handle" onclick="toggleNotepad()" title="Family Notepad">
+  <div id="notepad-handle" role="button" tabindex="0" aria-controls="notepad-main" aria-expanded="false"
+       onclick="toggleNotepad()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleNotepad();}" title="Family Notepad">
     <div class="np-handle-top">
       <div id="notepad-handle-dot" class="np-dot"></div>
       <div class="np-handle-label">Notepad</div>
