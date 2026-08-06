@@ -117,14 +117,18 @@ accumulate.*
 
 - **Reolink (`front_door`) camera still physically off-network** — needs
   on-site checking (power, WiFi re-pairing). Not fixable remotely.
-- **`blinkbridge` needs a real health monitor — this is now a repeat
-  incident (2026-08-03, 2026-08-06), not a one-off.** It has an internal
-  "give up" state after a transient Blink cloud-API failure that no
-  Docker restart policy catches (`RestartCount=0` both times) and that
-  silently zeroes `driveway`'s `camera_fps` until someone notices and
-  runs `docker restart blinkbridge`. Add an Uptime Kuma monitor against
+- **`blinkbridge`'s root cause is fixed (2026-08-06) — verify the fix
+  holds over the next real transient failure, and still add a health
+  monitor as defense-in-depth.** The actual bug (permanently disabling a
+  camera after 3 failures with no retry path, `main.py`) is patched and
+  deployed — see `MAINTENANCE.md`'s Blink section for the full diagnosis
+  and fix. Not yet proven against a real failure in production, only
+  against a clean redeploy. Still worth an Uptime Kuma monitor against
   Frigate's `camera_fps` (or `mediamtx`'s stream) for `driveway`
-  specifically. See `MAINTENANCE.md`'s Blink section for both incidents.
+  regardless — a second signal independent of the fix being correct.
+  Separately open: whether to decouple reliable clip-recording from the
+  RTSP-live-relay entirely (the user's recalled prior direction, not yet
+  scoped or built).
 - **Severity classifier (`docs/ontology.yaml`'s `event_severity`) doesn't
   consider armed/presence state yet** — a WARN-tier event (door open,
   low battery, tamper) scores the same whether the cabin is occupied or

@@ -313,6 +313,33 @@ correctly wired the whole time). Two independent causes:
      for the process fix that's meant to prevent this specific failure
      mode from recurring.
 
+  **Part 1 shipped and deployed 2026-08-06.** Patched
+  `/storage/services/blinkbridge-src/blinkbridge/main.py`: hitting
+  `max_failures` now backs off (capped at 15 minutes, doubling each
+  additional failure) and keeps retrying, instead of
+  `self.stream_servers.pop(camera_name)` with nothing that ever adds it
+  back. Rebuilt (`docker build -t cabin-blinkbridge:new4
+  /storage/services/blinkbridge-src`) and redeployed following this
+  section's own documented rebuild procedure below (credentials pulled
+  from the running container's own env via `docker inspect`, never
+  printed). Confirmed the new image is what's actually running
+  (`docker exec blinkbridge grep MAX_RESTART_BACKOFF
+  /app/blinkbridge/main.py` found it) and that `driveway` is recording
+  again (`camera_fps: 5.0`, `detection_fps: 5.0`, both healthy
+  immediately after redeploy). Also committed locally within
+  `blinkbridge-src`'s own git history for the first time — the
+  2026-08-03 liveview feature below had been sitting as permanent
+  uncommitted drift in that clone since it was built; both changes are
+  now one real commit there instead of invisible working-tree state.
+  **Not yet proven**: whether the backoff actually saves a real transient
+  failure without human intervention — that only shows up the next time
+  Blink's API hiccups, which the pre-patch logs show happens every
+  15 minutes to a few hours. Watch for it, don't assume it from the
+  rebuild alone.
+
+  **Part 2 — the decouple-from-RTSP-relay question — is still open,**
+  deliberately not bundled into this fix. See the note above.
+
 ### Real on-demand liveview for the Blink camera (built 2026-08-03)
 
 **The bug this fixes**: `driveway`'s "live view" was never actually
