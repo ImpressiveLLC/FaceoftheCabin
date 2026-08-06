@@ -95,4 +95,3 @@ For each new use case, proof of concept, or drift review, capture:
 5. Technical decomposition: UI, API/event state, data, configuration, tests,
    deployment, and documentation.
 6. Before/after screenshots and regression tests for accepted improvements.
-
