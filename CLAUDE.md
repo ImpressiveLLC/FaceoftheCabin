@@ -48,20 +48,37 @@ file lives in `ImpressiveLLC/CabinAutomations` (`automations/leak_freeze_automat
 cabin-orchestration-platform/
 ├── backend/                         Java 21 / Spring Boot 3.3.5
 │   └── src/main/java/com/cabin/orchestrator/
-│       ├── api/                     REST controllers
+│       ├── api/                     REST controllers (devices, camera, events,
+│       │                            dashboard, presence, system health)
 │       ├── automation/              AutomationRuleService (safety rules only)
 │       ├── devices/                 DeviceRegistry, DeviceDescriptor, DeviceStatus,
-│       │                            DeviceType, DeviceCapability, ProtocolAdapter
-│       ├── events/                  CabinEvent record
+│       │   └── display/             DeviceType, DeviceCapability, ProtocolAdapter,
+│       │                            DeviceDisplayConfig(Service)
+│       ├── events/                  CabinEvent record, CabinEventService (Postgres),
+│       │                            AlertSeverityClassifier, NtfyAlertPublisher
+│       │                            — see "Event pipeline & alerting" below
+│       ├── family/                  ProfilesController, ChoresController,
+│       │                            NotesController — Family Hub's backend surface
 │       ├── integrations/
 │       │   ├── cameras/             CameraIntegration (stub)
 │       │   ├── google/              GoogleHomeIntegration (stub)
 │       │   ├── homeassistant/       HomeAssistantAdapter (ha_rest — location-aware)
-│       │   └── kidde/               KiddeIntegration (stub)
-│       ├── kafka/                   EventPublisher → cabin.events.raw
-│       └── mqtt/                    MqttBridgeService (subscribes cabin/# and home/#)
+│       │   ├── kidde/               KiddeIntegration (stub)
+│       │   └── zigbee/              Zigbee2MqttAdapter — Z2M bridge, the live
+│       │                            13-device cabin Zigbee mesh runs through this
+│       ├── kafka/                   EventPublisher → cabin.events.raw,
+│       │                            EventConsumer ← persists to Postgres +
+│       │                            triggers NtfyAlertPublisher on CRITICAL
+│       ├── mqtt/                    MqttBridgeService (subscribes cabin/# —
+│       │                            devices, cameras/Frigate, direct events)
+│       ├── ontology/                OntologyController + OntologyLookupService
+│       │                            (resolves ontology.yaml ids to display names)
+│       └── techid/                  TechIdController — Opportunity Map backend
 │   └── src/main/resources/
 │       └── application.yml          All env-var-driven config
+│   └── src/test/                    First tests added 2026-08-06 — see
+│                                    "Testing" section below before assuming
+│                                    `mvn test` "just works" on a new host
 ├── ui/                              Vite + React + lucide-react
 │   └── src/
 │       ├── App.jsx                  Five-panel shell + LocationSwitcher
@@ -117,6 +134,26 @@ record DeviceStatus(
     String location
 )
 ```
+
+### CabinEvent (event pipeline — distinct from DeviceStatus.state above)
+```java
+record CabinEvent(
+    String eventId, String sourceDeviceId, String eventType,
+    String severity,          // INFO | WARN | CRITICAL — see below
+    Instant timestamp,
+    Map<String, Object> payload
+)
+```
+**`DeviceStatus.state` is device health** (is it online, is it in an alarm
+condition right now). **`CabinEvent.severity` is per-event, computed by
+`AlertSeverityClassifier.classify(attrs)`** from that event's own payload —
+a device can be `ONLINE` while its most recent event was `CRITICAL` (an
+active water leak). Don't conflate the two axes; see
+`docs/ontology.yaml`'s `event_severity` entity for the full rationale.
+Classification rule (MVP, no armed/presence awareness yet — deliberate
+scope cut, see `docs/DEFINITION_OF_DONE.md`'s punch list):
+`water_leak`/`smoke`/`alarm` true → `CRITICAL`; `tamper`/`battery_low`
+true or `contact` false → `WARN`; everything else → `INFO`.
 
 ### DeviceCapability enum
 `TELEMETRY, COMMAND, STREAM, ALARM, PRESENCE, CLIMATE, ACCESS_CONTROL, APPLIANCE, POWER_MONITOR`
@@ -188,16 +225,38 @@ Zigbee adapter must handle this sub-property generically.
 
 ## Docker services (cabin stack)
 
-| Container | Image | Port(s) | Notes |
-|---|---|---|---|
-| `cabin-mqtt` | eclipse-mosquitto:2 | 1883, 9001 WS | MQTT broker |
-| `cabin-postgres` | timescale/timescaledb:latest-pg16 | 5432 | TimescaleDB |
-| `cabin-kafka` | confluentinc/cp-kafka:7.6.1 | 9092 | KRaft, no Zookeeper |
-| `cabin-grafana` | grafana/grafana | 3000 | TimescaleDB datasource provisioned |
-| `cabin-homeassistant` | ghcr.io/.../home-assistant:stable | 8123 | `network_mode: host` (Linux only) |
-| `cabin-nodered` | nodered/node-red | 1880 | |
-| `cabin-frigate` | ghcr.io/blakeblackshear/frigate:stable | 5000, 1984 | |
-| `cabin-watchdog` | python:3.12-slim | — | Polls + restarts dead containers |
+**Two compose files, two different jobs — don't read either alone.**
+`infra/docker-compose.yml` is the template for a *fresh* single-machine
+deployment (8 services: mqtt, postgres, kafka, grafana, homeassistant,
+nodered, frigate, watchdog — no `cabin-backend`/`cabin-ui`/`family-hub` at
+all). `infra/docker-compose.m920q.yml` is the actual M920q overlay: it
+**disables** mqtt/homeassistant/nodered/frigate/watchdog from the base file
+(a separately-managed Mosquitto/HA/Node-RED/Frigate stack already existed
+on that host before this project did) and **adds** `cabin-backend`,
+`cabin-ui`, and `family-hub`, which exist only in this overlay.
+
+**What's actually running on the M920q** (confirmed via `docker ps`,
+2026-08-06 — this is the ground truth, not either compose file read in
+isolation):
+
+| Container | Role |
+|---|---|
+| `cabin-backend` | This project's Spring Boot API (port 8090) |
+| `cabin-ui` | This project's React device-manager UI |
+| `family-hub` | Static Family Hub HTML |
+| `cabin-postgres` | TimescaleDB — devices, events, notes, chores, profiles, tech-id findings |
+| `cabin-kafka` | KRaft, no Zookeeper — `cabin.events.raw` topic |
+| `cabin-grafana` | Dashboards (currently no working login — see `docs/MAINTENANCE.md`) |
+| `mosquitto` | MQTT broker — pre-existing, not this project's `mqtt` service |
+| `homeassistant` | Pre-existing, `network_mode: host` |
+| `nodered` | Pre-existing — owns real automation logic, see warning at top of this file |
+| `frigate` | Pre-existing — camera detection/recording |
+| `zigbee2mqtt` | Pre-existing — the 13-device cabin mesh's coordinator bridge |
+| `blinkbridge` | Pre-existing — bridges Blink's cloud API into Frigate/MQTT. Has a known no-self-heal failure mode after a transient Blink API error (fixed twice by a manual `docker restart blinkbridge`, 2026-08-03 and 2026-08-06) — see `docs/MAINTENANCE.md`'s punch list, an Uptime Kuma monitor for this is still open |
+| `mediamtx` | Pre-existing — RTSP/stream relay Frigate and blinkbridge both use |
+| `cloudflared` | Pre-existing — Cloudflare Tunnel for public `unicornpingpong.com` access |
+| `uptime-kuma` | Pre-existing — monitoring |
+| `homepage` | Pre-existing — dashboard/link launcher |
 
 **On Windows/Docker Desktop:** HA uses `network_mode: host` which maps to
 the Docker VM, not the Windows host. Use `docker-compose.local.yml` override
@@ -283,6 +342,7 @@ npm install && npm run dev
 | `CAMERA_PASSWORD` | Frigate | Reolink admin password |
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
+| `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
 
 ---
 
@@ -303,7 +363,8 @@ zigbee2mqtt/bridge/request/permit_join
 
 ---
 
-## API endpoints (current)
+## API endpoints (current — verified against source 2026-08-06, not carried
+forward from an earlier session's list)
 
 | Method | Path | Controller |
 |---|---|---|
@@ -314,9 +375,36 @@ zigbee2mqtt/bridge/request/permit_join
 | DELETE | `/api/devices/{id}` | DeviceController |
 | POST | `/api/devices/{id}/command` | DeviceController |
 | GET | `/api/devices/meta/types` | DeviceController |
+| POST | `/api/devices/permit-join` | DeviceController |
+| GET | `/api/devices/{id}/config` | DeviceController |
+| GET | `/api/devices/display-config` | DeviceController |
+| GET | `/api/devices/{id}/display-config` | DeviceController |
+| DELETE | `/api/devices/{id}/display-config` | DeviceController |
 | GET | `/api/dashboard/config` | DashboardController |
-| GET | `/api/events` | EventController (stub) |
-| GET | `/actuator/health` | Spring Actuator |
+| GET | `/api/events` | EventController — real, Postgres-backed (`?camera=&limit=&window=`). No longer a stub as of 2026-08-04; the "(stub)" note in earlier versions of this file was stale |
+| GET | `/api/presence` | PresenceController |
+| PUT | `/api/presence` | PresenceController |
+| GET | `/api/system/health` | SystemController |
+| GET | `/api/camera/list` | CameraMediaController |
+| GET | `/api/camera/events/{frigateEventId}/snapshot` | CameraMediaController |
+| GET | `/api/camera/events/{frigateEventId}/clip` | CameraMediaController |
+| GET | `/api/camera/{cameraName}/live` | CameraMediaController |
+| POST | `/api/camera/{cameraName}/liveview/start` \| `/stop` | CameraMediaController |
+| GET/POST | `/api/notes` | NotesController — Family Hub notepad |
+| GET/POST | `/api/profiles` | ProfilesController |
+| PATCH/DELETE | `/api/profiles/{id}` | ProfilesController |
+| GET | `/api/chores/completion` | ChoresController |
+| POST | `/api/chores/completion/toggle` | ChoresController |
+| GET | `/api/ontology/entities` | OntologyController — reads `docs/ontology.yaml`, bind-mounted read-only |
+| POST/GET | `/api/tech-id/findings` | TechIdController — Opportunity Map |
+| PATCH | `/api/tech-id/findings/{id}` | TechIdController |
+| POST/GET | `/api/tech-id/findings/{id}/actions` | TechIdController — action audit log |
+| GET | `/actuator/health` | Spring Actuator — what `deploy-cabin-backend.yml`'s health-check gate polls |
+
+**Not yet built**: `/api/alerts/active` (the dashboard-badge fix from the
+severity-tiering MVP scope — only the classifier + ntfy push shipped
+2026-08-06, the dashboard-facing endpoint is still open, see
+`docs/DEFINITION_OF_DONE.md`).
 
 ---
 
@@ -347,47 +435,111 @@ All items below are **complete and pushed to GitHub**:
 - **ThemeProvider** — 7 presets: Modern, LCARS, Monolith, Retro-CRT, Bluefin-mono, Mad Science, Deep Space (HAL 9000)
 - **Family Notepad** (`family-hub/family-hub.html`) — slide-in/out overlay, right edge, docked with `#chores-card`/`#dashboard-fab`/`#settings-btn`. Full behavioral spec in [`docs/PRODUCT_NOTES.md`](docs/PRODUCT_NOTES.md) § "2026-07-30 — Family Hub: Family Notepad Overlay". Postgres-backed via `cabin-backend`'s `/api/notes` as of 2026-08-01 (cross-device, Google-token gated) — `localStorage` is now an offline mirror/fallback, not the source of truth. Note authorship requires an explicitly-selected "Who am I?" actor as of 2026-08-02 (see PRODUCT_NOTES.md) — never silently defaults.
 
+- **Event severity tiering + ntfy alerting** (2026-08-06) — `AlertSeverityClassifier`
+  computes INFO/WARN/CRITICAL per event from its own payload, replacing a
+  hardcoded `"INFO"` literal every publish site used to pass regardless of
+  content. `NtfyAlertPublisher` pushes a phone notification via ntfy.sh for
+  CRITICAL events only (reuses the existing overnight-camera-alert's ntfy
+  topic, doesn't stand up a second channel). Also: `Zigbee2MqttAdapter` was
+  silently never writing to `cabin_event` at all before this — it updated
+  `DeviceRegistry`'s live state but never called `EventPublisher.publish()`,
+  so Zigbee motion/contact/etc. activity never reached event history. Fixed
+  in the same pass. See `docs/ontology.yaml`'s `event_severity` entity and
+  `docs/PRODUCT_NOTES.md`'s 2026-08-06 entry for the full design reasoning.
+- **This project's first automated tests** (2026-08-06) — unit tests for the
+  classifier and ntfy publisher, plus a Testcontainers integration test
+  covering the full Kafka→Postgres event durability path. See "Testing"
+  below — getting these to actually run surfaced two pre-existing build
+  gaps (Surefire silently running zero tests; a BOM precedence issue
+  pinning stale Testcontainers) that had nothing to do with the new tests
+  themselves, just never had cause to trip before now.
+- **Tested, health-checked, auto-rollback CI/CD for `cabin-backend`**
+  (2026-08-06) — see "CI/CD" below. `deploy-family-hub.yml` (below) already
+  existed; this is the backend's equivalent, deliberately separate per that
+  workflow's own comment about `cabin-backend` needing "considered rollout."
+
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
 - Swap `notify.mobile_app_YOUR_PHONE` in `CabinAutomations` for real HA mobile app service name
-- Notification service (email/SMS from automation alert events)
+- `/api/alerts/active` — the dashboard-badge half of the severity-tiering MVP (classifier + ntfy shipped 2026-08-06, this didn't)
+- Armed/presence-aware severity escalation (deliberate MVP scope cut, see `event_severity`'s notes)
 - home-hub deployment
 - Production Docker Compose with env-var secrets
-- CI/CD deploy automation for `family-hub` (spec below, not yet built)
 - If Family Notepad needs to sync across devices: `/api/notes` endpoint + poll/WebSocket push (see limitation in PRODUCT_NOTES.md)
 
 ---
 
-## To-do (spec only): CI/CD for family-hub deploy
+## CI/CD (built — both pipelines are self-hosted-runner GitHub Actions
+workflows on the M920q itself; nothing inbound, no SSH secrets in GitHub,
+the runner polls GitHub over its own outbound Tailscale connection)
 
-Today, deploying a `family-hub.html` change to the cabin M920q is the manual
-Quick Start in `README.md`: SSH in, `git pull`, `docker compose ... up -d --build family-hub`.
-That's fine for one person on one machine, but per the multi-machine workflow
-above, this should eventually be automatic on every push to `main`.
+**`deploy-family-hub.yml`** — triggers on push to `main` touching
+`family-hub/**` or `cabin-orchestration-platform/**`. Build + restart
+`family-hub` and `cabin-ui` (both stateless static builds). No test gate.
+Deliberately excludes `cabin-backend` — that service is "stateful/sensitive
+enough to warrant their own considered rollout," per that file's own
+comment, which is exactly what the next workflow is.
 
-**Not built yet.** Spec, for whoever picks this up:
+**`deploy-cabin-backend.yml`** (added 2026-08-06) — triggers on push to
+`main` touching `cabin-orchestration-platform/backend/**` or the compose
+files. Three real properties, not just "rebuild and hope":
+1. **`mvn test` gates the deploy.** A failing test means the job stops
+   before anything is built or touched — the running container is simply
+   never replaced. That's the "revert" behavior: nothing to revert because
+   nothing changed.
+2. **Images are tagged by git short SHA**, not `:latest` — a new explicit
+   `image: cabin-backend:${IMAGE_TAG:-latest}` field on the compose service
+   makes this possible (previously unset, so compose auto-named it
+   `infra-cabin-backend:latest` and could only ever hold one version).
+3. **Health-checked before being trusted**: polls `/actuator/health` for up
+   to 60s. On failure, the previous image is automatically redeployed
+   *through `docker compose`* (not a hand-built `docker run` — an early
+   draft of this did that and would have silently dropped every runtime
+   env var, since those live in the compose files, not image metadata;
+   caught in review before it ever ran for real). The job still fails
+   (visible in the Actions tab) even when the rollback itself succeeds.
 
-- **Trigger:** push to `main` on `ImpressiveLLC/FaceoftheCabin` that touches
-  `family-hub/**` (path filter — no need to redeploy the whole stack for a
-  static-HTML-only change).
-- **Mechanism (proposed):** GitHub Actions workflow (`.github/workflows/deploy-family-hub.yml`)
-  running on a **self-hosted runner on the M920q** (simplest — no need to
-  open the Tailscale mesh to GitHub's cloud runners, no SSH secret to manage).
-    - Job: `git pull` → **test gate:** `docker build -f family-hub/test/Dockerfile -t family-hub-qa family-hub/ && docker run --rm family-hub-qa` (see `docs/QA.md`; non-zero exit fails the job before anything deploys) → `docker compose -f infra/docker-compose.yml -f infra/docker-compose.m920q.yml up -d --build family-hub`
-    - Alternative if a self-hosted runner is undesirable: GitHub Actions
-      `ssh-action` from a cloud runner into the Tailscale IP, using a
-      dedicated deploy-only SSH key (not the personal `nate` key) added to
-      `authorized_keys` on the M920q with a forced command restricting it to
-      the deploy script only.
-- **Why Ansible over a raw shell script:** idempotent, and the same playbook
-  can extend to `home-hub` once that deployment happens (see "Pending next"
-  above) — one playbook, `--limit cabin` / `--limit home` per target, instead
-  of two divergent scripts. Structure:
-    - `ansible/inventory.yml` — hosts `cabin-hub` (100.77.44.113), `home-hub` (TBD), both reached over Tailscale
-    - `ansible/deploy-family-hub.yml` — playbook: git pull → build + run `family-hub/test/Dockerfile` as a test gate (fail the play on nonzero exit) → docker compose up -d --build family-hub → health check (curl `/family-hub.html` returns 200)
-    - `ansible/roles/docker-service/` — reusable role, parameterized by service name, so the same role later covers `cabin-ui`, `cabin-backend`, etc.
-- **Rollback:** keep it simple — `git revert` + re-run the playbook. No blue/green needed for a single-kiosk static file.
-- **Out of scope for v1:** backend (Spring Boot) and UI (React) deploys — those need a build step (`mvnw`/`npm run build`) the playbook would also need to own; start with `family-hub` since it's the lowest-risk (static file, no build) and prove the pipeline before extending.
+**Manually deploying `cabin-backend` outside this pipeline** (e.g. testing
+a change before pushing) still works exactly as before — see "Manual
+(cabin-backend)" in `docs/MAINTENANCE.md`.
+
+---
+
+## Testing
+
+**First tests in this project's history, added 2026-08-06** —
+`backend/src/test/java/com/cabin/orchestrator/events/`:
+`AlertSeverityClassifierTest`, `NtfyAlertPublisherTest` (pure unit, no
+Docker needed), `EventPipelineIntegrationTest` (Testcontainers — Postgres
++ Kafka, exercises the real `EventPublisher → Kafka → EventConsumer →
+CabinEventService → Postgres` path).
+
+**Before assuming `mvn test` "just works" on a new host**, know that
+getting it running on the M920q (where CI actually executes it) surfaced
+three real, pre-existing environment/build gaps — none caused by the tests
+themselves, they just never had anything to trip on before:
+
+1. **No `maven-surefire-plugin` version was pinned.** Without
+   `spring-boot-starter-parent` (this `pom.xml` only imports
+   `spring-boot-dependencies` for dependency versions, not plugin
+   management), Maven silently fell back to Surefire 2.17 — pre-dates
+   JUnit 5, discovers zero tests, reports `BUILD SUCCESS` anyway. Pinned
+   to 3.2.5 in `pom.xml`.
+2. **The M920q's system Java is JRE-only** (`openjdk-25-jre-headless`,
+   no `javac`, no `--release 21` cross-compilation data). A portable
+   Temurin 21 JDK lives at `~/.jdks/jdk-21.0.12+8` on that host
+   specifically for this (user-space install, no sudo, doesn't touch
+   system Java) — `deploy-cabin-backend.yml`'s test step sets `JAVA_HOME`
+   to it explicitly and fails with a clear message if it's ever missing.
+3. **Testcontainers' own Docker-detection probe hardcodes API version
+   1.32**, independent of any configured docker-java client version or
+   `DOCKER_HOST`/`DOCKER_API_VERSION` env var — this host's Docker Engine
+   (`MinAPIVersion: 1.40`) rejects it outright. Fixed via
+   `src/test/resources/docker-java.properties` (`api.version=1.44`) — a
+   classpath config file the probe *does* honor, unlike env vars. Not a
+   guess: confirmed via raw `curl` against the daemon socket that explicit
+   1.44 and unversioned requests both succeed, only the hardcoded 1.32
+   probe fails.
 
 ---
 

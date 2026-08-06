@@ -121,6 +121,7 @@ finer-grained permission tier for video vs. the rest of cabin-ui today.
 | **Maintenance & Ops** | [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) | Operators, developers | Deployment, secrets, known issues, incident response |
 | **Replication Guide** | [`docs/REPLICATION.md`](docs/REPLICATION.md) | New-instance implementers | Standing up an independent instance from scratch |
 | **Platform Roadmap** | [`ROADMAP.md`](ROADMAP.md) | Technical, product, strategic | Strategic brief, architecture, ontology design, priority task list |
+| **Product Vision** | [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md) | Family, stakeholders | Value proposition, competitive positioning, honest maturity — implementation-agnostic on purpose |
 | **Product Notes** | [`docs/PRODUCT_NOTES.md`](docs/PRODUCT_NOTES.md) | Product, design | Dated design decisions, persona research, architecture reviews |
 | **Ontology Contract** | [`docs/ontology.yaml`](docs/ontology.yaml) | Technical | Canonical entity definitions, device registry, naming contract |
 | **Platform README** | [`cabin-orchestration-platform/README.md`](cabin-orchestration-platform/README.md) | Technical | Backend/UI architecture, Docker Compose reference |

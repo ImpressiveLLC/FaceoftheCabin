@@ -353,3 +353,133 @@ requires a human token. Caught by re-reading the interceptor's own
 bypass condition while wiring the new endpoint in, not by a report —
 worth a second pass any time a new sub-path gets added under an
 existing bypassed prefix.
+
+---
+
+## 2026-08-06 — Severity Tiering MVP + First CI/CD: Technical Architect/
+Ontology Lead & VP of Technical Enablement Review
+
+_Started from a real, felt problem: motion, front-door, and Blink camera
+activity at the cabin weren't registering anywhere in the platform, even
+though physical events were confirmed happening. Requested directly by the
+user in architect/ontology-lead-plus-enablement-VP framing, mirroring the
+2026-07-27 Four-Role format — two roles this time, not four, matched to
+what the problem actually needed._
+
+### Technical Architect / Ontology Lead ✓
+
+**Severity is a per-event computed field, not a device state.** The
+temptation with an alert-tiering feature is to bolt a fifth value onto
+`device_state`'s existing `ONLINE/OFFLINE/UNKNOWN/ALARM` enum. Rejected —
+those are different axes. A device can be `ONLINE` while its most recent
+*event* was `CRITICAL` (an active leak doesn't take the sensor offline).
+`event_severity` is a new, separate ontology entity
+(`INFO`/`WARN`/`CRITICAL`), computed by `AlertSeverityClassifier` from
+each event's own payload at publish time, not a mutation of the existing
+device-health contract.
+
+**A real bug surfaced underneath the feature, not caused by it:**
+`Zigbee2MqttAdapter.handleDeviceState()` was updating `DeviceRegistry`'s
+live state on every Zigbee2MQTT message but never calling
+`EventPublisher.publish()` — compare to `MqttBridgeService`'s equivalent
+method, which does. Motion, contact, all 13 paired Zigbee entities were
+updating the live dashboard correctly while silently never reaching
+`cabin_event`. This fully explains the "no recognition event in the logs"
+half of the original complaint and would still be true today if the
+severity-tiering work hadn't gone looking at this exact code path.
+
+**Reuse over new infrastructure, but only after checking, not assuming.**
+The user asked directly whether Home Assistant should be the notification
+router instead of a new backend→ntfy path. Checked rather than guessed:
+HA has zero notify capability configured right now — no `notify:` block
+in `configuration.yaml`, no paired `mobile_app` device (0 entries in the
+device registry), and `cabin-backend`'s own `HA_TOKEN` in the live `.env`
+is empty (a separate, unrelated finding). Direct backend→ntfy stays the
+pragmatic call, reusing the exact ntfy topic `cabin_camera_overnight_alert`
+already established — not because HA-as-router is a bad idea long-term,
+but because routing through infrastructure that doesn't exist yet isn't a
+fix, it's a second thing to build first. HA email/SMTP notify is a real,
+worthwhile, explicitly separate fast-follow for alert-channel redundancy —
+logged as an open item, not silently dropped.
+
+**Deliberate scope cuts get written down where they'll be found, not just
+remembered.** `event_severity`'s classifier doesn't yet consider
+armed/presence state (a `WARN`-tier door-open event scores the same
+whether the cabin is occupied or armed-away) — that's in the entity's own
+`notes` field in `docs/ontology.yaml` *and* `DEFINITION_OF_DONE.md`'s
+punch list, not just this note. Per DoD item 9 ("no silent scope
+narrowing"), a cut that only lives in a chat transcript isn't really
+documented.
+
+**A repeat incident got promoted, not just re-fixed.** While verifying
+the event pipeline end-to-end, found `driveway` (Blink) camera_fps at
+`0.0` — `blinkbridge` had silently "given up" after a transient Blink API
+failure, the identical undocumented-recovery failure mode already found
+and fixed once on 2026-08-03. Fixed again (`docker restart blinkbridge`,
+confirmed recovery), but the more important move was moving the missing
+Uptime Kuma monitor for this from a suggestion buried in `MAINTENANCE.md`
+to an actual `DEFINITION_OF_DONE.md` punch-list item — a fix that keeps
+recurring stops being a maintenance footnote and becomes a real backlog
+item once it's happened twice.
+
+### VP of Technical Enablement ✓
+
+**Ship the smallest real slice, verify it live, then decide whether to
+keep going — don't pre-commit to the whole roadmap up front.** The
+severity-tiering feature was explicitly scoped down from the original
+4-layer review (severity classes, remove localStorage opt-in, dedicated
+`/api/alerts/active` endpoint, armed/presence rules) to just the
+classifier and the ntfy push for this session, with the dashboard-facing
+`/api/alerts/active` work left open rather than half-built. Each piece
+that did ship was built, compiled, deployed to the M920q, and verified
+against real behavior (a synthetic `cabin/event/critical` MQTT publish
+confirmed `severity: "CRITICAL"` landed correctly and triggered a real
+phone push) before moving to the next piece — not batched up and shipped
+untested at the end.
+
+**This project had zero automated tests before tonight — the CI/CD ask
+made that impossible to defer any further.** The user's own framing was
+right: a test-and-revert deploy gate built on top of a test suite that
+doesn't exist would never actually trigger, because nothing would be
+checked. Writing the first three tests (`AlertSeverityClassifierTest`,
+`NtfyAlertPublisherTest`, a Testcontainers-based
+`EventPipelineIntegrationTest`) and simply getting `mvn test` to run for
+real on the M920q surfaced two pre-existing, undetected build gaps that
+had nothing to do with these specific tests:
+
+1. No `maven-surefire-plugin` version was pinned, so Maven silently used
+   a 2014-era default that predates JUnit 5 and reports `BUILD SUCCESS`
+   after running zero tests.
+2. `spring-boot-dependencies`, imported first in `dependencyManagement`,
+   silently won BOM precedence over an explicit `testcontainers-bom`
+   import listed after it, pinning a stale Testcontainers version no
+   matter what the version property said.
+
+Neither gap was visible until something actually needed to run — a
+concrete argument for why "we'll add tests eventually" quietly compounds:
+the compounding isn't just missing coverage, it's unverified tooling
+sitting untested underneath whatever coverage eventually gets added.
+
+**The CI/CD pipeline design paid for itself during its own construction.**
+The first draft of the auto-rollback path reconstructed a `docker run`
+command by hand from image metadata — caught in review, before it ever
+ran for real, that this would have silently dropped every runtime
+environment variable (database URL, MQTT broker, ntfy topic), since those
+live in the compose files, not the image. Redesigned to roll back through
+`docker compose` with a different `IMAGE_TAG`, reusing the exact same
+config path as the forward deploy. Worth naming plainly: a deploy pipeline
+that had shipped with the original design would have "succeeded" at
+rolling back to a backend that couldn't reach its own database — the kind
+of failure that only shows up during the next real incident, which is the
+worst possible time to discover it.
+
+**Infrastructure debt doesn't stay contained to the thing you're building.**
+Getting `mvn test` running directly on the M920q (required for the CI
+gate — Docker builds alone don't exercise this) surfaced that the host's
+system Java is JRE-only (`openjdk-25-jre-headless`, no compiler at all),
+a pre-existing gap invisible until now because every prior deploy went
+through Docker's own pinned-JDK build stage. A portable, user-space
+Temurin 21 install (no sudo available or needed) unblocks this without
+touching the system Java anything else on the host depends on — the kind
+of fix that's cheap now and would have been a hard blocker the first time
+anyone tried to run this project's tests in CI without noticing why.

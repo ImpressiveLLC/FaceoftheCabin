@@ -1806,6 +1806,78 @@ elements:
       car/bus/motorcycle/bicycle for vehicles) — flagged to the user
       directly rather than silently dropped without explanation.
 
+  - id: cabin_critical_event_alert
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:complexType
+    constraint:
+      description: >
+        Fires only for event_severity == CRITICAL. WARN-tier events
+        (door open, low battery, tamper) are deliberately not pushed --
+        see event_severity's own notes for why.
+    ui_display_name: "Critical Event Alert"
+    source: >
+      NtfyAlertPublisher.java, added 2026-08-06 alongside
+      AlertSeverityClassifier -- triggered from EventConsumer right after
+      a CRITICAL-severity CabinEvent is persisted to Postgres, so the
+      push and the durable record are the same code path, not two
+      separately-maintained ones.
+    rendering:
+      semantic: "Cabin Alert: <device>: <what happened>"
+      systems: Critical Event Push Notification
+      technical: "Kafka cabin.events.raw -> EventConsumer -> CabinEventService.save() -> NtfyAlertPublisher.publishIfCritical() -> HTTP POST to {ntfyBaseUrl}/{topic}"
+      compliance: Critical Alert Delivery Record
+    definition: >
+      A push notification sent for any CabinEvent classified CRITICAL by
+      AlertSeverityClassifier (water_leak, smoke, or alarm == true) --
+      not camera/object-detection specific like cabin_camera_overnight_alert,
+      this is the general-purpose path for Zigbee sensors and any other
+      MQTT-sourced device event.
+    relationships:
+      - target: event_severity
+        type: depends_on
+        cardinality: "N:1"
+      - target: platform_secret
+        type: depends_on
+        cardinality: "1:1" # CABIN_ALERT_NTFY_TOPIC functions as a shared secret, same reasoning as cabin_camera_overnight_alert's topic
+      - target: cabin_camera_overnight_alert
+        type: complements
+        cardinality: "N:N" # same delivery mechanism (ntfy.sh), deliberately the SAME topic reused rather than a second subscription -- see notes
+    relates_to:
+      ui_components: []
+      elements: [event_severity]
+    notes: >
+      BUILT 2026-08-06. Deliberately reuses the exact same ntfy.sh topic
+      cabin_camera_overnight_alert already established, rather than
+      creating a second subscription the user would need to add in the
+      ntfy app -- one topic, two independent producers (Node-RED for
+      camera-tier alerts, cabin-backend for device-tier CRITICAL events).
+
+      Config: cabin.alerts.ntfyTopic / CABIN_ALERT_NTFY_TOPIC env var,
+      empty by default (CRITICAL events still persist to cabin_event,
+      just no push -- matches this codebase's established pattern for
+      optional integrations, e.g. CameraMediaController's blinkBridgeUrl).
+      Real value lives only in infra/.env on the M920q, never committed --
+      same shared-secret reasoning as cabin_camera_overnight_alert's topic.
+
+      Unlike cabin_camera_overnight_alert, this entity is NOT gated on
+      armed/presence state -- a CRITICAL event (active water leak, smoke)
+      pages regardless of whether anyone's home or the cabin is armed,
+      since those conditions matter for security-tier alerts but not for
+      "something is actively leaking or on fire" ones. This is a
+      deliberate difference from the camera alert's gating, not an
+      oversight -- worth remembering if the two entities' gating logic is
+      ever compared and looks inconsistent at a glance.
+
+      Verified end-to-end with a real synthetic event (not just code
+      review): a manually published cabin/event/critical MQTT message
+      produced a CabinEvent with severity: "CRITICAL" in /api/events AND
+      a real ntfy push, confirmed received on the user's phone.
+
   - id: nvr_frigate
     entity_type: owl:Class
     layer: infra

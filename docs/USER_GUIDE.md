@@ -120,6 +120,40 @@ entity for the exact, current rule set in force.
 
 ---
 
+## Alerts & Notifications
+
+Not every sensor reading deserves a phone notification, and not every one
+that gets logged is worth interrupting you for. The platform sorts what
+happens at the cabin into three levels:
+
+| Level | Examples | What happens |
+|---|---|---|
+| **Critical** | Water leak detected, smoke/CO alarm | Pushes a notification straight to your phone |
+| **Warning** | A door left open, a sensor's battery running low, tamper detected | Logged, visible in the system's event history — but doesn't page you |
+| **Informational** | Motion, a door opening and closing normally, routine device activity | Logged only — this is the platform quietly keeping a record, not something that needs your attention |
+
+**Why routine activity doesn't page you:** if every door open or motion
+blip sent a push notification, you'd tune the notifications out within a
+day and miss the ones that actually matter. Only things that genuinely
+need a response — an active leak, smoke or CO — interrupt you. Everything
+else is still recorded (see "Who to ask" below for how to review it), just
+not pushed at you in the moment.
+
+**Getting the phone notifications**: critical alerts arrive via
+[ntfy](https://ntfy.sh) — a free notification app, not a platform account.
+Install it (Android/iOS), and whoever manages your platform gives you a
+private subscription topic to add in the app. There's no sign-up and
+nothing to configure beyond that one topic.
+
+**What's still evolving**: as of this writing, warning- and info-level
+activity is recorded but doesn't yet have its own dashboard view inside
+Family Hub or FaceOfTheCabin — today it lives in the raw event history
+your platform operator can query. A proper in-app view for this is on the
+roadmap; this guide will be updated when it ships rather than describing
+something that isn't there yet.
+
+---
+
 ## Camera Activity — what you see, and what it means for privacy
 
 Family Hub's Overview page shows a **live, public, no-sign-in-required**
