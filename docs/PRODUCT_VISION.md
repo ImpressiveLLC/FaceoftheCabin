@@ -80,43 +80,36 @@ day something breaks.
 
 ---
 
-## Value proposition — four pillars
+## Northstar goals — what's promised, cross-walked against what's actually delivered
 
-### 1. One identity, one continuous record, across everything
+These seven commitments have anchored the platform's direction since its
+first architecture review. Each one is restated here in plain terms and
+checked against reality, not just intent — including the one goal that
+isn't fully delivered yet, said plainly rather than smoothed over.
 
-A water leak, a missed chore, a family note, and a camera detection all
-live in the same history and the same sense of "who is this," rather than
-four separate app accounts that have never heard of each other. The
-platform maintains a single, evolving map of every device, every person,
-and every event it knows about — not documentation written after the
-fact, but the actual foundation the system is built on.
+| # | Northstar goal | How it's delivered today | Competitive advantage | Inherent strength |
+|---|---|---|---|---|
+| 1 | **One unified experience** — every property, every device, every family member's phone, under one system | A single platform spans every property and every device category the family owns, reachable from any phone, laptop, or wall display | Commercial platforms are single-property, single-vendor by design — a family managing more than one property (a cabin and a home, or a relative's house) juggles multiple disconnected apps and accounts today | Adding a new property or device extends the same system rather than starting a new vendor relationship from zero |
+| 2 | **See → Think → Act on everything** — information, understanding, and action are never separated | Every feature is held to the same standard: the right information visible without digging, enough context to understand what it means, and a next action never more than a step or two away | Commercial security apps routinely show a bare notification with no context, or bury the actual action three menus deep — this platform's design standard structurally rejects both failure modes | It's a permanent contract applied to every new feature, not a one-time UI pass — the system doesn't degrade into notification noise as it grows |
+| 3 | **A living ontology** — a continuously maintained map of the family's whole ecosystem | Every device, person, and piece of data the platform knows about lives in one structured, evolving map — the actual foundation the system runs on, not documentation written after the fact | A commercial platform's internal data model is proprietary and invisible to you; here, the map *is* the platform, and it's the family's | New capability gets added by extending a known structure, not by guessing at undocumented behavior |
+| 4 | **FAIR data** — Findable, Accessible, Interoperable, Reusable | Every piece of data is structured to be found, understood by people and by future automation, connected to related data, and reused without being re-collected | Vendor data formats are built to keep a household inside that vendor's app — this data is structured to be genuinely useful to the family that owns it, not just to the platform | Positions the system to take advantage of AI-assisted analysis as that technology matures, without re-architecting the data later |
+| 5 | **Full event history and audit trail** — camera through automation through action, end to end | Every device signal and every action taken — automated or human — becomes a permanent, traceable record | Consumer platforms typically show a short rolling window of clips, not a queryable history of what happened and why — the real incident described earlier in this document is proof this works, not a promise that it will | "What happened and why" doesn't depend on anyone remembering to write it down — normal operation produces the record |
+| 6 | **Self-improving discovery** — the system surfaces what could be better, not just what broke | **Partially delivered, said plainly:** a structured way to submit, review, and act on improvement opportunities exists and is in use today, with a full record of what was considered and why. **Not yet delivered:** the fully automated process that proactively goes looking for those opportunities on its own — today, something has to point it at a candidate first | Even in its current, partial form, this beats commercial platforms outright — they only ever surface their own next product to sell; this surfaces opportunities grounded in what the family actually already owns | Every recommendation is cross-referenced against the family's real, specific devices, not a generic upsell list |
+| 7 | **Radical device flexibility** — no vendor decides what's allowed to connect | Different camera brands, sensor ecosystems, and automation tools already coexist in one system, with no single vendor gatekeeping what can join | Buying into a name-brand ecosystem means living inside that vendor's rules for what connects and what doesn't — this platform assumed the opposite from day one | Every new device or protocol follows the same repeatable onboarding pattern, so flexibility doesn't get harder to maintain as the system grows |
 
-### 2. Freedom to mix devices and brands on the family's own terms
+### Strengths at a glance
 
-Different camera brands, different sensor ecosystems, and different
-automation tools all coexist in one system today, without any single
-vendor deciding what the family is allowed to connect. Commercial
-ecosystems make that decision for you the moment you buy in — this
-platform was built around the opposite assumption from day one.
+**Competitive** (advantages that exist because of how the alternatives are built):
+- Every property and every device category in one place, where commercial platforms fragment by vendor and by property
+- A record of what happened that a cautious observer would actually trust, where consumer apps offer a short clip window at best
+- Improvement suggestions grounded in the family's real, owned devices, where vendors only ever upsell their own next product
+- No vendor gatekeeping which devices are allowed to join the system
 
-### 3. Problems get permanently understood, not just retried
-
-When something breaks, the fix doesn't disappear the moment it's applied.
-It becomes part of how the system is maintained going forward — so a
-failure that happens once and gets fixed is measurably less likely to
-happen the same way twice, in a way a closed commercial product
-structurally cannot offer, because a family never sees inside it in the
-first place.
-
-### 4. The knowledge itself is the product, not any single feature
-
-The cameras, the sensors, and the household tools are the visible parts.
-The real, durable value is the accumulated understanding of how this
-specific family's home and property actually work — what's connected to
-what, what's been tried, what's changed over time. That accumulated
-understanding is not something a commercial product can sell back to a
-family, because it can only be built from that family's own specific
-home, own specific devices, and own specific history.
+**Inherent** (true regardless of what else exists in the market):
+- The system's understanding of the family's home compounds over time instead of resetting with every new device or every support ticket
+- Design standards are permanent contracts applied to every new feature, not one-time decisions that erode as the system grows
+- The data itself is structured to remain useful — to the family, and eventually to AI-assisted analysis — without needing to be rebuilt later
+- Flexibility and unification aren't add-ons bolted on afterward; they were the starting assumption
 
 ---
 
