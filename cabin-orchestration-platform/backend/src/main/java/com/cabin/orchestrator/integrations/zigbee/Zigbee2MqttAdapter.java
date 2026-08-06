@@ -2,6 +2,7 @@ package com.cabin.orchestrator.integrations.zigbee;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.*;
+import com.cabin.orchestrator.events.AlertSeverityClassifier;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -195,7 +196,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             // (live state) without ever writing to cabin_event, so Zigbee
             // motion/contact/etc. activity never showed up in event history.
             CabinEvent event = new CabinEvent(
-                UUID.randomUUID().toString(), deviceId, "TELEMETRY", "INFO", Instant.now(), attrs);
+                UUID.randomUUID().toString(), deviceId, "TELEMETRY",
+                AlertSeverityClassifier.classify(attrs), Instant.now(), attrs);
             eventPublisher.publish(event);
         } catch (Exception e) {
             log.warn("Failed to parse Z2M state for {}: {}", friendlyName, e.getMessage());

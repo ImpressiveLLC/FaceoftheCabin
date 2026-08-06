@@ -8,3 +8,10 @@ playwright-report/
 # mistake, not the primary control.
 .ansible_vault_pass
 *.vault_pass
+
+# Real per-host env files (HA_TOKEN, POSTGRES_PASSWORD, the ntfy alert
+# topic, etc.) — only the .example templates are meant to be tracked.
+# Same safety-net reasoning as the vault password above: this shouldn't be
+# the only thing standing between a secret and a commit, but it helps.
+cabin-orchestration-platform/infra/.env
+cabin-orchestration-platform/locations/*/.env

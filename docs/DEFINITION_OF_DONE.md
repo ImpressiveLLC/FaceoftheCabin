@@ -117,6 +117,20 @@ accumulate.*
 
 - **Reolink (`front_door`) camera still physically off-network** — needs
   on-site checking (power, WiFi re-pairing). Not fixable remotely.
+- **`blinkbridge` needs a real health monitor — this is now a repeat
+  incident (2026-08-03, 2026-08-06), not a one-off.** It has an internal
+  "give up" state after a transient Blink cloud-API failure that no
+  Docker restart policy catches (`RestartCount=0` both times) and that
+  silently zeroes `driveway`'s `camera_fps` until someone notices and
+  runs `docker restart blinkbridge`. Add an Uptime Kuma monitor against
+  Frigate's `camera_fps` (or `mediamtx`'s stream) for `driveway`
+  specifically. See `MAINTENANCE.md`'s Blink section for both incidents.
+- **Severity classifier (`docs/ontology.yaml`'s `event_severity`) doesn't
+  consider armed/presence state yet** — a WARN-tier event (door open,
+  low battery, tamper) scores the same whether the cabin is occupied or
+  armed-away. Deliberate MVP scope cut (see that entity's `notes`), not
+  forgotten — wire it to `cabin/security/node_red_armed` and
+  `cabin/presence/*` once the MVP badge/push behavior is proven stable.
 - **Grafana has NO working login at all right now** — password login
   deliberately disabled (open internet exposure, neither access gate
   confirmed working); Cloudflare Access isn't gating the hostname

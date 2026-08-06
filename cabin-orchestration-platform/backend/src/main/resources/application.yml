@@ -56,6 +56,14 @@ cabin:
       # here, and startLiveview/stopLiveview become harmless no-ops for
       # every camera. See CameraMediaController's javadoc.
       blinkCameraMap: ${BLINK_CAMERA_MAP:driveway:Outdoor 4 - DHEE}
+  alerts:
+    # ntfy.sh topic for CRITICAL-severity CabinEvents (water leak / smoke /
+    # alarm) — same delivery mechanism as the existing Node-RED overnight-
+    # camera-alert flow. The topic name functions as a shared secret (ntfy.sh
+    # topics aren't access-controlled), so this stays unset here and is only
+    # ever set in infra/.env on the actual host, never committed. Empty by
+    # default = CRITICAL events still save to cabin_event, just no push.
+    ntfyTopic: ${CABIN_ALERT_NTFY_TOPIC:}
   techid:
     # Shared secret any Tech ID Service provider (this instance's own
     # scheduled Claude Code routine, an operator's paid scanning tier, or

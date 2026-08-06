@@ -264,6 +264,16 @@ correctly wired the whole time). Two independent causes:
   does) — worth an Uptime Kuma check against `mediamtx`'s stream health
   or Frigate's own `camera_fps` so this doesn't require someone to
   notice "no events in days" before catching it next time.
+  **Recurred 2026-08-06**: same symptom (user reported Blink motion not
+  registering; `driveway camera_fps` was `0.0`, `blinkbridge` logs showed
+  liveview requests hitting "unknown/disabled camera"), same fix
+  (`docker restart blinkbridge` — recovered to `camera_fps: 4.59` within
+  ~25s). `RestartCount=0` the whole time it was stuck, confirming again
+  this is an internal give-up state, not a crash — no Docker restart
+  policy will ever catch it. The Uptime Kuma monitor recommended above is
+  still not confirmed to exist; this is now a repeat incident, not a
+  one-off, so it's been promoted to the open punch list rather than left
+  as a suggestion buried in this note.
 
 ### Real on-demand liveview for the Blink camera (built 2026-08-03)
 

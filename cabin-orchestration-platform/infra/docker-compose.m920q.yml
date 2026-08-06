@@ -165,6 +165,10 @@ services:
       # default (submission returns 503 until an operator sets this).
       # See docs/REPLICATION.md §8.
       TECH_ID_API_KEY: ${TECH_ID_API_KEY:-}
+      # ntfy.sh topic for CRITICAL alert push (NtfyAlertPublisher) -- optional,
+      # empty by default (CRITICAL events still persist, just no phone push).
+      # Real value lives only in infra/.env on this host, never committed.
+      CABIN_ALERT_NTFY_TOPIC: ${CABIN_ALERT_NTFY_TOPIC:-}
     volumes:
       # Read-only mount so OntologyLookupService can resolve entity ids to
       # display names for the Opportunity Map (and future data-dictionary

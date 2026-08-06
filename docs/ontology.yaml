@@ -933,6 +933,53 @@ elements:
       Not all devices report battery — absence of battery attribute should
       not be treated as 0%.
 
+  - id: event_severity
+    entity_type: owl:DatatypeProperty
+    layer: backend
+    primitive: false
+    schema_version: "0.3.0"
+    migration_status: complete
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: [INFO, WARN, CRITICAL]
+      description: >
+        Distinct from device_state (device health: ONLINE/OFFLINE/UNKNOWN/
+        ALARM) — this classifies the severity of one CabinEvent, not a
+        device's current operational state. A device can be ONLINE while
+        its most recent event was CRITICAL (e.g. an active water leak).
+    ui_display_name: "Severity"
+    rendering:
+      semantic: Alert level (Info / Warning / Critical)
+      systems: Event Severity (INFO / WARN / CRITICAL)
+      technical: severity field on CabinEvent
+      compliance: Alert Severity Classification
+    definition: >
+      The severity tier assigned to a CabinEvent at publish time, computed
+      from the triggering message's raw attributes by
+      AlertSeverityClassifier. CRITICAL = water_leak/smoke/alarm true.
+      WARN = tamper true, battery_low true, or contact false (door open).
+      Everything else is INFO.
+    relationships:
+      - target: device_state
+        type: complements
+        cardinality: "N:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    notes: >
+      MVP classifier only — v0. Does not yet consider armed/presence state
+      (cabin/security/node_red_armed, cabin/presence/*), so a WARN-tier door
+      event is scored the same whether the cabin is occupied or armed-away.
+      That's a deliberate, tracked scope cut, not an oversight — see
+      docs/DEFINITION_OF_DONE.md's punch list.
+      CRITICAL events additionally trigger NtfyAlertPublisher, which POSTs
+      to the same ntfy.sh topic cabin_camera_overnight_alert already uses
+      (config: cabin.alerts.ntfyTopic / CABIN_ALERT_NTFY_TOPIC, empty by
+      default — no-op until an operator sets a real topic in infra/.env,
+      never committed). WARN events are not pushed to avoid paging for
+      every open door.
+
   - id: temperature_celsius
     entity_type: owl:DatatypeProperty
     layer: protocol

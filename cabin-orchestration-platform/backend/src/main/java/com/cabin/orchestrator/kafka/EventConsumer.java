@@ -2,6 +2,7 @@ package com.cabin.orchestrator.kafka;
 
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
+import com.cabin.orchestrator.events.NtfyAlertPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -41,12 +42,14 @@ public class EventConsumer {
     private String bootstrapServers;
 
     private final CabinEventService eventService;
+    private final NtfyAlertPublisher ntfyAlertPublisher;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
 
-    public EventConsumer(CabinEventService eventService) {
+    public EventConsumer(CabinEventService eventService, NtfyAlertPublisher ntfyAlertPublisher) {
         this.eventService = eventService;
+        this.ntfyAlertPublisher = ntfyAlertPublisher;
     }
 
     @PostConstruct
@@ -77,6 +80,7 @@ public class EventConsumer {
                         CabinEvent event = mapper.readValue(record.value(), CabinEvent.class);
                         eventService.save(event);
                         log.debug("Saved event {} to Postgres", event.eventId());
+                        ntfyAlertPublisher.publishIfCritical(event);
                     } catch (Exception e) {
                         log.warn("Failed to persist event from {}: {}", TOPIC, e.getMessage());
                     }

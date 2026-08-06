@@ -3,6 +3,7 @@ package com.cabin.orchestrator.mqtt;
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
+import com.cabin.orchestrator.events.AlertSeverityClassifier;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -113,7 +114,8 @@ public class MqttBridgeService implements MqttCallback {
 
         // Publish to Kafka for rules engine consumption
         CabinEvent event = new CabinEvent(
-            UUID.randomUUID().toString(), deviceId, "TELEMETRY", "INFO", Instant.now(), data);
+            UUID.randomUUID().toString(), deviceId, "TELEMETRY",
+            AlertSeverityClassifier.classify(data), Instant.now(), data);
         eventPublisher.publish(event);
     }
 
