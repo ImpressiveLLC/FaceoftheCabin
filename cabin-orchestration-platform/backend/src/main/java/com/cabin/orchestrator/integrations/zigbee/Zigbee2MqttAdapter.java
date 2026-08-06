@@ -2,6 +2,8 @@ package com.cabin.orchestrator.integrations.zigbee;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.*;
+import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.kafka.EventPublisher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -47,6 +49,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
 
     private MqttClient client;
     private final DeviceRegistry registry;
+    private final EventPublisher eventPublisher;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     // Tracks friendly names seen via bridge/devices so we know which topics are Z2M devices
@@ -54,8 +57,9 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     // Tracks whether bridge is online
     private volatile String bridgeState = "offline";
 
-    public Zigbee2MqttAdapter(DeviceRegistry registry) {
+    public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher) {
         this.registry = registry;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostConstruct
@@ -185,6 +189,14 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             registry.update(new DeviceStatus(
                 deviceId, existing.type(), existing.name(), state,
                 Instant.now(), attrs, existing.location()));
+
+            // Same publish MqttBridgeService.handleDeviceMessage() does for
+            // non-Zigbee devices — this adapter was updating DeviceRegistry
+            // (live state) without ever writing to cabin_event, so Zigbee
+            // motion/contact/etc. activity never showed up in event history.
+            CabinEvent event = new CabinEvent(
+                UUID.randomUUID().toString(), deviceId, "TELEMETRY", "INFO", Instant.now(), attrs);
+            eventPublisher.publish(event);
         } catch (Exception e) {
             log.warn("Failed to parse Z2M state for {}: {}", friendlyName, e.getMessage());
         }
