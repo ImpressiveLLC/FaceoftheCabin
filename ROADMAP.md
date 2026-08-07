@@ -630,9 +630,33 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 > drilldown, no automation-lineage links). Full grounding, root-cause
 > detail, and step sequencing in
 > `docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md` — this entry is
-> a pointer, not a duplicate of that detail. Nothing in this phase is
-> implemented yet; the execution plan is the deliverable so far.
+> a pointer, not a duplicate of that detail. Sequenced 2026-08-07 by loose
+> WSJF (highest value, least effort first) — the five items below are done;
+> everything else in this phase is still just the plan.
 
+- [x] §2a — Rename "Family Hub" nav panel to "My Places" (it's a
+      cabin/home launcher grid, not the actual Family Hub app). The panel's
+      own `<h2>` still reads "Smrekar Familia Hub" (page content, not the
+      confusing nav label) — left as-is, not part of what was asked.
+- [x] §2b (partial) — Replaced the hardcoded `⌂` nav-rail glyph with the
+      real family crest (`hodgson-crest.svg`, copied into
+      `cabin-orchestration-platform/ui/public/`). **Not done**: cabin-ui's
+      hardcoded "Smrekar Familia Hub" heading still doesn't read
+      `hub_family_name` — that needs the shared-branding/`platform_branding`
+      work (execution plan §2b step 2-3), bigger than a glyph swap, still
+      open.
+- [x] §2c (partial) — Root cause (origin-scoped `localStorage`, not bad
+      apply logic) confirmed and fixed for the actual reported symptom:
+      every cross-app link-out (`ThemeProvider.jsx`'s init state,
+      `family-hub.html`'s `activeThemeId` init, both apps' link-out hrefs)
+      now carries `?theme=<id>`, verified working both directions against a
+      real running dev server + static file. **Not done (§2d)**: the two
+      `THEMES` objects are still hand-duplicated, no shared build-time
+      source, no CI drift check yet — and verifying this surfaced a real,
+      previously undocumented instance of exactly that drift:
+      `family-hub.html` has two themes (`neon80s`, `pacman`) `ThemeProvider.jsx`
+      doesn't have at all. Left as the next slice of this item, not silently
+      dropped.
 - [ ] §1a — Fix Grafana's two broken access gates (Cloudflare Access not
       enforcing, Google OAuth 403 — both already root-caused in
       `MAINTENANCE.md`), then add `infra/grafana/provisioning/dashboards/`
@@ -641,26 +665,22 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 - [ ] §1b — Promote hardcoded `LOCATIONS` (App.jsx) to a real
       `hub_location` ontology entity type + `/api/locations` CRUD, so
       adding a location/hub is configuration, not a source edit.
-- [ ] §2a — Rename "Family Hub" nav panel to "My Places" (it's a
-      cabin/home launcher grid, not the actual Family Hub app).
-- [ ] §2b — Replace the hardcoded `⌂` nav-rail glyph with the existing
-      family crest (`hodgson-crest.svg` / `hub_family_name`), and make
-      cabin-ui's hardcoded "Smrekar Familia Hub" heading read from the same
-      configured branding family-hub.html already honors.
-- [ ] §2c/2d — Extract the two hand-duplicated `THEMES` objects
-      (`ThemeProvider.jsx`, `family-hub.html`) to one shared build-time
-      source; add `?theme=` handoff on every cross-app link-out (root cause
-      of "theme doesn't carry over" is origin-scoped `localStorage`, not
-      bad apply logic); add a CI check that fails the build if the two
-      files' theme ids drift from the shared source.
 - [ ] §3 — Reorderable, per-field-configurable place cards (reuse the
       existing `useDraggableOrder` pattern already shipped for Device
       Manager/Monitoring); depends on §1b.
-- [ ] §4a — One-line-ish fix: `CameraEventsPanel` never passes the
-      `camera`/event-type filter `EventController` already supports —
-      that's the whole "seeing device inputs, not camera events" bug.
-- [ ] §4b — DTM stamp on camera images (verify Frigate's native overlay
-      first before adding a second one).
+- [x] §4a — `CameraEventsPanel` was fetching `/api/events` completely
+      unfiltered — that was the whole "seeing device inputs, not camera
+      events" bug. Fixed client-side (filters to `DETECTION_*`/`MOTION_*`
+      eventTypes) as the fast fix; a real server-side `eventType` filter
+      (avoiding fetching non-camera events at all) is still open, tracked
+      under §4c's pagination work.
+- [x] §4b (partial) — DTM stamp now renders as an overlay directly on each
+      camera event's thumbnail image (not just adjacent list text), using
+      `CabinEvent.timestamp` already returned by the API — no backend
+      change needed. **Not done**: never verified against the live M920q
+      whether Frigate's own snapshot already burns in a timestamp, which
+      would make this overlay redundant — needs a live session, not
+      buildable from a local clone.
 - [ ] §4c — Pagination/filtering past the current 30-event cap; a
       continuous-recording timeline/scrubber view (Frigate recordings API);
       new `cold_storage_backend` ontology entity so retention storage is

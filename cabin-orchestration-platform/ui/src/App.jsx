@@ -18,7 +18,7 @@
 
 import React, { useEffect, useState, useRef, useCallback, useMemo, createContext, useContext } from "react";
 import { createRoot } from "react-dom/client";
-import { ThemeProvider, ThemeSwitcher } from "./ThemeProvider.jsx";
+import { ThemeProvider, ThemeSwitcher, useTheme } from "./ThemeProvider.jsx";
 import {
   Home, Settings, Cpu, Activity, Zap,
   ChevronDown, ChevronUp, Wifi, WifiOff,
@@ -243,7 +243,15 @@ function useAuthedMediaUrl(url, authedFetch) {
   return { objectUrl, error };
 }
 
-function CameraEventThumbnail({ apiBase, authedFetch, frigateEventId }) {
+// DTM (date/time) stamp overlay, rendered directly on the thumbnail image
+// itself -- not just as adjacent list text -- so the image still carries
+// its own timestamp if viewed or shared out of that list context. Uses
+// CabinEvent.timestamp, already returned by /api/events; no new data or
+// backend change needed. If Frigate's own snapshot already burns in a
+// timestamp (unverified against the live M920q as of this session -- see
+// docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §4b), this
+// overlay would be redundant with that and worth dropping once confirmed.
+function CameraEventThumbnail({ apiBase, authedFetch, frigateEventId, timestamp }) {
   const { objectUrl, error } = useAuthedMediaUrl(
     frigateEventId ? `${apiBase}/api/camera/events/${frigateEventId}/snapshot` : null,
     authedFetch
@@ -251,9 +259,15 @@ function CameraEventThumbnail({ apiBase, authedFetch, frigateEventId }) {
   if (!frigateEventId || error) {
     return <div className="camera-event-thumb camera-event-thumb-empty"><Camera size={18} /></div>;
   }
-  return objectUrl
-    ? <img className="camera-event-thumb" src={objectUrl} alt="" />
-    : <div className="camera-event-thumb camera-event-thumb-loading" />;
+  if (!objectUrl) {
+    return <div className="camera-event-thumb camera-event-thumb-loading" />;
+  }
+  return (
+    <div className="camera-event-thumb-wrap">
+      <img className="camera-event-thumb" src={objectUrl} alt="" />
+      {timestamp && <span className="camera-event-thumb-dtm">{new Date(timestamp).toLocaleString()}</span>}
+    </div>
+  );
 }
 
 function CameraEventClip({ apiBase, authedFetch, frigateEventId }) {
@@ -351,10 +365,22 @@ function CameraEventsPanel({ auth }) {
     };
   }, [liveCamera, apiBase, auth]);
 
+  // /api/events returns every device's events, not just cameras' -- Found
+  // 2026-08-07: this panel fetched that unfiltered stream directly, so
+  // leak/temp/motion-sensor state changes showed up mixed in with real
+  // camera activity. EventController's `camera` query param only scopes to
+  // one named camera at a time, not "any camera" -- filtering by the
+  // eventType values cabin_camera_event actually produces
+  // (DETECTION_*/MOTION_*, per docs/ontology.yaml) is the correct scope
+  // here client-side. A server-side eventType filter (avoiding fetching
+  // non-camera events at all) is tracked as the fuller fix in
+  // docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §4a/§4c.
+  const isCameraEvent = (e) => /^(DETECTION_|MOTION_)/.test(e.eventType || "");
+
   const refresh = useCallback(() => {
     setLoading(true);
     fetch(`${apiBase}/api/events?limit=30&window=24h`)
-      .then(r => r.json()).then(setEvents).catch(() => setEvents([]))
+      .then(r => r.json()).then(list => setEvents(list.filter(isCameraEvent))).catch(() => setEvents([]))
       .finally(() => setLoading(false));
   }, [apiBase]);
 
@@ -465,7 +491,7 @@ function CameraEventsPanel({ auth }) {
                 className={`camera-event-row${canExpand ? " clickable" : ""}`}
                 onClick={() => canExpand && setExpandedEventId(isExpanded ? null : e.eventId)}
               >
-                <CameraEventThumbnail apiBase={apiBase} authedFetch={auth.authedFetch} frigateEventId={e.payload?.hasSnapshot ? frigateEventId : null} />
+                <CameraEventThumbnail apiBase={apiBase} authedFetch={auth.authedFetch} frigateEventId={e.payload?.hasSnapshot ? frigateEventId : null} timestamp={e.timestamp} />
                 <div>
                   <div className="camera-event-title">
                     {e.sourceDeviceId} — {e.eventType.replace("DETECTION_", "").replace("MOTION_", "motion ").toLowerCase()}
@@ -703,7 +729,7 @@ function OpportunityMapPanel({ auth }) {
 }
 
 const PANELS = [
-  { id: "FAMILY_HUB",     label: "Family Hub",      icon: Home },
+  { id: "FAMILY_HUB",     label: "My Places",       icon: Home },
   { id: "FAMILY_CONFIG",  label: "Family Config",   icon: Settings },
   { id: "DEVICE_MANAGER", label: "Devices",         icon: Cpu },
   { id: "MONITORING",     label: "Monitoring",      icon: Activity },
@@ -799,7 +825,13 @@ function FamilyHubLocationCard({ locId, locCfg, devices }) {
     { label: "Grafana",       url: locCfg.grafanaUrl,  icon: BarChart2 },
     { label: "Node-RED",      url: locCfg.noderedUrl,  icon: Cpu },
   ];
-  const familyHubUrl = locCfg.familyHubUrl;
+  // Carry this app's active theme into Family Hub on link-out (same
+  // ?theme= handoff ThemeProvider reads on load) -- the two apps live on
+  // different subdomains so localStorage can't do this by itself.
+  const { themeId } = useTheme();
+  const familyHubUrl = locCfg.familyHubUrl
+    ? `${locCfg.familyHubUrl}${locCfg.familyHubUrl.includes("?") ? "&" : "?"}theme=${themeId}`
+    : locCfg.familyHubUrl;
 
   return (
     <div className="family-hub-card">
@@ -2215,7 +2247,7 @@ function NavRail({ active, onSelect, alertLevels }) {
 
   return (
     <nav className="nav-rail">
-      <div className="nav-logo">⌂</div>
+      <img className="nav-logo" src="/hodgson-crest.svg" alt="" />
       {PANELS.map(p => {
         const level = alerts[p.id];
         const isCritical = level === "critical";

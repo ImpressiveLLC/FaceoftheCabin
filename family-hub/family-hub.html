@@ -2950,7 +2950,7 @@ function enhanceMobileOverviewCards() {
 function locationLinksHtml() {
   return `<div class="dash-card location-links-card">
     <div class="dash-card-title">🏡 Other Places</div>
-    <a class="location-link" href="https://cabin.unicornpingpong.com/?panel=CAMERA_EVENTS" target="_blank" rel="noopener">
+    <a class="location-link" href="https://cabin.unicornpingpong.com/?panel=CAMERA_EVENTS&theme=${activeThemeId}" target="_blank" rel="noopener">
       <span class="location-link-icon">🏔️</span>
       <span><span class="location-link-name">How's the cabin?</span><span class="location-link-sub">Cameras, sensors, alerts ↗</span></span>
     </a>
@@ -4361,7 +4361,14 @@ const THEMES = {
   },
 };
 
-let activeThemeId = localStorage.getItem(THEME_KEY) || 'deepspace';
+// A cross-app link-out (cabin-ui's "Open Family Hub" button) carries the
+// source app's active theme as ?theme=<id> so it keeps carrying over here
+// instead of resetting -- localStorage alone can't do this, since the two
+// apps live on different subdomains and don't share it. Query param wins
+// over this app's own last-saved choice on first load only; every
+// subsequent in-app change persists to localStorage as before.
+const THEME_FROM_URL = new URLSearchParams(window.location.search).get('theme');
+let activeThemeId = (THEME_FROM_URL && THEMES[THEME_FROM_URL]) ? THEME_FROM_URL : (localStorage.getItem(THEME_KEY) || 'deepspace');
 
 function applyTheme(id) {
   const t = THEMES[id] || THEMES.deepspace;

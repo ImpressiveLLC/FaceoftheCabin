@@ -1416,6 +1416,21 @@ elements:
       identity from Frigate's own perspective regardless), so historical
       events keep their original names, only new events use the new ones.
 
+      FOUND 2026-08-07 (user-reported: "under camera views I'm not seeing
+      camera events, I'm seeing device inputs"): CameraEventsPanel
+      (cabin-ui) called GET /api/events?limit=30&window=24h with no filter
+      at all — EventController's `camera` param only scopes to one named
+      camera, not "any camera event," so the panel showed every device's
+      events (leak/temp/motion sensors included) mixed in with real
+      cabin_camera_event rows. FIXED (partial, client-side) same session:
+      the panel now filters the response to eventType matching
+      DETECTION_*/MOTION_* before rendering. NOT fixed: this still fetches
+      the unfiltered stream first and discards most of it client-side — a
+      real server-side eventType filter (EventController) is the fuller
+      fix, tracked under
+      docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §4a/§4c
+      alongside the still-open pagination-past-30-events gap.
+
   - id: cabin_camera_continuous_recording
     entity_type: owl:Class
     layer: infra
@@ -1575,6 +1590,17 @@ elements:
       one. curl-based testing never caught it, since curl doesn't enforce
       the browser rule that a preflight response itself must be a plain
       2xx. Fixed by exempting OPTIONS from the token check entirely.
+
+      DTM STAMP added 2026-08-07 (user-reported: unsure when Blink
+      notifications were from): CameraEventThumbnail now renders a
+      timestamp overlay directly on the thumbnail image itself (bottom
+      edge, semi-transparent badge), not just as separate list text next
+      to it — using CabinEvent.timestamp, already returned by /api/events,
+      no backend change. NOT verified: whether Frigate's own snapshot
+      already burns in a timestamp server-side, which would make this
+      overlay redundant — needs checking against the live M920q's actual
+      Frigate config/output, not assumed; see
+      docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §4b.
 
       ORIGINAL PLANNING NOTE (2026-08-02, earlier the same day, kept for
       the record): Current live values were pre_capture=5, post_capture=5,
@@ -3899,6 +3925,20 @@ elements:
       Logo width: 78px (50% larger than the original 52px ambient-crest).
       Only the text is dynamic; the SVG is fixed per deployment.
 
+      FOUND 2026-08-07: cabin-ui had no crest at all — its nav rail used a
+      hardcoded "⌂" Unicode glyph, unrelated to this entity, and its
+      FamilyHubPanel heading hardcodes the literal string "Smrekar Familia
+      Hub" rather than reading hub_family_name the way this entity's
+      transformation describes. FIXED (partial) same session: copied
+      hodgson-crest.svg into cabin-orchestration-platform/ui/public/ and
+      replaced the "⌂" glyph with it (App.jsx's NavRail). NOT fixed: the
+      hardcoded heading string — cabin-ui still doesn't consume
+      hub_family_name at all, so a renamed family (via family-hub's
+      Settings) wouldn't propagate there. Needs a shared config source (no
+      such API exists between the two apps today), tracked as the bigger
+      remaining slice of this work in
+      docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §2b.
+
   - id: family_profile
     entity_type: owl:Class
     layer: backend
@@ -4462,6 +4502,26 @@ elements:
       scoped to [data-theme="pacman"]). No ontology entry existed for this
       system before 2026-07-31 despite 6 presets already shipped — added
       retroactively per the "ontology is canonical, not optional" directive.
+
+      FOUND 2026-08-07: this entry describes one theme catalog, but there are
+      actually TWO hand-duplicated copies of it — family-hub.html's THEMES
+      object (9 presets, matches this entry's enum) and cabin-ui's
+      ThemeProvider.jsx THEMES object, which only has 7: it's missing
+      neon80s and pacman entirely. `source: localStorage["cabin-theme"]` is
+      also per-app, not shared, despite the identical key name — the two
+      apps live on different subdomains (hub./cabin.unicornpingpong.com)
+      and browser localStorage is origin-scoped, so a matching key name
+      shares nothing across them. FIXED (partial) same session: every
+      cross-app link-out (family-hub's "How's the cabin?" button, cabin-ui's
+      "Open Family Hub" button) now appends `?theme=<id>` to the destination
+      URL, and both apps' theme-init logic reads that param on load before
+      falling back to their own localStorage — so the *active* theme choice
+      now genuinely carries over on navigation. NOT fixed: the two THEMES
+      objects themselves still aren't a single shared source, so the
+      neon80s/pacman drift above persists, and nothing stops a future preset
+      added to one app from silently not appearing in the other — see
+      `docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md` §2c/2d for
+      the planned shared-source + CI-check fix.
 
   - id: family_hub_access_log
     entity_type: owl:Class

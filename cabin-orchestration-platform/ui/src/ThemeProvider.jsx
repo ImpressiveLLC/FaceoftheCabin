@@ -205,6 +205,14 @@ export function useTheme() { return useContext(ThemeContext); }
 // ─── Provider ───────────────────────────────────────────────────────────────
 export function ThemeProvider({ children }) {
   const [themeId, setThemeId] = useState(() => {
+    // A cross-app link-out (family-hub.html's "How's the cabin?") carries
+    // the source app's active theme as ?theme=<id> so it keeps carrying
+    // over here instead of resetting -- localStorage alone can't do this,
+    // since the two apps live on different subdomains and don't share it.
+    // Query param wins over this app's own last-saved choice on first load
+    // only; every subsequent in-app change persists to localStorage as before.
+    const fromUrl = new URLSearchParams(window.location.search).get("theme");
+    if (fromUrl && THEMES[fromUrl]) return fromUrl;
     return localStorage.getItem(STORAGE_KEY) || "modern";
   });
 
