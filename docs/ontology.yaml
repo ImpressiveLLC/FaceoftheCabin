@@ -1939,20 +1939,27 @@ elements:
     layer: hardware
     primitive: true
     schema_version: "0.1.0"
-    migration_status: complete
+    migration_status: partial
     data_class: raw
     data_type: owl:Class
     ui_display_name: "Front Door Camera (Reolink RLC-820A)"
-    source: "Physical Reolink RLC-820A PoE camera, IP 192.168.2.200, currently off-network (see MAINTENANCE.md)"
+    source: "Physical Reolink RLC-820A PoE camera, IP 192.168.1.121 (corrected 2026-08-07 — the 192.168.2.200 this entry previously listed was stale; the camera is on a different subnet than the M920q, see notes), currently off-network from the M920q's perspective (see MAINTENANCE.md)"
     rendering:
       semantic: "Front door camera"
       systems: Reolink RLC-820A
-      technical: "RTSP sub (640x480, detect) + main (4K, record) streams via admin:4417@192.168.2.200:554"
+      technical: "RTSP sub (640x480, detect) + main (4K, record) streams via {credentials}@192.168.1.121:554 — never configured yet (physically connected as a proof-of-concept only, per the user 2026-08-07), so there is no real admin password to protect here yet; the literal string previously in this field was not a live credential"
       compliance: (not shown)
     definition: >
-      4K PoE dome camera covering the front-door/driveway area, integrated
-      into Frigate via native RTSP/ONVIF (no bridge needed, unlike the
-      Blink camera).
+      4K PoE dome camera covering the front-door/driveway area, intended
+      to integrate into Frigate via native RTSP/ONVIF (no bridge needed,
+      unlike the Blink camera) once configured. Physically connected at
+      the cabin as a proof-of-concept as of 2026-08-07 — not yet given
+      real credentials or brought into Frigate's config, and unreachable
+      from the M920q on its current network (see notes below and
+      MAINTENANCE.md's Reolink section). Downgraded from
+      migration_status: complete to partial 2026-08-07 — the previous
+      value asserted this integration as already-working fact, which it
+      was not.
     relationships:
       - target: nvr_frigate
         type: monitors
@@ -1988,6 +1995,21 @@ elements:
       credentials or Frigate config problem. Still requires physical/
       on-site checking (power, cabling, whether its static IP reset);
       nothing further to try remotely.
+
+      UPDATED 2026-08-07 — real topology found, not just a stale IP: the
+      user's own router client list shows this camera (and the Liebherr
+      fridge, a Nest Connect, and the Blink Sync Module) all on
+      192.168.1.0/24, while the M920q's own WiFi network sits on
+      192.168.2.0/24, with a second router (Greenwave C4000LG,
+      192.168.0.1) also present. `nmap -Pn` from the M920q against this
+      camera shows every port `filtered` (silently dropped), not
+      closed/refused — consistent with a genuine multi-subnet/double-NAT
+      topology, not simple AP client isolation on one flat network. Fix
+      requires either bridging the M920q onto 192.168.1.0/24 (a spare
+      Ethernet run, most likely) or reconfiguring whichever router is
+      creating the second network — both need on-site access/router
+      credentials this session doesn't have. See MAINTENANCE.md for the
+      full diagnostic trail.
 
   - id: camera_driveway_blink
     entity_type: owl:Class
@@ -2062,7 +2084,7 @@ elements:
     layer: integration
     primitive: true
     schema_version: "0.1.0"
-    migration_status: planned
+    migration_status: partial
     data_class: raw
     data_type: owl:Class
     ui_display_name: "Kitchen Fridge (Liebherr)"
@@ -2090,17 +2112,35 @@ elements:
       ui_components: []
       elements: [platform_secret]
     notes: >
-      NOT YET REGISTERED, 2026-08-02. Requires the user's own SmartDevice
-      account login through HA's config flow UI (Settings → Devices &
-      Services → Add Integration → Liebherr) — no separate developer/API
-      registration needed, unlike Home Connect below. Not something an
-      agent session can complete: no browser access to the Tailscale-only
-      local HA UI, and account password entry isn't something to do on
-      the user's behalf regardless. Once added, revisit this entity with
-      the real entity IDs HA assigns (temperature sensors, door/alarm
-      binary sensors, etc. — exact shape unknown until the integration is
-      actually live, per this project's "don't document fiction as fact"
-      standard).
+      NOT YET REGISTERED, 2026-08-02 [SUPERSEDED, see below].  Requires
+      the user's own SmartDevice account login through HA's config flow
+      UI (Settings → Devices & Services → Add Integration → Liebherr) —
+      no separate developer/API registration needed, unlike Home Connect
+      below. Not something an agent session can complete: no browser
+      access to the Tailscale-only local HA UI, and account password
+      entry isn't something to do on the user's behalf regardless.
+
+      RECONCILED 2026-08-07: this entry still claimed "not yet
+      registered" while `core.config_entries` on the live HA instance
+      already showed a real `liebherr` config entry
+      (`domain=liebherr, title=Liebherr, state=None`) — the user had
+      added it at some point after 2026-08-02 and this ontology entry was
+      never updated, a real example of exactly the drift this project's
+      DoD now explicitly calls out fixing immediately (see
+      `docs/DEFINITION_OF_DONE.md`). But the config entry alone isn't the
+      full picture either: `core.device_registry` and
+      `core.entity_registry` were both checked directly and show zero
+      Liebherr devices or entities — the integration is configured but
+      has not produced any working entities yet (state: None is
+      consistent with a setup that never completed or is stuck retrying,
+      not a healthy `loaded` integration). `migration_status` moved from
+      `planned` to `partial` to reflect this real, in-between state
+      honestly, rather than rounding up to `complete` or leaving the
+      stale `planned`/"not yet registered" claim in place. Revisit once
+      real entity IDs actually appear (temperature sensors, door/alarm
+      binary sensors, etc.) — exact shape still unknown until the
+      integration is actually producing data, per this project's "don't
+      document fiction as fact" standard.
 
   - id: smart_appliance_dishwasher_bosch
     entity_type: owl:Class
