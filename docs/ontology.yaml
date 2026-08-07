@@ -2066,6 +2066,578 @@ elements:
   # instead of re-deriving membership from scratch each time.
   # ═══════════════════════════════════════════════════════════════════════
 
+  - id: zigbee_motion_entry
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Entry Motion Sensor"
+    source: >
+      SONOFF SNZB-03PR2 Zigbee PIR motion sensor with illuminance,
+      paired via Zigbee2MQTT. Raw occupancy/illuminance/battery/
+      linkquality values are the device's own firmware output.
+    rendering:
+      semantic: "Entry motion"
+      systems: Motion Sensor — Entry (SONOFF SNZB-03PR2)
+      technical: "Z2M friendly_name 'motion_entry', device id z2m-motion_entry"
+      compliance: Motion Detection — Entry
+    definition: >
+      PIR motion + ambient-light sensor covering the cabin's entry area.
+      Reports occupancy (boolean), illuminance (lux), battery, and
+      linkquality. Unlike the leak sensors, occupancy is NOT one of
+      AlertSeverityClassifier's CRITICAL/WARN conditions — motion is
+      informational (INFO) only in the current MVP classifier, a
+      deliberate scope cut (see event_severity's notes on
+      armed/presence-aware escalation, not yet built).
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block — fixed-function safety/telemetry sensor, same
+      reasoning as zigbee_leak_alarm_bathroom.
+
+  - id: zigbee_door_front_contact
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Front Door Contact"
+    source: >
+      SONOFF SNZB-04P Zigbee contact sensor, paired via Zigbee2MQTT. Raw
+      contact/tamper/battery/voltage/linkquality values are the device's
+      own firmware output.
+    rendering:
+      semantic: "Front door"
+      systems: Contact Sensor — Front Door (SONOFF SNZB-04P)
+      technical: "Z2M friendly_name 'door_front_contact', device id z2m-door_front_contact"
+      compliance: Access Point Monitoring — Front Door
+    definition: >
+      Reed-switch contact sensor on the front door. Reports contact
+      (boolean, false = open), tamper, battery, voltage, and
+      linkquality. contact: false is one of AlertSeverityClassifier's
+      WARN conditions (see event_severity) — a door open event is
+      logged and visible in event history but does not push a phone
+      notification, by MVP design (only CRITICAL pushes).
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: event_severity
+        type: triggers
+        cardinality: "1:N" # contact: false is one of the three conditions AlertSeverityClassifier maps to WARN
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state, event_severity]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+
+  - id: zigbee_door_second_contact
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Second Door Contact"
+    source: >
+      SONOFF SNZB-04P Zigbee contact sensor (same model as the front
+      door unit, different physical device), paired via Zigbee2MQTT.
+    rendering:
+      semantic: "Second door"
+      systems: Contact Sensor — Second Door (SONOFF SNZB-04P)
+      technical: "Z2M friendly_name 'door_second_contact', device id z2m-door_second_contact"
+      compliance: Access Point Monitoring — Second Door
+    definition: >
+      Reed-switch contact sensor on the cabin's second door (not
+      further specified which door in current documentation — worth
+      clarifying with the user in a future pass, not assumed here).
+      Same attribute set and event_severity WARN behavior as
+      zigbee_door_front_contact.
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: event_severity
+        type: triggers
+        cardinality: "1:N"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state, event_severity]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+      "Second door" is Z2M's own friendly_name framing, not this
+      entry's guess — which physical door this is has not been
+      independently confirmed this session.
+
+  - id: zigbee_temp_outside_lowest
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Outside Low Temperature Probe"
+    source: >
+      SONOFF SNZB-02LD Zigbee temperature/humidity sensor (LD variant),
+      paired via Zigbee2MQTT.
+    rendering:
+      semantic: "Outside temperature"
+      systems: Temp/Humidity — Outside Low Probe (SONOFF SNZB-02LD)
+      technical: "Z2M friendly_name 'temp_outside_lowest', device id z2m-temp_outside_lowest"
+      compliance: Environmental Monitoring — Exterior
+    definition: >
+      Outdoor temperature/humidity probe, positioned (per its
+      friendly_name) to read the coldest exterior point being tracked —
+      relevant to freeze-risk monitoring for the cabin's plumbing (see
+      CabinAutomations' leak_freeze_automations.yaml, a separate repo
+      this ontology does not directly track code from). Reports
+      temperature, humidity, battery, linkquality.
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom. Not
+      currently wired into this repo's own event_severity classifier —
+      freeze-risk automation logic lives in CabinAutomations, outside
+      this ontology's direct tracking; worth a future cross-repo
+      reconciliation pass, not assumed connected here.
+
+  - id: zigbee_temp_kitchen
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Kitchen Temperature/Humidity"
+    source: >
+      SONOFF SNZB-02WD Zigbee temperature/humidity sensor (WD variant,
+      has an onscreen display), paired via Zigbee2MQTT.
+    rendering:
+      semantic: "Kitchen temperature"
+      systems: Temp/Humidity — Kitchen (SONOFF SNZB-02WD)
+      technical: "Z2M friendly_name 'temp_kitchen', device id z2m-temp_kitchen"
+      compliance: Environmental Monitoring — Kitchen
+    definition: >
+      Kitchen temperature/humidity sensor. Reports temperature,
+      humidity, battery, linkquality — pure telemetry, not currently
+      wired into any alerting logic.
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+
+  - id: zigbee_leak_mech_room
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Mechanical Room Leak Sensor"
+    source: >
+      SONOFF SNZB-05P Zigbee water leak sensor (no built-in siren,
+      unlike the Third Reality units elsewhere on this mesh), paired
+      via Zigbee2MQTT.
+    rendering:
+      semantic: "Mech room leak sensor"
+      systems: Leak Sensor — Mechanical Room (SONOFF SNZB-05P)
+      technical: "Z2M friendly_name 'leak_mech_room', device id z2m-leak_mech_room"
+      compliance: Water Intrusion Detection — Mechanical Room
+    definition: >
+      Water-leak sensor in the mechanical room (water heater/pump/valve
+      area) — arguably the highest-consequence leak location on the
+      mesh given what else is in that room. Reports water_leak, battery,
+      battery_low, linkquality. No built-in siren on this model (unlike
+      the bathroom/fridge/dishwasher Third Reality units).
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: event_severity
+        type: triggers
+        cardinality: "1:N"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state, event_severity]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+
+  - id: zigbee_leak_alarm_fridge
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Fridge Leak Alarm"
+    source: >
+      Third Reality 3RWS18BZ Zigbee water leak sensor with built-in
+      siren (same model as zigbee_leak_alarm_bathroom and
+      zigbee_leak_alarm_dishwasher, different physical unit), paired
+      via Zigbee2MQTT.
+    rendering:
+      semantic: "Fridge leak sensor"
+      systems: Leak Sensor — Fridge (Third Reality 3RWS18BZ)
+      technical: "Z2M friendly_name 'leak_alarm_fridge', device id z2m-leak_alarm_fridge"
+      compliance: Water Intrusion Detection — Kitchen Fridge
+    definition: >
+      Water-leak sensor positioned at the kitchen fridge (note: distinct
+      from the Liebherr fridge's own smart_appliance_fridge_liebherr
+      integration entity — this is an independent physical leak sensor,
+      not part of the fridge's own SmartDevice telemetry). Reports
+      water_leak, battery, battery_low, linkquality, and
+      water_leak_buzzer as a separate sub-property (see notes).
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: event_severity
+        type: triggers
+        cardinality: "1:N"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state, event_severity]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+      water_leak_buzzer is independent of water_leak on this model
+      (CLAUDE.md's device notes) — this specific unit uses the sensor
+      for leak detection only, buzzer not deliberately used as an
+      intrusion siren the way leak_spare_siren-style deployments would.
+
+  - id: zigbee_temp_mech_room
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Mechanical Room Temperature/Humidity"
+    source: >
+      SONOFF SNZB-02WD Zigbee temperature/humidity sensor (same model
+      as zigbee_temp_kitchen, different physical unit), paired via
+      Zigbee2MQTT.
+    rendering:
+      semantic: "Mech room temperature"
+      systems: Temp/Humidity — Mechanical Room (SONOFF SNZB-02WD)
+      technical: "Z2M friendly_name 'temp_mech_room', device id z2m-temp_mech_room"
+      compliance: Environmental Monitoring — Mechanical Room
+    definition: >
+      Mechanical room temperature/humidity sensor — relevant to
+      freeze-risk monitoring (same caveat as zigbee_temp_outside_lowest:
+      the actual freeze-risk automation logic lives in the separate
+      CabinAutomations repo, not tracked by code in this one) and to
+      mold-risk monitoring given sustained high humidity in an
+      enclosed mechanical space.
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+
+  - id: zigbee_heater_mech_room
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Mechanical Room Heater Plug"
+    source: >
+      Third Reality 3RSP02064Z Zigbee smart plug (same model as
+      zigbee_smart_switch_breaker_box, different physical unit and
+      different controlled load), paired via Zigbee2MQTT.
+    rendering:
+      semantic: "Mech room heater"
+      systems: Smart Plug — Mechanical Room Heater (Third Reality 3RSP02064Z)
+      technical: "Z2M friendly_name 'heater_mech_room', device id z2m-heater_mech_room"
+      compliance: Freeze-Prevention Control — Mechanical Room
+    definition: >
+      Smart plug controlling the mechanical room's freeze-prevention
+      heater. Unlike the sensor-only devices above, this is a
+      COMMAND-capable actuator (on/off, and this model's power/energy
+      monitoring), not just telemetry — reports state (on/off), power,
+      energy, current, voltage, in addition to linkquality.
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+      Command/actuation logic (when this heater actually switches on)
+      lives in CabinAutomations' freeze automations, not tracked by code
+      in this repo.
+
+  - id: zigbee_main_water_valve
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Main Water Valve"
+    source: >
+      Tuya TS0001 Zigbee single-gang relay, wired to actuate the cabin's
+      main water shutoff valve, paired via Zigbee2MQTT.
+    rendering:
+      semantic: "Main water valve"
+      systems: Valve Actuator — Main Shutoff (Tuya TS0001)
+      technical: "Z2M friendly_name 'main_water_valve', device id z2m-main_water_valve"
+      compliance: Water Shutoff Control — Whole-Property
+    definition: >
+      COMMAND-capable relay actuating the cabin's main water shutoff
+      valve — the highest-consequence actuator on this mesh, since
+      triggering it (correctly or incorrectly) cuts water to the entire
+      property. Reports state (on/off = valve open/closed) and
+      linkquality.
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+      Automated shutoff-on-leak logic (if any leak sensor on this mesh
+      should trigger this valve automatically) lives in CabinAutomations'
+      leak_freeze_automations.yaml, not tracked by code in this repo —
+      whether that automatic linkage actually exists and is armed is
+      worth confirming directly rather than assumed from this entry
+      alone, given how safety-critical an incorrect assumption here
+      would be.
+
+  - id: zigbee_leak_alarm_dishwasher
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Dishwasher Leak Alarm"
+    source: >
+      Third Reality 3RWS18BZ Zigbee water leak sensor with built-in
+      siren (same model as zigbee_leak_alarm_bathroom and
+      zigbee_leak_alarm_fridge, different physical unit), paired via
+      Zigbee2MQTT.
+    rendering:
+      semantic: "Dishwasher leak sensor"
+      systems: Leak Sensor — Dishwasher (Third Reality 3RWS18BZ)
+      technical: "Z2M friendly_name 'leak_alarm_dishwasher', device id z2m-leak_alarm_dishwasher"
+      compliance: Water Intrusion Detection — Kitchen Dishwasher
+    definition: >
+      Water-leak sensor positioned at the kitchen dishwasher (note:
+      distinct from smart_appliance_dishwasher_bosch, which is a
+      not-yet-built Home Connect cloud integration for the dishwasher
+      itself — this is an independent physical leak sensor). Reports
+      water_leak, battery, battery_low, linkquality, and
+      water_leak_buzzer as a separate sub-property, same caveat as
+      zigbee_leak_alarm_fridge.
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: event_severity
+        type: triggers
+        cardinality: "1:N"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state, event_severity]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+
+  - id: zigbee_smart_switch_breaker_box
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices: interview_completed:
+      true, disabled: false.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Breaker Box Smart Switch"
+    source: >
+      Third Reality 3RSP02064Z Zigbee smart plug (same model as
+      zigbee_heater_mech_room, different physical unit and different
+      controlled load), paired via Zigbee2MQTT.
+    rendering:
+      semantic: "Breaker box switch"
+      systems: Smart Plug — Breaker Box (Third Reality 3RSP02064Z)
+      technical: "Z2M friendly_name 'smart_switch_breaker_box', device id z2m-smart_switch_breaker_box"
+      compliance: Power Monitoring/Control — Breaker Box
+    definition: >
+      Smart plug at the breaker box — COMMAND-capable (on/off) with
+      power/energy monitoring (power, energy, current, voltage,
+      linkquality), same capability set as zigbee_heater_mech_room but a
+      different controlled load and location. Exact controlled load and
+      why it's switched from the breaker box specifically is not
+      documented elsewhere in this repo as of 2026-08-07 — worth
+      confirming with the user in a future pass rather than guessed
+      here.
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state]
+    notes: >
+      Part of the original 13-device mesh pairing (2026-07-25). No
+      discovery block, same reasoning as zigbee_leak_alarm_bathroom.
+
   - id: camera_catalog
     entity_type: owl:Class
     layer: integration
@@ -2506,6 +3078,463 @@ elements:
       a browser) — the OAuth consent step still needs the user's own
       login. Revisit with real entity IDs once live, same caveat as the
       Liebherr entity above.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NETWORK INFRASTRUCTURE
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: hw_router_c4000lg
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via HA's own core.device_registry/core.entity_registry:
+      12 real, working entities (WAN status, external IP, uptime,
+      upload/download speed, packet counts) confirmed present, platform
+      'upnp'.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "C4000LG Router"
+    source: >
+      Literal hardware identity — Greenwave Systems C4000LG router,
+      discovered by HA's UPnP integration at 192.168.0.1. Manufacturer
+      and model are self-reported by the device via UPnP device
+      description, not user-assigned.
+    rendering:
+      semantic: "Router"
+      systems: Greenwave C4000LG (UPnP-discovered)
+      technical: "HA device id af4086427ebe, domain 'upnp', IP 192.168.0.1"
+      compliance: (not shown)
+    definition: >
+      The physical router hardware only — make, model, and network
+      address as UPnP-discovered. Says nothing about what network role
+      it currently plays in the property's topology; that's an open
+      question this session could not resolve (see notes) and is
+      deliberately not asserted as a role entry the way the cameras'
+      roles are, since the role itself isn't yet known.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      UNRESOLVED TOPOLOGY QUESTION, 2026-08-07 — this is exactly why no
+      camera_role-style derived entry exists for this device yet, per
+      the user's own rule: don't enter a derived concept until enough is
+      known to actually use it. What's confirmed: this router exists at
+      192.168.0.1, is UPnP-discoverable by HA, and reports real WAN/
+      bandwidth telemetry. What's NOT confirmed: whether it's acting as
+      a second, downstream router creating the M920q's own
+      192.168.2.0/24 "Unicorn Loonstar" WiFi network (making the M920q
+      double-NATed behind it, separate from where the Reolink/Liebherr/
+      Nest/Blink-hub devices sit on 192.168.1.0/24 — see
+      camera_role_front_door's notes and MAINTENANCE.md), or whether
+      it's unrelated to that segmentation entirely. Resolving this needs
+      on-site access to this router's own admin UI, which this session
+      doesn't have. Once resolved, a derived "role" entry (e.g.
+      describing it as "secondary router creating an isolated WiFi
+      segment" or "bridge between two subnets") would be the right next
+      addition — not written now because it isn't known yet.
+
+  - id: hw_starlink_terminal
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via HA's own core.device_registry/core.entity_registry:
+      28 real, working entities (obstruction status, uplink/downlink
+      throughput, ping, ping drop rate, sleep schedule, restart button,
+      power/energy) confirmed present, platform 'starlink'.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Starlink Terminal"
+    source: >
+      Literal hardware identity — a Starlink satellite internet
+      terminal, self-reported via HA's native `starlink` integration
+      (a local, non-cloud integration — queries the dish directly on
+      its own management VLAN, not Starlink's cloud API).
+    rendering:
+      semantic: "Internet connection"
+      systems: Starlink (native HA integration)
+      technical: "HA device id 8c10d1d5e7d0, domain 'starlink'"
+      compliance: (not shown)
+    definition: >
+      The property's internet uplink hardware. Unlike the router-role
+      question above, this device's role is unambiguous — there is one
+      Starlink terminal and it does one job (internet uplink) — so no
+      separate derived "role" entry was created; hardware identity and
+      function are permanently fused here the same way they are for the
+      Liebherr fridge, not the way they're genuinely separable for a
+      repositionable camera.
+    relationships:
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      Does NOT expose a connected-client/LAN-devices list through this
+      integration — telemetry here is about the dish itself (throughput,
+      obstruction, ping), not what's plugged into its network. Checked
+      directly while investigating the Reolink topology question above;
+      this integration cannot answer "what's actually on Starlink's own
+      LAN" even though it's tempting to assume it might.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CABIN SECURITY — AUTOMATION-DERIVED STATE
+# Each of these publishes a derived signal to MQTT from some other HA
+# entity's state — never asserted by a device itself, always computed by
+# an automation reacting to something else. See cabin_security_publish_
+# arm_state's notes for the real bug (and fix) this reconciliation found.
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: automation_cabin_security_publish_arm_state
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via /storage/services/homeassistant/packages/
+      cabin_security.yaml read directly, and a live retained MQTT value
+      ("OFF") confirmed present on cabin/security/armed_away.
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: ["ON", "OFF"]
+    ui_display_name: "Publish Arm-Away State"
+    source: >
+      HA automation id cabin_security_publish_arm_state, in
+      packages/cabin_security.yaml. Triggers on any state change of
+      input_boolean.cabin_security_armed_away (a UI-toggleable helper,
+      itself not asserted by any device — a human sets it). Not device
+      data at any point in this chain.
+    rendering:
+      semantic: "Cabin armed away"
+      systems: Arm-Away State Publisher
+      technical: "shell_command.cabin_security_publish -> cabin/security/armed_away, retain=true, qos=1"
+      compliance: Security Arming State — Publication Record
+    definition: >
+      Republishes input_boolean.cabin_security_armed_away's ON/OFF state
+      to the retained MQTT topic cabin/security/armed_away every time it
+      changes, via an allow-listed shell_command
+      (cabin_security_mqtt_publish.py) that only permits this exact
+      topic with ON/OFF payloads — a safety constraint against arbitrary
+      topic/payload injection via the automation's own templating.
+    relationships:
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      REAL BUG FOUND AND FIXED HERE, 2026-08-07 — this automation was
+      never the problem; both Node-RED flows gating on armed state
+      (intrusion-alarm tab and Camera Overnight Alerts) were subscribed
+      to cabin/security/node_red_armed, a topic this automation has
+      never published to. Toggling the real HA arm/disarm switch never
+      reached either Node-RED flow, full stop, since the camera-alert
+      flow was built. Fixed by repointing Node-RED's two mqtt-in nodes
+      to cabin/security/armed_away instead (this topic, unchanged) — see
+      MAINTENANCE.md's Overnight Camera Alerts section for the full
+      incident. Chose to fix Node-RED rather than rename this topic:
+      armed_away describes the data, not a specific downstream consumer,
+      and this automation already provides real self-healing (fires on
+      every toggle AND on every HA restart via
+      automation_cabin_security_publish_state_at_startup below).
+
+  - id: automation_cabin_security_publish_nate_presence
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via packages/cabin_security.yaml read directly.
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: ["home", "not_home"]
+    ui_display_name: "Publish Nate Presence (person entity)"
+    source: >
+      HA automation id cabin_security_publish_nate_presence, in
+      packages/cabin_security.yaml. Triggers on state change of
+      person.natecabin (HA's own person/device_tracker aggregation —
+      its own upstream sources, e.g. companion-app GPS, weren't
+      independently audited this session).
+    rendering:
+      semantic: "Nate's presence"
+      systems: Presence Publisher (person entity)
+      technical: "shell_command.cabin_security_publish -> cabin/presence/nate, retain=true, qos=1"
+      compliance: Occupant Presence — Publication Record
+    definition: >
+      Republishes person.natecabin's home/not_home state to the
+      retained MQTT topic cabin/presence/nate whenever it changes, same
+      allow-listed publish mechanism as the arm-state automation above.
+    relationships:
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      POSSIBLE OVERLAP, not confirmed as a bug this session: a second
+      automation (automation_cabin_security_publish_nate_presence_from_
+      phone below) ALSO publishes to this exact same topic, from a
+      completely independent WiFi-ARP-based detection mechanism, not
+      from person.natecabin. Whether person.natecabin's own tracker
+      sources already include that same WiFi signal (making this
+      genuinely redundant) or something entirely separate (making these
+      two legitimately independent, possibly competing, publishers of
+      the same topic) was not determined this session — worth checking
+      before assuming either is safe to remove.
+
+  - id: automation_cabin_security_publish_state_at_startup
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via packages/cabin_security.yaml read directly.
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Publish Security State At Startup"
+    source: >
+      HA automation id cabin_security_publish_state_at_startup, in
+      packages/cabin_security.yaml. Triggers once on the
+      homeassistant.start event, 5 seconds after startup.
+    rendering:
+      semantic: "Startup security resync"
+      systems: Startup State Republisher
+      technical: "Re-publishes both cabin/security/armed_away and (conditionally) cabin/presence/nate on HA restart"
+      compliance: (not shown)
+    definition: >
+      Re-publishes the current armed-away state (always) and the
+      current person.natecabin-derived presence state (only if it's
+      currently home or not_home, not unknown) 5 seconds after every HA
+      restart. This is the real, existing self-healing mechanism behind
+      both retained-state topics — a broker restart without persisted
+      retained messages recovers automatically the next time HA itself
+      restarts, without needing a manual mosquitto_pub.
+    relationships:
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      This is why no additional heartbeat/polling was added when fixing
+      the armed-state topic bug above — this automation already provides
+      adequate self-healing for a value that changes rarely.
+
+  - id: automation_cabin_security_publish_nate_presence_from_phone
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via packages/cabin_security_presence.yaml read
+      directly.
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: ["home", "not_home"]
+    ui_display_name: "Publish Nate Presence (phone WiFi)"
+    source: >
+      HA automation id cabin_security_publish_nate_presence_from_phone,
+      in packages/cabin_security_presence.yaml. Triggers on state
+      change of binary_sensor.nate_phone_on_wifi, itself a
+      command_line sensor (check_nate_phone_wifi.sh, scan_interval 60s)
+      doing a direct LAN ARP check for the phone's MAC — chosen because
+      the Starlink Gen3 gateway has no HA-supported device_tracker
+      integration, per this package's own header comment.
+    rendering:
+      semantic: "Nate's phone on cabin WiFi"
+      systems: Presence Publisher (phone WiFi ARP check)
+      technical: "shell_command.cabin_security_publish -> cabin/presence/nate, retain=true, qos=1"
+      compliance: Occupant Presence — Publication Record (WiFi-derived)
+    definition: >
+      Republishes home/not_home to cabin/presence/nate based on whether
+      Nate's phone answers an ARP check on the cabin's LAN.
+      Deliberately ASYMMETRIC debounce: "home" publishes immediately on
+      detection, "not_home" requires 3 continuous minutes of
+      non-detection first — because a false "away" while actually home
+      is the dangerous failure mode (an armed system + a door event
+      would mean real audible sirens), while a false "home" (system
+      doesn't arm when it should) is the safe-side failure and doesn't
+      need the same protection.
+    relationships:
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      See automation_cabin_security_publish_nate_presence's notes for
+      the possible-overlap question between this automation and that
+      one — both publish to the same topic from different sources.
+
+  - id: automation_cabin_security_publish_presence_at_startup
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via packages/cabin_security_presence.yaml read
+      directly.
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Publish Phone-Based Presence At Startup"
+    source: >
+      HA automation id cabin_security_publish_presence_at_startup, in
+      packages/cabin_security_presence.yaml. Triggers once on
+      homeassistant.start, 10 seconds after startup (long enough for
+      the first 60s-interval WiFi ARP poll to have completed).
+    rendering:
+      semantic: "Startup presence resync (phone WiFi)"
+      systems: Startup State Republisher (phone WiFi)
+      technical: "Re-publishes cabin/presence/nate based on binary_sensor.nate_phone_on_wifi's current state"
+      compliance: (not shown)
+    definition: >
+      Same self-healing role as
+      automation_cabin_security_publish_state_at_startup, scoped to the
+      phone-WiFi presence signal specifically.
+    relationships:
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      Combined with binary_sensor.nate_phone_on_wifi's own 60s
+      scan_interval, presence (unlike armed-state) already has a genuine
+      recurring heartbeat, not just startup + on-change republishing.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HOME ASSISTANT CORE — RECOGNIZED, DERIVED CONCEPTS
+# Reviewed 2026-08-07 against the user's own rule: enter a device/concept
+# only if its source and purpose are actually known; omit anything that's
+# just internal plumbing owned by a subprocess we don't control and can't
+# meaningfully use yet. See the omission note at the end of this section
+# for what got excluded and why.
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: ha_sun_position
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via HA's own core.device_registry/core.entity_registry:
+      9 real entities (next dawn/dusk/midnight/noon/rising/setting,
+      solar elevation/azimuth, solar-rising binary sensor) confirmed
+      present, platform 'sun'.
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Sun Position"
+    source: >
+      HA core's built-in `sun` integration — computed astronomically
+      from the HA instance's configured latitude/longitude, not asserted
+      by any device. Deterministic calculation, not a sensor reading.
+    rendering:
+      semantic: "Sunrise/sunset"
+      systems: Sun Position (HA core)
+      technical: "HA device id f678e94d5d06, domain 'sun'"
+      compliance: (not shown)
+    definition: >
+      HA's built-in astronomical calculation — next dawn/dusk/sunrise/
+      sunset/solar-noon/solar-midnight, plus current solar elevation and
+      azimuth. Not currently consumed by anything in this repo's own
+      automation logic — recognized and entered because its source and
+      purpose are unambiguous (unlike the omitted items below), even
+      though nothing uses it yet. A plausible future consumer: daylight-
+      aware camera/security logic (e.g. distinguishing "no activity, and
+      it's night, so nothing to see anyway" from "no activity during
+      daylight, worth a closer look").
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      Entered per the user's rule (2026-08-07): source and purpose are
+      both known, so it qualifies, even without a confirmed current
+      consumer.
+
+  - id: ha_backup_manager
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via HA's own core.device_registry/core.entity_registry:
+      5 real entities (automatic backup event, backup manager state,
+      next/last-successful/last-attempted automatic backup) confirmed
+      present, platform 'backup'.
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Home Assistant Backup Manager"
+    source: >
+      HA core's built-in `backup` integration — tracks HA's own
+      automatic configuration/database backup schedule and history.
+      Derived from HA's internal backup subsystem state, not asserted
+      by any device.
+    rendering:
+      semantic: "HA backup status"
+      systems: Home Assistant Backup Manager
+      technical: "HA device id f2f722ad220e, domain 'backup'"
+      compliance: Configuration Backup — Home Assistant Instance
+    definition: >
+      Whether and when HA's own configuration/database has last been
+      automatically backed up — a real, relevant piece of disaster-
+      recovery posture for the whole cabin automation system, distinct
+      from any other "backup" concept this platform may ever track
+      (Postgres backups, camera clip retention, etc. — each of those
+      needs its own uniquely-scoped entry, not a shared generic
+      "backup" one, per the user's explicit FAIR/uniqueness directive).
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      Deliberately specific id (ha_backup_manager, not just "backup")
+      precisely because other backup concepts are expected to exist in
+      this file eventually and each needs to stay independently
+      Findable.
+
+# Considered and explicitly OMITTED, 2026-08-07, per the user's rule (if
+# source/purpose can't be identified, or it's atomic plumbing owned by a
+# subprocess we don't control, don't enter it until we know enough to
+# actually use it):
+#   - Google Translate TTS (tts.google_translate_en_com, HA device
+#     557535933e37) — source is known (HA core's built-in TTS
+#     integration), but why it's configured and what, if anything,
+#     invokes it is not known. Likely an HA onboarding default rather
+#     than something deliberately added for a cabin purpose, but that's
+#     not confirmed either way.
+#   - Bluetooth adapter (hci0, HA device 46f34cf16399) — the M920q
+#     host's own onboard Bluetooth radio, auto-detected by HA. Atomic
+#     host hardware, not something this platform configured or can
+#     meaningfully redirect; no Zigbee/cabin device uses BLE (the mesh
+#     is Zigbee via a separate USB coordinator).
+#   - LG webOS TV (ddeea00d57ba, Google-Cast-discovered) — source is
+#     known (Cast integration auto-discovery), but no confirmed platform
+#     purpose or consuming automation was found this session.
+# Revisit any of these the moment a real purpose is identified — this
+# list is a record of "not yet," not "never."
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ACTION ELEMENTS
