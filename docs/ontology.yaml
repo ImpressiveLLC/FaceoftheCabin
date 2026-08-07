@@ -969,12 +969,20 @@ elements:
         cardinality: "1:N"
     notes: >
       MVP classifier only — v0. Does not yet consider armed/presence state
-      (cabin/security/node_red_armed, cabin/presence/*), so a WARN-tier door
+      (cabin/security/armed_away, cabin/presence/*), so a WARN-tier door
       event is scored the same whether the cabin is occupied or armed-away.
       That's a deliberate, tracked scope cut, not an oversight — see
-      docs/DEFINITION_OF_DONE.md's punch list.
-      CRITICAL events additionally trigger NtfyAlertPublisher, which POSTs
-      to the same ntfy.sh topic cabin_camera_overnight_alert already uses
+      docs/DEFINITION_OF_DONE.md's punch list. (Topic corrected 2026-08-07 —
+      was previously written as cabin/security/node_red_armed, a topic
+      that was never actually published to; see cabin_camera_overnight_alert
+      below for the real incident this caused.)
+      CRITICAL events additionally trigger NtfyAlertPublisher. **Correction,
+      2026-08-07**: this previously claimed it POSTs "to the same ntfy.sh
+      topic cabin_camera_overnight_alert already uses" — checked by hash
+      comparison, not assumed, and that claim is false: the two are
+      genuinely different topics. This was written as fact without ever
+      verifying it. Not yet fixed — see cabin_camera_overnight_alert's
+      notes for the real state and what fixing it would involve.
       (config: cabin.alerts.ntfyTopic / CABIN_ALERT_NTFY_TOPIC, empty by
       default — no-op until an operator sets a real topic in infra/.env,
       never committed). WARN events are not pushed to avoid paging for
@@ -1759,7 +1767,7 @@ elements:
 
       Gating deliberately reuses the SAME MQTT-published state the
       existing cabin-security intrusion flow already tracks
-      (cabin/security/node_red_armed, cabin/presence/nate) rather than
+      (cabin/security/armed_away, cabin/presence/nate) rather than
       inventing new logic — subscribed independently in this new tab
       rather than sharing Node-RED flow-context directly, since flow
       context is tab-scoped by default and these are two separate tabs;
@@ -1783,16 +1791,39 @@ elements:
       regardless, but worth knowing about if a deploy is ever tested
       immediately afterward again.
 
-      KNOWN GAP, not fixed here (pre-existing, already documented
-      elsewhere): cabin/security/node_red_armed has no live, ongoing
-      publisher — it was set via a one-off manual mosquitto_pub when the
-      user enabled the intrusion flow directly in Node-RED. If that
-      retained value is ever lost (e.g. a broker restart without
-      persistence), there's no automation to republish it, and BOTH this
-      alert flow and the existing intrusion flow would silently stay
-      gated closed until manually republished. Same fragility already
-      flagged for the intrusion flow itself; this entity inherits it
-      rather than introducing something new.
+      MUCH BIGGER BUG FOUND (and fixed), 2026-08-07 — the "known gap"
+      that used to sit here undersold what was actually wrong. This
+      entry's own `mqtt in` node (`cam-alert-armed-in`) and the
+      intrusion flow's equivalent (`armed-in`) were both subscribed to
+      `cabin/security/node_red_armed` — a topic HA's `cabin_security.yaml`
+      package has *never once published to*. The real, live, retained
+      topic HA actually publishes is `cabin/security/armed_away`. This
+      wasn't "no ongoing publisher, running on a stale one-off value" as
+      previously written — it was two topic strings that never matched,
+      meaning toggling the real HA arm/disarm switch has never reached
+      either Node-RED flow, ever, since this was built. Fixed by
+      repointing both nodes to `cabin/security/armed_away` (Admin API,
+      full-flow POST, topic field only). Verified via a fresh GET /flows
+      showing the corrected topic on both nodes, plus a live retained
+      `OFF` value confirmed present on it. No extra heartbeat/polling
+      added — armed-state republishes on toggle and on HA restart, which
+      is sufficient now that both consumers read the topic that's
+      actually live. See MAINTENANCE.md's Overnight Camera Alerts section
+      for the full incident writeup, and `docs/DEFINITION_OF_DONE.md`'s
+      "reconcile drift immediately" principle this was a direct example
+      of — this bug was found by checking a documentation claim against
+      the real Node-RED flow JSON, not by trusting what was already
+      written here.
+
+      SEPARATE, STILL-OPEN ISSUE found the same session, not yet fixed:
+      this entry's own `technical` rendering above claims delivery goes
+      "to ntfy.sh/{private topic}" and `cabin_critical_event_alert`
+      (cabin-backend's equivalent CRITICAL-severity push) claimed to
+      reuse "the same" topic. Checked by hash comparison, not assumed:
+      they are genuinely different topics. Whichever is correct needs the
+      same kind of fix as the armed-state bug above — repoint one to
+      match the other — but that decision hasn't been made yet as of this
+      writing.
 
       Verified end-to-end with real MQTT test events (not just code
       review): a "person at front_door" test correctly passed every gate

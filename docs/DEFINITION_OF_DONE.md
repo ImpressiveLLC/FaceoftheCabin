@@ -153,8 +153,15 @@ accumulate.*
   consider armed/presence state yet** — a WARN-tier event (door open,
   low battery, tamper) scores the same whether the cabin is occupied or
   armed-away. Deliberate MVP scope cut (see that entity's `notes`), not
-  forgotten — wire it to `cabin/security/node_red_armed` and
+  forgotten — wire it to `cabin/security/armed_away` and
   `cabin/presence/*` once the MVP badge/push behavior is proven stable.
+- **Two ntfy.sh push topics exist and are genuinely different** —
+  `cabin_camera_overnight_alert` (Node-RED) and `cabin_critical_event_alert`
+  (cabin-backend) were documented as sharing one topic; checked by hash
+  comparison 2026-08-07 and that's false. Whichever one the user actually
+  has subscribed in the ntfy app is the one to standardize on — repoint
+  the other to match, same shape of fix as the armed-state topic bug
+  above. Not yet done.
 - **Grafana has NO working login at all right now** — password login
   deliberately disabled (open internet exposure, neither access gate
   confirmed working); Cloudflare Access isn't gating the hostname

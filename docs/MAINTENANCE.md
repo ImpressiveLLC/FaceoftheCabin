@@ -435,11 +435,11 @@ raw value" note; the same discipline applies here.)
 A dedicated Node-RED tab ("Camera Overnight Alerts") pushes a real
 notification via [ntfy.sh](https://ntfy.sh) when Frigate detects an
 alert-tier object while the cabin is armed-away and no one's present.
-Gated on the same MQTT-published state
-(`cabin/security/node_red_armed`, `cabin/presence/nate`) the existing
-intrusion-alarm flow already tracks, subscribed independently rather than
-sharing Node-RED flow-context directly (flow context is tab-scoped by
-default; MQTT pub/sub is the intended decoupling point).
+Gated on the same MQTT-published state (`cabin/security/armed_away`,
+`cabin/presence/nate`) the existing intrusion-alarm flow already tracks,
+subscribed independently rather than sharing Node-RED flow-context
+directly (flow context is tab-scoped by default; MQTT pub/sub is the
+intended decoupling point).
 
 **Editing this flow**: prefer Node-RED's Admin API (`POST`/`PUT
 /flow/:id` at `http://localhost:1880`) over hand-editing
@@ -457,12 +457,36 @@ automation (`cabin_security_presence.yaml`) republishes state every 60s
 regardless. Not a broken subscription — confirmed via direct testing that
 a fresh (non-retained) publish is received correctly immediately.
 
-**Known gap, not yet fixed**: `cabin/security/node_red_armed` has no
-live, ongoing publisher — it was set via a one-off manual `mosquitto_pub`
-when the intrusion flow was first armed directly in Node-RED. If that
-retained value is ever lost (e.g. a broker restart without persistence),
-both the intrusion flow and the camera-alert flow would silently stay
-gated closed until manually republished.
+**Real bug found and fixed, 2026-08-07 — this "known gap" note
+undersold what was actually wrong.** Both Node-RED `mqtt in` nodes
+gating on armed state (`armed-in` on the intrusion-alarm tab,
+`cam-alert-armed-in` on Camera Overnight Alerts) were subscribed to
+`cabin/security/node_red_armed` — a topic HA's own `cabin_security.yaml`
+package has **never published to**. The real, live-published topic is
+`cabin/security/armed_away` (see `packages/cabin_security.yaml`'s
+`cabin_security_publish_arm_state` automation, `retain: true`, fires on
+every toggle of `input_boolean.cabin_security_armed_away` and again on
+every HA restart). This wasn't "no ongoing publisher, relying on a
+one-off manual value" — it was two topics that were never the same
+string, so toggling the real HA arm/disarm switch never reached either
+Node-RED flow at all, ever. Fixed by repointing both `mqtt in` nodes to
+`cabin/security/armed_away` (Node-RED Admin API,
+`POST /flows` with `Node-RED-Deployment-Type: full`, both nodes' topic
+field changed, nothing else touched). Verified: both nodes' `topic`
+field confirmed correct via a fresh `GET /flows` after deploy, and a
+live retained value (`OFF`) confirmed present on the corrected topic —
+MQTT delivers retained messages to a new subscription immediately, so
+no separate fresh-publish test was needed to prove propagation.
+
+No additional heartbeat/polling was added for the armed-state topic
+itself — unlike `cabin/presence/nate` (which has a genuine 60s
+`scan_interval` from `cabin_security_presence.yaml`'s WiFi-detection
+sensor), armed-state only republishes on toggle and on HA startup. That
+remains sufficient self-healing for a boolean that changes rarely and is
+now correctly retained on the topic both consumers actually read — a
+broker restart without persistence would still need the startup-republish
+automation to run once, same as before, just now on the topic that
+matters.
 
 ---
 
