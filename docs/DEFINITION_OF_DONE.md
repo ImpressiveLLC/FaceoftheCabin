@@ -118,17 +118,23 @@ accumulate.*
 - **Reolink (`front_door`) camera still physically off-network** — needs
   on-site checking (power, WiFi re-pairing). Not fixable remotely.
 - **`blinkbridge`'s root cause is fixed (2026-08-06) — verify the fix
-  holds over the next real transient failure, and still add a health
-  monitor as defense-in-depth.** The actual bug (permanently disabling a
-  camera after 3 failures with no retry path, `main.py`) is patched and
-  deployed — see `MAINTENANCE.md`'s Blink section for the full diagnosis
-  and fix. Not yet proven against a real failure in production, only
-  against a clean redeploy. Still worth an Uptime Kuma monitor against
-  Frigate's `camera_fps` (or `mediamtx`'s stream) for `driveway`
-  regardless — a second signal independent of the fix being correct.
-  Separately open: whether to decouple reliable clip-recording from the
-  RTSP-live-relay entirely (the user's recalled prior direction, not yet
-  scoped or built).
+  holds over the next real transient failure.** The actual bug
+  (permanently disabling a camera after 3 failures with no retry path,
+  `main.py`) is patched and deployed — see `MAINTENANCE.md`'s Blink
+  section for the full diagnosis and fix. Not yet proven against a real
+  failure in production, only against a clean redeploy. The Uptime Kuma
+  monitor recommended here is now built (`Frigate driveway camera_fps`,
+  JSON-query against `http://frigate:5000/api/stats`, alerts via the
+  same ntfy topic `cabin_critical_event_alert` reuses) — verified live,
+  correctly evaluating `camera_fps > 0`. Separately open: whether to
+  decouple reliable clip-recording from the RTSP-live-relay entirely
+  (the user's recalled prior direction, not yet scoped or built).
+- **Uptime Kuma had zero notification channels configured at all before
+  2026-08-06** — every monitor in it (Homepage, Home Assistant, Frigate,
+  Node-RED, Tailscale) could go red with nobody ever told. Added one
+  ntfy channel (`ntfy - cabin alerts`, set as the account default) when
+  building the driveway monitor above; not yet attached to the
+  pre-existing monitors — worth doing so they stop being silent too.
 - **Severity classifier (`docs/ontology.yaml`'s `event_severity`) doesn't
   consider armed/presence state yet** — a WARN-tier event (door open,
   low battery, tamper) scores the same whether the cabin is occupied or

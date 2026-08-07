@@ -820,9 +820,42 @@ already-documented off-network issue, not part of this incident.
 
 ## Monitoring
 
-Uptime Kuma + Homepage on the M920q. (Deeper runbook — alert thresholds,
-what each check actually monitors — is a known gap; not yet written up
-beyond "they're running." A reasonable next addition to this file.)
+Uptime Kuma + Homepage on the M920q (`http://192.168.2.46:3001` /
+`100.77.44.113:3001`). Pre-existing monitors (Homepage, Home Assistant,
+Frigate root, Node-RED, a Tailscale reachability ping) just check that
+each service responds — they say nothing about whether cameras are
+actually recording.
+
+**`Frigate driveway camera_fps`** (added 2026-08-07, id `7` in Uptime
+Kuma's own DB) is the first monitor that actually checks that: a
+JSON-query monitor hitting `http://frigate:5000/api/stats`, evaluating
+`cameras.driveway.camera_fps > 0` (JSONata syntax — Uptime Kuma 2.x's
+`json-query` monitor type). This is the health check the `blinkbridge`
+incidents above kept flagging as missing — if `driveway`'s `camera_fps`
+ever drops back to `0` (the exact symptom of `blinkbridge` silently
+disabling again), this goes DOWN and pages instead of requiring someone
+to notice days later. `maxretries: 2` / `retry_interval: 60s` gives a
+brief grace window so a single transient blip doesn't page.
+
+**Uptime Kuma had zero notification channels configured before this** —
+every existing monitor could go red with nobody told, silently, possibly
+for a long time. Added one: `ntfy - cabin alerts`, set as the account
+default, reusing the same ntfy.sh topic `cabin_critical_event_alert`
+already established (see `docs/ontology.yaml`) — not a second
+subscription for you to add in the app. **Not yet attached to the
+pre-existing monitors** (Homepage/HA/Frigate/Node-RED/Tailscale) — see
+`DEFINITION_OF_DONE.md`'s punch list; a reasonable, cheap follow-up now
+that a channel actually exists.
+
+Built via direct SQLite manipulation of Uptime Kuma's own
+`/app/data/kuma.db` (`monitor`, `notification`, `monitor_notification`
+tables) followed by a container restart to load it — there's no simpler
+config-as-code path in this Uptime Kuma version; the web UI is the
+normal way to do this, but wasn't reachable from this session's browser
+tool (private-IP access gate). Verified live: `SELECT ... FROM heartbeat
+WHERE monitor_id=7` showed a real passing check
+(`"JSON query passes (comparing 5.1 > 0)"`), not just a green icon
+trusted at face value.
 
 ---
 
