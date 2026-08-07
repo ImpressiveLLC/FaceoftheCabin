@@ -106,6 +106,20 @@
   leaves old data sitting around forever isn't finished.
 - **This document itself is versioned like code** — update it in the
   same commit as whatever changed its status.
+- **Reconcile drift the moment it's spotted, not at session end.** If a
+  config value, name, or piece of state looks unexplained or
+  inconsistent with what's documented mid-session, stop and reconcile it
+  right then — check git history, check docs, ask the user — rather than
+  noting it and moving on. Found 2026-08-07: a stray discovery (comparing
+  an ntfy topic hardcoded in a Node-RED flow against the one actually in
+  use) surfaced that the flow had been silently pushing armed-away
+  intrusion alerts to an unsubscribed topic for over a week, undetected.
+  The user's own diagnosis, worth keeping verbatim: reconciling *close to
+  where the actual git/context break happened chronologically* is far
+  cheaper and more reliable than reconstructing it later. Same underlying
+  gap as the "Decisions made where Claude can't commit" section of
+  `CLAUDE.md` — that one closes the loop on undocumented decisions, this
+  one closes it on undetected drift.
 
 ---
 
