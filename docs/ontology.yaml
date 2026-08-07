@@ -2084,26 +2084,36 @@ elements:
     layer: integration
     primitive: true
     schema_version: "0.1.0"
-    migration_status: partial
+    migration_status: complete
     data_class: raw
     data_type: owl:Class
-    ui_display_name: "Kitchen Fridge (Liebherr)"
+    ui_display_name: "Loonie Mc Frigerton (Liebherr Combi Fridge)"
     source: >
       Liebherr SmartDevice cloud API, via HA core's built-in `liebherr`
-      integration (config_flow, iot_class: cloud_polling — confirmed
-      present in the installed HA 2026.7.0 image, manifest.json checked
-      directly)
+      integration (config_flow, iot_class: cloud_polling). Confirmed LIVE
+      2026-08-07 by reading HA's own core.device_registry and
+      core.entity_registry directly on the M920q — not inferred, not
+      assumed from the config entry's presence alone.
     rendering:
       semantic: "Kitchen fridge"
-      systems: Liebherr SmartDevice
-      technical: "HA integration domain 'liebherr' (pyliebherrhomeapi) — not yet added as a config entry"
+      systems: Liebherr SmartDevice — Combi
+      technical: "HA device id caaae13d1fff, domain 'liebherr' (pyliebherrhomeapi), platform 'liebherr'"
       compliance: (not shown)
     definition: >
-      The cabin's Liebherr refrigerator, already connected to Liebherr's
-      own SmartDevice cloud (the user already receives its notifications
-      on their phone via Liebherr's own app) — this entity is about
-      bringing that existing connection into the platform's own HA
-      instance, not first-time device setup.
+      The cabin's Liebherr Combi refrigerator/freezer, registered in HA
+      under the user's own custom device name "Loonie Mc Frigerton" (not
+      a generic "fridge" label — this is why a keyword search for
+      fridge/refrigerator/liebherr missed it entirely on first pass, see
+      notes) with 9 real, working entities as of 2026-08-07:
+      number.loonie_mc_frigerton_top_zone_setpoint,
+      number.loonie_mc_frigerton_bottom_zone_setpoint,
+      select.loonie_mc_frigerton_bottom_zone_icemaker,
+      sensor.loonie_mc_frigerton_top_zone,
+      sensor.loonie_mc_frigerton_bottom_zone,
+      switch.loonie_mc_frigerton_nightmode,
+      switch.loonie_mc_frigerton_partymode,
+      switch.loonie_mc_frigerton_top_zone_supercool,
+      switch.loonie_mc_frigerton_bottom_zone_superfrost.
     relationships:
       - target: platform_secret
         type: depends_on
@@ -2112,7 +2122,7 @@ elements:
       ui_components: []
       elements: [platform_secret]
     notes: >
-      NOT YET REGISTERED, 2026-08-02 [SUPERSEDED, see below].  Requires
+      NOT YET REGISTERED, 2026-08-02 [SUPERSEDED, see below]. Requires
       the user's own SmartDevice account login through HA's config flow
       UI (Settings → Devices & Services → Add Integration → Liebherr) —
       no separate developer/API registration needed, unlike Home Connect
@@ -2120,27 +2130,29 @@ elements:
       access to the Tailscale-only local HA UI, and account password
       entry isn't something to do on the user's behalf regardless.
 
-      RECONCILED 2026-08-07: this entry still claimed "not yet
-      registered" while `core.config_entries` on the live HA instance
-      already showed a real `liebherr` config entry
-      (`domain=liebherr, title=Liebherr, state=None`) — the user had
-      added it at some point after 2026-08-02 and this ontology entry was
-      never updated, a real example of exactly the drift this project's
-      DoD now explicitly calls out fixing immediately (see
-      `docs/DEFINITION_OF_DONE.md`). But the config entry alone isn't the
-      full picture either: `core.device_registry` and
-      `core.entity_registry` were both checked directly and show zero
-      Liebherr devices or entities — the integration is configured but
-      has not produced any working entities yet (state: None is
-      consistent with a setup that never completed or is stuck retrying,
-      not a healthy `loaded` integration). `migration_status` moved from
-      `planned` to `partial` to reflect this real, in-between state
-      honestly, rather than rounding up to `complete` or leaving the
-      stale `planned`/"not yet registered" claim in place. Revisit once
-      real entity IDs actually appear (temperature sensors, door/alarm
-      binary sensors, etc.) — exact shape still unknown until the
-      integration is actually producing data, per this project's "don't
-      document fiction as fact" standard.
+      RECONCILED 2026-08-07, TWICE, worth recording both passes honestly.
+      First pass: found `core.config_entries` already showed a real
+      `liebherr` config entry, but a keyword-filtered search of
+      `core.device_registry` (matching "fridge"/"refrigerator"/"liebherr"
+      as substrings) found nothing, so this entry was set to
+      migration_status: partial, assuming the integration was configured
+      but had produced no entities. That was wrong — the search itself
+      was the problem, not the integration. Second pass, prompted
+      directly by the user pushing back on whether a full unfiltered
+      sweep had actually been run: re-queried `core.device_registry` and
+      `core.entity_registry` with NO keyword filter at all, and found the
+      device registered under "Loonie Mc Frigerton" — a custom name that
+      doesn't contain any of the search terms — with all 9 entities above
+      present and enabled. Corrected to migration_status: complete.
+
+      Lesson kept for future sweeps, not just this entity: a
+      keyword-filtered search is only as good as its keyword list, and a
+      family that names devices playfully ("Loonie Mc Frigerton",
+      matching "Unicorn Loonstar" for the cabin WiFi elsewhere in this
+      file) will defeat any filter built from generic category words.
+      The reliable method is an unfiltered dump of the whole registry,
+      cross-referenced by device_id against entities — not a substring
+      match — every time "does X exist" needs a real answer.
 
   - id: smart_appliance_dishwasher_bosch
     entity_type: owl:Class
