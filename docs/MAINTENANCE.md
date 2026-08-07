@@ -492,11 +492,29 @@ matters.
 
 ## Grafana — Off-Tailscale Access via Cloudflare + Google OAuth
 
+**UPDATE 2026-08-07: Google OAuth login is now confirmed actually
+working** — `docker logs cabin-grafana` shows a real, current,
+successfully authenticated session for `nhsmrekar@gmail.com` from a real
+external IP against the public URL, checked live via SSH (Tailscale SSH
+access to the M920q became available this session). This directly
+contradicts the "Current real state" 403 diagnosis below, which was
+accurate as of 2026-08-04 and is not accurate as of 2026-08-07. Root
+cause of the change not investigated — worth confirming next session
+whether something else fixed it incidentally, or whether the original
+403 was intermittent/account-state-dependent. See
+`docs/ontology.yaml`'s `cabin_grafana_public_access` entry for the full
+correction, including two other real things found live in the same
+check: an intermittent session-token-rotation bug (`error="[session.
+token.rotate] token needs to be rotated"`, looping in the logs) and — at
+the time of checking — no dashboards were actually provisioned into the
+running container yet.
+
 **Status as of 2026-08-04, end of session: all infrastructure is
 deployed, but neither of the two intended access gates is confirmed
 working — Grafana's password login was deliberately disabled as a
 result. See "Current real state" below before touching this again.**
-Grafana was Tailscale-only by design,
+(Superseded in part by the 2026-08-07 update above — Google OAuth does
+work now.) Grafana was Tailscale-only by design,
 alongside HA/Node-RED/Zigbee2MQTT (see "Public vs. private surface, by
 design" at the top of this doc) — this is a deliberate, one-off
 exception for Grafana specifically, made after the redirect-bug fix

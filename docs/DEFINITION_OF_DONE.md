@@ -189,14 +189,18 @@ accumulate.*
   armed-away. Deliberate MVP scope cut (see that entity's `notes`), not
   forgotten — wire it to `cabin/security/armed_away` and
   `cabin/presence/*` once the MVP badge/push behavior is proven stable.
-- **Grafana has NO working login at all right now** — password login
-  deliberately disabled (open internet exposure, neither access gate
-  confirmed working); Cloudflare Access isn't gating the hostname
-  despite being configured, and Grafana's own Google OAuth 403s for a
-  reason not yet found. See `MAINTENANCE.md`'s Grafana section,
-  "Current real state," for the full diagnosis and next-session order
-  of operations. Highest-priority item for next session — this is a
-  real outage, not a nice-to-have.
+- **UPDATED 2026-08-07 — Grafana Google OAuth login now confirmed
+  working** (was the highest-priority open item as of 2026-08-04; see
+  `MAINTENANCE.md`'s Grafana section and `docs/ontology.yaml`'s
+  `cabin_grafana_public_access` entry for the full correction). Cloudflare
+  Access still isn't confirmed gating the hostname — that half of the
+  original item is still genuinely open, just no longer blocking login
+  entirely since Google OAuth itself works. Two new real items found in
+  the same live check, not yet fixed: (1) an intermittent session-token
+  rotation bug causing periodic 401s on an otherwise-valid session, (2)
+  at check time, no dashboards were provisioned into the running
+  container — should be resolved once this session's push deploys the
+  Frigate dashboard commit.
 - **Liebherr fridge / Bosch dishwasher account linking** — both need the
   user's own account credentials (SmartDevice login; a Home Connect
   Developer OAuth client_id/secret + account consent). See

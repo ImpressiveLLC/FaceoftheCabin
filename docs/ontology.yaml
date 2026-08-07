@@ -6240,29 +6240,51 @@ elements:
       are two independent Phase 7 §1a sub-items, only one of which
       progressed this session.
 
-      NEW DIAGNOSTIC DATA 2026-08-07 (M920q SSH access became available
-      partway through this session, not yet acted on -- flagged for the
-      next session rather than debugged live against production without
-      a specific go-ahead, given this touches live Cloudflare Access
-      policy and a running Grafana container): from the M920q itself,
-      `curl http://localhost:3000/login` returns 404, and so does
-      `curl http://localhost:3000/grafana/login` -- Grafana's own internal
-      port 404s on both the bare and GF_SERVER_ROOT_URL-prefixed login
-      paths. Meanwhile the PUBLIC tunnel URL
-      (`https://grafana.unicornpingpong.com/grafana/login`) returns a
-      real 200 with genuine Cloudflare headers (matching the
-      already-documented "Access isn't gating it" bug) -- meaning
-      cloudflared must be reaching Grafana some other way than what a
-      direct `curl localhost:3000/...` exercises (a different internal
-      path Grafana's own root-url config actually serves from, cloudflared's
-      ingress doing its own path rewrite, or something else not yet
-      isolated). Not previously documented anywhere in this file or
-      MAINTENANCE.md. Worth checking `docker logs cabin-grafana` and the
-      actual `GF_SERVER_ROOT_URL`/`GF_SERVER_SERVE_FROM_SUB_PATH` values
-      next session before touching Cloudflare Access config, since this
-      new data point suggests the root cause may be simpler (a Grafana
-      serve-path misconfiguration) than the Access-policy angle
-      MAINTENANCE.md's existing diagnosis focused on.
+      CORRECTED 2026-08-07 (M920q SSH access became available partway
+      through this session): an earlier version of this note reported a
+      "new" internal-404 finding that was actually a self-inflicted
+      misdiagnosis -- `curl http://localhost:3000/...` on the M920q hits
+      the `homepage` container (also mapped to host port 3000), not
+      Grafana at all. `docker port cabin-grafana` shows the real mapping
+      is `3000/tcp -> 3002` on the host. Redone against the correct port:
+      `http://localhost:3002/grafana/login` returns 200,
+      `http://localhost:3002/grafana/api/health` returns 200 with a real
+      `{"database":"ok","version":"13.1.1",...}` body. Grafana itself is
+      completely healthy.
+
+      MORE IMPORTANTLY: **Google OAuth login is actually working.**
+      `docker logs cabin-grafana` shows a real, current, successfully
+      authenticated session for `uname=nhsmrekar@gmail.com` (userId=2,
+      orgId=1) browsing `https://grafana.unicornpingpong.com/grafana/...`
+      from a real external IP right now -- this directly contradicts this
+      entity's own "Google's own Google OAuth login fails with a
+      Google-side 403" claim above and MAINTENANCE.md's matching "Current
+      real state" writeup. That diagnosis was accurate as of 2026-08-04;
+      it is not accurate as of 2026-08-07. Root cause of the discrepancy
+      not investigated (out of scope for this correction) -- worth an
+      explicit note next session on whether something changed, or whether
+      the original 403 was intermittent/account-state-dependent rather
+      than structural.
+
+      Two real, still-open items found instead:
+      1. The user's live session is intermittently 401ing with
+         `error="[session.token.rotate] token needs to be rotated"`,
+         looping every few seconds in the logs -- a real, current bug
+         (likely a cookie/rotation config issue given the subpath +
+         reverse-proxy setup), separate from login itself working. Not
+         diagnosed further or touched this session -- flagged for next
+         session, not fixed blind against a live account session.
+      2. `GET /grafana/api/search` (Grafana's own dashboard list) returns
+         `[]` — no dashboards are actually provisioned into the running
+         container yet, because cabin_grafana_frigate_dashboard's commit
+         was still unpushed/undeployed at the time of this check. The
+         user was live-navigating to `/dashboard/public` (not a real
+         Grafana route -- hence its 404), looking for exactly this
+         dashboard. Resolved by pushing this session's commits (including
+         the cherry-picked Frigate dashboard) so the existing CI/CD
+         pipeline rebuilds and restarts cabin-grafana with the
+         provisioning files mounted -- see git log for whether that
+         happened same-session or is still pending.
 
   - id: cabin_grafana_frigate_dashboard
     entity_type: owl:Class
