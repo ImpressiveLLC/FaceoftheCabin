@@ -37,6 +37,17 @@
 #   primitive:        true = source value; false = derived or composite
 #   schema_version:   "0.3.0" — all entries now at current schema
 #   migration_status: complete
+#   first_verified_live: (optional, added 2026-08-07) — when and how this
+#                     concept was first confirmed real, not assumed:
+#                     a date plus what specifically was checked (a real
+#                     API response, a real registry query, a real
+#                     reading) — never "confirmed" on the strength of a
+#                     config entry's presence alone or a prior session's
+#                     say-so. Distinct from schema_version (that's the
+#                     documentation format's version) and from
+#                     discovery.last_checked (that's about periodically
+#                     re-checking for upgrades/alternatives, a different
+#                     question from "does this work at all").
 #   data_class:       raw | derived | conceptual | composite
 #   data_type:        XSD primitive (xsd:string, xsd:boolean, xsd:integer,
 #                     xsd:decimal, xsd:date, xsd:anyURI, xsd:hexBinary)
@@ -1676,7 +1687,9 @@ elements:
 
       REAL BLINK LIVEVIEW ADDED 2026-08-03: the assumption above --
       "always-on NVR, no per-view trigger needed" -- turned out to be
-      wrong specifically for camera_driveway_blink. Its feed was never
+      wrong specifically for the Blink camera (camera_role_driveway,
+      formerly camera_driveway_blink before the 2026-08-07 hardware/role
+      split). Its feed was never
       truly live: blinkbridge only republishes Blink's motion-triggered
       clips on a loop, so "watch live" during the day could show a
       frozen frame from the last nighttime motion event, hours stale
@@ -1965,39 +1978,231 @@ elements:
         github.com/blakeblackshear/frigate/discussions/21659,
         docs.frigate.video/frigate/updating.
 
-  - id: camera_front_door_reolink
+  # ═══════════════════════════════════════════════════════════════════════
+  # ZIGBEE MESH — PAIRED DEVICES
+  # Individual, uniquely-defined entries per physical device — deliberately
+  # NOT collapsed into one generic "Zigbee sensor" entry. A generic entry
+  # can't be independently Findable (no way to look up "the bathroom leak
+  # sensor" and get its own record), isn't uniquely Accessible, isn't
+  # Interoperable on its own (meaningless without cross-referencing which
+  # physical device is meant), and isn't Reusable/repeatable without that
+  # same external dependency. See PRODUCT_VISION.md's FAIR cross-walk.
+  # WORKED EXAMPLE (2026-08-07) — template for the rest of this mesh.
+  # ═══════════════════════════════════════════════════════════════════════
+
+  - id: zigbee_leak_alarm_bathroom
+    entity_type: owl:Class
+    layer: hardware
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-07, via zigbee2mqtt/bridge/devices retained MQTT message
+      queried directly on the M920q: interview_completed: true,
+      disabled: false. Cross-referenced against a real recent state
+      message on zigbee2mqtt/leak_alarm_bathroom the same day showing a
+      live water_leak: false reading with linkquality and battery
+      present — not inferred from pairing status alone.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Bathroom Leak Alarm"
+    source: >
+      Third Reality 3RWS18BZ Zigbee water leak sensor with built-in
+      siren, paired to the cabin's Sonoff ZBDongle-E coordinator via
+      Zigbee2MQTT. Origin of the raw water_leak/battery/linkquality
+      values is the device's own firmware, not derived or computed by
+      this platform.
+    rendering:
+      semantic: "Bathroom leak sensor"
+      systems: Leak Sensor — Bathroom (Third Reality 3RWS18BZ)
+      technical: "Z2M friendly_name 'leak_alarm_bathroom', device id z2m-leak_alarm_bathroom"
+      compliance: Water Intrusion Detection — Bathroom
+    definition: >
+      Physical water-leak/siren sensor mounted in the bathroom, one of
+      13 paired Zigbee devices on the cabin mesh. Reports water_leak
+      (boolean), battery (0-100), battery_low (boolean), and linkquality
+      (0-255) on every Z2M state message. Distinct from
+      water_leak_buzzer, a separate sub-property on this same device
+      model used by leak_spare_siren-style deployments as an intrusion
+      siren — this specific paired unit uses the sensor for leak
+      detection only, not as a siren trigger.
+    relationships:
+      - target: z2m_friendly_name
+        type: derives_from
+        cardinality: "N:1"
+      - target: device_state
+        type: triggers
+        cardinality: "1:1" # this device's water_leak reading is one of the ONLINE/OFFLINE/ALARM inputs device_state derives from
+      - target: event_severity
+        type: triggers
+        cardinality: "1:N" # water_leak: true on this device is one of the three conditions AlertSeverityClassifier maps to CRITICAL
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [z2m_friendly_name, device_state, event_severity]
+    notes: >
+      Live, paired, and confirmed reporting as of 2026-08-07 — part of
+      the original 13-device cabin mesh pairing session
+      (2026-07-25), not added since. No discovery block: this is a
+      fixed-function safety sensor with no meaningful "check for a
+      better alternative" question the way a camera or smart appliance
+      has one — Tech ID Service discovery is scoped to that kind of
+      device, not fixed-purpose Zigbee safety sensors on a working mesh.
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # CAMERAS — restructured 2026-08-07 into two layers per entity, not one.
+  # A single entry that names "front door camera" AND asserts hardware
+  # facts in one `source` string conflates two different kinds of truth:
+  # what the device itself literally is (primitive — a firmware/vendor
+  # fact) vs. what role it's been assigned (derived — a human/workflow
+  # decision that could change, e.g. if the unit gets remounted or
+  # swapped, without the hardware facts changing at all). See
+  # PRODUCT_NOTES.md's 2026-07-26 z2m_friendly_name/display_name split
+  # for the precedent this follows. camera_catalog exists purely so every
+  # role/status grouping (this one, and any future "active cameras" /
+  # "outdoor cameras" grouping) has one common thing to relate to,
+  # instead of re-deriving membership from scratch each time.
+  # ═══════════════════════════════════════════════════════════════════════
+
+  - id: camera_catalog
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Camera Catalog"
+    source: >
+      Not backed by a single system of record — conceptual grouping,
+      realized in practice by whichever hardware entries
+      (hw_camera_*) have a role-assignment entry (camera_role_*)
+      pointing at them.
+    rendering:
+      semantic: "All cameras"
+      systems: Camera registry (all roles, all statuses)
+      technical: "Union of every camera_role_* entry's derives_from target"
+      compliance: (not shown)
+    definition: >
+      The complete set of cameras registered to the platform, regardless
+      of role, mounted location, or active/disabled status. Exists so
+      that any location-based (front/back/indoor/outdoor), status-based
+      (active/disabled/removed), or workflow-based (armed-away-relevant)
+      grouping of cameras has one common thing to relate to, rather than
+      each grouping needing to independently enumerate hardware entries.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: [hw_camera_reolink_rlc820a_01, hw_camera_blink_outdoor4_01]
+    notes: >
+      Deliberately abstract and currently small (2 members) — the value
+      of this entity grows once a second grouping (e.g. "outdoor
+      cameras") also needs to relate to the same catalog instead of
+      redefining membership.
+
+  - id: hw_camera_reolink_rlc820a_01
     entity_type: owl:Class
     layer: hardware
     primitive: true
     schema_version: "0.1.0"
     migration_status: partial
+    first_verified_live: >
+      NOT YET — physically connected at the cabin 2026-08-07 as a
+      proof-of-concept only (per the user, same date). No admin
+      credentials configured, no live reading ever pulled from this
+      unit. "Partial" here means "hardware confirmed present," not
+      "confirmed working."
     data_class: raw
     data_type: owl:Class
-    ui_display_name: "Front Door Camera (Reolink RLC-820A)"
-    source: "Physical Reolink RLC-820A PoE camera, IP 192.168.1.121 (corrected 2026-08-07 — the 192.168.2.200 this entry previously listed was stale; the camera is on a different subnet than the M920q, see notes), currently off-network from the M920q's perspective (see MAINTENANCE.md)"
+    ui_display_name: "Reolink RLC-820A (unit 01)"
+    source: >
+      Literal hardware identity as the device itself/its vendor asserts
+      it — make and model only. Native RTSP (separate sub 640x480
+      "detect" and main 4K "record" streams) and ONVIF support are
+      factory features of this model, not something this platform
+      configured or chose. Numbered "01" because a second same-model
+      unit is plausible later and this id must stay unique per physical
+      unit, not per model — a MAC address would be a better primitive
+      key than a sequence number and should replace/augment this once
+      captured on-site.
     rendering:
-      semantic: "Front door camera"
+      semantic: "A camera"
       systems: Reolink RLC-820A
-      technical: "RTSP sub (640x480, detect) + main (4K, record) streams via {credentials}@192.168.1.121:554 — never configured yet (physically connected as a proof-of-concept only, per the user 2026-08-07), so there is no real admin password to protect here yet; the literal string previously in this field was not a live credential"
+      technical: "model=RLC-820A, protocol=RTSP/ONVIF, mac=unknown (not yet captured on-site)"
       compliance: (not shown)
     definition: >
-      4K PoE dome camera covering the front-door/driveway area, intended
-      to integrate into Frigate via native RTSP/ONVIF (no bridge needed,
-      unlike the Blink camera) once configured. Physically connected at
-      the cabin as a proof-of-concept as of 2026-08-07 — not yet given
-      real credentials or brought into Frigate's config, and unreachable
-      from the M920q on its current network (see notes below and
-      MAINTENANCE.md's Reolink section). Downgraded from
-      migration_status: complete to partial 2026-08-07 — the previous
-      value asserted this integration as already-working fact, which it
-      was not.
+      The physical hardware unit — make, model, and native protocol
+      capability only. Says nothing about where it's mounted, what it's
+      used for, or whether it's currently reachable/configured; that's
+      camera_role_front_door, which currently points at this entry.
+      Network address (192.168.1.121, DHCP-assigned) is NOT a hardware
+      property of this entry on purpose — an IP can change without the
+      hardware changing at all, so it lives in the role entry instead,
+      alongside the other current-state facts that can also change.
     relationships:
-      - target: nvr_frigate
-        type: monitors
+      - target: camera_catalog
+        type: consumed_by
         cardinality: "N:1"
     relates_to:
       ui_components: []
-      elements: [cabin_camera_event]
+      elements: [camera_catalog]
+    notes: >
+      No discovery block on this entry — firmware/alternative-product
+      research belongs on the role entry (camera_role_front_door), since
+      "is this still the best camera for this job" is a question about
+      the role, not a fact about the hardware itself.
+
+  - id: camera_role_front_door
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: partial
+    first_verified_live: >
+      NOT YET — role is assigned/intended in this ontology and in
+      planning, but hw_camera_reolink_rlc820a_01 has never actually
+      produced a frame Frigate received; see notes.
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Front Door Camera"
+    source: >
+      Not asserted by any device — this is a platform/workflow
+      assignment. Mechanism: Frigate's `cameras:` config key (intended
+      key name: front_door, matching the driveway/Blink camera's
+      existing `driveway` key) — not yet actually added to that config,
+      since the hardware behind this role isn't reachable yet.
+    rendering:
+      semantic: "Front door camera"
+      systems: "Reolink RLC-820A — role: front_door"
+      technical: "Intended Frigate camera key 'front_door' (not yet configured); RTSP sub/main via {credentials}@192.168.1.121:554 once set up — no real credentials exist yet, physically connected as a proof-of-concept only"
+      compliance: (not shown)
+    definition: >
+      The role "monitors the front door / driveway approach area,"
+      currently assigned to hw_camera_reolink_rlc820a_01. This is what
+      would change if the camera were remounted to cover a different
+      area, or if a different physical unit were swapped in — the role
+      persists independent of which hardware instance currently fulfills
+      it. Intended to integrate via Frigate's native RTSP/ONVIF support
+      (no bridge needed, unlike the Blink camera's role below) once the
+      network/credentials work described in notes is resolved.
+    relationships:
+      - target: hw_camera_reolink_rlc820a_01
+        type: derives_from
+        cardinality: "1:1"
+      - target: camera_catalog
+        type: consumed_by
+        cardinality: "N:1"
+      - target: nvr_frigate
+        type: monitors
+        cardinality: "N:1"
+      - target: cabin_camera_event
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [hw_camera_reolink_rlc820a_01, camera_catalog, cabin_camera_event]
     discovery:
       check_for_new: true
       check_schedule: monthly
@@ -2042,32 +2247,106 @@ elements:
       credentials this session doesn't have. See MAINTENANCE.md for the
       full diagnostic trail.
 
-  - id: camera_driveway_blink
+      Also corrected 2026-08-07: this entry (formerly
+      camera_front_door_reolink, undivided) previously listed a literal
+      username:password-shaped string in its technical rendering field.
+      The user confirmed this camera has never been configured — there
+      is no real credential to protect, but the field was rewritten
+      regardless to stop asserting a live credential that was never
+      real.
+
+  - id: hw_camera_blink_outdoor4_01
     entity_type: owl:Class
     layer: hardware
     primitive: true
     schema_version: "0.1.0"
     migration_status: complete
+    first_verified_live: >
+      2026-08-06, via Frigate's own /api/stats showing a real, nonzero
+      camera_fps/detection_fps for this unit after the blinkbridge
+      reliability fix — not inferred from the container simply running.
     data_class: raw
     data_type: owl:Class
-    ui_display_name: "Driveway Camera (Blink Outdoor 4)"
-    source: "Physical Blink Outdoor 4 ('DHEE'), bridged via blinkbridge -> mediamtx -> Frigate RTSP relay"
+    ui_display_name: "Blink Outdoor 4 ('DHEE', unit 01)"
+    source: >
+      Literal hardware identity — Blink Outdoor 4, battery-powered,
+      Blink's own device name "Outdoor 4 - DHEE" as assigned in the
+      Blink app (a vendor-app-level label, not a role this platform
+      assigned — kept here since it's how the device identifies itself
+      to Blink's own cloud API, which this platform depends on). No
+      native local RTSP or ONVIF — a hardware/product-line fact, not an
+      integration choice.
     rendering:
-      semantic: "Driveway camera"
+      semantic: "A camera"
       systems: Blink Outdoor 4
-      technical: "Synthetic RTSP feed via blinkbridge, single stream (no sub/main split), motion-gated at the source"
+      technical: "Blink cloud device name 'Outdoor 4 - DHEE', no native RTSP/ONVIF"
       compliance: (not shown)
     definition: >
-      Battery-powered Blink camera covering the same front-door/driveway
-      area from a different angle than the Reolink, integrated via a
-      third-party bridge since Blink has no native local RTSP/API.
+      The physical hardware unit only. Says nothing about where it's
+      mounted or how it's integrated into this platform; that's
+      camera_role_driveway, which currently points at this entry.
     relationships:
-      - target: nvr_frigate
-        type: monitors
+      - target: camera_catalog
+        type: consumed_by
         cardinality: "N:1"
     relates_to:
       ui_components: []
-      elements: [cabin_camera_event]
+      elements: [camera_catalog]
+    notes: >
+      No discovery block here for the same reason as the Reolink
+      hardware entry — see camera_role_driveway for firmware/alternative
+      research.
+
+  - id: camera_role_driveway
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live: >
+      2026-08-06, same evidence as hw_camera_blink_outdoor4_01 — real
+      nonzero camera_fps confirms the role's integration path
+      (blinkbridge -> mediamtx -> Frigate) is actually working, not
+      just configured.
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Driveway Camera"
+    source: >
+      Not asserted by any device — a platform/workflow assignment.
+      Mechanism: Frigate's `cameras:` config key `driveway`, fed by a
+      synthetic RTSP stream blinkbridge publishes (blinkbridge is itself
+      a platform integration choice, not a hardware fact — Blink
+      cameras don't natively support RTSP, see the hardware entry).
+    rendering:
+      semantic: "Driveway camera"
+      systems: "Blink Outdoor 4 — role: driveway"
+      technical: "Frigate camera key 'driveway'; synthetic RTSP via blinkbridge -> mediamtx, single stream (no sub/main split), motion-gated at the source"
+      compliance: (not shown)
+    definition: >
+      The role "monitors the driveway approach, different angle than
+      the front-door role," currently assigned to
+      hw_camera_blink_outdoor4_01, integrated via a third-party bridge
+      since the hardware has no native local RTSP/API. This role, not
+      the hardware entry, is what changes if this platform ever swaps
+      integration mechanisms (e.g. HA's official cloud-based Blink
+      integration, see discovery notes below) without changing which
+      physical camera is doing the monitoring.
+    relationships:
+      - target: hw_camera_blink_outdoor4_01
+        type: derives_from
+        cardinality: "1:1"
+      - target: camera_catalog
+        type: consumed_by
+        cardinality: "N:1"
+      - target: nvr_frigate
+        type: monitors
+        cardinality: "N:1"
+      - target: cabin_camera_event
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [hw_camera_blink_outdoor4_01, camera_catalog, cabin_camera_event]
     discovery:
       check_for_new: true
       check_schedule: monthly
@@ -2087,28 +2366,26 @@ elements:
         alongside the existing Frigate bridge (not replacing it) would be
         a real, concrete "better utilize what's already owned" win — you'd
         get battery/WiFi health monitoring for a camera whose bridge has
-        an active, unresolved crash-loop issue (see MAINTENANCE.md),
-        without touching the working video pipeline. (2) Confirmed: RTSP
-        support on Blink is genuinely limited/absent for battery-powered
-        models like this one — the blinkbridge approach is the correct
-        workaround, not a gap. (3) Community-maintained alternative bridges
-        exist (e.g. blink-rtsp-mqtt-bridge on GitHub) — worth knowing about
-        if the current blinkbridge's crash-loop issue is ever pursued as a
-        real fix, not evaluated in depth this pass. Sources:
+        had recurring reliability issues (see MAINTENANCE.md), without
+        touching the working video pipeline. (2) Confirmed: RTSP support
+        on Blink is genuinely limited/absent for battery-powered models
+        like this one — the blinkbridge approach is the correct
+        workaround, not a gap. (3) Community-maintained alternative
+        bridges exist (e.g. blink-rtsp-mqtt-bridge on GitHub) — worth
+        knowing about if a future rewrite is ever pursued. Sources:
         home-assistant.io/integrations/blink,
         github.com/femmeXFMR/blink-rtsp-mqtt-bridge.
     notes: >
-      UPDATE 2026-08-03: the "active, unresolved crash-loop issue"
-      referenced above was root-caused the same day (an external review
-      of the camera panel prompted the investigation) — not actually a
-      crash loop, blinkbridge's process stayed up but silently disabled
-      its own stream server after a transient Blink cloud-API failure
-      and never retried, so camera_fps sat at 0.0 for hours with no
-      restart-policy trigger to catch it (the container never exited).
-      Fixed for now with `docker restart blinkbridge`; no automated
-      self-recovery exists yet for this specific failure mode. Full
-      timeline in MAINTENANCE.md's "Blink camera silently stopped
-      producing frames" entry.
+      Recurring reliability incident, twice (2026-08-03, 2026-08-06):
+      blinkbridge's process stayed up but silently disabled its own
+      stream server after a transient Blink cloud-API failure and never
+      retried, so camera_fps sat at 0.0 for hours with no restart-policy
+      trigger to catch it. Root-caused and patched 2026-08-06 (retry with
+      capped backoff instead of permanent disable, see MAINTENANCE.md's
+      Blink section) — an Uptime Kuma monitor on this role's camera_fps
+      was also added the same day as a second, independent signal. This
+      incident is what "camera_role_driveway" is about — the role kept
+      failing, not the hardware.
 
   - id: smart_appliance_fridge_liebherr
     entity_type: owl:Class
@@ -4387,8 +4664,11 @@ elements:
       provider-agnostic: `provider` is free text, not an enum, so a new
       source never needs a schema or code change. This is the "keep
       things fresh" mechanism behind Northstar Goal #6 (self-improving
-      discovery) — see also nvr_frigate, camera_front_door_reolink, and
-      camera_driveway_blink's `discovery:` blocks, which were populated
+      discovery) — see also nvr_frigate, camera_role_front_door, and
+      camera_role_driveway's `discovery:` blocks (moved to the role
+      entries, not the hardware entries, in the 2026-08-07 restructure —
+      "is this still the best camera for this job" is a question about
+      the role, not the hardware), which were populated
       by hand this session as the schema's first real use, ahead of this
       ingestion API existing. Product-facing name is "Opportunity" — the
       cabin-ui Opportunity Map panel presents these via the platform's
@@ -4422,7 +4702,7 @@ elements:
       separate, still-manual step — not automatic on PATCH.
     relates_to:
       ui_components: [opportunity_map_panel]
-      elements: [nvr_frigate, camera_front_door_reolink, camera_driveway_blink, tech_id_finding_action, ontology_entity_lookup_api]
+      elements: [nvr_frigate, camera_role_front_door, camera_role_driveway, tech_id_finding_action, ontology_entity_lookup_api]
     notes: >
       Built 2026-08-03. UPDATE same day: the reference Claude Code
       routine (RemoteTrigger id trig_0188XfA9eewXVEoumKr7tmkC, monthly,
