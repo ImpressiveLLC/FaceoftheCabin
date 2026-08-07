@@ -2826,16 +2826,26 @@ elements:
       user's own router client list shows this camera (and the Liebherr
       fridge, a Nest Connect, and the Blink Sync Module) all on
       192.168.1.0/24, while the M920q's own WiFi network sits on
-      192.168.2.0/24, with a second router (Greenwave C4000LG,
-      192.168.0.1) also present. `nmap -Pn` from the M920q against this
-      camera shows every port `filtered` (silently dropped), not
-      closed/refused — consistent with a genuine multi-subnet/double-NAT
-      topology, not simple AP client isolation on one flat network. Fix
-      requires either bridging the M920q onto 192.168.1.0/24 (a spare
-      Ethernet run, most likely) or reconfiguring whichever router is
-      creating the second network — both need on-site access/router
-      credentials this session doesn't have. See MAINTENANCE.md for the
-      full diagnostic trail.
+      192.168.2.0/24. `nmap -Pn` from the M920q against this camera shows
+      every port `filtered` (silently dropped), not closed/refused —
+      consistent with a genuine multi-subnet/double-NAT topology, not
+      simple AP client isolation on one flat network. Fix requires either
+      bridging the M920q onto 192.168.1.0/24 (a spare Ethernet run, most
+      likely) or reconfiguring whichever router is creating the second
+      network — both need on-site access/router credentials this session
+      doesn't have.
+
+      CORRECTED 2026-08-07, same day: this note originally named the
+      Greenwave C4000LG router (192.168.0.1, a third subnet, also
+      present on this network) as the likely second router creating the
+      192.168.2.0/24 segment. The user has since clarified that device
+      is actually unassigned backup/spare hardware, not currently
+      serving any network role — see hw_router_c4000lg's own notes. That
+      makes it a weaker candidate for causing this segmentation than
+      originally implied here, though not conclusively ruled out. This
+      entry no longer names it as the presumed cause — what's actually
+      creating the 192.168.2.0/24 network the M920q sits on is still an
+      open question. See MAINTENANCE.md for the full diagnostic trail.
 
       Also corrected 2026-08-07: this entry (formerly
       camera_front_door_reolink, undivided) previously listed a literal
@@ -3127,33 +3137,39 @@ elements:
       compliance: (not shown)
     definition: >
       The physical router hardware only — make, model, and network
-      address as UPnP-discovered. Says nothing about what network role
-      it currently plays in the property's topology; that's an open
-      question this session could not resolve (see notes) and is
-      deliberately not asserted as a role entry the way the cameras'
-      roles are, since the role itself isn't yet known.
+      address as UPnP-discovered. Clarified by the user 2026-08-07: this
+      unit has no assigned network role — it's kept as backup/spare
+      hardware, potentially to be pressed into service later as a mesh
+      router, WiFi extender/repeater, or some other function "as
+      needed," none of which is currently active. Still deliberately no
+      camera_role-style derived "role" entry for this device — per the
+      user's own rule, a role entry gets written when a role is actually
+      assigned and in use, not for a hypothetical future one. "Spare,
+      unassigned" is itself the accurate current status, not an
+      unresolved question anymore.
     relationships: []
     relates_to:
       ui_components: []
       elements: []
     notes: >
-      UNRESOLVED TOPOLOGY QUESTION, 2026-08-07 — this is exactly why no
-      camera_role-style derived entry exists for this device yet, per
-      the user's own rule: don't enter a derived concept until enough is
-      known to actually use it. What's confirmed: this router exists at
-      192.168.0.1, is UPnP-discoverable by HA, and reports real WAN/
-      bandwidth telemetry. What's NOT confirmed: whether it's acting as
-      a second, downstream router creating the M920q's own
-      192.168.2.0/24 "Unicorn Loonstar" WiFi network (making the M920q
-      double-NATed behind it, separate from where the Reolink/Liebherr/
-      Nest/Blink-hub devices sit on 192.168.1.0/24 — see
-      camera_role_front_door's notes and MAINTENANCE.md), or whether
-      it's unrelated to that segmentation entirely. Resolving this needs
-      on-site access to this router's own admin UI, which this session
-      doesn't have. Once resolved, a derived "role" entry (e.g.
-      describing it as "secondary router creating an isolated WiFi
-      segment" or "bridge between two subnets") would be the right next
-      addition — not written now because it isn't known yet.
+      CLARIFIED 2026-08-07 by the user directly — this was previously
+      documented here as an "unresolved topology question," specifically
+      whether this router might be the second device creating the
+      M920q's 192.168.2.0/24 "Unicorn Loonstar" network, double-NATing
+      it behind the 192.168.1.0/24 segment the Reolink/Liebherr/Nest/
+      Blink-hub devices sit on. That theory is now questionable, not
+      confirmed — a backup router with no assigned role is a plausible
+      candidate for NOT being actively in that path, though it doesn't
+      rule it out either (it could still be physically wired in as a
+      dumb switch/AP without being the segmentation's actual cause).
+      What's still genuinely unexplained: this device reports real, live
+      WAN telemetry (bandwidth, uptime, external IP) via HA's UPnP
+      integration — that implies it's powered on and has some kind of
+      active network connection, which sits a little oddly next to
+      "unassigned spare." Worth resolving on-site (is it physically
+      plugged into anything beyond power right now?) before drawing
+      further conclusions about the Reolink subnet question — this
+      entry no longer asserts a theory about that either way.
 
   - id: hw_starlink_terminal
     entity_type: owl:Class
