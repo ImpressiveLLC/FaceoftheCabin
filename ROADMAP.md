@@ -673,27 +673,37 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       session closed the *symptom* — matching catalogs, an enforced
       guard against re-drifting — not the *duplication* itself; each
       file still hand-defines its own 9-entry THEMES object).
-- [x] §1a (partial) — A real Grafana dashboard now exists: Prometheus
-      scraping Frigate's `/api/metrics`, a Grafana Prometheus datasource,
-      and file-based provisioning of Frigate's own official community
-      dashboard (grafana.com/grafana/dashboards/24165). Built by a
-      concurrent Claude Code session working this same repo (commit
-      `5b5cda2`, cherry-picked here 2026-08-07) and independently
-      re-verified in this session: all three `docker compose config`
-      variants (base/M920q/local) parse clean, the dashboard JSON is
-      valid (21 panels), all three new provisioning YAML files parse
-      clean. **Not done**: (1) this is one dashboard for Frigate, not yet
-      "per-location, generated from ontology entities" as originally
-      scoped — a real, more ambitious remainder, not silently narrowed;
-      (2) the actual Prometheus→Frigate scrape target (`frigate:5000` on
-      `cabin_default`) is explicitly unverified against the live M920q —
-      flagged inline by the commit that built it; (3) Grafana's two
-      broken access gates (Cloudflare Access not enforcing, Google OAuth
-      403 — both already root-caused in `MAINTENANCE.md`) are completely
-      unrelated to this and still mean **nobody can log into Grafana at
-      all right now** — this dashboard exists but is unreachable until
-      that separate outage is fixed. Both (2) and (3) need a live M920q
-      session, not buildable from a local clone.
+- [x] §1a — **Live and confirmed working end-to-end as of 2026-08-07.**
+      A real Grafana dashboard exists and is genuinely reachable:
+      Prometheus scraping Frigate's `/api/metrics` (confirmed `health: up`,
+      zero errors, real scrape data), a Grafana Prometheus datasource, and
+      Frigate's own official community dashboard (grafana.com/grafana/
+      dashboards/24165) provisioned and visible — `https://grafana.
+      unicornpingpong.com/grafana/d/aezbolgn22qdce/frigate-monitoring-dashboard`.
+      Built by a concurrent Claude Code session (commit `5b5cda2`,
+      cherry-picked here), then this session: (1) confirmed the Frigate
+      hostname assumption live via SSH (M920q access became available
+      mid-session) rather than leaving it as a documented guess; (2)
+      corrected a real, separate misdiagnosis — Grafana's Google OAuth
+      login actually works (was documented as 403ing since 2026-08-04;
+      confirmed via live logs showing the user's own real, current,
+      authenticated session); (3) deployed via the normal CI/CD path
+      (`gh run watch`-confirmed, not assumed) plus one manual step —
+      `cabin-grafana`/`cabin-prometheus` are deliberately excluded from
+      the automated family-hub/cabin-ui deploy (same "stateful services
+      get a considered rollout" policy as cabin-backend), and a bind-mount
+      content change alone didn't trigger Grafana's dashboard provisioner
+      to re-scan without an actual container restart — see
+      `docs/ontology.yaml`'s `cabin_grafana_frigate_dashboard` entry for
+      the full sequence, including a named gap in the deploy tooling this
+      surfaced. **Still open**: (1) this is one dashboard for Frigate, not
+      yet "per-location, generated from ontology entities" as originally
+      scoped — a real, more ambitious remainder; (2) Cloudflare Access
+      still isn't confirmed actually gating the public hostname (separate
+      from login, which works); (3) a newly-found, real
+      session-token-rotation bug causing intermittent 401s on an
+      otherwise-valid session — not diagnosed or fixed, flagged for next
+      session.
 - [x] §1b (partial) — Real `hub_location` Postgres table + `/api/locations`
       CRUD (list/create/patch/delete/reorder) now exists, seeded from this
       instance's own config so a fresh fork writes what App.jsx already

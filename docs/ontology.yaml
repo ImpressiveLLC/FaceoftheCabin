@@ -6274,17 +6274,44 @@ elements:
          reverse-proxy setup), separate from login itself working. Not
          diagnosed further or touched this session -- flagged for next
          session, not fixed blind against a live account session.
-      2. `GET /grafana/api/search` (Grafana's own dashboard list) returns
-         `[]` — no dashboards are actually provisioned into the running
-         container yet, because cabin_grafana_frigate_dashboard's commit
-         was still unpushed/undeployed at the time of this check. The
-         user was live-navigating to `/dashboard/public` (not a real
-         Grafana route -- hence its 404), looking for exactly this
-         dashboard. Resolved by pushing this session's commits (including
-         the cherry-picked Frigate dashboard) so the existing CI/CD
-         pipeline rebuilds and restarts cabin-grafana with the
-         provisioning files mounted -- see git log for whether that
-         happened same-session or is still pending.
+      2. RESOLVED same session: `GET /grafana/api/search` initially
+         returned `[]` — no dashboards provisioned — because
+         cabin_grafana_frigate_dashboard's commit was still
+         unpushed/undeployed. The user was live-navigating to
+         `/dashboard/public` (not a real Grafana route -- hence its 404),
+         looking for exactly this dashboard. Pushed this session's
+         commits; `deploy-cabin-backend.yml` and the family-hub/cabin-ui
+         deploy both ran and succeeded (confirmed via `gh run watch`, not
+         assumed), but neither touches cabin-grafana/prometheus by design
+         (same "stateful services get a considered rollout" policy as
+         cabin-backend itself). Ran `docker compose up -d prometheus
+         cabin-grafana` manually (with the user's explicit go-ahead,
+         since it would interrupt their then-live session) --
+         `cabin-prometheus` was newly created and immediately confirmed
+         scraping `frigate:5000` successfully (`health: up`, zero
+         errors); `cabin-grafana` was NOT recreated by compose (no
+         service-definition diff), so its file-based dashboard provisioner
+         never re-scanned the newly-mounted directory -- the dashboard
+         JSON was physically present in the container
+         (`docker exec ... ls`) but invisible to Grafana. A `docker
+         restart cabin-grafana` (dropping the user's session, expected)
+         fixed it -- fresh-boot provisioning found and registered it
+         correctly. Confirmed live via the search API: a "Frigate" folder
+         containing "Frigate Monitoring Dashboard"
+         (`/grafana/d/aezbolgn22qdce/frigate-monitoring-dashboard`), all
+         21 panels intact. The full data path (Frigate -> Prometheus ->
+         Grafana datasource -> dashboard) is now confirmed working
+         end-to-end, not just configured.
+
+         Worth carrying forward: this project's compose-based deploy
+         pattern doesn't currently have a mechanism to detect "a bind-mounted
+         directory's *contents* changed, even though the service
+         definition didn't" and restart accordingly -- a future dashboard/
+         provisioning-file-only change would hit this same silent gap
+         again unless something explicitly restarts cabin-grafana. Not
+         fixed this session (would mean changing the deploy workflow's
+         scope, a bigger decision than a doc correction), just named
+         here so it isn't rediscovered from scratch.
 
   - id: cabin_grafana_frigate_dashboard
     entity_type: owl:Class
