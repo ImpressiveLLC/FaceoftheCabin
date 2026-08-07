@@ -20,20 +20,34 @@ public class EventController {
     }
 
     /**
-     * GET /api/events?camera=outdoor_4&limit=20&window=10m
+     * GET /api/events?camera=outdoor_4&limit=20&offset=0&window=10m&eventTypePrefix=DETECTION_,MOTION_
      * Unauthenticated, same precedent as /api/devices — this is the "at
-     * minimum, push events to FaceoftheCabin" tier. camera/limit/window are
-     * all optional; defaults to the last 24h, 20 events, any camera/device.
-     * window accepts a trailing unit: s/m/h/d (e.g. "10m", "24h").
+     * minimum, push events to FaceoftheCabin" tier. All params are
+     * optional; defaults to the last 24h, 20 events, offset 0, any
+     * camera/device, no eventType filter. window accepts a trailing unit:
+     * s/m/h/d (e.g. "10m", "24h").
+     *
+     * eventTypePrefix and offset added 2026-08-07 (Phase 7 §4a/§4c): the
+     * real server-side fix for CameraEventsPanel filtering client-side
+     * (isCameraEvent, App.jsx) and being capped at the most recent 30 with
+     * no way to page further back — see docs/ontology.yaml's
+     * cabin_camera_event entry.
      */
     @GetMapping
     public List<CabinEvent> recentEvents(
             @RequestParam(name = "camera", required = false) String camera,
             @RequestParam(name = "limit", required = false, defaultValue = "20") int limit,
-            @RequestParam(name = "window", required = false, defaultValue = "24h") String window) {
+            @RequestParam(name = "offset", required = false, defaultValue = "0") int offset,
+            @RequestParam(name = "window", required = false, defaultValue = "24h") String window,
+            @RequestParam(name = "eventTypePrefix", required = false) String eventTypePrefix) {
         Instant since = Instant.now().minus(parseWindow(window));
         int cappedLimit = Math.min(Math.max(limit, 1), 200);
-        return eventService.recent(camera, cappedLimit, since);
+        int cappedOffset = Math.max(offset, 0);
+        List<String> prefixes = (eventTypePrefix == null || eventTypePrefix.isBlank())
+            ? null
+            : java.util.Arrays.stream(eventTypePrefix.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty()).toList();
+        return eventService.recent(camera, cappedLimit, cappedOffset, since, prefixes);
     }
 
     private Duration parseWindow(String window) {

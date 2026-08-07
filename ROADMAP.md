@@ -734,23 +734,39 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       tracked in the execution plan §3, not silently dropped.
 - [x] §4a — `CameraEventsPanel` was fetching `/api/events` completely
       unfiltered — that was the whole "seeing device inputs, not camera
-      events" bug. Fixed client-side (filters to `DETECTION_*`/`MOTION_*`
-      eventTypes) as the fast fix; a real server-side `eventType` filter
-      (avoiding fetching non-camera events at all) is still open, tracked
-      under §4c's pagination work. `isCameraEvent` extracted to a pure,
-      exported, unit-tested function (cabin-ui's new Vitest suite) rather
-      than left inline and untested.
+      events" bug. Now fully fixed server-side: `EventController`/
+      `CabinEventService` gained a real `eventTypePrefix` filter (the
+      fast client-side `isCameraEvent` fix from earlier this session is
+      no longer the primary mechanism, though it stays exported/tested
+      for reuse elsewhere). Confirmed live against the M920q's *currently
+      deployed* (pre-this-session) backend that the old, unfiltered
+      behavior is real — `curl`ing the live `/api/events` returned raw
+      Zigbee `TELEMETRY` events exactly as described; the new filter
+      param will take effect once this deploys.
 - [x] §4b (partial) — DTM stamp now renders as an overlay directly on each
       camera event's thumbnail image (not just adjacent list text), using
       `CabinEvent.timestamp` already returned by the API — no backend
       change needed. **Not done**: never verified against the live M920q
       whether Frigate's own snapshot already burns in a timestamp, which
-      would make this overlay redundant — needs a live session, not
-      buildable from a local clone.
-- [ ] §4c — Pagination/filtering past the current 30-event cap; a
-      continuous-recording timeline/scrubber view (Frigate recordings API);
-      new `cold_storage_backend` ontology entity so retention storage is
-      configurable per instance, not assumed to be the M920q's local disk.
+      would make this overlay redundant — M920q access became available
+      later in this session but this specific check wasn't done yet.
+- [x] §4c (partial) — Real server-side pagination now exists:
+      `CabinEventService.recent()` gained `offset` + `eventTypePrefix`
+      params (a new 5-arg overload; the old 3-arg signature stays as a
+      backward-compatible overload), `EventController` exposes both as
+      query params, and `CameraEventsPanel` has a "Load older events"
+      button instead of the old hard 30-event cap. New
+      `CabinEventServiceTest` (Testcontainers-against-Postgres) covers
+      the filter, the pagination, and both combined — same
+      "fails only on no-Docker in this sandbox" caveat as this session's
+      other Testcontainers tests. Frigate's recordings API
+      (`GET /api/{camera}/recordings`) confirmed live against the real
+      M920q — real endpoint, valid JSON array response — but the
+      continuous-recording timeline/scrubber UI itself is **not built**;
+      that's real, separate frontend work using this now-confirmed API
+      shape. `cold_storage_backend` ontology entity also **not built** —
+      still open, no live-infra blocker for it specifically, just not
+      reached this session.
 - [ ] §4d — Event → automation lineage record (`ROADMAP.md` Phase 3's
       already-planned `{ from_event, via_automation, to_state, timestamp }`
       — this is its concrete motivating use case), deep-links to the

@@ -293,6 +293,7 @@ body {
 .event-body { color: #79c0ff; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .camera-events-list { display: flex; flex-direction: column; gap: 1px; margin-top: 12px; }
+.camera-events-load-more { margin-top: 12px; width: 100%; justify-content: center; }
 .camera-event-row {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px; background: #0d1117; border: 1px solid #21262d;

@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, AppContext, FamilyHubPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, AppContext, FamilyHubPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -33,6 +33,33 @@ describe("isCameraEvent", () => {
   it("handles a missing/undefined eventType without throwing", () => {
     expect(isCameraEvent({})).toBe(false);
     expect(isCameraEvent({ eventType: undefined })).toBe(false);
+  });
+});
+
+// Covers Phase 7 §4c -- CameraEventsPanel's real server-side pagination/
+// filtering (replacing the old client-side isCameraEvent filter + hard
+// 30-event cap). See EventController's own comment and
+// docs/ontology.yaml's cabin_camera_event entry.
+describe("buildCameraEventsUrl", () => {
+  it("requests only camera event types (DETECTION_*/MOTION_*)", () => {
+    const url = buildCameraEventsUrl("http://cabin-hub:8090", 0);
+    expect(url).toContain("eventTypePrefix=DETECTION_,MOTION_");
+  });
+
+  it("requests the first page at offset 0", () => {
+    const url = buildCameraEventsUrl("http://cabin-hub:8090", 0);
+    expect(url).toContain("offset=0");
+    expect(url).toContain("limit=30");
+  });
+
+  it("requests subsequent pages at the given offset", () => {
+    const url = buildCameraEventsUrl("http://cabin-hub:8090", 30);
+    expect(url).toContain("offset=30");
+  });
+
+  it("targets the given location's apiBase", () => {
+    const url = buildCameraEventsUrl("http://home-hub:8080", 0);
+    expect(url.startsWith("http://home-hub:8080/api/events?")).toBe(true);
   });
 });
 

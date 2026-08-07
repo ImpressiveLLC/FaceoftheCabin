@@ -47,6 +47,19 @@ public class CabinEventService {
 
     /** Most recent events, newest first, optionally filtered by camera/device and a lookback window. */
     public List<CabinEvent> recent(String deviceId, int limit, Instant since) {
+        return recent(deviceId, limit, 0, since, null);
+    }
+
+    /**
+     * Same as recent(), plus real server-side pagination (offset) and an
+     * eventType-prefix filter -- added 2026-08-07 (Phase 7 §4a/§4c) so
+     * CameraEventsPanel can ask for "just camera events" (DETECTION_*,
+     * MOTION_*) directly instead of fetching everything and filtering
+     * client-side (isCameraEvent, App.jsx), which was the original fast
+     * fix. eventTypePrefixes is nullable/empty for "no filter", matching
+     * every other optional-filter param on this method.
+     */
+    public List<CabinEvent> recent(String deviceId, int limit, int offset, Instant since, List<String> eventTypePrefixes) {
         StringBuilder sql = new StringBuilder("SELECT * FROM cabin_event WHERE time >= ?");
         java.util.List<Object> args = new java.util.ArrayList<>();
         args.add(java.sql.Timestamp.from(since));
@@ -54,8 +67,18 @@ public class CabinEventService {
             sql.append(" AND device_id = ?");
             args.add(deviceId);
         }
-        sql.append(" ORDER BY time DESC LIMIT ?");
+        if (eventTypePrefixes != null && !eventTypePrefixes.isEmpty()) {
+            sql.append(" AND (");
+            for (int i = 0; i < eventTypePrefixes.size(); i++) {
+                if (i > 0) sql.append(" OR ");
+                sql.append("event_type LIKE ?");
+                args.add(eventTypePrefixes.get(i) + "%");
+            }
+            sql.append(")");
+        }
+        sql.append(" ORDER BY time DESC LIMIT ? OFFSET ?");
         args.add(limit);
+        args.add(offset);
         return jdbc.queryForList(sql.toString(), args.toArray())
             .stream().map(this::fromRow).toList();
     }

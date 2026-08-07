@@ -1463,12 +1463,18 @@ elements:
       events (leak/temp/motion sensors included) mixed in with real
       cabin_camera_event rows. FIXED (partial, client-side) same session:
       the panel now filters the response to eventType matching
-      DETECTION_*/MOTION_* before rendering. NOT fixed: this still fetches
-      the unfiltered stream first and discards most of it client-side — a
-      real server-side eventType filter (EventController) is the fuller
-      fix, tracked under
-      docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §4a/§4c
-      alongside the still-open pagination-past-30-events gap.
+      DETECTION_*/MOTION_* before rendering. FIXED (fully, same session,
+      later): CabinEventService.recent() gained a real eventTypePrefix
+      SQL filter (WHERE event_type LIKE 'DETECTION_%' OR ... ) plus
+      offset-based pagination, EventController exposes both as query
+      params, CameraEventsPanel now requests only camera events directly
+      instead of filtering client-side after the fact. Confirmed via a
+      live curl against the M920q's currently-deployed (pre-this-session)
+      backend that the original unfiltered bug is real — raw Zigbee
+      TELEMETRY events came back exactly as this note originally
+      described; the fix takes effect once this session's backend changes
+      deploy. New CabinEventServiceTest (Testcontainers) covers the
+      filter/pagination logic directly.
 
   - id: cabin_camera_continuous_recording
     entity_type: owl:Class
@@ -6234,6 +6240,30 @@ elements:
       are two independent Phase 7 §1a sub-items, only one of which
       progressed this session.
 
+      NEW DIAGNOSTIC DATA 2026-08-07 (M920q SSH access became available
+      partway through this session, not yet acted on -- flagged for the
+      next session rather than debugged live against production without
+      a specific go-ahead, given this touches live Cloudflare Access
+      policy and a running Grafana container): from the M920q itself,
+      `curl http://localhost:3000/login` returns 404, and so does
+      `curl http://localhost:3000/grafana/login` -- Grafana's own internal
+      port 404s on both the bare and GF_SERVER_ROOT_URL-prefixed login
+      paths. Meanwhile the PUBLIC tunnel URL
+      (`https://grafana.unicornpingpong.com/grafana/login`) returns a
+      real 200 with genuine Cloudflare headers (matching the
+      already-documented "Access isn't gating it" bug) -- meaning
+      cloudflared must be reaching Grafana some other way than what a
+      direct `curl localhost:3000/...` exercises (a different internal
+      path Grafana's own root-url config actually serves from, cloudflared's
+      ingress doing its own path rewrite, or something else not yet
+      isolated). Not previously documented anywhere in this file or
+      MAINTENANCE.md. Worth checking `docker logs cabin-grafana` and the
+      actual `GF_SERVER_ROOT_URL`/`GF_SERVER_SERVE_FROM_SUB_PATH` values
+      next session before touching Cloudflare Access config, since this
+      new data point suggests the root cause may be simpler (a Grafana
+      serve-path misconfiguration) than the Access-policy angle
+      MAINTENANCE.md's existing diagnosis focused on.
+
   - id: cabin_grafana_frigate_dashboard
     entity_type: owl:Class
     layer: infra
@@ -6287,18 +6317,27 @@ elements:
       ui_components: []
       elements: [cabin_grafana_public_access]
     notes: >
-      NOT verified against the live M920q: prometheus.yml's scrape target
-      assumes the M920q's existing, separately-managed Frigate container
-      resolves as "frigate" on the cabin_default Docker network -- flagged
-      inline in prometheus.yml and docker-compose.m920q.yml by the commit
-      that built this, and confirmed still unverified by this session
-      (would need a live `docker ps` on the M920q, not available from a
-      local clone). Independently re-verified in this session (not just
-      trusting the originating commit's own claim): `docker compose
-      config` parses clean for all three compose file combinations
-      (base/M920q/local overlays), the dashboard JSON is valid (21 panels,
-      confirmed via a real JSON parse), and all three new provisioning
-      YAML files parse as valid YAML.
+      CONFIRMED live 2026-08-07 (M920q SSH access via Tailscale SSH became
+      available partway through this session): `docker ps` on the M920q
+      shows the container is genuinely named `frigate`, healthy, up 4
+      days. `docker network inspect cabin_default` confirms it's a member
+      of that network. `curl http://localhost:5000/api/metrics` (from the
+      M920q itself) returns HTTP 200 with real Prometheus-format output.
+      The scrape target this dashboard depends on is real, not assumed —
+      the original "not yet verified" caveat is resolved. Also
+      independently re-verified in this session before live access was
+      available (not just trusting the originating commit's own claim):
+      `docker compose config` parses clean for all three compose file
+      combinations (base/M920q/local overlays), the dashboard JSON is
+      valid (21 panels, confirmed via a real JSON parse), and all three
+      new provisioning YAML files parse as valid YAML.
+
+      Still not verified: that Grafana can actually render this dashboard
+      end-to-end in a real signed-in browser session — blocked on
+      cabin_grafana_public_access's separate, unrelated outage (see that
+      entity's notes). The data path (Frigate -> Prometheus -> Grafana
+      datasource -> provisioned dashboard) is confirmed reachable at every
+      hop; nobody can actually view the result through a browser yet.
 
       Depends on cabin_grafana_public_access being fixed to actually be
       reachable/usable -- this dashboard existing does not mean anyone can

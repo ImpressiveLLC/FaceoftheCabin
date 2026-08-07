@@ -354,11 +354,23 @@ function CameraLiveView({ apiBase, accessToken, cameraName }) {
 // unit-testable -- see src/App.test.jsx.
 export const isCameraEvent = (e) => /^(DETECTION_|MOTION_)/.test(e?.eventType || "");
 
+// Page size for both the initial load and each "Load older" click.
+const CAMERA_EVENTS_PAGE_SIZE = 30;
+
+// Pure URL-builder, no fetch inside -- extracted specifically so the
+// offset/eventTypePrefix query-param wiring is directly unit-testable
+// without mocking fetch. See src/App.test.jsx.
+export function buildCameraEventsUrl(apiBase, offset) {
+  return `${apiBase}/api/events?limit=${CAMERA_EVENTS_PAGE_SIZE}&offset=${offset}&window=24h&eventTypePrefix=DETECTION_,MOTION_`;
+}
+
 function CameraEventsPanel({ auth }) {
   const { locationCfg } = useApp();
   const apiBase = locationCfg?.apiBase || LOCATIONS.cabin.apiBase;
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [expandedEventId, setExpandedEventId] = useState(null);
   const [liveCamera, setLiveCamera] = useState(null);
   const [cameras, setCameras] = useState([]);
@@ -379,12 +391,38 @@ function CameraEventsPanel({ auth }) {
     };
   }, [liveCamera, apiBase, auth]);
 
+  // Real server-side filtering (eventTypePrefix) as of 2026-08-07 -- see
+  // EventController's own comment. This replaced the original client-side
+  // isCameraEvent filter (still exported/tested for reuse elsewhere, but
+  // no longer needed here since the server now only returns camera
+  // events to begin with).
   const refresh = useCallback(() => {
     setLoading(true);
-    fetch(`${apiBase}/api/events?limit=30&window=24h`)
-      .then(r => r.json()).then(list => setEvents(list.filter(isCameraEvent))).catch(() => setEvents([]))
+    fetch(buildCameraEventsUrl(apiBase, 0))
+      .then(r => r.json())
+      .then(list => {
+        setEvents(list);
+        setHasMore(list.length === CAMERA_EVENTS_PAGE_SIZE);
+      })
+      .catch(() => { setEvents([]); setHasMore(false); })
       .finally(() => setLoading(false));
   }, [apiBase]);
+
+  // "Load older" -- pages back further than the initial 30 instead of the
+  // old hard cap. Appends rather than replacing (refresh() above still
+  // owns the "get the current newest state" full-replace behavior, used
+  // for the initial load and the periodic poll).
+  const loadMore = useCallback(() => {
+    setLoadingMore(true);
+    fetch(buildCameraEventsUrl(apiBase, events.length))
+      .then(r => r.json())
+      .then(list => {
+        setEvents(prev => [...prev, ...list]);
+        setHasMore(list.length === CAMERA_EVENTS_PAGE_SIZE);
+      })
+      .catch(() => setHasMore(false))
+      .finally(() => setLoadingMore(false));
+  }, [apiBase, events.length]);
 
   // Real, current camera names from Frigate's own config — NOT derived
   // from event history. That was the original approach and broke the
@@ -511,6 +549,11 @@ function CameraEventsPanel({ auth }) {
           );
         })}
       </div>
+      {hasMore && (
+        <button className="btn-secondary camera-events-load-more" onClick={loadMore} disabled={loadingMore}>
+          {loadingMore ? "Loading…" : "Load older events"}
+        </button>
+      )}
     </div>
   );
 }
