@@ -6313,6 +6313,27 @@ elements:
          scope, a bigger decision than a doc correction), just named
          here so it isn't rediscovered from scratch.
 
+      EMBED WHITE-SCREEN, found and fixed 2026-08-07 (same day, user
+      re-reported it after the dashboard itself went live): cabin-ui's
+      Monitoring panel embeds this dashboard in a cross-origin iframe
+      (cabin.unicornpingpong.com embedding grafana.unicornpingpong.com).
+      GF_SECURITY_ALLOW_EMBEDDING permits the iframe itself but says
+      nothing about whether the session cookie is SENT inside it --
+      Grafana's default cookie SameSite policy (lax) blocks that in a
+      third-party-iframe context in modern browsers, so the embed kept
+      redirecting to a login page even though the user was validly signed
+      in on the main tab the whole time (confirmed live via logs before
+      this fix). Fixed with GF_SECURITY_COOKIE_SAMESITE=none +
+      GF_SECURITY_COOKIE_SECURE=true (the required pairing -- browsers
+      reject SameSite=None without Secure) in
+      docker-compose.m920q.yml. Applied live with the user's explicit
+      go-ahead (a security-cookie-policy change), same "restart drops the
+      live session" caveat as the earlier dashboard-provisioning fix.
+      Also fixed in the same session: the embed src itself was pointing
+      at a `{location}-overview` dashboard UID that never existed and was
+      missing the /grafana sub-path -- see cabin_grafana_frigate_dashboard
+      and App.jsx's GRAFANA_DASHBOARD_UID map.
+
   - id: cabin_grafana_frigate_dashboard
     entity_type: owl:Class
     layer: infra

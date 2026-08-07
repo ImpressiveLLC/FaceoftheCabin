@@ -85,6 +85,22 @@ services:
       # -- delete this whole flag, don't just flip it to "false".
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
       GF_SECURITY_ALLOW_EMBEDDING: "true"   # required for iframe embed in cabin-ui
+      # Found 2026-08-07 (user-reported: Monitoring panel's Grafana embed
+      # white-screened): ALLOW_EMBEDDING permits the browser to render
+      # Grafana in a cross-origin iframe (cabin.unicornpingpong.com
+      # embedding grafana.unicornpingpong.com) at all, but says nothing
+      # about whether the SESSION COOKIE is sent inside that iframe.
+      # Grafana's default cookie SameSite policy (lax) blocks that in a
+      # third-party-iframe context in modern browsers, so the embed
+      # redirected to a login page it couldn't actually authenticate
+      # through -- confirmed live: the user WAS validly signed in on the
+      # main Grafana tab the whole time. SameSite=None is the standard,
+      # documented fix for cross-origin embedding, and REQUIRES Secure
+      # (browsers reject SameSite=None without it) -- root_url above is
+      # genuinely https, set explicitly rather than relying on
+      # version-dependent auto-detection from root_url's scheme.
+      GF_SECURITY_COOKIE_SAMESITE: "none"
+      GF_SECURITY_COOKIE_SECURE: "true"
       # Found 2026-08-03 (user report: "won't load off Tailscale"):
       # %(domain)s and %(http_port)s in root_url are template variables
       # Grafana fills from its OWN [server] domain/http_port settings --
