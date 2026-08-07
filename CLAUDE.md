@@ -425,12 +425,25 @@ severity-tiering MVP scope — only the classifier + ntfy push shipped
 
 ## UI panels
 
-- **Family Hub** — Familia Hub iframe
+> Corrected 2026-08-07 (DoD review) — this list had drifted from
+> `PANELS` in App.jsx on two counts: the "Family Hub" nav label (a
+> cabin/home launcher grid, not the actual Family Hub app — renamed to
+> "My Places" in Phase 7 §2a) and two panels (Camera Events,
+> Opportunities) that existed in code but were never added here.
+
+- **My Places** (`FamilyHubPanel`) — cabin/home launcher grid with
+  quick-links to each location's admin tools + a link out to the actual
+  Family Hub app (`family-hub/family-hub.html`); reorderable (Phase 7 §3)
 - **Family Config** — Google OAuth, Tailscale info, platform info
 - **Device Manager** (`DeviceManagerPanel`) — device grid, add/remove/command
 - **Monitoring** (`MonitoringPanel`) — KPI tiles + Grafana embed + live MQTT log
   — has **LocationSwitcher** (Cabin / Home / Both) in the toolbar
 - **Rules & Alerts** (`RulesPanel`) — Node-RED embed + Kafka topic browser
+- **Camera Events** (`CameraEventsPanel`) — authenticated camera
+  snapshots/clips/live view, DTM-stamped (Phase 7 §4b)
+- **Opportunities** (`OpportunityMapPanel`) — Tech ID Service findings as
+  actionable, ontology-linked cards (See/Think/Act) — see
+  `docs/PRODUCT_NOTES.md`'s 2026-08-03 review
 
 ---
 
