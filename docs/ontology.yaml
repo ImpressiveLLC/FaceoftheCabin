@@ -2827,25 +2827,34 @@ elements:
       fridge, a Nest Connect, and the Blink Sync Module) all on
       192.168.1.0/24, while the M920q's own WiFi network sits on
       192.168.2.0/24. `nmap -Pn` from the M920q against this camera shows
-      every port `filtered` (silently dropped), not closed/refused —
-      consistent with a genuine multi-subnet/double-NAT topology, not
-      simple AP client isolation on one flat network. Fix requires either
-      bridging the M920q onto 192.168.1.0/24 (a spare Ethernet run, most
-      likely) or reconfiguring whichever router is creating the second
-      network — both need on-site access/router credentials this session
-      doesn't have.
+      every port `filtered` (silently dropped), not closed/refused.
 
-      CORRECTED 2026-08-07, same day: this note originally named the
-      Greenwave C4000LG router (192.168.0.1, a third subnet, also
-      present on this network) as the likely second router creating the
-      192.168.2.0/24 segment. The user has since clarified that device
-      is actually unassigned backup/spare hardware, not currently
-      serving any network role — see hw_router_c4000lg's own notes. That
-      makes it a weaker candidate for causing this segmentation than
-      originally implied here, though not conclusively ruled out. This
-      entry no longer names it as the presumed cause — what's actually
-      creating the 192.168.2.0/24 network the M920q sits on is still an
-      open question. See MAINTENANCE.md for the full diagnostic trail.
+      ROOT CAUSE CONFIRMED 2026-08-07, same day, by the user directly —
+      not a second router at all. Both networks are hosted by the same
+      Starlink router, on its two different WiFi bands: 2.4GHz and 5GHz.
+      This Starlink unit shipped with 2.4GHz disabled by default —
+      5GHz-only out of the box. The M920q joined on 5GHz. The camera,
+      the Liebherr fridge's WiFi module, the Nest Connect, and the Blink
+      Sync Module are all older/simpler hardware that only supports
+      2.4GHz — they had no way to join any network at all until the
+      user enabled the 2.4GHz band. This single router evidently assigns
+      a different subnet per band (192.168.1.0/24 for 2.4GHz,
+      192.168.2.0/24 for 5GHz), which is why the two groups of devices
+      ended up on genuinely separate networks even though there's only
+      one physical router involved — not the double-NAT/second-router
+      topology this note originally speculated. That earlier theory
+      (and naming the Greenwave C4000LG as the likely second router) was
+      wrong — corrected here rather than left standing. See
+      hw_router_c4000lg's own notes: that device is confirmed unrelated,
+      unassigned spare hardware.
+
+      Still open: whether this Starlink router can route between its
+      own 2.4GHz and 5GHz subnets (many consumer routers with per-band
+      subnets don't bridge them by default even though it's the same
+      device), which would be the simplest possible fix if available —
+      check the Starlink app/router admin for an inter-band routing or
+      "same network" toggle before assuming a physical Ethernet bridge
+      is required. See MAINTENANCE.md for the full diagnostic trail.
 
       Also corrected 2026-08-07: this entry (formerly
       camera_front_door_reolink, undivided) previously listed a literal
@@ -3157,19 +3166,21 @@ elements:
       whether this router might be the second device creating the
       M920q's 192.168.2.0/24 "Unicorn Loonstar" network, double-NATing
       it behind the 192.168.1.0/24 segment the Reolink/Liebherr/Nest/
-      Blink-hub devices sit on. That theory is now questionable, not
-      confirmed — a backup router with no assigned role is a plausible
-      candidate for NOT being actively in that path, though it doesn't
-      rule it out either (it could still be physically wired in as a
-      dumb switch/AP without being the segmentation's actual cause).
-      What's still genuinely unexplained: this device reports real, live
-      WAN telemetry (bandwidth, uptime, external IP) via HA's UPnP
-      integration — that implies it's powered on and has some kind of
-      active network connection, which sits a little oddly next to
-      "unassigned spare." Worth resolving on-site (is it physically
-      plugged into anything beyond power right now?) before drawing
-      further conclusions about the Reolink subnet question — this
-      entry no longer asserts a theory about that either way.
+      Blink-hub devices sit on. CONFIRMED UNRELATED, same day: the real
+      cause is one Starlink router serving two WiFi bands (2.4GHz and
+      5GHz) on separate subnets — the M920q joined 5GHz, the older/
+      simpler devices only support 2.4GHz and couldn't join anything
+      until the user enabled that band. No second router involved at
+      all; see camera_role_front_door's notes for the full explanation.
+      This device genuinely has nothing to do with that segmentation.
+
+      Still genuinely unexplained, unrelated to the above: this device
+      reports real, live WAN telemetry (bandwidth, uptime, external IP)
+      via HA's UPnP integration despite being "unassigned spare"
+      hardware — that implies it's powered on with some kind of active
+      network connection. Worth resolving on-site (is it physically
+      plugged into anything beyond power right now?) at some point, but
+      it's no longer relevant to the Reolink reachability question.
 
   - id: hw_starlink_terminal
     entity_type: owl:Class
