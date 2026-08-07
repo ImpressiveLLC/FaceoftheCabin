@@ -1,7 +1,11 @@
 /**
  * ThemeProvider — independently-selectable palette + font presets.
  *
- * Presets: Modern (default), LCARS, Monolith, Retro-CRT, Bluefin-mono
+ * Presets: Modern (default), LCARS, Monolith, Retro-CRT, Bluefin-mono,
+ * Mad Science, Deep Space, 80s Neon, Pac-Man -- same 9-preset catalog as
+ * family-hub.html's own THEMES object (kept in sync manually as of
+ * 2026-08-07; see docs/ontology.yaml's theme_preference entry for the
+ * cross-app drift this file and family-hub.html are both prone to).
  * Persisted to localStorage under key "cabin-theme".
  *
  * Usage:
@@ -194,9 +198,86 @@ export const THEMES = {
       "--glow-cyan":    "0 0 8px #00a3ff, 0 0 20px #00a3ff40",
     },
   },
+
+  // neon80s and pacman added 2026-08-07 -- FOUND that session (see
+  // docs/ontology.yaml's theme_preference entry and
+  // docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §2c/2d):
+  // family-hub.html had these two presets and this file didn't, real
+  // cross-app theme-catalog drift, not by design. Palette translated from
+  // family-hub's THEMES entries of the same id into this file's own CSS
+  // var names using the mapping already consistent across every other
+  // paired theme here: family --night->--bg, --gold->--accent/--border-focus,
+  // --teal->--success, --rose->--danger, --cream->--text. Not a byte-for-byte
+  // port (family-hub's vars are a different, glass-morphism-oriented set),
+  // but the same palette and vibe.
+  neon80s: {
+    id: "neon80s",
+    label: "80s Neon",
+    vars: {
+      "--bg":           "#0d0221",
+      "--bg-secondary": "#170a35",
+      "--bg-tertiary":  "#20114a",
+      "--surface":      "#170a35",
+      "--border":       "#4a2270",
+      "--border-focus": "#ff2dd4",
+      "--text":         "#f6f0ff",
+      "--text-muted":   "#b9a0d9",
+      "--text-dim":     "#7a5a9e",
+      "--accent":       "#ff2dd4",
+      "--accent-hover": "#ff5fe0",
+      "--accent-2":     "#00fff0",
+      "--success":      "#00fff0",
+      "--warning":      "#ff6b35",
+      "--danger":       "#ffe600",
+      "--font-display": "'Monoton', 'Chakra Petch', sans-serif",
+      "--font-mono":    "'Orbitron', 'Chakra Petch', sans-serif",
+      "--radius":       "2px",
+      "--radius-sm":    "1px",
+      "--glow-neon":    "0 0 8px #ff2dd4, 0 0 24px #ff2dd440",
+    },
+  },
+
+  pacman: {
+    id: "pacman",
+    label: "Pac-Man",
+    vars: {
+      "--bg":           "#000000",
+      "--bg-secondary": "#0a0a14",
+      "--bg-tertiary":  "#12122a",
+      "--surface":      "#0a0a14",
+      "--border":       "#2121de",
+      "--border-focus": "#ffff00",
+      "--text":         "#ffffff",
+      "--text-muted":   "#cccccc",
+      "--text-dim":     "#888888",
+      "--accent":       "#ffff00",
+      "--accent-hover": "#ffff66",
+      "--success":      "#00ffde",
+      "--warning":      "#ffaa00",
+      "--danger":       "#ff0000",
+      "--font-display": "'Bungee', 'Chakra Petch', sans-serif",
+      "--font-mono":    "'VT323', 'Share Tech Mono', monospace",
+      "--radius":       "16px",
+      "--radius-sm":    "8px",
+    },
+  },
 };
 
 const STORAGE_KEY = "cabin-theme";
+
+// A cross-app link-out (family-hub.html's "How's the cabin?") carries the
+// source app's active theme as ?theme=<id> so it keeps carrying over here
+// instead of resetting -- localStorage alone can't do this, since the two
+// apps live on different subdomains and don't share it. Query param wins
+// over this app's own last-saved choice on first load only; every
+// subsequent in-app change persists to localStorage as before. Pure
+// function (no window/localStorage reads inside it) so it's directly
+// unit-testable -- see src/ThemeProvider.test.jsx.
+export function resolveInitialThemeId(searchParams, storedThemeId, themes = THEMES) {
+  const fromUrl = searchParams.get("theme");
+  if (fromUrl && themes[fromUrl]) return fromUrl;
+  return (storedThemeId && themes[storedThemeId]) ? storedThemeId : "modern";
+}
 
 // ─── Context ────────────────────────────────────────────────────────────────
 const ThemeContext = createContext(null);
@@ -204,17 +285,9 @@ export function useTheme() { return useContext(ThemeContext); }
 
 // ─── Provider ───────────────────────────────────────────────────────────────
 export function ThemeProvider({ children }) {
-  const [themeId, setThemeId] = useState(() => {
-    // A cross-app link-out (family-hub.html's "How's the cabin?") carries
-    // the source app's active theme as ?theme=<id> so it keeps carrying
-    // over here instead of resetting -- localStorage alone can't do this,
-    // since the two apps live on different subdomains and don't share it.
-    // Query param wins over this app's own last-saved choice on first load
-    // only; every subsequent in-app change persists to localStorage as before.
-    const fromUrl = new URLSearchParams(window.location.search).get("theme");
-    if (fromUrl && THEMES[fromUrl]) return fromUrl;
-    return localStorage.getItem(STORAGE_KEY) || "modern";
-  });
+  const [themeId, setThemeId] = useState(() =>
+    resolveInitialThemeId(new URLSearchParams(window.location.search), localStorage.getItem(STORAGE_KEY))
+  );
 
   const theme = THEMES[themeId] || THEMES.modern;
 
@@ -235,6 +308,14 @@ export function ThemeProvider({ children }) {
       deepspace: {
         id: "cabin-font-deepspace",
         href: "https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&family=Share+Tech+Mono&display=swap",
+      },
+      neon80s: {
+        id: "cabin-font-neon80s",
+        href: "https://fonts.googleapis.com/css2?family=Monoton&family=Orbitron:wght@400;600;700&display=swap",
+      },
+      pacman: {
+        id: "cabin-font-pacman",
+        href: "https://fonts.googleapis.com/css2?family=Bungee&family=VT323&display=swap",
       },
     };
     Object.entries(THEME_FONTS).forEach(([tid, font]) => {

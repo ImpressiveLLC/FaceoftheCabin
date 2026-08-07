@@ -118,6 +118,7 @@ body {
 }
 .panel-header-bar h2 { margin: 0; font-size: 18px; font-weight: 600; }
 .header-actions { display: flex; gap: 8px; }
+.panel-header-title { display: flex; align-items: baseline; gap: 10px; }
 
 /* ─── Buttons ───────────────────────────────────────────────────────────── */
 .btn-primary {
@@ -962,11 +963,34 @@ body {
   font-size: 12px;
   color: var(--text-muted);
 }
+/* Phase 7 §3: explicit breakpoints instead of a loose auto-fill, so a
+   kiosk/desktop viewport reliably shows a 3-column (up to 9-card, 3-row)
+   grid without scrolling, tablet steps down to 2, and mobile is always a
+   single card in view (scroll for more) -- the concrete layout the user
+   asked for. Doesn't yet dynamically shrink card density as more than 9
+   places are added (still just scrolls past 9, per "all available when
+   scrolled") -- see docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md
+   §3 for that still-open remainder. */
 .family-hub-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   padding: 4px 0 8px;
+}
+@media (max-width: 1100px) {
+  .family-hub-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .family-hub-grid { grid-template-columns: 1fr; }
+}
+.family-hub-card-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.family-hub-drag-handle {
+  align-self: flex-end;
+  margin-bottom: -4px;
 }
 .family-hub-card {
   background: var(--bg-card);

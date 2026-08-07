@@ -167,6 +167,25 @@ function check(label, actual, expected) {
 
   check('no JS errors during the run', jsErrors, []);
 
+  // Cross-app theme handoff (added 2026-08-07, Phase 7 §2c/2d -- see
+  // docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md): the actual
+  // reported bug was "theme resets when I link out to cabin-ui," root-caused
+  // to origin-scoped localStorage between the two subdomains. Two directions
+  // to prove: (1) the "How's the cabin?" link-out carries this app's current
+  // theme forward, (2) loading with ?theme=<id> in the URL applies it here,
+  // the same way cabin-ui's ThemeProvider now does on its side.
+  check('location-links-out carries the active theme as a query param',
+    await page.evaluate(() => locationLinksHtml().includes(`theme=${activeThemeId}`)), true);
+
+  const themedPage = await browser.newPage();
+  const themedJsErrors = [];
+  themedPage.on('pageerror', e => themedJsErrors.push(e.message));
+  await themedPage.goto(`http://localhost:${PORT}/family-hub.html?theme=lcars`, { waitUntil: 'load' });
+  check('?theme= URL param is applied on load, not just the last-saved localStorage value',
+    await themedPage.evaluate(() => activeThemeId), 'lcars');
+  check('?theme= param application produces no JS errors', themedJsErrors, []);
+  await themedPage.close();
+
   // Phone journey: every high-frequency family action must be visible and
   // reachable without hunting through tabs or losing the current hub context.
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

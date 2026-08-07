@@ -48,6 +48,41 @@
 #                     discovery.last_checked (that's about periodically
 #                     re-checking for upgrades/alternatives, a different
 #                     question from "does this work at all").
+#   lifecycle_status: (optional, schema v0.4.0, added 2026-08-07) —
+#                     used | unused | deprecated | candidate | derived_concept
+#                     — whether this concept is actually live in the
+#                     running system right now. Distinct from
+#                     migration_status (that's about this ENTRY's own
+#                     documentation format currency, not the underlying
+#                     concept's real-world status) and from data_class
+#                     (that's about data nature — raw vs. derived — not
+#                     usage lifecycle). User-specified requirement
+#                     (2026-08-07): every element should be able to answer
+#                     "is this still real" without asking. NOT backfilled
+#                     across all existing entries in one pass — see
+#                     ROADMAP.md's "Ontology Migration Review" section for
+#                     the v0.4.0 migration-priority approach (same pattern
+#                     already used for the v0.3.0 migration). Every entry
+#                     ADDED from 2026-08-07 onward carries this field from
+#                     day one; existing entries pick it up as they're
+#                     otherwise touched, or in scheduled priority-order
+#                     migration passes.
+#   first_used:       (optional, schema v0.4.0) — { date, ref } — date is
+#                     when this concept actually entered the running
+#                     system (not when this ontology entry was written,
+#                     though those often coincide for new entities); ref
+#                     is free text pointing at the most specific real
+#                     evidence available — a commit hash, a ROADMAP.md
+#                     phase/section name, a PRODUCT_NOTES.md session date.
+#                     Free text rather than an enum deliberately, same
+#                     precedent as TechIdFinding.provider (ROADMAP.md's
+#                     Tech ID Provider Model) — never blocked on a missing
+#                     enum value. Only recorded when a real, citable date
+#                     exists in this file or git history — never guessed.
+#   deprecated_date:  (optional, schema v0.4.0) — set only when
+#                     lifecycle_status is deprecated or unused; the date
+#                     this concept stopped being live, with the same
+#                     citation standard as first_used.ref.
 #   data_class:       raw | derived | conceptual | composite
 #   data_type:        XSD primitive (xsd:string, xsd:boolean, xsd:integer,
 #                     xsd:decimal, xsd:date, xsd:anyURI, xsd:hexBinary)
@@ -1300,8 +1335,12 @@ elements:
     entity_type: owl:Class
     layer: backend
     primitive: false
-    schema_version: "0.1.0"
+    schema_version: "0.4.0"
     migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-02"
+      ref: "this entry's own \"BUILT 2026-08-02\" note — MqttBridgeService's Frigate camera-topic handling"
     data_class: derived
     data_type: owl:Class
     ui_display_name: "Camera Activity Event"
@@ -3939,6 +3978,131 @@ elements:
       remaining slice of this work in
       docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §2b.
 
+      FOUND 2026-08-07: cabin-ui had no crest at all — its nav rail used a
+      hardcoded "⌂" Unicode glyph, unrelated to this entity, and its
+      FamilyHubPanel heading hardcodes the literal string "Smrekar Familia
+      Hub" rather than reading hub_family_name the way this entity's
+      transformation describes. FIXED (partial) same session: copied
+      hodgson-crest.svg into cabin-orchestration-platform/ui/public/ and
+      replaced the "⌂" glyph with it (App.jsx's NavRail). NOT fixed: the
+      hardcoded heading string — cabin-ui still doesn't consume
+      hub_family_name at all, so a renamed family (via family-hub's
+      Settings) wouldn't propagate there. Needs a shared config source (no
+      such API exists between the two apps today), tracked as the bigger
+      remaining slice of this work in
+      docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §2b.
+
+  - id: hub_location
+    entity_type: owl:Class
+    layer: backend
+    primitive: true
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-07"
+      ref: "Phase 7 §1b, commit fd580ad"
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Hub Location"
+    source: >
+      Postgres hub_locations table via cabin-backend's /api/locations
+      (built 2026-08-07, Phase 7 §1b — see
+      docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md). Previously
+      this was ONLY a hardcoded `const LOCATIONS = { cabin: {...}, home:
+      {...} }` object in cabin-ui's App.jsx — a real source edit + redeploy
+      was required to add a location. Table is seeded once (if empty) from
+      this instance's own cabin.locations.* Spring properties (defaulting
+      to the same cabin-hub/home-hub values App.jsx's env vars already
+      assumed), so a fresh instance's first startup writes exactly what
+      the frontend already expected — not a hardcoded literal here.
+    rendering:
+      semantic: "A place this platform manages (Cabin, Home, …)"
+      systems: Hub Location
+      technical: "HubLocation(id, label, apiBase, wsBase, grafanaUrl, noderedUrl, haUrl, frigateUrl, z2mUrl, familyHubUrl, sortOrder, active, createdAt, updatedAt) — Spring Data JdbcTemplate row in hub_locations"
+      compliance: (not shown)
+    definition: >
+      One property/hub this platform instance manages — its display label
+      plus every downstream service URL a UI surface needs to link to or
+      embed (backend API, WebSocket, Grafana, Node-RED, Home Assistant,
+      Frigate, Zigbee2MQTT, that location's own Family Hub deployment).
+      The concrete implementation of ROADMAP.md's Northstar Goal #1 ("no
+      hard architectural assumption" about how many properties exist) and
+      of REPLICATION.md's location-awareness claim actually being
+      runtime-configurable, not just fork-time find-and-replace.
+    relationships:
+      - target: device_descriptor
+        type: consumed_by
+        cardinality: "1:N"
+      - target: cabin_grafana_public_access
+        type: complements
+        cardinality: "1:1"
+      - target: hub_brand_block
+        type: complements
+        cardinality: "N:1"
+    transformation: >
+      cabin-ui's useHubLocations() hook (App.jsx) fetches GET
+      /api/locations on load and merges each row into the still-present
+      LOCATIONS module-level object by id — cabin/home stay as hardcoded,
+      env-var-driven fallback defaults (~30 other call sites in App.jsx
+      still read LOCATIONS.cabin/.home directly and assume those two keys
+      exist), and any additional or overridden location the backend knows
+      about is merged in on top, triggering a re-render so
+      LocationSwitcher and the My Places (FamilyHubPanel) card grid pick
+      it up without a source change. Verified live 2026-08-07 against a
+      stub /api/locations response returning a third, entirely fictional
+      location ("Lake House") not present anywhere in source — it
+      correctly appeared in both the switcher and the card grid.
+    relates_to:
+      ui_components: [ui_location_switcher, ui_my_places_grid]
+      elements: [device_descriptor, hub_brand_block]
+    notes: >
+      Soft delete (active=false), same rationale as family_profile:
+      DeviceDescriptor.location is a free-standing string reference to a
+      location id, so hard-deleting one a device still points at would
+      silently orphan it.
+
+      SCOPE NOTE (honest, not silently narrowed): this ships the backend
+      CRUD + a safe, limited frontend merge, not a full rewrite of every
+      LOCATIONS.cabin/.home reference in App.jsx. Several cross-cutting
+      features (usePresence, useNavAlerts, the /api/system/health poll)
+      still hardcode LOCATIONS.cabin.apiBase as "the" primary backend to
+      reach — that's an existing architectural assumption (cabin as
+      primary), not something this change silently altered. Making THOSE
+      genuinely N-location-aware, plus an admin UI for add/edit, plus
+      wiring per-location Grafana dashboard provisioning to this table,
+      are the still-open remainder of Phase 7 §1a/§1b/§3.
+
+      CARD REORDER, built 2026-08-07 (Phase 7 §3): "My Places"
+      (FamilyHubPanel) cards are now drag-reorderable via
+      useDraggableOrder, same as Device Manager/Monitoring — but this is
+      client-side, per-browser localStorage["order.places"], NOT the
+      POST /api/locations/reorder endpoint above, which remains built and
+      available but genuinely unused by any UI. Deliberate choice matching
+      the user's own "the same way we allow re-ordering of devices"
+      phrasing, not an oversight — a server-synced order is a real,
+      separate future option if wanted. Verified: a real drag-and-drop
+      test dispatches actual dragstart/dragover/drop events and confirms
+      localStorage updates (cabin-ui's App.test.jsx), plus live-verified
+      at 3 viewport widths that the grid is responsive (3/2/1 columns).
+      NOT built: per-card field configurability (which stats/links show —
+      still fixed) and dynamic card-size shrinking to guarantee 9 cards
+      with zero scrolling at any count (today it just scrolls past 9).
+
+      NOT yet verified: the actual Postgres round-trip (CREATE TABLE IF
+      NOT EXISTS, seed-if-empty, CRUD) against a live database — this
+      session's sandbox has no Docker daemon available to run one.
+      Backend compiles clean and follows FamilyProfileService's exact,
+      already-production-proven JdbcTemplate pattern, but that specific
+      claim ("it works against real Postgres") is unverified, not assumed
+      true. A real Testcontainers-against-Postgres test now exists
+      (`HubLocationServiceTest`, same pattern as `EventPipelineIntegrationTest`)
+      covering seed/create/upsert/patch-merge/archive/reorder — written and
+      confirmed to fail ONLY on "no Docker environment" in this sandbox
+      (not a code defect), wired into `deploy-cabin-backend.yml`'s existing
+      `mvn test` gate so it actually runs against real Postgres on the
+      next push, before anything deploys.
+
   - id: family_profile
     entity_type: owl:Class
     layer: backend
@@ -4465,8 +4629,20 @@ elements:
     entity_type: owl:DatatypeProperty
     layer: frontend
     primitive: true
-    schema_version: "0.3.0"
+    schema_version: "0.4.0"
     migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-07-26"
+      ref: >
+        CLAUDE.md's 2026-07-26 "Current feature state" log lists
+        "ThemeProvider — 7 presets" as already shipped by that date — the
+        earliest citable evidence of this concept actually being live, not
+        this ontology entry's own 2026-07-31 add date (see this entry's
+        own notes: the entry was added retroactively for an
+        already-existing feature, so the ontology-entry date and the
+        concept's real first-used date are deliberately NOT the same here
+        — exactly the distinction this field exists to capture).
     data_class: raw
     data_type: xsd:string
     constraint:
@@ -4516,12 +4692,22 @@ elements:
       "Open Family Hub" button) now appends `?theme=<id>` to the destination
       URL, and both apps' theme-init logic reads that param on load before
       falling back to their own localStorage — so the *active* theme choice
-      now genuinely carries over on navigation. NOT fixed: the two THEMES
-      objects themselves still aren't a single shared source, so the
-      neon80s/pacman drift above persists, and nothing stops a future preset
-      added to one app from silently not appearing in the other — see
+      now genuinely carries over on navigation. FIXED (same session,
+      later): the neon80s/pacman drift itself is closed — both apps now
+      define the same 9 theme ids, palette-translated into each app's own
+      CSS var naming scheme (not byte-identical, since cabin-ui and
+      family-hub.html use different variable sets entirely). A new
+      `ThemeCatalogDrift.test.jsx` (cabin-ui's Vitest suite) extracts both
+      files' theme id sets and fails the build if they diverge again —
+      CI-gated (`deploy-family-hub.yml`'s "Validate cabin-ui" step; that
+      step's Docker build context was changed to the repo root
+      specifically so this test can reach family-hub.html inside the
+      image). STILL NOT fixed: the two THEMES objects are still
+      hand-duplicated, not a single shared source — this closes the
+      symptom (catalogs match, re-drifting is now caught) not the
+      duplication itself. See
       `docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md` §2c/2d for
-      the planned shared-source + CI-check fix.
+      the still-open shared-source work.
 
   - id: family_hub_access_log
     entity_type: owl:Class

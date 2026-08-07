@@ -47,6 +47,26 @@ jobs:
         env:
           DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
 
+      # Added 2026-08-07 (Phase 7) alongside cabin-ui's first-ever test
+      # suite (src/App.test.jsx, src/ThemeProvider.test.jsx) — same
+      # "deploy stops here on failure" contract as cabin-backend's `mvn
+      # test` step and the Family Hub validation step above it. cabin-ui
+      # had zero test coverage or CI gating before this; Vitest was chosen
+      # over adding Playwright here since these are pure-function unit
+      # tests (isCameraEvent, mergeHubLocations, resolveInitialThemeId),
+      # not full-page journeys the way Family Hub's suite is.
+      - name: Validate cabin-ui (unit tests)
+        run: |
+          cd "$DEPLOY_PATH"
+          QA_TAG="cabin-ui-qa:$(git rev-parse --short HEAD)"
+          # Build context is the repo root, not ui/ -- see
+          # cabin-orchestration-platform/ui/test/Dockerfile's comment: the
+          # theme-catalog drift check needs family-hub.html reachable too.
+          docker build -f cabin-orchestration-platform/ui/test/Dockerfile -t "$QA_TAG" .
+          docker run --rm "$QA_TAG"
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+
       - name: Rebuild and restart family-hub + cabin-ui
         run: |
           cd "$DEPLOY_PATH/cabin-orchestration-platform/infra"

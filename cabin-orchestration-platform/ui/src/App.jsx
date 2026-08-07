@@ -340,6 +340,20 @@ function CameraLiveView({ apiBase, accessToken, cameraName }) {
 }
 
 // ─── Panel: Camera Events ───────────────────────────────────────────────────
+// /api/events returns every device's events, not just cameras' -- Found
+// 2026-08-07: CameraEventsPanel fetched that unfiltered stream directly, so
+// leak/temp/motion-sensor state changes showed up mixed in with real
+// camera activity. EventController's `camera` query param only scopes to
+// one named camera at a time, not "any camera" -- filtering by the
+// eventType values cabin_camera_event actually produces
+// (DETECTION_*/MOTION_*, per docs/ontology.yaml) is the correct scope
+// here client-side. A server-side eventType filter (avoiding fetching
+// non-camera events at all) is tracked as the fuller fix in
+// docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §4a/§4c.
+// Module-level (not redefined per render) and exported so it's directly
+// unit-testable -- see src/App.test.jsx.
+export const isCameraEvent = (e) => /^(DETECTION_|MOTION_)/.test(e?.eventType || "");
+
 function CameraEventsPanel({ auth }) {
   const { locationCfg } = useApp();
   const apiBase = locationCfg?.apiBase || LOCATIONS.cabin.apiBase;
@@ -364,18 +378,6 @@ function CameraEventsPanel({ auth }) {
       auth.authedFetch(`${apiBase}/api/camera/${liveCamera}/liveview/stop`, { method: "POST" }).catch(() => {});
     };
   }, [liveCamera, apiBase, auth]);
-
-  // /api/events returns every device's events, not just cameras' -- Found
-  // 2026-08-07: this panel fetched that unfiltered stream directly, so
-  // leak/temp/motion-sensor state changes showed up mixed in with real
-  // camera activity. EventController's `camera` query param only scopes to
-  // one named camera at a time, not "any camera" -- filtering by the
-  // eventType values cabin_camera_event actually produces
-  // (DETECTION_*/MOTION_*, per docs/ontology.yaml) is the correct scope
-  // here client-side. A server-side eventType filter (avoiding fetching
-  // non-camera events at all) is tracked as the fuller fix in
-  // docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §4a/§4c.
-  const isCameraEvent = (e) => /^(DETECTION_|MOTION_)/.test(e.eventType || "");
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -739,12 +741,15 @@ const PANELS = [
 ];
 
 // ─── Context ───────────────────────────────────────────────────────────────
-const AppContext = createContext(null);
+export const AppContext = createContext(null); // exported for src/App.test.jsx's FamilyHubPanel render test
 function useApp() { return useContext(AppContext); }
 
 // ─── Location switcher component ───────────────────────────────────────────
 function LocationSwitcher({ active, onChange }) {
-  const options = ["cabin", "home", "both"];
+  // Object.keys(LOCATIONS) instead of a hardcoded ["cabin","home"] so a
+  // location added via POST /api/locations (see useHubLocations below)
+  // shows up here without a source change.
+  const options = [...Object.keys(LOCATIONS), "both"];
   return (
     <div className="location-switcher">
       {options.map(loc => (
@@ -753,7 +758,7 @@ function LocationSwitcher({ active, onChange }) {
           className={`loc-btn ${active === loc ? "loc-active" : ""}`}
           onClick={() => onChange(loc)}
         >
-          {loc.charAt(0).toUpperCase() + loc.slice(1)}
+          {loc === "both" ? "Both" : (LOCATIONS[loc]?.label || loc)}
         </button>
       ))}
     </div>
@@ -894,18 +899,62 @@ function FamilyHubLocationCard({ locId, locCfg, devices }) {
   );
 }
 
-function FamilyHubPanel() {
+// Place-card order (Phase 7 §3): same client-side, per-browser
+// localStorage pattern as Device Manager/Monitoring's own drag-reorder
+// (useDraggableOrder, reused as-is) -- matches the user's own request
+// ("the same way we allow re-ordering of devices"), not the
+// server-persisted /api/locations/reorder endpoint hub_location's backend
+// also exposes (built in §1b, still unused by any UI -- a server-synced
+// order is a deliberate, separate future option, not what this
+// implements).
+export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder test
   const { devices } = useApp();
+  const [reorderMode, setReorderMode] = useState(false);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+  const { ordered, reorder } = useDraggableOrder("order.places", Object.values(LOCATIONS));
+
+  const onDragStart = (idx) => (e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
+  const onDragOver  = (idx) => (e) => { e.preventDefault(); setOverIdx(idx); };
+  const onDrop      = (idx) => (e) => {
+    e.preventDefault();
+    if (dragIdx !== null) reorder(dragIdx, idx);
+    setDragIdx(null); setOverIdx(null);
+  };
+  const onDragEnd   = () => { setDragIdx(null); setOverIdx(null); };
+
   return (
     <div className="panel-content">
       <div className="panel-header-bar">
-        <h2>Smrekar Familia Hub</h2>
-        <span className="panel-subtitle">Both locations at a glance</span>
+        <div className="panel-header-title">
+          <h2>Smrekar Familia Hub</h2>
+          <span className="panel-subtitle">Both locations at a glance</span>
+        </div>
+        <div className="header-actions">
+          <button
+            className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
+            onClick={() => setReorderMode(r => !r)}>
+            <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
+          </button>
+        </div>
       </div>
-      <div className="family-hub-grid">
-        {Object.entries(LOCATIONS).map(([id, cfg]) => (
-          <FamilyHubLocationCard key={id} locId={id} locCfg={cfg} devices={devices} />
-        ))}
+      <div className={`family-hub-grid ${reorderMode ? "reorder-mode" : ""}`}>
+        {ordered.map((cfg, idx) => {
+          const isOver = reorderMode && overIdx === idx && dragIdx !== idx;
+          return (
+            <div key={cfg.id}
+              className={`family-hub-card-wrap reorder-card ${isOver ? "drag-over-card" : ""}`}
+              draggable={reorderMode}
+              onDragStart={reorderMode ? onDragStart(idx) : undefined}
+              onDragOver={reorderMode ? onDragOver(idx) : undefined}
+              onDrop={reorderMode ? onDrop(idx) : undefined}
+              onDragEnd={reorderMode ? onDragEnd : undefined}
+            >
+              {reorderMode && <GripVertical size={14} className="drag-handle family-hub-drag-handle" />}
+              <FamilyHubLocationCard locId={cfg.id} locCfg={cfg} devices={devices} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -2176,6 +2225,72 @@ function useDraggableOrder(storageKey, items, isAlarm) {
 }
 
 // ─── Presence profile ─────────────────────────────────────────────────────
+// ─── Hub locations: merge server-configured locations into LOCATIONS ──────
+// LOCATIONS (module-level, not React state) is read synchronously from ~30
+// call sites throughout this file, many of them outside any component that
+// could easily receive it as a prop -- converting all of them to read from
+// state instead is real, separately-scoped work (see
+// docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §1b/§3). This
+// hook takes the lower-risk path for now: cabin/home stay exactly as
+// hardcoded today (still the guaranteed-present fallback every other call
+// site assumes), and any *additional* location the backend knows about
+// (GET /api/locations, backed by the new hub_location table) gets merged
+// into the same LOCATIONS object by id, so it starts showing up in
+// LocationSwitcher and the My Places card grid without a source change.
+// Bootstraps off LOCATIONS.cabin.apiBase, matching every other
+// cross-cutting fetch in this file (usePresence, useNavAlerts, /api/system/
+// health) that already treats cabin as the primary backend to reach first.
+
+// Pure merge step, no fetch/state inside -- takes the current LOCATIONS
+// object and a raw /api/locations response, returns a NEW object with each
+// returned row merged in by id (existing fields preserved when the API
+// value is missing/falsy). Split out from the hook below so it's directly
+// unit-testable -- see src/App.test.jsx.
+export function mergeHubLocations(current, apiList) {
+  const merged = { ...current };
+  for (const loc of apiList || []) {
+    if (!loc?.id) continue;
+    const existing = merged[loc.id];
+    merged[loc.id] = {
+      id: loc.id,
+      label: loc.label || loc.id,
+      apiBase: loc.apiBase || existing?.apiBase || null,
+      wsBase: loc.wsBase || existing?.wsBase || null,
+      grafanaUrl: loc.grafanaUrl || existing?.grafanaUrl || null,
+      noderedUrl: loc.noderedUrl || existing?.noderedUrl || null,
+      haUrl: loc.haUrl || existing?.haUrl || null,
+      frigateUrl: loc.frigateUrl || existing?.frigateUrl || null,
+      z2mUrl: loc.z2mUrl || existing?.z2mUrl || null,
+      familyHubUrl: loc.familyHubUrl || existing?.familyHubUrl || null,
+    };
+  }
+  return merged;
+}
+
+function useHubLocations() {
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    fetch(`${LOCATIONS.cabin.apiBase}/api/locations`)
+      .then(r => r.json())
+      .then(list => {
+        const hadAnyValidRow = (list || []).some(loc => loc?.id);
+        if (!hadAnyValidRow) return;
+        const merged = mergeHubLocations(LOCATIONS, list);
+        // LOCATIONS itself isn't state -- mutate it in place (so the ~30
+        // call sites reading it synchronously elsewhere in this file see
+        // the update immediately) and bump `version` so components that
+        // render from it (LocationSwitcher, FamilyHubPanel's card grid)
+        // actually re-render to reflect the mutation.
+        Object.assign(LOCATIONS, merged);
+        setVersion(v => v + 1);
+      })
+      .catch(() => {}); // offline backend: cabin/home hardcoded defaults still work exactly as before
+  }, []);
+
+  return version;
+}
+
 function usePresence() {
   const [profile, setProfileState] = useState("AT_HOME");
   const [options, setOptions]      = useState([]);
@@ -2295,6 +2410,7 @@ function App() {
   const [config,         setConfig]         = useState({});
   const [connected,      setConnected]      = useState(false);
   const { levels: alertLevels, cfg: alertCfg, enableAlert, resetAlert } = useNavAlerts();
+  useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions } = usePresence();
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile);
   const cameraAuth = useGoogleAuth();
@@ -2383,8 +2499,15 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(
-  <ThemeProvider>
-    <App />
-  </ThemeProvider>
-);
+// Guarded so this module can be imported for its exported pure functions
+// (isCameraEvent, mergeHubLocations) from a unit test without a real
+// index.html/#root present -- see src/App.test.jsx. Always truthy in the
+// actual app (index.html always has <div id="root">).
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  createRoot(rootEl).render(
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
+  );
+}

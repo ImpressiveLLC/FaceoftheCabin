@@ -87,6 +87,40 @@
 - [ ] New CRUD surfaces get the same depth as older entities — no
       second-class documentation for newer features.
 
+## 10. New testable logic ships with a real, CI-gated test — no loose code
+
+> Added 2026-08-07 per explicit user directive: "no loose code without
+> test-driven proof of quality." This is stricter than section 6 (CI/CD is
+> *wired*) — this is about whether new logic has a test *in* the suite CI
+> already runs, not just whether the pipeline itself works.
+
+- [ ] New backend logic (Spring service/controller methods with real
+      branching/SQL) gets a test under `backend/src/test/` — Testcontainers
+      against real Postgres/Kafka for anything JdbcTemplate/SQL-dependent
+      (`EventPipelineIntegrationTest`, `HubLocationServiceTest` are the
+      reference pattern), plain JUnit for pure logic
+      (`AlertSeverityClassifierTest`).
+- [ ] New frontend logic gets a test in whichever suite already covers
+      that surface — `cabin-orchestration-platform/ui`'s Vitest suite
+      (`src/*.test.jsx`, added 2026-08-07) for cabin-ui, `family-hub/test/
+      run.js`'s Playwright checks for family-hub.html. Prefer extracting
+      the actual logic into a small, pure, exported function
+      (`isCameraEvent`, `mergeHubLocations`, `resolveInitialThemeId`) over
+      testing it only indirectly through a full component/page render —
+      cheaper to write, cheaper to keep passing.
+- [ ] The test actually runs as part of the existing CI gate before
+      anything deploys — `mvn test` (`deploy-cabin-backend.yml`), the
+      Family Hub Playwright suite AND cabin-ui's Vitest suite (both in
+      `deploy-family-hub.yml`, since that workflow rebuilds both). A test
+      file that exists but isn't wired into a workflow doesn't satisfy
+      this item.
+- [ ] If a test genuinely can't be run in the current working environment
+      (e.g. no Docker available for a Testcontainers test in an agent
+      sandbox), that's said explicitly, not silently assumed passing —
+      compiling clean or "looks right" is not the same claim as "the test
+      ran and passed." State which environment it WAS verified in (a real
+      CI run, a different machine) if any.
+
 ---
 
 ## (i) Additional practices — load-bearing, not always explicitly requested

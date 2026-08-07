@@ -631,8 +631,12 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 > detail, and step sequencing in
 > `docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md` — this entry is
 > a pointer, not a duplicate of that detail. Sequenced 2026-08-07 by loose
-> WSJF (highest value, least effort first) — the five items below are done;
-> everything else in this phase is still just the plan.
+> WSJF (highest value, least effort first) — the items marked `[x]` below
+> are done (several partial, honestly flagged as such); everything else in
+> this phase is still just the plan. This session also added cabin-ui's
+> first-ever test suite (Vitest) and a `HubLocationServiceTest`
+> (Testcontainers), both wired into the existing CI test gates — see
+> `docs/DEFINITION_OF_DONE.md`'s new §10.
 
 - [x] §2a — Rename "Family Hub" nav panel to "My Places" (it's a
       cabin/home launcher grid, not the actual Family Hub app). The panel's
@@ -650,30 +654,76 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       every cross-app link-out (`ThemeProvider.jsx`'s init state,
       `family-hub.html`'s `activeThemeId` init, both apps' link-out hrefs)
       now carries `?theme=<id>`, verified working both directions against a
-      real running dev server + static file. **Not done (§2d)**: the two
-      `THEMES` objects are still hand-duplicated, no shared build-time
-      source, no CI drift check yet — and verifying this surfaced a real,
-      previously undocumented instance of exactly that drift:
-      `family-hub.html` has two themes (`neon80s`, `pacman`) `ThemeProvider.jsx`
-      doesn't have at all. Left as the next slice of this item, not silently
-      dropped.
+      real running dev server + static file, plus real automated tests:
+      `resolveInitialThemeId` unit-tested (cabin-ui's new Vitest suite) and
+      the `?theme=` handoff itself covered in `family-hub/test/run.js`
+      (both now CI-gated). §2d, done (partial): the concrete drift found
+      this session — `family-hub.html` had `neon80s`/`pacman`,
+      `ThemeProvider.jsx` didn't — is closed; both apps now define the
+      same 9 themes, palette-translated (not byte-identical CSS vars —
+      the two apps use different variable schemes) using the same
+      family-`--gold`→cabin-`--accent`/`--teal`→`--success`/`--rose`→`--danger`
+      mapping already consistent across every other paired theme. A real
+      regression guard now exists too: `ThemeCatalogDrift.test.jsx`
+      extracts both files' theme id sets and fails the build if they ever
+      diverge again (CI-gated — the cabin-ui test Docker image's build
+      context was changed to the repo root specifically so
+      `family-hub.html` is reachable inside it). **Still not done**: a
+      genuinely single shared source the two files both consume (this
+      session closed the *symptom* — matching catalogs, an enforced
+      guard against re-drifting — not the *duplication* itself; each
+      file still hand-defines its own 9-entry THEMES object).
 - [ ] §1a — Fix Grafana's two broken access gates (Cloudflare Access not
       enforcing, Google OAuth 403 — both already root-caused in
       `MAINTENANCE.md`), then add `infra/grafana/provisioning/dashboards/`
       generated per-location from ontology entities (none exist today —
       only a datasource is provisioned).
-- [ ] §1b — Promote hardcoded `LOCATIONS` (App.jsx) to a real
-      `hub_location` ontology entity type + `/api/locations` CRUD, so
-      adding a location/hub is configuration, not a source edit.
-- [ ] §3 — Reorderable, per-field-configurable place cards (reuse the
-      existing `useDraggableOrder` pattern already shipped for Device
-      Manager/Monitoring); depends on §1b.
+- [x] §1b (partial) — Real `hub_location` Postgres table + `/api/locations`
+      CRUD (list/create/patch/delete/reorder) now exists, seeded from this
+      instance's own config so a fresh fork writes what App.jsx already
+      assumed. cabin-ui merges it into the existing `LOCATIONS` object on
+      load — verified live against a stub API returning a third, fictional
+      location ("Lake House"), which correctly appeared in both the
+      location switcher and the My Places grid. **Not done**: ~30 other
+      call sites in App.jsx (presence, alerts, health polling) still
+      hardcode `LOCATIONS.cabin`/`.home` directly and assume exactly those
+      two keys exist — genuinely making every feature N-location-aware,
+      an admin UI for add/edit (the reorder endpoint exists, unused by any
+      UI yet), and wiring per-location Grafana dashboards to this table
+      are the real remainder, not silently dropped — see
+      `docs/ontology.yaml`'s `hub_location` entry. A real
+      `HubLocationServiceTest` (Testcontainers-against-Postgres, same
+      pattern as `EventPipelineIntegrationTest`) now covers seed/create/
+      upsert/patch/archive/reorder — written and confirmed to fail *only*
+      on "no Docker" in this sandbox, wired into `deploy-cabin-backend.yml`'s
+      existing `mvn test` gate so it actually runs against real Postgres
+      on the next push, before anything deploys. Not personally verified
+      passing by this session (no Docker here) — that's CI's job now.
+- [x] §3 (partial) — Place cards are now reorderable: reused the existing
+      `useDraggableOrder` pattern as-is (same client-side, per-browser
+      `localStorage` model as Device Manager/Monitoring — matches the
+      user's own "the same way we allow re-ordering of devices" request,
+      not the server-persisted `/api/locations/reorder` endpoint §1b also
+      built, which stays available-but-unused for a future server-synced
+      option). A real drag-and-drop test (`App.test.jsx`, dispatches
+      actual `dragstart`/`dragover`/`drop` events) confirms the new order
+      persists to `localStorage`, not just that the UI renders. Grid is
+      also now explicitly responsive — 3 columns desktop / 2 tablet / 1
+      mobile, verified live at 3 viewport widths (375px/966px/1400px).
+      **Not done**: per-card field configurability (which stats/links show
+      per location — still fixed/hardcoded) and dynamic card-size shrink
+      to guarantee 9 cards with zero scrolling at any count — the grid
+      just scrolls past 9 today, which matches "all available when
+      scrolled" but not the "reduce relative sizing" part of the ask. Both
+      tracked in the execution plan §3, not silently dropped.
 - [x] §4a — `CameraEventsPanel` was fetching `/api/events` completely
       unfiltered — that was the whole "seeing device inputs, not camera
       events" bug. Fixed client-side (filters to `DETECTION_*`/`MOTION_*`
       eventTypes) as the fast fix; a real server-side `eventType` filter
       (avoiding fetching non-camera events at all) is still open, tracked
-      under §4c's pagination work.
+      under §4c's pagination work. `isCameraEvent` extracted to a pure,
+      exported, unit-tested function (cabin-ui's new Vitest suite) rather
+      than left inline and untested.
 - [x] §4b (partial) — DTM stamp now renders as an overlay directly on each
       camera event's thumbnail image (not just adjacent list text), using
       `CabinEvent.timestamp` already returned by the API — no backend
@@ -691,13 +741,13 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       triggering HA automation/Node-RED flow, and — sequenced last,
       highest-risk — disable/auto-rearm an automation directly from an
       alert.
-- [ ] Ontology schema v0.4.0 — add `lifecycle_status` / `first_used` /
-      `deprecated_date` per element (user-specified requirement, checked
-      against the real schema this session: `migration_status` and
-      `first_verified_live` exist today but neither answers "is this still
-      real, and since/until when"). See execution plan §5 for exact field
-      definitions and the migration-priority approach (same pattern as the
-      v0.3.0 migration below — no full backfill in one pass).
+- [x] Ontology schema v0.4.0 (partial) — `lifecycle_status` / `first_used` /
+      `deprecated_date` fields defined (`docs/ontology.yaml`'s header
+      comment) and applied to 3 entries (`hub_location`, `theme_preference`,
+      `cabin_camera_event`) with real, citable provenance — not a guess.
+      Deliberately NOT a full backfill across ~150+ entries — see the
+      Ontology Migration Review section below for the tracked, priority-order
+      remainder.
 
 ---
 
@@ -766,11 +816,26 @@ Work in `migration_priority` order. Update the count below after each session.
 | 2026-09-27  | —             | _(scheduled)_ |
 | 2026-10-27  | —             | _(scheduled)_ |
 
-**v0.4.0 migration — planned, not started.** Adds `lifecycle_status` /
-`first_used` / `deprecated_date` per element (Phase 7, execution plan §5).
-Schema fields don't exist in `ontology.yaml` yet, so there's no pending
-count to track until they're added — this row starts once that lands,
-following the same priority-order approach as v0.3.0 below.
+**v0.4.0 migration — schema defined 2026-08-07, 3 of ~150+ entries
+migrated.** Adds `lifecycle_status` / `first_used` / `deprecated_date` per
+element (Phase 7, execution plan §5; field definitions in
+`docs/ontology.yaml`'s header comment). Applied so far: `hub_location`
+(new entity, full provenance from its own creation this session),
+`theme_preference` and `cabin_camera_event` (pre-existing entries, dates
+backed by real citable evidence already in this file/`CLAUDE.md` — not
+guessed; `theme_preference` is the deliberate example of *why* `first_used`
+is distinct from the ontology entry's own add date — the concept shipped
+2026-07-26, the entry documenting it was added 2026-07-31). No full
+backfill attempted — same priority-order approach as v0.3.0 below, and
+the same rule as v0.3.0's own migration: every entity newly ADDED to this
+file from 2026-08-07 onward carries these fields from day one (see
+`docs/DEFINITION_OF_DONE.md` §9/§10), existing entries migrate
+opportunistically (touched for another reason) or in scheduled
+priority-order passes.
+
+| Review Date | Migrated | Notes |
+|-------------|----------|-------|
+| 2026-08-07  | 3        | Schema defined; `hub_location`, `theme_preference`, `cabin_camera_event` |
 
 **Priority order (migrate highest first):**
 
