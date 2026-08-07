@@ -144,6 +144,8 @@ jobs:
 
           echo "relevant=false" >> "$GITHUB_OUTPUT"
           echo "Nothing backend-relevant in this push."
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
 
       - name: Run tests (mvn test) -- deploy stops here on failure
         if: steps.guard.outputs.relevant == 'true'
