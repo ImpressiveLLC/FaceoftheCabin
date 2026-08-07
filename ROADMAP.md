@@ -673,11 +673,27 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       session closed the *symptom* — matching catalogs, an enforced
       guard against re-drifting — not the *duplication* itself; each
       file still hand-defines its own 9-entry THEMES object).
-- [ ] §1a — Fix Grafana's two broken access gates (Cloudflare Access not
-      enforcing, Google OAuth 403 — both already root-caused in
-      `MAINTENANCE.md`), then add `infra/grafana/provisioning/dashboards/`
-      generated per-location from ontology entities (none exist today —
-      only a datasource is provisioned).
+- [x] §1a (partial) — A real Grafana dashboard now exists: Prometheus
+      scraping Frigate's `/api/metrics`, a Grafana Prometheus datasource,
+      and file-based provisioning of Frigate's own official community
+      dashboard (grafana.com/grafana/dashboards/24165). Built by a
+      concurrent Claude Code session working this same repo (commit
+      `5b5cda2`, cherry-picked here 2026-08-07) and independently
+      re-verified in this session: all three `docker compose config`
+      variants (base/M920q/local) parse clean, the dashboard JSON is
+      valid (21 panels), all three new provisioning YAML files parse
+      clean. **Not done**: (1) this is one dashboard for Frigate, not yet
+      "per-location, generated from ontology entities" as originally
+      scoped — a real, more ambitious remainder, not silently narrowed;
+      (2) the actual Prometheus→Frigate scrape target (`frigate:5000` on
+      `cabin_default`) is explicitly unverified against the live M920q —
+      flagged inline by the commit that built it; (3) Grafana's two
+      broken access gates (Cloudflare Access not enforcing, Google OAuth
+      403 — both already root-caused in `MAINTENANCE.md`) are completely
+      unrelated to this and still mean **nobody can log into Grafana at
+      all right now** — this dashboard exists but is unreachable until
+      that separate outage is fixed. Both (2) and (3) need a live M920q
+      session, not buildable from a local clone.
 - [x] §1b (partial) — Real `hub_location` Postgres table + `/api/locations`
       CRUD (list/create/patch/delete/reorder) now exists, seeded from this
       instance's own config so a fresh fork writes what App.jsx already

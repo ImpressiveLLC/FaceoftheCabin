@@ -6223,3 +6223,83 @@ elements:
       log into Grafana by any method. Highest-priority open item for
       the next session.
       Test (REPLICATION.md §5) once this capability is added there.
+
+      FOUND/NOT CHANGED 2026-08-07: a Frigate monitoring dashboard now
+      exists and is provisioned into this same Grafana instance (see
+      cabin_grafana_frigate_dashboard) — completely unrelated to this
+      entity's own broken-access problem. The dashboard is real and
+      correctly wired; it is simply unreachable by anyone until one of
+      the two access gates documented above actually works. Don't
+      conflate "a dashboard exists" with "Grafana access works" — they
+      are two independent Phase 7 §1a sub-items, only one of which
+      progressed this session.
+
+  - id: cabin_grafana_frigate_dashboard
+    entity_type: owl:Class
+    layer: infra
+    primitive: false
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-07"
+      ref: "Phase 7 §1a, commit 5b5cda2 (built by a concurrent Claude Code session, cherry-picked into this branch same day)"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Frigate Monitoring Dashboard"
+    source: >
+      Frigate's /api/metrics (Prometheus exposition format) -> cabin-prometheus
+      (scrapes every 30s, infra/prometheus.yml) -> Grafana Prometheus
+      datasource (infra/grafana/provisioning/datasources/prometheus.yml) ->
+      file-provisioned dashboard JSON (infra/grafana/provisioning/dashboards/
+      frigate/frigate-monitoring.json) -- Frigate's own official community
+      dashboard (grafana.com/grafana/dashboards/24165), with its
+      ${DS_PROMETHEUS} template variable swapped for a fixed datasource uid
+      at authoring time rather than left as an import-time prompt.
+    rendering:
+      semantic: "Frigate camera/detection performance, in Grafana"
+      systems: Frigate Monitoring Dashboard (21 panels)
+      technical: "prom/prometheus:latest container (cabin-prometheus) + Grafana file-based dashboard provisioning"
+      compliance: (not shown)
+    definition: >
+      A pre-built, provisioned Grafana dashboard (21 panels) covering
+      Frigate's own exposed metrics -- detection/tracking performance,
+      camera FPS, process resource usage. Answers the "we need a dashboard
+      configured for Home and Cabin" part of the user's original Phase 7
+      ask, for Frigate specifically -- not yet the fully ontology-driven,
+      per-location, any-device dashboard generation described in this
+      session's execution plan §1a, which remains open.
+    relationships:
+      - target: cabin_grafana_public_access
+        type: depends_on
+        cardinality: "1:1"
+      - target: cabin_camera_continuous_recording
+        type: complements
+        cardinality: "N:1"
+    transformation: >
+      docker-compose.yml gains a `prometheus` service; docker-compose.m920q.yml
+      additionally joins it to the external `cabin_default` network (since
+      the M920q's pre-existing Frigate container, not this project's own
+      disabled one, is the real scrape target there). Grafana's file-based
+      dashboard provisioner picks up the JSON automatically on container
+      start -- no manual import step, no UI click-through.
+    relates_to:
+      ui_components: []
+      elements: [cabin_grafana_public_access]
+    notes: >
+      NOT verified against the live M920q: prometheus.yml's scrape target
+      assumes the M920q's existing, separately-managed Frigate container
+      resolves as "frigate" on the cabin_default Docker network -- flagged
+      inline in prometheus.yml and docker-compose.m920q.yml by the commit
+      that built this, and confirmed still unverified by this session
+      (would need a live `docker ps` on the M920q, not available from a
+      local clone). Independently re-verified in this session (not just
+      trusting the originating commit's own claim): `docker compose
+      config` parses clean for all three compose file combinations
+      (base/M920q/local overlays), the dashboard JSON is valid (21 panels,
+      confirmed via a real JSON parse), and all three new provisioning
+      YAML files parse as valid YAML.
+
+      Depends on cabin_grafana_public_access being fixed to actually be
+      reachable/usable -- this dashboard existing does not mean anyone can
+      currently see it (see that entity's notes).
