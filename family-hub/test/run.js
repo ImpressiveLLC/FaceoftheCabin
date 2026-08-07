@@ -57,7 +57,14 @@ function check(label, actual, expected) {
   check('default state is slid-in',
     await page.locator('#notepad-panel').evaluate(el => el.classList.contains('open')), false);
 
-  // Widths are computed from real right-side elements, not hardcoded.
+  // Expanded width is still computed from real right-side elements.
+  // Collapsed width is a fixed constant as of 2026-08-07 (see
+  // computeNotepadWidths()'s own comment: it used to also be computed from
+  // these same elements, which caused the tucked-in handle to end up wider
+  // than intended and block other UI -- a user-reported bug, confirmed via
+  // this project's own CI failing "collapsed handle is fully on-screen"
+  // the same day). Asserting the fixed value directly, not deriving it,
+  // is the point: it should NOT track other elements' layout.
   const widths = await page.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
     return { expanded: cs.getPropertyValue('--np-w-expanded').trim(), collapsed: cs.getPropertyValue('--np-w-collapsed').trim() };
@@ -66,13 +73,33 @@ function check(label, actual, expected) {
     ['chores-card', 'dashboard-fab', 'settings-btn']
       .map(id => document.getElementById(id).getBoundingClientRect().width));
   check('slid-out width == largest right-side element', widths.expanded, `${Math.round(Math.max(...refWidths))}px`);
-  check('slid-in width == smallest right-side element', widths.collapsed, `${Math.round(Math.min(...refWidths))}px`);
+  check('slid-in width is the fixed, narrow constant (not derived from other elements)', widths.collapsed, '56px');
 
   // The collapsed handle must actually be on-screen and clickable (regression
   // guard for the flex/translateX bug this suite was written to catch).
   const handleBox = await page.locator('#notepad-handle').boundingBox();
   const vw = page.viewportSize().width;
   check('collapsed handle is fully on-screen', handleBox.x >= 0 && handleBox.x + handleBox.width <= vw + 1, true);
+
+  // Regression guard, added 2026-08-07, for a real user-reported bug: the
+  // tucked-in notepad visibly covered #chores-card. Root cause was
+  // computeNotepadTop() treating a *hidden* element's getBoundingClientRect
+  // (mobile-action-dock, display:none on desktop, so top:0) as a real
+  // position, poisoning the "how much room is below" math down to ~0 --
+  // which a plain on-screen/bounding-box check doesn't catch, since a
+  // clipped child still reports its own intended geometry. Two direct
+  // checks: the panel must have real, non-zero height, and it must not
+  // geometrically overlap #chores-card at all -- the actual hard
+  // constraint the user asked for ("anything but covering the other
+  // critical ui elements").
+  const panelBox = await page.locator('#notepad-panel').boundingBox();
+  check('notepad panel has real, non-zero rendered height', panelBox.height > 0, true);
+  const choresBox = await page.locator('#chores-card').boundingBox();
+  const overlapsChores = panelBox.y < choresBox.y + choresBox.height
+    && panelBox.y + panelBox.height > choresBox.y
+    && panelBox.x < choresBox.x + choresBox.width
+    && panelBox.x + panelBox.width > choresBox.x;
+  check('notepad panel never overlaps #chores-card, even tucked in', overlapsChores, false);
 
   // Manual slide-out / slide-in control.
   await page.locator('#notepad-handle').click();

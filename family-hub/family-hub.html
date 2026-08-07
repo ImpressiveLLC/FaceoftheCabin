@@ -840,13 +840,18 @@
 
     /* ═══════════════════════════════════════════
        FAMILY NOTEPAD  (slide-in/slide-out overlay, right edge)
-       Widths are set at runtime (see computeNotepadWidths()) to match
-       the largest / smallest interaction-element boxes on the right
-       side of the UI — see --np-w-expanded / --np-w-collapsed below.
+       --np-w-expanded is set at runtime (computeNotepadWidths()) to match
+       the largest right-side interaction element, for visual consistency
+       once actually opened. --np-w-collapsed is a small FIXED value as of
+       2026-08-07 (was computed from other elements too -- see that
+       function's own comment for why that caused the tucked-in handle to
+       block other UI) -- deliberately narrow ("a narrower slide-out
+       control", the user's own words) and independent of anything else's
+       layout.
     ═══════════════════════════════════════════ */
     :root {
       --np-w-expanded: 300px;
-      --np-w-collapsed: 96px;
+      --np-w-collapsed: 56px;
     }
     #notepad-panel {
       position:fixed; top:var(--np-top, 150px); right:0; z-index:9995;
@@ -873,7 +878,7 @@
       transition:background .15s;
     }
     #notepad-handle:hover { background:rgba(255,255,255,.04); }
-    .np-handle-top { display:flex; align-items:center; gap:6px; }
+    .np-handle-top { display:flex; align-items:center; justify-content:center; gap:6px; }
     .np-dot {
       width:6px; height:6px; border-radius:50%; flex-shrink:0;
       background:rgba(255,255,255,.2);
@@ -892,6 +897,13 @@
     /* while open, the full list already shows this — avoid redundant text
        next to the docked handle, keep just the label as a collapse target */
     #notepad-panel.open .np-handle-preview { display:none; }
+    /* 2026-08-07: the handle's text label + preview were sized for the old
+       ~96px+ collapsed width; at the new fixed 56px (see :root above)
+       neither fits without wrapping/overflowing. Rather than force text
+       into a space too narrow to read, the collapsed tab is now dot-only
+       -- the accessible name (aria-label below) still says "Family
+       Notepad", and opening it shows the full label + content anyway. */
+    .np-handle-label, .np-handle-preview { display:none; }
 
     #notepad-main {
       flex:1 1 auto; min-width:0; overflow:hidden;
@@ -4115,9 +4127,22 @@ function renderNoteHistory() {
     : '<div class="empty">No notes yet.</div>';
 }
 
-// Width of the notepad, slid-out = largest right-side interaction element;
-// slid-in = smallest right-side interaction element. Recomputed on resize
-// and whenever a watched element's own size changes (responsive layouts).
+// Width of the notepad when slid OUT = largest right-side interaction
+// element, so it feels visually consistent with the rest of the UI.
+// Recomputed on resize and whenever a watched element's own size changes.
+//
+// FOUND 2026-08-07 (user-reported: the tucked-in handle was blocking other
+// UI even while closed -- confirmed independently by this project's own
+// CI, which failed "collapsed handle is fully on-screen" the same day):
+// the collapsed width used to be `Math.min(...)` of these same elements'
+// measured widths -- meaning its size depended on three *unrelated*
+// elements' real-time layout, and any measurement racing page load/font
+// rendering could make it wider than intended, or otherwise not what was
+// visually expected. --np-w-collapsed is now a small, fixed constant (see
+// the :root rule) that never depends on measuring anything else --
+// removing that whole class of bug rather than tuning it. Only
+// --np-w-expanded (used once actively opened, not the "just tucked in and
+// blocking things" case that was reported) still comes from real elements.
 const NOTEPAD_WIDTH_REF_IDS = ['chores-card', 'dashboard-fab', 'settings-btn'];
 function computeNotepadWidths() {
   const widths = NOTEPAD_WIDTH_REF_IDS
@@ -4127,7 +4152,6 @@ function computeNotepadWidths() {
     .filter(w => w > 0);
   if (!widths.length) return;
   document.documentElement.style.setProperty('--np-w-expanded', `${Math.round(Math.max(...widths))}px`);
-  document.documentElement.style.setProperty('--np-w-collapsed', `${Math.round(Math.min(...widths))}px`);
 }
 // The panel was fixed at a hardcoded top:150px, which visually covered
 // #chores-card (right column of the main grid) at most viewport sizes.
@@ -4155,9 +4179,22 @@ const NOTEPAD_MIN_HEIGHT = 260; // enough for compose box + a few note rows
 function computeNotepadTop() {
   const isNarrow = window.innerWidth < 900;
   const choresEl = document.getElementById('chores-card');
+  // FOUND 2026-08-07: a hidden (display:none) element's getBoundingClientRect()
+  // reports top:0 -- mobile-action-dock is display:none on any desktop-width
+  // viewport, so its bogus top:0 was winning Math.min() below every time,
+  // poisoning hardBottom to a near-zero/negative value on desktop. Masked
+  // for a long time by two separate safety clamps elsewhere in this
+  // function; removing those clamps (this same session, to make
+  // #chores-card avoidance a hard constraint) surfaced it as the notepad
+  // rendering at ~0 height, which -- because CSS overflow:hidden clips
+  // children without changing their own getBoundingClientRect() -- looked
+  // like a normal, clickable handle to code/tests checking its geometry,
+  // while actually being invisible and unclickable, with #app receiving
+  // clicks meant for it instead. Same `> 0`-style filter already used in
+  // computeNotepadWidths() above, now applied here too.
   const fabTops = ['dashboard-fab', 'settings-btn', 'mobile-action-dock']
     .map(id => document.getElementById(id))
-    .filter(Boolean)
+    .filter(el => el && getComputedStyle(el).display !== 'none')
     .map(el => el.getBoundingClientRect().top);
   const keyboardInset = getKeyboardInset();
   const viewportBottom = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
@@ -4178,11 +4215,19 @@ function computeNotepadTop() {
   const preferredTop = choresEl
     ? Math.round(choresEl.getBoundingClientRect().bottom + NOTEPAD_TOP_GAP)
     : NOTEPAD_TOP_ABSOLUTE_MIN;
-  // Guarantee MIN_HEIGHT by pushing top back up if chores-card leaves too
-  // little room — usability above perfectly avoiding the chores card.
-  const top = Math.max(NOTEPAD_TOP_ABSOLUTE_MIN, Math.min(preferredTop, hardBottom - NOTEPAD_MIN_HEIGHT));
+  // HARD CONSTRAINT (2026-08-07, user-reported): never overlap #chores-card
+  // -- same "never crossed" treatment as the FABs above. This used to clamp
+  // `top` back UP toward chores-card once it grew past a certain height (a
+  // deliberate "usability above perfectly avoiding" tradeoff), which is
+  // exactly what caused the notepad to visibly cover chores-card on days
+  // with more kids/chores showing (a taller card pushes `preferredTop`
+  // down further than the old clamp allowed). Height shrinks to fit
+  // whatever room is actually left instead -- the notepad's own note list
+  // is already scrollable, so a shorter-but-fully-clear panel degrades
+  // gracefully; a roomy panel that overlaps other UI does not.
+  const top = Math.max(NOTEPAD_TOP_ABSOLUTE_MIN, preferredTop);
   document.documentElement.style.setProperty('--np-top', `${top}px`);
-  const capped = Math.max(NOTEPAD_MIN_HEIGHT, Math.min(hardBottom - top, 620));
+  const capped = Math.max(0, Math.min(hardBottom - top, 620));
   document.documentElement.style.setProperty('--np-max-height', `${Math.round(capped)}px`);
 }
 
@@ -4457,6 +4502,7 @@ window.addEventListener('load', () => {
    </div>
   </div>
   <div id="notepad-handle" role="button" tabindex="0" aria-controls="notepad-main" aria-expanded="false"
+       aria-label="Family Notepad"
        onclick="toggleNotepad()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleNotepad();}" title="Family Notepad">
     <div class="np-handle-top">
       <div id="notepad-handle-dot" class="np-dot"></div>
