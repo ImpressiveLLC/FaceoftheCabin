@@ -620,6 +620,65 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       capture, clip config, media proxy) applies uniformly regardless of
       which cameras are actually live.
 
+### Phase 7 — Template Configurability, Cross-App Theming, Configurable Place Cards, Camera Drilldown
+
+> Planned 2026-08-07 from four user-reported gaps (Grafana 403 + no
+> per-location dashboards; hardcoded `LOCATIONS`; vestigial "Family Hub"
+> nav label + stray `⌂` glyph + theme not carrying over between
+> `family-hub`/`cabin-ui`; Camera Events panel showing unfiltered device
+> events instead of camera-only activity, no DTM-stamped cold-storage
+> drilldown, no automation-lineage links). Full grounding, root-cause
+> detail, and step sequencing in
+> `docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md` — this entry is
+> a pointer, not a duplicate of that detail. Nothing in this phase is
+> implemented yet; the execution plan is the deliverable so far.
+
+- [ ] §1a — Fix Grafana's two broken access gates (Cloudflare Access not
+      enforcing, Google OAuth 403 — both already root-caused in
+      `MAINTENANCE.md`), then add `infra/grafana/provisioning/dashboards/`
+      generated per-location from ontology entities (none exist today —
+      only a datasource is provisioned).
+- [ ] §1b — Promote hardcoded `LOCATIONS` (App.jsx) to a real
+      `hub_location` ontology entity type + `/api/locations` CRUD, so
+      adding a location/hub is configuration, not a source edit.
+- [ ] §2a — Rename "Family Hub" nav panel to "My Places" (it's a
+      cabin/home launcher grid, not the actual Family Hub app).
+- [ ] §2b — Replace the hardcoded `⌂` nav-rail glyph with the existing
+      family crest (`hodgson-crest.svg` / `hub_family_name`), and make
+      cabin-ui's hardcoded "Smrekar Familia Hub" heading read from the same
+      configured branding family-hub.html already honors.
+- [ ] §2c/2d — Extract the two hand-duplicated `THEMES` objects
+      (`ThemeProvider.jsx`, `family-hub.html`) to one shared build-time
+      source; add `?theme=` handoff on every cross-app link-out (root cause
+      of "theme doesn't carry over" is origin-scoped `localStorage`, not
+      bad apply logic); add a CI check that fails the build if the two
+      files' theme ids drift from the shared source.
+- [ ] §3 — Reorderable, per-field-configurable place cards (reuse the
+      existing `useDraggableOrder` pattern already shipped for Device
+      Manager/Monitoring); depends on §1b.
+- [ ] §4a — One-line-ish fix: `CameraEventsPanel` never passes the
+      `camera`/event-type filter `EventController` already supports —
+      that's the whole "seeing device inputs, not camera events" bug.
+- [ ] §4b — DTM stamp on camera images (verify Frigate's native overlay
+      first before adding a second one).
+- [ ] §4c — Pagination/filtering past the current 30-event cap; a
+      continuous-recording timeline/scrubber view (Frigate recordings API);
+      new `cold_storage_backend` ontology entity so retention storage is
+      configurable per instance, not assumed to be the M920q's local disk.
+- [ ] §4d — Event → automation lineage record (`ROADMAP.md` Phase 3's
+      already-planned `{ from_event, via_automation, to_state, timestamp }`
+      — this is its concrete motivating use case), deep-links to the
+      triggering HA automation/Node-RED flow, and — sequenced last,
+      highest-risk — disable/auto-rearm an automation directly from an
+      alert.
+- [ ] Ontology schema v0.4.0 — add `lifecycle_status` / `first_used` /
+      `deprecated_date` per element (user-specified requirement, checked
+      against the real schema this session: `migration_status` and
+      `first_verified_live` exist today but neither answers "is this still
+      real, and since/until when"). See execution plan §5 for exact field
+      definitions and the migration-priority approach (same pattern as the
+      v0.3.0 migration below — no full backfill in one pass).
+
 ---
 
 ## Environment & Credentials Reference
@@ -686,6 +745,12 @@ Work in `migration_priority` order. Update the count below after each session.
 | 2026-08-27  | —             | _(scheduled review — verify no new pending entries)_ |
 | 2026-09-27  | —             | _(scheduled)_ |
 | 2026-10-27  | —             | _(scheduled)_ |
+
+**v0.4.0 migration — planned, not started.** Adds `lifecycle_status` /
+`first_used` / `deprecated_date` per element (Phase 7, execution plan §5).
+Schema fields don't exist in `ontology.yaml` yet, so there's no pending
+count to track until they're added — this row starts once that lands,
+following the same priority-order approach as v0.3.0 below.
 
 **Priority order (migrate highest first):**
 
