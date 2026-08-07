@@ -38,6 +38,16 @@ services:
   watchdog:
     profiles: [disabled]
 
+  # ── Prometheus: the base service only joins the project's own default
+  # network, but the real Frigate this scrapes is the pre-existing M920q
+  # container on cabin_default (frigate itself is disabled above). Join
+  # that network too so "frigate:5000" in prometheus.yml can resolve —
+  # NOT yet confirmed live; see infra/prometheus.yml's header comment.
+  prometheus:
+    networks:
+      - default
+      - cabin_default
+
   # ── Fix Kafka advertised listener for container networking ────────────
   # Base compose advertises localhost:9092 which breaks container clients.
   kafka:

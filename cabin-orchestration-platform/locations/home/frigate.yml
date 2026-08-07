@@ -2,6 +2,10 @@
 # Five Reolink RLC-810A PoE cameras at 192.168.1.20–24
 # https://docs.frigate.video
 
+# Prometheus metrics at /api/metrics, scraped by infra/prometheus.yml.
+metrics:
+  enabled: True
+
 mqtt:
   host: home-mqtt
   port: 1883

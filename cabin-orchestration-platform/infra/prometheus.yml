@@ -1,0 +1,25 @@
+# Prometheus scrape config for the cabin stack.
+# Frigate exposes Prometheus-format metrics at /api/metrics — see
+# infra/frigate.yml and locations/home/frigate.yml (metrics.enabled).
+#
+# Target hostname "frigate" resolves two different ways depending on
+# which compose file is active:
+#   - docker-compose.yml alone: the "frigate" service this project starts.
+#   - + docker-compose.m920q.yml: that service is disabled (profiles:
+#     [disabled], see comment there) because Frigate is already running
+#     in the pre-existing M920q stack. The override instead joins this
+#     prometheus container to the external "cabin_default" network, where
+#     "frigate" needs to resolve to THAT stack's Frigate container. Not
+#     yet verified against the live M920q — confirm the real container/
+#     service name there (`docker ps` on the M920q) before relying on
+#     this scrape target; docker-compose.m920q.yml's own comments list it
+#     as "frigate (5000)" but that's undocumented, not confirmed live.
+
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: frigate
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["frigate:5000"]

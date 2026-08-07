@@ -13,6 +13,10 @@
 #   sub  stream: rtsp://admin:{CAMERA_PASSWORD}@<IP>:554/h264Preview_01_sub
 #   Use sub for detect (640x480, low CPU), main for record (4K).
 
+# Prometheus metrics at /api/metrics, scraped by infra/prometheus.yml.
+metrics:
+  enabled: True
+
 mqtt:
   host: cabin-mqtt
   port: 1883
