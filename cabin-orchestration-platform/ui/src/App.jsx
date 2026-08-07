@@ -72,6 +72,15 @@ const LOCATIONS = {
   },
 };
 
+// Real Grafana dashboard UIDs that actually exist, by location -- see the
+// MonitoringPanel Grafana embed's own comment for why this replaced a
+// hardcoded `${location}-overview` UID that was never real. Only "cabin"
+// has one today (the Frigate monitoring dashboard, Phase 7 §1a); a
+// per-location, ontology-driven dashboard is still open work.
+const GRAFANA_DASHBOARD_UID = {
+  cabin: "aezbolgn22qdce",
+};
+
 // ─── Panel definitions ─────────────────────────────────────────────────────
 // ─── Google Sign-In — cabin-ui's OWN standalone flow ───────────────────────
 // Deliberately separate from Family Hub's sign-in (a different app, a
@@ -1701,11 +1710,29 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
         <div className="tailscale-hint">
           <Lock size={11} /> Requires Google sign-in (same account as this app) — may prompt inside the frame on first load.
         </div>
-        <iframe
-          title={`Grafana ${locCfg.label}`}
-          src={`${locCfg.grafanaUrl}/d/${locCfg.id}-overview?kiosk=tv`}
-          className="embed-frame-short"
-        />
+        {/* Found 2026-08-07 (live, via M920q access): this was rendering a
+            guaranteed-blank iframe, for two stacked reasons. (1) The `/d/`
+            path was missing Grafana's own `/grafana` sub-path
+            (GF_SERVER_SERVE_FROM_SUB_PATH=true, root_url ends in /grafana) --
+            hitting the bare origin 302s to /grafana/login first. (2) No
+            `{location}-overview` dashboard has ever actually existed --
+            this was aspirational/placeholder wiring from before any real
+            dashboard was provisioned. GRAFANA_DASHBOARD_UID maps only the
+            locations/dashboards that are actually real today (the Frigate
+            monitoring dashboard cherry-picked into Phase 7 §1a); a
+            per-location, ontology-driven dashboard is still open work, not
+            done here -- see docs/ontology.yaml's cabin_grafana_frigate_dashboard
+            entry. Showing an honest "not configured" message for anything
+            not in the map, instead of another guaranteed-blank iframe. */}
+        {GRAFANA_DASHBOARD_UID[locCfg.id] ? (
+          <iframe
+            title={`Grafana ${locCfg.label}`}
+            src={`${locCfg.grafanaUrl}/grafana/d/${GRAFANA_DASHBOARD_UID[locCfg.id]}?kiosk=tv`}
+            className="embed-frame-short"
+          />
+        ) : (
+          <p className="config-desc">No dashboard configured for {locCfg.label} yet.</p>
+        )}
       </div>
 
       <div className="event-log">
