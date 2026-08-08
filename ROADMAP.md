@@ -1173,6 +1173,133 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       (single-location, fallback-hint, Both-mode split). Full suite:
       60/60. Verified live in a browser preview across Cabin/Home/Both.
       See `docs/ontology.yaml`'s new `rules_panel_location_context`.
+- [ ] **[NEW, PLANNING NEEDED — user question, 2026-08-08]** Armed/disarmed
+      state isn't a trigger for anything in this app, and Frigate presence
+      + door detection can't be watched independently of a single
+      monolithic "armed" toggle. Investigated live, not assumed:
+      - `SecurityBadge` (App.jsx) is a real, live-wired but **read-only**
+        indicator — no arm/disarm control exists anywhere in cabin-ui. The
+        actual toggle is `input_boolean.cabin_security_armed_away` in
+        Home Assistant, republished to `cabin/security/armed_away` and
+        merely displayed here. One global boolean, no zones/granular
+        arming.
+      - `AlertSeverityClassifier.java` still explicitly ignores armed/
+        presence state (comment: "no armed/presence awareness yet,
+        deliberate scope cut") — confirmed still true, not wired despite
+        both signals being live since 2026-08-08 (see
+        `docs/DEFINITION_OF_DONE.md`'s punch list, unchanged item).
+      - **Real bug found this session, not previously known**:
+        `MqttBridgeService.handleFrigateDetectionEvent()` hardcodes every
+        Frigate detection to `"INFO"` severity — it never reaches
+        `AlertSeverityClassifier` at all, so no Frigate detection can ever
+        become WARN/CRITICAL or trigger `NtfyAlertPublisher` through this
+        app's own event pipeline, regardless of content or armed state.
+        This is the same class of bug fixed for `Zigbee2MqttAdapter` on
+        2026-08-06 — that fix apparently didn't cover this call site.
+      - A **separate, working mechanism already exists but is invisible
+        from cabin-ui**: Node-RED's "Camera Overnight Alerts" flow (see
+        `docs/MAINTENANCE.md`) already gates Frigate alert-tier
+        detections on `armed_away` + presence and pushes real ntfy
+        notifications — fixed and verified 2026-08-07. It's real, but
+        lives entirely in the embedded Node-RED editor with no
+        cabin-ui-native surface showing it's active or letting a user
+        tune it.
+      - `CameraHealthPanel` has no confidence-threshold concept at all —
+        Frigate's own `score` field is already captured in the event
+        payload and shown per-event in Camera Events (`label (87%)`), but
+        never as a live, configurable-threshold functional-state tile.
+      **What this needs** (not yet scoped into an execution plan): (1)
+      fix the hardcoded-INFO bug so Frigate detections actually reach the
+      classifier; (2) wire armed+presence into
+      `AlertSeverityClassifier` (the "purely a wiring task" already
+      flagged as ready); (3) decouple "presence/door watching" from the
+      single global armed toggle — likely a second, independent state
+      distinct from full security-arming — so cameras/doors can alert
+      even when "all" automations aren't armed, per the user's explicit
+      ask; (4) surface Node-RED's existing overnight-alert logic (or its
+      replacement) as a real cabin-ui control, not an embedded editor tab;
+      (5) a native confidence-threshold-configurable functional-state UI
+      for camera/presence detection, extending `CameraHealthPanel` rather
+      than replacing it. See `docs/HANDOFF_2026-08-08_codex-fork.md`'s
+      Item 6 for the full framing if picked up on the fork.
+
+### Phase 8 — Accessible Hardware Program (planning only, 2026-08-08)
+
+> Product decision, not yet implemented. User asked me (acting as tech
+> lead + product founder) to pick a top-3 hardware tier ranking for
+> future spin-off instances — "financially accessible devices like Pi's
+> or Androids with an option of using a cheap laptop... minimal
+> acquisition barriers and configuration being primary goal." This is
+> deliberately decoupled from the user's own immediate Home-location
+> hardware pick (still their call, from either this list or their
+> original four options) — this section defines the *product's* target
+> hardware tiers going forward, which the Home decision can optionally
+> draw from.
+>
+> **Reconciles a real conflict with existing docs, not silently**:
+> `CLAUDE.md`'s "Design constraints" section currently states "No ARM/Pi
+> hardware — both hubs are x86_64 Lenovo ThinkCentre M920q" as an
+> unqualified constraint. That statement is now scoped explicitly to
+> *today's two production hubs*, not the platform going forward — see
+> the updated wording there. Tier 2 below is a deliberate, planned
+> deviation from that constraint, not an accident.
+
+**Ranked, with reasoning — not just "easiest to build":**
+
+1. **Cheap secondhand x86_64 mini-PC or business laptop, imaged with
+   Ubuntu** (e.g. the same ThinkCentre-class hardware the M920q already
+   is, or an equivalent used laptop). **Recommended default, ship-now
+   tier.** Zero new engineering — `docker-compose.m920q.yml`,
+   `REPLICATION.md`'s quickstart, and every existing image in this repo
+   already target this exact architecture. Often *cheaper all-in* than a
+   Pi kit once PSU/case/storage are counted (a used business mini-PC or
+   laptop bundles all of that already), and "minimal configuration" is
+   best served here since nothing needs new multi-arch builds or
+   platform-specific quirks. The "cheap laptop... windows compatible,
+   your choice" framing is honored by hardware selection (broadly
+   available secondhand Windows-capable machines are the cheapest
+   secondhand category) while still imputing Ubuntu as the installed OS,
+   matching every existing doc — not adding a third OS-support burden for
+   a marginal hardware-cost saving.
+2. **Raspberry Pi 4B (4–8GB) or Pi 5 — not Pi 2.** Correcting the user's
+   own suggestion here, not silently substituting: a Pi 2 (2015,
+   single-core-class ARM Cortex-A7, 1GB RAM) cannot realistically run
+   this stack — Kafka alone is memory-hungry, and Postgres + HA +
+   Node-RED + Frigate + a JVM Spring Boot backend on 1GB RAM would not be
+   stable for something meant to carry life-safety alerting (leak/smoke).
+   Pi 4B/5 is the honest version of "the accessible Pi tier" — real
+   community reach, official arm64 Docker images exist for every service
+   in this stack today. **Real engineering required before this is
+   offered**: multi-arch image builds wired into CI, Frigate performance
+   validated CPU-only (a $25–70 Coral USB accelerator should be
+   documented as an optional add-on, not assumed), and an actual
+   end-to-end test on real Pi hardware — `docs/REPLICATION.md` currently
+   has never been run on a second host at all, ARM or otherwise.
+3. **Android + Termux — deliberately scoped down, not full parity.**
+   Lowest acquisition barrier of all (many people already own an idle
+   phone), but Termux has no native Docker daemon (no root = proot-distro
+   or a from-scratch service layout), and a phone is a poor fit for
+   something that has to survive OS updates, aggressive background-process
+   killing, and Wi-Fi power-saving while unattended overnight watching for
+   a water leak. **Recommendation: don't attempt full-stack parity here.**
+   Scope it as a lighter "companion" tier instead — e.g. a Node-RED/MQTT
+   relay client or a notification-only surface — rather than promising
+   the same reliability tier as options 1–2 for life-safety alerting.
+   Excluded from "primary spin-off target," included as a real but
+   explicitly lesser tier.
+
+**Deliberately excluded from the top 3**: the user's own Windows PC
+(`ilikethelights`) option. That's the existing primary dev machine, not a
+template purchase recommendation for a future stranger setting up a
+spin-off — and `CLAUDE.md`'s own Dev Setup section already documents
+Windows as dev-only (HA's `network_mode: host` doesn't map correctly on
+Docker Desktop for Windows). Not silently dropped — excluded on purpose,
+stated here.
+
+**Not yet done**: none of tiers 2–3 have any code, CI, or doc work
+started. This section is the planning/ranking decision only, per the
+user's explicit ask to "add to the plan" — implementation would be a new,
+separate execution plan.
 
 ---
 

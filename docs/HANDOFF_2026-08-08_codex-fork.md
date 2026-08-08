@@ -18,9 +18,12 @@
 >
 > **Update, same day, before the limit was actually reached:** got real
 > work done on Item 1 (device checkin-status tiering) and Item 4 (the
-> Rules & Alerts location-split, both sub-items now done) before
-> stopping — see the revised §2 and §3. This file is being kept current
-> in place per its own §5 instruction rather than left stale.
+> Rules & Alerts location-split, both sub-items now done); then, in a
+> follow-up planning-only round, added a new Item 6 (armed-state trigger
+> gap + native camera-confidence UI — includes a real bug find, not yet
+> fixed) and a hardware-tier decision framework for Item 5
+> (`ROADMAP.md`'s new Phase 8). This file is being kept current in place
+> per its own §5 instruction rather than left stale.
 
 ---
 
@@ -383,17 +386,83 @@ Both sub-items are done as of this session:
 > termux (I have one ready for this), or use a dedicated laptop (ubuntu
 > is ready and I can keep it awake). lets go!"
 
-**Not started — was blocked on the user choosing one of the four listed
-hardware options** (Windows PC `ilikethelights`, Raspberry Pi 2, Android/
-Termux, or a dedicated Ubuntu laptop) when this session was interrupted.
-**Do not unilaterally pick one of these for the user** — this is a real
-physical/hardware decision with different tradeoffs (the project's
-existing design constraint is "no ARM/Pi hardware — both hubs are x86_64
-Lenovo ThinkCentre M920q," per `CLAUDE.md`'s "Design constraints" section,
-so a Raspberry Pi 2 option would be a deliberate deviation from that
-constraint worth flagging back to the user, not silently going along
-with). If Codex reaches this item, present the tradeoffs and ask, the
-same way this session would have.
+**Still not started** — but a decision framework now exists that didn't
+before. Later the same day, the user asked me (explicitly, in a
+product-lead capacity) to rank a top-3 hardware tier for a *broader*
+initiative — future spin-off instances on financially-accessible
+hardware, not just Home's specific box. That ranking now lives in
+`ROADMAP.md`'s new **Phase 8 — Accessible Hardware Program** (planning
+only, nothing built): (1) cheap secondhand x86_64 mini-PC/laptop imaged
+with Ubuntu — recommended default, zero new engineering, matches every
+existing quickstart; (2) Raspberry Pi 4B/5 (explicitly **not** Pi 2 —
+a Pi 2 cannot run this stack, corrected rather than silently used) —
+needs real multi-arch CI work before it's offered; (3) Android + Termux,
+deliberately scoped down to a lighter companion tier, not full parity,
+given no native Docker and reliability concerns for life-safety alerting.
+`CLAUDE.md`'s "no ARM/Pi hardware" constraint has been reconciled to
+scope explicitly to the two *production* hubs, not the platform overall.
+
+**This is a decision framework, not a decision made on the user's
+behalf.** Home's own immediate setup (this specific item) is still the
+user's call — from either their original four options or Phase 8's
+ranked tiers. **Do not unilaterally pick for them.** If Codex reaches
+this item, present Phase 8's ranking as context and still ask — the
+difference from before is there's now a reasoned product recommendation
+to present alongside the question, not just an open menu.
+
+---
+
+### Item 6 — Armed state isn't a trigger; no native camera confidence UI
+
+> User question, 2026-08-08, paraphrased: is the armed/disarmed icon
+> active or a future trigger, and how can Frigate presence + door
+> detection be watched even when "all" automations aren't armed? Is the
+> Grafana link-out as far as the native front-end goes, or is
+> Prometheus-sourced functional state with configurable confidence
+> thresholds coming to the app itself?
+
+**Investigated live this session, not assumed — findings, most important
+first:**
+
+- **`SecurityBadge` (App.jsx) is real but read-only.** No arm/disarm
+  control exists anywhere in cabin-ui; the actual toggle is
+  `input_boolean.cabin_security_armed_away` in Home Assistant. One global
+  boolean — no zones, no granular arming.
+- **Real bug, found this session, not previously known:**
+  `MqttBridgeService.handleFrigateDetectionEvent()` hardcodes every
+  Frigate detection to `"INFO"` severity — it never reaches
+  `AlertSeverityClassifier`, so no Frigate detection can become WARN/
+  CRITICAL or trigger `NtfyAlertPublisher` through this app's own event
+  pipeline, regardless of content. Same bug class as the
+  `Zigbee2MqttAdapter` fix from 2026-08-06 — that fix missed this call
+  site. **This should probably be the first fix if this item is picked
+  up** — it's a small, isolated, clearly-scoped bug fix, unlike the rest
+  of this item which is real design work.
+- `AlertSeverityClassifier.java` still explicitly doesn't consider armed/
+  presence state (unchanged deliberate MVP scope cut).
+- A **separate, working alert path already exists but is invisible from
+  cabin-ui**: Node-RED's "Camera Overnight Alerts" flow (see
+  `docs/MAINTENANCE.md`) already gates Frigate alert-tier detections on
+  armed+presence and pushes real ntfy notifications (fixed/verified
+  2026-08-07) — but it lives entirely in the embedded Node-RED editor,
+  with no cabin-ui-native surface showing it's active.
+- **Grafana link-out is genuinely still the ceiling** for anything beyond
+  `CameraHealthPanel`'s one metric (`frigate_camera_fps`). Frigate's own
+  detection `score` is already captured and shown per-event in Camera
+  Events (`label (87%)`), but there's no live, confidence-threshold-
+  configurable functional-state tile anywhere yet.
+
+**Full scope, not yet an execution plan** — see `ROADMAP.md`'s new Phase
+7 punch-list item for the five-part breakdown (fix the INFO-hardcoding
+bug; wire armed+presence into the classifier; decouple presence/door
+watching from the single global armed toggle so it can run even when
+"not all" is armed, per the user's explicit ask; surface the Node-RED
+overnight-alert logic as a real cabin-ui control instead of an embedded
+editor tab; build the native confidence-threshold UI). Recommend doing
+the INFO-hardcoding bug fix first (isolated, testable, low-risk) before
+attempting the larger armed/presence-decoupling design work, which needs
+real product thinking about what "watching without being armed" should
+mean UX-wise, not just a wiring change.
 
 ---
 

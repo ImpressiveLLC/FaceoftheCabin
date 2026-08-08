@@ -592,7 +592,12 @@ themselves, they just never had anything to trip on before:
 ## Design constraints
 
 - No Python beyond the existing `watchdog.py`
-- No ARM/Pi hardware — both hubs are x86_64 Lenovo ThinkCentre M920q
+- No ARM/Pi hardware for the two *production* hubs — both are x86_64
+  Lenovo ThinkCentre M920q, and that stays true for Cabin/Home. This does
+  **not** apply to the platform generally: `ROADMAP.md`'s Phase 8
+  (Accessible Hardware Program, planning only as of 2026-08-08) is a
+  deliberate, planned ARM/Pi target for future spin-off instances —
+  reconciled here rather than left as a silent contradiction.
 - Free/personal-tier remote access only — Tailscale (device platform, cameras/locks/valve)
   and Cloudflare Tunnel on a free personal account (public-facing Family Hub) are both fine.
   This isn't a "Tailscale only" covenant — the goal is keeping the whole template usable
