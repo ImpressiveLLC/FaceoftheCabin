@@ -851,6 +851,39 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       tests (stdlib `unittest`, run directly in the container — this fork
       has no CI), rebuilt, and redeployed; confirmed recovered
       (`camera_fps: 4.64`) on the fixed image, not just the restart.
+- [x] "My Places" panel header still read "Smrekar Familia Hub" — renamed
+      to "My Places" (matching the nav label), plus two stale top-of-file
+      doc comments in `App.jsx` that described `FAMILY_HUB`/`FAMILY_CONFIG`
+      inaccurately corrected.
+- [x] Presence toggle was purely manual with nothing real behind it
+      (found via user report, 2026-08-08): the toolbar's map-pin widget
+      read as "your detected location," but `PresenceProfile` was only
+      ever set by a manual `PUT /api/presence`, and `AutomationRuleService`
+      already used it to scale real security-event severity — a stale or
+      wrong manual toggle had a real safety consequence, not just a
+      cosmetic one. A real signal (`cabin/presence/nate`, HA's WiFi
+      ARP-check automation) already existed and was already live; nothing
+      in `cabin-backend` had ever subscribed to it. Fixed with
+      `PresenceSignalRegistry` (new, in-memory, keyed by location+person)
+      + `PresenceService.recomputeFromSignals()` (auto-derivation, always
+      wins over a manual override once any real signal exists) +
+      `MqttBridgeService` subscribing to `+/presence/#` (wildcarded on
+      location, not hardcoded to cabin). Deliberately N-people x
+      M-locations from day one, not "Nate at the cabin" hardcoded — see
+      `docs/ontology.yaml`'s new `active_presence_profile` entity for the
+      full derivation rules (including `BOTH_OCCUPIED` meaning *different*
+      people at each location, not the same person in two places). Manual
+      override is kept, not removed, for a location/instance with no
+      presence automation configured yet. `GET /api/presence` now also
+      returns `autoDerived`/`signals[]`; the toolbar pin shows a live-dot
+      + tooltip (`formatPresenceSignals()`) when auto-derived. 16 new
+      backend tests (`MqttBridgeServiceTest`, `PresenceServiceTest`,
+      `PresenceSignalRegistryTest` — 43/43 backend suite green) + 8 new
+      frontend tests (39/39 green). **Not yet built**: an equivalent
+      home-hub-side presence automation (home isn't deployed) and a
+      formal "tracked person" registry (personId is today just whatever
+      string a publisher's topic uses, auto-discovered like
+      `DeviceRegistry` does for devices, not linked to `family_profile`).
 
 ---
 

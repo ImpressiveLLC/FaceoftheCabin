@@ -532,6 +532,16 @@ body {
 }
 .presence-select:focus { color: var(--text); }
 .presence-select option { background: var(--bg-secondary); color: var(--text); }
+/* Shown only when the profile is live-derived from a real presence
+   signal (PresenceService.isAutoDerived) rather than a manual fallback --
+   see PresenceToggle's comment. */
+.presence-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3fb950;
+  flex-shrink: 0;
+}
 
 /* ─── Monitoring panel profile hint ─────────────────────────────────────── */
 .mn-profile-hint {

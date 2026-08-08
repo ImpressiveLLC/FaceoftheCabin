@@ -483,3 +483,66 @@ Temurin 21 install (no sudo available or needed) unblocks this without
 touching the system Java anything else on the host depends on — the kind
 of fix that's cheap now and would have been a hard blocker the first time
 anyone tried to run this project's tests in CI without noticing why.
+
+## 2026-08-08 — Presence Toggle: A Manual Value Masquerading as a Live One
+
+_Started from a sharp user question, not a bug report: the toolbar's
+presence pin has a map-pin icon and reads like a detected location — what
+does it actually do if a user manually picks it, and possibly picks it
+wrong?_
+
+**The question exposed a real, unflagged design gap, not just a UX
+nitpick.** `PresenceProfile` was set exclusively by a manual `PUT
+/api/presence` from that dropdown. Nothing derived it from anything real.
+That would be a cosmetic gap on its own, except `AutomationRuleService`
+already used the value to scale real security-event severity —
+`AT_CABIN`/`AWAY` change how seriously a motion or lock event is treated.
+A stale or simply-wrong manual toggle was therefore a real safety
+consequence sitting behind a control that looked like live telemetry.
+
+**A real signal already existed; nothing consumed it.** `cabin/presence/
+nate` — an HA automation doing a WiFi ARP check for a phone on the cabin
+LAN, with a deliberately asymmetric debounce (instant "home", 3-minute-
+debounced "away", because a false-away-while-actually-home is the
+dangerous failure mode for an armed system) — had been live since
+2026-08-06 per its own ontology entry. `MqttBridgeService` subscribed to
+`cabin/device/#`, `cabin/camera/#`, `cabin/event/#`, `cabin/system/#` —
+never `cabin/presence/#`. The signal was doing real work inside Home
+Assistant and being silently discarded at the platform boundary.
+
+**Explicitly scoped as N-people x M-locations from the start, not
+retrofitted later.** The user's own framing was direct: "this is not a
+cabin-only situation" — home will eventually have its own devices,
+cameras, and phones, and users won't reliably be in exactly one place.
+`PresenceSignalRegistry` is keyed by `(location, personId)` with no
+schema assumption of "one person" or "one site"; `MqttBridgeService`
+subscribes to `+/presence/#` (wildcarded on location) instead of
+`cabin/presence/#`; the derivation (`BOTH_OCCUPIED` = any person present
+at cabin AND any person, possibly a different one, present at home;
+`AWAY` = no one present anywhere) reads correctly today with a single
+real signal and requires zero backend changes the day a second
+person's phone, or home's own presence automation, starts publishing.
+
+**Auto-derivation always wins over a manual override once real data
+exists — but the manual path isn't removed.** The alternative (delete
+the dropdown entirely) would break every instance/location that hasn't
+set up a presence automation yet, which is every home-hub location today
+and any fresh template clone on day one. Instead: `PresenceService.
+recomputeFromSignals()` is a no-op until at least one real signal has
+ever arrived for this instance, and becomes authoritative — overwriting
+any manual value — from that point forward. The toolbar pin now shows a
+small live-dot and a tooltip naming who's actually detected where
+(`formatPresenceSignals()`) when auto-derived, versus reading plainly as
+manual when it isn't.
+
+**Ontology, replication, and roadmap docs updated in the same pass, not
+deferred.** `docs/ontology.yaml` gained `active_presence_profile` (the
+new derived entity) and a cross-reference from the existing phone-
+presence automation entity noting it's now actually consumed.
+`docs/REPLICATION.md` documents the `{location}/presence/{personId}`
+topic contract as a plug-in point for a new instance's own presence
+detection, independent of whether that instance runs the same HA/ARP-
+check approach this one does. `ROADMAP.md` records what's built and what
+still isn't (a home-side presence automation, and a formal
+tracked-person registry linking `personId` to `family_profile` for a
+friendlier label than a raw id).

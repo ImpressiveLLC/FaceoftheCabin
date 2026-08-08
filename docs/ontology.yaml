@@ -3492,6 +3492,9 @@ elements:
       - target: audit_log
         type: consumed_by
         cardinality: "1:N"
+      - target: active_presence_profile
+        type: consumed_by
+        cardinality: "1:N"
     relates_to:
       ui_components: []
       elements: []
@@ -3499,6 +3502,105 @@ elements:
       See automation_cabin_security_publish_nate_presence's notes for
       the possible-overlap question between this automation and that
       one — both publish to the same topic from different sources.
+
+      ADDED 2026-08-08: cabin-backend's MqttBridgeService now actually
+      subscribes to this topic (+/presence/#, wildcarded on location —
+      see active_presence_profile) and feeds it into a real derivation
+      instead of nothing consuming it. Previously this automation
+      published a genuine, live signal that the orchestration platform
+      never read at all.
+
+  - id: active_presence_profile
+    entity_type: owl:Class
+    layer: backend
+    primitive: true
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-08"
+      ref: "PresenceService.recomputeFromSignals(), MqttBridgeService.handlePresenceTopic()"
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: ["AT_HOME", "AT_CABIN", "AWAY", "BOTH_OCCUPIED"]
+    ui_display_name: "Active Presence Profile"
+    source: >
+      cabin-backend's PresenceService, auto-derived from
+      PresenceSignalRegistry's live per-person, per-location signals
+      whenever any exist (recomputeFromSignals(), called on every
+      {location}/presence/{personId} MQTT message) -- falls back to a
+      manually-set Postgres value (active_presence table) only for a
+      location/instance that has never seen a real signal at all. See
+      notes for the 2026-08-07 finding that motivated this.
+    rendering:
+      semantic: "Where the family actually is right now"
+      systems: Presence Pin (toolbar)
+      technical: "PresenceProfile enum; GET/PUT /api/presence -> { profile, label, options, autoDerived, signals[] }"
+      compliance: Occupant Presence — Derived State (WiFi-derived where available)
+    definition: >
+      The platform-wide presence state AutomationRuleService uses to
+      scale real security-event severity (an armed-adjacent event reads
+      differently AT_CABIN than AWAY) and the toolbar's map-pin widget
+      displays. Deliberately N-people x M-locations, not "one person, one
+      site": BOTH_OCCUPIED means at least one tracked person has a live
+      "present" signal at both cabin and home simultaneously (different
+      people is fine -- it does not require the same person to be in two
+      places), AWAY means no tracked person is present anywhere, and
+      either can be true regardless of how many people are actually
+      being tracked at each location. home-hub isn't deployed yet, so
+      only cabin/presence/nate is a real signal today, but nothing in
+      PresenceSignalRegistry, PresenceService, or the MQTT subscription
+      (+/presence/#, wildcarded on location) assumes cabin-only or
+      single-person -- a second person's phone (cabin/presence/emma) or
+      a future home/presence/{anyone} publisher needs zero backend
+      changes to be picked up.
+    relationships:
+      - target: automation_cabin_security_publish_nate_presence_from_phone
+        type: consumes
+        cardinality: "N:1"
+      - target: hub_location
+        type: complements
+        cardinality: "1:N"
+    relates_to:
+      ui_components: [ui_presence_toggle]
+      elements: [automation_cabin_security_publish_nate_presence_from_phone, hub_location]
+    notes: >
+      FOUND 2026-08-07 (user report): this value was PREVIOUSLY set only
+      by a manual PUT /api/presence from the toolbar dropdown -- despite
+      the UI showing a map-pin icon reading as "your detected location,"
+      nothing derived it from anything real, and AutomationRuleService
+      already used it to scale real security-event severity. A stale or
+      simply-wrong manual toggle therefore had a real safety consequence
+      (see automation_cabin_security_publish_nate_presence_from_phone's
+      own notes on the asymmetric-debounce reasoning for why a false
+      "away while actually present" is the dangerous failure mode this
+      whole area cares about getting right), not just a cosmetic one. A
+      real signal (cabin/presence/nate) already existed and was already
+      live -- nothing in cabin-backend had ever subscribed to it.
+
+      FIXED 2026-08-08: PresenceSignalRegistry (new, in-memory, keyed by
+      location+personId) records every {location}/presence/{personId}
+      MQTT message; PresenceService.recomputeFromSignals() derives this
+      entity's value from it and ALWAYS wins over a manual override the
+      moment any real signal exists for this instance. The manual PUT
+      path is kept, not removed -- a location/instance with no presence
+      automation configured yet, or a guest with no tracked phone, still
+      needs a way to state a value by hand, and that's exactly what's
+      used until the first real signal ever arrives. GET /api/presence
+      now also returns autoDerived (bool) and signals[] (raw per-person
+      per-location state) so the toolbar can show whether the pin is
+      live-detected or a manual fallback, and what specifically is
+      driving it (PresenceToggle's tooltip, formatPresenceSignals()).
+
+      NOT YET BUILT: an equivalent home-hub-side presence automation
+      (home isn't deployed) and any UI/backend concept of a formal
+      "tracked person" registry -- personId today is just whatever
+      string a publisher's topic uses (e.g. "nate"), auto-discovered the
+      same way DeviceRegistry auto-registers unknown devices, not tied to
+      family_profile records. Linking personId to a real family_profile
+      (for a friendlier "Nate is home" label instead of a raw id) is a
+      reasonable small follow-up, not done here.
 
   - id: automation_cabin_security_publish_presence_at_startup
     entity_type: owl:Class

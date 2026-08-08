@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -243,5 +243,40 @@ describe("FamilyConfigPanel", () => {
   it("defaults remote access to Tailscale when config hasn't loaded yet", () => {
     renderPanel({ config: {} });
     expect(screen.getByText("Tailscale")).toBeTruthy();
+  });
+});
+
+// Covers the 2026-08-08 presence-toggle finding: the map-pin toolbar
+// widget read as "your detected location" but was purely manual, with
+// nothing real behind it despite driving real security-severity
+// decisions (AutomationRuleService, backend). formatPresenceSignals
+// builds the live-detection tooltip from real per-person, per-location
+// signals -- N people x M locations by design, not Nate-at-cabin-only.
+// See PresenceToggle's own comment and PresenceService.java (backend).
+describe("formatPresenceSignals", () => {
+  it("names who is present and where, for one signal", () => {
+    expect(formatPresenceSignals([{ personId: "nate", location: "cabin", present: true }]))
+      .toBe("nate at cabin");
+  });
+
+  it("names multiple people across different locations", () => {
+    expect(formatPresenceSignals([
+      { personId: "nate", location: "cabin", present: true },
+      { personId: "emma", location: "home", present: true },
+    ])).toBe("nate at cabin, emma at home");
+  });
+
+  it("excludes people whose signal is currently not-present", () => {
+    expect(formatPresenceSignals([
+      { personId: "nate", location: "cabin", present: true },
+      { personId: "emma", location: "home", present: false },
+    ])).toBe("nate at cabin");
+  });
+
+  it("reports nobody present without throwing on an empty or all-absent list", () => {
+    expect(formatPresenceSignals([])).toBe("No one currently detected present");
+    expect(formatPresenceSignals([{ personId: "nate", location: "cabin", present: false }]))
+      .toBe("No one currently detected present");
+    expect(formatPresenceSignals(undefined)).toBe("No one currently detected present");
   });
 });

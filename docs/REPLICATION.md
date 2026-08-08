@@ -34,6 +34,20 @@
 - **Location-awareness** — the Spring Boot backend and device registry are
   already designed to be location-aware (`"cabin" | "home"` today), not
   hardcoded to a single site.
+- **Presence detection** — `PresenceService` derives the toolbar's
+  presence pin from live MQTT signals on `{location}/presence/{personId}`
+  (any location, any number of people — not "one specific person at one
+  specific site"), auto-registering each new location/person the moment
+  their first signal arrives, same pattern as device auto-registration.
+  Real signals aren't required to run this app — a manual override
+  (toolbar dropdown / `PUT /api/presence`) is always available and is
+  exactly what's used until the first real signal ever arrives, see
+  `docs/ontology.yaml`'s `active_presence_profile` entity — but any
+  instance can plug in real detection just by publishing to that topic
+  contract; nothing backend-side needs editing. This instance's example:
+  an HA automation doing a WiFi ARP check, publishing `home`/`not_home`
+  to `cabin/presence/nate` (see `ontology.yaml`'s
+  `automation_cabin_security_publish_nate_presence_from_phone`).
 
 ## 2. What still needs your own values (find-and-replace)
 

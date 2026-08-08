@@ -2,8 +2,8 @@
  * Cabin Orchestration Platform — Shell UI
  *
  * Docked/expandable panels:
- *   FAMILY_HUB     — Smrekar Familia Hub iframe (read-only bridge)
- *   FAMILY_CONFIG  — Family settings, notification preferences, Google OAuth
+ *   FAMILY_HUB     — "My Places" location-card grid (Cabin/Home at a glance)
+ *   FAMILY_CONFIG  — Instance config: Google account, notification preferences, platform/remote access
  *   DEVICE_MANAGER — Add / edit / remove / activate devices (drag-reorder)
  *   MONITORING     — Live WebSocket telemetry tiles + Grafana embed
  *   RULES_ENGINE   — Node-RED embed + rule CRUD + Kafka topic browser
@@ -991,7 +991,7 @@ export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder te
     <div className="panel-content">
       <div className="panel-header-bar">
         <div className="panel-header-title">
-          <h2>Smrekar Familia Hub</h2>
+          <h2>My Places</h2>
           <span className="panel-subtitle">Both locations at a glance</span>
         </div>
         <div className="header-actions">
@@ -2396,19 +2396,49 @@ function useHubLocations() {
   return version;
 }
 
+// Found 2026-08-08 (user report): this was a purely manual value with a
+// map-pin icon that read as "your detected location" -- nothing behind
+// it derived it from anything real, despite AutomationRuleService (
+// backend) using it for real security-event severity decisions. Backend
+// now derives it from live per-person, per-location presence signals
+// (MqttBridgeService.handlePresenceTopic -> PresenceService.
+// recomputeFromSignals -- N people x M locations, not cabin/Nate-only)
+// whenever any exist; autoDerived/signals below are surfaced so the
+// toggle can show whether the current value is live-detected or a
+// manual fallback (a location/instance with no presence automation
+// configured yet still needs the manual path -- see PresenceService's
+// class comment).
 function usePresence() {
   const [profile, setProfileState] = useState("AT_HOME");
   const [options, setOptions]      = useState([]);
+  const [autoDerived, setAutoDerived] = useState(false);
+  const [signals, setSignals]      = useState([]);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     fetch(`${LOCATIONS.cabin.apiBase}/api/presence`)
       .then(r => r.json())
-      .then(data => { setProfileState(data.profile); setOptions(data.options || []); })
+      .then(data => {
+        setProfileState(data.profile);
+        setOptions(data.options || []);
+        setAutoDerived(!!data.autoDerived);
+        setSignals(data.signals || []);
+      })
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    refresh();
+    // Presence is live, MQTT-driven state on the backend -- poll so a
+    // signal that arrived from someone else's phone (not this browser's
+    // own PUT) shows up here too, same reasoning as every other
+    // cross-cutting live-state poll in this file.
+    const t = setInterval(refresh, 15000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
   const setProfile = (p) => {
     setProfileState(p); // optimistic
+    setAutoDerived(false); // a manual PUT is never auto-derived -- see PresenceService.set()
     fetch(`${LOCATIONS.cabin.apiBase}/api/presence`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -2416,7 +2446,7 @@ function usePresence() {
     }).then(r => r.json()).then(d => setProfileState(d.profile)).catch(() => {});
   };
 
-  return { profile, setProfile, options };
+  return { profile, setProfile, options, autoDerived, signals };
 }
 
 // ─── Display configs (bulk, for active profile) ────────────────────────────
@@ -2445,14 +2475,36 @@ const PROFILE_LABELS = {
   AT_HOME: "At Home", AT_CABIN: "At Cabin", AWAY: "Away", BOTH_OCCUPIED: "Both Occupied",
 };
 
+// Exported for src/App.test.jsx -- builds the presence pin's tooltip text
+// from real signals rather than a hardcoded string, so it says something
+// concrete ("nate at cabin, emma at home") instead of just "auto" or
+// "manual". Pure function, no fetch/state, for direct unit testing.
+export function formatPresenceSignals(signals) {
+  const present = (signals || []).filter(s => s.present);
+  if (present.length === 0) return "No one currently detected present";
+  return present.map(s => `${s.personId} at ${s.location}`).join(", ");
+}
+
 function PresenceToggle() {
-  const { activeProfile, setProfile, presenceOptions } = useApp();
+  const { activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals } = useApp();
   const opts = presenceOptions.length > 0
     ? presenceOptions
     : Object.entries(PROFILE_LABELS).map(([value, label]) => ({ value, label }));
+  // Found 2026-08-08: this pin's icon reads as "your detected location,"
+  // but the value behind it was purely a manual toggle with nothing real
+  // driving it -- see PresenceService's class comment for why that
+  // mattered beyond cosmetics (it feeds real security-severity logic).
+  // Auto-derived now wins whenever any real signal exists; the select
+  // below still allows a manual override for an instance/location with
+  // no presence automation configured yet (or a guest with no tracked
+  // phone) -- see usePresence's comment.
+  const title = presenceAutoDerived
+    ? `Live-detected: ${formatPresenceSignals(presenceSignals)}`
+    : "Manually set — no live presence signal detected yet for this instance";
   return (
-    <div className="presence-toggle">
+    <div className="presence-toggle" title={title}>
       <MapPin size={13} style={{ opacity: 0.6 }}/>
+      {presenceAutoDerived && <span className="presence-live-dot" aria-label="Live-detected" />}
       <select className="presence-select" value={activeProfile}
         onChange={e => setProfile(e.target.value)}>
         {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -2517,7 +2569,7 @@ function App() {
   const [apiError,       setApiError]       = useState(null); // { message, at } | null -- see refreshDevices
   const { levels: alertLevels, cfg: alertCfg, enableAlert, resetAlert } = useNavAlerts();
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
-  const { profile: activeProfile, setProfile, options: presenceOptions } = usePresence();
+  const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence();
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile);
   const cameraAuth = useGoogleAuth();
 
@@ -2591,7 +2643,7 @@ function App() {
       devices, config, refreshDevices,
       activeLocation, locationCfg,
       alertCfg, enableAlert, resetAlert,
-      activeProfile, setProfile, presenceOptions,
+      activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
       displayConfigs, refreshDisplayConfigs,
     }}>
       <div className="app-shell">
