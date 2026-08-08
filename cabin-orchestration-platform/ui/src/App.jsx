@@ -1737,13 +1737,29 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
             Access with its own Google OAuth (same client as this app,
             not Tailscale-gated anymore -- see docs/MAINTENANCE.md's
             Grafana section). The old "Won't load off Tailscale" label
-            is gone since it's no longer true. Note this iframe still
-            isn't guaranteed to auto-load: it has its own, separate
-            Grafana session from cabin-ui's -- the first time in a given
-            browser, this embed may show Grafana's own Google sign-in
-            prompt inside the frame rather than the dashboard directly. */}
+            is gone since it's no longer true.
+
+            CORRECTED 2026-08-08 (user report: still a white panel after
+            the SameSite=None cookie fix): this comment previously
+            claimed the embed "may show Grafana's own Google sign-in
+            prompt inside the frame" -- that's wrong and can never
+            happen. Google's own sign-in pages refuse to render inside
+            ANY iframe (their anti-clickjacking policy, not something
+            Grafana or this app can override) -- if the iframe's Grafana
+            session is invalid and needs to redirect through a fresh
+            Google OAuth login, the frame goes blank permanently trying
+            to show a login screen Google won't allow inside a frame.
+            The SameSite=None/Secure cookie fix only helps a cookie
+            issued AFTER that config went live -- a session cookie from
+            before then keeps its old SameSite=Lax attribute until the
+            user actually re-authenticates. This embed can only ever
+            work by reusing an already-valid Grafana session established
+            OUTSIDE the iframe (a direct top-level tab) -- it can never
+            complete a first-time or expired login on its own. */}
         <div className="tailscale-hint">
-          <Lock size={11} /> Requires Google sign-in (same account as this app) — may prompt inside the frame on first load.
+          <Lock size={11} /> Needs an active Grafana session — sign in directly at{" "}
+          <a href={locCfg?.grafanaUrl} target="_blank" rel="noreferrer">{locCfg?.grafanaUrl}</a>{" "}
+          first (not inside this panel), then reload. A blank panel here means that session has expired or was never started.
         </div>
         {/* Found 2026-08-07 (live, via M920q access): this was rendering a
             guaranteed-blank iframe, for two stacked reasons. (1) The `/d/`

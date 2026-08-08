@@ -6442,6 +6442,24 @@ elements:
       the next session.
       Test (REPLICATION.md §5) once this capability is added there.
 
+      CORRECTED 2026-08-08 — the embedded panel's white-screen (separate
+      from the direct-access 403 above, which was already corrected as
+      fixed 2026-08-07) traced to Google's OWN iframe policy, not
+      anything fixable in this repo. Direct header checks confirm
+      Grafana sends no X-Frame-Options/CSP frame-blocking headers, and
+      the SameSite=None cookie fix is genuinely live on the container --
+      but a session cookie issued before that config change keeps its
+      old SameSite=Lax attribute until re-authentication, and when the
+      iframe's session is invalid for that reason it has to redirect
+      through Google's sign-in page, which refuses to render inside any
+      iframe by design. This embed can only ever reuse an
+      already-valid Grafana session established in a real top-level tab
+      -- it can never complete a first-time or expired login inside the
+      frame itself, and no further cabin/Grafana-side config changes
+      would alter that. See MAINTENANCE.md's matching 2026-08-08 update
+      for the full diagnosis and the concrete fix (sign into Grafana
+      directly once, outside the embed).
+
       FOUND/NOT CHANGED 2026-08-07: a Frigate monitoring dashboard now
       exists and is provisioned into this same Grafana instance (see
       cabin_grafana_frigate_dashboard) — completely unrelated to this

@@ -492,6 +492,29 @@ matters.
 
 ## Grafana — Off-Tailscale Access via Cloudflare + Google OAuth
 
+**UPDATE 2026-08-08: the embedded panel's white-screen is NOT fixable
+by more cabin/Grafana config — it's Google's own iframe policy.**
+Direct header checks against `grafana.unicornpingpong.com` confirm
+Grafana itself sends no `X-Frame-Options`/CSP frame-blocking headers,
+and the 2026-08-07 `GF_SECURITY_COOKIE_SAMESITE=none` fix is genuinely
+live on the container. But: (1) a session cookie issued *before* that
+config change keeps its old `SameSite=Lax` attribute until the user
+actually re-authenticates — changing the server setting doesn't
+retroactively rewrite cookies already sitting in the browser; (2) when
+the iframe's Grafana session is invalid for that reason (or any reason)
+and needs a fresh login, it has to redirect through Google's OAuth
+sign-in page — and Google's sign-in pages refuse to render inside any
+iframe at all, by design, for anti-clickjacking reasons Grafana has no
+control over. Net effect: this embed can only ever work by reusing an
+already-valid Grafana session established in a real top-level tab; it
+can never complete a first-time or expired login on its own, and no
+further server-side config change will alter that. **Concrete fix for
+the user right now**: open `grafana.unicornpingpong.com` directly (not
+inside cabin-ui), sign out and back in with Google there to get a fresh
+`SameSite=None` cookie, then reload cabin-ui's Monitoring panel. Fixed
+the embed's own hint text (App.jsx) to say this instead of the
+previous, incorrect "may prompt inside the frame on first load" claim.
+
 **UPDATE 2026-08-07: Google OAuth login is now confirmed actually
 working** — `docker logs cabin-grafana` shows a real, current,
 successfully authenticated session for `nhsmrekar@gmail.com` from a real
