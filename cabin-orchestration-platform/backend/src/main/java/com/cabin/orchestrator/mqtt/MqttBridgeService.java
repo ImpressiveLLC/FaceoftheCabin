@@ -131,20 +131,59 @@ public class MqttBridgeService implements MqttCallback {
     // cabin/camera/ as a camera ID and JSON-parsed every payload — wrong
     // for all four of these (parts[2]=="events" isn't a camera name, and
     // three of the four payloads aren't JSON at all).
+    //
+    // Found 2026-08-07: none of these branches ever called
+    // registry.update() for the camera itself -- only handleDeviceMessage
+    // (cabin/device/#) did. A camera's DeviceStatus.lastSeen was therefore
+    // set once (whenever/however it first got registered) and never
+    // refreshed, so DeviceHealthMonitor's 5-minute camera stale threshold
+    // always fired exactly 5 minutes after that one registration and the
+    // camera could never recover -- matching the reported "loads, then
+    // disappears after ~5 min" symptom. Motion and per-label count topics
+    // both name a real camera and both fire far more often than every 5
+    // minutes whenever Frigate is actually seeing frames, so either is a
+    // good liveness signal; touchCamera() is called from both.
     private void handleCameraTopic(String[] parts, String payload) {
         if (parts.length == 3 && "events".equals(parts[2])) {
             handleFrigateDetectionEvent(payload);
         } else if (parts.length == 4 && "motion".equals(parts[3])) {
             String cameraId = parts[2];
+            touchCamera(cameraId);
             String state = "ON".equalsIgnoreCase(payload.trim()) ? "MOTION_ON" : "MOTION_OFF";
             eventPublisher.publish(new CabinEvent(
                 UUID.randomUUID().toString(), cameraId, state,
                 "INFO", Instant.now(), Map.of("camera", cameraId)));
+        } else if (parts.length == 4) {
+            // per-label object-count topic, e.g. cabin/camera/driveway/car —
+            // not published as a CabinEvent (fires too often to be useful,
+            // see below), but still real evidence the camera is alive.
+            touchCamera(parts[2]);
         }
-        // available / per-label count topics: status-only, not published as
-        // events — available doesn't name a camera, and count topics fire
-        // far too often to be useful "events" (they mirror the JSON stream
-        // Frigate already sends on cabin/camera/events).
+        // `available` is deliberately still not handled here: it's
+        // Frigate's single bridge-wide topic (parts.length==2), doesn't
+        // name any one camera, and per-label count topics still aren't
+        // published as CabinEvents — they'd mirror the JSON stream
+        // cabin/camera/events already sends and fire far too often to be
+        // useful "events", even though they're useful for touchCamera().
+    }
+
+    /**
+     * Marks a camera as seen right now — auto-registers it (same pattern
+     * handleDeviceMessage uses for cabin/device/# devices) if this is the
+     * first time this camera ID has appeared, otherwise just refreshes
+     * lastSeen/state on the existing entry without touching its other
+     * attributes.
+     */
+    private void touchCamera(String cameraId) {
+        DeviceStatus existing = registry.get(cameraId);
+        if (existing == null) {
+            registry.update(new DeviceStatus(cameraId, DeviceType.CAMERA, cameraId, "ONLINE",
+                Instant.now(), Map.of(), "cabin"));
+            log.info("Auto-registered new camera: {}", cameraId);
+            return;
+        }
+        registry.update(new DeviceStatus(existing.deviceId(), existing.type(), existing.name(),
+            "ONLINE", Instant.now(), existing.attributes(), existing.location()));
     }
 
     @SuppressWarnings("unchecked")
