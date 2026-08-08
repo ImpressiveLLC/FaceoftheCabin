@@ -5,6 +5,13 @@
 > **Audience:** Claude Code handoff · CIO · Product Lead · Data Architect · Ontology Lead  
 > **Source:** Architecture Brief v1.0 · unicornpingpong.com · Multi-role review completed 2026-07-27
 
+> **2026-08-08 — fork handoff in effect.** The user is working from a git
+> fork with a different AI tool ("Codex") until Claude Code resumes
+> 2026-08-14. See [`docs/HANDOFF_2026-08-08_codex-fork.md`](docs/HANDOFF_2026-08-08_codex-fork.md)
+> for the full operating charter (check-down doc order, fork/CI/git
+> guardrails, current-state snapshot, and the 5 open work items from the
+> user's last request). Remove this note once reconciled back into `main`.
+
 ---
 
 ## Northstar Goals

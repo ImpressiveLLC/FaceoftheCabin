@@ -1,0 +1,413 @@
+# Handoff — 2026-08-08 → 2026-08-14, Codex Fork Session
+
+> Written because the user is about to hit their weekly Claude Code usage
+> limit and intends to fork `ImpressiveLLC/FaceoftheCabin` in git and
+> continue work with a different AI coding tool ("Codex") until Claude Code
+> is available again — **planned resume date: Friday, 2026-08-14.** This
+> document is the operating charter for that gap. It exists to (a) give
+> Codex the same check-down discipline this project already runs on, (b)
+> hard-guardrail anything that touches shared/production infrastructure so
+> a fork session can't collide with the canonical repo or the live M920q,
+> and (c) leave a precise enough state snapshot that reconciling the fork's
+> work back into a Claude Code session on 8/14 is tractable rather than a
+> reconstruction project.
+>
+> Last commit on `main` as of writing: **`6dbbadc`** — "Fix Device
+> Manager's location filtering; add the missing 'Add Place' UI". Working
+> tree clean, `main` up to date with `origin/main`, nothing uncommitted.
+
+---
+
+## 0. Read this first, then follow the project's own check-down order
+
+This project already has a documentation hierarchy — don't invent a new
+one. In order:
+
+1. **`CLAUDE.md`** (repo root) — full project context: architecture, repo
+   structure, both locations' hardware/URLs, env vars, API endpoint list,
+   UI panel list, CI/CD mechanics, testing setup, design constraints.
+   Start every session here.
+2. **`ROADMAP.md`** (repo root) — phased priority task list and current
+   status per phase. Check this before starting any new work to see if
+   it's already scoped, in progress, or explicitly deferred.
+3. **`docs/DEFINITION_OF_DONE.md`** — the session exit checklist (10
+   numbered sections) **and**, at the bottom, a live **"Next Session — Open
+   Items"** punch list. That punch list is the single most current summary
+   of what's actually still broken/open — read it before touching anything
+   this doc doesn't mention below.
+4. **`docs/ontology.yaml`** — the canonical definition of every user-facing
+   configurable concept (storage keys, transformation functions, source of
+   truth). If you add or change a concept a user can configure, it needs an
+   entry here in the same commit.
+5. **`docs/PRODUCT_NOTES.md`** — design-decision rationale (the *why*
+   behind UX choices). **`docs/MAINTENANCE.md`** — operational runbook,
+   incident log, exact recovery procedures. Consult whichever is relevant
+   to the task; both are referenced by name from `CLAUDE.md` and
+   `ROADMAP.md` at the specific points where they matter.
+6. **`docs/EXECUTION_PLAN_*.md`** — dated, scoped implementation plans for
+   specific multi-part features (this file follows that same naming
+   convention). If a plan file already exists covering your task, follow
+   it instead of re-deriving scope.
+
+**Every one of those files must stay accurate.** `docs/DEFINITION_OF_DONE.md`
+section 3 and 7 exist specifically to catch drift between docs and code —
+run that checklist, not just a mental review, before considering any
+chunk of work done.
+
+---
+
+## 1. Hard guardrails — read before Codex touches git, CI, or the M920q
+
+These exist because of a **real incident earlier in this project**: a
+concurrent session ran a destructive cleanup command without checking
+`git status` first and destroyed another session's unpushed commits. The
+risk of two independent, loosely-coordinated sessions (this fork + the
+eventual Claude Code resume) operating against the *same shared production
+host* is structurally the same shape of risk. Treat everything below as
+non-negotiable, not a suggestion.
+
+### 1a. The self-hosted GitHub Actions runner will NOT serve a fork
+
+Both deploy workflows target `runs-on: [self-hosted, cabin-m920q]`:
+- `.github/workflows/deploy-cabin-backend.yml`
+- `.github/workflows/deploy-family-hub.yml`
+- `.github/workflows/rotate-secrets.yml`
+
+This runner is a physical process registered on the M920q **specifically
+to `ImpressiveLLC/FaceoftheCabin`**. Self-hosted runners are registered
+per-repository in GitHub — a fork gets its own separate Actions
+environment with **no runner attached at all**. Concretely:
+
+- Pushing to a fork's `main` will **not** deploy anything, anywhere. The
+  workflow files exist in the fork's copy but have nowhere to execute.
+  Do not assume "CI just works" on the fork, and do not interpret a green
+  or absent Actions run as proof of anything.
+- **Do not register a second self-hosted runner on the M920q pointed at
+  the fork.** That would create two independent deploy pipelines capable
+  of racing each other against the same containers, volumes, and Postgres
+  database — the exact multi-pipeline-one-host hazard the earlier `rm -rf`
+  incident already demonstrated the cost of, just via CI instead of a
+  manual shell session.
+- If the fork's work needs to be *tested* against real infrastructure
+  before 8/14, that is a **manual, explicit, user-approved** deploy
+  (see `docs/MAINTENANCE.md`'s "Manual (cabin-backend)" section for the
+  existing safe procedure), never an automatic one from the fork.
+
+### 1b. Git safety
+
+- **Never push to `ImpressiveLLC/FaceoftheCabin`'s `main` from the fork.**
+  All fork work stays on the fork (or a branch within it) until the user
+  explicitly reconciles it back — see §5.
+- **Never force-push, `git reset --hard`, or delete branches** without the
+  user explicitly asking for that specific action in that specific moment.
+- **Always run `git status` before any destructive operation** (checkout,
+  restore, reset, clean, or any `rm -rf` touching a repo path). If
+  anything unexpected is sitting there (uncommitted changes, an unfamiliar
+  branch), stop and ask rather than clearing it — it may be in-progress
+  work, including the user's own manual edits made outside a session.
+- **Never skip hooks** (`--no-verify`) or bypass signing unless the user
+  explicitly asks.
+- **Commit messages describe why, not just what** — this project's
+  existing `git log` is the style reference; skim the last ~15 commits
+  before writing new ones.
+
+### 1c. Production host safety (the M920q, `unicornpingpong.com`)
+
+- The M920q runs **live, in-use production services** for a real family
+  (cameras, leak/smoke sensors, door locks) — not a sandbox. Nothing gets
+  SSH'd into or deployed on it without the user explicitly present and
+  approving that specific action.
+- Never touch `docker-compose.m920q.yml`'s disabled-services list
+  (`mqtt`/`homeassistant`/`nodered`/`frigate`/`watchdog` are intentionally
+  disabled there because a separately-managed stack for those already runs
+  on that host — re-enabling them would double-start services and conflict
+  on ports).
+- Never print, log, or diff a secret by its raw value. Compare by
+  presence/hash only. (A real incident already happened here: a
+  `docker inspect` env dump printed `BLINK_PASSWORD` in plaintext into a
+  session transcript — see §4 below, this is still an open item.)
+- Secrets never get committed to make CI "just work," on the fork or
+  otherwise.
+
+### 1d. Testing — no loose code, even without working CI
+
+`docs/DEFINITION_OF_DONE.md` §10 requires every new piece of testable
+logic to ship with a real test in the suite CI already runs:
+`backend/src/test/` (JUnit + Testcontainers), `cabin-orchestration-platform/ui`'s
+Vitest suite (`src/*.test.jsx`), `family-hub/test/run.js`'s Playwright
+checks. **Because the fork's CI won't execute (§1a), this becomes a
+manual gate instead of an automatic one — it does not become optional.**
+Before considering any fork-side task done:
+- Backend: `./mvnw test` (needs the pinned Temurin 21 JDK — see
+  `CLAUDE.md`'s "Testing" section for the exact JAVA_HOME gotcha and two
+  other pre-existing environment gaps already solved there).
+- Frontend (cabin-ui): `cd cabin-orchestration-platform/ui && npm test`
+  (Vitest).
+- Family Hub: `cd family-hub/test && node run.js` (Playwright).
+
+State explicitly which of these actually ran and passed in whatever
+summary/commit accompanies the work — "looks right" is not the same claim
+as "the suite ran and passed." If a test genuinely can't run in Codex's
+environment (e.g. no Docker for Testcontainers), say so explicitly rather
+than silently skipping it.
+
+### 1e. No silent scope narrowing, no drift
+
+- If a requested item can't be done, say so explicitly — never quietly
+  drop it.
+- If something looks inconsistent with what's documented mid-task
+  (a config value, a name, a piece of state), stop and reconcile it right
+  then against git history/docs rather than noting it and moving on —
+  this project has already been burned once by not doing that (see
+  `docs/DEFINITION_OF_DONE.md`'s "(i) Additional practices" section for
+  the full story).
+- Docs written *about* a change ship in the *same* commit as the change.
+
+---
+
+## 2. Current state snapshot (verified, as of `6dbbadc`)
+
+Everything through commit `6dbbadc` is committed, pushed to
+`origin/main`, and — because both deploy workflows trigger automatically
+on push to the canonical repo's `main` — already live and deployed on the
+M920q. Recent work this session, newest first:
+
+- `6dbbadc` — Fixed `DeviceManagerPanel` showing devices from the wrong
+  location (it read `activeLocation` for a localStorage key but never
+  actually filtered the `devices` array passed to its See/Change/Remove
+  sub-views). Added `allLocationsLabel()` so the location-switcher's
+  "Both" option becomes "All" once a 3rd location exists instead of
+  staying hardcoded at "Both". Added the first-ever UI for creating a new
+  location (`AddPlaceForm`, `POST /api/locations`).
+- `196b8e8` — Replaced the Grafana iframe in the Monitoring panel with a
+  native `CameraHealthPanel` (Prometheus-sourced via a new backend proxy,
+  not a public Grafana exposure). This was an explicit user decision, not
+  a bug fix — see §3 item 2026-08-08-a below for the full reasoning.
+- `7801adc` — `FrigateMetricsController` (`GET /api/frigate-metrics`):
+  server-side Prometheus query proxy so Prometheus itself stays
+  Tailscale/internal-only, never publicly exposed.
+- `b236660` — **The real root cause** of a whole cluster of symptoms the
+  user reported (devices not showing, Grafana/Node-RED/Live-MQTT panels
+  broken, showing internal Docker hostnames): the `hub_locations` Postgres
+  table had been seeded, very early in a prior session, with unreachable
+  Docker-internal default URLs, and because the frontend's
+  `mergeHubLocations()` lets API data override hardcoded/env defaults on
+  every page load, every subsequent URL fix (Node-RED, Grafana) was
+  silently overridden back to broken on next load. Fixed live via a
+  `PATCH /api/locations/cabin` call, then at the source by adding the
+  missing `CABIN_LOCATIONS_CABIN_*` env vars to
+  `infra/docker-compose.m920q.yml` so the seed is correct from boot.
+  **Verified surviving a real backend restart.**
+
+All of the above have real tests wired into the existing CI gates
+(`FrigateMetricsControllerTest`, `App.test.jsx` additions for
+`cameraHealthLabel`, `allLocationsLabel`, and `AddPlaceForm` — 52/52 green
+in the frontend suite as of this commit).
+
+### Things resolved this session that are NOT bugs to reopen
+
+- **The Grafana iframe's original "white screen" root cause was
+  correctly diagnosed and fixed** (the `hub_locations` bug above, verified
+  via Grafana's own server logs showing a real referer for the first time)
+  — but the user then **deliberately decided to replace the iframe
+  entirely**, not just fix it, because a session-dependent embed a
+  "just wants it to work" user has to remember to scroll inside isn't
+  acceptable for a mixed-technical-skill multi-user product. Do not
+  reintroduce a Grafana iframe as a "simpler fix" without checking with
+  the user first — that would be re-litigating a decision already made.
+  A plain Grafana **link-out** still exists for anyone who wants the full
+  dashboard.
+- The `blinkbridge`/`driveway` camera outage this session was a
+  **transient Blink cloud-API failure**, not a code regression — confirmed
+  recovered (`docker restart blinkbridge`, `driveway` back to real FPS).
+  No code change was needed or made for this.
+
+---
+
+## 3. Open work items — from the user's most recent request, in their words
+
+The user's last substantive request before the usage-limit/handoff
+message was a 5-part "big things right now" list. **None of these five
+have been started.** Full context for each:
+
+### Item 1 — Device state semantics are misleading
+
+> "devices that show offline are not necessarily offline just not
+> reporting... the correct state is probably something like 'checking in
+> on schedule' / 'not checked in on schedule' / 'hasn't checked in' /
+> 'not configured' and we need a listener with an HA, mq, or rules based
+> (automation check) way to know in the UI if it's basically good or bad
+> based on assumption that it's only bad if we haven't heard back from a
+> known device and attempts to ping it aren't successful. The sockets or
+> cards for each device, cameras included, should have this behavior
+> baked-in."
+
+Relevant existing code: `DeviceStatus.state` (`ONLINE | OFFLINE | ALARM |
+UNKNOWN`, see `CLAUDE.md`'s "Key models" section) is currently binary/
+stale-flag driven — `DeviceHealthMonitor.java` does stale detection with
+exponential backoff but the *UI-facing label* collapses everything down
+to those four values. This item asks for a richer state model
+(multi-tier "haven't heard from it on schedule" vs "confirmed
+unreachable via active ping") applied consistently to both device cards
+and camera cards. This will likely need a new enum/set of states, a
+change to whatever renders device/camera status badges, and — per the
+user's ask — an actual active verification step (ping/HA check/MQTT
+liveness), not just passive staleness. Needs ontology.yaml entry once
+designed (new or extended `device_status` semantics).
+
+### Item 2 — Camera auth should inherit from Family Hub, single persistent OAuth
+
+> "camera auth's should still be inherited from the parent account thats
+> used as the atomic owner address for the orchestration hub... we should
+> inherit, and by design that's the default, from Family Hub as part of
+> the templates for both sides of the product, but we should allow — as
+> we do — direct landing on the cabin.unicornpingpong.com and a single
+> oauth only that persists for the cameras and refreshes using the auth
+> method for the hub as longs as the session is active. no more pivoting,
+> and the ux interaction model will be cleaner."
+
+This directly connects to an **already-logged but unbuilt roadmap item**:
+"App-wide Google OAuth gate + consistent landing page" (see
+`docs/DEFINITION_OF_DONE.md`'s "Next Session — Open Items", second
+bullet). Today auth only gates Camera Events/Opportunities panels, not
+the app as a whole, and there's no single persistent session shared across
+camera auth and the rest of the hub. This item should probably be
+designed and built together with that existing roadmap item rather than
+as a separate pass — check `ROADMAP.md`'s matching entry for whatever
+scope notes already exist there before starting design.
+
+### Item 3 — No UI to add additional "My Places"
+
+**Resolved this session** — `AddPlaceForm` shipped in `6dbbadc` (see §2).
+The user asked for this "earlier, but still don't see" it, so verify it
+actually renders and works for them before considering this fully closed
+— it has Vitest coverage but has **not been visually verified in a real
+browser** (no browser tool was available this session — see §4).
+
+### Item 4 — Places-based Rules & Alerts context, per-location Node-RED
+
+> "places-based contexts for rules & alerts isn't set; I only see one
+> node red and I know this is something we need to set up as a templated
+> workflow at the time of implementing number 3 above, all can live on
+> the 920q for now. same context shift behavior for all locations. now in
+> devices, if I shift context to Home as a place, I still see devices
+> online at Cabin, so this needs to be cleaned up. it's correct insofar
+> as if I select both I should see all devices, but once I add a third
+> location the 'both' reference will shift to 'All' so we should fix that
+> now."
+
+This is really **two sub-items**:
+- **4a — Device Manager showing wrong-location devices when context is
+  switched: FIXED this session** (`6dbbadc`, see §2). The "Both"→"All"
+  relabeling the user asked for in the same message is also done
+  (`allLocationsLabel()`).
+- **4b — Per-location Node-RED / Rules & Alerts context: NOT started.**
+  Currently `RulesPanel` embeds a single Node-RED instance regardless of
+  which location is active (`CLAUDE.md`'s "UI panels" section: "Rules &
+  Alerts (`RulesPanel`) — Node-RED embed + Kafka topic browser," no
+  location parameter). The user explicitly said this should be built "as
+  a templated workflow at the time of implementing number 3" (i.e.
+  alongside/using the same location-template mechanism as Add Place) and
+  that "all can live on the 920q for now" — meaning don't stand up a
+  second Node-RED instance yet, this is about the UI correctly scoping
+  which flows/alerts are shown per active location context, using the
+  same location-switching pattern already established elsewhere in the
+  app (Monitoring panel's `LocationSwitcher`).
+
+### Item 5 — Home location physical setup
+
+> "I'm happy to set up Home now to help work through some of the
+> considerations, could be done through this machine (ilikethelights), a
+> raspberry pi 2 with added storage via wifi or directly to my linksys
+> router, or could dedicate an emulated OS through an android with
+> termux (I have one ready for this), or use a dedicated laptop (ubuntu
+> is ready and I can keep it awake). lets go!"
+
+**Not started — was blocked on the user choosing one of the four listed
+hardware options** (Windows PC `ilikethelights`, Raspberry Pi 2, Android/
+Termux, or a dedicated Ubuntu laptop) when this session was interrupted.
+**Do not unilaterally pick one of these for the user** — this is a real
+physical/hardware decision with different tradeoffs (the project's
+existing design constraint is "no ARM/Pi hardware — both hubs are x86_64
+Lenovo ThinkCentre M920q," per `CLAUDE.md`'s "Design constraints" section,
+so a Raspberry Pi 2 option would be a deliberate deviation from that
+constraint worth flagging back to the user, not silently going along
+with). If Codex reaches this item, present the tradeoffs and ask, the
+same way this session would have.
+
+---
+
+## 4. Known unresolved issues (do not silently drop these)
+
+- **`BLINK_PASSWORD` credential exposure — rotation status UNCONFIRMED.**
+  Earlier in this project's history, a `docker inspect`-based env dump
+  printed the live `BLINK_PASSWORD` value in plaintext into a session
+  transcript. The user was told to rotate that Blink account's password.
+  **No confirmation has been received that this rotation actually
+  happened.** This is a live open action item — surface it to the user
+  again if it comes up in this handoff period, and do not assume it's
+  been handled. (The *procedural* fix — never printing `$PASS`, piping it
+  through a shell variable instead — is already documented in
+  `docs/MAINTENANCE.md`'s blinkbridge rebuild/redeploy section and does
+  not need to be redone; it's specifically the *rotation of that one
+  password* that's unconfirmed.)
+- **`front_door` (Reolink) camera still physically off-network.** Needs
+  on-site checking (power, WiFi re-pairing) — not fixable remotely by any
+  session, Claude or Codex.
+- **`CameraHealthPanel` (new, `6dbbadc`/`196b8e8`) has not been visually
+  verified in a real browser** — this session had no browser/preview tool
+  available. It has Vitest coverage for its pure logic
+  (`cameraHealthLabel()`) but the actual kiosk-vs-mobile layout, metric
+  selection, and visual density the user asked about ("Apple product
+  levels of zero thought process," not wanting a scrollable embed) has
+  not been confirmed against a real device. This is explicitly logged as
+  a follow-up in `ROADMAP.md` and `docs/DEFINITION_OF_DONE.md`'s punch
+  list already — if Codex has browser/preview tooling available, this is
+  a good candidate to actually close out.
+- **`AddPlaceForm` (new, `6dbbadc`) likewise not visually verified** —
+  same caveat as above, same recommendation if tooling allows it.
+
+---
+
+## 5. Reconciling the fork back into Claude Code on 2026-08-14
+
+When the user returns to Claude Code:
+
+1. **Do not merge the fork into `ImpressiveLLC/FaceoftheCabin`'s `main`
+   directly from Codex.** Push the fork's work to a branch (on the fork,
+   or as a branch pushed to the canonical repo if the user grants push
+   access) and open it as a reviewable diff — a GitHub PR is the natural
+   mechanism, but the actual merge decision belongs to the user + Claude
+   Code session on 8/14, not to an autonomous merge beforehand.
+2. Bring **this file's §2 "Current state snapshot"** and **§3 "Open work
+   items"** sections into that session unchanged as the starting context,
+   updated with whatever Codex actually completed in the interim —
+   i.e. Codex should keep this file itself current (git-tracked, same
+   commit as any work it describes) rather than letting it go stale,
+   exactly per this project's own "docs ship in the same commit as the
+   change" discipline (§1e above).
+3. Before Claude Code trusts any fork-side claim of "done," it should
+   independently verify per `docs/DEFINITION_OF_DONE.md` — run the actual
+   test suites, check `git log` against what's claimed, re-read
+   `docs/ontology.yaml`/`ROADMAP.md` for drift — the same way any session
+   in this project verifies its own work, not looser scrutiny just because
+   the work originated elsewhere.
+4. If the self-hosted-runner/fork gap (§1a) means nothing from the fork
+   period actually got deployed to the M920q, that's expected and correct
+   — deployment of fork-originated work is something to do deliberately
+   once it's back in the canonical repo, not something to have attempted
+   from the fork.
+5. Explicitly re-confirm BLINK_PASSWORD rotation status (§4) — don't let
+   that item silently vanish across the handoff boundary the way the
+   `blinkbridge` architecture decision was once lost across a Claude-web
+   session (see `CLAUDE.md`'s "Decisions made where Claude can't commit"
+   section — this handoff document is this project's version of the same
+   discipline, applied to a tool-switch instead of a machine-switch).
+
+---
+
+**This document should be updated in place (not superseded by a new
+file) if Codex makes meaningful progress before 8/14** — keep §2 and §3
+current rather than leaving them as a stale snapshot, per this project's
+own documented practice of reconciling drift as soon as it's found rather
+than at the end.

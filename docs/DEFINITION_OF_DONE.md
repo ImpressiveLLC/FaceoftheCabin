@@ -163,6 +163,14 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
+- **Fork handoff in effect 2026-08-08 → 2026-08-14** — user working from a
+  git fork with a different AI tool while away from Claude Code. See
+  [`docs/HANDOFF_2026-08-08_codex-fork.md`](HANDOFF_2026-08-08_codex-fork.md)
+  for the full charter: check-down doc order, git/CI/production
+  guardrails (self-hosted runner is repo-specific to `main`, will NOT
+  serve the fork — do not register a second one against the M920q), the
+  5 still-open items from the user's last request, and reconciliation
+  steps for 8/14. Remove this item once reconciled.
 - **Grafana embed resolved 2026-08-08 (real root cause, not the
   suspected one) — then replaced entirely by user decision.** The
   actual blocker was `hub_locations` seeded with unreachable
