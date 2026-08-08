@@ -163,20 +163,47 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
+- **Grafana embed still white — top priority for next session.** The
+  SameSite=None cookie theory was disproven live tonight: user did a
+  real sign-out + fresh Google login (confirmed via Grafana's own
+  server logs), reloaded cabin-ui, still white. Zero requests with a
+  `cabin.unicornpingpong.com` referer appear anywhere in Grafana's logs
+  before or after the fresh login — the iframe request may never reach
+  the server at all. A DevTools Network-tab check was inconclusive.
+  Leading theory, not confirmed: browser-level third-party cookie
+  blocking, independent of SameSite/Secure attributes. If confirmed,
+  the real fix is making Grafana same-origin to cabin-ui (reverse-proxy
+  under `cabin.unicornpingpong.com/grafana/`), not another cookie tweak.
+  See `ROADMAP.md`'s matching entry.
+- **App-wide Google OAuth gate + consistent landing page — new user
+  directive, 2026-08-08, not built yet.** Auth today only gates Camera
+  Events/Opportunities, not the app as a whole; the landing panel isn't
+  consistent (user's report — checked the code, `activePanel` isn't
+  actually persisted anywhere, so this is most likely browser tab/
+  session restoration, not an app bug, but the UX problem is real
+  either way). Full scope in `ROADMAP.md`'s matching entry — needs real
+  design work (auth-before-render gate, Family Hub session reuse or a
+  hard login wall, landing page = My Places per the user's stated
+  assumption) before implementation.
+- **Zigbee LQI signal-quality prototype needs evaluation** (built
+  2026-08-08, `GET /api/signal-quality`) — deliberately not wired to
+  any alert path yet. Check whether `anomalous` flags correlate with
+  anything real before building further; `ANOMALY_DROP_RATIO` (30%) is
+  an untuned placeholder.
+- **Alert/ontology UX retrenchment** (flagged 2026-08-08 via a live
+  screenshot: a "Warning" banner was firing on a known-permanent,
+  harmless condition — 5 undeployed Home cameras — with zero real
+  alarm behind it, no per-device identification, and no armed/disarmed
+  indicator anywhere in the UI at the time). Needs a real design pass
+  against the "See, Think, Act" Northstar goals, not a patch. See
+  `ROADMAP.md`'s matching entry for the full finding.
 - **Reolink (`front_door`) camera still physically off-network** — needs
   on-site checking (power, WiFi re-pairing). Not fixable remotely.
-- **`blinkbridge`'s root cause is fixed (2026-08-06) — verify the fix
-  holds over the next real transient failure.** The actual bug
-  (permanently disabling a camera after 3 failures with no retry path,
-  `main.py`) is patched and deployed — see `MAINTENANCE.md`'s Blink
-  section for the full diagnosis and fix. Not yet proven against a real
-  failure in production, only against a clean redeploy. The Uptime Kuma
-  monitor recommended here is now built (`Frigate driveway camera_fps`,
-  JSON-query against `http://frigate:5000/api/stats`, alerts via the
-  same ntfy topic `cabin_critical_event_alert` reuses) — verified live,
-  correctly evaluating `camera_fps > 0`. Separately open: whether to
-  decouple reliable clip-recording from the RTSP-live-relay entirely
-  (the user's recalled prior direction, not yet scoped or built).
+- **`blinkbridge`'s no-clip crash is fixed (2026-08-08)** — a transient
+  Blink API failure crashed the stream-start path instead of retrying
+  cleanly; fixed and redeployed on the M920q (separate repo, not this
+  one). Not yet proven against a second real occurrence, only the one
+  that prompted the fix.
 - **Uptime Kuma had zero notification channels configured at all before
   2026-08-06** — every monitor in it (Homepage, Home Assistant, Frigate,
   Node-RED, Tailscale) could go red with nobody ever told. Added one
@@ -187,20 +214,9 @@ accumulate.*
   consider armed/presence state yet** — a WARN-tier event (door open,
   low battery, tamper) scores the same whether the cabin is occupied or
   armed-away. Deliberate MVP scope cut (see that entity's `notes`), not
-  forgotten — wire it to `cabin/security/armed_away` and
-  `cabin/presence/*` once the MVP badge/push behavior is proven stable.
-- **UPDATED 2026-08-07 — Grafana Google OAuth login now confirmed
-  working** (was the highest-priority open item as of 2026-08-04; see
-  `MAINTENANCE.md`'s Grafana section and `docs/ontology.yaml`'s
-  `cabin_grafana_public_access` entry for the full correction). Cloudflare
-  Access still isn't confirmed gating the hostname — that half of the
-  original item is still genuinely open, just no longer blocking login
-  entirely since Google OAuth itself works. Two new real items found in
-  the same live check, not yet fixed: (1) an intermittent session-token
-  rotation bug causing periodic 401s on an otherwise-valid session, (2)
-  at check time, no dashboards were provisioned into the running
-  container — should be resolved once this session's push deploys the
-  Frigate dashboard commit.
+  forgotten — both signals are now real and live as of 2026-08-08
+  (`cabin/security/armed_away`, `cabin/presence/*`), so this is now
+  purely a wiring task, not blocked on missing data anymore.
 - **Liebherr fridge / Bosch dishwasher account linking** — both need the
   user's own account credentials (SmartDevice login; a Home Connect
   Developer OAuth client_id/secret + account consent). See
@@ -210,10 +226,18 @@ accumulate.*
   (`MAINTENANCE.md`).
 - **Real second-host replication test** — `REPLICATION.md` has never
   actually been run end-to-end against a fresh host.
+- **WiFi RSSI presence detection (original idea) vs. Zigbee LQI
+  prototype (built instead)** — spare C4000LG router available as an
+  additional collection point if a WiFi approach is pursued later. See
+  `grafana/dashboards/22019-wifi-scan/README.md`.
 
 ---
 
-**Last full session close-out:** 2026-08-04 (ended with a known,
-documented outage — see punch list above; not a clean close). See git log for the actual
+**Last full session close-out:** 2026-08-08 (marathon session — Config
+panel dynamic fields, presence/armed-state/signal-quality MQTT wiring,
+blinkbridge crash fix, mosquitto WebSocket listener, and a real,
+still-open Grafana embed investigation with disproven theories logged
+honestly rather than left as stale "fixed" claims — see punch list
+above for what's genuinely still open). See git log for the actual
 session-by-session record — that's the authoritative history now, not
 this file.

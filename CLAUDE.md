@@ -397,8 +397,10 @@ forward from an earlier session's list)
 | DELETE | `/api/devices/{id}/display-config` | DeviceController |
 | GET | `/api/dashboard/config` | DashboardController |
 | GET | `/api/events` | EventController — real, Postgres-backed (`?camera=&limit=&window=`). No longer a stub as of 2026-08-04; the "(stub)" note in earlier versions of this file was stale |
-| GET | `/api/presence` | PresenceController |
-| PUT | `/api/presence` | PresenceController |
+| GET | `/api/presence` | PresenceController — auto-derived from real MQTT presence signals when any exist (`autoDerived`/`signals[]`), manual fallback otherwise (added 2026-08-08) |
+| PUT | `/api/presence` | PresenceController — manual override |
+| GET | `/api/security` | SecurityController — armed/disarmed per location, keyed by location, from `cabin/security/armed_away` (added 2026-08-08) |
+| GET | `/api/signal-quality` | SignalQualityController — prototype, Zigbee LQI trend/anomaly per device, not wired to any alert path yet (added 2026-08-08) |
 | GET | `/api/system/health` | SystemController |
 | GET | `/api/camera/list` | CameraMediaController |
 | GET | `/api/camera/events/{frigateEventId}/snapshot` | CameraMediaController |
@@ -434,7 +436,12 @@ severity-tiering MVP scope — only the classifier + ntfy push shipped
 - **My Places** (`FamilyHubPanel`) — cabin/home launcher grid with
   quick-links to each location's admin tools + a link out to the actual
   Family Hub app (`family-hub/family-hub.html`); reorderable (Phase 7 §3)
-- **Family Config** — Google OAuth, Tailscale info, platform info
+- **Config** (renamed from "Family Config" 2026-08-08 — it configures
+  the whole instance, not just family settings) — Google account
+  (real, switchable `useGoogleAuth()` sign-in, not a hardcoded email),
+  notification preferences, Remote Access, and Platform (both backed by
+  real deploy-time config, `CABIN_INSTANCE_PLATFORM`/
+  `CABIN_INSTANCE_REMOTE_ACCESS` — see `docs/REPLICATION.md`)
 - **Device Manager** (`DeviceManagerPanel`) — device grid, add/remove/command
 - **Monitoring** (`MonitoringPanel`) — KPI tiles + Grafana embed + live MQTT log
   — has **LocationSwitcher** (Cabin / Home / Both) in the toolbar
@@ -455,7 +462,8 @@ All items below are **complete and pushed to GitHub**:
 - `DeviceHealthMonitor.java` — stale detection, exponential backoff, `/api/system/health`
 - `DeviceManagerPanel` L1→L2→L3: See / Change / Add (254s pairing countdown) / Remove
 - `MonitoringPanel` L1→L2→L3: See (KPI tiles + Grafana) / Change/Add (DisplayConfigForm) / Remove
-- `PresenceProfile` (AT_HOME / AT_CABIN / AWAY / BOTH_OCCUPIED) + toolbar toggle
+- `PresenceProfile` (AT_HOME / AT_CABIN / AWAY / BOTH_OCCUPIED) — auto-derived from real MQTT presence signals when any exist (`PresenceSignalRegistry`, N-people x M-locations), manual toolbar toggle as fallback (2026-08-08)
+- `SecurityStateRegistry` — armed/disarmed per location from `cabin/security/armed_away`, toolbar `SecurityBadge` (2026-08-08)
 - `DeviceDisplayConfig` — per-device display overrides keyed by `(deviceId, location, profile)`
 - `AutomationRuleService` — presence-aware lock/motion rules; safety rules parallel to Node-RED
 - Nav rail alert state machine: unconfigured → watching → warn (<20 min) → critical (≥20 min)

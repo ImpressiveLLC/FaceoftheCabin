@@ -986,21 +986,33 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       UI. 9 new backend tests (`MqttBridgeServiceTest`,
       `SecurityStateRegistryTest`, `SecurityControllerTest` — 52/52
       backend suite green) + 4 new frontend tests (43/43 green).
-- [x] Grafana embed still white after the SameSite=None fix (found via
-      user re-report, 2026-08-08) — root-caused with direct header
-      checks: Google's own sign-in pages refuse to render inside any
-      iframe (anti-clickjacking, not fixable from this side), and a
-      Grafana session cookie issued before the SameSite=None config
-      change keeps its old SameSite=Lax attribute until re-
-      authentication. This embed can only ever reuse an already-valid
-      session established outside the iframe; it can never complete a
-      first-time or expired login inside the frame. Corrected the
-      previously-wrong "may prompt inside the frame" hint text/comment
-      to explain the real fix (sign into Grafana directly once, then
-      reload). See `docs/MAINTENANCE.md`/`docs/ontology.yaml`'s matching
-      updates. User's own follow-up clarified the fix requires a fresh
-      *login* (sign out + back in), not just an already-open Grafana tab
-      — validity and the cookie's SameSite attribute are separate things.
+- [ ] **[STILL OPEN, PLANNING NEEDED]** Grafana embed still white —
+      **the SameSite/cookie diagnosis was disproven live, 2026-08-08.**
+      Corrected the hint text/comment to explain a theory (Google's
+      sign-in pages refuse to render inside any iframe; a pre-fix
+      session cookie keeps its old SameSite=Lax attribute) that seemed
+      solid from server-side header checks alone — but the user then
+      did the actual test: full sign-out, fresh Google login (confirmed
+      via Grafana's own server logs — real logout at 05:13:21, Google
+      OAuth round-trip, authenticated session established by 05:13:36),
+      reloaded cabin-ui, and the panel was still white. Grafana's logs
+      show **zero requests with a cabin.unicornpingpong.com referer** in
+      the entire window, before or after the fresh login — the iframe
+      request may never be reaching the server at all. Chrome DevTools
+      Network tab check ("nothing at first glance") was inconclusive,
+      not confirmatory either way — needs a real look at whether a
+      request to grafana.unicornpingpong.com appears at all when the
+      panel loads, and the Console tab for any cookie/blocked messages.
+      Leading remaining theory: browser-level third-party cookie
+      blocking (Chrome's ongoing phase-out, or a Chrome privacy setting)
+      rejecting the cookie before it's ever sent, independent of
+      SameSite/Secure attributes entirely. If that's confirmed, the
+      permanent fix isn't another cookie tweak — it's making Grafana
+      same-origin to cabin-ui (reverse-proxy under
+      cabin.unicornpingpong.com/grafana/ instead of a separate
+      grafana.unicornpingpong.com), removing the cross-site cookie
+      problem structurally rather than working around browser policy.
+      Bigger change, needs real planning, not tonight's scope.
 - [x] "No live messages from ws://..." in the Monitoring panel's Live
       MQTT tile was always going to show that, regardless of hostname —
       found investigating the user's report: mosquitto had no WebSocket
@@ -1019,6 +1031,50 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       `useMqttTelemetry` hook rendering real messages end-to-end in a
       browser — the transport was never reachable before, so that code
       path is realistically untested, not just unverified today.
+- [ ] **[NEW, PLANNING NEEDED — user directive, 2026-08-08, roadmap for
+      tomorrow, not built tonight]** App-wide Google OAuth gate +
+      consistent landing page. Two separate but related asks:
+      1. **Auth gating is currently inconsistent and too narrow.**
+         `useGoogleAuth()` today only actually gates `CameraEventsPanel`
+         and `OpportunityMapPanel` (passed an `auth` prop) — every other
+         panel (Devices, Monitoring, Config, Rules) renders and loads
+         real data with no sign-in check at all. User's framing: "if
+         we're going to require credentialed google oauth login, it
+         shouldn't just be at the camera events tab — that's silly if it
+         applies to multiple cookies and workflows in
+         cabin.unicornpingpong.com." The gate needs to move to the top
+         of the app — before any panel/data loads, not per-panel.
+      2. **Landing page needs to be consistent, not whatever was open
+         last.** User's report: cabin-ui currently reopens on whatever
+         panel was showing when it was last closed, which reads as
+         unintuitive. **Checked the actual code before roadmapping this
+         — worth starting from an accurate baseline tomorrow**:
+         `activePanel`'s `useState` initializer (App.jsx) does NOT
+         persist to localStorage and defaults to `"MONITORING"` (or
+         `?panel=` from the URL) on every real mount — there is no
+         app-level code currently making this "sticky." What the user is
+         observing is most likely the browser's own tab/session
+         restoration (Chrome reopening the SPA in whatever in-memory
+         state it was in, without a real page load happening at all) —
+         a real UX problem regardless of the mechanism, but tomorrow's
+         session should confirm this diagnosis rather than assume a
+         localStorage bug that doesn't exist in the code as of tonight.
+         User's own assumption: the consistent landing page should be
+         **My Places** (`FamilyHubPanel`) — not confirmed/decided, just
+         their stated default expectation to start planning from.
+      3. **Auth flow on landing, two behaviors requested:** (a) persist/
+         reuse a still-active Family Hub login if one exists (family-hub
+         and cabin-ui already share the same `GOOGLE_CLIENT_ID` — but
+         they're different origins, so this is NOT automatic; needs real
+         design work, e.g. Google's own silent/One Tap re-auth, or some
+         other session-sharing mechanism, not assumed to already work),
+         or (b) if there's no reusable session, require login **before**
+         offering any other data/UI/functionality to load — a hard gate,
+         not the current "some panels check, most don't" state. Explicitly
+         called out as mattering most for **direct navigation** into
+         cabin-ui (a deep link bypassing family-hub's own link-out flow).
+      Scope this properly next session — this is real auth/UX
+      architecture work, not a quick patch.
 
 ---
 
