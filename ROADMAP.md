@@ -897,6 +897,20 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       vs. the monitoring/alerting benefit, which is the main reason to
       turn it on for wired devices specifically and be cautious about
       battery-powered ones.
+      **Candidate evaluated 2026-08-08**: user supplied Grafana community
+      dashboard #22019 ("Wifi Scan") — saved and evaluated at
+      `grafana/dashboards/22019-wifi-scan/README.md` (not adopted, not
+      provisioned live). Finding: it measures a *different* signal than
+      proposed here — nearby AP beacon strength via `iw scan` (a network
+      site-survey tool), not connected-client-to-dongle link RSSI — and
+      it's InfluxDB-based, a TSDB this platform doesn't otherwise run
+      (existing metrics path is Prometheus + Grafana, from the Frigate
+      work). Recommendation in that README: don't adopt as-published;
+      if pursued, route any derived "occupancy-likely" signal through
+      MQTT into the same `MqttBridgeService` → `AutomationRuleService`
+      path presence/armed-state already use this session, rather than a
+      disconnected Grafana-alerting silo — directly relevant given the
+      alert-clarity gap logged above. Decision not yet made.
 - [x] Presence toggle was purely manual with nothing real behind it
       (found via user report, 2026-08-08): the toolbar's map-pin widget
       read as "your detected location," but `PresenceProfile` was only
