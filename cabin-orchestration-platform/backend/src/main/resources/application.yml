@@ -19,6 +19,13 @@ cabin:
     bootstrapServers: ${KAFKA_BOOTSTRAP:localhost:9092}
   dashboard:
     familyDashboardUrl: ${FAMILY_DASHBOARD_URL:http://localhost:8081}
+  # Template configuration fields -- see ROADMAP.md's "Template
+  # Configuration Fields" for the full required-setup list a new instance
+  # clone must fill in. Surfaced to the UI via DashboardController's
+  # /api/dashboard/config and displayed in the Config panel.
+  instance:
+    platform: ${CABIN_INSTANCE_PLATFORM:Not configured — set CABIN_INSTANCE_PLATFORM}
+    remoteAccess: ${CABIN_INSTANCE_REMOTE_ACCESS:Tailscale}
   homeassistant:
     url: ${HA_URL:http://localhost:8123}
     token: ${HA_TOKEN:}

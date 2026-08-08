@@ -102,9 +102,10 @@ body {
 .platform-name { font-weight: 600; color: #f0f6fc; letter-spacing: 0.02em; }
 .toolbar-right { display: flex; align-items: center; gap: 14px; color: #8b949e; font-size: 12px; }
 
-.api-status { display: flex; align-items: center; gap: 4px; }
+.api-status { display: flex; align-items: center; gap: 4px; text-decoration: none; }
 .api-ok { color: #3fb950; }
-.api-err { color: #f85149; }
+.api-err { color: #f85149; cursor: pointer; }
+.api-err:hover { text-decoration: underline; }
 
 .panel-area { flex: 1; overflow-y: auto; }
 

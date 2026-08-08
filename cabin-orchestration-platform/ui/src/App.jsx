@@ -72,6 +72,18 @@ const LOCATIONS = {
   },
 };
 
+// A location whose apiBase is still the undeployed-placeholder value
+// (`{id}-hub:<port>`, a Docker-internal hostname no real browser can
+// resolve) has never had its VITE_*_API_BASE build arg set -- i.e. it
+// isn't live yet, same signal docker-compose.m920q.yml's build args
+// encode. Used so an undeployed location's always-failing fetch doesn't
+// drag down the "API offline" badge for a location that IS actually up
+// (found 2026-08-07: viewing "Home" or "Both" before home-hub existed
+// permanently flipped the badge red regardless of cabin's real health).
+export function isLocationDeployed(loc) {
+  return !!loc?.apiBase && !new RegExp(`^https?://${loc.id}-hub:`).test(loc.apiBase);
+}
+
 // Real Grafana dashboard UIDs that actually exist, by location -- see the
 // MonitoringPanel Grafana embed's own comment for why this replaced a
 // hardcoded `${location}-overview` UID that was never real. Only "cabin"
@@ -784,7 +796,7 @@ function OpportunityMapPanel({ auth }) {
 
 const PANELS = [
   { id: "FAMILY_HUB",     label: "My Places",       icon: Home },
-  { id: "FAMILY_CONFIG",  label: "Family Config",   icon: Settings },
+  { id: "FAMILY_CONFIG",  label: "Config",   icon: Settings },
   { id: "DEVICE_MANAGER", label: "Devices",         icon: Cpu },
   { id: "MONITORING",     label: "Monitoring",      icon: Activity },
   { id: "RULES_ENGINE",   label: "Rules & Alerts",  icon: Zap },
@@ -1012,18 +1024,37 @@ export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder te
   );
 }
 
-// ─── Panel: Family Config ──────────────────────────────────────────────────
-function FamilyConfigPanel() {
+// ─── Panel: Config ──────────────────────────────────────────────────────
+// Exported for src/App.test.jsx's rename/dynamic-config-fields test.
+export function FamilyConfigPanel({ auth }) {
   const { config, locationCfg } = useApp();
   const haUrl = locationCfg?.haUrl || LOCATIONS.cabin.haUrl;
+  const remoteAccessMethods = (config?.remoteAccess || "Tailscale")
+    .split(",").map(s => s.trim()).filter(Boolean);
   return (
     <div className="panel-content">
-      <div className="panel-header-bar"><h2>Family Configuration</h2></div>
+      <div className="panel-header-bar"><h2>Configuration</h2></div>
       <div className="config-grid">
         <ConfigCard title="Google Account" icon={Home}>
-          <p className="config-desc">smrekarfamilia@gmail.com — Google Calendar, Gmail, and Google Home service access.</p>
+          {auth?.userEmail ? (
+            <>
+              <p className="config-desc">Signed in as {auth.userEmail}.</p>
+              <button className="btn-secondary" onClick={auth.signIn}>Switch Google Account</button>
+            </>
+          ) : (
+            <>
+              <p className="config-desc">Not signed in — Camera Events and Opportunities require Google sign-in.</p>
+              <button className="btn-secondary" onClick={auth?.signIn}>Sign in with Google</button>
+            </>
+          )}
+          <p className="config-hint">
+            Switching only grants entry if the account is already in this instance's OAuth
+            allowlist (ADMIN_EMAILS) — see ROADMAP.md's "Template Configuration Fields" for how
+            to add accounts when cloning this app. Signing in as an account that isn't currently
+            signed into Google in this browser is tracked as a roadmap item, not yet supported here.
+          </p>
           <a href={`${haUrl}/config/integrations`} target="_blank" rel="noreferrer" className="btn-secondary">
-            Manage in Home Assistant ↗
+            Manage Home Assistant's Google integration ↗
           </a>
           <div className="tailscale-hint">
             <Lock size={11} /> Won't load off Tailscale — Home Assistant admin is cabin-network-only.
@@ -1034,12 +1065,16 @@ function FamilyConfigPanel() {
           <p className="config-hint">Node-RED flows handle routing. Edit in Rules &amp; Alerts panel.</p>
         </ConfigCard>
         <ConfigCard title="Remote Access" icon={Wifi}>
-          <p className="config-desc">Tailscale mesh VPN — cabin-hub and home-hub are reachable from anywhere.</p>
+          <p className="config-desc">{remoteAccessMethods.join(", ")}</p>
+          <p className="config-hint">
+            New template clones default to Tailscale — set CABIN_INSTANCE_REMOTE_ACCESS
+            (comma-separated) once a method is configured, and it appears here.
+          </p>
           <code className="code-block">tailscale up --advertise-routes=192.168.1.0/24 --hostname=home-hub</code>
         </ConfigCard>
         <ConfigCard title="Platform" icon={Cpu}>
           <p className="config-desc">{config?.platformName || "Orchestration Platform"}</p>
-          <p className="config-hint">Lenovo ThinkCentre M920q · Ubuntu 24.04 · x86_64</p>
+          <p className="config-hint">{config?.platform || "Not configured — set CABIN_INSTANCE_PLATFORM"}</p>
         </ConfigCard>
       </div>
     </div>
@@ -2479,6 +2514,7 @@ function App() {
   const [devices,        setDevices]        = useState([]);
   const [config,         setConfig]         = useState({});
   const [connected,      setConnected]      = useState(false);
+  const [apiError,       setApiError]       = useState(null); // { message, at } | null -- see refreshDevices
   const { levels: alertLevels, cfg: alertCfg, enableAlert, resetAlert } = useNavAlerts();
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions } = usePresence();
@@ -2496,25 +2532,44 @@ function App() {
   // wrong. Rather than add CORS to Actuator just to drive a status
   // badge, "connected" is now derived from whether the device fetch this
   // panel already depends on actually succeeded.
+  //
+  // Found 2026-08-07: "connected" required EVERY attempted fetch to
+  // succeed, including home-hub's -- which is always going to fail
+  // (isLocationDeployed() is false for it) until home-hub is actually
+  // deployed. Viewing "Home" or "Both" therefore showed "API offline"
+  // permanently regardless of cabin's real health. Only fetches for
+  // *deployed* locations now count toward connected/apiError; an
+  // undeployed location's fetch is still attempted (so its devices show
+  // up the moment it does go live) but its failure is expected, not an
+  // outage.
   const refreshDevices = useCallback(() => {
     // Fetch from cabin hub always; also fetch home hub when viewing home or both.
-    const fetches = [];
+    const attempts = [];
     if (activeLocation === "cabin" || activeLocation === "both") {
-      fetches.push(
+      attempts.push({ loc: LOCATIONS.cabin, promise:
         fetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
           .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      );
+      });
     }
     if (activeLocation === "home" || activeLocation === "both") {
-      fetches.push(
+      attempts.push({ loc: LOCATIONS.home, promise:
         fetch(`${LOCATIONS.home.apiBase}/api/devices`)
           .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      );
+      });
     }
-    Promise.allSettled(fetches).then(results => {
+    Promise.allSettled(attempts.map(a => a.promise)).then(results => {
       const succeeded = results.filter(r => r.status === "fulfilled");
       setDevices(succeeded.map(r => r.value).flat());
-      setConnected(results.length > 0 && succeeded.length === results.length);
+
+      const relevant = attempts
+        .map((a, i) => ({ loc: a.loc, result: results[i] }))
+        .filter(a => isLocationDeployed(a.loc));
+      const relevantFailure = relevant.find(a => a.result.status === "rejected");
+
+      setConnected(relevant.length === 0 || !relevantFailure);
+      setApiError(relevantFailure
+        ? { message: `${relevantFailure.loc.label}: ${relevantFailure.result.reason?.message || "unreachable"}`, at: new Date() }
+        : null);
     });
   }, [activeLocation]);
 
@@ -2548,15 +2603,29 @@ function App() {
               <LocationSwitcher active={activeLocation} onChange={setActiveLocation} />
               <PresenceToggle />
               <ThemeSwitcher />
-              <span className={`api-status ${connected ? "api-ok" : "api-err"}`}>
-                {connected ? <><CheckCircle size={12}/> API</> : <><AlertTriangle size={12}/> API offline</>}
-              </span>
+              {connected ? (
+                <span className="api-status api-ok">
+                  <CheckCircle size={12}/> API
+                </span>
+              ) : (
+                <a
+                  className="api-status api-err"
+                  href={`${(locationCfg || LOCATIONS.cabin).apiBase}/actuator/health`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={apiError
+                    ? `${apiError.message} (as of ${apiError.at.toLocaleTimeString()}) — click to open /actuator/health`
+                    : "click to open /actuator/health"}
+                >
+                  <AlertTriangle size={12}/> API offline
+                </a>
+              )}
               <span className="device-count">{devices.length} devices</span>
             </div>
           </div>
           <div className="panel-area">
             {activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
-            {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel />}
+            {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} />}
             {activePanel === "RULES_ENGINE"   && <RulesPanel />}

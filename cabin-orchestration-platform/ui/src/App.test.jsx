@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, AppContext, FamilyHubPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -104,6 +104,35 @@ describe("mergeHubLocations", () => {
   });
 });
 
+// Covers the 2026-08-07 finding: the "API offline" badge required EVERY
+// attempted location fetch to succeed, including home-hub's -- which is
+// always going to fail until home-hub is actually deployed, permanently
+// showing "offline" while viewing Home/Both regardless of cabin's real
+// health. isLocationDeployed() is refreshDevices' signal for which
+// locations' failures should actually count. See isLocationDeployed's
+// own comment in App.jsx.
+describe("isLocationDeployed", () => {
+  it("treats the undeployed Docker-internal placeholder as not deployed", () => {
+    expect(isLocationDeployed({ id: "home", apiBase: "http://home-hub:8080" })).toBe(false);
+  });
+
+  it("treats a real hostname/IP apiBase as deployed", () => {
+    expect(isLocationDeployed({ id: "cabin", apiBase: "https://api.unicornpingpong.com" })).toBe(true);
+    expect(isLocationDeployed({ id: "cabin", apiBase: "http://100.77.44.113:8090" })).toBe(true);
+  });
+
+  it("does not false-positive on a different location's placeholder-shaped host", () => {
+    // "home"'s own placeholder host must not accidentally clear "cabin"'s check or vice versa
+    expect(isLocationDeployed({ id: "cabin", apiBase: "http://home-hub:8080" })).toBe(true);
+  });
+
+  it("handles a missing apiBase without throwing", () => {
+    expect(isLocationDeployed({ id: "home", apiBase: null })).toBe(false);
+    expect(isLocationDeployed({ id: "home" })).toBe(false);
+    expect(isLocationDeployed(null)).toBe(false);
+  });
+});
+
 // Covers Phase 7 §3 -- place-card reordering. Renders the real
 // FamilyHubPanel (not a reimplementation), reusing the same
 // useDraggableOrder hook and localStorage key ("order.places") the app
@@ -165,5 +194,54 @@ describe("FamilyHubPanel reordering", () => {
     fireEvent.drop(second, { dataTransfer });
 
     expect(JSON.parse(localStorage.getItem(ORDER_KEY))).toEqual(["home", "cabin"]);
+  });
+});
+
+// Covers the 2026-08-08 request: drop the vestigial "Family" wording from
+// this panel (it configures the whole instance, not just family
+// settings), and make the Google Account / Platform / Remote Access
+// cards reflect real, dynamic state instead of hardcoded JSX text. See
+// isLocationDeployed's sibling entity instance_template_config in
+// docs/ontology.yaml for the backend side of this.
+describe("FamilyConfigPanel", () => {
+  afterEach(cleanup);
+
+  function renderPanel({ auth, config = {} } = {}) {
+    return render(
+      <AppContext.Provider value={{ config, locationCfg: LOCATIONS_CABIN }}>
+        <FamilyConfigPanel auth={auth} />
+      </AppContext.Provider>
+    );
+  }
+  const LOCATIONS_CABIN = { haUrl: "http://cabin-hub:8123" };
+
+  it("no longer says Family anywhere in the header", () => {
+    renderPanel();
+    expect(screen.getByText("Configuration")).toBeTruthy();
+    expect(screen.queryByText(/Family Config/i)).toBeFalsy();
+  });
+
+  it("shows the signed-in Google account and a switch-account control", () => {
+    const signIn = () => {};
+    renderPanel({ auth: { userEmail: "nate@example.com", signIn } });
+    expect(screen.getByText(/Signed in as nate@example.com/)).toBeTruthy();
+    expect(screen.getByText("Switch Google Account")).toBeTruthy();
+  });
+
+  it("offers a sign-in control when no Google account is signed in", () => {
+    renderPanel({ auth: { userEmail: null, signIn: () => {} } });
+    expect(screen.getByText(/Not signed in/)).toBeTruthy();
+    expect(screen.getByText("Sign in with Google")).toBeTruthy();
+  });
+
+  it("displays the configured platform and remote access from real backend config", () => {
+    renderPanel({ config: { platformName: "Test Platform", platform: "A test VM", remoteAccess: "Tailscale,WireGuard" } });
+    expect(screen.getByText("A test VM")).toBeTruthy();
+    expect(screen.getByText("Tailscale, WireGuard")).toBeTruthy();
+  });
+
+  it("defaults remote access to Tailscale when config hasn't loaded yet", () => {
+    renderPanel({ config: {} });
+    expect(screen.getByText("Tailscale")).toBeTruthy();
   });
 });
