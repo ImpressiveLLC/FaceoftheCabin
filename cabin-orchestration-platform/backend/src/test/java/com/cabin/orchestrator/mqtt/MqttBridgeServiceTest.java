@@ -4,14 +4,19 @@ import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.kafka.EventPublisher;
+import com.cabin.orchestrator.presence.PresenceProfile;
+import com.cabin.orchestrator.presence.PresenceService;
+import com.cabin.orchestrator.presence.PresenceSignalRegistry;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * Regression coverage for the 2026-08-07 finding: handleCameraTopic()
@@ -21,21 +26,36 @@ import static org.junit.jupiter.api.Assertions.*;
  * threshold then always fired exactly 5 minutes after that one
  * registration and the camera could never recover on its own.
  *
- * No Testcontainers here -- DeviceRegistry is a plain in-memory
- * ConcurrentHashMap and EventPublisher safely no-ops when constructed
+ * Also covers the 2026-08-08 finding: the active PresenceProfile was
+ * only ever set manually from the toolbar, with no real signal behind
+ * it despite AutomationRuleService using it for real security-severity
+ * decisions -- see handlePresenceTopic's tests below.
+ *
+ * No Testcontainers here -- DeviceRegistry/PresenceSignalRegistry are
+ * plain in-memory maps, EventPublisher safely no-ops when constructed
  * without @PostConstruct init() (producer stays null, publish() logs and
- * returns), so this exercises MqttBridgeService.messageArrived() -- the
- * real public entry point Paho calls -- directly against real Kafka/DB.
+ * returns), and PresenceService's JdbcTemplate is mocked (Mockito, via
+ * spring-boot-starter-test) rather than pointed at real Postgres --
+ * these tests exercise the real derivation logic in PresenceService/
+ * PresenceSignalRegistry, just without needing a live DB connection for
+ * what's fundamentally in-memory "who's here right now" state (see
+ * PresenceSignalRegistry's own comment on why it's not Postgres-backed).
+ * This exercises MqttBridgeService.messageArrived() -- the real public
+ * entry point Paho calls -- directly against real Kafka/DB.
  */
 class MqttBridgeServiceTest {
 
     private DeviceRegistry registry;
+    private PresenceService presenceService;
+    private PresenceSignalRegistry presenceSignalRegistry;
     private MqttBridgeService bridge;
 
     @BeforeEach
     void setUp() {
         registry = new DeviceRegistry(List.of());
-        bridge = new MqttBridgeService(registry, new EventPublisher());
+        presenceSignalRegistry = new PresenceSignalRegistry();
+        presenceService = new PresenceService(mock(JdbcTemplate.class), presenceSignalRegistry);
+        bridge = new MqttBridgeService(registry, new EventPublisher(), presenceService, presenceSignalRegistry);
     }
 
     private void deliver(String topic, String payload) throws Exception {
@@ -101,5 +121,78 @@ class MqttBridgeServiceTest {
 
         assertNull(registry.get("available"),
             "the bridge-wide availability topic must never be registered as a camera device");
+    }
+
+    @Test
+    void singlePersonAtCabinDerivesAtCabin() throws Exception {
+        deliver("cabin/presence/nate", "home");
+
+        assertEquals(PresenceProfile.AT_CABIN, presenceService.get());
+        assertTrue(presenceService.isAutoDerived());
+    }
+
+    @Test
+    void singlePersonAtHomeDerivesAtHome() throws Exception {
+        // Not cabin-only by design -- see PresenceSignalRegistry's comment.
+        // home-hub isn't deployed yet, but the topic/derivation logic
+        // itself makes no cabin-specific assumption.
+        deliver("home/presence/emma", "home");
+
+        assertEquals(PresenceProfile.AT_HOME, presenceService.get());
+    }
+
+    @Test
+    void onePersonAtEachLocationSimultaneouslyDerivesBothOccupied() throws Exception {
+        deliver("cabin/presence/nate", "home");
+        deliver("home/presence/emma", "home");
+
+        assertEquals(PresenceProfile.BOTH_OCCUPIED, presenceService.get(),
+            "one person at cabin AND a different person at home, simultaneously, must read as Both Occupied");
+    }
+
+    @Test
+    void everyoneLeavingDerivesAway() throws Exception {
+        deliver("cabin/presence/nate", "home");
+        deliver("cabin/presence/nate", "not_home");
+
+        assertEquals(PresenceProfile.AWAY, presenceService.get());
+    }
+
+    @Test
+    void secondPersonArrivingAtSameLocationStaysAtThatLocation() throws Exception {
+        // Two people, one location -- must not require exactly one person
+        // per location, or double-count into some other state.
+        deliver("cabin/presence/nate", "home");
+        deliver("cabin/presence/emma", "home");
+
+        assertEquals(PresenceProfile.AT_CABIN, presenceService.get());
+
+        deliver("cabin/presence/nate", "not_home");
+        assertEquals(PresenceProfile.AT_CABIN, presenceService.get(),
+            "emma is still at cabin -- one person leaving must not clear the whole location");
+    }
+
+    @Test
+    void manualOverrideIsSupersededByTheNextRealSignal() throws Exception {
+        presenceService.set(PresenceProfile.AWAY); // manual override, e.g. no signal configured yet
+        assertFalse(presenceService.isAutoDerived());
+
+        deliver("cabin/presence/nate", "home");
+
+        assertEquals(PresenceProfile.AT_CABIN, presenceService.get(),
+            "a real signal must win over a stale manual override, not be silently ignored");
+        assertTrue(presenceService.isAutoDerived());
+    }
+
+    @Test
+    void presenceTopicIsNotMisroutedThroughTheJsonDeviceHandler() throws Exception {
+        // {location}/presence/{personId} is plain text ("home"/"not_home"),
+        // not JSON -- must be handled before the generic JSON-parse
+        // fallback, or every presence message would throw and get
+        // silently swallowed by messageArrived's catch block.
+        deliver("cabin/presence/nate", "home");
+
+        assertEquals(1, presenceSignalRegistry.all().size());
+        assertNull(registry.get("nate"), "a presence signal must never register a device");
     }
 }

@@ -6,6 +6,8 @@ import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.events.AlertSeverityClassifier;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
+import com.cabin.orchestrator.presence.PresenceService;
+import com.cabin.orchestrator.presence.PresenceSignalRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -28,6 +30,15 @@ import java.util.*;
  *   cabin/event/{severity}             — direct event injection
  *   cabin/camera/{cameraId}/motion     — Frigate motion events
  *   cabin/system/health                — watchdog health reports
+ *   {location}/presence/{personId}     — "home"/"not_home", per-person
+ *                                         WiFi presence (see
+ *                                         handlePresenceTopic) — the ONE
+ *                                         subscription here that isn't
+ *                                         cabin/-prefixed, deliberately:
+ *                                         PresenceService's derivation
+ *                                         needs signals from every
+ *                                         location this instance manages,
+ *                                         not just cabin's own.
  */
 @Service
 public class MqttBridgeService implements MqttCallback {
@@ -43,11 +54,16 @@ public class MqttBridgeService implements MqttCallback {
     private MqttClient client;
     private final DeviceRegistry registry;
     private final EventPublisher eventPublisher;
+    private final PresenceService presenceService;
+    private final PresenceSignalRegistry presenceSignalRegistry;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
-    public MqttBridgeService(DeviceRegistry registry, EventPublisher eventPublisher) {
+    public MqttBridgeService(DeviceRegistry registry, EventPublisher eventPublisher,
+                              PresenceService presenceService, PresenceSignalRegistry presenceSignalRegistry) {
         this.registry = registry;
         this.eventPublisher = eventPublisher;
+        this.presenceService = presenceService;
+        this.presenceSignalRegistry = presenceSignalRegistry;
     }
 
     @PostConstruct
@@ -63,6 +79,15 @@ public class MqttBridgeService implements MqttCallback {
             client.subscribe("cabin/camera/#", 1);
             client.subscribe("cabin/event/#", 1);
             client.subscribe("cabin/system/#", 0);
+            // Wildcarded on location (+), not hardcoded to cabin/ -- see
+            // this class's javadoc. Only cabin/presence/nate exists live
+            // today (home-hub isn't deployed yet), but this subscription
+            // and everything downstream of it (PresenceSignalRegistry,
+            // PresenceService.recomputeFromSignals) already treat
+            // location as data, not an assumption, so a future
+            // home/presence/{anyone} publisher needs zero backend changes
+            // to be picked up.
+            client.subscribe("+/presence/#", 1);
             log.info("MQTT bridge connected to {}", brokerUrl);
         } catch (MqttException e) {
             log.error("MQTT connect failed: {}", e.getMessage());
@@ -81,6 +106,14 @@ public class MqttBridgeService implements MqttCallback {
                 // and `{camera}/motion` are plain text ("online"/"ON"), only
                 // `events` is JSON. Parsing happens per-branch below, not here.
                 handleCameraTopic(parts, payload);
+                return;
+            }
+
+            if (parts.length == 3 && "presence".equals(parts[1])) {
+                // Plain text ("home"/"not_home"), same reasoning as camera
+                // topics above -- must be handled before the generic
+                // JSON-parse fallback below, not through it.
+                handlePresenceTopic(parts, payload);
                 return;
             }
 
@@ -184,6 +217,27 @@ public class MqttBridgeService implements MqttCallback {
         }
         registry.update(new DeviceStatus(existing.deviceId(), existing.type(), existing.name(),
             "ONLINE", Instant.now(), existing.attributes(), existing.location()));
+    }
+
+    /**
+     * {location}/presence/{personId} -- plain text "home"/"not_home",
+     * same payload convention the underlying HA automation already
+     * publishes (see docs/ontology.yaml's automation_cabin_security_
+     * publish_nate_presence_from_phone). location comes from the topic
+     * itself, not a constant -- this is what makes presence derivation
+     * N-people x M-locations rather than assuming a single person at a
+     * single site. Every message here both records the raw signal and
+     * immediately re-derives the aggregate PresenceProfile, so the
+     * toolbar's presence pin reflects reality within one MQTT round trip
+     * of a phone joining or leaving the WiFi, not just whatever was last
+     * manually picked.
+     */
+    private void handlePresenceTopic(String[] parts, String payload) {
+        String location = parts[0];
+        String personId = parts[2];
+        boolean present = "home".equalsIgnoreCase(payload.trim());
+        presenceSignalRegistry.record(location, personId, present);
+        presenceService.recomputeFromSignals();
     }
 
     @SuppressWarnings("unchecked")
