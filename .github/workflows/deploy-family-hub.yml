@@ -43,7 +43,46 @@ jobs:
           cd "$DEPLOY_PATH/family-hub"
           QA_TAG="family-hub-qa:$(git -C "$DEPLOY_PATH" rev-parse --short HEAD)"
           docker build -f test/Dockerfile -t "$QA_TAG" .
-          docker run --rm "$QA_TAG"
+
+          # Found 2026-08-08: this already gated the deploy (a non-zero
+          # exit here stops the job before the rebuild/restart step below
+          # ever runs), but results only ever existed in this step's raw
+          # console log. Writing a summary to GITHUB_STEP_SUMMARY puts the
+          # pass/fail breakdown on the run's Summary page -- one click
+          # instead of scrolling a log -- same reasoning as
+          # deploy-cabin-backend.yml's mvn test step. set +e/-e is needed
+          # since this shell runs with -e by default; letting `docker run`
+          # fail unguarded would skip the summary-writing below entirely.
+          set +e
+          OUTPUT=$(docker run --rm "$QA_TAG" 2>&1)
+          TEST_EXIT=$?
+          set -e
+          echo "$OUTPUT"
+
+          {
+            echo "### Family Hub tests (Playwright, \`family-hub/test/run.js\`)"
+            echo
+            if [ "$TEST_EXIT" -eq 0 ]; then
+              echo "**Result: ✅ passed**"
+            else
+              echo "**Result: ❌ failed (exit $TEST_EXIT) — deploy stopped here**"
+            fi
+            SUMMARY_LINE=$(echo "$OUTPUT" | grep -E '^[0-9]+ passed' || true)
+            if [ -n "$SUMMARY_LINE" ]; then
+              echo ""
+              echo "$SUMMARY_LINE"
+            fi
+            FAILURES=$(echo "$OUTPUT" | grep '^FAIL' || true)
+            if [ -n "$FAILURES" ]; then
+              echo
+              echo "**Failed checks:**"
+              echo '```'
+              echo "$FAILURES"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit $TEST_EXIT
         env:
           DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
 
@@ -63,7 +102,50 @@ jobs:
           # cabin-orchestration-platform/ui/test/Dockerfile's comment: the
           # theme-catalog drift check needs family-hub.html reachable too.
           docker build -f cabin-orchestration-platform/ui/test/Dockerfile -t "$QA_TAG" .
-          docker run --rm "$QA_TAG"
+
+          # Same "results belong on the Summary page, not just the raw
+          # log" reasoning as the Family Hub step above and
+          # deploy-cabin-backend.yml's mvn test step -- see either for the
+          # full rationale. set +e/-e guards against this shell's default
+          # -e aborting before the summary gets written.
+          set +e
+          OUTPUT=$(docker run --rm "$QA_TAG" 2>&1)
+          TEST_EXIT=$?
+          set -e
+          echo "$OUTPUT"
+
+          # Vitest's default reporter writes ANSI color codes -- strip them
+          # so the summary (rendered as Markdown, not a terminal) is
+          # actually readable rather than full of escape-sequence noise.
+          CLEAN_OUTPUT=$(echo "$OUTPUT" | sed -E $'s/\x1b\\[[0-9;]*m//g')
+
+          {
+            echo "### cabin-ui tests (Vitest)"
+            echo
+            if [ "$TEST_EXIT" -eq 0 ]; then
+              echo "**Result: ✅ passed**"
+            else
+              echo "**Result: ❌ failed (exit $TEST_EXIT) — deploy stopped here**"
+            fi
+            SUMMARY_LINES=$(echo "$CLEAN_OUTPUT" | grep -E '^\s*(Test Files|Tests)\s' || true)
+            if [ -n "$SUMMARY_LINES" ]; then
+              echo
+              echo '```'
+              echo "$SUMMARY_LINES"
+              echo '```'
+            fi
+            if [ "$TEST_EXIT" -ne 0 ]; then
+              echo
+              echo "<details><summary>Full test output</summary>"
+              echo
+              echo '```'
+              echo "$CLEAN_OUTPUT"
+              echo '```'
+              echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit $TEST_EXIT
         env:
           DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
 

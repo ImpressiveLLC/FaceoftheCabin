@@ -164,7 +164,58 @@ jobs:
             echo "::error::Portable JDK not found at $JDK_PATH -- see this step's comment."
             exit 1
           fi
+
+          # Found 2026-08-08: this step already gated the deploy on a test
+          # failure (nothing new below changes that), but the ONLY place
+          # results ever landed was this step's raw console log -- fine
+          # for "did it pass," a real chore to actually review when
+          # something failed (scroll/grep Maven output in the Actions
+          # tab). Writing a per-class breakdown to GITHUB_STEP_SUMMARY
+          # puts it on the run's Summary page instead -- one click, no
+          # log-diving, still the full permanent record underneath if
+          # more detail is needed. set +e/-e around the actual test run is
+          # required: this step's shell runs with -e by default (GitHub
+          # Actions' default), so `mvn test` failing would otherwise exit
+          # this script immediately and skip writing the summary entirely.
+          set +e
           mvn test
+          MVN_EXIT=$?
+          set -e
+
+          {
+            echo "### Backend tests — \`mvn test\`"
+            echo
+            if [ "$MVN_EXIT" -eq 0 ]; then
+              echo "**Result: ✅ passed**"
+            else
+              echo "**Result: ❌ failed (exit $MVN_EXIT) — deploy stopped here, nothing was touched**"
+            fi
+            echo
+            if [ -d target/surefire-reports ] && ls target/surefire-reports/*.txt >/dev/null 2>&1; then
+              echo "| Test class | Tests | Failures | Errors | Skipped |"
+              echo "|---|---|---|---|---|"
+              TOTAL_T=0; TOTAL_F=0; TOTAL_E=0; TOTAL_S=0
+              for f in target/surefire-reports/*.txt; do
+                LINE=$(grep -m1 "^Tests run:" "$f" || true)
+                [ -n "$LINE" ] || continue
+                CLASS=$(basename "$f" .txt)
+                T=$(echo "$LINE" | grep -oE 'Tests run: [0-9]+' | grep -oE '[0-9]+')
+                F=$(echo "$LINE" | grep -oE 'Failures: [0-9]+' | grep -oE '[0-9]+')
+                E=$(echo "$LINE" | grep -oE 'Errors: [0-9]+' | grep -oE '[0-9]+')
+                S=$(echo "$LINE" | grep -oE 'Skipped: [0-9]+' | grep -oE '[0-9]+')
+                ICON="✅"
+                if [ "${F:-0}" != "0" ] || [ "${E:-0}" != "0" ]; then ICON="❌"; fi
+                echo "| $ICON $CLASS | $T | $F | $E | $S |"
+                TOTAL_T=$((TOTAL_T + ${T:-0})); TOTAL_F=$((TOTAL_F + ${F:-0}))
+                TOTAL_E=$((TOTAL_E + ${E:-0})); TOTAL_S=$((TOTAL_S + ${S:-0}))
+              done
+              echo "| **Total** | **$TOTAL_T** | **$TOTAL_F** | **$TOTAL_E** | **$TOTAL_S** |"
+            else
+              echo "_No surefire-reports found -- mvn likely failed before running any tests (compile error, etc). See the raw job log below for the actual error._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit $MVN_EXIT
         env:
           DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
           JDK_PATH: ${{ vars.CABIN_BACKEND_JDK_PATH || '/home/nate/.jdks/jdk-21.0.12+8' }}
