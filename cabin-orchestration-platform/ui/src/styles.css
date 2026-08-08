@@ -735,6 +735,23 @@ body {
 .dm-remove-confirm-btn { margin-top: 4px; }
 .remove-warn-icon { color: #d29922; }
 
+/* ─── Add Place form (My Places) ────────────────────────────────────────── */
+.add-place-form {
+  margin: 12px 0 20px; padding: 16px; border: 1px solid #21262d;
+  border-radius: 10px; background: #0d1117;
+}
+.add-place-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.add-place-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #8b949e; }
+.add-place-field input {
+  background: #010409; border: 1px solid #30363d; border-radius: 6px;
+  color: #e6edf3; padding: 7px 10px; font-size: 13px;
+}
+.add-place-error { color: #f85149; font-size: 12px; margin-top: 10px; }
+.add-place-actions { display: flex; gap: 10px; margin-top: 14px; }
+
 /* ─── Add flow ───────────────────────────────────────────────────────────── */
 .dm-add-root { max-width: 600px; }
 .dm-add-choice { }

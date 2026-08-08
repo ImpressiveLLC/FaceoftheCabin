@@ -809,11 +809,23 @@ export const AppContext = createContext(null); // exported for src/App.test.jsx'
 function useApp() { return useContext(AppContext); }
 
 // ─── Location switcher component ───────────────────────────────────────────
+// Exported for src/App.test.jsx. "Both" only reads correctly for exactly
+// two locations -- found 2026-08-08 (user, ahead of adding a third
+// location): the internal value driving the "show every location"
+// toggle stays "both" everywhere (existing localStorage order keys,
+// refreshDevices' branching, etc. all key off that literal string, and
+// changing it would orphan them for no benefit) but the LABEL shown to
+// the user must read correctly regardless of count.
+export function allLocationsLabel(locationCount) {
+  return locationCount <= 2 ? "Both" : "All";
+}
+
 function LocationSwitcher({ active, onChange }) {
   // Object.keys(LOCATIONS) instead of a hardcoded ["cabin","home"] so a
   // location added via POST /api/locations (see useHubLocations below)
   // shows up here without a source change.
-  const options = [...Object.keys(LOCATIONS), "both"];
+  const locationIds = Object.keys(LOCATIONS);
+  const options = [...locationIds, "both"];
   return (
     <div className="location-switcher">
       {options.map(loc => (
@@ -822,7 +834,7 @@ function LocationSwitcher({ active, onChange }) {
           className={`loc-btn ${active === loc ? "loc-active" : ""}`}
           onClick={() => onChange(loc)}
         >
-          {loc === "both" ? "Both" : (LOCATIONS[loc]?.label || loc)}
+          {loc === "both" ? allLocationsLabel(locationIds.length) : (LOCATIONS[loc]?.label || loc)}
         </button>
       ))}
     </div>
@@ -963,6 +975,84 @@ function FamilyHubLocationCard({ locId, locCfg, devices }) {
   );
 }
 
+// Exported for src/App.test.jsx. Only id/label are required -- the
+// connection URLs (apiBase/wsBase/grafanaUrl/noderedUrl/haUrl/
+// frigateUrl/z2mUrl/familyHubUrl) are genuinely optional at creation
+// time, since a brand-new physical location's stack usually doesn't
+// exist yet when the place is first added (see PATCH /api/locations/
+// {id} for filling them in later, same endpoint the live hub_locations
+// URL fix used 2026-08-08).
+const ADD_PLACE_FIELDS = [
+  { key: "id",           label: "ID (slug)",       placeholder: "lakehouse", required: true },
+  { key: "label",        label: "Display Name",    placeholder: "Lake House", required: true },
+  { key: "apiBase",      label: "API Base URL",      placeholder: "https://api.example.com (fill in later if unknown)" },
+  { key: "wsBase",       label: "WebSocket Base",    placeholder: "ws://... (fill in later if unknown)" },
+  { key: "grafanaUrl",   label: "Grafana URL",       placeholder: "(fill in later if unknown)" },
+  { key: "noderedUrl",   label: "Node-RED URL",      placeholder: "(fill in later if unknown)" },
+  { key: "haUrl",        label: "Home Assistant URL", placeholder: "(fill in later if unknown)" },
+  { key: "frigateUrl",   label: "Frigate URL",       placeholder: "(fill in later if unknown)" },
+  { key: "z2mUrl",       label: "Zigbee2MQTT URL",   placeholder: "(fill in later if unknown)" },
+  { key: "familyHubUrl", label: "Family Hub URL",    placeholder: "(fill in later if unknown)" },
+];
+
+function AddPlaceForm({ onCreated, onCancel }) {
+  const [form, setForm] = useState(() => Object.fromEntries(ADD_PLACE_FIELDS.map(f => [f.key, ""])));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const update = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.id.trim() || !form.label.trim()) {
+      setError("ID and Display Name are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {};
+      for (const [k, v] of Object.entries(form)) {
+        if (v.trim()) body[k] = v.trim();
+      }
+      const res = await fetch(`${LOCATIONS.cabin.apiBase}/api/locations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      onCreated();
+    } catch (err) {
+      setError(err.message || "Failed to create location.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="add-place-form" onSubmit={submit}>
+      <div className="add-place-grid">
+        {ADD_PLACE_FIELDS.map(f => (
+          <label key={f.key} className="add-place-field">
+            {f.label}{f.required && " *"}
+            <input value={form[f.key]} onChange={update(f.key)} placeholder={f.placeholder} />
+          </label>
+        ))}
+      </div>
+      {error && <p className="add-place-error">{error}</p>}
+      <div className="add-place-actions">
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? "Creating…" : "Create Place"}
+        </button>
+        <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 // Place-card order (Phase 7 §3): same client-side, per-browser
 // localStorage pattern as Device Manager/Monitoring's own drag-reorder
 // (useDraggableOrder, reused as-is) -- matches the user's own request
@@ -974,6 +1064,7 @@ function FamilyHubLocationCard({ locId, locCfg, devices }) {
 export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder test
   const { devices } = useApp();
   const [reorderMode, setReorderMode] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
   const { ordered, reorder } = useDraggableOrder("order.places", Object.values(LOCATIONS));
@@ -996,12 +1087,29 @@ export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder te
         </div>
         <div className="header-actions">
           <button
+            className={`btn-ghost ${adding ? "btn-ghost-active" : ""}`}
+            onClick={() => { setAdding(a => !a); setReorderMode(false); }}>
+            <UserPlus size={14}/> {adding ? "Cancel" : "Add Place"}
+          </button>
+          <button
             className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
-            onClick={() => setReorderMode(r => !r)}>
+            onClick={() => { setReorderMode(r => !r); setAdding(false); }}>
             <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
           </button>
         </div>
       </div>
+      {/* Found 2026-08-08 (user report, ahead of adding a real second
+          location): the backend's full create/update/reorder/archive
+          CRUD for hub_location (Phase 7 §1b) has existed since that
+          work landed, but nothing in the frontend ever called
+          POST /api/locations -- there was no way to add a place through
+          the UI at all. AddPlaceForm below is that missing piece. */}
+      {adding && (
+        <AddPlaceForm
+          onCreated={() => { setAdding(false); window.location.reload(); }}
+          onCancel={() => setAdding(false)}
+        />
+      )}
       <div className={`family-hub-grid ${reorderMode ? "reorder-mode" : ""}`}>
         {ordered.map((cfg, idx) => {
           const isOver = reorderMode && overIdx === idx && dragIdx !== idx;
@@ -1142,10 +1250,21 @@ const DM_VIEWS = [
 ];
 
 function DeviceManagerPanel() {
-  const { devices, refreshDevices } = useApp();
+  const { devices, refreshDevices, activeLocation } = useApp();
   const [view, setView]             = useState("see");
   const [selected, setSelected]     = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
+
+  // Found 2026-08-08 (user report): every DmXView below was rendering the
+  // FULL, unfiltered devices array regardless of which location tab was
+  // active -- LocationSwitcher changed activeLocation, but nothing here
+  // ever consumed it to actually filter the list. Selecting "Home" still
+  // showed Cabin's devices. Filtered once, here, so all three sub-views
+  // (See/Change/Remove) share one correct source instead of each needing
+  // its own filter (Add doesn't need one -- it creates, not lists).
+  const locDevices = activeLocation === "both"
+    ? devices
+    : devices.filter(d => !d.location || d.location === activeLocation);
 
   const handleViewChange = (v) => { setView(v); setSelected(null); setReorderMode(false); };
 
@@ -1185,10 +1304,10 @@ function DeviceManagerPanel() {
         </a>
       </div>
 
-      {view === "see"    && <DmSeeView    devices={devices} selected={selected} onSelect={setSelected} reorderMode={reorderMode} />}
-      {view === "change" && <DmChangeView devices={devices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
+      {view === "see"    && <DmSeeView    devices={locDevices} selected={selected} onSelect={setSelected} reorderMode={reorderMode} />}
+      {view === "change" && <DmChangeView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
-      {view === "remove" && <DmRemoveView devices={devices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
+      {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
     </div>
   );
 }
@@ -1513,7 +1632,7 @@ function DmRemoveView({ devices, selected, onSelect, onRefresh }) {
 
   const doRemove = async () => {
     if (!sel) return;
-    const apiBase = sel.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+    const apiBase = LOCATIONS[sel.location]?.apiBase || LOCATIONS.cabin.apiBase;
     await fetch(`${apiBase}/api/devices/${sel.deviceId}`, { method: "DELETE" });
     onSelect(null);
     setConfirming(false);

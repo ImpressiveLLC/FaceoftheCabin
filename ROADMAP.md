@@ -1094,6 +1094,33 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
          cabin-ui (a deep link bypassing family-hub's own link-out flow).
       Scope this properly next session — this is real auth/UX
       architecture work, not a quick patch.
+- [x] **Device Manager showed every device regardless of the active
+      location tab** (found 2026-08-08, user report: switching to Home
+      still showed Cabin's devices) — `DmSeeView`/`DmChangeView`/
+      `DmRemoveView` all received the full, unfiltered `devices` array;
+      `activeLocation` was only ever used to key the reorder-order
+      localStorage key, never to actually filter what rendered. Fixed by
+      filtering once in `DeviceManagerPanel` (respecting `"both"` =
+      show all) before passing down to all three sub-views. Also fixed
+      `DmRemoveView`'s hardcoded `location === "home" ? ... : ...`
+      apiBase ternary (would have broken for any 3rd location) to read
+      from `LOCATIONS[sel.location]` instead.
+- [x] **"Both" only reads correctly for exactly two locations** (found
+      2026-08-08, user flagging this ahead of adding a 3rd location) —
+      `allLocationsLabel(count)` now shows "Both" for ≤2 locations,
+      "All" for 3+. The internal value driving the toggle stays the
+      literal string `"both"` everywhere (existing localStorage order
+      keys and `refreshDevices`' branching key off it) — only the
+      user-facing label changes.
+- [x] **No UI existed to actually add a new location** (found 2026-08-08
+      — `hub_location`'s full backend CRUD, Phase 7 §1b, existed since
+      that work landed, but nothing in the frontend ever called
+      `POST /api/locations`). Added `AddPlaceForm` in My Places — id +
+      label required, all connection URLs optional at creation (fillable
+      later via `PATCH /api/locations/{id}`, same endpoint the live
+      `hub_locations` URL fix used this session). 7 new frontend tests
+      (form validation, POST body shape, server-error surfacing, label
+      logic). Full suite: 52/52.
 
 ---
 
