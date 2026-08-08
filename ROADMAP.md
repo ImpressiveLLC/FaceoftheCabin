@@ -790,6 +790,67 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       Deliberately NOT a full backfill across ~150+ entries — see the
       Ontology Migration Review section below for the tracked, priority-order
       remainder.
+- [x] §2e — Renamed "Family Config" nav label and panel header to just
+      "Config" (it configures the whole instance, not only family
+      settings). Config panel's Google Account card now reflects the real,
+      switchable `useGoogleAuth()` sign-in used to gate the app itself
+      (not the separate, unrelated Home Assistant Google integration link,
+      kept alongside it) — "Switch Google Account" re-opens Google's
+      account chooser (`prompt: "select_account"`, already supported by
+      the existing hook, just not surfaced in this panel before). Platform
+      and Remote Access cards are now backed by real deploy-time config
+      (`CABIN_INSTANCE_PLATFORM` / `CABIN_INSTANCE_REMOTE_ACCESS`,
+      `DashboardController`) instead of hardcoded JSX text — both are now
+      documented "Template Configuration Fields" in `docs/REPLICATION.md`
+      §2/§4 for anyone cloning this app. **Not done / roadmap item**:
+      switching to a Google account that isn't already signed into Google
+      in the current browser (only switching between accounts already
+      signed in, or signing in fresh, works today) — flagged explicitly
+      by the user as acceptable to defer, not silently dropped.
+- [x] Node-RED embed white-screen (found alongside the above, same
+      mixed-content mechanism as the Grafana embed fixed 2026-08-04):
+      cabin-ui is served over HTTPS, Node-RED's iframe still pointed at
+      plain `http://100.77.44.113:1880`, which browsers silently block as
+      mixed content. Fixed with `tailscale serve` (real Let's Encrypt cert
+      via the tailnet itself — `tailscale set --operator=nate` once, then
+      `tailscale serve --bg 1880` on the M920q) rather than the Grafana
+      approach of a public Cloudflare Tunnel route, specifically to keep
+      Node-RED's existing, deliberate Tailscale-only boundary intact.
+      `VITE_CABIN_NODERED_URL` now points at
+      `https://nates-little-m920q.tailb20f8b.ts.net`. Confirmed serving
+      (`curl` 200, both from the M920q and via a real page load).
+- [x] Camera device staleness bug (found 2026-08-07 investigating a "loads
+      then disappears after ~5 min" report): `MqttBridgeService.
+      handleCameraTopic()` never called `DeviceRegistry.update()` for any
+      camera MQTT message, so a camera's `lastSeen` was set once at
+      registration and never refreshed — `DeviceHealthMonitor`'s 5-minute
+      camera stale threshold then fired exactly once, permanently, with no
+      recovery path. Fixed with `touchCamera()`, wired into the motion and
+      per-label-count topics; 5 new tests
+      (`MqttBridgeServiceTest`), full backend suite still green.
+- [x] "API offline" badge accuracy (found investigating the same report):
+      `connected` required *every* attempted location fetch to succeed,
+      including an undeployed Home's — permanently false-negative whenever
+      viewing Home/Both regardless of Cabin's real health. Fixed with
+      `isLocationDeployed()` (an undeployed location's expected failure no
+      longer counts), plus the badge now shows the real failure reason and
+      timestamp on hover and is a real link to that location's
+      `/actuator/health` (a plain navigation, not a `fetch()` — sidesteps
+      Actuator's missing CORS config, same reasoning as the 2026-08-03 fix
+      this replaces). 4 new tests, verified live against a real dev server
+      (both the false-positive-cleared and genuinely-down cases).
+- [x] blinkbridge crash-on-no-clip (live incident, 2026-08-07/08, not this
+      repo — `roger-/blinkbridge` fork on the M920q at
+      `/storage/services/blinkbridge-src/`): a transient Blink cloud-API
+      failure made `save_latest_clip()` return `None`, which
+      `start_server()` passed straight into `ffmpeg`'s argv, crashing a
+      bare `threading.Thread` with no handler and leaving the driveway
+      camera dark (`camera_fps: 0.0`) until a manual restart. Root-caused
+      via the container's real logs/filesystem, fixed (`start_server()`
+      now skips cleanly and logs instead of crashing), covered by 3 new
+      tests (stdlib `unittest`, run directly in the container — this fork
+      has no CI), rebuilt, and redeployed; confirmed recovered
+      (`camera_fps: 4.64`) on the fixed image, not just the restart.
 
 ---
 

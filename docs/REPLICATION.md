@@ -49,6 +49,8 @@ whoever forks the repo — not bugs, just template points:
 | Deploy user | `docker-compose.m920q.yml`, `ansible/inventory.ini`, workflow `DEPLOY_PATH` fallback | `nate` |
 | Google Calendar/Photos account | `.env` examples, Settings UI default | `smrekarfamilia@gmail.com` |
 | Admin account(s) | `.env` `ADMIN_EMAILS` | `nhsmrekar@gmail.com` |
+| Instance platform description | `.env`/compose `CABIN_INSTANCE_PLATFORM` | `Self-hosted — Lenovo ThinkCentre M920q, Ubuntu 24.04, x86_64` |
+| Remote access method(s) | `.env`/compose `CABIN_INSTANCE_REMOTE_ACCESS` (comma-separated) | `Tailscale,Cloudflare Tunnel` |
 
 ## 3. Accounts you need (independent of this instance's)
 
@@ -78,11 +80,27 @@ whoever forks the repo — not bugs, just template points:
    eventual public URL (must be `https://`, exact host + port match — see
    `docs/EXECUTION_PLAN_2026-07-30.md` for the exact failure mode if this
    doesn't match precisely). Add your family's Google accounts as OAuth
-   test users (Audience/OAuth consent screen tab).
-4. **Host machine**: install Docker + Compose, join it to your mesh VPN.
-5. **Domain + tunnel**: point your domain at your DNS/tunnel provider,
+   test users (Audience/OAuth consent screen tab). `ADMIN_EMAILS` is the
+   actual entry gate — only accounts listed there can sign into the
+   Orchestration Hub at all, in the Config panel's "Switch Google Account"
+   or anywhere else in the app; add every account that should ever be able
+   to sign in, not just the primary one. Switching to an account already
+   listed in `ADMIN_EMAILS` works from the Config panel once that account
+   is already signed into Google in the same browser — bringing in an
+   account that isn't currently signed into Google there at all is not yet
+   supported (tracked in `ROADMAP.md`).
+4. **Instance metadata**: set `CABIN_INSTANCE_PLATFORM` (a short
+   human-readable description of what you're actually running on — self-
+   hosted hardware, a cloud VM, a specific provider) and
+   `CABIN_INSTANCE_REMOTE_ACCESS` (comma-separated; defaults to `Tailscale`
+   if unset, matching this guide's §3 mesh-VPN recommendation) in your
+   compose environment. Both display verbatim in the Config panel's
+   Platform / Remote Access cards — see `DashboardController`'s
+   `/api/dashboard/config`.
+5. **Host machine**: install Docker + Compose, join it to your mesh VPN.
+6. **Domain + tunnel**: point your domain at your DNS/tunnel provider,
    configure it to forward to your host's Family Hub port.
-6. **Secrets**: `.env` is Ansible Vault-managed now, not hand-copied from
+7. **Secrets**: `.env` is Ansible Vault-managed now, not hand-copied from
    the example file — follow `ansible/README.md`'s Secrets section
    end to end (create your own vault password, `ansible-vault create
    ansible/group_vars/cabin/vault.yml`, fill in your own
@@ -90,12 +108,12 @@ whoever forks the repo — not bugs, just template points:
    `GOOGLE_CLIENT_ID`/`ADMIN_EMAILS` from step 3 in
    `group_vars/cabin/vars.yml`). Your vault password is a brand-new secret
    for this instance — never reuse the original instance's.
-7. **Bring up the stack**: `docker compose -f docker-compose.yml -f
+8. **Bring up the stack**: `docker compose -f docker-compose.yml -f
    docker-compose.m920q.yml up -d --build` — or write your own override
    file (copy `docker-compose.m920q.yml` as a starting point) if your host
    doesn't need to coexist with a separately-managed Home Assistant/camera
    stack the way this instance's M920q does.
-8. **CI/CD**: follow `ansible/README.md` end to end against your own repo
+9. **CI/CD**: follow `ansible/README.md` end to end against your own repo
    and host — it's already written generically (`{{ ansible_user }}`,
    configurable inventory groups), just needs your registration token and
    inventory values.

@@ -4109,6 +4109,91 @@ elements:
       `mvn test` gate so it actually runs against real Postgres on the
       next push, before anything deploys.
 
+  - id: instance_template_config
+    entity_type: owl:Class
+    layer: backend
+    primitive: true
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-08"
+      ref: "Config panel dynamic fields"
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Instance Template Config"
+    source: >
+      Two @Value-injected Spring properties (cabin.instance.platform,
+      cabin.instance.remoteAccess), surfaced verbatim through
+      DashboardController's existing GET /api/dashboard/config. Deploy-
+      time config, not DB-backed — matches this codebase's established
+      pattern for optional/per-instance settings (CameraMediaController's
+      blinkBridgeUrl, NtfyAlertPublisher's ntfyTopic) rather than
+      introducing a new admin-editable settings table for something a
+      template clone sets once and rarely changes again.
+    rendering:
+      semantic: "What this instance runs on, and how to reach its admin surfaces remotely"
+      systems: Config Panel
+      technical: "DashboardController.config() -> { platform, remoteAccess } (remoteAccess: comma-separated string, split client-side)"
+      compliance: (not shown)
+    definition: >
+      The platform/cloud description and remote-access method(s) a
+      template clone is expected to set at deploy time — the concrete
+      answer to ROADMAP.md Northstar Goal #1's "configurable upstream
+      inputs/downstream outputs" for the parts of that goal that are
+      genuinely instance-wide rather than per-hub-location (compare
+      hub_location, which is per-property). Displayed in the Config
+      panel's Platform and Remote Access cards.
+    relationships:
+      - target: hub_location
+        type: complements
+        cardinality: "1:N"
+    transformation: >
+      FamilyConfigPanel (App.jsx) reads config.platform and
+      config.remoteAccess from the same /api/dashboard/config fetch the
+      panel already depended on (App()'s top-level useEffect), splits
+      remoteAccess on "," client-side, and renders both read-only —
+      there is no write path from the UI back to these values by design;
+      changing them is a deploy-time action (edit the env var, redeploy),
+      not a runtime one.
+    relates_to:
+      ui_components: [ui_config_panel]
+      elements: [hub_location]
+    notes: >
+      Found 2026-08-07 investigating a user request to make "Google
+      Account," "Platform," and "Remote Access" genuinely dynamic instead
+      of hardcoded panel text: `platformName` already looked dynamic
+      (pulled from the same /api/dashboard/config response) but was
+      itself a hardcoded literal server-side ("Cabin Orchestration
+      Platform") — the actual hardware/OS description
+      ("Lenovo ThinkCentre M920q · Ubuntu 24.04 · x86_64") and the Remote
+      Access card's Tailscale description were both hardcoded directly in
+      JSX with no backend field behind them at all. Fixed by adding real
+      fields (this entity) rather than only rewording the hardcoded text,
+      per the user's explicit ask that these be "fields that require
+      entry" for a template clone's initial configuration — see
+      docs/REPLICATION.md §2/§4 for the resulting required-setup entries
+      (CABIN_INSTANCE_PLATFORM, CABIN_INSTANCE_REMOTE_ACCESS).
+
+      Remote Access defaults to "Tailscale" (not empty/unconfigured) when
+      unset, matching REPLICATION.md §3's documented default remote-access
+      recommendation for a fresh clone — the one field here where "looks
+      unconfigured" would be actively misleading rather than honest,
+      since Tailscale genuinely is the intended out-of-the-box answer.
+
+      The Google Account card is a related but separate concern, NOT
+      modeled as a field on this entity: it reads live state from the
+      existing useGoogleAuth() hook (accessToken/userEmail), not a new
+      config value — see google_oauth_gate's own notes (if/when that
+      entity exists) or ADMIN_EMAILS' existing documentation in
+      REPLICATION.md §2 for the actual access-control mechanism. What
+      changed here is only that the Config panel now shows the real
+      signed-in account and offers Google's own account-chooser
+      ("Switch Google Account", prompt: "select_account") instead of a
+      hardcoded email string — switching to an account not already
+      signed into Google in the same browser remains unsupported,
+      tracked as an open roadmap item, not silently dropped.
+
   - id: family_profile
     entity_type: owl:Class
     layer: backend
