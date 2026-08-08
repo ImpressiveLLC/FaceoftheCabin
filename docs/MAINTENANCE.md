@@ -659,6 +659,57 @@ unaffected; this only touches Grafana.
 
 ---
 
+## MQTT WebSocket listener (cabin-ui's Live MQTT tile)
+
+**Added 2026-08-08.** cabin-ui's Monitoring panel has always had a "Live
+MQTT" tile pointed at `LOCATIONS.cabin.wsBase`
+(`ws://100.77.44.113:9001`), and always shown "No live messages" — not
+a bug in that URL, there was simply no WebSocket listener on mosquitto
+at all. Confirmed directly: `mosquitto.conf` only had `listener 1883`
+(raw MQTT), and nothing was listening on port 9001 anywhere on the
+M920q (`ss -tln`, empty).
+
+**Fixed on the M920q's pre-existing stack, not this repo** — mosquitto
+here is managed by `/storage/containers/compose/cabin/docker-compose.yml`
+(the same "M920q docker-compose.yml, currently local-only" flagged as a
+Phase 1 blocker in `ROADMAP.md` — still not pushed to CabinAutomations,
+still a real gap, this fix lives on top of that same gap):
+
+1. `/storage/services/mosquitto/config/mosquitto.conf` — appended a
+   second listener:
+   ```
+   listener 9001
+   protocol websockets
+   ```
+   (backed up first: `mosquitto.conf.bak-<timestamp>` in the same dir).
+2. `docker-compose.yml`'s `mosquitto` service — the config change alone
+   wasn't enough; mosquitto bound port 9001 *inside* the container
+   (confirmed in its logs: "Websockets support available" / "Opening
+   ipv4 listen socket on port 9001") but nothing published it to the
+   host — `docker port mosquitto` only showed `1883`. Added `- "9001:9001"`
+   to that service's `ports:` list (backed up first, same convention),
+   then `docker compose up -d mosquitto` to recreate the container with
+   the new port binding — a plain `docker restart` would not have picked
+   this up, since port publishing is set at container-creation time.
+
+**Verified working, not just deployed**: a real WebSocket handshake
+against `http://100.77.44.113:9001` (curl, `Upgrade: websocket`,
+`Sec-WebSocket-Protocol: mqtt`) returns `HTTP/1.1 101 Switching
+Protocols` with `Sec-WebSocket-Protocol: mqtt` echoed back — a genuine
+MQTT-over-WebSocket connection, not just an open port. All existing MQTT
+clients (`cabin-orchestrator`, `z2m-adapter`, `nodered-cabin-security`)
+reconnected cleanly after the container recreate; `cabin-backend`'s
+`/actuator/health` stayed `UP` throughout.
+
+**Not yet verified**: that cabin-ui's actual `useMqttTelemetry` hook
+renders real live messages end-to-end in a browser once connected — the
+transport now works, but the tile's own message-handling code hasn't
+been exercised against a real live connection since this fix (it was
+never reachable before, so it's realistically untested code, not just
+unverified today).
+
+---
+
 ## Known Issues & Operational Lessons
 
 *A working incident log — real problems found and fixed, kept here so

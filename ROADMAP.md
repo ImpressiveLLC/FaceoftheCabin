@@ -986,6 +986,39 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       UI. 9 new backend tests (`MqttBridgeServiceTest`,
       `SecurityStateRegistryTest`, `SecurityControllerTest` — 52/52
       backend suite green) + 4 new frontend tests (43/43 green).
+- [x] Grafana embed still white after the SameSite=None fix (found via
+      user re-report, 2026-08-08) — root-caused with direct header
+      checks: Google's own sign-in pages refuse to render inside any
+      iframe (anti-clickjacking, not fixable from this side), and a
+      Grafana session cookie issued before the SameSite=None config
+      change keeps its old SameSite=Lax attribute until re-
+      authentication. This embed can only ever reuse an already-valid
+      session established outside the iframe; it can never complete a
+      first-time or expired login inside the frame. Corrected the
+      previously-wrong "may prompt inside the frame" hint text/comment
+      to explain the real fix (sign into Grafana directly once, then
+      reload). See `docs/MAINTENANCE.md`/`docs/ontology.yaml`'s matching
+      updates. User's own follow-up clarified the fix requires a fresh
+      *login* (sign out + back in), not just an already-open Grafana tab
+      — validity and the cookie's SameSite attribute are separate things.
+- [x] "No live messages from ws://..." in the Monitoring panel's Live
+      MQTT tile was always going to show that, regardless of hostname —
+      found investigating the user's report: mosquitto had no WebSocket
+      listener at all (`mosquitto.conf` only had `listener 1883`).
+      Fixed on the M920q's pre-existing stack (not this repo — see
+      `docs/MAINTENANCE.md`'s new "MQTT WebSocket listener" section for
+      the full two-part fix: `mosquitto.conf` gained a `listener 9001` /
+      `protocol websockets` block, and the *separate* compose file
+      managing mosquitto needed `- "9001:9001"` added to actually
+      publish it to the host — mosquitto bound the port inside the
+      container but nothing exposed it, confirmed via `docker port`).
+      Verified with a real WebSocket handshake (`HTTP/1.1 101 Switching
+      Protocols`, `mqtt` subprotocol echoed back), not just an open
+      port; all existing MQTT clients reconnected cleanly after the
+      container recreate. **Not yet verified**: cabin-ui's
+      `useMqttTelemetry` hook rendering real messages end-to-end in a
+      browser — the transport was never reachable before, so that code
+      path is realistically untested, not just unverified today.
 
 ---
 
