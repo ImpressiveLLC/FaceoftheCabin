@@ -203,6 +203,11 @@ services:
       # empty by default (CRITICAL events still persist, just no phone push).
       # Real value lives only in infra/.env on this host, never committed.
       CABIN_ALERT_NTFY_TOPIC: ${CABIN_ALERT_NTFY_TOPIC:-}
+      # Template configuration fields (docs/REPLICATION.md §2/§4) --
+      # surfaced read-only in the Config panel's Platform/Remote Access
+      # cards via DashboardController. This instance's real values.
+      CABIN_INSTANCE_PLATFORM: ${CABIN_INSTANCE_PLATFORM:-Self-hosted — Lenovo ThinkCentre M920q, Ubuntu 24.04, x86_64}
+      CABIN_INSTANCE_REMOTE_ACCESS: ${CABIN_INSTANCE_REMOTE_ACCESS:-Tailscale,Cloudflare Tunnel}
     volumes:
       # Read-only mount so OntologyLookupService can resolve entity ids to
       # display names for the Opportunity Map (and future data-dictionary
@@ -259,12 +264,25 @@ services:
         # boundary — but once fixed, the user still wanted real off-
         # Tailscale reachability). Now behind Cloudflare Tunnel + Access,
         # gated by the same Google OAuth client as this app rather than
-        # network location. Node-RED/Frigate/HA above are UNCHANGED —
-        # this was a Grafana-specific decision, not a blanket policy
-        # change to the Tailscale-only boundary for admin surfaces. See
+        # network location. Frigate/HA above are UNCHANGED — this was a
+        # Grafana-specific decision, not a blanket policy change to the
+        # Tailscale-only boundary for admin surfaces. See
         # docs/MAINTENANCE.md's Grafana section.
         VITE_CABIN_GRAFANA_URL: https://${GRAFANA_EXTERNAL_HOST:-grafana.unicornpingpong.com}
-        VITE_CABIN_NODERED_URL: http://100.77.44.113:1880
+        # UPDATED 2026-08-08: was http://100.77.44.113:1880. cabin-ui is
+        # served over HTTPS (Cloudflare), and that plain-HTTP iframe src
+        # was mixed content -- browsers silently block it, which is what
+        # rendered as the Rules & Alerts panel's blank Node-RED embed.
+        # Fixed with `tailscale serve` (real Let's Encrypt cert via
+        # Tailscale's own tailnet, `tailscale set --operator=nate` +
+        # `tailscale serve --bg 1880` on the M920q) instead of the
+        # Grafana approach above -- this keeps Node-RED's existing,
+        # deliberate Tailscale-only boundary intact (still unreachable
+        # off-tailnet) while making it a real HTTPS origin so the iframe
+        # actually loads. Confirmed serving: `curl -s -o /dev/null -w
+        # '%{http_code}' https://nates-little-m920q.tailb20f8b.ts.net/`
+        # -> 200.
+        VITE_CABIN_NODERED_URL: https://nates-little-m920q.tailb20f8b.ts.net
         VITE_CABIN_FRIGATE_URL: http://100.77.44.113:5000
         VITE_CABIN_HA_URL: http://100.77.44.113:8123
         VITE_CABIN_Z2M_URL: http://100.77.44.113:8080
