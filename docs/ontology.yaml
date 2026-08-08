@@ -3345,9 +3345,12 @@ elements:
       - target: audit_log
         type: consumed_by
         cardinality: "1:N"
+      - target: hub_location
+        type: complements
+        cardinality: "1:N"
     relates_to:
-      ui_components: []
-      elements: []
+      ui_components: [ui_security_badge]
+      elements: [hub_location]
     notes: >
       REAL BUG FOUND AND FIXED HERE, 2026-08-07 — this automation was
       never the problem; both Node-RED flows gating on armed state
@@ -3363,6 +3366,28 @@ elements:
       and this automation already provides real self-healing (fires on
       every toggle AND on every HA restart via
       automation_cabin_security_publish_state_at_startup below).
+
+      ADDED 2026-08-08: found via a direct user question ("does armed not
+      simply become a downstream output from Node-RED/MQTT/mosquitto
+      based on automation rules?") while auditing why the toolbar's alert
+      UI couldn't tell a user whether the cabin was actually armed --
+      correct on every count. cabin-backend's MqttBridgeService now
+      subscribes to +/security/armed_away (wildcarded on location, same
+      reasoning as presence's +/presence/# — see active_presence_
+      profile) and surfaces it via GET /api/security, keyed by location.
+      A location with no entry means no signal has ever been seen for it
+      (home-hub isn't deployed) — the UI treats that as a distinct
+      "unknown" state, never as silently disarmed, since conflating those
+      would be actively dangerous for exactly the kind of ambiguous-alert
+      situation this was built to resolve. Deliberately a direct
+      passthrough, not a derived aggregate like active_presence_profile —
+      there's no multi-signal combination logic here, just "listen to the
+      signal that already exists." AlertSeverityClassifier does NOT yet
+      consume this (or presence) for severity scoring — still the same
+      tracked gap noted elsewhere in this file ("Deliberately does not
+      yet consider armed/presence state") — this only makes the raw
+      signal visible in the UI, it doesn't change how severity is
+      computed.
 
   - id: automation_cabin_security_publish_nate_presence
     entity_type: owl:Class

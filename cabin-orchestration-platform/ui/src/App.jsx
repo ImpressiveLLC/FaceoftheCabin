@@ -22,7 +22,7 @@ import { ThemeProvider, ThemeSwitcher, useTheme } from "./ThemeProvider.jsx";
 import {
   Home, Settings, Cpu, Activity, Zap,
   ChevronDown, ChevronUp, Wifi, WifiOff,
-  Droplets, Thermometer, Camera, ShieldAlert, Lock,
+  Droplets, Thermometer, Camera, ShieldAlert, Lock, Unlock,
   RefreshCw, Plus, Trash2, ToggleLeft, ToggleRight,
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
   Eye, Edit2, UserPlus, Minus, ExternalLink,
@@ -2449,6 +2449,35 @@ function usePresence() {
   return { profile, setProfile, options, autoDerived, signals };
 }
 
+// Found 2026-08-08 (user question, following the presence fix above):
+// "armed" already exists as a real, live, retained MQTT signal
+// (cabin/security/armed_away, self-healing -- republishes on toggle and
+// on HA restart, see docs/ontology.yaml's automation_cabin_security_
+// publish_arm_state) -- cabin-backend just never subscribed to it, so
+// the UI had no way to answer "is this actually armed" for a user
+// looking at an ambiguous alert. Same wire-up pattern as usePresence,
+// deliberately not folded into it -- arming and presence are different
+// concerns with different sources of truth (a human toggle vs. a WiFi
+// signal) even though both ride the same MQTT bridge.
+function useSecurityState() {
+  const [states, setStates] = useState({}); // { [location]: { armed, lastUpdated } }
+
+  const refresh = useCallback(() => {
+    fetch(`${LOCATIONS.cabin.apiBase}/api/security`)
+      .then(r => r.json())
+      .then(setStates)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 15000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  return states;
+}
+
 // ─── Display configs (bulk, for active profile) ────────────────────────────
 function useDisplayConfigs(profile) {
   const [configs, setConfigs] = useState({}); // deviceId → DeviceDisplayConfig
@@ -2513,6 +2542,49 @@ function PresenceToggle() {
   );
 }
 
+// Exported for src/App.test.jsx. Pure function so the "unknown" case
+// (no armed_away signal ever received for this location) is impossible
+// to mix up with "disarmed" -- those are very different things to tell
+// a user looking at an ambiguous alert, and conflating them was exactly
+// the kind of gap that prompted this feature. See SecurityBadge below.
+export function formatArmedTitle(state) {
+  if (!state) return "No armed/disarmed signal received yet for this location";
+  const ts = new Date(state.lastUpdated).toLocaleTimeString();
+  return `${state.armed ? "Armed" : "Disarmed"} (as of ${ts})`;
+}
+
+// Found 2026-08-08, directly following the presence fix: "armed" is
+// exactly the same class of gap -- a real, live, self-healing MQTT
+// signal (cabin/security/armed_away, an HA automation, see
+// docs/ontology.yaml's automation_cabin_security_publish_arm_state)
+// that cabin-backend had simply never subscribed to, leaving the UI
+// with no way to answer "is this actually armed" for a user looking at
+// an ambiguous alert. See useSecurityState's comment for why this is a
+// separate hook/badge from presence rather than folded into it.
+function SecurityBadge() {
+  const { securityStates, activeLocation } = useApp();
+  const loc = activeLocation !== "both" ? activeLocation : "cabin";
+  const state = securityStates?.[loc];
+  const title = formatArmedTitle(state);
+
+  if (!state) {
+    return (
+      <span className="security-badge security-unknown" title={title}>
+        <ShieldAlert size={13} style={{ opacity: 0.5 }}/> Unknown
+      </span>
+    );
+  }
+  return state.armed ? (
+    <span className="security-badge security-armed" title={title}>
+      <Lock size={13}/> Armed
+    </span>
+  ) : (
+    <span className="security-badge security-disarmed" title={title}>
+      <Unlock size={13}/> Disarmed
+    </span>
+  );
+}
+
 // ─── Navigation Rail ───────────────────────────────────────────────────────
 function NavRail({ active, onSelect, alertLevels }) {
   const alerts = alertLevels;
@@ -2570,6 +2642,7 @@ function App() {
   const { levels: alertLevels, cfg: alertCfg, enableAlert, resetAlert } = useNavAlerts();
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence();
+  const securityStates = useSecurityState();
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile);
   const cameraAuth = useGoogleAuth();
 
@@ -2644,6 +2717,7 @@ function App() {
       activeLocation, locationCfg,
       alertCfg, enableAlert, resetAlert,
       activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
+      securityStates,
       displayConfigs, refreshDisplayConfigs,
     }}>
       <div className="app-shell">
@@ -2654,6 +2728,7 @@ function App() {
             <div className="toolbar-right">
               <LocationSwitcher active={activeLocation} onChange={setActiveLocation} />
               <PresenceToggle />
+              <SecurityBadge />
               <ThemeSwitcher />
               {connected ? (
                 <span className="api-status api-ok">

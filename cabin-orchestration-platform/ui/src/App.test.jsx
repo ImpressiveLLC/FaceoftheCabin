@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -278,5 +278,33 @@ describe("formatPresenceSignals", () => {
     expect(formatPresenceSignals([{ personId: "nate", location: "cabin", present: false }]))
       .toBe("No one currently detected present");
     expect(formatPresenceSignals(undefined)).toBe("No one currently detected present");
+  });
+});
+
+// Covers the 2026-08-08 armed-state finding: cabin/security/armed_away
+// is a real, live, HA-published MQTT signal that cabin-backend never
+// subscribed to. formatArmedTitle must never let "no signal yet" read
+// as "disarmed" -- those mean very different things to someone looking
+// at an ambiguous alert. See SecurityBadge's own comment in App.jsx.
+describe("formatArmedTitle", () => {
+  it("reports armed with a timestamp", () => {
+    const title = formatArmedTitle({ armed: true, lastUpdated: "2026-08-08T04:00:00Z" });
+    expect(title).toMatch(/^Armed \(as of /);
+  });
+
+  it("reports disarmed with a timestamp", () => {
+    const title = formatArmedTitle({ armed: false, lastUpdated: "2026-08-08T04:00:00Z" });
+    expect(title).toMatch(/^Disarmed \(as of /);
+  });
+
+  it("never reads as disarmed when no signal has ever been received", () => {
+    const title = formatArmedTitle(null);
+    expect(title).not.toMatch(/^Disarmed/);
+    expect(title).not.toMatch(/^Armed/);
+    expect(title).toMatch(/no armed\/disarmed signal/i);
+  });
+
+  it("handles undefined the same as null without throwing", () => {
+    expect(() => formatArmedTitle(undefined)).not.toThrow();
   });
 });

@@ -107,6 +107,15 @@ body {
 .api-err { color: #f85149; cursor: pointer; }
 .api-err:hover { text-decoration: underline; }
 
+/* ─── Security badge (armed/disarmed) ───────────────────────────────────── */
+/* Distinct "unknown" styling is deliberate -- see formatArmedTitle's own
+   comment on why conflating "no signal yet" with "disarmed" is exactly
+   the kind of ambiguity this feature exists to remove. */
+.security-badge { display: flex; align-items: center; gap: 4px; }
+.security-armed { color: #f85149; }
+.security-disarmed { color: #8b949e; }
+.security-unknown { color: #6e7681; font-style: italic; }
+
 .panel-area { flex: 1; overflow-y: auto; }
 
 /* ─── Panel Content ────────────────────────────────────────────────────── */

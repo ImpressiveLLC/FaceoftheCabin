@@ -926,6 +926,29 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       formal "tracked person" registry (personId is today just whatever
       string a publisher's topic uses, auto-discovered like
       `DeviceRegistry` does for devices, not linked to `family_profile`).
+- [x] Armed/disarmed state wasn't surfaced anywhere in cabin-ui (found
+      immediately after the presence fix above, via the user's own direct
+      question: "does armed not simply become a downstream output from
+      Node-RED/MQTT/mosquitto based on automation rules?" — correct on
+      every count). `cabin/security/armed_away` is a real, live, retained,
+      self-healing MQTT signal (HA automation, republishes on toggle AND
+      on HA restart) that cabin-backend had simply never subscribed to —
+      same class of gap as presence, not a new concept to invent. Fixed
+      with the identical pattern: `SecurityStateRegistry` (in-memory,
+      keyed by location) + `MqttBridgeService` subscribing to
+      `+/security/armed_away` (location-agnostic) + `GET /api/security`
+      + a toolbar `SecurityBadge` (lock/unlock icon, tooltip with
+      timestamp). Deliberately a direct passthrough, not a derived
+      aggregate like presence — no combination logic needed. A location
+      with no signal yet reads as a distinct "Unknown," never silently as
+      "Disarmed" — conflating those would be dangerous for exactly the
+      ambiguous-alert situation this exists to resolve. **Not done**:
+      `AlertSeverityClassifier` still doesn't consume armed state (or
+      presence) for severity scoring — same pre-existing tracked gap,
+      unchanged by this — this only makes the raw signal visible in the
+      UI. 9 new backend tests (`MqttBridgeServiceTest`,
+      `SecurityStateRegistryTest`, `SecurityControllerTest` — 52/52
+      backend suite green) + 4 new frontend tests (43/43 green).
 
 ---
 
