@@ -421,11 +421,22 @@ cheaply — the user already has an Android device set up for Termux
 kiosk-browser ecosystem (e.g. Fully Kiosk Browser) is more mature than
 DIY Chromium-kiosk-mode. The one real unknown, unproven in this project:
 whether Termux can reach a USB Zigbee coordinator over Android USB-OTG
-without root. **Test that specifically before buying anything.** If it
-fails, fall back to a Raspberry Pi 4 (not 3B+/Zero 2 W — the kiosk
-requirement wants the extra headroom) with a touch monitor, ~$60–120
-all-in — the Android device would still work fine as a kiosk-only
-display in that case.
+without root. **Test that specifically before buying anything** — a full
+step-by-step playbook now exists:
+[`docs/POC_2026-08-08_termux-zigbee-collector.md`](POC_2026-08-08_termux-zigbee-collector.md)
+(8 phases: ADB bridge from ilikethelights for visibility, Termux setup,
+USB device detection, the actual Zigbee2MQTT test with an explicit
+go/no-go signal, Tailscale reachability to the M920q, optional real-device
+pairing, 24/7 reliability scaffolding, and a separate kiosk-display
+check). If it fails, fall back to a Raspberry Pi 4 (not 3B+/Zero 2 W —
+the kiosk requirement wants the extra headroom) with a touch monitor,
+~$60–120 all-in — the Android device would still work fine as a
+kiosk-only display in that case. **If Codex picks this item up before
+the user has run the POC, do not assume the tests below**: it should
+either wait for the user to report a result, or (if instructed to run
+it) follow that playbook and report back honestly, including a clean
+failure — this is real, unproven hardware behavior, not something to
+simulate or assume passing.
 
 **Still blocked on real work, not just a decision anymore**: there is no
 collector-only compose profile in this repo — deploying either device

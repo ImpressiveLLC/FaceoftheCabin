@@ -1350,7 +1350,11 @@ above to a concrete recommendation for Home specifically:
   Fully Kiosk Browser) is more mature than DIY Chromium-kiosk-mode. The
   one real unknown is whether Termux can reach a USB Zigbee coordinator
   over Android USB-OTG without root — unproven in this project. **Test
-  that specifically, first**, before committing hardware budget.
+  that specifically, first**, before committing hardware budget — full
+  step-by-step playbook in
+  [`docs/POC_2026-08-08_termux-zigbee-collector.md`](docs/POC_2026-08-08_termux-zigbee-collector.md),
+  including the exact go/no-go signal to look for and where to stop and
+  fall back rather than over-invest time.
 - **If the USB-Zigbee test fails**: fall back to a Raspberry Pi 4 (not
   3B+/Zero 2 W, given the kiosk-display requirement now — Chromium kiosk
   mode wants the extra RAM/CPU) with an HDMI touch monitor or the
