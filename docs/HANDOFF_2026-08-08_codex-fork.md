@@ -15,6 +15,11 @@
 > Last commit on `main` as of writing: **`6dbbadc`** — "Fix Device
 > Manager's location filtering; add the missing 'Add Place' UI". Working
 > tree clean, `main` up to date with `origin/main`, nothing uncommitted.
+>
+> **Update, same day, before the limit was actually reached:** got real
+> work done on Item 1 below (device checkin-status tiering) before
+> stopping — see the revised §2 and §3 Item 1. This file is being kept
+> current in place per its own §5 instruction rather than left stale.
 
 ---
 
@@ -202,7 +207,19 @@ M920q. Recent work this session, newest first:
 All of the above have real tests wired into the existing CI gates
 (`FrigateMetricsControllerTest`, `App.test.jsx` additions for
 `cameraHealthLabel`, `allLocationsLabel`, and `AddPlaceForm` — 52/52 green
-in the frontend suite as of this commit).
+in the frontend suite as of that commit).
+
+**One commit newer** (after this handoff doc was first written, same
+session, before actually stopping): **Item 1 below (device checkin-status)
+got a real, tested first increment** — `CheckinStatus` enum
+(`ON_SCHEDULE`/`LATE`/`MISSED`/`NOT_CONFIGURED`), `DeviceHealthMonitor`
+tiering with a real active HA poll before escalating past the grace tier,
+`GET /api/devices/checkin-status`, and Device Manager/Monitoring badge
+wiring. Full detail in `ROADMAP.md`'s Phase 7 (newest entry) and
+`docs/ontology.yaml`'s new `device_checkin_status` entity — this file
+doesn't duplicate that detail, just flags that Item 1 is no longer
+"not started." See the revised §3 Item 1 below for exactly what's done vs.
+still open within that item.
 
 ### Things resolved this session that are NOT bugs to reopen
 
@@ -230,7 +247,7 @@ The user's last substantive request before the usage-limit/handoff
 message was a 5-part "big things right now" list. **None of these five
 have been started.** Full context for each:
 
-### Item 1 — Device state semantics are misleading
+### Item 1 — Device state semantics are misleading — PARTIALLY DONE
 
 > "devices that show offline are not necessarily offline just not
 > reporting... the correct state is probably something like 'checking in
@@ -242,18 +259,57 @@ have been started.** Full context for each:
 > cards for each device, cameras included, should have this behavior
 > baked-in."
 
-Relevant existing code: `DeviceStatus.state` (`ONLINE | OFFLINE | ALARM |
-UNKNOWN`, see `CLAUDE.md`'s "Key models" section) is currently binary/
-stale-flag driven — `DeviceHealthMonitor.java` does stale detection with
-exponential backoff but the *UI-facing label* collapses everything down
-to those four values. This item asks for a richer state model
-(multi-tier "haven't heard from it on schedule" vs "confirmed
-unreachable via active ping") applied consistently to both device cards
-and camera cards. This will likely need a new enum/set of states, a
-change to whatever renders device/camera status badges, and — per the
-user's ask — an actual active verification step (ping/HA check/MQTT
-liveness), not just passive staleness. Needs ontology.yaml entry once
-designed (new or extended `device_status` semantics).
+**Built this session** (see `ROADMAP.md`'s Phase 7 newest entry,
+`docs/ontology.yaml`'s `device_checkin_status`): a new `CheckinStatus`
+enum — `ON_SCHEDULE` / `LATE` / `MISSED` / `NOT_CONFIGURED`, matching the
+user's four named states — computed by `DeviceHealthMonitor` every 60s
+cycle as an *additional* axis alongside `DeviceStatus.state`, not a
+replacement (nothing that reads `state` needed to change). A device gets
+a grace tier (LATE) before anything downstream calls it OFFLINE; `state`
+itself still only flips to OFFLINE at the MISSED tier. `GET /api/devices/
+checkin-status` exposes it; `checkinStatusLabel()` in `App.jsx` overrides
+the badge shown in Device Manager (`DmDeviceRow`, `DmDeviceDetail`) and
+Monitoring (`KpiListItem`) — never for ALARM/CRITICAL, which always shows
+as itself. 6 backend tests + 5 frontend tests, all green; verified live in
+a browser preview with no console errors (backend unreachable from that
+sandbox, so only graceful-degradation was actually confirmed there — see
+"still open" below).
+
+**The active-verification half is real but partial**, and this is stated
+explicitly rather than left implied-complete: for `ha_rest` devices only,
+`DeviceRegistry.activeFetch()` calls the real `HomeAssistantAdapter.
+fetchState()` (a genuine HTTP round-trip to HA, not a simulation) before a
+device is allowed to escalate to MISSED — if that poll succeeds, the
+device recovers immediately regardless of how stale it looked. This is
+the actual "ping it, only bad if attempts aren't successful" mechanism
+the user asked for, just scoped to one protocol.
+
+**Still open, if picking this item back up:**
+- **MQTT/Zigbee devices have no active check** — they're push-only
+  (no request/response), so they still rely on time-based tiering alone.
+  A real fast-follow would need something like an MQTT retained-message
+  liveness check, not a fabricated ping.
+- **RTSP cameras (Home's 5 Reolinks) have no active check either** —
+  would need a connect-and-drop probe against the RTSP URL.
+- **Not yet verified against the real M920q backend with real devices**
+  — only verified in a browser preview with the backend unreachable
+  (graceful-degradation path only) and via unit/integration tests. Watch
+  in particular whether the `LATE` grace tier (3x the existing stale
+  threshold — e.g. 45 min for `ha_rest`/thermostat/lock-type devices
+  before OFFLINE fires at all) feels right in practice, or needs tuning;
+  it's a placeholder multiplier (`MISSED_MULTIPLIER = 3` in
+  `DeviceHealthMonitor.java`), not user-validated.
+- **Camera cards specifically**: the user said "cameras included" —
+  Frigate-based cabin cameras go through `CameraHealthPanel` (separate,
+  already-existing FPS-based labeling, untouched by this change) rather
+  than `DeviceRegistry`'s checkin tracking. Home's RTSP camera
+  descriptors *do* flow through `DeviceRegistry` (and are currently all
+  `enabled: false`, so they now correctly show NOT_CONFIGURED instead of
+  a scary OFFLINE — a likely, but unconfirmed, side-benefit for the
+  already-logged "Warning banner firing on 5 undeployed Home cameras"
+  item in `docs/DEFINITION_OF_DONE.md`'s punch list; worth checking
+  whether that alert path actually reads this new signal or something
+  else entirely before claiming it's fixed).
 
 ### Item 2 — Camera auth should inherit from Family Hub, single persistent OAuth
 

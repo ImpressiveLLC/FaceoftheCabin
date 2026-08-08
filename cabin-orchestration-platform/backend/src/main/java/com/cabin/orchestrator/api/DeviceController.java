@@ -12,6 +12,7 @@ import com.cabin.orchestrator.integrations.zigbee.Zigbee2MqttAdapter;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,6 +47,18 @@ public class DeviceController {
     @GetMapping("/{deviceId}")
     public DeviceStatus getDevice(@PathVariable String deviceId) {
         return registry.get(deviceId);
+    }
+
+    /**
+     * Per-device checkin status (ON_SCHEDULE / LATE / MISSED / NOT_CONFIGURED) —
+     * the "is it actually broken or just hasn't reported yet" signal, distinct
+     * from DeviceStatus.state. See DeviceHealthMonitor's class comment.
+     */
+    @GetMapping("/checkin-status")
+    public Map<String, String> checkinStatus() {
+        Map<String, String> out = new LinkedHashMap<>();
+        healthMonitor.getCheckinStatuses().forEach((id, status) -> out.put(id, status.name()));
+        return out;
     }
 
     /** Register a new device (Device Manager UI → add device) */

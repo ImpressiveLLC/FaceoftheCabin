@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -274,6 +274,34 @@ describe("allLocationsLabel", () => {
 
   it("still reads as Both for a single-location instance", () => {
     expect(allLocationsLabel(1)).toBe("Both");
+  });
+});
+
+// Covers the 2026-08-08 request: "offline" was firing the instant a device
+// missed one poll interval, which is misleading (not-yet-reported vs.
+// actually-unreachable). checkinStatusLabel is the pure function that maps
+// GET /api/devices/checkin-status onto the badge shown on device cards.
+describe("checkinStatusLabel", () => {
+  it("never overrides an ALARM or CRITICAL state, regardless of checkin status", () => {
+    expect(checkinStatusLabel("ALARM", "MISSED")).toBeNull();
+    expect(checkinStatusLabel("CRITICAL", "LATE")).toBeNull();
+  });
+
+  it("shows a grace-tier label for LATE without implying the device is broken", () => {
+    expect(checkinStatusLabel("OFFLINE", "LATE")).toEqual({ text: "Late checking in", cls: "state-late" });
+  });
+
+  it("shows a distinct label for MISSED", () => {
+    expect(checkinStatusLabel("OFFLINE", "MISSED")).toEqual({ text: "Not responding", cls: "state-offline" });
+  });
+
+  it("shows NOT_CONFIGURED for disabled/not-yet-installed devices", () => {
+    expect(checkinStatusLabel("UNKNOWN", "NOT_CONFIGURED")).toEqual({ text: "Not configured", cls: "state-not-configured" });
+  });
+
+  it("falls through to the raw state for ON_SCHEDULE or missing data", () => {
+    expect(checkinStatusLabel("ONLINE", "ON_SCHEDULE")).toBeNull();
+    expect(checkinStatusLabel("ONLINE", undefined)).toBeNull();
   });
 });
 

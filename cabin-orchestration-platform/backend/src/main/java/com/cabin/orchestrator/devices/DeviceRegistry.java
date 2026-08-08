@@ -160,4 +160,18 @@ public class DeviceRegistry {
         if (adapter == null) return false;
         return adapter.sendCommand(desc, command, payload);
     }
+
+    /**
+     * Actively poll a device's adapter for its current state, bypassing the
+     * passive last-seen cache. Empty means the device didn't answer (or has
+     * no descriptor/adapter, or its adapter doesn't support polling — e.g.
+     * MQTT devices are push-only and always return empty here).
+     */
+    public Optional<DeviceStatus> activeFetch(String deviceId) {
+        DeviceDescriptor desc = descriptors.get(deviceId);
+        if (desc == null) return Optional.empty();
+        ProtocolAdapter adapter = adapters.get(desc.protocolAdapter());
+        if (adapter == null) return Optional.empty();
+        return adapter.fetchState(desc);
+    }
 }

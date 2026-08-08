@@ -1128,6 +1128,36 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       `hub_locations` URL fix used this session). 7 new frontend tests
       (form validation, POST body shape, server-error surfacing, label
       logic). Full suite: 52/52.
+- [x] **"Offline" was misleading — didn't distinguish "hasn't reported
+      yet" from "actually unreachable"** (user report, 2026-08-08, verbatim
+      in `docs/ontology.yaml`'s new `device_checkin_status` entity). Added
+      a second, additive status axis (`CheckinStatus`: ON_SCHEDULE / LATE
+      / MISSED / NOT_CONFIGURED) computed by `DeviceHealthMonitor` every
+      60s cycle alongside — not instead of — the existing `DeviceStatus.
+      state`. A device now gets a grace tier (LATE) before anything reads
+      OFFLINE; `ha_rest` devices additionally get a real active poll
+      (`DeviceRegistry.activeFetch()` → `HomeAssistantAdapter.fetchState()`,
+      a genuine HTTP round-trip) attempted before escalating to MISSED —
+      only MISSED still flips `state` to OFFLINE, same trigger point as
+      before. Disabled/not-yet-installed devices report NOT_CONFIGURED
+      and skip staleness tracking entirely. New `GET /api/devices/
+      checkin-status` endpoint; `checkinStatusLabel()` (App.jsx) overrides
+      the Device Manager and Monitoring badges, never for ALARM/CRITICAL.
+      6 new backend tests (`DeviceHealthMonitorTest`, pure classification
+      + full-cycle behavior with a fake HA adapter) + 5 new frontend tests.
+      Full suites: backend 80/80 excluding 3 pre-existing Docker-dependent
+      tests this sandbox can't run (no Docker — see `CLAUDE.md`'s Testing
+      section, unrelated to this change); frontend 57/57. Verified live in
+      a browser preview (no console errors, graceful degradation when the
+      backend is unreachable) — not yet verified against the real M920q
+      backend with actual devices.
+      **Honestly scoped, not silently narrowed**: the user also asked for
+      an "mq[tt]... rules based (automation check)" active-verification
+      path — only the `ha_rest` half of that is built. MQTT/Zigbee devices
+      (push-only, no request/response) and RTSP cameras still fall back to
+      time-based tiering alone; see `device_checkin_status`'s `notes` in
+      `docs/ontology.yaml` for the exact gap and what a fast-follow would
+      need (a protocol-level liveness probe per adapter).
 
 ---
 

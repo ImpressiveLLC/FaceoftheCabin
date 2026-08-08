@@ -901,6 +901,71 @@ elements:
       UNKNOWN for >5 minutes after backend start, treat as a connectivity
       issue. See QA check: devices-z2m.
 
+  - id: device_checkin_status
+    entity_type: owl:DatatypeProperty
+    layer: backend
+    primitive: false
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-08"
+      ref: "DeviceHealthMonitor, DeviceController.checkinStatus()"
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: [ON_SCHEDULE, LATE, MISSED, NOT_CONFIGURED]
+      description: >
+        Distinct axis from device_state. ON_SCHEDULE = reported within its
+        expected interval. LATE = past that interval but not yet confirmed
+        unreachable (grace tier, device_state stays whatever it was).
+        MISSED = past a 3x grace multiple, and for ha_rest devices only
+        after an active poll (DeviceRegistry.activeFetch) also failed --
+        device_state flips to OFFLINE at this tier, same trigger point as
+        before this entity existed. NOT_CONFIGURED = descriptor disabled
+        (not yet installed) or missing; staleness tracking is skipped
+        entirely, so a disabled device is never reported as broken.
+    ui_display_name: "Checkin Status"
+    rendering:
+      semantic: "Is this actually broken, or just hasn't checked in yet"
+      systems: "Late checking in / Not responding / Not configured badges (Device Manager, Monitoring)"
+      technical: "GET /api/devices/checkin-status -> { [deviceId]: status }; checkinStatusLabel() (App.jsx) overrides the state-badge text/class, never for ALARM/CRITICAL"
+      compliance: (not shown)
+    definition: >
+      User report, 2026-08-08, verbatim: "devices that show offline are
+      not necessarily offline just not reporting. this is misleading."
+      device_state's binary ONLINE/OFFLINE conflated "hasn't pushed an
+      update yet" with "confirmed unreachable" -- this entity is the
+      user-facing fix, computed by DeviceHealthMonitor.checkHealth() every
+      60s cycle alongside (not instead of) device_state.
+    relationships:
+      - target: device_state
+        type: complements
+        cardinality: "1:1"
+      - target: audit_log
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: [ui_device_manager_panel, ui_monitoring_panel]
+      elements: [device_state]
+    notes: >
+      SCOPE NOTE (honest, not silently narrowed): the user's full ask was
+      four named states ("checking in on schedule" / "not checked in on
+      schedule" / "hasn't checked in" / "not configured" -- all four are
+      covered here) plus "a listener with an HA, mq, or rules based
+      (automation check) way to know... based on assumption that it's
+      only bad if... attempts to ping it aren't successful." The active
+      ping half is built for ha_rest devices only (DeviceRegistry.
+      activeFetch() calls the real HomeAssistantAdapter.fetchState() --
+      a genuine HTTP round-trip, not a simulation). MQTT/Zigbee devices
+      are push-only with no request/response capability to probe, so
+      those fall back to time-based tiering alone; RTSP camera devices
+      likewise have no active check built yet. Both are real, scoped
+      gaps, not oversights -- a fast-follow would need a protocol-level
+      liveness probe per adapter (e.g. an MQTT retained-message check,
+      or an RTSP connect-and-drop) that doesn't exist yet anywhere in
+      this codebase.
+
   - id: linkquality
     entity_type: owl:DatatypeProperty
     layer: protocol

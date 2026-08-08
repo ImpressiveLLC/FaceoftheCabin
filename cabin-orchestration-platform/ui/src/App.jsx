@@ -851,6 +851,37 @@ function stateColor(state) {
   return "state-unknown";
 }
 
+// "OFFLINE" the instant a device misses one poll interval was misleading
+// users (2026-08-08 report) — it doesn't distinguish "hasn't checked in
+// yet" from "confirmed unreachable." checkinStatus (from
+// GET /api/devices/checkin-status, backed by DeviceHealthMonitor's
+// ON_SCHEDULE/LATE/MISSED/NOT_CONFIGURED tiering) is the more honest
+// label; this only overrides the badge for the ambiguous cases and never
+// touches an ALARM/CRITICAL device, which must always read as itself.
+export function checkinStatusLabel(state, checkinStatus) {
+  const s = (state || "").toUpperCase();
+  if (s === "ALARM" || s === "CRITICAL") return null;
+  switch (checkinStatus) {
+    case "NOT_CONFIGURED": return { text: "Not configured", cls: "state-not-configured" };
+    case "LATE":            return { text: "Late checking in", cls: "state-late" };
+    case "MISSED":           return { text: "Not responding", cls: "state-offline" };
+    default: return null; // ON_SCHEDULE, or no data yet — show the raw state
+  }
+}
+
+function useCheckinStatuses(apiBase) {
+  const [statuses, setStatuses] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${apiBase}/api/devices/checkin-status`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setStatuses(data || {}); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [apiBase]);
+  return statuses;
+}
+
 function deviceIcon(type) {
   const map = {
     CAMERA: Camera, WATER_PRESSURE_SENSOR: Droplets, TEMPERATURE_SENSOR: Thermometer,
@@ -1318,6 +1349,7 @@ function DmSeeView({ devices, selected, onSelect, reorderMode }) {
   const [health, setHealth] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
+  const checkinStatuses = useCheckinStatuses(LOCATIONS.cabin.apiBase);
 
   useEffect(() => {
     fetch(`${LOCATIONS.cabin.apiBase}/api/system/health`)
@@ -1365,6 +1397,7 @@ function DmSeeView({ devices, selected, onSelect, reorderMode }) {
             >
               <DmDeviceRow device={d}
                 selected={selected === d.deviceId}
+                checkinStatus={checkinStatuses[d.deviceId]}
                 onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)}
                 dragHandle={reorderMode
                   ? (isPinned
@@ -1379,7 +1412,7 @@ function DmSeeView({ devices, selected, onSelect, reorderMode }) {
       </div>
       {sel && (
         <div className="dm-detail">
-          <DmDeviceDetail device={sel} />
+          <DmDeviceDetail device={sel} checkinStatus={checkinStatuses[sel.deviceId]} />
         </div>
       )}
     </div>
@@ -1675,9 +1708,10 @@ function DmRemoveView({ devices, selected, onSelect, onRefresh }) {
 
 // ── Shared sub-components ──
 
-function DmDeviceRow({ device, selected, onClick, dragHandle }) {
+function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
   const Icon = deviceIcon(device.type);
   const isZ2m = device.deviceId.startsWith("z2m-");
+  const override = checkinStatusLabel(device.state, checkinStatus);
   return (
     <div className={`dm-device-row ${selected ? "dm-row-selected" : ""}`} onClick={onClick}>
       {dragHandle}
@@ -1686,12 +1720,15 @@ function DmDeviceRow({ device, selected, onClick, dragHandle }) {
         <span className="dm-row-name">{device.name}</span>
         <span className="dm-row-meta">{device.type} · {device.location}{isZ2m ? " · zigbee" : ""}</span>
       </div>
-      <span className={`state-badge ${stateColor(device.state)}`}>{device.state}</span>
+      <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
+        {override ? override.text : device.state}
+      </span>
     </div>
   );
 }
 
-function DmDeviceDetail({ device }) {
+function DmDeviceDetail({ device, checkinStatus }) {
+  const override = checkinStatusLabel(device.state, checkinStatus);
   return (
     <div className="dm-detail-inner">
       <div className="dm-detail-name">{device.name}</div>
@@ -1700,7 +1737,9 @@ function DmDeviceDetail({ device }) {
         <div className="dm-detail-row"><span>Type</span><span>{device.type}</span></div>
         <div className="dm-detail-row"><span>Location</span><span>{device.location}</span></div>
         <div className="dm-detail-row"><span>State</span>
-          <span className={`state-badge ${stateColor(device.state)}`}>{device.state}</span>
+          <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
+            {override ? override.text : device.state}
+          </span>
         </div>
         <div className="dm-detail-row"><span>Last seen</span>
           <span>{device.lastSeen ? new Date(device.lastSeen).toLocaleString() : "—"}</span>
@@ -1996,13 +2035,14 @@ function MonitoringPanel({ active }) {
 }
 
 function KpiListItem({ device, idx, dragIdx, overIdx, reorderMode, isPinned,
-    onDragStart, onDragOver, onDrop, onDragEnd }) {
+    onDragStart, onDragOver, onDrop, onDragEnd, checkinStatus }) {
   const { displayConfigs } = useApp();
   const cfg = displayConfigs?.[device.deviceId];
   const Icon = deviceIcon(device.type);
   const effectiveLabel = cfg?.displayName || device.name;
-  const stCls          = severityClass(cfg?.severityOverride) || stateColor(device.state);
-  const badgeLabel     = cfg?.stateLabelMap?.[device.state] || device.state || "UNKNOWN";
+  const override        = !cfg?.stateLabelMap?.[device.state] ? checkinStatusLabel(device.state, checkinStatus) : null;
+  const stCls          = severityClass(cfg?.severityOverride) || (override ? override.cls : stateColor(device.state));
+  const badgeLabel     = cfg?.stateLabelMap?.[device.state] || (override ? override.text : device.state) || "UNKNOWN";
   const isOver         = reorderMode && overIdx === idx && dragIdx !== idx;
 
   return (
@@ -2028,6 +2068,7 @@ function KpiListItem({ device, idx, dragIdx, overIdx, reorderMode, isPinned,
 function MnSeeView({ devices, activeLocation, active, reorderMode }) {
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
+  const checkinStatuses = useCheckinStatuses(LOCATIONS.cabin.apiBase);
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
   const locDevices = activeLocation === "both"
@@ -2056,6 +2097,7 @@ function MnSeeView({ devices, activeLocation, active, reorderMode }) {
             reorderMode={reorderMode} isPinned={idx < pinnedCount}
             onDragStart={onDragStart(idx)} onDragOver={onDragOver(idx)}
             onDrop={onDrop(idx)} onDragEnd={onDragEnd}
+            checkinStatus={checkinStatuses[d.deviceId]}
           />
         ))}
         {ordered.length === 0 && (

@@ -166,6 +166,11 @@ body {
 .state-offline { background: #2a2020; color: #8b949e; }
 .state-unknown { background: #2a2620; color: #d29922; }
 .state-warn    { background: #2a2010; color: var(--warning); }
+/* checkinStatus overrides — "off schedule" is a grace tier, not a claim
+   the device is actually broken, so it gets its own tone distinct from
+   the confirmed-unreachable .state-offline look. */
+.state-late           { background: #2a2010; color: var(--warning); }
+.state-not-configured { background: #20242a; color: #6e7681; }
 
 /* ─── KPI Tiles ────────────────────────────────────────────────────────── */
 .kpi-grid {
