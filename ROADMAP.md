@@ -1367,6 +1367,36 @@ above to a concrete recommendation for Home specifically:
   built first — there is no collector-only compose profile in this repo
   yet to actually deploy to either device.
 
+**Coordinator hardware recommendation, same day — changes the POC's
+risk profile, not just a parts pick.** User asked which Zigbee
+coordinator to buy for Home. Recommended: **SMLIGHT SLZB-06 or SLZB-07
+(Ethernet variant preferred over WiFi)** — a *network-attached*
+coordinator, not a USB one. Zigbee2MQTT talks to it over plain TCP
+(`tcp://<ip>:6638`) instead of a directly-attached USB serial device,
+which **sidesteps the entire USB-OTG/`termux-usb`/serial-chipset
+uncertainty** the Termux POC playbook above was built around — a regular
+TCP socket connection needs no special Android permissions at all, unlike
+raw USB device access. Run Zigbee2MQTT itself locally at Home (on
+whichever collector device — the Termux phone or a Pi — connecting to
+the SLZB unit over Home's own LAN), not centralized at Cabin, so Home's
+Zigbee control keeps working even during a Home↔Cabin network hiccup;
+only the resulting MQTT telemetry needs to reach the M920q "main brain."
+**Fallback if matching Cabin's existing setup is preferred instead**:
+the Sonoff Zigbee 3.0 USB Dongle Plus V2 (same coordinator Cabin already
+uses, `ember` adapter, fully proven in this repo) — its CP2102N
+USB-serial chip has reasonably good odds on Android compared to more
+obscure chipsets, if the USB-OTG path is still worth testing. **Not
+recommended**: ConBee II/III (deCONZ) or TI CC2652P-based dongles — both
+fine coordinators on their own, but introduce a second firmware/adapter
+ecosystem alongside Cabin's `ember` setup for no real benefit here.
+**Practical effect on the POC playbook**: with an SLZB unit, Phases 2–4
+of `docs/POC_2026-08-08_termux-zigbee-collector.md` (the risky USB-OTG
+part) can likely be skipped in favor of a much simpler "can Termux open
+a plain TCP socket to the coordinator's LAN IP" check — the playbook
+hasn't been rewritten for this yet since no coordinator has been
+purchased; do that rewrite once the SLZB unit is actually in hand and
+its IP is known, rather than guessing at exact commands now.
+
 ---
 
 ## Environment & Credentials Reference

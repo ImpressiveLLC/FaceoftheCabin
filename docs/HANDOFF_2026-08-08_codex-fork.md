@@ -438,6 +438,27 @@ it) follow that playbook and report back honestly, including a clean
 failure — this is real, unproven hardware behavior, not something to
 simulate or assume passing.
 
+**Coordinator recommendation, same day — changes the POC's risk
+profile.** User asked which Zigbee coordinator to buy. Recommended:
+**SMLIGHT SLZB-06 or SLZB-07, Ethernet variant** (plugs into the router
+like any wired LAN device, own USB-C power, place for good Zigbee RF
+coverage across the house — not necessarily wherever's closest to the
+router) — a *network-attached* coordinator rather than USB, so
+Zigbee2MQTT connects over plain TCP (`tcp://<ip>:6638`). This **sidesteps
+the USB-OTG risk the POC playbook above was built to test** — a TCP
+socket needs no special Android permissions, unlike raw USB serial
+access. Run Zigbee2MQTT locally at Home (not centralized at Cabin) so
+Zigbee control survives a Home↔Cabin network hiccup; only MQTT telemetry
+needs to reach the M920q. Fallback if matching Cabin's own coordinator is
+preferred: Sonoff Zigbee 3.0 USB Dongle Plus V2 (same as Cabin, `ember`
+adapter, already proven in this repo). **The POC playbook hasn't been
+rewritten for this yet** — no coordinator has actually been purchased as
+of this writing. Once an SLZB unit is in hand with a known IP, Phases
+2–4 of `docs/POC_2026-08-08_termux-zigbee-collector.md` should be
+replaced with a much simpler plain-TCP-socket check rather than the
+USB-OTG gauntlet — don't do that rewrite speculatively before the
+hardware exists, the exact commands depend on the real device.
+
 **Still blocked on real work, not just a decision anymore**: there is no
 collector-only compose profile in this repo — deploying either device
 needs Phase 8's "Required design work" list done first (defining edge

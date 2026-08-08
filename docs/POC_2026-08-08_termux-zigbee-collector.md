@@ -1,5 +1,17 @@
 # POC Playbook — Termux as Home's Local Collector Hub
 
+> **Update, same day, before any coordinator was purchased:** the
+> recommended coordinator is now the **SMLIGHT SLZB-06/07 (Ethernet)** —
+> a *network-attached* coordinator, not USB. That changes what this
+> playbook needs to test: Zigbee2MQTT would talk to it over a plain TCP
+> socket, which sidesteps Phases 2–4's entire USB-OTG/`termux-usb`
+> concern. **This document has not been rewritten for that yet** — the
+> exact TCP-check commands depend on the real device's IP once it's in
+> hand, not worth guessing at speculatively. If buying a USB coordinator
+> (e.g. matching Cabin's Sonoff Dongle Plus V2) instead, Phases 2–4 below
+> are still the right test as written. See `ROADMAP.md`'s Phase 8 for the
+> full reasoning either way.
+
 > Validates the one real unknown in `ROADMAP.md`'s Phase 8 recommendation
 > for Home: can Termux (non-root Android) actually talk to a USB Zigbee
 > coordinator well enough to run Zigbee2MQTT, and can that traffic reach
