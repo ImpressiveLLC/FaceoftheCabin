@@ -6847,3 +6847,58 @@ elements:
       specific limitation doesn't apply here) -- this panel's own tiles
       have no such dependency at all, which is the concrete UX
       improvement over the iframe it replaced.
+
+  - id: rules_panel_location_context
+    entity_type: owl:Class
+    layer: frontend
+    primitive: true
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-08"
+      ref: "LocationRulesSection, RulesPanel (App.jsx)"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Rules & Alerts — Location Context"
+    source: >
+      Reuses the same LOCATIONS/activeLocation/isLocationDeployed
+      machinery every other location-aware panel already uses -- no new
+      backend endpoint, no new state. Purely a rendering change to
+      RulesPanel.
+    rendering:
+      semantic: "Which location's automation flows am I actually looking at"
+      systems: "Rules & Alerts panel"
+      technical: "RulesPanel computes locs from activeLocation (single location, or all LOCATIONS when \"both\") and renders one LocationRulesSection per entry, same split pattern as LocationMonitoringSection"
+      compliance: (not shown)
+    definition: >
+      User report, 2026-08-08, verbatim: "places-based contexts for
+      rules & alerts isn't set; I only see one node red... same context
+      shift behavior for all locations." Before this, RulesPanel always
+      embedded a single Node-RED iframe (locationCfg?.noderedUrl,
+      falling back to Cabin's, with no way to see a second location's
+      flows at the same time) -- Monitoring's "Both" mode already split
+      into per-location sections, Rules & Alerts didn't. Now it does:
+      one section per active location, each independently falling back
+      to Cabin's Node-RED (with an explicit, visible "doesn't have its
+      own Node-RED instance configured yet" hint) only when that
+      location genuinely has none configured -- Cabin itself is never
+      flagged as a fallback, since it's the canonical instance.
+    relationships:
+      - target: hub_location
+        type: derives_from
+        cardinality: "N:1"
+    relates_to:
+      ui_components: [ui_rules_panel]
+      elements: [hub_location]
+    notes: >
+      User's own scoping, kept verbatim: "all can live on the 920q for
+      now" -- this deliberately does not stand up a second Node-RED
+      instance or change what runs where. It only makes the UI honest
+      about which flows it's showing and consistent with how every other
+      location-aware panel in this app already behaves. Per-location
+      *flow content* (e.g. Home actually getting its own tailored
+      automations once home-hub exists) is real follow-up work, not
+      done here -- see ROADMAP.md's Item 5 (Home location setup) and
+      Item 4's second half in the Codex handoff doc
+      (docs/HANDOFF_2026-08-08_codex-fork.md) for what's still open.

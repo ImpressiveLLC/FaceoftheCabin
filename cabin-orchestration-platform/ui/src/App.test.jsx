@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -302,6 +302,43 @@ describe("checkinStatusLabel", () => {
   it("falls through to the raw state for ON_SCHEDULE or missing data", () => {
     expect(checkinStatusLabel("ONLINE", "ON_SCHEDULE")).toBeNull();
     expect(checkinStatusLabel("ONLINE", undefined)).toBeNull();
+  });
+});
+
+// Covers the 2026-08-08 request: "I only see one node red... same context
+// shift behavior for all locations" — Rules & Alerts should split per
+// location in "Both" mode the same way Monitoring already does, and a
+// location without its own configured Node-RED should say so rather than
+// silently show Cabin's flows as if they were its own.
+describe("RulesPanel — per-location Node-RED", () => {
+  afterEach(cleanup);
+
+  function renderWith(activeLocation) {
+    return render(
+      <AppContext.Provider value={{ activeLocation }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+  }
+
+  it("shows only Cabin's flows, unlabeled as a fallback, when Cabin is the active location", () => {
+    renderWith("cabin");
+    expect(screen.getByTitle("Node-RED — Cabin")).toBeTruthy();
+    expect(screen.queryByTitle("Node-RED — Home")).toBeNull();
+    expect(screen.queryByText(/doesn't have its own Node-RED/)).toBeNull();
+  });
+
+  it("shows Home's section with a fallback hint when Home has no configured instance of its own", () => {
+    renderWith("home");
+    expect(screen.getByTitle("Node-RED — Home")).toBeTruthy();
+    expect(screen.getByText(/Home doesn't have its own Node-RED instance configured yet/)).toBeTruthy();
+  });
+
+  it("splits into one section per location in Both mode, never flagging Cabin as a fallback", () => {
+    renderWith("both");
+    expect(screen.getByTitle("Node-RED — Cabin")).toBeTruthy();
+    expect(screen.getByTitle("Node-RED — Home")).toBeTruthy();
+    expect(screen.getAllByText(/doesn't have its own Node-RED instance configured yet/)).toHaveLength(1);
   });
 });
 

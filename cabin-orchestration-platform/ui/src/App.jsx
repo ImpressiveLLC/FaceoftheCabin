@@ -2318,25 +2318,57 @@ function KpiTile({ icon: Icon, label, value, state, deviceId }) {
 }
 
 // ─── Panel: Rules Engine ───────────────────────────────────────────────────
-function RulesPanel() {
-  const { locationCfg, activeLocation } = useApp();
-  const noderedUrl = locationCfg?.noderedUrl || LOCATIONS.cabin.noderedUrl;
+// Per-location Node-RED section — mirrors LocationMonitoringSection's
+// split pattern so "Both" behaves the same way here as everywhere else
+// in the app (user's explicit ask, 2026-08-08: "same context shift
+// behavior for all locations... I only see one node red"). "All can live
+// on the 920q for now" (user's words) — this doesn't stand up a second
+// Node-RED instance, it just makes the UI honest about which flows it's
+// actually showing: a location without its own configured instance falls
+// back to Cabin's, labeled as a fallback rather than silently presented
+// as if it were Home's own.
+function LocationRulesSection({ locCfg }) {
+  // Cabin is always the canonical/fallback source, never a fallback target.
+  const isCabin = locCfg.id === "cabin";
+  const hasOwnNodeRed = isCabin || (isLocationDeployed(locCfg) && !!locCfg.noderedUrl);
+  const noderedUrl = hasOwnNodeRed ? locCfg.noderedUrl : LOCATIONS.cabin.noderedUrl;
+  return (
+    <div className="location-section rules-nodered">
+      <div className="location-section-header">
+        {locCfg.label} Automation Flows
+        <a href={noderedUrl} target="_blank" rel="noreferrer" className="btn-ghost btn-ghost-sm">
+          Open ↗
+        </a>
+      </div>
+      {!hasOwnNodeRed && (
+        <p className="config-hint">
+          {locCfg.label} doesn't have its own Node-RED instance configured yet — showing Cabin's flows.
+        </p>
+      )}
+      <div className="tailscale-hint">
+        <Lock size={11} /> Won't load off Tailscale — the flow editor is cabin-network-only.
+      </div>
+      <iframe title={`Node-RED — ${locCfg.label}`} src={noderedUrl} className="embed-frame" />
+    </div>
+  );
+}
+
+export function RulesPanel() { // exported for src/App.test.jsx's location-split test
+  const { activeLocation } = useApp();
+  const locationIds = Object.keys(LOCATIONS);
+  const locs = activeLocation === "both"
+    ? locationIds.map(id => LOCATIONS[id])
+    : [LOCATIONS[activeLocation] || LOCATIONS.cabin];
+
   return (
     <div className="panel-content">
       <AlertControls panelId="RULES_ENGINE" />
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>
-        <a href={noderedUrl} target="_blank" rel="noreferrer" className="btn-primary">
-          Open Node-RED ↗
-        </a>
       </div>
       <div className="rules-layout">
-        <div className="rules-nodered">
-          <div className="embed-label">Node-RED — {locationCfg?.label || "Cabin"} Automation Flows</div>
-          <div className="tailscale-hint">
-            <Lock size={11} /> Won't load off Tailscale — the flow editor is cabin-network-only.
-          </div>
-          <iframe title="Node-RED" src={noderedUrl} className="embed-frame" />
+        <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
+          {locs.map(loc => <LocationRulesSection key={loc.id} locCfg={loc} />)}
         </div>
         <div className="rules-sidebar">
           <KafkaStatus location={activeLocation} />

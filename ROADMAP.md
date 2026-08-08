@@ -1158,6 +1158,21 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       time-based tiering alone; see `device_checkin_status`'s `notes` in
       `docs/ontology.yaml` for the exact gap and what a fast-follow would
       need (a protocol-level liveness probe per adapter).
+- [x] **Rules & Alerts always showed one Node-RED regardless of location
+      context** (user report, 2026-08-08, verbatim: "I only see one node
+      red... same context shift behavior for all locations"). `RulesPanel`
+      now computes its location list from `activeLocation` the same way
+      `MnSeeView` (Monitoring) already does, and splits into one
+      `LocationRulesSection` per location in "Both" mode instead of one
+      hardcoded iframe. A location without its own configured Node-RED
+      (checked via the existing `isLocationDeployed` heuristic) falls back
+      to Cabin's flows with an explicit, visible hint saying so — Cabin
+      itself is never flagged as a fallback. User's own scoping, honored:
+      "all can live on the 920q for now" — no second Node-RED instance was
+      stood up, this is a rendering-only fix. 3 new frontend tests
+      (single-location, fallback-hint, Both-mode split). Full suite:
+      60/60. Verified live in a browser preview across Cabin/Home/Both.
+      See `docs/ontology.yaml`'s new `rules_panel_location_context`.
 
 ---
 

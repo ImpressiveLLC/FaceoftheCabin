@@ -284,6 +284,21 @@ body {
 .rules-nodered { flex: 1; display: flex; flex-direction: column; }
 .rules-nodered .embed-frame { flex: 1; min-height: 0; }
 .rules-sidebar { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+/* Single active location: the one section fills the available space. */
+.rules-nodered-single { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+/* "Both": one Node-RED section per location, side by side — same split
+   pattern as .monitoring-split, so location-context switching behaves
+   consistently across Monitoring and Rules & Alerts. */
+.rules-nodered-split {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  min-height: 0;
+}
+@media (max-width: 1100px) {
+  .rules-nodered-split { grid-template-columns: 1fr; }
+}
 .sidebar-card {
   background: #161b22;
   border: 1px solid #21262d;

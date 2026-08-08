@@ -17,9 +17,10 @@
 > tree clean, `main` up to date with `origin/main`, nothing uncommitted.
 >
 > **Update, same day, before the limit was actually reached:** got real
-> work done on Item 1 below (device checkin-status tiering) before
-> stopping — see the revised §2 and §3 Item 1. This file is being kept
-> current in place per its own §5 instruction rather than left stale.
+> work done on Item 1 (device checkin-status tiering) and Item 4 (the
+> Rules & Alerts location-split, both sub-items now done) before
+> stopping — see the revised §2 and §3. This file is being kept current
+> in place per its own §5 instruction rather than left stale.
 
 ---
 
@@ -340,7 +341,7 @@ actually renders and works for them before considering this fully closed
 — it has Vitest coverage but has **not been visually verified in a real
 browser** (no browser tool was available this session — see §4).
 
-### Item 4 — Places-based Rules & Alerts context, per-location Node-RED
+### Item 4 — Places-based Rules & Alerts context, per-location Node-RED — DONE
 
 > "places-based contexts for rules & alerts isn't set; I only see one
 > node red and I know this is something we need to set up as a templated
@@ -352,23 +353,26 @@ browser** (no browser tool was available this session — see §4).
 > location the 'both' reference will shift to 'All' so we should fix that
 > now."
 
-This is really **two sub-items**:
+Both sub-items are done as of this session:
 - **4a — Device Manager showing wrong-location devices when context is
-  switched: FIXED this session** (`6dbbadc`, see §2). The "Both"→"All"
-  relabeling the user asked for in the same message is also done
-  (`allLocationsLabel()`).
-- **4b — Per-location Node-RED / Rules & Alerts context: NOT started.**
-  Currently `RulesPanel` embeds a single Node-RED instance regardless of
-  which location is active (`CLAUDE.md`'s "UI panels" section: "Rules &
-  Alerts (`RulesPanel`) — Node-RED embed + Kafka topic browser," no
-  location parameter). The user explicitly said this should be built "as
-  a templated workflow at the time of implementing number 3" (i.e.
-  alongside/using the same location-template mechanism as Add Place) and
-  that "all can live on the 920q for now" — meaning don't stand up a
-  second Node-RED instance yet, this is about the UI correctly scoping
-  which flows/alerts are shown per active location context, using the
-  same location-switching pattern already established elsewhere in the
-  app (Monitoring panel's `LocationSwitcher`).
+  switched: FIXED** (`6dbbadc`, see §2). The "Both"→"All" relabeling the
+  user asked for in the same message is also done (`allLocationsLabel()`).
+- **4b — Per-location Node-RED / Rules & Alerts context: FIXED** (this
+  session, one commit newer than the checkin-status work above — see
+  `ROADMAP.md`'s Phase 7 newest entry and `docs/ontology.yaml`'s new
+  `rules_panel_location_context`). `RulesPanel` now computes its location
+  list from `activeLocation` (same pattern Monitoring's `MnSeeView`
+  already used) and renders one `LocationRulesSection` per location in
+  "Both" mode instead of a single hardcoded iframe. A location without
+  its own configured Node-RED falls back to Cabin's with a visible hint
+  saying so; Cabin itself is never flagged as a fallback. Per the user's
+  own scoping ("all can live on the 920q for now"), this is deliberately
+  a rendering-only fix — no second Node-RED instance was stood up. 3 new
+  frontend tests, full suite 60/60, verified live in a browser preview
+  across Cabin/Home/Both with no console errors.
+  **Still genuinely open** (not this item's scope, but adjacent): actual
+  per-location *flow content* — Home getting its own tailored automations
+  once it has its own Node-RED instance — depends on Item 5 below.
 
 ### Item 5 — Home location physical setup
 
