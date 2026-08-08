@@ -855,6 +855,48 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       to "My Places" (matching the nav label), plus two stale top-of-file
       doc comments in `App.jsx` that described `FAMILY_HUB`/`FAMILY_CONFIG`
       inaccurately corrected.
+- [ ] **[MAJOR, PLANNING NEEDED]** Alert/ontology UX retrenchment — found
+      2026-08-08 via direct user report + screenshot: the "Warning — alert
+      active" banner (`AlertControls`/`useNavAlerts`) fires on a plain
+      `offline_count > 0 OR alarm_count > 0` boolean across ALL devices —
+      confirmed live: it was firing with `alarm: 0` real alarms, driven
+      entirely by the 5 permanently-placeholder Home cameras (Home isn't
+      deployed) being OFFLINE, the same as always. Concretely, today's
+      gaps: (1) no per-alert identification of which device or why; (2)
+      no distinction between a real emergency (leak/smoke/security) and
+      routine/expected offline status (battery Zigbee sensors,
+      undeployed-location placeholders); (3) alert-watching requires a
+      manual per-panel "Enable" opt-in — a real alarm on an unwatched
+      panel shows nothing at all, not even a downgraded warning; (4) zero
+      "armed/disarmed" indicator anywhere in cabin-ui (confirmed via
+      grep — despite a real `cabin/security/armed_away` MQTT topic and HA
+      automations existing server-side) and no arm/disarm control; (5) no
+      actionable next-step guidance of any kind. User's own framing:
+      "if you're not sure, we have significant retrenchment needed in
+      ontology and UX patterns." This needs a real design pass against
+      the Northstar "See, Think, Act" goals, not a patch — scope it as
+      its own planning item before touching code. Immediate cheap
+      mitigation worth doing separately/first: exclude known-undeployed-
+      location devices from the offline-alert condition so the banner at
+      least stops firing for a permanently-known-non-issue.
+- [ ] **[NEW FEATURE, PLANNING NEEDED]** WiFi RSSI-based presence/
+      proximity detection — user's proposal, 2026-08-08: ping
+      signal-strength/intensity between wired devices (smart switches
+      etc.) and the network dongle roughly every minute, for two
+      purposes: (1) may help keep wired devices from going dormant/stale
+      (same class of issue as tonight's camera `lastSeen` fix — a
+      device that's periodically pinged has a fresher liveness signal);
+      (2) doubles as ad-hoc "something/someone new showed up that wasn't
+      there when the location was armed" detection, via intensity-change
+      pattern rather than a dedicated presence sensor. Explicitly NOT
+      cabin-only — applies to any location devices are deployed at. Needs,
+      once configured: a product/marketing write-up, a configuration
+      design-doc section (this is a per-instance/per-device opt-in, not a
+      blanket default), and maintenance documentation covering the real
+      tradeoff — battery drain on non-wired devices if enabled there,
+      vs. the monitoring/alerting benefit, which is the main reason to
+      turn it on for wired devices specifically and be cautious about
+      battery-powered ones.
 - [x] Presence toggle was purely manual with nothing real behind it
       (found via user report, 2026-08-08): the toolbar's map-pin widget
       read as "your detected location," but `PresenceProfile` was only
