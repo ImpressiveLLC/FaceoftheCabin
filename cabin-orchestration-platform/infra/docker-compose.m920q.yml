@@ -208,6 +208,30 @@ services:
       # cards via DashboardController. This instance's real values.
       CABIN_INSTANCE_PLATFORM: ${CABIN_INSTANCE_PLATFORM:-Self-hosted — Lenovo ThinkCentre M920q, Ubuntu 24.04, x86_64}
       CABIN_INSTANCE_REMOTE_ACCESS: ${CABIN_INSTANCE_REMOTE_ACCESS:-Tailscale,Cloudflare Tunnel}
+      # Found 2026-08-08: HubLocationService.seedIfEmpty() only ever runs
+      # once (guarded by `SELECT COUNT(*) FROM hub_locations` == 0), and
+      # its @Value defaults were the SAME broken Docker-internal
+      # placeholder hosts (http://cabin-hub:8090 etc.) the frontend's own
+      # LOCATIONS constant falls back to when unconfigured -- nothing
+      # here ever set the real ones, so the seeded row silently
+      # overrode every correct VITE_CABIN_* URL below (mergeHubLocations
+      # lets API data win) since the day this table was first created.
+      # Root-caused live via a direct user report: devices, Grafana,
+      # Node-RED, and the Live MQTT tile were ALL broken by this one row
+      # simultaneously. Live data corrected via PATCH /api/locations/cabin
+      # first (this table only seeds once, so that was required regardless
+      # of this change); these env vars are what make a FUTURE reseed
+      # (fresh Postgres volume, disaster recovery, a new instance
+      # following REPLICATION.md) seed correctly from the start instead
+      # of reintroducing the exact same bug.
+      CABIN_LOCATIONS_CABIN_API_BASE: ${CABIN_API_URL:-https://api.unicornpingpong.com}
+      CABIN_LOCATIONS_CABIN_WS_BASE: ws://100.77.44.113:9001
+      CABIN_LOCATIONS_CABIN_GRAFANA_URL: https://${GRAFANA_EXTERNAL_HOST:-grafana.unicornpingpong.com}
+      CABIN_LOCATIONS_CABIN_NODERED_URL: https://nates-little-m920q.tailb20f8b.ts.net
+      CABIN_LOCATIONS_CABIN_HA_URL: http://100.77.44.113:8123
+      CABIN_LOCATIONS_CABIN_FRIGATE_URL: http://100.77.44.113:5000
+      CABIN_LOCATIONS_CABIN_Z2M_URL: http://100.77.44.113:8080
+      CABIN_LOCATIONS_CABIN_FAMILY_HUB_URL: ${FAMILY_HUB_URL:-https://hub.unicornpingpong.com}
     volumes:
       # Read-only mount so OntologyLookupService can resolve entity ids to
       # display names for the Opportunity Map (and future data-dictionary
