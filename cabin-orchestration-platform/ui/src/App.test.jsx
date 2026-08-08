@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, AppContext, FamilyHubPanel, FamilyConfigPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -306,5 +306,28 @@ describe("formatArmedTitle", () => {
 
   it("handles undefined the same as null without throwing", () => {
     expect(() => formatArmedTitle(undefined)).not.toThrow();
+  });
+});
+
+// Covers the 2026-08-08 Grafana-iframe replacement: three separate fix
+// attempts failed (the real blocker turned out to be a completely
+// different bug -- see docs/ontology.yaml's cabin_grafana_public_access),
+// so the embed was replaced with native camera-fps tiles sourced
+// directly from Prometheus (FrigateMetricsController, backend) plus a
+// link out to the full Grafana dashboard. cameraHealthLabel must never
+// let "no data yet" (Prometheus unreachable, fps field absent) read as
+// "camera confirmed down" -- those mean very different things.
+describe("cameraHealthLabel", () => {
+  it("reports fps for a healthy camera", () => {
+    expect(cameraHealthLabel(5.1)).toEqual({ label: "5.1 fps", className: "camera-health-ok" });
+  });
+
+  it("reports no signal for a camera reporting exactly zero fps", () => {
+    expect(cameraHealthLabel(0)).toEqual({ label: "No signal", className: "camera-health-down" });
+  });
+
+  it("reports unknown rather than down when fps data is simply absent", () => {
+    expect(cameraHealthLabel(null)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
+    expect(cameraHealthLabel(undefined)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
   });
 });

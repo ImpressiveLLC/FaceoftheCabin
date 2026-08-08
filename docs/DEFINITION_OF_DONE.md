@@ -163,18 +163,20 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
-- **Grafana embed still white — top priority for next session.** The
-  SameSite=None cookie theory was disproven live tonight: user did a
-  real sign-out + fresh Google login (confirmed via Grafana's own
-  server logs), reloaded cabin-ui, still white. Zero requests with a
-  `cabin.unicornpingpong.com` referer appear anywhere in Grafana's logs
-  before or after the fresh login — the iframe request may never reach
-  the server at all. A DevTools Network-tab check was inconclusive.
-  Leading theory, not confirmed: browser-level third-party cookie
-  blocking, independent of SameSite/Secure attributes. If confirmed,
-  the real fix is making Grafana same-origin to cabin-ui (reverse-proxy
-  under `cabin.unicornpingpong.com/grafana/`), not another cookie tweak.
-  See `ROADMAP.md`'s matching entry.
+- **Grafana embed resolved 2026-08-08 (real root cause, not the
+  suspected one) — then replaced entirely by user decision.** The
+  actual blocker was `hub_locations` seeded with unreachable
+  Docker-internal URLs (fixed live + at the source); the SameSite
+  cookie theory was a real but wrong dead end. Once fixed, the iframe
+  did technically work — but the user decided a session-dependent
+  iframe a "just want it to work" user has to learn to scroll inside
+  isn't acceptable for a mixed-technical-skill multi-user product.
+  Replaced with a native `CameraHealthPanel` (Prometheus-sourced,
+  Tailscale/internal-only, no new exposure) + a plain Grafana link-out.
+  Follow-up open: metric selection/reordering + real kiosk-vs-mobile
+  layouts (today it's one metric, one flex-wrap layout, not yet
+  visually verified on a real device). See `ROADMAP.md`'s matching
+  entries and `docs/ontology.yaml`'s `camera_health_panel`.
 - **App-wide Google OAuth gate + consistent landing page — new user
   directive, 2026-08-08, not built yet.** Auth today only gates Camera
   Events/Opportunities, not the app as a whole; the landing panel isn't

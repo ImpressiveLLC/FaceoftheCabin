@@ -1665,6 +1665,75 @@ function DmEditForm({ device, onSaved }) {
 
 // ─── Panel: Monitoring ─────────────────────────────────────────────────────
 
+// Replaced the embedded Grafana iframe, 2026-08-08 -- three separate fix
+// attempts (URL/subpath, SameSite cookie, a theory that was then
+// disproven live) all failed. Root cause landed on either browser-level
+// third-party cookie blocking or the iframe request never reaching the
+// server at all -- see docs/ontology.yaml's cabin_grafana_public_access
+// notes. User's own call: stop fighting the iframe, query Prometheus
+// directly (via cabin-backend's new /api/frigate-metrics -- Prometheus
+// itself stays Tailscale/internal-only, never exposed publicly) for the
+// one metric that actually matters, and link out to the full Grafana
+// dashboard for anyone who wants more detail.
+
+// Exported for src/App.test.jsx. Pure function, no fetch/state -- kept
+// separate from "no data yet" (fps === undefined/null) so an unreachable
+// Prometheus never reads as "camera confirmed down," same reasoning as
+// SecurityBadge's Unknown state.
+export function cameraHealthLabel(fps) {
+  if (fps == null) return { label: "Unknown", className: "camera-health-unknown" };
+  return fps > 0
+    ? { label: `${fps.toFixed(1)} fps`, className: "camera-health-ok" }
+    : { label: "No signal", className: "camera-health-down" };
+}
+
+function useFrigateMetrics(apiBase) {
+  const [metrics, setMetrics] = useState({});
+  useEffect(() => {
+    const fetchMetrics = () =>
+      fetch(`${apiBase}/api/frigate-metrics`).then(r => r.json()).then(setMetrics).catch(() => {});
+    fetchMetrics();
+    const t = setInterval(fetchMetrics, 15000);
+    return () => clearInterval(t);
+  }, [apiBase]);
+  return metrics;
+}
+
+function CameraHealthPanel({ locCfg }) {
+  const metrics = useFrigateMetrics(locCfg.apiBase);
+  const cameraIds = Object.keys(metrics);
+  const dashboardUid = GRAFANA_DASHBOARD_UID[locCfg.id];
+
+  return (
+    <div className="embed-section">
+      <div className="embed-label">Camera Health — {locCfg.label}</div>
+      <div className="camera-health-grid">
+        {cameraIds.length === 0 && (
+          <p className="config-desc">No camera metrics available yet.</p>
+        )}
+        {cameraIds.map(id => {
+          const { label, className } = cameraHealthLabel(metrics[id]?.cameraFps);
+          return (
+            <div key={id} className={`camera-health-tile ${className}`}>
+              <Camera size={16} />
+              <span className="camera-health-name">{id}</span>
+              <span className="camera-health-value">{label}</span>
+            </div>
+          );
+        })}
+      </div>
+      {dashboardUid ? (
+        <a className="btn-secondary" href={`${locCfg.grafanaUrl}/grafana/d/${dashboardUid}`}
+          target="_blank" rel="noreferrer">
+          Open Full Dashboard in Grafana ↗
+        </a>
+      ) : (
+        <p className="config-hint">No Grafana dashboard configured for {locCfg.label} yet.</p>
+      )}
+    </div>
+  );
+}
+
 // Renders KPI tiles + Grafana + event log for a single location.
 function LocationMonitoringSection({ locCfg, devices, active }) {
   const liveMessages = useMqttTelemetry(active, locCfg.wsBase);
@@ -1731,60 +1800,7 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
         ))}
       </div>
 
-      <div className="embed-section">
-        <div className="embed-label">Grafana — {locCfg.label} Telemetry</div>
-        {/* UPDATED 2026-08-04: Grafana moved behind Cloudflare Tunnel +
-            Access with its own Google OAuth (same client as this app,
-            not Tailscale-gated anymore -- see docs/MAINTENANCE.md's
-            Grafana section). The old "Won't load off Tailscale" label
-            is gone since it's no longer true.
-
-            CORRECTED 2026-08-08 (user report: still a white panel after
-            the SameSite=None cookie fix): this comment previously
-            claimed the embed "may show Grafana's own Google sign-in
-            prompt inside the frame" -- that's wrong and can never
-            happen. Google's own sign-in pages refuse to render inside
-            ANY iframe (their anti-clickjacking policy, not something
-            Grafana or this app can override) -- if the iframe's Grafana
-            session is invalid and needs to redirect through a fresh
-            Google OAuth login, the frame goes blank permanently trying
-            to show a login screen Google won't allow inside a frame.
-            The SameSite=None/Secure cookie fix only helps a cookie
-            issued AFTER that config went live -- a session cookie from
-            before then keeps its old SameSite=Lax attribute until the
-            user actually re-authenticates. This embed can only ever
-            work by reusing an already-valid Grafana session established
-            OUTSIDE the iframe (a direct top-level tab) -- it can never
-            complete a first-time or expired login on its own. */}
-        <div className="tailscale-hint">
-          <Lock size={11} /> Needs an active Grafana session — sign in directly at{" "}
-          <a href={locCfg?.grafanaUrl} target="_blank" rel="noreferrer">{locCfg?.grafanaUrl}</a>{" "}
-          first (not inside this panel), then reload. A blank panel here means that session has expired or was never started.
-        </div>
-        {/* Found 2026-08-07 (live, via M920q access): this was rendering a
-            guaranteed-blank iframe, for two stacked reasons. (1) The `/d/`
-            path was missing Grafana's own `/grafana` sub-path
-            (GF_SERVER_SERVE_FROM_SUB_PATH=true, root_url ends in /grafana) --
-            hitting the bare origin 302s to /grafana/login first. (2) No
-            `{location}-overview` dashboard has ever actually existed --
-            this was aspirational/placeholder wiring from before any real
-            dashboard was provisioned. GRAFANA_DASHBOARD_UID maps only the
-            locations/dashboards that are actually real today (the Frigate
-            monitoring dashboard cherry-picked into Phase 7 §1a); a
-            per-location, ontology-driven dashboard is still open work, not
-            done here -- see docs/ontology.yaml's cabin_grafana_frigate_dashboard
-            entry. Showing an honest "not configured" message for anything
-            not in the map, instead of another guaranteed-blank iframe. */}
-        {GRAFANA_DASHBOARD_UID[locCfg.id] ? (
-          <iframe
-            title={`Grafana ${locCfg.label}`}
-            src={`${locCfg.grafanaUrl}/grafana/d/${GRAFANA_DASHBOARD_UID[locCfg.id]}?kiosk=tv`}
-            className="embed-frame-short"
-          />
-        ) : (
-          <p className="config-desc">No dashboard configured for {locCfg.label} yet.</p>
-        )}
-      </div>
+      <CameraHealthPanel locCfg={locCfg} />
 
       <div className="event-log">
         <div className="event-log-header">Live MQTT — {locCfg.label}</div>

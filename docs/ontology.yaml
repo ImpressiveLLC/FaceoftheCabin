@@ -6710,3 +6710,75 @@ elements:
       to this new integration point, not a full backfill --
       SignalQualityControllerTest). Backend suite: 67/67 (3 pre-existing
       Docker-unavailable failures in this local sandbox, unrelated).
+
+  - id: camera_health_panel
+    entity_type: owl:Class
+    layer: backend
+    primitive: true
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-08"
+      ref: "FrigateMetricsController, CameraHealthPanel"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Camera Health Panel"
+    source: >
+      FrigateMetricsController queries cabin-prometheus directly
+      (GET /api/v1/query?query=frigate_camera_fps) server-side and
+      returns simplified per-camera JSON. Prometheus itself stays
+      Tailscale/internal-only -- confirmed live, cabin-backend already
+      reaches it over the shared Docker network (cabin_prometheus:9090,
+      no port ever published to the host) -- so this needed zero new
+      network exposure, unlike Grafana's earlier public-embedding
+      attempt.
+    rendering:
+      semantic: "Is each camera actually producing frames right now"
+      systems: Camera Health Panel (Monitoring)
+      technical: "GET /api/frigate-metrics -> { [cameraName]: { cameraFps } }; cameraHealthLabel() (App.jsx) renders Unknown/No signal/N.N fps"
+      compliance: (not shown)
+    definition: >
+      Replaced the embedded Grafana iframe entirely, 2026-08-08, after
+      three separate fix attempts failed against what turned out to be
+      a single unrelated bug (see cabin_grafana_public_access's notes --
+      the real blocker was hub_locations being seeded with unreachable
+      Docker-internal URLs, not cookies or iframe policy at all). User's
+      own reasoning for the replacement, kept verbatim because it's the
+      actual design rationale: this platform serves users "with mixed
+      technical knowledge" who "just want it to work," at an
+      "Apple product" level of zero required thought -- an iframe a
+      user has to learn to scroll inside, on top of depending on a
+      separate app's session state, is real friction even when it's
+      technically working. A native panel sourced directly from
+      Prometheus removes both the session-dependency risk and the
+      embedded-scrolling friction, and is deliberately architected for
+      "kiosk or mobile devices" (flex-wrap tiles, no fixed pixel
+      widths, same pattern as the existing KPI tiles elsewhere in this
+      panel) rather than reusing Grafana's own desktop-oriented layout.
+    relationships:
+      - target: cabin_grafana_frigate_dashboard
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: [ui_monitoring_panel]
+      elements: [cabin_grafana_frigate_dashboard, cabin_grafana_public_access]
+    notes: >
+      SCOPE NOTE (honest, not silently narrowed): today this surfaces
+      exactly one metric (frigate_camera_fps) with no user-facing
+      configurability. The user's actual ask goes further -- "cherry
+      pick" which library metrics to show, reorder them, and tune
+      minimalist-vs-maximalist layouts distinctly for kiosk vs. mobile
+      form factors. Not built here; tracked as a near-term follow-up in
+      ROADMAP.md, not forgotten. The Grafana link-out
+      (`Open Full Dashboard in Grafana`) remains the escape hatch for
+      anyone who wants the full, un-curated metric set this panel
+      deliberately doesn't try to replicate.
+
+      A user with no prior Grafana session still can't use the
+      "Open Full Dashboard" link without one manual, direct sign-in
+      first (Google's OAuth pages can't render in any iframe, and this
+      link is a plain new-tab navigation, not an embed, so that
+      specific limitation doesn't apply here) -- this panel's own tiles
+      have no such dependency at all, which is the concrete UX
+      improvement over the iframe it replaced.

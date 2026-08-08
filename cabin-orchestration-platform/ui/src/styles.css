@@ -260,6 +260,20 @@ body {
 }
 .embed-frame-short { width: 100%; border: 1px solid #21262d; border-radius: 10px; background: white; height: 320px; }
 
+/* ─── Camera health (replaced the Grafana iframe, 2026-08-08) ───────────── */
+.camera-health-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.camera-health-tile {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 10px;
+  border: 1px solid #21262d; background: #0d1117;
+  font-size: 13px;
+}
+.camera-health-name { color: #f0f6fc; font-weight: 600; text-transform: capitalize; }
+.camera-health-value { margin-left: auto; padding-left: 12px; }
+.camera-health-ok .camera-health-value { color: #3fb950; }
+.camera-health-down .camera-health-value { color: #f85149; }
+.camera-health-unknown .camera-health-value { color: #6e7681; font-style: italic; }
+
 /* ─── Rules Panel ───────────────────────────────────────────────────────── */
 .rules-layout { display: flex; gap: 16px; height: calc(100vh - 140px); }
 .rules-nodered { flex: 1; display: flex; flex-direction: column; }

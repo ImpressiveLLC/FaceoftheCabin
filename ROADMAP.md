@@ -986,33 +986,52 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       UI. 9 new backend tests (`MqttBridgeServiceTest`,
       `SecurityStateRegistryTest`, `SecurityControllerTest` — 52/52
       backend suite green) + 4 new frontend tests (43/43 green).
-- [ ] **[STILL OPEN, PLANNING NEEDED]** Grafana embed still white —
-      **the SameSite/cookie diagnosis was disproven live, 2026-08-08.**
-      Corrected the hint text/comment to explain a theory (Google's
-      sign-in pages refuse to render inside any iframe; a pre-fix
-      session cookie keeps its old SameSite=Lax attribute) that seemed
-      solid from server-side header checks alone — but the user then
-      did the actual test: full sign-out, fresh Google login (confirmed
-      via Grafana's own server logs — real logout at 05:13:21, Google
-      OAuth round-trip, authenticated session established by 05:13:36),
-      reloaded cabin-ui, and the panel was still white. Grafana's logs
-      show **zero requests with a cabin.unicornpingpong.com referer** in
-      the entire window, before or after the fresh login — the iframe
-      request may never be reaching the server at all. Chrome DevTools
-      Network tab check ("nothing at first glance") was inconclusive,
-      not confirmatory either way — needs a real look at whether a
-      request to grafana.unicornpingpong.com appears at all when the
-      panel loads, and the Console tab for any cookie/blocked messages.
-      Leading remaining theory: browser-level third-party cookie
-      blocking (Chrome's ongoing phase-out, or a Chrome privacy setting)
-      rejecting the cookie before it's ever sent, independent of
-      SameSite/Secure attributes entirely. If that's confirmed, the
-      permanent fix isn't another cookie tweak — it's making Grafana
-      same-origin to cabin-ui (reverse-proxy under
-      cabin.unicornpingpong.com/grafana/ instead of a separate
-      grafana.unicornpingpong.com), removing the cross-site cookie
-      problem structurally rather than working around browser policy.
-      Bigger change, needs real planning, not tonight's scope.
+- [x] **Grafana embed — actual root cause found and the iframe replaced
+      entirely, 2026-08-08.** The SameSite/cookie theory logged above was
+      a real dead end — investigated with genuine evidence, but wrong.
+      The actual blocker (found the next morning, from a live user
+      report of devices/Node-RED/Grafana/Live-MQTT all failing at once):
+      `hub_locations` (Postgres) had been seeded with unreachable
+      Docker-internal placeholder URLs for `grafanaUrl` (and every other
+      URL field) the very first time that table was created, and
+      `mergeHubLocations()` lets that API data silently override the
+      correct hardcoded/env-var defaults on every page load — the
+      iframe's `src` was pointing at `http://cabin-hub:3002`, which
+      cannot resolve from any real browser, so it never had anything to
+      do with cookies or Google's iframe policy at all. Fixed live via
+      `PATCH /api/locations/cabin`, then root-caused in
+      `docker-compose.m920q.yml` (new `CABIN_LOCATIONS_CABIN_*` env vars
+      so a future reseed can't reintroduce this). Confirmed via Grafana's
+      own server logs: a request with `referer=cabin.unicornpingpong.com`
+      appeared for the first time ever once the URL was corrected.
+      **Then, separately, by the user's own explicit decision**: even
+      with the URL fixed and the embed technically working, an iframe
+      that depends on a separate app's session state — and that a
+      "just want it to work" user would have to learn to scroll inside —
+      isn't acceptable for a multi-user product with mixed technical
+      skill levels. Replaced with a native `CameraHealthPanel`
+      (`FrigateMetricsController` queries Prometheus directly server-side
+      — Prometheus itself stays Tailscale/internal-only, no new exposure
+      needed, confirmed cabin-backend already reaches it internally) plus
+      a plain "Open Full Dashboard in Grafana ↗" link-out for anyone who
+      wants the full metric set. 4 new backend tests + 3 new frontend
+      tests (71/71 backend, 46/46 frontend). See `docs/ontology.yaml`'s
+      `camera_health_panel` entity for the full writeup.
+- [ ] **[NEW, follow-up to the above]** `CameraHealthPanel` today shows
+      exactly one metric (`frigate_camera_fps`) with zero user-facing
+      configurability. User's actual ask goes further: "cherry pick"
+      which library metrics to show, reorder them, and tune distinct
+      minimalist/maximalist layouts for kiosk vs. mobile form factors —
+      not "just make the iframe smaller," a real curated-metrics-picker
+      feature. Scope next session: what other `frigate_*`/Prometheus
+      metrics are worth exposing (detection_fps, process_fps already
+      confirmed available), what a metric-selection UI looks like (maybe
+      an extension of the Config panel), and concretely different
+      kiosk vs. mobile layouts rather than one flex-wrap grid trying to
+      serve both. **Not yet visually verified on a real mobile/kiosk
+      viewport at all** — the browser tool was unavailable all session;
+      today's flex-wrap layout is a reasonable default (same pattern as
+      the existing KPI tiles), not a confirmed one.
 - [x] "No live messages from ws://..." in the Monitoring panel's Live
       MQTT tile was always going to show that, regardless of hostname —
       found investigating the user's report: mosquitto had no WebSocket
