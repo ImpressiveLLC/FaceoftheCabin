@@ -1223,83 +1223,145 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       than replacing it. See `docs/HANDOFF_2026-08-08_codex-fork.md`'s
       Item 6 for the full framing if picked up on the fork.
 
-### Phase 8 — Accessible Hardware Program (planning only, 2026-08-08)
+### Phase 8 — Accessible Hardware Program: Local Collector Hubs (planning only, 2026-08-08)
 
-> Product decision, not yet implemented. User asked me (acting as tech
-> lead + product founder) to pick a top-3 hardware tier ranking for
-> future spin-off instances — "financially accessible devices like Pi's
-> or Androids with an option of using a cheap laptop... minimal
-> acquisition barriers and configuration being primary goal." This is
-> deliberately decoupled from the user's own immediate Home-location
-> hardware pick (still their call, from either this list or their
-> original four options) — this section defines the *product's* target
-> hardware tiers going forward, which the Home decision can optionally
-> draw from.
+> Product decision, not yet implemented. **Corrected same day** by the
+> user after my first pass wrongly assumed the goal was cheap hardware to
+> run the *full* stack per location. The actual ask: a **local hub is a
+> tiny server that collects device metrics and routes them to a central
+> "main brain"** — it is explicitly *not* meant to run Postgres/Kafka/the
+> Spring Boot backend/Grafana itself. The "main brain" stays at least
+> M920q-class, and — separately — always has the option to run in the
+> cloud instead of self-hosted. This is a genuine architecture
+> correction, not a hardware-list edit, and is written up as such rather
+> than silently patched.
 >
-> **Reconciles a real conflict with existing docs, not silently**:
-> `CLAUDE.md`'s "Design constraints" section currently states "No ARM/Pi
-> hardware — both hubs are x86_64 Lenovo ThinkCentre M920q" as an
-> unqualified constraint. That statement is now scoped explicitly to
-> *today's two production hubs*, not the platform going forward — see
-> the updated wording there. Tier 2 below is a deliberate, planned
-> deviation from that constraint, not an accident.
+> **This exposes a real gap: today's repo has no edge/central split at
+> all.** Both `infra/docker-compose.m920q.yml` and
+> `locations/home/docker-compose.yml` stand up a **full independent
+> stack per location** — each with its own Postgres, Kafka, Spring Boot
+> backend, Grafana, HA, Node-RED, and Frigate (`locations/home/
+> docker-compose.yml`'s own header literally reads "Full Stack").
+> Nothing in this codebase today lets a lightweight box just collect and
+> forward. Realizing the user's actual ask needs real design work before
+> any hardware pick is fully actionable — see "Required design work"
+> below.
+>
+> `CLAUDE.md`'s "no ARM/Pi hardware" constraint reconciliation from the
+> first pass still holds, now scoped correctly: it's the *local
+> collector hub* role, not "the platform," that's the planned ARM/Pi
+> target.
 
-**Ranked, with reasoning — not just "easiest to build":**
+**What a local hub actually needs to run** (much lighter than a full
+stack): Zigbee2MQTT (hardware-bound — needs a USB Zigbee coordinator
+physically attached to whichever box is local), an MQTT broker or just an
+MQTT forward/bridge, and *optionally* Frigate if camera object-detection
+should stay local (bandwidth/privacy win — send detection events, not
+raw video, to the central brain) rather than streaming raw RTSP
+centrally. Everything else (Postgres, Kafka, the Spring Boot backend,
+cabin-ui, Grafana/Prometheus) belongs to the central brain, reachable by
+one or many local hubs the same way `HomeAssistantAdapter` already
+reaches a location's HA instance today (a Tailscale-routed URL) — that
+existing pattern is the natural starting point for the forwarding
+mechanism, not something invented from scratch.
 
-1. **Cheap secondhand x86_64 mini-PC or business laptop, imaged with
-   Ubuntu** (e.g. the same ThinkCentre-class hardware the M920q already
-   is, or an equivalent used laptop). **Recommended default, ship-now
-   tier.** Zero new engineering — `docker-compose.m920q.yml`,
-   `REPLICATION.md`'s quickstart, and every existing image in this repo
-   already target this exact architecture. Often *cheaper all-in* than a
-   Pi kit once PSU/case/storage are counted (a used business mini-PC or
-   laptop bundles all of that already), and "minimal configuration" is
-   best served here since nothing needs new multi-arch builds or
-   platform-specific quirks. The "cheap laptop... windows compatible,
-   your choice" framing is honored by hardware selection (broadly
-   available secondhand Windows-capable machines are the cheapest
-   secondhand category) while still imputing Ubuntu as the installed OS,
-   matching every existing doc — not adding a third OS-support burden for
-   a marginal hardware-cost saving.
-2. **Raspberry Pi 4B (4–8GB) or Pi 5 — not Pi 2.** Correcting the user's
-   own suggestion here, not silently substituting: a Pi 2 (2015,
-   single-core-class ARM Cortex-A7, 1GB RAM) cannot realistically run
-   this stack — Kafka alone is memory-hungry, and Postgres + HA +
-   Node-RED + Frigate + a JVM Spring Boot backend on 1GB RAM would not be
-   stable for something meant to carry life-safety alerting (leak/smoke).
-   Pi 4B/5 is the honest version of "the accessible Pi tier" — real
-   community reach, official arm64 Docker images exist for every service
-   in this stack today. **Real engineering required before this is
-   offered**: multi-arch image builds wired into CI, Frigate performance
-   validated CPU-only (a $25–70 Coral USB accelerator should be
-   documented as an optional add-on, not assumed), and an actual
-   end-to-end test on real Pi hardware — `docs/REPLICATION.md` currently
-   has never been run on a second host at all, ARM or otherwise.
-3. **Android + Termux — deliberately scoped down, not full parity.**
-   Lowest acquisition barrier of all (many people already own an idle
-   phone), but Termux has no native Docker daemon (no root = proot-distro
-   or a from-scratch service layout), and a phone is a poor fit for
-   something that has to survive OS updates, aggressive background-process
-   killing, and Wi-Fi power-saving while unattended overnight watching for
-   a water leak. **Recommendation: don't attempt full-stack parity here.**
-   Scope it as a lighter "companion" tier instead — e.g. a Node-RED/MQTT
-   relay client or a notification-only surface — rather than promising
-   the same reliability tier as options 1–2 for life-safety alerting.
-   Excluded from "primary spin-off target," included as a real but
-   explicitly lesser tier.
+**Required design work before hardware selection is fully actionable**
+(not yet scoped into an execution plan):
+1. Define exactly which services are "edge" vs. "central" (draft above
+   is a starting point, not final).
+2. Design the edge→central forwarding mechanism — most likely an MQTT
+   bridge/forward over Tailscale, reusing the existing location-aware
+   URL-config pattern (`hub_location`, `CABIN_LOCATIONS_*` env vars)
+   rather than inventing a new transport.
+3. Make the central brain genuinely multi-location-aware as **one**
+   instance serving many edge hubs, rather than today's one-full-stack-
+   per-location model — a materially bigger shift than it sounds, since
+   `hub_locations` today assumes each location already has its own
+   reachable API/Grafana/Node-RED/etc., not just an MQTT feed.
+4. Document and test an actual cloud-hosted deployment target for the
+   central brain (ties to the pre-existing, still-open
+   `docs/DEFINITION_OF_DONE.md` §8 gap: "a placeholder exists for a
+   non-self-hosted deployment target, even if unused today" — the
+   Docker-based backend is already architecturally cloud-portable, this
+   has just never been documented or tested as a real path).
+
+**Ranked hardware for the local-hub (collector/router) role specifically
+— a much lighter bar than my first pass assumed:**
+
+1. **Raspberry Pi — 3B+/Zero 2 W if MQTT+Zigbee-only, Pi 4 if Frigate
+   stays local at the edge.** Now the best fit, reversing my first
+   ranking: without Postgres/Kafka/a JVM backend to carry, even a Pi 2
+   would be closer to viable for pure MQTT+Zigbee collection, but I'd
+   still recommend 3B+/Zero 2 W as the realistic floor (better
+   supply/support/price-per-unit today) and Pi 4 specifically if local
+   Frigate is wanted. Official Docker images exist for Zigbee2MQTT/
+   Mosquitto/Frigate on arm64 already. Real work still needed: an actual
+   "collector-only" compose profile doesn't exist in this repo yet (see
+   "Required design work" above) — today's `locations/home/
+   docker-compose.yml` can't just be pointed at a Pi as-is, it would try
+   to stand up the full stack.
+2. **Android + Termux.** Lowest acquisition barrier of all (an idle
+   phone many people already own), and *more* viable for this scoped-
+   down collector role than for running a full stack — Mosquitto/a
+   forwarder/even Node-RED (Node.js-based) run fine under Termux without
+   root. **Two real, unproven risks to flag, not assume away**: (a) a
+   USB Zigbee coordinator via Android USB-OTG + Termux USB permissions is
+   genuinely finicky and has not been validated in this project at all;
+   (b) 24/7 unattended reliability against Android's Doze mode/aggressive
+   background-process killing needs `Termux:Boot` + wake locks + a
+   battery-optimization exemption — solvable, known patterns, but not yet
+   prototyped here. Recommend a small spike to validate both before
+   committing to this as a first-class supported option.
+3. **Cheap secondhand x86_64 mini-PC or laptop, imaged with Ubuntu.**
+   Still valid, but no longer uniquely necessary just to have somewhere
+   to run things, since the local-hub role no longer needs Kafka/
+   Postgres/a JVM. Repositioned: the right choice when local Frigate
+   /heavier edge processing is wanted, or when someone wants to collapse
+   both tiers onto one box and self-host the central brain there too —
+   which is exactly what the M920q does today, and remains a fully valid
+   choice, just a different question ("do I want one box or two") than
+   "what's the cheapest local collector."
 
 **Deliberately excluded from the top 3**: the user's own Windows PC
-(`ilikethelights`) option. That's the existing primary dev machine, not a
-template purchase recommendation for a future stranger setting up a
-spin-off — and `CLAUDE.md`'s own Dev Setup section already documents
-Windows as dev-only (HA's `network_mode: host` doesn't map correctly on
-Docker Desktop for Windows). Not silently dropped — excluded on purpose,
-stated here.
+(`ilikethelights`) — existing dev machine, not a template recommendation
+for a future stranger's spin-off.
 
-**Not yet done**: none of tiers 2–3 have any code, CI, or doc work
-started. This section is the planning/ranking decision only, per the
-user's explicit ask to "add to the plan" — implementation would be a new,
-separate execution plan.
+**Not yet done**: none of this has any code, CI, or doc work started —
+this is the corrected planning/ranking pass only. The "required design
+work" list above is a prerequisite to a real execution plan, not
+optional polish.
+
+**Home is the real pilot for this model — resolved, same day.** User
+confirmed: Home should be "up all the time, get devices online, and then
+[route] to the 920q" — i.e. Home is the collector-hub model, not a full
+independent peer (`locations/home/docker-compose.yml`'s current "Full
+Stack" design is *not* what gets deployed there). This resolves the open
+question raised in the Codex handoff doc's Item 5. **New requirement,
+same message**: the Home device should ideally also drive a touchscreen
+kiosk display loading Family Hub — good news, `family-hub` is already a
+plain static-file container (`family-hub/family-hub.html`, served via
+nginx, see `infra/docker-compose.m920q.yml`) reachable over Tailscale, so
+the kiosk device doesn't need to *host* anything, just point a kiosk
+browser at the M920q's existing `family-hub` URL. This narrows tiers 1–2
+above to a concrete recommendation for Home specifically:
+- **Validate first, cheaply, before buying anything**: the user already
+  has an Android device set up for Termux ("I have one ready for this")
+  — zero acquisition cost, and Android's kiosk-browser ecosystem (e.g.
+  Fully Kiosk Browser) is more mature than DIY Chromium-kiosk-mode. The
+  one real unknown is whether Termux can reach a USB Zigbee coordinator
+  over Android USB-OTG without root — unproven in this project. **Test
+  that specifically, first**, before committing hardware budget.
+- **If the USB-Zigbee test fails**: fall back to a Raspberry Pi 4 (not
+  3B+/Zero 2 W, given the kiosk-display requirement now — Chromium kiosk
+  mode wants the extra RAM/CPU) with an HDMI touch monitor or the
+  official 7" touchscreen — ~$60–120 all-in, well-documented Zigbee-
+  coordinator-over-USB + Chromium-kiosk pattern, zero unknowns. The
+  existing Android device would still work fine as a **kiosk-only**
+  display in this case (pointed at Family Hub/cabin-ui), just not as the
+  Zigbee collector.
+- Either way, this still needs the "Required design work" list above
+  built first — there is no collector-only compose profile in this repo
+  yet to actually deploy to either device.
 
 ---
 

@@ -21,9 +21,15 @@
 > Rules & Alerts location-split, both sub-items now done); then, in a
 > follow-up planning-only round, added a new Item 6 (armed-state trigger
 > gap + native camera-confidence UI — includes a real bug find, not yet
-> fixed) and a hardware-tier decision framework for Item 5
-> (`ROADMAP.md`'s new Phase 8). This file is being kept current in place
-> per its own §5 instruction rather than left stale.
+> fixed) and a hardware-tier framework for Item 5 (`ROADMAP.md`'s new
+> Phase 8) — **which the user then corrected**: not full-stack-per-device,
+> but a lightweight local collector routing to a central "main brain."
+> Phase 8 was rewritten accordingly, and the user then confirmed Home
+> itself follows this model — a collector hub routing into Cabin's M920q,
+> not a full independent peer, ideally with a kiosk touchscreen loading
+> Family Hub too. See the revised Item 5 below for the concrete
+> recommendation. This file is being kept current in place per its own
+> §5 instruction rather than left stale.
 
 ---
 
@@ -386,29 +392,50 @@ Both sub-items are done as of this session:
 > termux (I have one ready for this), or use a dedicated laptop (ubuntu
 > is ready and I can keep it awake). lets go!"
 
-**Still not started** — but a decision framework now exists that didn't
-before. Later the same day, the user asked me (explicitly, in a
-product-lead capacity) to rank a top-3 hardware tier for a *broader*
-initiative — future spin-off instances on financially-accessible
-hardware, not just Home's specific box. That ranking now lives in
-`ROADMAP.md`'s new **Phase 8 — Accessible Hardware Program** (planning
-only, nothing built): (1) cheap secondhand x86_64 mini-PC/laptop imaged
-with Ubuntu — recommended default, zero new engineering, matches every
-existing quickstart; (2) Raspberry Pi 4B/5 (explicitly **not** Pi 2 —
-a Pi 2 cannot run this stack, corrected rather than silently used) —
-needs real multi-arch CI work before it's offered; (3) Android + Termux,
-deliberately scoped down to a lighter companion tier, not full parity,
-given no native Docker and reliability concerns for life-safety alerting.
-`CLAUDE.md`'s "no ARM/Pi hardware" constraint has been reconciled to
-scope explicitly to the two *production* hubs, not the platform overall.
+**Still not started, but the model is now decided — not just a hardware
+menu anymore.** Same day, three-message arc: (1) user asked me to rank
+hardware tiers for future spin-off instances; (2) corrected my first pass
+— not a device to run the full stack, a lightweight **local hub that
+collects device metrics and routes them to a central "main brain"**
+(self-hosted M920q-class, or cloud); (3) **confirmed Home specifically
+follows this model**: "I need something at home to be up all the time,
+get devices online, and then to the 920q in my instance." So: **Home is
+a collector hub routing into Cabin's M920q as the shared main brain —
+NOT a full independent peer.** `locations/home/docker-compose.yml`'s
+current "Full Stack" design (own Postgres/Kafka/backend/Grafana/HA/
+Node-RED/Frigate) is **not** what should get deployed to Home. See
+`ROADMAP.md`'s **Phase 8 — Accessible Hardware Program: Local Collector
+Hubs**, "Home is the real pilot for this model" subsection, for the full
+writeup.
 
-**This is a decision framework, not a decision made on the user's
-behalf.** Home's own immediate setup (this specific item) is still the
-user's call — from either their original four options or Phase 8's
-ranked tiers. **Do not unilaterally pick for them.** If Codex reaches
-this item, present Phase 8's ranking as context and still ask — the
-difference from before is there's now a reasoned product recommendation
-to present alongside the question, not just an open menu.
+**New requirement, same message**: the Home device should ideally also
+drive a touchscreen kiosk display loading Family Hub. This is easy to
+satisfy — `family-hub` is already a plain static-file container (nginx,
+`family-hub/family-hub.html`) reachable over Tailscale from the M920q, so
+the kiosk device just needs a browser pointed at that existing URL, not
+its own hosting.
+
+**Concrete recommendation, in `ROADMAP.md`'s Phase 8**: validate first,
+cheaply — the user already has an Android device set up for Termux
+("I have one ready for this"), zero acquisition cost, and Android's
+kiosk-browser ecosystem (e.g. Fully Kiosk Browser) is more mature than
+DIY Chromium-kiosk-mode. The one real unknown, unproven in this project:
+whether Termux can reach a USB Zigbee coordinator over Android USB-OTG
+without root. **Test that specifically before buying anything.** If it
+fails, fall back to a Raspberry Pi 4 (not 3B+/Zero 2 W — the kiosk
+requirement wants the extra headroom) with a touch monitor, ~$60–120
+all-in — the Android device would still work fine as a kiosk-only
+display in that case.
+
+**Still blocked on real work, not just a decision anymore**: there is no
+collector-only compose profile in this repo — deploying either device
+needs Phase 8's "Required design work" list done first (defining edge
+vs. central services, an MQTT-bridge-over-Tailscale forwarding mechanism,
+making the central brain multi-location-aware as one instance instead of
+today's one-full-stack-per-location model). **Recommend doing the
+USB-Zigbee-on-Termux validation spike immediately** (cheap, fast, no
+dependencies) so the hardware question is settled while the collector/
+central design work happens in parallel — don't block one on the other.
 
 ---
 
