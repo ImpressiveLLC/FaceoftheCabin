@@ -8,6 +8,7 @@ import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
+import com.cabin.orchestrator.security.SecurityStateRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -32,13 +33,18 @@ import java.util.*;
  *   cabin/system/health                — watchdog health reports
  *   {location}/presence/{personId}     — "home"/"not_home", per-person
  *                                         WiFi presence (see
- *                                         handlePresenceTopic) — the ONE
- *                                         subscription here that isn't
+ *                                         handlePresenceTopic) — one of two
+ *                                         subscriptions here that isn't
  *                                         cabin/-prefixed, deliberately:
  *                                         PresenceService's derivation
  *                                         needs signals from every
  *                                         location this instance manages,
  *                                         not just cabin's own.
+ *   {location}/security/armed_away     — "ON"/"OFF", real HA-published,
+ *                                         retained, self-healing armed
+ *                                         state (see handleArmedTopic) —
+ *                                         the other location-agnostic
+ *                                         subscription, same reasoning.
  */
 @Service
 public class MqttBridgeService implements MqttCallback {
@@ -56,14 +62,17 @@ public class MqttBridgeService implements MqttCallback {
     private final EventPublisher eventPublisher;
     private final PresenceService presenceService;
     private final PresenceSignalRegistry presenceSignalRegistry;
+    private final SecurityStateRegistry securityStateRegistry;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     public MqttBridgeService(DeviceRegistry registry, EventPublisher eventPublisher,
-                              PresenceService presenceService, PresenceSignalRegistry presenceSignalRegistry) {
+                              PresenceService presenceService, PresenceSignalRegistry presenceSignalRegistry,
+                              SecurityStateRegistry securityStateRegistry) {
         this.registry = registry;
         this.eventPublisher = eventPublisher;
         this.presenceService = presenceService;
         this.presenceSignalRegistry = presenceSignalRegistry;
+        this.securityStateRegistry = securityStateRegistry;
     }
 
     @PostConstruct
@@ -88,6 +97,11 @@ public class MqttBridgeService implements MqttCallback {
             // home/presence/{anyone} publisher needs zero backend changes
             // to be picked up.
             client.subscribe("+/presence/#", 1);
+            // Same wildcard reasoning as presence above. Only
+            // cabin/security/armed_away is real today (home-hub isn't
+            // deployed), but nothing downstream (SecurityStateRegistry,
+            // the /api/security endpoint) assumes cabin-only.
+            client.subscribe("+/security/armed_away", 1);
             log.info("MQTT bridge connected to {}", brokerUrl);
         } catch (MqttException e) {
             log.error("MQTT connect failed: {}", e.getMessage());
@@ -114,6 +128,12 @@ public class MqttBridgeService implements MqttCallback {
                 // topics above -- must be handled before the generic
                 // JSON-parse fallback below, not through it.
                 handlePresenceTopic(parts, payload);
+                return;
+            }
+
+            if (parts.length == 3 && "security".equals(parts[1]) && "armed_away".equals(parts[2])) {
+                // Plain text ("ON"/"OFF"), same reasoning as presence above.
+                handleArmedTopic(parts[0], payload);
                 return;
             }
 
@@ -238,6 +258,21 @@ public class MqttBridgeService implements MqttCallback {
         boolean present = "home".equalsIgnoreCase(payload.trim());
         presenceSignalRegistry.record(location, personId, present);
         presenceService.recomputeFromSignals();
+    }
+
+    /**
+     * {location}/security/armed_away -- plain text "ON"/"OFF", published
+     * by a real HA automation (see docs/ontology.yaml's automation_
+     * cabin_security_publish_arm_state) that republishes on every toggle
+     * AND on every HA restart, so this is already self-healing on the
+     * publisher side -- cabin-backend just needs to actually listen.
+     * Found 2026-08-08: nothing here ever did, despite this being exactly
+     * the kind of "is this actually armed" answer a user asking about an
+     * ambiguous alert needs and couldn't get from the UI at all.
+     */
+    private void handleArmedTopic(String location, String payload) {
+        boolean armed = "ON".equalsIgnoreCase(payload.trim());
+        securityStateRegistry.record(location, armed);
     }
 
     @SuppressWarnings("unchecked")

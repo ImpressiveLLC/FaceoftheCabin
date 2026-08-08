@@ -7,6 +7,7 @@ import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceProfile;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
+import com.cabin.orchestrator.security.SecurityStateRegistry;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,7 @@ class MqttBridgeServiceTest {
     private DeviceRegistry registry;
     private PresenceService presenceService;
     private PresenceSignalRegistry presenceSignalRegistry;
+    private SecurityStateRegistry securityStateRegistry;
     private MqttBridgeService bridge;
 
     @BeforeEach
@@ -55,7 +57,8 @@ class MqttBridgeServiceTest {
         registry = new DeviceRegistry(List.of());
         presenceSignalRegistry = new PresenceSignalRegistry();
         presenceService = new PresenceService(mock(JdbcTemplate.class), presenceSignalRegistry);
-        bridge = new MqttBridgeService(registry, new EventPublisher(), presenceService, presenceSignalRegistry);
+        securityStateRegistry = new SecurityStateRegistry();
+        bridge = new MqttBridgeService(registry, new EventPublisher(), presenceService, presenceSignalRegistry, securityStateRegistry);
     }
 
     private void deliver(String topic, String payload) throws Exception {
@@ -194,5 +197,39 @@ class MqttBridgeServiceTest {
 
         assertEquals(1, presenceSignalRegistry.all().size());
         assertNull(registry.get("nate"), "a presence signal must never register a device");
+    }
+
+    @Test
+    void armedAwayOnRecordsArmedForThatLocation() throws Exception {
+        deliver("cabin/security/armed_away", "ON");
+
+        assertTrue(securityStateRegistry.get("cabin").orElseThrow().armed());
+    }
+
+    @Test
+    void armedAwayOffRecordsDisarmedForThatLocation() throws Exception {
+        deliver("cabin/security/armed_away", "OFF");
+
+        assertFalse(securityStateRegistry.get("cabin").orElseThrow().armed());
+    }
+
+    @Test
+    void armedStateIsLocationAgnosticNotHardcodedToCabin() throws Exception {
+        // home-hub isn't deployed yet, but this must still work today for
+        // whatever location actually publishes -- see this class's own
+        // javadoc on the +/security/armed_away subscription.
+        deliver("home/security/armed_away", "ON");
+
+        assertTrue(securityStateRegistry.get("home").orElseThrow().armed());
+        assertTrue(securityStateRegistry.get("cabin").isEmpty(),
+            "a signal for one location must not be recorded against a different one");
+    }
+
+    @Test
+    void armedTopicIsNotMisroutedThroughTheJsonDeviceHandler() throws Exception {
+        // Plain text ("ON"/"OFF"), not JSON -- same reasoning as presence.
+        deliver("cabin/security/armed_away", "ON");
+
+        assertNull(registry.get("armed_away"), "an armed-state signal must never register a device");
     }
 }
