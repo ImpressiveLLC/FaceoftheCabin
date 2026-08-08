@@ -6624,3 +6624,71 @@ elements:
       Depends on cabin_grafana_public_access being fixed to actually be
       reachable/usable -- this dashboard existing does not mean anyone can
       currently see it (see that entity's notes).
+
+  - id: signal_quality_prototype
+    entity_type: owl:Class
+    layer: backend
+    primitive: true
+    schema_version: "0.4.0"
+    migration_status: planned
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-08"
+      ref: "SignalQualityRegistry, prototype stage"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Signal Quality Prototype (Zigbee LQI)"
+    source: >
+      Zigbee2MqttAdapter.handleDeviceState() -- linkquality was already
+      parsed out of every Zigbee device message (deriveState() already
+      reads it to decide ONLINE vs UNKNOWN) but never trended anywhere.
+      SignalQualityRegistry now keeps a rolling per-device history
+      (last 20 readings, in-memory) and computes a baseline + simple
+      "significant drop" flag from it.
+    rendering:
+      semantic: "Has this device's Zigbee link quality dropped in a way that might mean something moved through the mesh?"
+      systems: Signal Quality Prototype
+      technical: "GET /api/signal-quality -> { [deviceId]: { current, baseline, anomalous, sampleCount } }"
+      compliance: (not shown)
+    definition: >
+      A prototype, explicitly staged as "observe and evaluate," for
+      whether Zigbee LQI fluctuation across this instance's existing
+      mesh can serve as a presence/obstruction detection signal --
+      evaluated as the low-cost alternative to WiFi RSSI-based sensing
+      (see grafana/dashboards/22019-wifi-scan/README.md for why WiFi
+      RSSI needs new hardware here and Zigbee LQI doesn't: three of this
+      mesh's devices are already wired, always-on Zigbee routers spread
+      across the building -- heater_mech_room, main_water_valve,
+      smart_switch_breaker_box -- relaying nearby end devices, with real
+      LQI on every hop, right now, with zero new hardware).
+    relationships:
+      - target: automation_cabin_security_publish_arm_state
+        type: complements
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      Deliberately NOT wired into AlertSeverityClassifier, the toolbar,
+      or any real alert path yet -- this is the evaluation stage the
+      user explicitly asked for ("we'll go with the prototype option"),
+      not a shipped detection feature. ANOMALY_DROP_RATIO (0.7, a 30%
+      drop) is an explicit placeholder in SignalQualityRegistry's own
+      comment, not a tuned value -- Zigbee LQI is noisy for reasons that
+      have nothing to do with presence (interference, battery voltage
+      sag, routing-path changes as the mesh self-heals), and this needs
+      real-world evaluation against actual data before anything
+      downstream trusts it.
+
+      HARDWARE NOTE from the user, 2026-08-08: the spare, currently-
+      unplugged Greenwave C4000LG router (hw_router_c4000lg) can be
+      repurposed as an additional collection point/hub anywhere in the
+      building once this prototype (or a WiFi-based approach) proves
+      out enough to justify expanding coverage -- not yet actioned,
+      the router remains unplugged/unassigned as of this writing.
+
+      13 new tests (SignalQualityRegistryTest, Zigbee2MqttAdapterTest --
+      the latter is this adapter's first-ever test coverage, scoped only
+      to this new integration point, not a full backfill --
+      SignalQualityControllerTest). Backend suite: 67/67 (3 pre-existing
+      Docker-unavailable failures in this local sandbox, unrelated).

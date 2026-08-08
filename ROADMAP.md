@@ -911,6 +911,29 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       path presence/armed-state already use this session, rather than a
       disconnected Grafana-alerting silo — directly relevant given the
       alert-clarity gap logged above. Decision not yet made.
+- [x] **Prototype built 2026-08-08**: "go with the prototype option" —
+      Zigbee LQI (link quality) instead of WiFi RSSI, zero new hardware.
+      Verified live first: three of the cabin mesh's devices are already
+      wired, always-on Zigbee routers spread across the building
+      (`heater_mech_room`, `main_water_valve`, `smart_switch_breaker_box`),
+      and `linkquality` was already flowing through every Zigbee message
+      — just never trended. `SignalQualityRegistry` (new, in-memory,
+      per-device rolling history) + a hook in
+      `Zigbee2MqttAdapter.handleDeviceState()` + `GET /api/signal-quality`
+      surface current/baseline/anomalous per device. Deliberately NOT
+      wired into `AlertSeverityClassifier`, the toolbar, or any real
+      alert path — this is the observe-and-evaluate stage, not a shipped
+      feature; `ANOMALY_DROP_RATIO` (30% drop) is an explicit, untuned
+      placeholder. **User's hardware note**: the spare, currently-
+      unplugged C4000LG router can serve as an additional collection
+      point/hub anywhere in the building once this — or a WiFi-based
+      approach — proves out enough to justify it; logged, not yet
+      actioned. 15 new tests (`SignalQualityRegistryTest`,
+      `Zigbee2MqttAdapterTest` — this adapter's first-ever test coverage,
+      scoped to only this new integration point — `SignalQualityControllerTest`).
+      Backend suite: 67/67 (3 pre-existing Docker-unavailable failures,
+      unrelated). See `docs/ontology.yaml`'s `signal_quality_prototype`
+      for the full entity.
 - [x] Presence toggle was purely manual with nothing real behind it
       (found via user report, 2026-08-08): the toolbar's map-pin widget
       read as "your detected location," but `PresenceProfile` was only

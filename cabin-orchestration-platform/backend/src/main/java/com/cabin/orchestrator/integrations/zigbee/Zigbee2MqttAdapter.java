@@ -5,6 +5,7 @@ import com.cabin.orchestrator.devices.model.*;
 import com.cabin.orchestrator.events.AlertSeverityClassifier;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
+import com.cabin.orchestrator.signalquality.SignalQualityRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -51,6 +52,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     private MqttClient client;
     private final DeviceRegistry registry;
     private final EventPublisher eventPublisher;
+    private final SignalQualityRegistry signalQualityRegistry;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     // Tracks friendly names seen via bridge/devices so we know which topics are Z2M devices
@@ -58,9 +60,11 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     // Tracks whether bridge is online
     private volatile String bridgeState = "offline";
 
-    public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher) {
+    public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher,
+                               SignalQualityRegistry signalQualityRegistry) {
         this.registry = registry;
         this.eventPublisher = eventPublisher;
+        this.signalQualityRegistry = signalQualityRegistry;
     }
 
     @PostConstruct
@@ -185,6 +189,15 @@ public class Zigbee2MqttAdapter implements MqttCallback {
 
             Map<String, Object> attrs = new LinkedHashMap<>();
             node.fields().forEachRemaining(e -> attrs.put(e.getKey(), jsonNodeToValue(e.getValue())));
+
+            // PROTOTYPE, 2026-08-08 -- see SignalQualityRegistry's own
+            // comment. linkquality was already parsed into attrs on every
+            // message (deriveState below already reads it); this just
+            // also trends it so a future evaluation pass has real history
+            // to look at, not just the always-overwritten latest value.
+            if (attrs.get("linkquality") instanceof Number lqi) {
+                signalQualityRegistry.record(deviceId, lqi.intValue());
+            }
 
             String state = deriveState(attrs, existing.type());
             registry.update(new DeviceStatus(

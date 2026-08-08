@@ -91,3 +91,19 @@ decision informed, not to presuppose it.
 
 See `ROADMAP.md`'s WiFi RSSI presence-detection planning item for the
 tracked backlog entry this evaluation feeds.
+
+## Update 2026-08-08 — prototyping with Zigbee LQI first, WiFi second
+
+User's decision: prototype with the zero-new-hardware option first (see
+`docs/ontology.yaml`'s `signal_quality_prototype` entity and
+`SignalQualityRegistry` — this instance's existing Zigbee mesh already
+has three wired, always-on router-role devices spread across the
+building, with real link-quality data flowing right now).
+
+If/when this platform pursues real WiFi RSSI sensing (this dashboard's
+actual subject), the user has a concrete hardware note: the spare,
+currently-unplugged Greenwave C4000LG router (`hw_router_c4000lg`) can
+be repurposed as an additional collection point/hub anywhere in the
+building — front/back, upstairs/downstairs, wherever coverage is
+thinnest — rather than needing to buy new hardware for a second vantage
+point. Not yet actioned; noted here so it isn't rediscovered later.
