@@ -1368,10 +1368,17 @@ above to a concrete recommendation for Home specifically:
   yet to actually deploy to either device.
 
 **Coordinator hardware recommendation, same day — changes the POC's
-risk profile, not just a parts pick.** User asked which Zigbee
-coordinator to buy for Home. Recommended: **SMLIGHT SLZB-06 or SLZB-07
-(Ethernet variant preferred over WiFi)** — a *network-attached*
-coordinator, not a USB one. Zigbee2MQTT talks to it over plain TCP
+risk profile, not just a parts pick. Corrected same day, model number
+was wrong in the first pass**: SLZB-07 is **USB-only**, it has no
+Ethernet variant — that line is SLZB-06. User asked which Zigbee
+coordinator to buy for Home. Recommended: **SMLIGHT SLZB-06Mg24 (or the
+2026 SLZB-06Mg24U, faster onboard SoC)** — specifically the **Mg24**
+variant, not the base SLZB-06/06M/p7/p10 (those use a TI CC2652P chip/
+`zstack` adapter; Mg24 uses Silicon Labs' EFR32MG24, the same
+EmberZNet/`ember` family as Cabin's own Sonoff coordinator, which is the
+whole point of this pick). Ethernet+WiFi+USB+PoE capable — a
+*network-attached* coordinator, not a USB one. Zigbee2MQTT talks to it
+over plain TCP
 (`tcp://<ip>:6638`) instead of a directly-attached USB serial device,
 which **sidesteps the entire USB-OTG/`termux-usb`/serial-chipset
 uncertainty** the Termux POC playbook above was built around — a regular

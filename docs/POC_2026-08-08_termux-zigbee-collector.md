@@ -1,8 +1,13 @@
 # POC Playbook — Termux as Home's Local Collector Hub
 
-> **Update, same day, before any coordinator was purchased:** the
-> recommended coordinator is now the **SMLIGHT SLZB-06/07 (Ethernet)** —
-> a *network-attached* coordinator, not USB. That changes what this
+> **Update, same day, before any coordinator was purchased — model
+> number corrected same day too**: SLZB-07 is USB-only, no Ethernet
+> variant exists for it — that's the SLZB-06 line. The recommended
+> coordinator is the **SMLIGHT SLZB-06Mg24 (or the 2026 SLZB-06Mg24U)**,
+> specifically the Mg24 variant (Silicon Labs EFR32MG24 chip, same
+> EmberZNet/`ember` family Cabin's own coordinator uses — not the base
+> SLZB-06/06M/p7/p10, which use a different TI chip/adapter) — a
+> *network-attached* coordinator, not USB. That changes what this
 > playbook needs to test: Zigbee2MQTT would talk to it over a plain TCP
 > socket, which sidesteps Phases 2–4's entire USB-OTG/`termux-usb`
 > concern. **This document has not been rewritten for that yet** — the

@@ -438,10 +438,15 @@ it) follow that playbook and report back honestly, including a clean
 failure — this is real, unproven hardware behavior, not something to
 simulate or assume passing.
 
-**Coordinator recommendation, same day — changes the POC's risk
-profile.** User asked which Zigbee coordinator to buy. Recommended:
-**SMLIGHT SLZB-06 or SLZB-07, Ethernet variant** (plugs into the router
-like any wired LAN device, own USB-C power, place for good Zigbee RF
+**Coordinator recommendation, same day — changes the POC's risk profile.
+Corrected same day, model number was wrong in the first pass**: SLZB-07
+is USB-only, no Ethernet variant — that's SLZB-06. User asked which
+Zigbee coordinator to buy. Recommended: **SMLIGHT SLZB-06Mg24 (or the
+2026 SLZB-06Mg24U)** specifically — the **Mg24** variant, not base
+SLZB-06/06M/p7/p10 (TI CC2652P/`zstack`) — because Mg24 uses Silicon
+Labs' EFR32MG24, the same EmberZNet/`ember` family as Cabin's own Sonoff
+coordinator. Ethernet+WiFi+USB+PoE capable (plugs into the router like
+any wired LAN device, own USB-C or PoE power, place for good Zigbee RF
 coverage across the house — not necessarily wherever's closest to the
 router) — a *network-attached* coordinator rather than USB, so
 Zigbee2MQTT connects over plain TCP (`tcp://<ip>:6638`). This **sidesteps
