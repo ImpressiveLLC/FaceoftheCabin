@@ -18,7 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Monitors device health and marks devices stale when they stop reporting.
  *
  * Stale thresholds by device type:
- *   - Zigbee sensors:    stale after 10 min (Z2M state pushes are event-driven)
+ *   - Zigbee mains devices: stale after 10 min
+ *   - Zigbee battery devices: late after 26 hours (sleepy sensors commonly report daily)
  *   - Cameras/RTSP:      stale after 5 min  (Frigate sends motion events)
  *   - HA polled devices: stale after 15 min (HA bridge polls every ~30s)
  *   - Unknown:           stale after 30 min
@@ -57,6 +58,7 @@ public class DeviceHealthMonitor {
     private final Zigbee2MqttAdapter z2mAdapter;
 
     private static final Duration STALE_ZIGBEE  = Duration.ofMinutes(10);
+    private static final Duration STALE_ZIGBEE_BATTERY = Duration.ofHours(26);
     private static final Duration STALE_CAMERA  = Duration.ofMinutes(5);
     private static final Duration STALE_HA      = Duration.ofMinutes(15);
     private static final Duration STALE_DEFAULT = Duration.ofMinutes(30);
@@ -175,7 +177,16 @@ public class DeviceHealthMonitor {
     }
 
     private Duration staleThresholdFor(String deviceId, DeviceStatus status) {
-        if (deviceId.startsWith("z2m-")) return STALE_ZIGBEE;
+        Object configuredMinutes = status.attributes().get("expectedCheckinMinutes");
+        if (configuredMinutes instanceof Number minutes && minutes.longValue() > 0) {
+            return Duration.ofMinutes(minutes.longValue());
+        }
+        if (deviceId.startsWith("z2m-")) {
+            Object powerSource = status.attributes().get("powerSource");
+            boolean battery = "battery".equalsIgnoreCase(String.valueOf(powerSource))
+                || status.attributes().containsKey("battery") || status.attributes().containsKey("battery_low");
+            return battery ? STALE_ZIGBEE_BATTERY : STALE_ZIGBEE;
+        }
         return switch (status.type()) {
             case CAMERA -> STALE_CAMERA;
             case THERMOSTAT, LOCK, SMOKE_ALARM, CO_ALARM,
@@ -222,6 +233,35 @@ public class DeviceHealthMonitor {
     /** Per-device checkin status, keyed by deviceId. Devices not yet checked this cycle are omitted. */
     public Map<String, CheckinStatus> getCheckinStatuses() {
         return Map.copyOf(checkinStatuses);
+    }
+
+    /** User-facing lifecycle explanation; avoids a status badge with no reason or next step. */
+    public Map<String, Map<String, Object>> getCheckinDetails() {
+        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        Instant now = Instant.now();
+        for (DeviceStatus status : registry.all()) {
+            Duration expected = staleThresholdFor(status.deviceId(), status);
+            CheckinStatus checkin = checkinStatuses.getOrDefault(status.deviceId(),
+                registry.descriptor(status.deviceId()).filter(DeviceDescriptor::enabled).isPresent()
+                    ? CheckinStatus.ON_SCHEDULE : CheckinStatus.NOT_CONFIGURED);
+            boolean battery = expected.equals(STALE_ZIGBEE_BATTERY)
+                || "battery".equalsIgnoreCase(String.valueOf(status.attributes().get("powerSource")));
+            String reason = switch (checkin) {
+                case NOT_CONFIGURED -> "Discovered as a candidate; configure and enable it to start health monitoring.";
+                case ON_SCHEDULE -> battery
+                    ? "Battery device is within its expected reporting window; it may sleep between reports."
+                    : "Device checked in within its expected reporting window.";
+                case LATE -> "Expected report has not arrived yet; this does not prove the device is offline.";
+                case MISSED -> "No report arrived during the full grace window and the device is treated as not responding.";
+            };
+            out.put(status.deviceId(), Map.of(
+                "status", checkin.name(),
+                "expectedMinutes", expected.toMinutes(),
+                "missedAfterMinutes", expected.multipliedBy(MISSED_MULTIPLIER).toMinutes(),
+                "minutesSinceLastSeen", Math.max(0, Duration.between(status.lastSeen(), now).toMinutes()),
+                "reason", reason));
+        }
+        return out;
     }
 
     public Optional<Instant> getStaleSince(String deviceId) {

@@ -162,10 +162,20 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                     caps,
                     "mqtt",
                     Z2M_PREFIX + friendlyName,
-                    true,
+                    false,
                     zigbeeLocation
                 );
-                registry.registerDescriptor(desc);
+                Map<String, Object> discovery = new LinkedHashMap<>();
+                discovery.put("discoveredFrom", "Zigbee2MQTT bridge/devices");
+                discovery.put("model", definition.path("model").asText(""));
+                discovery.put("vendor", definition.path("vendor").asText(""));
+                String powerSource = device.path("power_source").asText(
+                    definition.path("power_source").asText("unknown"));
+                discovery.put("powerSource", powerSource);
+                if ("battery".equalsIgnoreCase(powerSource)) {
+                    discovery.put("expectedCheckinMinutes", 1560); // 26h: accommodates daily sleepy-device reports
+                }
+                registry.registerCandidate(desc, discovery);
                 log.info("Z2M registered device: {} ({})", friendlyName, type);
             }
         } catch (Exception e) {
@@ -187,7 +197,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             DeviceStatus existing = registry.get(deviceId);
             if (existing == null) return; // not registered yet; bridge/devices will handle it
 
-            Map<String, Object> attrs = new LinkedHashMap<>();
+            Map<String, Object> attrs = new LinkedHashMap<>(existing.attributes());
             node.fields().forEachRemaining(e -> attrs.put(e.getKey(), jsonNodeToValue(e.getValue())));
 
             // PROTOTYPE, 2026-08-08 -- see SignalQualityRegistry's own

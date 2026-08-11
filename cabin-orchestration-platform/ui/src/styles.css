@@ -221,6 +221,26 @@ body {
 .attr-key { color: #8b949e; }
 .attr-val { color: #e6edf3; font-family: monospace; }
 .device-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.dm-toolbar-select { display:flex; align-items:center; gap:6px; color:var(--text-dim); font-size:12px; }
+.dm-toolbar-select select { min-width:92px; }
+.dm-groups { display:flex; gap:12px; align-items:flex-start; }
+.dm-groups-horizontal { overflow-x:auto; scroll-snap-type:x proximity; padding-bottom:8px; }
+.dm-groups-horizontal .dm-device-group { flex:0 0 min(360px, 86vw); scroll-snap-align:start; }
+.dm-groups-vertical { flex-direction:column; }
+.dm-groups-vertical .dm-device-group { width:100%; }
+.dm-device-group { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg-secondary); }
+.dm-device-group > header { display:flex; justify-content:space-between; padding:8px 10px; color:var(--text-dim); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.candidate-badge { border:1px solid var(--accent); color:var(--accent); border-radius:999px; padding:2px 7px; font-size:10px; }
+.dm-why-card,.dm-candidate-card { display:flex; flex-direction:column; gap:6px; margin-top:12px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); font-size:12px; }
+.dm-why-card small { color:var(--text-dim); }
+.action-result { margin:8px 0 0; padding:7px 9px; border-radius:7px; font-size:12px; }
+.action-ok { color:var(--state-online); background:color-mix(in srgb, var(--state-online) 12%, transparent); }
+.action-error { color:var(--state-warning); background:color-mix(in srgb, var(--state-warning) 12%, transparent); }
+@media (max-width: 720px) {
+  .panel-header-bar { align-items:flex-start; }
+  .panel-header-bar .header-actions { max-width:100%; overflow-x:auto; padding-bottom:4px; }
+  .dm-groups-horizontal .dm-device-group { flex-basis:88vw; }
+}
 
 /* ─── Config Cards ─────────────────────────────────────────────────────── */
 .config-grid {
