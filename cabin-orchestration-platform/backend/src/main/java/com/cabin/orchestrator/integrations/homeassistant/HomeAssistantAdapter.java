@@ -45,10 +45,40 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
 
     private final RestTemplate rest = new RestTemplate();
 
+    public record DiscoveredEntity(String entityId, String state, Map<String, Object> attributes) {}
+
     @Override
     public String adapterType() {
         return "ha_rest";
     }
+
+    /** Fetch the HA state catalog used by candidate and presence discovery. */
+    public List<DiscoveredEntity> discover(String location) {
+        String token = "home".equals(location) ? homeHaToken : cabinHaToken;
+        String url = "home".equals(location) ? homeHaUrl : cabinHaUrl;
+        if (token.isBlank()) return List.of();
+        try {
+            ResponseEntity<List> response = rest.exchange(url + "/api/states", HttpMethod.GET,
+                new HttpEntity<>(bearerHeaders(token)), List.class);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) return List.of();
+            List<DiscoveredEntity> found = new ArrayList<>();
+            for (Object raw : response.getBody()) {
+                if (!(raw instanceof Map<?, ?> row)) continue;
+                String entityId = String.valueOf(row.get("entity_id"));
+                String state = String.valueOf(row.get("state"));
+                Map<String, Object> attrs = new LinkedHashMap<>();
+                Object attrRaw = row.get("attributes");
+                if (attrRaw instanceof Map<?, ?> map) map.forEach((k, v) -> attrs.put(String.valueOf(k), v));
+                found.add(new DiscoveredEntity(entityId, state, attrs));
+            }
+            return found;
+        } catch (Exception e) {
+            log.debug("HA discovery unavailable for {}: {}", location, e.getMessage());
+            return List.of();
+        }
+    }
+
+    public String normalizedState(String state) { return mapHaState(state); }
 
     @Override
     public Optional<DeviceStatus> fetchState(DeviceDescriptor descriptor) {

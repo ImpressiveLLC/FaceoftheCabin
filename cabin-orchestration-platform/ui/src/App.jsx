@@ -882,6 +882,19 @@ function useCheckinStatuses(apiBase) {
   return statuses;
 }
 
+function useCheckinDetails(apiBase) {
+  const [details, setDetails] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${apiBase}/api/devices/checkin-details`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setDetails(data || {}); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [apiBase]);
+  return details;
+}
+
 function deviceIcon(type) {
   const map = {
     CAMERA: Camera, WATER_PRESSURE_SENSOR: Droplets, TEMPERATURE_SENSOR: Thermometer,
@@ -1285,6 +1298,11 @@ function DeviceManagerPanel() {
   const [view, setView]             = useState("see");
   const [selected, setSelected]     = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
+  const [groupBy, setGroupBy] = useState(() => localStorage.getItem("devices.groupBy") || "type");
+  const [groupFlow, setGroupFlow] = useState(() => localStorage.getItem("devices.groupFlow") || "horizontal");
+
+  useEffect(() => localStorage.setItem("devices.groupBy", groupBy), [groupBy]);
+  useEffect(() => localStorage.setItem("devices.groupFlow", groupFlow), [groupFlow]);
 
   // Found 2026-08-08 (user report): every DmXView below was rendering the
   // FULL, unfiltered devices array regardless of which location tab was
@@ -1305,11 +1323,24 @@ function DeviceManagerPanel() {
         <h2>Device Manager</h2>
         <div className="header-actions">
           {view === "see" && (
-            <button
-              className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
-              onClick={() => setReorderMode(r => !r)}>
-              <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
-            </button>
+            <>
+              <label className="dm-toolbar-select">Group
+                <select value={groupBy} onChange={e => setGroupBy(e.target.value)}>
+                  <option value="none">None</option><option value="type">Type</option>
+                  <option value="source">Source</option><option value="room">Room</option>
+                  <option value="state">Status</option><option value="candidate">Candidates</option>
+                </select>
+              </label>
+              <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
+                title="Choose whether groups flow across the screen or stack downward">
+                {groupFlow === "horizontal" ? "Groups ↔" : "Groups ↕"}
+              </button>
+              <button
+                className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
+                onClick={() => setReorderMode(r => !r)}>
+                <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
+              </button>
+            </>
           )}
           <button className="btn-ghost" onClick={refreshDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
@@ -1335,7 +1366,9 @@ function DeviceManagerPanel() {
         </a>
       </div>
 
-      {view === "see"    && <DmSeeView    devices={locDevices} selected={selected} onSelect={setSelected} reorderMode={reorderMode} />}
+      {view === "see"    && <DmSeeView devices={locDevices} selected={selected} onSelect={setSelected}
+        reorderMode={reorderMode} groupBy={groupBy} groupFlow={groupFlow}
+        onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }} />}
       {view === "change" && <DmChangeView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
       {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
@@ -1344,12 +1377,27 @@ function DeviceManagerPanel() {
 }
 
 // ── L2/L3: See ──
-function DmSeeView({ devices, selected, onSelect, reorderMode }) {
+export function groupDevices(devices, groupBy) {
+  if (groupBy === "none") return [["All devices", devices]];
+  const keyFor = (d) => {
+    if (groupBy === "source") return d.attributes?.discoveredFrom || d.attributes?.source || (d.deviceId.startsWith("z2m-") ? "Zigbee2MQTT" : "Other");
+    if (groupBy === "room") return d.attributes?.room || d.attributes?.area_name || "Room not assigned";
+    if (groupBy === "state") return d.state || "UNKNOWN";
+    if (groupBy === "candidate") return d.attributes?.candidate === true ? "Candidates" : "Configured";
+    return d.type || "Other";
+  };
+  const groups = new Map();
+  devices.forEach(d => { const key = keyFor(d); groups.set(key, [...(groups.get(key) || []), d]); });
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
+function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, onConfigure }) {
   const { activeLocation } = useApp();
   const [health, setHealth] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
   const checkinStatuses = useCheckinStatuses(LOCATIONS.cabin.apiBase);
+  const checkinDetails = useCheckinDetails(LOCATIONS.cabin.apiBase);
 
   useEffect(() => {
     fetch(`${LOCATIONS.cabin.apiBase}/api/system/health`)
@@ -1362,6 +1410,7 @@ function DmSeeView({ devices, selected, onSelect, reorderMode }) {
   );
 
   const sel = selected ? ordered.find(d => d.deviceId === selected) : null;
+  const grouped = groupDevices(ordered, groupBy);
 
   const onDragStart = (idx) => (e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
   const onDragOver  = (idx) => (e) => { e.preventDefault(); setOverIdx(idx); };
@@ -1383,7 +1432,12 @@ function DmSeeView({ devices, selected, onSelect, reorderMode }) {
             <span className="health-chip health-z2m">Z2M: {health.zigbeeBridge || "—"}</span>
           </div>
         )}
-        {ordered.map((d, idx) => {
+        <div className={`dm-groups dm-groups-${groupFlow}`}>
+        {grouped.map(([groupName, groupDevices]) => (
+          <section className="dm-device-group" key={groupName}>
+            <header><span>{groupName}</span><span>{groupDevices.length}</span></header>
+            {groupDevices.map((d) => {
+          const idx = ordered.findIndex(item => item.deviceId === d.deviceId);
           const isPinned = idx < pinnedCount;
           const isOver   = reorderMode && overIdx === idx && dragIdx !== idx;
           return (
@@ -1397,7 +1451,7 @@ function DmSeeView({ devices, selected, onSelect, reorderMode }) {
             >
               <DmDeviceRow device={d}
                 selected={selected === d.deviceId}
-                checkinStatus={checkinStatuses[d.deviceId]}
+                checkinStatus={checkinDetails[d.deviceId]?.status || checkinStatuses[d.deviceId]}
                 onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)}
                 dragHandle={reorderMode
                   ? (isPinned
@@ -1408,11 +1462,15 @@ function DmSeeView({ devices, selected, onSelect, reorderMode }) {
             </div>
           );
         })}
+          </section>
+        ))}
+        </div>
         {devices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/><p>No devices registered.</p></div>}
       </div>
       {sel && (
         <div className="dm-detail">
-          <DmDeviceDetail device={sel} checkinStatus={checkinStatuses[sel.deviceId]} />
+          <DmDeviceDetail device={sel} checkinStatus={checkinDetails[sel.deviceId]?.status || checkinStatuses[sel.deviceId]}
+            checkinDetail={checkinDetails[sel.deviceId]} onConfigure={() => onConfigure(sel.deviceId)} />
         </div>
       )}
     </div>
@@ -1720,6 +1778,7 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
         <span className="dm-row-name">{device.name}</span>
         <span className="dm-row-meta">{device.type} · {device.location}{isZ2m ? " · zigbee" : ""}</span>
       </div>
+      {device.attributes?.candidate === true && <span className="candidate-badge">Candidate</span>}
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
@@ -1727,7 +1786,7 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
   );
 }
 
-function DmDeviceDetail({ device, checkinStatus }) {
+function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure }) {
   const override = checkinStatusLabel(device.state, checkinStatus);
   return (
     <div className="dm-detail-inner">
@@ -1745,6 +1804,16 @@ function DmDeviceDetail({ device, checkinStatus }) {
           <span>{device.lastSeen ? new Date(device.lastSeen).toLocaleString() : "—"}</span>
         </div>
       </div>
+      {checkinDetail?.reason && (
+        <div className="dm-why-card"><strong>Why is this status shown?</strong><span>{checkinDetail.reason}</span>
+          <small>Expected within {checkinDetail.expectedMinutes} min; not responding after {checkinDetail.missedAfterMinutes} min.</small></div>
+      )}
+      {device.attributes?.candidate === true && (
+        <div className="dm-candidate-card"><strong>New device candidate</strong>
+          <span>Discovered from {device.attributes.discoveredFrom || device.attributes.source || "an integration"}. Review its name and enable it before commands are allowed.</span>
+          <button className="btn-primary" onClick={onConfigure}>Configure candidate</button>
+        </div>
+      )}
       {Object.keys(device.attributes || {}).length > 0 && (
         <>
           <div className="dm-detail-section">Attributes</div>
@@ -1756,9 +1825,42 @@ function DmDeviceDetail({ device, checkinStatus }) {
           ))}
         </>
       )}
-      {device.type === "LOCK" && <DmLockActions device={device}/>}
+      {device.attributes?.candidate !== true && device.type === "LOCK" && <DmLockActions device={device}/>}
+      {device.attributes?.candidate !== true && <DmCapabilityActions device={device}/>}
     </div>
   );
+}
+
+function DmCapabilityActions({ device }) {
+  const [result, setResult] = useState(null);
+  const capabilities = device.attributes?.capabilities || [];
+  if (!capabilities.includes("COMMAND") || device.type === "LOCK") return null;
+  const entityId = device.attributes?.entityId || "";
+  const domain = entityId.split(".")[0];
+  const commands = ["switch", "light"].includes(domain)
+    ? [[`${domain}.turn_on`, "Turn on"], [`${domain}.turn_off`, "Turn off"]]
+    : domain === "cover"
+      ? [["cover.open_cover", "Open"], ["cover.close_cover", "Close"]]
+      : [];
+  if (!commands.length) return <p className="config-hint">This device accepts commands, but no safe one-tap action is mapped yet. Use Change to review its configuration.</p>;
+  const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+  const send = async (command) => {
+    setResult({ pending: true, text: "Sending…" });
+    try {
+      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/command`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command })
+      });
+      const body = await response.json();
+      setResult(body.accepted
+        ? { ok: true, text: "Action accepted. The device may take a moment to report its new state." }
+        : { ok: false, text: "Action was not accepted. Check that the device is enabled and its Home Assistant integration is available." });
+    } catch {
+      setResult({ ok: false, text: "Action could not reach the cabin service. Check the connection and try again." });
+    }
+  };
+  return <><div className="device-actions">{commands.map(([command, label]) =>
+    <button key={command} className="btn-secondary" onClick={() => send(command)} disabled={result?.pending}>{label}</button>)}</div>
+    {result && <p className={result.ok ? "action-result action-ok" : "action-result action-error"}>{result.text}</p>}</>;
 }
 
 function DmLockActions({ device }) {

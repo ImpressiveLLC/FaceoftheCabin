@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -302,6 +302,18 @@ describe("checkinStatusLabel", () => {
   it("falls through to the raw state for ON_SCHEDULE or missing data", () => {
     expect(checkinStatusLabel("ONLINE", "ON_SCHEDULE")).toBeNull();
     expect(checkinStatusLabel("ONLINE", undefined)).toBeNull();
+  });
+});
+
+describe("groupDevices", () => {
+  const devices = [
+    { deviceId: "one", type: "LOCK", state: "ONLINE", attributes: { candidate: false, discoveredFrom: "Home Assistant", room: "Entry" } },
+    { deviceId: "two", type: "MOTION_SENSOR", state: "ONLINE", attributes: { candidate: true, discoveredFrom: "Zigbee2MQTT", room: "Entry" } },
+  ];
+
+  it("supports horizontal UI group dimensions without changing device order", () => {
+    expect(groupDevices(devices, "room")).toEqual([["Entry", devices]]);
+    expect(groupDevices(devices, "candidate").map(([name]) => name)).toEqual(["Candidates", "Configured"]);
   });
 });
 

@@ -61,6 +61,11 @@ public class DeviceController {
         return out;
     }
 
+    @GetMapping("/checkin-details")
+    public Map<String, Map<String, Object>> checkinDetails() {
+        return healthMonitor.getCheckinDetails();
+    }
+
     /** Register a new device (Device Manager UI → add device) */
     @PostMapping
     public DeviceDescriptor registerDevice(@RequestBody DeviceDescriptor descriptor) {
@@ -150,6 +155,13 @@ public class DeviceController {
                 existing.deviceId(), name, existing.type(), existing.capabilities(),
                 existing.protocolAdapter(), existing.connectionString(), enabled, existing.location());
             registry.registerDescriptor(updated);
+            DeviceStatus current = registry.get(deviceId);
+            if (current != null) {
+                Map<String, Object> attrs = new LinkedHashMap<>(current.attributes());
+                if (enabled) attrs.put("candidate", false);
+                registry.update(new DeviceStatus(current.deviceId(), current.type(), name,
+                    current.state(), current.lastSeen(), attrs, current.location()));
+            }
             return Map.<String, Object>of("updated", deviceId, "name", name, "enabled", enabled);
         }).orElse(Map.of("error", "not found"));
     }

@@ -122,6 +122,32 @@ public class DeviceRegistry {
         }
     }
 
+    /**
+     * Register a device seen by an integration without pretending a person has
+     * configured it. Discovery metadata travels with the status so every UI can
+     * render the candidate and explain where it came from.
+     */
+    public void registerCandidate(DeviceDescriptor desc, Map<String, Object> discoveryAttributes) {
+        descriptors.putIfAbsent(desc.deviceId(), desc);
+        statuses.compute(desc.deviceId(), (id, existing) -> {
+            Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
+            if (discoveryAttributes != null) attrs.putAll(discoveryAttributes);
+            attrs.putIfAbsent("candidate", !desc.enabled());
+            attrs.put("source", desc.protocolAdapter());
+            attrs.put("capabilities", desc.capabilities().stream().map(Enum::name).sorted().toList());
+            return new DeviceStatus(id, desc.type(), desc.name(), existing == null ? "UNKNOWN" : existing.state(),
+                existing == null ? Instant.now() : existing.lastSeen(), attrs, desc.location());
+        });
+    }
+
+    public Optional<DeviceDescriptor> descriptorByConnection(String adapter, String connection, String location) {
+        return descriptors.values().stream()
+            .filter(d -> Objects.equals(adapter, d.protocolAdapter()))
+            .filter(d -> Objects.equals(connection, d.connectionString()))
+            .filter(d -> Objects.equals(location, d.location()))
+            .findFirst();
+    }
+
     public void register(DeviceStatus status) {
         statuses.put(status.deviceId(), status);
     }
@@ -155,7 +181,7 @@ public class DeviceRegistry {
 
     public boolean sendCommand(String deviceId, String command, Object payload) {
         DeviceDescriptor desc = descriptors.get(deviceId);
-        if (desc == null) return false;
+        if (desc == null || !desc.enabled()) return false;
         ProtocolAdapter adapter = adapters.get(desc.protocolAdapter());
         if (adapter == null) return false;
         return adapter.sendCommand(desc, command, payload);

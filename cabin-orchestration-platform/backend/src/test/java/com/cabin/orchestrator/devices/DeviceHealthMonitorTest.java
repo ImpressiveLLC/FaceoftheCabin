@@ -158,4 +158,19 @@ class DeviceHealthMonitorTest {
         assertEquals(CheckinStatus.LATE, monitor.getCheckinStatuses().get("z2m-motion"));
         assertEquals("ONLINE", registry.get("z2m-motion").state());
     }
+
+    @Test
+    void batteryZigbeeUsesSleepAwareScheduleInsteadOfTenMinuteFalseOffline() {
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of());
+        registry.registerDescriptor(new DeviceDescriptor("z2m-battery-motion", "Battery Motion", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/battery_motion", true, "cabin"));
+        registry.update(new DeviceStatus("z2m-battery-motion", DeviceType.MOTION_SENSOR, "Battery Motion", "ONLINE",
+            Instant.now().minus(Duration.ofHours(12)), Map.of("battery", 87), "cabin"));
+
+        DeviceHealthMonitor monitor = monitorWith(registry);
+        monitor.checkHealth();
+
+        assertEquals(CheckinStatus.ON_SCHEDULE, monitor.getCheckinStatuses().get("z2m-battery-motion"));
+        assertEquals(1560L, monitor.getCheckinDetails().get("z2m-battery-motion").get("expectedMinutes"));
+    }
 }

@@ -3,6 +3,8 @@ package com.cabin.orchestrator.mqtt;
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
+import com.cabin.orchestrator.devices.model.DeviceCapability;
+import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.events.AlertSeverityClassifier;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
@@ -156,7 +158,10 @@ public class MqttBridgeService implements MqttCallback {
             // Auto-register unknown device — type inferred from payload keys, location from topic prefix
             DeviceType type = inferType(data);
             String loc = deviceId.startsWith("home-") ? "home" : "cabin";
-            existing = new DeviceStatus(deviceId, type, deviceId, "UNKNOWN", Instant.now(), Map.of(), loc);
+            DeviceDescriptor descriptor = new DeviceDescriptor(deviceId, deviceId, type,
+                inferCapabilities(data), "mqtt", loc + "/device/" + deviceId, false, loc);
+            registry.registerCandidate(descriptor, Map.of("discoveredFrom", "MQTT topic"));
+            existing = registry.get(deviceId);
             log.info("Auto-registered new device: {} as {} at {}", deviceId, type, loc);
         }
         Map<String, Object> attrs = new LinkedHashMap<>(existing.attributes());
@@ -170,6 +175,22 @@ public class MqttBridgeService implements MqttCallback {
             UUID.randomUUID().toString(), deviceId, "TELEMETRY",
             AlertSeverityClassifier.classify(data), Instant.now(), data);
         eventPublisher.publish(event);
+    }
+
+    private Set<DeviceCapability> inferCapabilities(Map<String, Object> data) {
+        Set<DeviceCapability> capabilities = new HashSet<>();
+        capabilities.add(DeviceCapability.TELEMETRY);
+        if (data.containsKey("locked")) {
+            capabilities.add(DeviceCapability.COMMAND);
+            capabilities.add(DeviceCapability.ACCESS_CONTROL);
+        }
+        if (data.containsKey("alarm") || data.containsKey("smoke") || data.containsKey("co")) {
+            capabilities.add(DeviceCapability.ALARM);
+        }
+        if (data.containsKey("motion") || data.containsKey("occupancy") || data.containsKey("presence")) {
+            capabilities.add(DeviceCapability.PRESENCE);
+        }
+        return capabilities;
     }
 
     // Frigate's real topic shapes under cabin/camera/ (confirmed against a
@@ -230,8 +251,13 @@ public class MqttBridgeService implements MqttCallback {
     private void touchCamera(String cameraId) {
         DeviceStatus existing = registry.get(cameraId);
         if (existing == null) {
+            DeviceDescriptor descriptor = new DeviceDescriptor(cameraId, cameraId, DeviceType.CAMERA,
+                Set.of(DeviceCapability.STREAM, DeviceCapability.PRESENCE), "mqtt",
+                "cabin/camera/" + cameraId, false, "cabin");
+            registry.registerCandidate(descriptor, Map.of("discoveredFrom", "Frigate MQTT"));
+            DeviceStatus candidate = registry.get(cameraId);
             registry.update(new DeviceStatus(cameraId, DeviceType.CAMERA, cameraId, "ONLINE",
-                Instant.now(), Map.of(), "cabin"));
+                Instant.now(), candidate.attributes(), "cabin"));
             log.info("Auto-registered new camera: {}", cameraId);
             return;
         }
