@@ -1097,7 +1097,10 @@ elements:
       (config: cabin.alerts.ntfyTopic / CABIN_ALERT_NTFY_TOPIC, empty by
       default — no-op until an operator sets a real topic in infra/.env,
       never committed). WARN events are not pushed to avoid paging for
-      every open door.
+      every open door. Frigate rich-detection events now pass their raw
+      `after` attributes through this same classifier before publication;
+      this closes the former MqttBridgeService hardcoded-INFO bypass without
+      expanding the classifier's deliberately separate armed/presence scope.
 
   - id: temperature_celsius
     entity_type: owl:DatatypeProperty

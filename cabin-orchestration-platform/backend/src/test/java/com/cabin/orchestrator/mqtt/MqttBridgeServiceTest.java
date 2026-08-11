@@ -3,6 +3,7 @@ package com.cabin.orchestrator.mqtt;
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
+import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceProfile;
 import com.cabin.orchestrator.presence.PresenceService;
@@ -15,9 +16,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * Regression coverage for the 2026-08-07 finding: handleCameraTopic()
@@ -50,6 +53,7 @@ class MqttBridgeServiceTest {
     private PresenceService presenceService;
     private PresenceSignalRegistry presenceSignalRegistry;
     private SecurityStateRegistry securityStateRegistry;
+    private EventPublisher eventPublisher;
     private MqttBridgeService bridge;
 
     @BeforeEach
@@ -58,7 +62,8 @@ class MqttBridgeServiceTest {
         presenceSignalRegistry = new PresenceSignalRegistry();
         presenceService = new PresenceService(mock(JdbcTemplate.class), presenceSignalRegistry);
         securityStateRegistry = new SecurityStateRegistry();
-        bridge = new MqttBridgeService(registry, new EventPublisher(), presenceService, presenceSignalRegistry, securityStateRegistry);
+        eventPublisher = mock(EventPublisher.class);
+        bridge = new MqttBridgeService(registry, eventPublisher, presenceService, presenceSignalRegistry, securityStateRegistry);
     }
 
     private void deliver(String topic, String payload) throws Exception {
@@ -124,6 +129,31 @@ class MqttBridgeServiceTest {
 
         assertNull(registry.get("available"),
             "the bridge-wide availability topic must never be registered as a camera device");
+    }
+
+    @Test
+    void frigateDetectionUsesClassifierInsteadOfHardcodedInfo() throws Exception {
+        deliver("cabin/camera/events", """
+            {"type":"new","after":{"camera":"driveway","label":"person","score":0.93,"alarm":true}}
+            """);
+
+        var eventCaptor = org.mockito.ArgumentCaptor.forClass(CabinEvent.class);
+        verify(eventPublisher).publish(eventCaptor.capture());
+        CabinEvent event = eventCaptor.getValue();
+        assertEquals("CRITICAL", event.severity());
+        assertEquals("DETECTION_NEW", event.eventType());
+        assertEquals("driveway", event.sourceDeviceId());
+    }
+
+    @Test
+    void ordinaryFrigateDetectionRemainsInfo() throws Exception {
+        deliver("cabin/camera/events", """
+            {"type":"update","after":{"camera":"driveway","label":"person","score":0.71}}
+            """);
+
+        var eventCaptor = org.mockito.ArgumentCaptor.forClass(CabinEvent.class);
+        verify(eventPublisher).publish(eventCaptor.capture());
+        assertEquals("INFO", eventCaptor.getValue().severity());
     }
 
     @Test
