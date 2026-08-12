@@ -1,7 +1,11 @@
 package com.cabin.orchestrator.events;
 
+import com.cabin.orchestrator.automation.AutomationRuleService;
 import com.cabin.orchestrator.kafka.EventConsumer;
 import com.cabin.orchestrator.kafka.EventPublisher;
+import com.cabin.orchestrator.presence.PresenceProfile;
+import com.cabin.orchestrator.presence.PresenceService;
+import com.cabin.orchestrator.presence.PresenceSignalRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,12 +51,15 @@ class EventPipelineIntegrationTest {
     private EventPublisher publisher;
     private EventConsumer consumer;
     private CabinEventService eventService;
+    private PresenceService presenceService;
 
     @BeforeEach
     void setUp() {
         JdbcTemplate jdbc = new JdbcTemplate(new SimpleDriverDataSource(
             new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
         eventService = new CabinEventService(jdbc);
+        presenceService = new PresenceService(jdbc, new PresenceSignalRegistry());
+        ReflectionTestUtils.invokeMethod(presenceService, "init");
 
         publisher = new EventPublisher();
         ReflectionTestUtils.setField(publisher, "bootstrapServers", kafka.getBootstrapServers());
@@ -62,7 +69,14 @@ class EventPipelineIntegrationTest {
         // here; this test is about persistence, not push delivery (see
         // NtfyAlertPublisherTest for that).
         NtfyAlertPublisher ntfy = new NtfyAlertPublisher("", "http://localhost:0");
-        consumer = new EventConsumer(eventService, ntfy);
+        AutomationRuleService automationRuleService = new AutomationRuleService(presenceService, publisher);
+        // Same @Value-outside-Spring gotcha as AutomationRuleServiceTest --
+        // without this, lowPsiAlert defaults to 0.0 and 26 PSI reads as
+        // "high" instead of "low".
+        ReflectionTestUtils.setField(automationRuleService, "lowPsiAlert", 30.0);
+        ReflectionTestUtils.setField(automationRuleService, "highPsiAlert", 75.0);
+        ReflectionTestUtils.setField(automationRuleService, "freezeRiskTempF", 38.0);
+        consumer = new EventConsumer(eventService, ntfy, automationRuleService);
         ReflectionTestUtils.setField(consumer, "bootstrapServers", kafka.getBootstrapServers());
         consumer.start();
     }
@@ -88,6 +102,46 @@ class EventPipelineIntegrationTest {
         assertThat(persisted.severity()).isEqualTo("CRITICAL");
         assertThat(persisted.sourceDeviceId()).isEqualTo("test-device");
         assertThat(persisted.payload()).containsEntry("water_leak", true);
+    }
+
+    /**
+     * The actual hypothetical-trigger execution requested 2026-08-11:
+     * a real water-pressure sensor telemetry reading, through the exact
+     * pipeline a live MQTT message would use (EventPublisher -> real Kafka
+     * -> EventConsumer -> AutomationRuleService.evaluate() -> a second real
+     * publish -> persisted to real Postgres), proving the See/Think/Act
+     * automation actually fires end-to-end and isn't just unit-tested in
+     * isolation. presenceService.set(AWAY) mirrors the marketing scenario's
+     * "cabin is away" premise using the real PresenceService, not a mock.
+     */
+    @Test
+    void lowPressureWhileAwayProducesARealCriticalAutomationAlertEndToEnd() throws InterruptedException {
+        presenceService.set(PresenceProfile.AWAY);
+
+        CabinEvent telemetry = new CabinEvent(
+            UUID.randomUUID().toString(), "psi_mech_room", "TELEMETRY", "INFO",
+            Instant.now(), Map.of("psi", 26.0));
+        publisher.publish(telemetry);
+
+        List<CabinEvent> alerts = awaitAutomationAlert("psi_mech_room");
+
+        assertThat(alerts).isNotEmpty();
+        CabinEvent alert = alerts.get(0);
+        assertThat(alert.severity()).isEqualTo("CRITICAL");
+        assertThat(alert.payload()).containsEntry("see", "Pressure dropped below the safe range.");
+        assertThat(alert.payload()).containsEntry("act", "Alert Nate");
+        assertThat((String) alert.payload().get("think")).contains("away").contains("26.0");
+    }
+
+    private List<CabinEvent> awaitAutomationAlert(String deviceId) throws InterruptedException {
+        Instant deadline = Instant.now().plusSeconds(20);
+        while (Instant.now().isBefore(deadline)) {
+            List<CabinEvent> recent = eventService.recent(deviceId, 10, Instant.now().minusSeconds(60));
+            List<CabinEvent> match = recent.stream().filter(e -> "AUTOMATION_ALERT".equals(e.eventType())).toList();
+            if (!match.isEmpty()) return match;
+            Thread.sleep(200);
+        }
+        return List.of();
     }
 
     private List<CabinEvent> awaitEvent(String eventId) throws InterruptedException {

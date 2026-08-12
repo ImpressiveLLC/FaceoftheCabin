@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.kafka;
 
+import com.cabin.orchestrator.automation.AutomationRuleService;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
 import com.cabin.orchestrator.events.NtfyAlertPublisher;
@@ -31,6 +32,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * KafkaProducer style rather than pulling in spring-kafka for one consumer —
  * same reasoning MqttBridgeService already uses for its own connect()
  * pattern (a plain @PostConstruct-started background loop).
+ *
+ * Found 2026-08-11: AutomationRuleService existed, had real thresholds, and
+ * its own javadoc described a rule hierarchy, but nothing ever called
+ * evaluate() — every event flowed through this loop without those "critical
+ * safety rules that must work even if Node-RED is down" ever actually
+ * running. Wired in here so every persisted event (TELEMETRY, ALARM,
+ * MOTION_DETECTED, STATE_CHANGE, from any source) reaches it, matching the
+ * class's own stated purpose. AutomationRuleService publishes its own
+ * AUTOMATION_ALERT CabinEvents back through EventPublisher when a rule
+ * fires, which loop back through this same consumer to be persisted and
+ * (if CRITICAL) pushed — no separate delivery path to keep in sync.
  */
 @Component
 public class EventConsumer {
@@ -43,13 +55,16 @@ public class EventConsumer {
 
     private final CabinEventService eventService;
     private final NtfyAlertPublisher ntfyAlertPublisher;
+    private final AutomationRuleService automationRuleService;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
 
-    public EventConsumer(CabinEventService eventService, NtfyAlertPublisher ntfyAlertPublisher) {
+    public EventConsumer(CabinEventService eventService, NtfyAlertPublisher ntfyAlertPublisher,
+                          AutomationRuleService automationRuleService) {
         this.eventService = eventService;
         this.ntfyAlertPublisher = ntfyAlertPublisher;
+        this.automationRuleService = automationRuleService;
     }
 
     @PostConstruct
@@ -81,6 +96,9 @@ public class EventConsumer {
                         eventService.save(event);
                         log.debug("Saved event {} to Postgres", event.eventId());
                         ntfyAlertPublisher.publishIfCritical(event);
+                        // AUTOMATION_ALERT events this itself produces fall through
+                        // evaluate()'s switch to a no-op default -- no feedback loop.
+                        automationRuleService.evaluate(event);
                     } catch (Exception e) {
                         log.warn("Failed to persist event from {}: {}", TOPIC, e.getMessage());
                     }

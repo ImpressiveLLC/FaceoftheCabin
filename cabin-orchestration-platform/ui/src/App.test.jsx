@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, WORKFLOW_BY_TYPE, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, WORKFLOW_BY_TYPE, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -367,6 +367,100 @@ describe("RulesPanel — per-location Node-RED", () => {
     expect(screen.getByTitle("Node-RED — Cabin")).toBeTruthy();
     expect(screen.getByTitle("Node-RED — Home")).toBeTruthy();
     expect(screen.getAllByText(/doesn't have its own Node-RED instance configured yet/)).toHaveLength(1);
+  });
+});
+
+// Found 2026-08-11 (user report, comparing the real product against
+// impressive.llc's marketing site): the site showed a polished See/Think/Act
+// water-pressure alert card with no real equivalent in the app -- Rules &
+// Alerts was just a Node-RED link + a sidebar list, and that sidebar list
+// itself already claimed things (active:true, "Alert + email") that the
+// backend never actually did. This covers the real fix: AutomationAlertCard
+// (backed by AutomationRuleService's now-real AUTOMATION_ALERT events) and
+// the corrected BuiltinRules copy.
+describe("humanizeRuleId", () => {
+  it("turns a SCREAMING_SNAKE_CASE rule id into Title Case words", () => {
+    expect(humanizeRuleId("WATER_PRESSURE_LOW")).toBe("Water Pressure Low");
+    expect(humanizeRuleId("FREEZE_RISK")).toBe("Freeze Risk");
+  });
+
+  it("falls back to a generic label rather than crashing on a missing ruleId", () => {
+    expect(humanizeRuleId(undefined)).toBe("Alert");
+    expect(humanizeRuleId(null)).toBe("Alert");
+  });
+});
+
+describe("automationAlertSteps", () => {
+  it("labels the Think step as unexplained and Act as pushed for a CRITICAL alert", () => {
+    const steps = automationAlertSteps({
+      severity: "CRITICAL",
+      payload: { ruleId: "WATER_PRESSURE_LOW", act: "Alert Nate" },
+    });
+    expect(steps.map(s => s.label)).toEqual(["SEE", "THINK", "ACT"]);
+    expect(steps[1].headline).toBe("No routine explains it");
+    expect(steps[2]).toMatchObject({ headline: "Alert Nate", detail: "Push notification sent" });
+  });
+
+  it("labels Think/Act differently for a WARN alert -- an ordinary explanation, no push", () => {
+    const steps = automationAlertSteps({
+      severity: "WARN",
+      payload: { ruleId: "WATER_PRESSURE_LOW", act: "Logged, no push" },
+    });
+    expect(steps[1].headline).toBe("An ordinary explanation exists");
+    expect(steps[2].detail).toBe("Logged, no push");
+  });
+});
+
+describe("AutomationAlertCard (via RulesPanel)", () => {
+  afterEach(cleanup);
+
+  function renderWith(activeLocation = "cabin") {
+    return render(
+      <AppContext.Provider value={{ activeLocation }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+  }
+
+  it("renders the See/Think/Act card from a real CRITICAL AUTOMATION_ALERT event, matching the marketing scenario", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{
+        eventId: "e1", sourceDeviceId: "psi_mech_room", eventType: "AUTOMATION_ALERT",
+        severity: "CRITICAL", timestamp: new Date().toISOString(),
+        payload: {
+          ruleId: "WATER_PRESSURE_LOW",
+          see: "Pressure dropped below the safe range.",
+          think: "The cabin is away, no fixture is expected to be running, and the mechanical room sensor reports 26.0 PSI.",
+          act: "Alert Nate",
+          tags: ["CABIN - AWAY", "26.0 PSI", "UNEXPECTED USE"],
+        },
+      }],
+    }));
+
+    renderWith();
+
+    expect(await screen.findByText("Pressure dropped below the safe range.")).toBeTruthy();
+    expect(screen.getByText(/mechanical room sensor reports 26.0 PSI/)).toBeTruthy();
+    expect(screen.getByText("UNEXPECTED USE")).toBeTruthy();
+    expect(screen.getByText("No routine explains it")).toBeTruthy();
+    expect(screen.getAllByText("Alert Nate").length).toBeGreaterThan(0);
+  });
+
+  it("shows an honest empty state instead of a stale or fabricated alert when there's nothing to report", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+
+    renderWith();
+
+    expect(await screen.findByText(/No automation alerts in the last 24 hours/)).toBeTruthy();
+  });
+
+  it("degrades gracefully instead of crashing when the events fetch fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    renderWith();
+
+    expect(await screen.findByText(/No automation alerts in the last 24 hours/)).toBeTruthy();
   });
 });
 
