@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, WORKFLOW_BY_TYPE, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -314,6 +314,22 @@ describe("groupDevices", () => {
   it("supports horizontal UI group dimensions without changing device order", () => {
     expect(groupDevices(devices, "room")).toEqual([["Entry", devices]]);
     expect(groupDevices(devices, "candidate").map(([name]) => name)).toEqual(["Candidates", "Configured"]);
+  });
+
+  it("groups by workflow affiliation (alerting/automations/hvac), unmapped types fall back to Other", () => {
+    const withHvac = [...devices, { deviceId: "three", type: "THERMOSTAT", state: "ONLINE", attributes: {} },
+      { deviceId: "four", type: "POWER_METER", state: "ONLINE", attributes: {} }];
+    const grouped = groupDevices(withHvac, "workflow");
+    expect(grouped.map(([name]) => name)).toEqual(["Alerting", "Automations", "HVAC", "Other"]);
+    expect(grouped.find(([name]) => name === "Alerting")[1].map(d => d.deviceId)).toEqual(["two"]);
+    expect(grouped.find(([name]) => name === "Automations")[1].map(d => d.deviceId)).toEqual(["one"]);
+  });
+
+  it("WORKFLOW_BY_TYPE matches the three workflows named in the request plus a safe fallback", () => {
+    expect(WORKFLOW_BY_TYPE.SMOKE_ALARM).toBe("Alerting");
+    expect(WORKFLOW_BY_TYPE.THERMOSTAT).toBe("HVAC");
+    expect(WORKFLOW_BY_TYPE.LOCK).toBe("Automations");
+    expect(WORKFLOW_BY_TYPE.DASHBOARD).toBeUndefined(); // groupDevices falls back to "Other"
   });
 });
 

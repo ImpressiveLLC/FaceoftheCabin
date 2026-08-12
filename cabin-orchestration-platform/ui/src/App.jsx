@@ -1329,6 +1329,7 @@ function DeviceManagerPanel() {
                   <option value="none">None</option><option value="type">Type</option>
                   <option value="source">Source</option><option value="room">Room</option>
                   <option value="state">Status</option><option value="candidate">Candidates</option>
+                  <option value="workflow">Workflow</option>
                 </select>
               </label>
               <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
@@ -1376,6 +1377,23 @@ function DeviceManagerPanel() {
   );
 }
 
+// Workflow affiliation -- coarser than device type, groups by "what this
+// device is FOR" rather than what it physically is, matching the safety/
+// security/climate categories DeviceType.java's own comments already use
+// backend-side. Not sourced from DeviceCapability (ALARM/CLIMATE/etc.) --
+// that set lives on DeviceDescriptor, never serialized into DeviceStatus,
+// so (like every other groupBy dimension here) this stays a pure,
+// client-side derivation from the type string alone. A first pass, not a
+// final taxonomy -- deliberately only the three workflows named when this
+// was requested (alerting, automations, hvac) plus a catch-all, rather
+// than inventing categories nobody asked for yet.
+export const WORKFLOW_BY_TYPE = {
+  SMOKE_ALARM: "Alerting", CO_ALARM: "Alerting", WATER_LEAK_SENSOR: "Alerting",
+  MOTION_SENSOR: "Alerting", CONTACT_SENSOR: "Alerting", CAMERA: "Alerting",
+  THERMOSTAT: "HVAC", TEMPERATURE_SENSOR: "HVAC", HUMIDITY_SENSOR: "HVAC",
+  LOCK: "Automations", HOME_ASSISTANT_ENTITY: "Automations", GOOGLE_HOME_DEVICE: "Automations",
+};
+
 // ── L2/L3: See ──
 export function groupDevices(devices, groupBy) {
   if (groupBy === "none") return [["All devices", devices]];
@@ -1384,6 +1402,7 @@ export function groupDevices(devices, groupBy) {
     if (groupBy === "room") return d.attributes?.room || d.attributes?.area_name || "Room not assigned";
     if (groupBy === "state") return d.state || "UNKNOWN";
     if (groupBy === "candidate") return d.attributes?.candidate === true ? "Candidates" : "Configured";
+    if (groupBy === "workflow") return WORKFLOW_BY_TYPE[d.type] || "Other";
     return d.type || "Other";
   };
   const groups = new Map();
