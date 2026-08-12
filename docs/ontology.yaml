@@ -1906,6 +1906,103 @@ elements:
       rather than forking blinkpy — see MAINTENANCE.md's Cameras section
       for exactly where.
 
+  - id: automation_alert_see_think_act
+    entity_type: owl:Class
+    layer: fullstack
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-11"
+      ref: "AutomationRuleService.java, EventConsumer.java, App.jsx AutomationAlertCard"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Automation Alert (See / Think / Act)"
+    source: >
+      User report, 2026-08-11: comparing the real product against
+      impressive.llc's marketing site's water-pressure alert visual (itself
+      built the same day, see the site's own commits `2113410`/`89c1c2a`)
+      found a real, safety-relevant gap, not a UX nit. AutomationRuleService
+      already existed with real thresholds (30/75 PSI, 38°F freeze) and a
+      documented rule hierarchy, but nothing anywhere called evaluate() --
+      it was fully dead code -- and its trigger*() methods were TODO-stubs
+      that only logged. The Rules & Alerts sidebar's BuiltinRules component
+      was already claiming these rules "active: true" with "Alert + email",
+      which was never true (no email channel has ever existed in this
+      codebase) and, until this fix, wasn't even reaching a real
+      notification path at all.
+    rendering:
+      semantic: "Why did the system decide to alert me, and what did it do about it"
+      systems: "Rules & Alerts panel's top card (AutomationAlertCard); Built-in Safety sidebar (BuiltinRules)"
+      technical: >
+        EventConsumer.pollLoop() now calls AutomationRuleService.evaluate()
+        for every persisted CabinEvent (previously never called at all).
+        A firing rule publishes a new AUTOMATION_ALERT CabinEvent back
+        through the same EventPublisher -> Kafka -> EventConsumer loop
+        (safe: AUTOMATION_ALERT isn't itself a case in evaluate()'s switch,
+        so no feedback loop), with payload.{see,think,act,tags,ruleId} --
+        structured narrative fields, not just a log line. GET
+        /api/events?eventTypePrefix=AUTOMATION_ALERT (EventController's
+        existing generic prefix filter, no backend endpoint changes needed)
+        feeds AutomationAlertCard, which renders the narrative plus a
+        three-step SEE/THINK/ACT breakdown (App.jsx's automationAlertSteps).
+      compliance: "Built-in Safety Rules sidebar, Rules & Alerts panel"
+    definition: >
+      The flagship, fully-wired scenario is water-pressure-low: cabin
+      unoccupied (PresenceProfile is AWAY or AT_HOME, i.e. nobody has a live
+      presence signal AT_CABIN/BOTH_OCCUPIED) + psi below threshold =
+      CRITICAL, "unexpected use" framing, a real push notification via the
+      existing NtfyAlertPublisher. Cabin occupied = WARN only, persisted to
+      event history but not pushed (someone running a fixture is an
+      ordinary explanation) -- matches AutomationRuleService's own
+      pre-existing documented tier system ("Utility alerts → warn"), just
+      now actually reachable. Freeze risk and the safety-alarm escalation
+      path are also now real (previously stubbed identically); the
+      pre-existing lock-unlocked-while-away rule already had presence
+      reasoning before this fix, it just never actually published anything
+      either.
+    relationships:
+      - target: device_checkin_status
+        type: complements
+        cardinality: "N:N"
+      - target: cabin_camera_overnight_alert
+        type: related_to
+        cardinality: "N:N"
+    relates_to:
+      ui_components: [ui_rules_panel]
+      elements: []
+    notes: >
+      HONEST SCOPE, stated explicitly rather than left implied: "no routine
+      explains it" is approximated by presence-absence, not an actual
+      schedule/routine system -- this codebase has never had one, and the
+      UI's THINK-step copy says "Presence checked", not "schedule checked",
+      specifically so it doesn't claim more than it does. The marketing
+      site's "Offer shutoff control" ACT step was NOT built here -- doing
+      that for real means confirming `main_water_valve` (referenced in
+      CabinAutomations' leak-detection automation, a DIFFERENT repo/system)
+      is actually registered as a controllable device in THIS app's
+      DeviceRegistry, which wasn't verified. The real ACT this ships with is
+      the push notification itself. Also unresolved, flagged separately:
+      every notify target in CabinAutomations' own leak/freeze automations
+      is still the literal placeholder `notify.mobile_app_YOUR_PHONE`,
+      never replaced with a real HA mobile app service name -- assigned to
+      Codex, see Documents/Codex/2026-08-11-codex-background-work-notes.md
+      §9.
+      Verified end-to-end, not just unit-tested: EventPipelineIntegrationTest's
+      new test publishes a real low-PSI telemetry CabinEvent through real
+      Testcontainers Kafka + Postgres (no mocks) and asserts the resulting
+      AUTOMATION_ALERT is actually persisted with CRITICAL severity and the
+      correct narrative. Full suites green at the time of this change: 108
+      backend tests (11 new: AutomationRuleServiceTest's 10 plus the new
+      EventPipelineIntegrationTest case), 70 frontend (7 new: humanizeRuleId,
+      automationAlertSteps, AutomationAlertCard). Also visually confirmed
+      live via a real dev server, not just asserted from test output --
+      screenshot compositing wasn't available in this sandbox, so confirmed
+      via rendered page text instead, matching the marketing scenario's
+      copy field-for-field (headline, context sentence, tags, all three
+      SEE/THINK/ACT steps) with the honest deviations noted above.
+
   - id: cabin_camera_overnight_alert
     entity_type: owl:Class
     layer: integration

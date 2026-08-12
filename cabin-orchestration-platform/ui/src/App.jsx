@@ -2468,6 +2468,7 @@ export function RulesPanel() { // exported for src/App.test.jsx's location-split
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>
       </div>
+      <AutomationAlertCard />
       <div className="rules-layout">
         <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
           {locs.map(loc => <LocationRulesSection key={loc.id} locCfg={loc} />)}
@@ -2476,6 +2477,88 @@ export function RulesPanel() { // exported for src/App.test.jsx's location-split
           <KafkaStatus location={activeLocation} />
           <BuiltinRules />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Found 2026-08-11 (user report, comparing the real product against
+// impressive.llc's marketing site): the site shows a polished See/Think/Act
+// water-pressure alert card, but the real app had no equivalent -- Rules &
+// Alerts was just a Node-RED iframe link plus a sidebar list. This card is
+// the first real one, backed by AutomationRuleService's now-real
+// AUTOMATION_ALERT events (see docs/ontology.yaml's
+// automation_alert_see_think_act entity for the full backend-to-UI trace).
+// Cabin-only for now, matching reality: the water-pressure/freeze/lock rules
+// this reads only exist for Cabin devices today, not Home.
+export function humanizeRuleId(ruleId) {
+  if (!ruleId) return "Alert";
+  return ruleId.split("_").map(w => w[0] + w.slice(1).toLowerCase()).join(" ");
+}
+
+export function automationAlertSteps(alert) {
+  const { ruleId, act, see } = alert.payload || {};
+  const critical = alert.severity === "CRITICAL";
+  return [
+    { label: "SEE", headline: humanizeRuleId(ruleId), detail: "Sensor reports change" },
+    { label: "THINK", headline: critical ? "No routine explains it" : "An ordinary explanation exists",
+      detail: "Presence checked" },
+    { label: "ACT", headline: act || "Logged only",
+      detail: critical ? "Push notification sent" : "Logged, no push" },
+  ];
+}
+
+function AutomationAlertCard() {
+  const apiBase = LOCATIONS.cabin.apiBase;
+  const [alert, setAlert] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${apiBase}/api/events?eventTypePrefix=AUTOMATION_ALERT&limit=1&window=24h`)
+      .then(r => r.json())
+      .then(list => { if (!cancelled) setAlert(list[0] || null); })
+      .catch(() => { if (!cancelled) setAlert(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [apiBase]);
+
+  if (loading) return null;
+  if (!alert) {
+    return (
+      <div className="automation-alert-card automation-alert-none">
+        <p className="config-desc">No automation alerts in the last 24 hours — built-in safety rules are watching.</p>
+      </div>
+    );
+  }
+
+  const { see, think, tags = [], ruleId } = alert.payload || {};
+  const steps = automationAlertSteps(alert);
+
+  return (
+    <div className={`automation-alert-card automation-alert-${(alert.severity || "info").toLowerCase()}`}>
+      <div className="automation-alert-header">
+        <span className="automation-alert-category">{humanizeRuleId(ruleId).toUpperCase()}</span>
+        <span className="automation-alert-time">{new Date(alert.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+      </div>
+      <h3 className="automation-alert-headline">{see}</h3>
+      {think && <p className="automation-alert-context">{think}</p>}
+      {tags.length > 0 && (
+        <div className="automation-alert-tags">
+          {tags.map(t => <span key={t} className="automation-alert-tag">{t}</span>)}
+        </div>
+      )}
+      <div className="automation-alert-flow">
+        {steps.map((step, i) => (
+          <React.Fragment key={step.label}>
+            {i > 0 && <span className="automation-alert-flow-arrow">→</span>}
+            <div className="automation-alert-flow-step">
+              <span className="automation-alert-flow-num">{String(i + 1).padStart(2, "0")} · {step.label}</span>
+              <strong>{step.headline}</strong>
+              <span className="config-hint">{step.detail}</span>
+            </div>
+          </React.Fragment>
+        ))}
       </div>
     </div>
   );
@@ -2500,12 +2583,22 @@ function KafkaStatus({ location }) {
 }
 
 function BuiltinRules() {
+  // Found 2026-08-11 (user report): this table already claimed
+  // "active: true" with "Alert + email"/"+ SMS" for rules whose actual
+  // backend methods were TODO-stubs that only logged -- the sidebar was
+  // making the same overclaim the marketing site made, just quieter. Now
+  // that AutomationRuleService actually publishes real events (see
+  // docs/ontology.yaml's automation_alert_see_think_act), these labels
+  // describe what really happens: a real push notification (via
+  // NtfyAlertPublisher/ntfy.sh) only for CRITICAL-tier rules, which this
+  // codebase has never had an email or SMS channel for -- that part of the
+  // original copy was never accurate, not something this fix broke.
   const rules = [
-    { id: 1, name: "Water Pressure Low",   trigger: "PSI < 30",   action: "Alert + email", active: true },
-    { id: 2, name: "Water Pressure High",  trigger: "PSI > 75",   action: "Alert + email", active: true },
-    { id: 3, name: "Freeze Risk",          trigger: "Temp < 38°F", action: "CRITICAL alert", active: true },
-    { id: 4, name: "Smoke Alarm",          trigger: "alarm=true",  action: "CRITICAL + SMS", active: true },
-    { id: 5, name: "Motion After Midnight", trigger: "motion + hour 0-6", action: "Notify", active: false },
+    { id: 1, name: "Water Pressure Low",   trigger: "PSI < 30, cabin unoccupied", action: "Push notification (CRITICAL)", active: true },
+    { id: 2, name: "Water Pressure High",  trigger: "PSI > 75",   action: "Logged only (WARN)", active: true },
+    { id: 3, name: "Freeze Risk",          trigger: "Temp < 38°F", action: "Push notification (CRITICAL)", active: true },
+    { id: 4, name: "Smoke Alarm",          trigger: "alarm=true",  action: "Push notification (CRITICAL)", active: true },
+    { id: 5, name: "Motion After Midnight", trigger: "motion + hour 0-6", action: "Not built yet", active: false },
   ];
   return (
     <div className="sidebar-card">
