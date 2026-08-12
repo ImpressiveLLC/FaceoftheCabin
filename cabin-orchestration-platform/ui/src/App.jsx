@@ -1300,9 +1300,11 @@ function DeviceManagerPanel() {
   const [reorderMode, setReorderMode] = useState(false);
   const [groupBy, setGroupBy] = useState(() => localStorage.getItem("devices.groupBy") || "type");
   const [groupFlow, setGroupFlow] = useState(() => localStorage.getItem("devices.groupFlow") || "horizontal");
+  const [deviceFilter, setDeviceFilter] = useState(() => localStorage.getItem("devices.filter") || "configured");
 
   useEffect(() => localStorage.setItem("devices.groupBy", groupBy), [groupBy]);
   useEffect(() => localStorage.setItem("devices.groupFlow", groupFlow), [groupFlow]);
+  useEffect(() => localStorage.setItem("devices.filter", deviceFilter), [deviceFilter]);
 
   // Found 2026-08-08 (user report): every DmXView below was rendering the
   // FULL, unfiltered devices array regardless of which location tab was
@@ -1325,11 +1327,21 @@ function DeviceManagerPanel() {
           {view === "see" && (
             <>
               <label className="dm-toolbar-select">Group
-                <select value={groupBy} onChange={e => setGroupBy(e.target.value)}>
+                <select value={groupBy} onChange={e => {
+                  setGroupBy(e.target.value);
+                  if (e.target.value === "candidate") setDeviceFilter("all");
+                }}>
                   <option value="none">None</option><option value="type">Type</option>
                   <option value="source">Source</option><option value="room">Room</option>
                   <option value="state">Status</option><option value="candidate">Candidates</option>
                   <option value="workflow">Workflow</option>
+                </select>
+              </label>
+              <label className="dm-toolbar-select">Show
+                <select value={deviceFilter} onChange={e => setDeviceFilter(e.target.value)}>
+                  <option value="configured">Configured</option>
+                  <option value="candidates">Not configured</option>
+                  <option value="all">All devices</option>
                 </select>
               </label>
               <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
@@ -1367,8 +1379,9 @@ function DeviceManagerPanel() {
         </a>
       </div>
 
-      {view === "see"    && <DmSeeView devices={locDevices} selected={selected} onSelect={setSelected}
+      {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} devices={locDevices} selected={selected} onSelect={setSelected}
         reorderMode={reorderMode} groupBy={groupBy} groupFlow={groupFlow}
+        deviceFilter={deviceFilter}
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }} />}
       {view === "change" && <DmChangeView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
@@ -1410,11 +1423,107 @@ export function groupDevices(devices, groupBy) {
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
-function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, onConfigure }) {
+export function filterDeviceManagerDevices(devices, filter = "configured") {
+  if (filter === "all") return devices;
+  const candidatesOnly = filter === "candidates";
+  return devices.filter(d => (d.attributes?.candidate === true) === candidatesOnly);
+}
+
+function readStoredJson(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key));
+    return value == null ? fallback : value;
+  } catch {
+    return fallback;
+  }
+}
+
+export function reorderIds(ids, fromId, toId) {
+  if (fromId === toId) return ids;
+  const fromIdx = ids.indexOf(fromId);
+  const toIdx = ids.indexOf(toId);
+  if (fromIdx < 0 || toIdx < 0) return ids;
+  const next = [...ids];
+  const [moved] = next.splice(fromIdx, 1);
+  next.splice(toIdx, 0, moved);
+  return next;
+}
+
+export function buildOrderedDeviceGroups(devices, groupBy, savedGroupOrder = [], savedDeviceOrders = {}, isAlarm) {
+  const rawGroups = groupDevices(devices, groupBy);
+  const groupMap = new Map(rawGroups);
+  const rawNames = rawGroups.map(([name]) => name);
+  const orderedNames = [
+    ...savedGroupOrder.filter(name => groupMap.has(name)),
+    ...rawNames.filter(name => !savedGroupOrder.includes(name)),
+  ];
+
+  return orderedNames.map(name => {
+    const items = groupMap.get(name) || [];
+    const byId = new Map(items.map(item => [item.deviceId, item]));
+    const savedIds = Array.isArray(savedDeviceOrders[name]) ? savedDeviceOrders[name] : [];
+    let ordered = [
+      ...savedIds.filter(id => byId.has(id)).map(id => byId.get(id)),
+      ...items.filter(item => !savedIds.includes(item.deviceId)),
+    ];
+    if (isAlarm) ordered = [...ordered.filter(isAlarm), ...ordered.filter(item => !isAlarm(item))];
+    return [name, ordered];
+  });
+}
+
+function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStorageKey, devices, groupBy, isAlarm) {
+  const [savedGroupOrder, setSavedGroupOrder] = useState(() => {
+    const saved = readStoredJson(groupStorageKey, []);
+    return Array.isArray(saved) ? saved : [];
+  });
+  const [savedDeviceOrders, setSavedDeviceOrders] = useState(() => {
+    const saved = readStoredJson(deviceStorageKey, null);
+    if (saved && !Array.isArray(saved) && typeof saved === "object") return saved;
+
+    // One-time compatibility bridge from the former global flat order: keep
+    // each device's relative position, but split it into its semantic group.
+    const legacy = readStoredJson(legacyStorageKey, []);
+    if (!Array.isArray(legacy) || legacy.length === 0) return {};
+    return Object.fromEntries(groupDevices(devices, groupBy).map(([name, items]) => {
+      const ids = new Set(items.map(item => item.deviceId));
+      return [name, legacy.filter(id => ids.has(id))];
+    }));
+  });
+
+  useEffect(() => {
+    localStorage.setItem(groupStorageKey, JSON.stringify(savedGroupOrder));
+  }, [groupStorageKey, savedGroupOrder]);
+  useEffect(() => {
+    localStorage.setItem(deviceStorageKey, JSON.stringify(savedDeviceOrders));
+  }, [deviceStorageKey, savedDeviceOrders]);
+
+  const groups = useMemo(() => buildOrderedDeviceGroups(
+    devices, groupBy, savedGroupOrder, savedDeviceOrders, isAlarm
+  ), [devices, groupBy, savedGroupOrder, savedDeviceOrders, isAlarm]);
+
+  const reorderGroup = useCallback((fromName, toName) => {
+    setSavedGroupOrder(reorderIds(groups.map(([name]) => name), fromName, toName));
+  }, [groups]);
+
+  const reorderDevice = useCallback((groupName, fromId, toId) => {
+    const items = groups.find(([name]) => name === groupName)?.[1] || [];
+    const from = items.find(item => item.deviceId === fromId);
+    const to = items.find(item => item.deviceId === toId);
+    if (!from || !to || (isAlarm && (isAlarm(from) || isAlarm(to)))) return;
+    setSavedDeviceOrders(current => ({
+      ...current,
+      [groupName]: reorderIds(items.map(item => item.deviceId), fromId, toId),
+    }));
+  }, [groups, isAlarm]);
+
+  return { groups, reorderGroup, reorderDevice };
+}
+
+function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure }) {
   const { activeLocation } = useApp();
   const [health, setHealth] = useState(null);
-  const [dragIdx, setDragIdx] = useState(null);
-  const [overIdx, setOverIdx] = useState(null);
+  const [dragItem, setDragItem] = useState(null);
+  const [overItem, setOverItem] = useState(null);
   const checkinStatuses = useCheckinStatuses(LOCATIONS.cabin.apiBase);
   const checkinDetails = useCheckinDetails(LOCATIONS.cabin.apiBase);
 
@@ -1424,21 +1533,55 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
   }, []);
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
-  const { ordered, pinnedCount, reorder } = useDraggableOrder(
-    `order.devices.${activeLocation}`, devices, isAlarm
+  const { groups, reorderGroup, reorderDevice } = useGroupedDraggableOrder(
+    `order.deviceGroups.${activeLocation}.${groupBy}`,
+    `order.devices.${activeLocation}.${groupBy}`,
+    `order.devices.${activeLocation}`,
+    devices, groupBy, isAlarm
   );
 
-  const sel = selected ? ordered.find(d => d.deviceId === selected) : null;
-  const grouped = groupDevices(ordered, groupBy);
+  const visibleGroups = groups
+    .map(([name, items]) => [name, filterDeviceManagerDevices(items, deviceFilter)])
+    .filter(([, items]) => items.length > 0);
+  const visibleDevices = visibleGroups.flatMap(([, items]) => items);
+  const sel = selected ? visibleDevices.find(d => d.deviceId === selected) : null;
 
-  const onDragStart = (idx) => (e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
-  const onDragOver  = (idx) => (e) => { e.preventDefault(); setOverIdx(idx); };
-  const onDrop      = (idx) => (e) => {
-    e.preventDefault();
-    if (dragIdx !== null) reorder(dragIdx, idx);
-    setDragIdx(null); setOverIdx(null);
+  const clearDrag = () => { setDragItem(null); setOverItem(null); };
+  const onGroupDragStart = (groupName) => (e) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", `group:${groupName}`);
+    setDragItem({ kind: "group", groupName });
   };
-  const onDragEnd   = () => { setDragIdx(null); setOverIdx(null); };
+  const onGroupDragOver = (groupName) => (e) => {
+    if (dragItem?.kind !== "group") return;
+    e.preventDefault();
+    setOverItem({ kind: "group", groupName });
+  };
+  const onGroupDrop = (groupName) => (e) => {
+    if (dragItem?.kind !== "group") return;
+    e.preventDefault();
+    reorderGroup(dragItem.groupName, groupName);
+    clearDrag();
+  };
+  const onDeviceDragStart = (groupName, deviceId) => (e) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", `device:${deviceId}`);
+    setDragItem({ kind: "device", groupName, deviceId });
+  };
+  const onDeviceDragOver = (groupName, deviceId) => (e) => {
+    if (dragItem?.kind !== "device" || dragItem.groupName !== groupName) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOverItem({ kind: "device", groupName, deviceId });
+  };
+  const onDeviceDrop = (groupName, deviceId) => (e) => {
+    if (dragItem?.kind !== "device" || dragItem.groupName !== groupName) return;
+    e.preventDefault();
+    e.stopPropagation();
+    reorderDevice(groupName, dragItem.deviceId, deviceId);
+    clearDrag();
+  };
 
   return (
     <div className="dm-layout">
@@ -1452,21 +1595,32 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
           </div>
         )}
         <div className={`dm-groups dm-groups-${groupFlow}`}>
-        {grouped.map(([groupName, groupDevices]) => (
-          <section className="dm-device-group" key={groupName}>
-            <header><span>{groupName}</span><span>{groupDevices.length}</span></header>
-            {groupDevices.map((d) => {
-          const idx = ordered.findIndex(item => item.deviceId === d.deviceId);
-          const isPinned = idx < pinnedCount;
-          const isOver   = reorderMode && overIdx === idx && dragIdx !== idx;
+        {visibleGroups.map(([groupName, groupItems]) => (
+          <section className={`dm-device-group ${reorderMode && overItem?.kind === "group" && overItem.groupName === groupName && dragItem?.groupName !== groupName ? "drag-over-group" : ""}`}
+            key={groupName}
+            onDragOver={reorderMode ? onGroupDragOver(groupName) : undefined}
+            onDrop={reorderMode ? onGroupDrop(groupName) : undefined}>
+            <header className="dm-device-group-header"
+              draggable={reorderMode}
+              onDragStart={reorderMode ? onGroupDragStart(groupName) : undefined}
+              onDragEnd={reorderMode ? clearDrag : undefined}
+              title={reorderMode ? "Drag to reorder this group" : undefined}>
+              <span>{reorderMode && <GripVertical size={12} className="drag-handle"/>}{groupName}</span>
+              <span>{groupItems.length}</span>
+            </header>
+            {groupItems.map((d) => {
+          const isPinned = isAlarm(d);
+          const isOver = reorderMode && overItem?.kind === "device"
+            && overItem.groupName === groupName && overItem.deviceId === d.deviceId
+            && dragItem?.deviceId !== d.deviceId;
           return (
             <div key={d.deviceId}
               className={`reorder-card ${isOver ? "drag-over-card" : ""}`}
               draggable={reorderMode && !isPinned}
-              onDragStart={reorderMode && !isPinned ? onDragStart(idx) : undefined}
-              onDragOver={reorderMode ? onDragOver(idx) : undefined}
-              onDrop={reorderMode ? onDrop(idx) : undefined}
-              onDragEnd={reorderMode ? onDragEnd : undefined}
+              onDragStart={reorderMode && !isPinned ? onDeviceDragStart(groupName, d.deviceId) : undefined}
+              onDragOver={reorderMode ? onDeviceDragOver(groupName, d.deviceId) : undefined}
+              onDrop={reorderMode ? onDeviceDrop(groupName, d.deviceId) : undefined}
+              onDragEnd={reorderMode ? clearDrag : undefined}
             >
               <DmDeviceRow device={d}
                 selected={selected === d.deviceId}
@@ -1484,7 +1638,8 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
           </section>
         ))}
         </div>
-        {devices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/><p>No devices registered.</p></div>}
+        {visibleDevices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/>
+          <p>{devices.length === 0 ? "No devices registered." : "No devices match this view."}</p></div>}
       </div>
       {sel && (
         <div className="dm-detail">
@@ -1902,7 +2057,7 @@ function DmLockActions({ device }) {
 
 function DmEditForm({ device, onSaved }) {
   const [name, setName]       = useState(device.name);
-  const [enabled, setEnabled] = useState(device.enabled !== false);
+  const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;

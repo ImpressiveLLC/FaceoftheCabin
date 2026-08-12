@@ -971,6 +971,62 @@ elements:
       battery sensor is therefore described as within or late for its reporting
       schedule, never declared offline merely for missing a 10-minute heartbeat.
 
+  - id: device_candidate_lifecycle
+    entity_type: owl:DatatypeProperty
+    layer: full_stack
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-12"
+      ref: "DeviceRegistry.registerCandidate(), App.jsx filterDeviceManagerDevices()"
+    data_class: operational
+    data_type: xsd:string
+    constraint:
+      enum: [CANDIDATE, CONFIGURED]
+      description: >
+        CANDIDATE begins when an integration first recognizes a device that
+        has not been configured. Enabling it explicitly transitions the
+        registry status to CONFIGURED (attributes.candidate=false). That
+        transition is sticky across later discovery refreshes and remains
+        CONFIGURED if a person subsequently disables the device.
+    ui_display_name: "Device Setup Status"
+    rendering:
+      semantic: "Does this newly discovered device still need a person's review"
+      systems: "Device Manager Candidate badge and Show filter"
+      technical: "DeviceStatus.attributes.candidate; Show=Configured by default, Not configured or All devices explicitly reveal candidates"
+      compliance: (not shown)
+    definition: >
+      Candidate is a setup lifecycle, not device health and not a permanent
+      badge. Device Manager's default See view excludes CANDIDATE devices.
+      A person can explicitly select Not configured to review only candidates,
+      or All devices to see both states. Configure candidate opens the existing
+      edit path; saving it enabled clears the marker in DeviceRegistry, after
+      which normal discovery cannot resurrect it.
+    relationships:
+      - target: device_state
+        type: complements
+        cardinality: "1:1"
+      - target: device_checkin_status
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: [ui_device_manager_panel]
+      elements: [device_state, device_checkin_status]
+    notes: >
+      Repeated-discovery field ownership is deliberate. Source-owned type,
+      capabilities, protocol adapter, connection string and discovery
+      attributes refresh on every integration snapshot. Candidate name and
+      location also refresh so a bad first observation can be corrected.
+      After configuration, person-owned name, location and enabled state are
+      sticky; fresh discovery may not overwrite them. The former Zigbee
+      skip-if-descriptor-exists guard was removed, and Home Assistant's final
+      status write now uses the registry's merged descriptor rather than
+      reapplying raw discovery values. DeviceRegistry is still in-memory, as
+      it was before this lifecycle existed; restart durability for descriptor
+      configuration remains a separate persistence gap.
+
   - id: device_workflow_affiliation
     entity_type: owl:DatatypeProperty
     layer: frontend
@@ -1009,10 +1065,12 @@ elements:
       by concept (location, type, state, workflow affiliation like
       alerting vs automations vs hvac-oriented flows eventually)." Location/
       type/state already existed as group dimensions (room/type/state);
-      this entity is the "workflow affiliation" piece. Ships alongside the
-      Group-by dropdown's existing horizontal/vertical flow toggle and
-      per-group reordering, all pre-existing (device_presence_groups work,
-      PR #1) and unchanged by this addition.
+      this entity is the "workflow affiliation" piece. The Group-by dropdown's
+      horizontal/vertical flow toggle remains independent. Device ordering is
+      now scoped inside each derived group and group containers have their own
+      persisted order (`order.devices.{location}.{groupBy}` and
+      `order.deviceGroups.{location}.{groupBy}`), replacing the former single
+      flat list whose indexes did not match the grouped display.
     relationships:
       - target: device_type
         type: derived_from

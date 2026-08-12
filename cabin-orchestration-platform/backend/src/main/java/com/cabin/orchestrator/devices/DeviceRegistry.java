@@ -115,11 +115,17 @@ public class DeviceRegistry {
 
     public void registerDescriptor(DeviceDescriptor desc) {
         descriptors.put(desc.deviceId(), desc);
-        if (!statuses.containsKey(desc.deviceId())) {
-            statuses.put(desc.deviceId(), new DeviceStatus(
-                desc.deviceId(), desc.type(), desc.name(), "UNKNOWN",
-                Instant.now(), Map.of(), desc.location()));
-        }
+        statuses.compute(desc.deviceId(), (id, existing) -> {
+            Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
+            attrs.put("enabled", desc.enabled());
+            // Enabling is the one-way Candidate -> Configured transition.
+            // Disabling a configured device later must not make it a new
+            // candidate again.
+            if (desc.enabled()) attrs.put("candidate", false);
+            return new DeviceStatus(
+                id, desc.type(), desc.name(), existing == null ? "UNKNOWN" : existing.state(),
+                existing == null ? Instant.now() : existing.lastSeen(), attrs, desc.location());
+        });
     }
 
     /**
@@ -128,16 +134,50 @@ public class DeviceRegistry {
      * render the candidate and explain where it came from.
      */
     public void registerCandidate(DeviceDescriptor desc, Map<String, Object> discoveryAttributes) {
-        descriptors.putIfAbsent(desc.deviceId(), desc);
+        DeviceDescriptor existingDescriptor = descriptors.get(desc.deviceId());
+        DeviceStatus existingStatus = statuses.get(desc.deviceId());
+
+        // A descriptor created through configuration (no candidate marker), or
+        // one whose candidate marker was explicitly cleared, owns its human
+        // fields even if it is disabled later. Discovery owns the fields that
+        // describe the source itself and may correct them on every refresh.
+        boolean configured = existingDescriptor != null
+            && !Boolean.TRUE.equals(existingStatus == null ? null : existingStatus.attributes().get("candidate"));
+        DeviceDescriptor merged = mergeDiscoveryDescriptor(existingDescriptor, desc, configured);
+        descriptors.put(desc.deviceId(), merged);
+
         statuses.compute(desc.deviceId(), (id, existing) -> {
             Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
             if (discoveryAttributes != null) attrs.putAll(discoveryAttributes);
-            attrs.putIfAbsent("candidate", !desc.enabled());
-            attrs.put("source", desc.protocolAdapter());
-            attrs.put("capabilities", desc.capabilities().stream().map(Enum::name).sorted().toList());
-            return new DeviceStatus(id, desc.type(), desc.name(), existing == null ? "UNKNOWN" : existing.state(),
-                existing == null ? Instant.now() : existing.lastSeen(), attrs, desc.location());
+            attrs.put("candidate", !configured && !merged.enabled());
+            attrs.put("enabled", merged.enabled());
+            attrs.put("source", merged.protocolAdapter());
+            attrs.put("capabilities", merged.capabilities().stream().map(Enum::name).sorted().toList());
+            return new DeviceStatus(id, merged.type(), merged.name(), existing == null ? "UNKNOWN" : existing.state(),
+                existing == null ? Instant.now() : existing.lastSeen(), attrs, merged.location());
         });
+    }
+
+    /**
+     * Merge ownership for repeated integration discovery.
+     *
+     * Sticky after configuration: enabled, person-selected name and location.
+     * Refreshable from the source: type, capabilities, adapter and connection.
+     * A never-configured candidate also accepts corrected source name/location.
+     */
+    private DeviceDescriptor mergeDiscoveryDescriptor(DeviceDescriptor existing,
+                                                        DeviceDescriptor discovered,
+                                                        boolean configured) {
+        if (existing == null) return discovered;
+        return new DeviceDescriptor(
+            discovered.deviceId(),
+            configured ? existing.name() : discovered.name(),
+            discovered.type(),
+            discovered.capabilities(),
+            discovered.protocolAdapter(),
+            discovered.connectionString(),
+            existing.enabled(),
+            configured ? existing.location() : discovered.location());
     }
 
     public Optional<DeviceDescriptor> descriptorByConnection(String adapter, String connection, String location) {

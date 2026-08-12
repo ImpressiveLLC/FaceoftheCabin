@@ -235,6 +235,10 @@ body {
 .dm-groups-vertical .dm-device-group { width:100%; }
 .dm-device-group { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg-secondary); }
 .dm-device-group > header { display:flex; justify-content:space-between; padding:8px 10px; color:var(--text-dim); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.dm-device-group-header > span { display:flex; align-items:center; gap:5px; }
+.reorder-mode .dm-device-group-header { cursor:grab; user-select:none; }
+.reorder-mode .dm-device-group-header:active { cursor:grabbing; }
+.drag-over-group { outline:2px dashed var(--accent); outline-offset:2px; }
 .candidate-badge { border:1px solid var(--accent); color:var(--accent); border-radius:999px; padding:2px 7px; font-size:10px; }
 .dm-why-card,.dm-candidate-card { display:flex; flex-direction:column; gap:6px; margin-top:12px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); font-size:12px; }
 .dm-why-card small { color:var(--text-dim); }

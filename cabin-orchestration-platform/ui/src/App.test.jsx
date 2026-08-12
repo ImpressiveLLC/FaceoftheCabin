@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, WORKFLOW_BY_TYPE, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, buildOrderedDeviceGroups, reorderIds, WORKFLOW_BY_TYPE, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -330,6 +330,71 @@ describe("groupDevices", () => {
     expect(WORKFLOW_BY_TYPE.THERMOSTAT).toBe("HVAC");
     expect(WORKFLOW_BY_TYPE.LOCK).toBe("Automations");
     expect(WORKFLOW_BY_TYPE.DASHBOARD).toBeUndefined(); // groupDevices falls back to "Other"
+  });
+});
+
+describe("Device Manager candidate visibility", () => {
+  const configured = { deviceId: "configured", attributes: { candidate: false } };
+  const candidate = { deviceId: "candidate", attributes: { candidate: true } };
+  const legacyConfigured = { deviceId: "legacy", attributes: {} };
+  const devices = [configured, candidate, legacyConfigured];
+
+  it("hides candidates in the default configured view", () => {
+    expect(filterDeviceManagerDevices(devices).map(d => d.deviceId)).toEqual(["configured", "legacy"]);
+  });
+
+  it("shows candidates only when Not configured is explicitly selected", () => {
+    expect(filterDeviceManagerDevices(devices, "candidates").map(d => d.deviceId)).toEqual(["candidate"]);
+  });
+
+  it("shows both lifecycle states when All devices is explicitly selected", () => {
+    expect(filterDeviceManagerDevices(devices, "all")).toEqual(devices);
+  });
+});
+
+describe("Device Manager grouped ordering", () => {
+  const devices = [
+    { deviceId: "lock", type: "LOCK", state: "ONLINE", attributes: {} },
+    { deviceId: "motion", type: "MOTION_SENSOR", state: "ONLINE", attributes: {} },
+    { deviceId: "smoke", type: "SMOKE_ALARM", state: "ALARM", attributes: {} },
+    { deviceId: "thermostat", type: "THERMOSTAT", state: "ONLINE", attributes: {} },
+  ];
+  const isAlarm = d => d.state === "ALARM" || d.state === "CRITICAL";
+
+  it("persists group order independently from device order inside each group", () => {
+    const grouped = buildOrderedDeviceGroups(
+      devices,
+      "workflow",
+      ["HVAC", "Alerting", "Automations"],
+      { Alerting: ["motion", "smoke"], Automations: ["lock"] },
+      isAlarm,
+    );
+
+    expect(grouped.map(([name]) => name)).toEqual(["HVAC", "Alerting", "Automations"]);
+    expect(grouped.find(([name]) => name === "Alerting")[1].map(d => d.deviceId))
+      .toEqual(["smoke", "motion"]); // active alarm auto-pins within its own group
+    expect(grouped.find(([name]) => name === "HVAC")[1].map(d => d.deviceId))
+      .toEqual(["thermostat"]);
+  });
+
+  it("appends newly discovered groups and devices without disturbing saved peers", () => {
+    const grouped = buildOrderedDeviceGroups(
+      devices,
+      "workflow",
+      ["Automations"],
+      { Alerting: ["motion"] },
+      undefined,
+    );
+
+    expect(grouped.map(([name]) => name)).toEqual(["Automations", "Alerting", "HVAC"]);
+    expect(grouped.find(([name]) => name === "Alerting")[1].map(d => d.deviceId))
+      .toEqual(["motion", "smoke"]);
+  });
+
+  it("reorders by stable IDs and ignores invalid or no-op drops", () => {
+    expect(reorderIds(["a", "b", "c"], "c", "a")).toEqual(["c", "a", "b"]);
+    expect(reorderIds(["a", "b"], "missing", "a")).toEqual(["a", "b"]);
+    expect(reorderIds(["a", "b"], "a", "a")).toEqual(["a", "b"]);
   });
 });
 
