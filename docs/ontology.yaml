@@ -971,6 +971,70 @@ elements:
       battery sensor is therefore described as within or late for its reporting
       schedule, never declared offline merely for missing a 10-minute heartbeat.
 
+  - id: device_workflow_affiliation
+    entity_type: owl:DatatypeProperty
+    layer: frontend
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-11"
+      ref: "App.jsx WORKFLOW_BY_TYPE, groupDevices()"
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: [Alerting, Automations, HVAC, Other]
+      description: >
+        Coarser than device_type -- groups by what a device is FOR rather
+        than what it physically is. A pure client-side lookup keyed on
+        DeviceStatus.type (App.jsx's WORKFLOW_BY_TYPE), not sourced from
+        DeviceCapability (ALARM/CLIMATE/COMMAND/etc., see
+        DeviceCapability.java) even though that enum's own comments name
+        the same categories almost verbatim -- capabilities live on
+        DeviceDescriptor and are never serialized into DeviceStatus, the
+        only device shape the frontend ever receives, so (matching every
+        other Device Manager group dimension: source/room/state/candidate)
+        this had to be re-derived client-side from the one field that is
+        actually present. Any type not in the lookup falls back to "Other"
+        rather than being dropped.
+    ui_display_name: "Workflow"
+    rendering:
+      semantic: "What is this device actually for"
+      systems: "Device Manager's Group-by dropdown (Workflow option)"
+      technical: "WORKFLOW_BY_TYPE[device.type] || \"Other\", consumed by groupDevices(devices, \"workflow\")"
+      compliance: (not shown)
+    definition: >
+      User request, 2026-08-11, verbatim: "the ability to filter or toggle
+      by concept (location, type, state, workflow affiliation like
+      alerting vs automations vs hvac-oriented flows eventually)." Location/
+      type/state already existed as group dimensions (room/type/state);
+      this entity is the "workflow affiliation" piece. Ships alongside the
+      Group-by dropdown's existing horizontal/vertical flow toggle and
+      per-group reordering, all pre-existing (device_presence_groups work,
+      PR #1) and unchanged by this addition.
+    relationships:
+      - target: device_type
+        type: derived_from
+        cardinality: "N:1"
+    relates_to:
+      ui_components: [ui_device_manager_panel]
+      elements: []
+    notes: >
+      SCOPE NOTE: deliberately only the three workflows the user actually
+      named (Alerting, Automations, HVAC) plus a catch-all "Other" --
+      not a speculative, larger taxonomy. Two adjacent parts of the same
+      request were NOT built here and are open, not silently dropped:
+      (1) "groupings by human generated context" -- user-authored custom
+      groups/tags a person assigns themselves, distinct from every
+      existing dimension here which is auto-derived from device data;
+      (2) "pre-canned views" -- one-click saved filter/group presets
+      (e.g. a single "Alerting" button instead of Group-by -> Workflow ->
+      reading the Alerting section), versus today's single always-visible
+      Group-by dropdown. Both are real, larger, differently-shaped
+      features, not extensions of this lookup table -- scope them
+      separately rather than bolting them onto WORKFLOW_BY_TYPE.
+
   - id: device_expected_checkin_minutes
     entity_type: owl:DatatypeProperty
     layer: backend
