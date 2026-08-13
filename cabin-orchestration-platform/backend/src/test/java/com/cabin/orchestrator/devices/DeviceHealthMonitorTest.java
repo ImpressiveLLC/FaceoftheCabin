@@ -173,4 +173,21 @@ class DeviceHealthMonitorTest {
         assertEquals(CheckinStatus.ON_SCHEDULE, monitor.getCheckinStatuses().get("z2m-battery-motion"));
         assertEquals(1560L, monitor.getCheckinDetails().get("z2m-battery-motion").get("expectedMinutes"));
     }
+
+    @Test
+    void ignoredDeviceIsExcludedFromAutomaticCheckinAndSystemHealthViews() {
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of());
+        int inScopeBeforeDiscovery = registry.inScope().size();
+        registry.registerCandidate(new DeviceDescriptor(
+            "cached-device", "Cached", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.PRESENCE), "mqtt", "zigbee2mqtt/cached", false, "cabin"), Map.of());
+        registry.applyLifecycleAction("cached-device", DeviceLifecycleAction.IGNORE);
+
+        DeviceHealthMonitor monitor = monitorWith(registry);
+        monitor.checkHealth();
+
+        assertFalse(monitor.getCheckinStatuses().containsKey("cached-device"));
+        assertFalse(monitor.getCheckinDetails().containsKey("cached-device"));
+        assertEquals(inScopeBeforeDiscovery, monitor.getSystemHealth().get("total"));
+    }
 }

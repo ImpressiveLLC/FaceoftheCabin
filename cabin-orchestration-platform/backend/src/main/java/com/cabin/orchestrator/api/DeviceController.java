@@ -8,10 +8,10 @@ import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.devices.model.DeviceCapability;
+import com.cabin.orchestrator.devices.model.DeviceLifecycleAction;
 import com.cabin.orchestrator.integrations.zigbee.Zigbee2MqttAdapter;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,10 +37,25 @@ public class DeviceController {
         this.displayConfigService = displayConfigService;
     }
 
-    /** List all registered devices with their current state */
+    /** List devices accepted into the application's scope. */
     @GetMapping
     public List<DeviceStatus> listDevices() {
-        return registry.all();
+        return registry.inScope();
+    }
+
+    /** Passively discovered devices awaiting an explicit person-authored decision. */
+    @GetMapping("/candidates")
+    public List<DeviceStatus> listCandidates() {
+        return registry.candidates();
+    }
+
+    /**
+     * Cached metadata for deferred/ignored devices. Reading this list never
+     * invokes an adapter fetch or sends a command to a device.
+     */
+    @GetMapping("/previously-exposed")
+    public List<DeviceStatus> listPreviouslyExposed() {
+        return registry.previouslyExposed();
     }
 
     /** Get single device */
@@ -69,19 +84,17 @@ public class DeviceController {
     /** Register a new device (Device Manager UI → add device) */
     @PostMapping
     public DeviceDescriptor registerDevice(@RequestBody DeviceDescriptor descriptor) {
-        registry.register(new DeviceStatus(
-            descriptor.deviceId(), descriptor.type(), descriptor.name(),
-            "UNKNOWN", Instant.now(), Map.of(), descriptor.location()));
-        registry.registerDescriptor(descriptor);
-        return descriptor;
+        return registry.registerConfiguredDevice(descriptor);
     }
 
     /** Update device config */
     @PutMapping("/{deviceId}")
     public DeviceDescriptor updateDevice(@PathVariable String deviceId,
                                           @RequestBody DeviceDescriptor descriptor) {
-        registry.registerDescriptor(descriptor);
-        return descriptor;
+        if (!deviceId.equals(descriptor.deviceId())) {
+            throw new IllegalArgumentException("Path and descriptor device IDs must match");
+        }
+        return registry.registerConfiguredDevice(descriptor);
     }
 
     /** Remove device */
@@ -139,7 +152,8 @@ public class DeviceController {
                 "protocolAdapter", d.protocolAdapter(),
                 "connectionString", d.connectionString(),
                 "enabled", d.enabled(),
-                "location", d.location()
+                "location", d.location(),
+                "deviceLifecycle", registry.lifecycleState(deviceId)
             ))
             .orElse(Map.of("error", "not found"));
     }
@@ -151,12 +165,28 @@ public class DeviceController {
             String name    = patch.containsKey("name") ? (String) patch.get("name") : existing.name();
             boolean enabled = patch.containsKey("enabled")
                 ? Boolean.TRUE.equals(patch.get("enabled")) : existing.enabled();
-            DeviceDescriptor updated = new DeviceDescriptor(
-                existing.deviceId(), name, existing.type(), existing.capabilities(),
-                existing.protocolAdapter(), existing.connectionString(), enabled, existing.location());
-            registry.registerDescriptor(updated);
-            return Map.<String, Object>of("updated", deviceId, "name", name, "enabled", enabled);
+            DeviceRegistry.ConfigurationSaveResult result =
+                registry.saveConfiguration(deviceId, name, enabled);
+            return Map.<String, Object>of(
+                "updated", deviceId,
+                "name", result.descriptor().name(),
+                "enabled", result.descriptor().enabled(),
+                "changed", result.changed(),
+                "deviceLifecycle", result.lifecycleState());
         }).orElse(Map.of("error", "not found"));
+    }
+
+    /** Persist an explicit review decision; merely opening/closing review is a no-op. */
+    @PostMapping("/{deviceId}/lifecycle")
+    public Map<String, Object> updateLifecycle(@PathVariable String deviceId,
+                                               @RequestBody Map<String, Object> body) {
+        DeviceLifecycleAction action = DeviceLifecycleAction.from(
+            body.get("action") == null ? null : String.valueOf(body.get("action")));
+        DeviceRegistry.LifecycleChangeResult result = registry.applyLifecycleAction(deviceId, action);
+        return Map.of(
+            "deviceId", deviceId,
+            "changed", result.changed(),
+            "deviceLifecycle", result.lifecycleState());
     }
 
     // ── Display-config endpoints ───────────────────────────────────────────────

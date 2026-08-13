@@ -240,6 +240,9 @@ body {
 .reorder-mode .dm-device-group-header:active { cursor:grabbing; }
 .drag-over-group { outline:2px dashed var(--accent); outline-offset:2px; }
 .candidate-badge { border:1px solid var(--accent); color:var(--accent); border-radius:999px; padding:2px 7px; font-size:10px; }
+.candidate-badge.lifecycle-available { border-color:var(--success); color:var(--success); }
+.candidate-badge.lifecycle-deferred { border-color:var(--warning); color:var(--warning); }
+.candidate-badge.lifecycle-ignored { border-color:var(--text-muted); color:var(--text-muted); }
 .dm-why-card,.dm-candidate-card { display:flex; flex-direction:column; gap:6px; margin-top:12px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); font-size:12px; }
 .dm-why-card small { color:var(--text-dim); }
 .action-result { margin:8px 0 0; padding:7px 9px; border-radius:7px; font-size:12px; }

@@ -75,11 +75,14 @@ public class DeviceHealthMonitor {
     @Scheduled(fixedDelay = 60_000)
     public void checkHealth() {
         Instant now = Instant.now();
-        for (DeviceStatus status : registry.all()) {
+        for (DeviceStatus status : registry.all().stream()
+            .filter(device -> !registry.lifecycleState(device.deviceId()).isPreviouslyExposed())
+            .toList()) {
             String id = status.deviceId();
             Optional<DeviceDescriptor> descriptor = registry.descriptor(id);
 
-            if (descriptor.isPresent() && !descriptor.get().enabled()) {
+            if (descriptor.isPresent() && (!descriptor.get().enabled()
+                || !registry.lifecycleState(id).allowsActiveUse())) {
                 checkinStatuses.put(id, CheckinStatus.NOT_CONFIGURED);
                 continue;
             }
@@ -197,13 +200,15 @@ public class DeviceHealthMonitor {
 
     /** Returns a structured health summary for GET /api/system/health. */
     public Map<String, Object> getSystemHealth() {
-        List<DeviceStatus> all = registry.all();
+        List<DeviceStatus> all = registry.inScope();
+        Set<String> inScopeIds = all.stream().map(DeviceStatus::deviceId).collect(java.util.stream.Collectors.toSet());
         long online  = all.stream().filter(d -> "ONLINE".equals(d.state())).count();
         long offline = all.stream().filter(d -> "OFFLINE".equals(d.state())).count();
         long alarm   = all.stream().filter(d -> "ALARM".equals(d.state())).count();
         long unknown = all.stream().filter(d -> "UNKNOWN".equals(d.state())).count();
 
         List<Map<String, Object>> staleDevices = staleSince.entrySet().stream()
+            .filter(e -> inScopeIds.contains(e.getKey()))
             .map(e -> Map.<String, Object>of(
                 "deviceId", e.getKey(),
                 "staleSince", e.getValue().toString(),
@@ -214,7 +219,9 @@ public class DeviceHealthMonitor {
 
         Map<String, Long> checkinCounts = new LinkedHashMap<>();
         for (CheckinStatus s : CheckinStatus.values()) {
-            checkinCounts.put(s.name(), checkinStatuses.values().stream().filter(v -> v == s).count());
+            checkinCounts.put(s.name(), checkinStatuses.entrySet().stream()
+                .filter(entry -> inScopeIds.contains(entry.getKey()))
+                .filter(entry -> entry.getValue() == s).count());
         }
 
         return Map.of(
@@ -232,14 +239,20 @@ public class DeviceHealthMonitor {
 
     /** Per-device checkin status, keyed by deviceId. Devices not yet checked this cycle are omitted. */
     public Map<String, CheckinStatus> getCheckinStatuses() {
-        return Map.copyOf(checkinStatuses);
+        Map<String, CheckinStatus> visible = new LinkedHashMap<>();
+        checkinStatuses.forEach((deviceId, status) -> {
+            if (!registry.lifecycleState(deviceId).isPreviouslyExposed()) visible.put(deviceId, status);
+        });
+        return Map.copyOf(visible);
     }
 
     /** User-facing lifecycle explanation; avoids a status badge with no reason or next step. */
     public Map<String, Map<String, Object>> getCheckinDetails() {
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
         Instant now = Instant.now();
-        for (DeviceStatus status : registry.all()) {
+        for (DeviceStatus status : registry.all().stream()
+            .filter(device -> !registry.lifecycleState(device.deviceId()).isPreviouslyExposed())
+            .toList()) {
             Duration expected = staleThresholdFor(status.deviceId(), status);
             CheckinStatus checkin = checkinStatuses.getOrDefault(status.deviceId(),
                 registry.descriptor(status.deviceId()).filter(DeviceDescriptor::enabled).isPresent()
@@ -247,7 +260,12 @@ public class DeviceHealthMonitor {
             boolean battery = expected.equals(STALE_ZIGBEE_BATTERY)
                 || "battery".equalsIgnoreCase(String.valueOf(status.attributes().get("powerSource")));
             String reason = switch (checkin) {
-                case NOT_CONFIGURED -> "Discovered as a candidate; configure and enable it to start health monitoring.";
+                case NOT_CONFIGURED -> switch (registry.lifecycleState(status.deviceId())) {
+                    case CANDIDATE -> "Discovered as a candidate; make an explicit review decision before health monitoring starts.";
+                    case AVAILABLE -> "Accepted and available, but not assigned; save an actual configuration change to start monitoring.";
+                    case ASSIGNED -> "Assigned but disabled; enable it to start health monitoring.";
+                    case DEFERRED, IGNORED -> "Previously exposed devices are not actively monitored.";
+                };
                 case ON_SCHEDULE -> battery
                     ? "Battery device is within its expected reporting window; it may sleep between reports."
                     : "Device checked in within its expected reporting window.";

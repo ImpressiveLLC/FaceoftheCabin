@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS device (
     created_at   TIMESTAMPTZ DEFAULT now(),
     updated_at   TIMESTAMPTZ DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS device_lifecycle_state_idx
+    ON device ((config->>'lifecycleState'));
 
 -- Time-series telemetry
 CREATE TABLE IF NOT EXISTS telemetry (

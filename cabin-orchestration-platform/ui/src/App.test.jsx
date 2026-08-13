@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -307,13 +307,13 @@ describe("checkinStatusLabel", () => {
 
 describe("groupDevices", () => {
   const devices = [
-    { deviceId: "one", type: "LOCK", state: "ONLINE", attributes: { candidate: false, discoveredFrom: "Home Assistant", room: "Entry" } },
-    { deviceId: "two", type: "MOTION_SENSOR", state: "ONLINE", attributes: { candidate: true, discoveredFrom: "Zigbee2MQTT", room: "Entry" } },
+    { deviceId: "one", type: "LOCK", state: "ONLINE", attributes: { deviceLifecycle: "ASSIGNED", discoveredFrom: "Home Assistant", room: "Entry" } },
+    { deviceId: "two", type: "MOTION_SENSOR", state: "ONLINE", attributes: { deviceLifecycle: "CANDIDATE", discoveredFrom: "Zigbee2MQTT", room: "Entry" } },
   ];
 
   it("supports horizontal UI group dimensions without changing device order", () => {
     expect(groupDevices(devices, "room")).toEqual([["Entry", devices]]);
-    expect(groupDevices(devices, "candidate").map(([name]) => name)).toEqual(["Candidates", "Configured"]);
+    expect(groupDevices(devices, "candidate").map(([name]) => name)).toEqual(["Assigned", "Candidates"]);
   });
 
   it("groups by workflow affiliation (alerting/automations/hvac), unmapped types fall back to Other", () => {
@@ -333,28 +333,71 @@ describe("groupDevices", () => {
   });
 });
 
-describe("Device Manager candidate visibility", () => {
-  const configured = { deviceId: "configured", attributes: { candidate: false } };
-  const candidate = { deviceId: "candidate", attributes: { candidate: true } };
+describe("Device Manager lifecycle visibility", () => {
+  const assigned = { deviceId: "assigned", attributes: { deviceLifecycle: "ASSIGNED" } };
+  const available = { deviceId: "available", attributes: { deviceLifecycle: "AVAILABLE" } };
+  const candidate = { deviceId: "candidate", attributes: { deviceLifecycle: "CANDIDATE" } };
+  const deferred = { deviceId: "deferred", attributes: { deviceLifecycle: "DEFERRED" } };
+  const ignored = { deviceId: "ignored", attributes: { deviceLifecycle: "IGNORED" } };
   const legacyConfigured = { deviceId: "legacy", attributes: {} };
-  const devices = [configured, candidate, legacyConfigured];
+  const devices = [assigned, available, candidate, deferred, ignored, legacyConfigured];
 
-  it("hides candidates in the default configured view", () => {
-    expect(filterDeviceManagerDevices(devices).map(d => d.deviceId)).toEqual(["configured", "legacy"]);
+  it("shows only available/assigned devices in the default in-scope view", () => {
+    expect(filterDeviceManagerDevices(devices).map(d => d.deviceId)).toEqual(["assigned", "available", "legacy"]);
   });
 
-  it("shows candidates only when Not configured is explicitly selected", () => {
+  it("shows candidates only when Candidates is explicitly selected", () => {
     expect(filterDeviceManagerDevices(devices, "candidates").map(d => d.deviceId)).toEqual(["candidate"]);
   });
 
-  it("shows both lifecycle states when All devices is explicitly selected", () => {
-    expect(filterDeviceManagerDevices(devices, "all")).toEqual(devices);
+  it("keeps cached devices out of All until Previously exposed is explicitly selected", () => {
+    expect(filterDeviceManagerDevices(devices, "all").map(d => d.deviceId))
+      .toEqual(["assigned", "available", "candidate", "legacy"]);
+    expect(filterDeviceManagerDevices(devices, "previous").map(d => d.deviceId))
+      .toEqual(["deferred", "ignored"]);
   });
 
-  it("always reconciles Candidate grouping to All devices, including restored localStorage state", () => {
-    expect(resolveDeviceManagerFilter("candidate", "configured")).toBe("all");
+  it("always reconciles Lifecycle grouping to All active/review devices", () => {
+    expect(resolveDeviceManagerFilter("candidate", "in_scope")).toBe("all");
     expect(resolveDeviceManagerFilter("candidate", "candidates")).toBe("all");
     expect(resolveDeviceManagerFilter("workflow", "candidates")).toBe("candidates");
+  });
+
+  it("derives legacy candidate booleans but prefers the lifecycle enum", () => {
+    expect(deviceLifecycleState({ attributes: { candidate: true } })).toBe("CANDIDATE");
+    expect(deviceLifecycleState({ attributes: { candidate: true, deviceLifecycle: "available" } })).toBe("AVAILABLE");
+    expect(deviceLifecycleState({ attributes: {} })).toBe("ASSIGNED");
+  });
+});
+
+describe("Device candidate decision controls", () => {
+  afterEach(cleanup);
+
+  it("does not change lifecycle when details are merely reviewed", () => {
+    const onConfigure = vi.fn();
+    const onLifecycleAction = vi.fn();
+    render(<DmDeviceDetail
+      device={{ deviceId: "candidate", name: "New sensor", type: "MOTION_SENSOR", state: "UNKNOWN", location: "cabin", attributes: { deviceLifecycle: "CANDIDATE" } }}
+      onConfigure={onConfigure}
+      onLifecycleAction={onLifecycleAction}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: /review details without deciding/i }));
+    expect(onConfigure).toHaveBeenCalledOnce();
+    expect(onLifecycleAction).not.toHaveBeenCalled();
+  });
+
+  it("sends an explicit ACCEPT decision when Use this device is chosen", async () => {
+    const onLifecycleAction = vi.fn().mockResolvedValue({ deviceLifecycle: "AVAILABLE" });
+    render(<DmDeviceDetail
+      device={{ deviceId: "candidate", name: "New sensor", type: "MOTION_SENSOR", state: "UNKNOWN", location: "cabin", attributes: { deviceLifecycle: "CANDIDATE" } }}
+      onConfigure={() => {}}
+      onLifecycleAction={onLifecycleAction}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: /use this device/i }));
+    await waitFor(() => expect(onLifecycleAction).toHaveBeenCalledWith(expect.objectContaining({ deviceId: "candidate" }), "ACCEPT"));
+    expect(await screen.findByText("Decision saved.")).toBeTruthy();
   });
 });
 

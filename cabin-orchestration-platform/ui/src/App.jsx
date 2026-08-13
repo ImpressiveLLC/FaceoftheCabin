@@ -1300,11 +1300,54 @@ function DeviceManagerPanel() {
   const [reorderMode, setReorderMode] = useState(false);
   const [groupBy, setGroupBy] = useState(() => localStorage.getItem("devices.groupBy") || "type");
   const [groupFlow, setGroupFlow] = useState(() => localStorage.getItem("devices.groupFlow") || "horizontal");
-  const [deviceFilter, setDeviceFilter] = useState(() => localStorage.getItem("devices.filter") || "configured");
+  const [deviceFilter, setDeviceFilter] = useState(() => {
+    const saved = localStorage.getItem("devices.filter") || "in_scope";
+    return saved === "configured" ? "in_scope" : saved;
+  });
+  const [candidateDevices, setCandidateDevices] = useState([]);
+  const [previouslyExposed, setPreviouslyExposed] = useState([]);
+  const [reviewingPrevious, setReviewingPrevious] = useState(false);
 
   useEffect(() => localStorage.setItem("devices.groupBy", groupBy), [groupBy]);
   useEffect(() => localStorage.setItem("devices.groupFlow", groupFlow), [groupFlow]);
   useEffect(() => localStorage.setItem("devices.filter", deviceFilter), [deviceFilter]);
+
+  const reviewLocations = useMemo(() => activeLocation === "both"
+    ? [LOCATIONS.cabin, LOCATIONS.home]
+    : [LOCATIONS[activeLocation] || LOCATIONS.cabin], [activeLocation]);
+
+  const fetchDeviceReviewList = useCallback(async (path) => {
+    const results = await Promise.allSettled(reviewLocations.map(location =>
+      fetch(`${location.apiBase}/api/devices/${path}`)
+        .then(response => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); })
+    ));
+    return results.filter(result => result.status === "fulfilled").flatMap(result => result.value);
+  }, [reviewLocations]);
+
+  const refreshReviewDevices = useCallback(async () => {
+    setCandidateDevices(await fetchDeviceReviewList("candidates"));
+    if (reviewingPrevious) {
+      setPreviouslyExposed(await fetchDeviceReviewList("previously-exposed"));
+    }
+  }, [fetchDeviceReviewList, reviewingPrevious]);
+
+  useEffect(() => {
+    refreshReviewDevices();
+    const timer = setInterval(refreshReviewDevices, 15000);
+    return () => clearInterval(timer);
+  }, [refreshReviewDevices]);
+
+  useEffect(() => {
+    if (deviceFilter !== "previous" || reviewingPrevious) return;
+    setReviewingPrevious(true);
+  }, [deviceFilter, reviewingPrevious]);
+
+  const managerDevices = useMemo(() => {
+    const byId = new Map();
+    [...devices, ...candidateDevices, ...(reviewingPrevious ? previouslyExposed : [])]
+      .forEach(device => byId.set(device.deviceId, device));
+    return [...byId.values()];
+  }, [devices, candidateDevices, previouslyExposed, reviewingPrevious]);
 
   // Found 2026-08-08 (user report): every DmXView below was rendering the
   // FULL, unfiltered devices array regardless of which location tab was
@@ -1314,9 +1357,27 @@ function DeviceManagerPanel() {
   // (See/Change/Remove) share one correct source instead of each needing
   // its own filter (Add doesn't need one -- it creates, not lists).
   const locDevices = activeLocation === "both"
-    ? devices
-    : devices.filter(d => !d.location || d.location === activeLocation);
+    ? managerDevices
+    : managerDevices.filter(d => !d.location || d.location === activeLocation);
   const effectiveDeviceFilter = resolveDeviceManagerFilter(groupBy, deviceFilter);
+
+  const refreshManagerDevices = useCallback(() => {
+    refreshDevices();
+    refreshReviewDevices();
+  }, [refreshDevices, refreshReviewDevices]);
+
+  const applyLifecycleAction = useCallback(async (device, action) => {
+    const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+    const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/lifecycle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+    refreshManagerDevices();
+    return body;
+  }, [refreshManagerDevices]);
 
   const handleViewChange = (v) => { setView(v); setSelected(null); setReorderMode(false); };
 
@@ -1331,7 +1392,7 @@ function DeviceManagerPanel() {
                 <select value={groupBy} onChange={e => setGroupBy(e.target.value)}>
                   <option value="none">None</option><option value="type">Type</option>
                   <option value="source">Source</option><option value="room">Room</option>
-                  <option value="state">Status</option><option value="candidate">Candidates</option>
+                  <option value="state">Status</option><option value="candidate">Lifecycle</option>
                   <option value="workflow">Workflow</option>
                 </select>
               </label>
@@ -1339,9 +1400,10 @@ function DeviceManagerPanel() {
                 <select value={effectiveDeviceFilter} onChange={e => setDeviceFilter(e.target.value)}
                   disabled={groupBy === "candidate"}
                   title={groupBy === "candidate" ? "Candidate grouping always shows both setup states" : undefined}>
-                  <option value="configured">Configured</option>
-                  <option value="candidates">Not configured</option>
-                  <option value="all">All devices</option>
+                  <option value="in_scope">In scope</option>
+                  <option value="candidates">Candidates</option>
+                  <option value="previous">Review previously exposed</option>
+                  <option value="all">In scope + candidates</option>
                 </select>
               </label>
               <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
@@ -1355,7 +1417,7 @@ function DeviceManagerPanel() {
               </button>
             </>
           )}
-          <button className="btn-ghost" onClick={refreshDevices}><RefreshCw size={14}/> Refresh</button>
+          <button className="btn-ghost" onClick={refreshManagerDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
       </div>
 
@@ -1382,10 +1444,11 @@ function DeviceManagerPanel() {
       {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} devices={locDevices} selected={selected} onSelect={setSelected}
         reorderMode={reorderMode} groupBy={groupBy} groupFlow={groupFlow}
         deviceFilter={effectiveDeviceFilter}
+        onLifecycleAction={applyLifecycleAction}
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }} />}
-      {view === "change" && <DmChangeView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
+      {view === "change" && <DmChangeView devices={locDevices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)))} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
-      {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
+      {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
     </div>
   );
 }
@@ -1407,6 +1470,20 @@ export const WORKFLOW_BY_TYPE = {
   LOCK: "Automations", HOME_ASSISTANT_ENTITY: "Automations", GOOGLE_HOME_DEVICE: "Automations",
 };
 
+export function deviceLifecycleState(device) {
+  const explicit = device?.attributes?.deviceLifecycle;
+  if (explicit) return String(explicit).toUpperCase();
+  return device?.attributes?.candidate === true ? "CANDIDATE" : "ASSIGNED";
+}
+
+const LIFECYCLE_LABELS = {
+  CANDIDATE: "Candidates",
+  AVAILABLE: "Available",
+  ASSIGNED: "Assigned",
+  DEFERRED: "Saved for later",
+  IGNORED: "Ignored",
+};
+
 // ── L2/L3: See ──
 export function groupDevices(devices, groupBy) {
   if (groupBy === "none") return [["All devices", devices]];
@@ -1414,7 +1491,7 @@ export function groupDevices(devices, groupBy) {
     if (groupBy === "source") return d.attributes?.discoveredFrom || d.attributes?.source || (d.deviceId.startsWith("z2m-") ? "Zigbee2MQTT" : "Other");
     if (groupBy === "room") return d.attributes?.room || d.attributes?.area_name || "Room not assigned";
     if (groupBy === "state") return d.state || "UNKNOWN";
-    if (groupBy === "candidate") return d.attributes?.candidate === true ? "Candidates" : "Configured";
+    if (groupBy === "candidate") return LIFECYCLE_LABELS[deviceLifecycleState(d)] || "Assigned";
     if (groupBy === "workflow") return WORKFLOW_BY_TYPE[d.type] || "Other";
     return d.type || "Other";
   };
@@ -1423,13 +1500,20 @@ export function groupDevices(devices, groupBy) {
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
-export function filterDeviceManagerDevices(devices, filter = "configured") {
-  if (filter === "all") return devices;
-  const candidatesOnly = filter === "candidates";
-  return devices.filter(d => (d.attributes?.candidate === true) === candidatesOnly);
+export function filterDeviceManagerDevices(devices, filter = "in_scope") {
+  if (filter === "all") {
+    return devices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
+  }
+  if (filter === "candidates") {
+    return devices.filter(d => deviceLifecycleState(d) === "CANDIDATE");
+  }
+  if (filter === "previous") {
+    return devices.filter(d => ["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
+  }
+  return devices.filter(d => ["AVAILABLE", "ASSIGNED"].includes(deviceLifecycleState(d)));
 }
 
-export function resolveDeviceManagerFilter(groupBy, savedFilter = "configured") {
+export function resolveDeviceManagerFilter(groupBy, savedFilter = "in_scope") {
   return groupBy === "candidate" ? "all" : savedFilter;
 }
 
@@ -1539,7 +1623,7 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   return { groups, reorderGroup, reorderDevice };
 }
 
-function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure }) {
+function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction }) {
   const { activeLocation } = useApp();
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
@@ -1664,7 +1748,8 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
       {sel && (
         <div className="dm-detail">
           <DmDeviceDetail device={sel} checkinStatus={checkinDetails[sel.deviceId]?.status || checkinStatuses[sel.deviceId]}
-            checkinDetail={checkinDetails[sel.deviceId]} onConfigure={() => onConfigure(sel.deviceId)} />
+            checkinDetail={checkinDetails[sel.deviceId]} onConfigure={() => onConfigure(sel.deviceId)}
+            onLifecycleAction={onLifecycleAction} />
         </div>
       )}
     </div>
@@ -1677,12 +1762,12 @@ function DmChangeView({ devices, selected, onSelect, onRefresh }) {
   return (
     <div className="dm-layout">
       <div className="dm-list">
-        <p className="dm-hint">Select a device to edit its name or enabled state.</p>
+        <p className="dm-hint">Select a device to review its details or save an actual configuration change.</p>
         {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} />)}
       </div>
       {sel && (
         <div className="dm-detail">
-          <DmEditForm device={sel} onSaved={onRefresh} />
+          <DmEditForm key={sel.deviceId} device={sel} onSaved={onRefresh} />
         </div>
       )}
     </div>
@@ -1964,6 +2049,7 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
   const Icon = deviceIcon(device.type);
   const isZ2m = device.deviceId.startsWith("z2m-");
   const override = checkinStatusLabel(device.state, checkinStatus);
+  const lifecycle = deviceLifecycleState(device);
   return (
     <div className={`dm-device-row ${selected ? "dm-row-selected" : ""}`} onClick={onClick}>
       {dragHandle}
@@ -1972,7 +2058,11 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
         <span className="dm-row-name">{device.name}</span>
         <span className="dm-row-meta">{device.type} · {device.location}{isZ2m ? " · zigbee" : ""}</span>
       </div>
-      {device.attributes?.candidate === true && <span className="candidate-badge">Candidate</span>}
+      {lifecycle !== "ASSIGNED" && (
+        <span className={`candidate-badge lifecycle-${lifecycle.toLowerCase()}`}>
+          {LIFECYCLE_LABELS[lifecycle] || lifecycle}
+        </span>
+      )}
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
@@ -1980,8 +2070,23 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
   );
 }
 
-function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure }) {
+export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction }) {
   const override = checkinStatusLabel(device.state, checkinStatus);
+  const lifecycle = deviceLifecycleState(device);
+  const [lifecycleResult, setLifecycleResult] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
+  const decide = async (action) => {
+    setPendingAction(action);
+    setLifecycleResult(null);
+    try {
+      await onLifecycleAction(device, action);
+      setLifecycleResult({ ok: true, text: "Decision saved." });
+    } catch (error) {
+      setLifecycleResult({ ok: false, text: `Decision was not saved: ${error.message}` });
+    } finally {
+      setPendingAction(null);
+    }
+  };
   return (
     <div className="dm-detail-inner">
       <div className="dm-detail-name">{device.name}</div>
@@ -2002,12 +2107,33 @@ function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure }) {
         <div className="dm-why-card"><strong>Why is this status shown?</strong><span>{checkinDetail.reason}</span>
           <small>Expected within {checkinDetail.expectedMinutes} min; not responding after {checkinDetail.missedAfterMinutes} min.</small></div>
       )}
-      {device.attributes?.candidate === true && (
+      {lifecycle === "CANDIDATE" && (
         <div className="dm-candidate-card"><strong>New device candidate</strong>
-          <span>Discovered from {device.attributes.discoveredFrom || device.attributes.source || "an integration"}. Review its name and enable it before commands are allowed.</span>
-          <button className="btn-primary" onClick={onConfigure}>Configure candidate</button>
+          <span>Discovered from {device.attributes.discoveredFrom || device.attributes.source || "an integration"}. Looking at it or closing this view leaves it a candidate.</span>
+          <div className="device-actions">
+            <button className="btn-primary" onClick={() => decide("ACCEPT")} disabled={pendingAction}>Use this device</button>
+            <button className="btn-secondary" onClick={() => decide("DEFER")} disabled={pendingAction}>Not now</button>
+            <button className="btn-ghost" onClick={() => decide("IGNORE")} disabled={pendingAction}>Ignore</button>
+          </div>
+          <button className="btn-ghost" onClick={onConfigure}>Review details without deciding</button>
         </div>
       )}
+      {lifecycle === "AVAILABLE" && (
+        <div className="dm-candidate-card"><strong>Available</strong>
+          <span>This device is in scope but not assigned. It stays disabled until an actual configuration change is saved.</span>
+          <button className="btn-primary" onClick={onConfigure}>Assign / configure</button>
+        </div>
+      )}
+      {["DEFERRED", "IGNORED"].includes(lifecycle) && (
+        <div className="dm-candidate-card"><strong>Previously exposed device</strong>
+          <span>Only cached identification is shown here. The app does not actively poll or command this device.</span>
+          <div className="device-actions">
+            <button className="btn-primary" onClick={() => decide("ACCEPT")} disabled={pendingAction}>Use this device</button>
+            <button className="btn-secondary" onClick={() => decide("REVIEW")} disabled={pendingAction}>Return to candidates</button>
+          </div>
+        </div>
+      )}
+      {lifecycleResult && <p className={lifecycleResult.ok ? "action-result action-ok" : "action-result action-error"}>{lifecycleResult.text}</p>}
       {Object.keys(device.attributes || {}).length > 0 && (
         <>
           <div className="dm-detail-section">Attributes</div>
@@ -2019,8 +2145,8 @@ function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure }) {
           ))}
         </>
       )}
-      {device.attributes?.candidate !== true && device.type === "LOCK" && <DmLockActions device={device}/>}
-      {device.attributes?.candidate !== true && <DmCapabilityActions device={device}/>}
+      {lifecycle === "ASSIGNED" && device.type === "LOCK" && <DmLockActions device={device}/>}
+      {lifecycle === "ASSIGNED" && <DmCapabilityActions device={device}/>}
     </div>
   );
 }
@@ -2080,36 +2206,52 @@ function DmEditForm({ device, onSaved }) {
   const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+  const lifecycle = deviceLifecycleState(device);
+  const originalEnabled = device.attributes?.enabled ?? (device.enabled !== false);
+  const changed = name.trim() !== device.name || enabled !== originalEnabled;
 
   const save = async () => {
     setSaving(true);
-    await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, enabled })
-    });
-    setSaving(false);
-    setSaved(true);
-    onSaved();
-    setTimeout(() => setSaved(false), 2000);
+    setSaveError(null);
+    try {
+      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, enabled })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+      setSaved(true);
+      onSaved();
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      setSaveError(error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="dm-edit-form">
       <div className="dm-detail-name">{device.deviceId}</div>
+      {lifecycle === "CANDIDATE" && <p className="config-desc">Reviewing or saving a corrected name does not accept this candidate. Use the explicit decision buttons in See when ready.</p>}
+      {lifecycle === "AVAILABLE" && <p className="config-desc">This accepted device is available but unassigned. Saving an actual change assigns it.</p>}
       <label>Display Name
-        <input value={name} onChange={e => { setName(e.target.value); setSaved(false); }}/>
+        <input value={name} onChange={e => { setName(e.target.value); setSaved(false); setSaveError(null); }}/>
       </label>
       <label className="dm-toggle-row">
         <span>Enabled</span>
-        <button className="btn-ghost" onClick={() => setEnabled(e => !e)}>
+        <button className="btn-ghost" onClick={() => setEnabled(e => !e)} disabled={lifecycle === "CANDIDATE"}
+          title={lifecycle === "CANDIDATE" ? "Accept the candidate before enabling it" : undefined}>
           {enabled ? <ToggleRight size={22} className="toggle-on"/> : <ToggleLeft size={22} className="toggle-off"/>}
         </button>
       </label>
       <div className="modal-actions">
         {saved && <span className="save-ok"><CheckCircle size={13}/> Saved</span>}
-        <button className="btn-primary" onClick={save} disabled={saving}>
+        {saveError && <span className="action-result action-error">Not saved: {saveError}</span>}
+        <button className="btn-primary" onClick={save} disabled={saving || !changed || !name.trim()}>
           {saving ? "Saving…" : "Save changes"}
         </button>
       </div>
