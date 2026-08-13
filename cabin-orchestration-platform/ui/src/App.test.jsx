@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, buildOrderedDeviceGroups, reorderIds, WORKFLOW_BY_TYPE, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -350,6 +350,12 @@ describe("Device Manager candidate visibility", () => {
   it("shows both lifecycle states when All devices is explicitly selected", () => {
     expect(filterDeviceManagerDevices(devices, "all")).toEqual(devices);
   });
+
+  it("always reconciles Candidate grouping to All devices, including restored localStorage state", () => {
+    expect(resolveDeviceManagerFilter("candidate", "configured")).toBe("all");
+    expect(resolveDeviceManagerFilter("candidate", "candidates")).toBe("all");
+    expect(resolveDeviceManagerFilter("workflow", "candidates")).toBe("candidates");
+  });
 });
 
 describe("Device Manager grouped ordering", () => {
@@ -395,6 +401,12 @@ describe("Device Manager grouped ordering", () => {
     expect(reorderIds(["a", "b", "c"], "c", "a")).toEqual(["c", "a", "b"]);
     expect(reorderIds(["a", "b"], "missing", "a")).toEqual(["a", "b"]);
     expect(reorderIds(["a", "b"], "a", "a")).toEqual(["a", "b"]);
+  });
+
+  it("waits for device loading before migrating the legacy flat order", () => {
+    expect(migrateLegacyDeviceOrder([], "workflow", ["motion", "lock"])).toBeNull();
+    expect(migrateLegacyDeviceOrder(devices, "workflow", ["motion", "lock", "smoke"]))
+      .toEqual({ Alerting: ["motion", "smoke"], Automations: ["lock"], HVAC: [] });
   });
 });
 

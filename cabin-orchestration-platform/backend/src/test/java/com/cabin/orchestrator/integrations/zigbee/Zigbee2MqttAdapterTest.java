@@ -114,4 +114,20 @@ class Zigbee2MqttAdapterTest {
         assertEquals("SNZB-02D", status.attributes().get("model"));
         assertEquals(true, status.attributes().get("candidate"));
     }
+
+    @Test
+    void mainsPowerRediscoveryClearsBatteryCheckinOverride() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"motion_entry","type":"EndDevice","power_source":"battery","definition":{
+              "model":"SNZB-03PR2","description":"motion","vendor":"SONOFF","exposes":[]}}]
+            """);
+        assertEquals(1560, registry.get("z2m-motion_entry").attributes().get("expectedCheckinMinutes"));
+
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"motion_entry","type":"Router","power_source":"mains","definition":{
+              "model":"SNZB-03PR2","description":"motion","vendor":"SONOFF","exposes":[]}}]
+            """);
+
+        assertFalse(registry.get("z2m-motion_entry").attributes().containsKey("expectedCheckinMinutes"));
+    }
 }

@@ -52,15 +52,18 @@ class DeviceRegistryTest {
     @Test
     void configuredDeviceKeepsHumanFieldsAndNeverBecomesCandidateAgain() {
         registry.registerCandidate(descriptor(
-            "candidate-2", "Discovered name", DeviceType.HOME_ASSISTANT_ENTITY,
-            Set.of(DeviceCapability.TELEMETRY), "mqtt", "old/topic", false, "cabin"), Map.of());
+            "candidate-2", "Discovered name", DeviceType.WATER_LEAK_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ALARM),
+            "mqtt", "old/topic", false, "cabin"), Map.of());
 
         registry.registerDescriptor(descriptor(
-            "candidate-2", "My chosen name", DeviceType.HOME_ASSISTANT_ENTITY,
-            Set.of(DeviceCapability.TELEMETRY), "mqtt", "old/topic", true, "home"));
+            "candidate-2", "My chosen name", DeviceType.WATER_LEAK_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ALARM),
+            "mqtt", "old/topic", true, "home"));
         registry.registerDescriptor(descriptor(
-            "candidate-2", "My chosen name", DeviceType.HOME_ASSISTANT_ENTITY,
-            Set.of(DeviceCapability.TELEMETRY), "mqtt", "old/topic", false, "home"));
+            "candidate-2", "My chosen name", DeviceType.WATER_LEAK_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ALARM),
+            "mqtt", "old/topic", false, "home"));
 
         registry.registerCandidate(descriptor(
             "candidate-2", "New source name", DeviceType.TEMPERATURE_SENSOR,
@@ -72,8 +75,10 @@ class DeviceRegistryTest {
         assertEquals("My chosen name", descriptor.name(), "a configured display name is person-owned");
         assertEquals("home", descriptor.location(), "a configured location is person-owned");
         assertFalse(descriptor.enabled(), "discovery must not re-enable a device a person disabled");
-        assertEquals(DeviceType.TEMPERATURE_SENSOR, descriptor.type(), "source type can be corrected");
-        assertEquals(Set.of(DeviceCapability.TELEMETRY, DeviceCapability.CLIMATE), descriptor.capabilities());
+        assertEquals(DeviceType.WATER_LEAK_SENSOR, descriptor.type(),
+            "a configured safety-relevant type is not changed by discovery");
+        assertEquals(Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ALARM), descriptor.capabilities(),
+            "configured capabilities survive a degraded discovery snapshot");
         assertEquals("ha_rest", descriptor.protocolAdapter());
         assertEquals("sensor.new_source", descriptor.connectionString());
         assertEquals("My chosen name", status.name());
@@ -95,6 +100,29 @@ class DeviceRegistryTest {
         assertEquals("Entry motion", status.name());
         assertEquals(false, status.attributes().get("candidate"));
         assertEquals(true, status.attributes().get("enabled"));
+    }
+
+    @Test
+    void renamingCandidateWithoutEnablingStillEndsCandidateLifecycle() {
+        registry.registerCandidate(descriptor(
+            "candidate-4", "Raw source name", DeviceType.CONTACT_SENSOR,
+            Set.of(DeviceCapability.ACCESS_CONTROL), "mqtt", "zigbee2mqtt/contact", false, "cabin"), Map.of());
+
+        registry.registerDescriptor(descriptor(
+            "candidate-4", "Pantry door", DeviceType.CONTACT_SENSOR,
+            Set.of(DeviceCapability.ACCESS_CONTROL), "mqtt", "zigbee2mqtt/contact", false, "cabin"));
+        registry.registerCandidate(descriptor(
+            "candidate-4", "Raw source name again", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/contact", false, "cabin"), Map.of());
+
+        var descriptor = registry.descriptor("candidate-4").orElseThrow();
+        var status = registry.get("candidate-4");
+        assertEquals("Pantry door", descriptor.name());
+        assertEquals(DeviceType.CONTACT_SENSOR, descriptor.type());
+        assertEquals(Set.of(DeviceCapability.ACCESS_CONTROL), descriptor.capabilities());
+        assertFalse(descriptor.enabled());
+        assertEquals(false, status.attributes().get("candidate"));
+        assertEquals(false, status.attributes().get("enabled"));
     }
 
     private DeviceDescriptor descriptor(String id, String name, DeviceType type,

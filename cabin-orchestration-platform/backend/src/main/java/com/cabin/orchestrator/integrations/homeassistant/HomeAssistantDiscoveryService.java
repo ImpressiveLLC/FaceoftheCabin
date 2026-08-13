@@ -65,6 +65,7 @@ public class HomeAssistantDiscoveryService {
             }
             registry.registerCandidate(descriptor, attrs);
             DeviceStatus current = registry.get(id);
+            if (current == null) continue; // device was removed concurrently
             DeviceDescriptor registered = registry.descriptor(id).orElse(descriptor);
             Map<String, Object> merged = new LinkedHashMap<>(current.attributes());
             merged.putAll(attrs);

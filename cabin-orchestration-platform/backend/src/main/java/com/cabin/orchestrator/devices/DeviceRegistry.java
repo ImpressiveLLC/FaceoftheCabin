@@ -20,6 +20,11 @@ public class DeviceRegistry {
     private final Map<String, DeviceStatus> statuses = new ConcurrentHashMap<>();
     private final Map<String, DeviceDescriptor> descriptors = new ConcurrentHashMap<>();
     private final Map<String, ProtocolAdapter> adapters = new ConcurrentHashMap<>();
+    // Device configuration arrives on HTTP threads while discovery arrives on
+    // MQTT callback and scheduler threads. Both descriptor and status must be
+    // decided and written under the same per-device lock; two independent
+    // ConcurrentHashMaps do not make a cross-map transaction atomic.
+    private final Map<String, Object> deviceLocks = new ConcurrentHashMap<>();
 
     public DeviceRegistry(List<ProtocolAdapter> adapterList) {
         adapterList.forEach(a -> adapters.put(a.adapterType(), a));
@@ -114,18 +119,20 @@ public class DeviceRegistry {
     }
 
     public void registerDescriptor(DeviceDescriptor desc) {
-        descriptors.put(desc.deviceId(), desc);
-        statuses.compute(desc.deviceId(), (id, existing) -> {
-            Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
-            attrs.put("enabled", desc.enabled());
-            // Enabling is the one-way Candidate -> Configured transition.
-            // Disabling a configured device later must not make it a new
-            // candidate again.
-            if (desc.enabled()) attrs.put("candidate", false);
-            return new DeviceStatus(
-                id, desc.type(), desc.name(), existing == null ? "UNKNOWN" : existing.state(),
-                existing == null ? Instant.now() : existing.lastSeen(), attrs, desc.location());
-        });
+        synchronized (lockFor(desc.deviceId())) {
+            descriptors.put(desc.deviceId(), desc);
+            statuses.compute(desc.deviceId(), (id, existing) -> {
+                Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
+                attrs.put("enabled", desc.enabled());
+                // Saving configuration is the Candidate -> Configured
+                // transition, even when the person deliberately leaves the
+                // device disabled. Disabling it later never makes it new again.
+                attrs.put("candidate", false);
+                return new DeviceStatus(
+                    id, desc.type(), desc.name(), existing == null ? "UNKNOWN" : existing.state(),
+                    existing == null ? Instant.now() : existing.lastSeen(), attrs, desc.location());
+            });
+        }
     }
 
     /**
@@ -133,37 +140,47 @@ public class DeviceRegistry {
      * configured it. Discovery metadata travels with the status so every UI can
      * render the candidate and explain where it came from.
      */
-    public void registerCandidate(DeviceDescriptor desc, Map<String, Object> discoveryAttributes) {
-        DeviceDescriptor existingDescriptor = descriptors.get(desc.deviceId());
-        DeviceStatus existingStatus = statuses.get(desc.deviceId());
+    public boolean registerCandidate(DeviceDescriptor desc, Map<String, Object> discoveryAttributes) {
+        synchronized (lockFor(desc.deviceId())) {
+            DeviceDescriptor existingDescriptor = descriptors.get(desc.deviceId());
+            DeviceStatus existingStatus = statuses.get(desc.deviceId());
+            boolean firstSeen = existingDescriptor == null;
 
-        // A descriptor created through configuration (no candidate marker), or
-        // one whose candidate marker was explicitly cleared, owns its human
-        // fields even if it is disabled later. Discovery owns the fields that
-        // describe the source itself and may correct them on every refresh.
-        boolean configured = existingDescriptor != null
-            && !Boolean.TRUE.equals(existingStatus == null ? null : existingStatus.attributes().get("candidate"));
-        DeviceDescriptor merged = mergeDiscoveryDescriptor(existingDescriptor, desc, configured);
-        descriptors.put(desc.deviceId(), merged);
+            // A descriptor created through configuration (no candidate marker),
+            // or one whose candidate marker was explicitly cleared, owns its
+            // configured fields even if it is disabled later.
+            boolean configured = existingDescriptor != null
+                && !Boolean.TRUE.equals(existingStatus == null ? null : existingStatus.attributes().get("candidate"));
+            DeviceDescriptor merged = mergeDiscoveryDescriptor(existingDescriptor, desc, configured);
+            descriptors.put(desc.deviceId(), merged);
 
-        statuses.compute(desc.deviceId(), (id, existing) -> {
-            Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
-            if (discoveryAttributes != null) attrs.putAll(discoveryAttributes);
-            attrs.put("candidate", !configured && !merged.enabled());
-            attrs.put("enabled", merged.enabled());
-            attrs.put("source", merged.protocolAdapter());
-            attrs.put("capabilities", merged.capabilities().stream().map(Enum::name).sorted().toList());
-            return new DeviceStatus(id, merged.type(), merged.name(), existing == null ? "UNKNOWN" : existing.state(),
-                existing == null ? Instant.now() : existing.lastSeen(), attrs, merged.location());
-        });
+            statuses.compute(desc.deviceId(), (id, existing) -> {
+                Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
+                if (discoveryAttributes != null) {
+                    discoveryAttributes.forEach((key, value) -> {
+                        if (value == null) attrs.remove(key);
+                        else attrs.put(key, value);
+                    });
+                }
+                attrs.put("candidate", !configured && !merged.enabled());
+                attrs.put("enabled", merged.enabled());
+                attrs.put("source", merged.protocolAdapter());
+                attrs.put("capabilities", merged.capabilities().stream().map(Enum::name).sorted().toList());
+                return new DeviceStatus(id, merged.type(), merged.name(), existing == null ? "UNKNOWN" : existing.state(),
+                    existing == null ? Instant.now() : existing.lastSeen(), attrs, merged.location());
+            });
+            return firstSeen;
+        }
     }
 
     /**
      * Merge ownership for repeated integration discovery.
      *
-     * Sticky after configuration: enabled, person-selected name and location.
-     * Refreshable from the source: type, capabilities, adapter and connection.
-     * A never-configured candidate also accepts corrected source name/location.
+     * Sticky after configuration: enabled, name, location, type and
+     * capabilities. The last two are safety-relevant and require a future
+     * explicit re-detect action rather than trusting a degraded discovery
+     * snapshot. Adapter/connection remain source-owned and refreshable.
+     * A never-configured candidate accepts all corrected discovery fields.
      */
     private DeviceDescriptor mergeDiscoveryDescriptor(DeviceDescriptor existing,
                                                         DeviceDescriptor discovered,
@@ -172,11 +189,11 @@ public class DeviceRegistry {
         return new DeviceDescriptor(
             discovered.deviceId(),
             configured ? existing.name() : discovered.name(),
-            discovered.type(),
-            discovered.capabilities(),
+            configured ? existing.type() : discovered.type(),
+            configured ? existing.capabilities() : discovered.capabilities(),
             discovered.protocolAdapter(),
             discovered.connectionString(),
-            existing.enabled(),
+            configured ? existing.enabled() : discovered.enabled(),
             configured ? existing.location() : discovered.location());
     }
 
@@ -189,16 +206,39 @@ public class DeviceRegistry {
     }
 
     public void register(DeviceStatus status) {
-        statuses.put(status.deviceId(), status);
+        synchronized (lockFor(status.deviceId())) {
+            statuses.put(status.deviceId(), status);
+        }
     }
 
     public void update(DeviceStatus status) {
-        statuses.put(status.deviceId(), status);
+        synchronized (lockFor(status.deviceId())) {
+            DeviceStatus current = statuses.get(status.deviceId());
+            if (current == null) return; // deleted devices are not resurrected by a stale runtime write
+            DeviceDescriptor descriptor = descriptors.get(status.deviceId());
+            Map<String, Object> attrs = new LinkedHashMap<>(status.attributes());
+            // A runtime update may have been assembled just before a concurrent
+            // config save. Keep the lifecycle keys and configured descriptor
+            // authoritative when the write finally obtains this device's lock.
+            if (current.attributes().containsKey("candidate")) {
+                attrs.put("candidate", current.attributes().get("candidate"));
+            }
+            if (current.attributes().containsKey("enabled")) {
+                attrs.put("enabled", current.attributes().get("enabled"));
+            }
+            statuses.put(status.deviceId(), new DeviceStatus(
+                status.deviceId(), descriptor == null ? status.type() : descriptor.type(),
+                descriptor == null ? status.name() : descriptor.name(), status.state(),
+                status.lastSeen(), attrs,
+                descriptor == null ? status.location() : descriptor.location()));
+        }
     }
 
     public void remove(String deviceId) {
-        statuses.remove(deviceId);
-        descriptors.remove(deviceId);
+        synchronized (lockFor(deviceId)) {
+            statuses.remove(deviceId);
+            descriptors.remove(deviceId);
+        }
     }
 
     public List<DeviceStatus> all() {
@@ -217,6 +257,10 @@ public class DeviceRegistry {
 
     public Optional<DeviceDescriptor> descriptor(String deviceId) {
         return Optional.ofNullable(descriptors.get(deviceId));
+    }
+
+    private Object lockFor(String deviceId) {
+        return deviceLocks.computeIfAbsent(deviceId, ignored -> new Object());
     }
 
     public boolean sendCommand(String deviceId, String command, Object payload) {

@@ -1316,6 +1316,7 @@ function DeviceManagerPanel() {
   const locDevices = activeLocation === "both"
     ? devices
     : devices.filter(d => !d.location || d.location === activeLocation);
+  const effectiveDeviceFilter = resolveDeviceManagerFilter(groupBy, deviceFilter);
 
   const handleViewChange = (v) => { setView(v); setSelected(null); setReorderMode(false); };
 
@@ -1327,10 +1328,7 @@ function DeviceManagerPanel() {
           {view === "see" && (
             <>
               <label className="dm-toolbar-select">Group
-                <select value={groupBy} onChange={e => {
-                  setGroupBy(e.target.value);
-                  if (e.target.value === "candidate") setDeviceFilter("all");
-                }}>
+                <select value={groupBy} onChange={e => setGroupBy(e.target.value)}>
                   <option value="none">None</option><option value="type">Type</option>
                   <option value="source">Source</option><option value="room">Room</option>
                   <option value="state">Status</option><option value="candidate">Candidates</option>
@@ -1338,7 +1336,9 @@ function DeviceManagerPanel() {
                 </select>
               </label>
               <label className="dm-toolbar-select">Show
-                <select value={deviceFilter} onChange={e => setDeviceFilter(e.target.value)}>
+                <select value={effectiveDeviceFilter} onChange={e => setDeviceFilter(e.target.value)}
+                  disabled={groupBy === "candidate"}
+                  title={groupBy === "candidate" ? "Candidate grouping always shows both setup states" : undefined}>
                   <option value="configured">Configured</option>
                   <option value="candidates">Not configured</option>
                   <option value="all">All devices</option>
@@ -1381,7 +1381,7 @@ function DeviceManagerPanel() {
 
       {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} devices={locDevices} selected={selected} onSelect={setSelected}
         reorderMode={reorderMode} groupBy={groupBy} groupFlow={groupFlow}
-        deviceFilter={deviceFilter}
+        deviceFilter={effectiveDeviceFilter}
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }} />}
       {view === "change" && <DmChangeView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
@@ -1429,6 +1429,10 @@ export function filterDeviceManagerDevices(devices, filter = "configured") {
   return devices.filter(d => (d.attributes?.candidate === true) === candidatesOnly);
 }
 
+export function resolveDeviceManagerFilter(groupBy, savedFilter = "configured") {
+  return groupBy === "candidate" ? "all" : savedFilter;
+}
+
 function readStoredJson(key, fallback) {
   try {
     const value = JSON.parse(localStorage.getItem(key));
@@ -1471,6 +1475,18 @@ export function buildOrderedDeviceGroups(devices, groupBy, savedGroupOrder = [],
   });
 }
 
+export function migrateLegacyDeviceOrder(devices, groupBy, legacyOrder) {
+  if (!Array.isArray(legacyOrder) || legacyOrder.length === 0) return {};
+  // Device data arrives asynchronously. null means "migration pending" and
+  // prevents the persistence effect from overwriting the legacy order with an
+  // empty object before the first real /api/devices response arrives.
+  if (devices.length === 0) return null;
+  return Object.fromEntries(groupDevices(devices, groupBy).map(([name, items]) => {
+    const ids = new Set(items.map(item => item.deviceId));
+    return [name, legacyOrder.filter(id => ids.has(id))];
+  }));
+}
+
 function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStorageKey, devices, groupBy, isAlarm) {
   const [savedGroupOrder, setSavedGroupOrder] = useState(() => {
     const saved = readStoredJson(groupStorageKey, []);
@@ -1478,27 +1494,31 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   });
   const [savedDeviceOrders, setSavedDeviceOrders] = useState(() => {
     const saved = readStoredJson(deviceStorageKey, null);
-    if (saved && !Array.isArray(saved) && typeof saved === "object") return saved;
-
-    // One-time compatibility bridge from the former global flat order: keep
-    // each device's relative position, but split it into its semantic group.
     const legacy = readStoredJson(legacyStorageKey, []);
-    if (!Array.isArray(legacy) || legacy.length === 0) return {};
-    return Object.fromEntries(groupDevices(devices, groupBy).map(([name, items]) => {
-      const ids = new Set(items.map(item => item.deviceId));
-      return [name, legacy.filter(id => ids.has(id))];
-    }));
+    if (saved && !Array.isArray(saved) && typeof saved === "object"
+        && (Object.keys(saved).length > 0 || !Array.isArray(legacy) || legacy.length === 0)) {
+      return saved;
+    }
+    return migrateLegacyDeviceOrder(devices, groupBy, legacy);
   });
 
   useEffect(() => {
     localStorage.setItem(groupStorageKey, JSON.stringify(savedGroupOrder));
   }, [groupStorageKey, savedGroupOrder]);
   useEffect(() => {
-    localStorage.setItem(deviceStorageKey, JSON.stringify(savedDeviceOrders));
+    if (savedDeviceOrders !== null) {
+      localStorage.setItem(deviceStorageKey, JSON.stringify(savedDeviceOrders));
+    }
   }, [deviceStorageKey, savedDeviceOrders]);
 
+  useEffect(() => {
+    if (savedDeviceOrders !== null || devices.length === 0) return;
+    const legacy = readStoredJson(legacyStorageKey, []);
+    setSavedDeviceOrders(migrateLegacyDeviceOrder(devices, groupBy, legacy));
+  }, [savedDeviceOrders, devices, groupBy, legacyStorageKey]);
+
   const groups = useMemo(() => buildOrderedDeviceGroups(
-    devices, groupBy, savedGroupOrder, savedDeviceOrders, isAlarm
+    devices, groupBy, savedGroupOrder, savedDeviceOrders || {}, isAlarm
   ), [devices, groupBy, savedGroupOrder, savedDeviceOrders, isAlarm]);
 
   const reorderGroup = useCallback((fromName, toName) => {
@@ -1511,7 +1531,7 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
     const to = items.find(item => item.deviceId === toId);
     if (!from || !to || (isAlarm && (isAlarm(from) || isAlarm(to)))) return;
     setSavedDeviceOrders(current => ({
-      ...current,
+      ...(current || {}),
       [groupName]: reorderIds(items.map(item => item.deviceId), fromId, toId),
     }));
   }, [groups, isAlarm]);

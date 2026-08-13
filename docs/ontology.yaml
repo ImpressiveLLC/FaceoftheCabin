@@ -973,7 +973,7 @@ elements:
 
   - id: device_candidate_lifecycle
     entity_type: owl:DatatypeProperty
-    layer: full_stack
+    layer: fullstack
     primitive: false
     schema_version: "0.1.0"
     migration_status: complete
@@ -981,16 +981,14 @@ elements:
     first_used:
       date: "2026-08-12"
       ref: "DeviceRegistry.registerCandidate(), App.jsx filterDeviceManagerDevices()"
-    data_class: operational
-    data_type: xsd:string
+    data_class: derived
+    data_type: xsd:boolean
     constraint:
-      enum: [CANDIDATE, CONFIGURED]
       description: >
-        CANDIDATE begins when an integration first recognizes a device that
-        has not been configured. Enabling it explicitly transitions the
-        registry status to CONFIGURED (attributes.candidate=false). That
-        transition is sticky across later discovery refreshes and remains
-        CONFIGURED if a person subsequently disables the device.
+        true = a newly discovered device whose configuration has not been
+        saved by a person; false = configuration has been saved. Saving is
+        the transition even when Enabled remains off. false is sticky across
+        later discovery refreshes and subsequent enable/disable changes.
     ui_display_name: "Device Setup Status"
     rendering:
       semantic: "Does this newly discovered device still need a person's review"
@@ -999,11 +997,11 @@ elements:
       compliance: (not shown)
     definition: >
       Candidate is a setup lifecycle, not device health and not a permanent
-      badge. Device Manager's default See view excludes CANDIDATE devices.
+      badge. Device Manager's default See view excludes candidate=true devices.
       A person can explicitly select Not configured to review only candidates,
       or All devices to see both states. Configure candidate opens the existing
-      edit path; saving it enabled clears the marker in DeviceRegistry, after
-      which normal discovery cannot resurrect it.
+      edit path; saving any configuration clears the marker in DeviceRegistry,
+      whether Enabled is on or off, after which discovery cannot resurrect it.
     relationships:
       - target: device_state
         type: complements
@@ -1015,12 +1013,13 @@ elements:
       ui_components: [ui_device_manager_panel]
       elements: [device_state, device_checkin_status]
     notes: >
-      Repeated-discovery field ownership is deliberate. Source-owned type,
-      capabilities, protocol adapter, connection string and discovery
-      attributes refresh on every integration snapshot. Candidate name and
-      location also refresh so a bad first observation can be corrected.
-      After configuration, person-owned name, location and enabled state are
-      sticky; fresh discovery may not overwrite them. The former Zigbee
+      Repeated-discovery field ownership is deliberate. Before configuration,
+      name, location, type and capabilities all refresh so a bad first
+      observation can be corrected. After configuration, those fields plus
+      enabled state are sticky; type/capabilities specifically cannot drift on
+      a degraded discovery snapshot because they control safety behavior.
+      Protocol adapter, connection string and discovery attributes remain
+      source-owned and refreshable. The former Zigbee
       skip-if-descriptor-exists guard was removed, and Home Assistant's final
       status write now uses the registry's merged descriptor rather than
       reapplying raw discovery values. DeviceRegistry is still in-memory, as
