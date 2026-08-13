@@ -37,10 +37,10 @@ public class DeviceController {
         this.displayConfigService = displayConfigService;
     }
 
-    /** List devices accepted into the application's scope. */
+    /** List devices worth showing on monitoring surfaces (everything except deferred/ignored). */
     @GetMapping
     public List<DeviceStatus> listDevices() {
-        return registry.inScope();
+        return registry.visible();
     }
 
     /** Passively discovered devices awaiting an explicit person-authored decision. */

@@ -177,7 +177,7 @@ class DeviceHealthMonitorTest {
     @Test
     void ignoredDeviceIsExcludedFromAutomaticCheckinAndSystemHealthViews() {
         DeviceRegistry registry = new DeviceRegistry(java.util.List.of());
-        int inScopeBeforeDiscovery = registry.inScope().size();
+        int visibleBeforeDiscovery = registry.visible().size();
         registry.registerCandidate(new DeviceDescriptor(
             "cached-device", "Cached", DeviceType.MOTION_SENSOR,
             Set.of(DeviceCapability.PRESENCE), "mqtt", "zigbee2mqtt/cached", false, "cabin"), Map.of());
@@ -188,6 +188,34 @@ class DeviceHealthMonitorTest {
 
         assertFalse(monitor.getCheckinStatuses().containsKey("cached-device"));
         assertFalse(monitor.getCheckinDetails().containsKey("cached-device"));
-        assertEquals(inScopeBeforeDiscovery, monitor.getSystemHealth().get("total"));
+        // IGNORED is excluded from visibility just like it's excluded from
+        // scope -- the total should be unchanged from before this device was
+        // ever discovered, not just "unaffected by being in/out of scope".
+        assertEquals(visibleBeforeDiscovery, monitor.getSystemHealth().get("total"));
+    }
+
+    @Test
+    void undecidedCandidateIsCountedInSystemHealthTotalsButNotInScope() {
+        // Found 2026-08-13, live user report: the health dashboard and My
+        // Places went to zero devices the moment lifecycle review shipped,
+        // because GET /api/devices and getSystemHealth() both switched to
+        // inScope() (Accepted+Assigned only) with no migration for devices
+        // that were already online and reporting -- a device sitting
+        // reviewable as CANDIDATE must still show up on read-only
+        // monitoring surfaces. Command/control (sendCommand, activeFetch)
+        // stays gated separately; this test is about visibility only.
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of());
+        registry.registerCandidate(new DeviceDescriptor(
+            "candidate-online", "Discovered", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.PRESENCE), "mqtt", "zigbee2mqtt/discovered", false, "cabin"), Map.of());
+        registry.update(new DeviceStatus("candidate-online", DeviceType.MOTION_SENSOR, "Discovered",
+            "ONLINE", Instant.now(), Map.of(), "cabin"));
+
+        DeviceHealthMonitor monitor = monitorWith(registry);
+
+        assertFalse(registry.inScope().stream().anyMatch(d -> d.deviceId().equals("candidate-online")),
+            "a never-reviewed candidate is not in scope");
+        assertEquals(1L, monitor.getSystemHealth().get("online"),
+            "but it must still be counted as an online device on the health dashboard");
     }
 }
