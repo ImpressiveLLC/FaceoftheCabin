@@ -1,0 +1,181 @@
+# Frigate NVR configuration
+# https://docs.frigate.video
+#
+# Env var substitution: {VAR} in this file reads from Frigate container environment.
+# CAMERA_PASSWORD must be set in infra/.env (copied from .env.m920q.example).
+#
+# Camera naming, corrected 2026-08-02 (was wrong before this): both real
+# cameras below physically sit next to the front door and cover the
+# driveway area from slightly different angles -- there is no third,
+# separate "front door camera" (the old disabled front_door stanza at
+# .201 was based on a mistaken assumption that one existed and was "not
+# yet purchased"; it never did, front-door coverage was already handled
+# by these two). Renamed to reflect that:
+#   front_door → 192.168.2.200  (Reolink RLC-820A) -- was named "driveway"
+#   driveway   → Blink "Outdoor 4 - DHEE" via blinkbridge -- was named "outdoor_4"
+# Neither name is device-preferential; they're just the two available
+# semantic slots for "covers the front door / driveway area," reassigned
+# to the real two devices instead of a name assuming a non-existent third
+# camera. One of these two will eventually be relocated to cover the rear
+# of the building instead (not yet — user confirmed 2026-08-02, no ETA).
+#
+# RTSP URL format for Reolink:
+#   main stream: rtsp://admin:4417@<IP>:554/h264Preview_01_main
+#   sub  stream: rtsp://admin:4417@<IP>:554/h264Preview_01_sub
+#   Use sub for detect (640x480, low CPU), main for record (4K).
+
+mqtt:
+  host: mosquitto
+  port: 1883
+  topic_prefix: cabin/camera
+  client_id: frigate
+
+# Object tracking + alert labels expanded 2026-08-03 at the user's request
+# (person/car alone -> also vehicles and larger animals, for real overnight
+# security alerting). Confirmed via Frigate's installed source
+# (frigate/config/camera/review.py) that AlertsConfig.labels defaults to
+# DEFAULT_ALERT_OBJECTS = ["person", "car"] specifically -- NOT derived
+# from objects.track -- so both objects.track (what gets detected at all)
+# and review.alerts.labels (what counts as an "alert", the higher-
+# significance review tier) need to be set explicitly, not just the
+# former. No "deer" label exists in the default COCO-based model -- the
+# closest available large-animal labels are bear/dog/cat/cow/horse/sheep;
+# flagged to the user directly, not silently worked around.
+review:
+  alerts:
+    labels:
+      - person
+      - car
+      - bicycle
+      - motorcycle
+      - truck
+      - bus
+      - bear
+      - dog
+      - cat
+
+cameras:
+
+  front_door:
+    enabled: true
+    ffmpeg:
+      inputs:
+        # Sub-stream: low-res, used for motion detection (saves CPU)
+        - path: rtsp://admin:4417@192.168.2.200:554/h264Preview_01_sub
+          roles:
+            - detect
+        # Main stream: 4K, used for recording
+        - path: rtsp://admin:4417@192.168.2.200:554/h264Preview_01_main
+          roles:
+            - record
+    detect:
+      enabled: true
+      width: 640
+      height: 480
+      fps: 5
+    record:
+      enabled: true
+    snapshots:
+      enabled: true
+    objects:
+      track:
+        - person
+        - car
+        - bicycle
+        - motorcycle
+        - truck
+        - bus
+        - bear
+        - dog
+        - cat
+
+  # Blink "Outdoor 4 - DHEE" via blinkbridge -> mediamtx RTSP relay. Never
+  # configured here before 2026-08-02, despite blinkbridge already running
+  # for weeks -- the bridge had a stream to offer but nothing was consuming
+  # it. Not a native RTSP camera: Blink has no local live stream, so this
+  # is a synthetic feed blinkbridge builds from Blink's own cloud motion
+  # clips. It's only "live" when Blink's cloud already detected motion, not
+  # a continuous 24/7 feed like the Reolink camera above -- Frigate's
+  # detection here is a second, finer-grained pass (person/car) on top of
+  # Blink's own coarser motion trigger, not a replacement for it. Only one
+  # stream is available (no separate low-res sub-stream like the Reolink
+  # gets), so it's used for both roles. Real resolution confirmed via
+  # ffprobe against the live stream, not assumed.
+  #
+  # Named "driveway" as of 2026-08-02 (was "outdoor_4") -- see the header
+  # comment above for why. "outdoor_4"/"DHEE" is Blink's own internal
+  # device name, never a meaningful semantic name for this platform.
+  driveway:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://mediamtx:8554/outdoor_4_-_dhee
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+    snapshots:
+      enabled: true
+    objects:
+      track:
+        - person
+        - car
+        - bicycle
+        - motorcycle
+        - truck
+        - bus
+        - bear
+        - dog
+        - cat
+
+detectors:
+  cpu1:
+    type: cpu
+    num_threads: 2
+
+record:
+  enabled: true
+  # Phase 6 camera video viewing, 2026-08-02 -- pre/post capture widened
+  # from Frigate's 5s/5s default per the user's explicit request ("events
+  # minus 15 seconds and post event of one minute"). Continuous (24/7)
+  # recording enabled with a short 5-day retention, deliberately
+  # conservative: front_door's record role uses its 4K main stream (see
+  # the camera comment above), which at realistic 4K bitrates could hit
+  # 80-160+ GB/day once that camera is back online (currently
+  # off-network) -- 826GB free as of this change, confirmed via a df -h
+  # check immediately before this edit. Re-measure real GB/day once
+  # front_door reconnects and extend retention only after confirming
+  # actual usage, not this estimate. driveway (Blink) is motion-gated at
+  # the source (see its own comment above) so continuous.days barely
+  # matters for it -- there's no true 24/7 stream to continuously record
+  # in the first place, only whatever segments Blink's cloud already
+  # triggered.
+  alerts:
+    pre_capture: 15
+    post_capture: 60
+  detections:
+    pre_capture: 15
+    post_capture: 60
+  continuous:
+    days: 5
+
+snapshots:
+  enabled: true
+
+version: 0.17-0
+classification:
+  custom:
+    Person On Foot:
+      enabled: true
+      name: Person On Foot
+      threshold: 0.8
+      object_config:
+        objects:
+          - person
+        classification_type: attribute
