@@ -203,6 +203,10 @@ services:
       # empty by default (CRITICAL events still persist, just no phone push).
       # Real value lives only in infra/.env on this host, never committed.
       CABIN_ALERT_NTFY_TOPIC: ${CABIN_ALERT_NTFY_TOPIC:-}
+      # cabin-discovery's internal container hostname/port -- DiscoveryServiceClient's
+      # own @Value default already matches this, set explicitly here for the
+      # same reason MQTT_URL/KAFKA_BOOTSTRAP are: one obvious place to override.
+      CABIN_DISCOVERY_URL: http://cabin-discovery:8000
       # Template configuration fields (docs/REPLICATION.md §2/§4) --
       # surfaced read-only in the Config panel's Platform/Remote Access
       # cards via DashboardController. This instance's real values.
@@ -244,6 +248,28 @@ services:
     depends_on:
       - postgres
       - kafka
+
+  # ── cabin-discovery: device self-discovery / assisted-onboarding ─────
+  # Stateless lookup service cabin-backend calls (DiscoveryServiceClient) --
+  # no device-registry or database access of its own, no persistence.
+  # Only needs outbound internet (Anthropic API) and inbound from
+  # cabin-backend, so it stays off cabin_default entirely -- it never
+  # talks to mosquitto/postgres/z2m directly.
+  cabin-discovery:
+    build:
+      context: ../discovery-service
+      dockerfile: Dockerfile
+    image: cabin-discovery:${IMAGE_TAG:-latest}
+    container_name: cabin-discovery
+    restart: unless-stopped
+    ports:
+      - "8091:8000"
+    environment:
+      # Optional -- unset keeps discovery in local-catalog-only mode (see
+      # .env.m920q.example). Never logged, never returned in API responses.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    networks:
+      - default
 
   # ── Smrekar Family Hub (nginx, static files) ─────────────────────────
   family-hub:

@@ -15,6 +15,13 @@ camera_password: "{{ vault_camera_password }}"
 # Add `vault_tech_id_api_key` to vault.yml and remove the default here
 # once you actually want a provider to be able to submit findings.
 tech_id_api_key: "{{ vault_tech_id_api_key | default('') }}"
+# Optional — Anthropic API key for cabin-discovery's device self-discovery
+# lookup (web search + summarization). Same "empty is a valid, working
+# state" pattern as tech_id_api_key above: unset just keeps discovery in
+# local-catalog-only mode (whatever the discovering integration already
+# reported), no external calls, no device metadata leaves the host.
+# Add `vault_anthropic_api_key` to vault.yml to enable the real lookup.
+anthropic_api_key: "{{ vault_anthropic_api_key | default('') }}"
 
 # Non-secret config, templated into .env alongside the vaulted values so
 # infra/.env has one generation source instead of being partly-managed.

@@ -1,0 +1,114 @@
+"""The load-bearing contract for this whole service: never present a
+fabricated or uncited claim as trustworthy. Every test that exercises a
+mocked Anthropic response constructs the response shape by hand (no real
+API calls) so these run offline and don't need a real API key."""
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+from app.anthropic_lookup import run_discovery
+from app.models import DiscoverRequest
+
+
+def _text_block(text: str, citations: list | None = None):
+    return SimpleNamespace(type="text", text=text, citations=citations)
+
+
+def _citation(url: str, title: str = "Example", cited_text: str = "some cited text"):
+    return SimpleNamespace(url=url, title=title, cited_text=cited_text)
+
+
+def test_no_api_key_falls_back_to_local_only(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    matches = run_discovery(DiscoverRequest(vendor="SONOFF", model="SNZB-04P"))
+
+    assert len(matches) == 1
+    assert matches[0].confidence == "low"
+    assert matches[0].sources == []
+
+
+def test_no_local_identity_never_calls_the_api(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    with patch("app.anthropic_lookup.anthropic.Anthropic") as mock_client_cls:
+        matches = run_discovery(DiscoverRequest())
+
+        mock_client_cls.assert_not_called()
+        assert matches[0].confidence == "low"
+        assert matches[0].sources == []
+
+
+def test_response_with_real_citations_produces_matches_with_sources(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    fake_response = SimpleNamespace(content=[
+        _text_block(
+            "This is a SONOFF SNZB-04P wireless contact sensor.\n"
+            '```json\n{"confidence": "high", "suggestedType": "CONTACT_SENSOR", '
+            '"suggestedCapabilities": ["TELEMETRY", "ACCESS_CONTROL"]}\n```',
+            citations=[_citation("https://sonoff.tech/product/snzb-04p", "SNZB-04P product page")],
+        )
+    ])
+    with patch("app.anthropic_lookup.anthropic.Anthropic") as mock_client_cls:
+        mock_client_cls.return_value.messages.create.return_value = fake_response
+        matches = run_discovery(DiscoverRequest(vendor="SONOFF", model="SNZB-04P"))
+
+    assert len(matches) == 1
+    match = matches[0]
+    assert match.confidence == "high"
+    assert match.suggestedType == "CONTACT_SENSOR"
+    assert match.suggestedCapabilities == ["TELEMETRY", "ACCESS_CONTROL"]
+    assert len(match.sources) == 1
+    assert match.sources[0].url == "https://sonoff.tech/product/snzb-04p"
+
+
+def test_response_with_no_citations_forces_low_confidence_even_if_claimed_high(monkeypatch):
+    # The core "no hallucinated sources" contract: even if the model's own
+    # trailing JSON claims high confidence, the absence of any real
+    # citation must cap it at low and leave sources empty. Otherwise a
+    # confident-sounding but ungrounded claim could reach the review UI
+    # looking verified when it isn't.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    fake_response = SimpleNamespace(content=[
+        _text_block(
+            "This is probably a generic contact sensor.\n"
+            '```json\n{"confidence": "high", "suggestedType": "CONTACT_SENSOR", '
+            '"suggestedCapabilities": []}\n```',
+            citations=None,
+        )
+    ])
+    with patch("app.anthropic_lookup.anthropic.Anthropic") as mock_client_cls:
+        mock_client_cls.return_value.messages.create.return_value = fake_response
+        matches = run_discovery(DiscoverRequest(vendor="UnknownBrand", model="X1"))
+
+    assert len(matches) == 1
+    assert matches[0].confidence == "low"
+    assert matches[0].sources == []
+
+
+def test_invalid_suggested_type_is_dropped_not_passed_through(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    fake_response = SimpleNamespace(content=[
+        _text_block(
+            "Some device.\n```json\n{"
+            '"confidence": "medium", "suggestedType": "NOT_A_REAL_TYPE", "suggestedCapabilities": ["NOT_REAL"]}'
+            "\n```",
+            citations=[_citation("https://example.com/spec")],
+        )
+    ])
+    with patch("app.anthropic_lookup.anthropic.Anthropic") as mock_client_cls:
+        mock_client_cls.return_value.messages.create.return_value = fake_response
+        matches = run_discovery(DiscoverRequest(vendor="Acme", model="Y2"))
+
+    assert matches[0].suggestedType is None
+    assert matches[0].suggestedCapabilities == []
+
+
+def test_api_exception_falls_back_gracefully(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    with patch("app.anthropic_lookup.anthropic.Anthropic") as mock_client_cls:
+        mock_client_cls.return_value.messages.create.side_effect = RuntimeError("connection reset")
+        matches = run_discovery(DiscoverRequest(vendor="SONOFF", model="SNZB-04P"))
+
+    assert len(matches) == 1
+    assert matches[0].confidence == "low"
+    assert matches[0].sources == []
+    assert "failed" in matches[0].installGuide.content.lower()
