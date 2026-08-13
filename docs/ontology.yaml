@@ -1557,6 +1557,25 @@ elements:
       through Kafka and Postgres, confirmed via direct SQL query and the
       live API response, not just "no exception was thrown."
 
+      UPDATED 2026-08-12 (user report): buildCameraEventsUrl() hardcoded
+      window=24h with no way to change it -- "Load older" could only page
+      further into the SAME 24-hour window (increasing offset), never
+      actually reaching anything older, even though this table itself
+      retains every event indefinitely (the limit was purely in the query,
+      not storage) and EventController's own `window` param already
+      accepted anything. Cameras panel now has a real time-range selector
+      (CAMERA_EVENTS_WINDOWS: 24h/72h/168h/240h, App.jsx), persisted to
+      localStorage (cameraEvents.window), driving both the initial fetch
+      and "Load older". 240h (10 days) is the practical ceiling, not an
+      arbitrary round number: Frigate's own config (infra/frigate.yml's
+      record.detections/alerts.retain.days) retains motion/alert clips for
+      exactly 10 days -- events older than that still exist as bare
+      Postgres rows (still queryable directly via the API's own window
+      param), but the clip a card would try to play is already gone from
+      disk. Frigate's own web UI (not this app) remains the only way to
+      browse anything within that 10-day window that isn't tagged
+      DETECTION_*/MOTION_* by this table's own eventTypePrefix filter.
+
       Two unrelated infrastructure bugs were found and fixed getting this
       working, not specific to this feature but blocking it entirely:
       (1) EventController's @RequestParam args had no explicit name=,

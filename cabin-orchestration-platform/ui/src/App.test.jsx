@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, WORKFLOW_BY_TYPE, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, WORKFLOW_BY_TYPE, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, CameraEventsPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -60,6 +60,96 @@ describe("buildCameraEventsUrl", () => {
   it("targets the given location's apiBase", () => {
     const url = buildCameraEventsUrl("http://home-hub:8080", 0);
     expect(url.startsWith("http://home-hub:8080/api/events?")).toBe(true);
+  });
+
+  // Found 2026-08-12 (user report): window=24h was hardcoded, so "Load
+  // older" could never actually reach anything past 24h no matter how many
+  // times clicked. window is now a real parameter, defaulting to 24h so
+  // existing behavior/tests above are unchanged.
+  it("defaults to a 24h window when none is given", () => {
+    const url = buildCameraEventsUrl("http://cabin-hub:8090", 0);
+    expect(url).toContain("window=24h");
+  });
+
+  it("uses the given window instead of the default", () => {
+    const url = buildCameraEventsUrl("http://cabin-hub:8090", 0, "240h");
+    expect(url).toContain("window=240h");
+  });
+});
+
+describe("cameraEventsWindowLabel", () => {
+  it("has a human-readable label for every offered window value", () => {
+    CAMERA_EVENTS_WINDOWS.forEach(w => {
+      expect(cameraEventsWindowLabel(w.value)).toBe(w.label);
+    });
+  });
+
+  it("falls back to a generic label instead of crashing on an unknown value", () => {
+    expect(cameraEventsWindowLabel("999h")).toBe("the selected range");
+    expect(cameraEventsWindowLabel(undefined)).toBe("the selected range");
+  });
+});
+
+describe("CameraEventsPanel — time range window", () => {
+  afterEach(() => { cleanup(); localStorage.removeItem("cameraEvents.window"); });
+
+  function mockAuth() {
+    return {
+      configured: true, signedIn: true, sessionExpired: false, userEmail: "nate@example.com",
+      signOut: vi.fn(), signIn: vi.fn(), accessToken: "tok",
+      authedFetch: vi.fn().mockResolvedValue({ ok: true, json: async () => [] }),
+    };
+  }
+
+  function renderPanel(auth = mockAuth()) {
+    return render(
+      <AppContext.Provider value={{ locationCfg: { apiBase: "http://cabin-hub:8090" } }}>
+        <CameraEventsPanel auth={auth} />
+      </AppContext.Provider>
+    );
+  }
+
+  it("fetches the default 24h window on first load", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPanel();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toContain("window=24h");
+    expect(await screen.findByText(/No camera activity in last 24 hours/)).toBeTruthy();
+  });
+
+  it("refetches with the newly selected window and updates the empty-state message", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPanel();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText("Camera events time range"), { target: { value: "240h" } });
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map(c => c[0]);
+      expect(urls.some(u => u.includes("window=240h"))).toBe(true);
+    });
+    expect(await screen.findByText(/No camera activity in last 10 days/)).toBeTruthy();
+  });
+
+  it("persists the selected window to localStorage and restores it on next mount", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+
+    renderPanel();
+    fireEvent.change(screen.getByLabelText("Camera events time range"), { target: { value: "72h" } });
+    await waitFor(() => expect(localStorage.getItem("cameraEvents.window")).toBe("72h"));
+    cleanup();
+
+    const fetchMock2 = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock2);
+    renderPanel();
+
+    await waitFor(() => expect(fetchMock2).toHaveBeenCalled());
+    expect(fetchMock2.mock.calls[0][0]).toContain("window=72h");
   });
 });
 

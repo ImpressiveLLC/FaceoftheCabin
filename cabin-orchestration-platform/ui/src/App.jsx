@@ -378,16 +378,38 @@ export const isCameraEvent = (e) => /^(DETECTION_|MOTION_)/.test(e?.eventType ||
 // Page size for both the initial load and each "Load older" click.
 const CAMERA_EVENTS_PAGE_SIZE = 30;
 
+// Found 2026-08-12 (user report): window=24h was hardcoded here, so "Load
+// older" could only page further into the SAME 24-hour window (increasing
+// offset) -- it could never actually reach anything older than 24h, no
+// matter how many times clicked, even though Postgres (cabin_event) keeps
+// every event indefinitely and EventController's own `window` query param
+// already accepted anything. 240h (10 days) is the practical ceiling, not
+// an arbitrary round number: Frigate's own config retains motion/alert
+// clips for exactly 10 days (infra/frigate.yml's record.detections/
+// alerts.retain.days) -- events older than that still exist as bare
+// Postgres rows, but the clip a card would try to play is already gone.
+export const CAMERA_EVENTS_WINDOWS = [
+  { value: "24h", label: "Last 24 hours" },
+  { value: "72h", label: "Last 3 days" },
+  { value: "168h", label: "Last 7 days" },
+  { value: "240h", label: "Last 10 days" },
+];
+
+export function cameraEventsWindowLabel(window) {
+  return CAMERA_EVENTS_WINDOWS.find(w => w.value === window)?.label || "the selected range";
+}
+
 // Pure URL-builder, no fetch inside -- extracted specifically so the
 // offset/eventTypePrefix query-param wiring is directly unit-testable
 // without mocking fetch. See src/App.test.jsx.
-export function buildCameraEventsUrl(apiBase, offset) {
-  return `${apiBase}/api/events?limit=${CAMERA_EVENTS_PAGE_SIZE}&offset=${offset}&window=24h&eventTypePrefix=DETECTION_,MOTION_`;
+export function buildCameraEventsUrl(apiBase, offset, window = "24h") {
+  return `${apiBase}/api/events?limit=${CAMERA_EVENTS_PAGE_SIZE}&offset=${offset}&window=${window}&eventTypePrefix=DETECTION_,MOTION_`;
 }
 
-function CameraEventsPanel({ auth }) {
+export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's time-range window test
   const { locationCfg } = useApp();
   const apiBase = locationCfg?.apiBase || LOCATIONS.cabin.apiBase;
+  const [window_, setWindow] = useState(() => localStorage.getItem("cameraEvents.window") || "24h");
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -419,7 +441,7 @@ function CameraEventsPanel({ auth }) {
   // events to begin with).
   const refresh = useCallback(() => {
     setLoading(true);
-    fetch(buildCameraEventsUrl(apiBase, 0))
+    fetch(buildCameraEventsUrl(apiBase, 0, window_))
       .then(r => r.json())
       .then(list => {
         setEvents(list);
@@ -427,7 +449,9 @@ function CameraEventsPanel({ auth }) {
       })
       .catch(() => { setEvents([]); setHasMore(false); })
       .finally(() => setLoading(false));
-  }, [apiBase]);
+  }, [apiBase, window_]);
+
+  useEffect(() => localStorage.setItem("cameraEvents.window", window_), [window_]);
 
   // "Load older" -- pages back further than the initial 30 instead of the
   // old hard cap. Appends rather than replacing (refresh() above still
@@ -435,7 +459,7 @@ function CameraEventsPanel({ auth }) {
   // for the initial load and the periodic poll).
   const loadMore = useCallback(() => {
     setLoadingMore(true);
-    fetch(buildCameraEventsUrl(apiBase, events.length))
+    fetch(buildCameraEventsUrl(apiBase, events.length, window_))
       .then(r => r.json())
       .then(list => {
         setEvents(prev => [...prev, ...list]);
@@ -443,7 +467,7 @@ function CameraEventsPanel({ auth }) {
       })
       .catch(() => setHasMore(false))
       .finally(() => setLoadingMore(false));
-  }, [apiBase, events.length]);
+  }, [apiBase, events.length, window_]);
 
   // Real, current camera names from Frigate's own config — NOT derived
   // from event history. That was the original approach and broke the
@@ -512,6 +536,11 @@ function CameraEventsPanel({ auth }) {
       <div className="panel-header-bar">
         <h2>Camera Events</h2>
         <div className="toolbar-right">
+          <label className="dm-toolbar-select">Show
+            <select value={window_} onChange={e => setWindow(e.target.value)} aria-label="Camera events time range">
+              {CAMERA_EVENTS_WINDOWS.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
+            </select>
+          </label>
           {auth.userEmail && <span className="config-desc">{auth.userEmail}</span>}
           <button className="btn-secondary" onClick={auth.signOut}>Sign out</button>
         </div>
@@ -540,7 +569,7 @@ function CameraEventsPanel({ auth }) {
       )}
 
       {loading && events.length === 0 && <p className="config-desc">Loading…</p>}
-      {!loading && events.length === 0 && <p className="config-desc">No camera activity in the last 24 hours.</p>}
+      {!loading && events.length === 0 && <p className="config-desc">No camera activity in {cameraEventsWindowLabel(window_).toLowerCase()}.</p>}
       <div className="camera-events-list">
         {events.map(e => {
           const frigateEventId = e.payload?.frigateEventId;
