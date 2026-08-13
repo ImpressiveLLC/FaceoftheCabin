@@ -1,0 +1,71 @@
+name: Deploy to host
+
+# Self-hosted runner, same reasoning as deploy-family-hub.yml (Tailscale-only
+# target behind CGNAT) -- see that file's header comment for the full
+# rationale. This workflow follows its own explicitly-offered template.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cabin-orchestration-platform/discovery-service/**"
+      - "cabin-orchestration-platform/infra/docker-compose.m920q.yml"
+      - ".github/workflows/deploy-cabin-discovery.yml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, cabin-m920q]
+    steps:
+      - name: Pull latest
+        run: |
+          cd "$DEPLOY_PATH"
+          git fetch origin main
+          git reset --hard origin/main
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+
+      - name: Validate cabin-discovery (pytest)
+        run: |
+          cd "$DEPLOY_PATH/cabin-orchestration-platform/discovery-service"
+          QA_TAG="cabin-discovery-qa:$(git -C "$DEPLOY_PATH" rev-parse --short HEAD)"
+          docker build -f test/Dockerfile -t "$QA_TAG" .
+
+          # Same "results belong on the Summary page, not just the raw log"
+          # pattern as deploy-family-hub.yml's QA steps and
+          # deploy-cabin-backend.yml's mvn test step.
+          set +e
+          OUTPUT=$(docker run --rm "$QA_TAG" 2>&1)
+          TEST_EXIT=$?
+          set -e
+          echo "$OUTPUT"
+
+          {
+            echo "### cabin-discovery tests (pytest)"
+            echo
+            if [ "$TEST_EXIT" -eq 0 ]; then
+              echo "**Result: ✅ passed**"
+            else
+              echo "**Result: ❌ failed (exit $TEST_EXIT) — deploy stopped here**"
+            fi
+            SUMMARY_LINE=$(echo "$OUTPUT" | grep -E '^=+ .*(passed|failed).* =+$' || true)
+            if [ -n "$SUMMARY_LINE" ]; then
+              echo
+              echo "$SUMMARY_LINE"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit $TEST_EXIT
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+
+      - name: Rebuild and restart cabin-discovery
+        run: |
+          cd "$DEPLOY_PATH/cabin-orchestration-platform/infra"
+          docker compose -f docker-compose.yml -f docker-compose.m920q.yml build cabin-discovery
+          docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-discovery
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+
+      - name: Prune old images
+        run: docker image prune -f
