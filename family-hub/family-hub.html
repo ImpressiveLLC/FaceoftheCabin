@@ -175,6 +175,7 @@
        LEFT: CALENDAR
     ═══════════════════════════════════════════ */
     #cal-card {
+      min-height:0; /* see #center-area's comment above */
       animation: slideLeft .8s .3s ease both;
     }
     @keyframes slideLeft {
@@ -252,6 +253,14 @@
     ═══════════════════════════════════════════ */
     #center-area {
       grid-column:2; grid-row:2;
+      /* min-height:0 overrides the grid item's automatic min-content size
+         (otherwise a 1fr row never shrinks below its tallest sibling's
+         natural content height, defeating the sibling glass-cards'
+         own overflow-y:auto and forcing the whole #app grid to overflow
+         and scroll on shorter, non-fullscreen desktop windows instead of
+         each card scrolling internally as intended — see the .glass-card
+         comment above). Same fix applied to #left-col/#chores-card below. */
+      min-height:0;
       display:flex; flex-direction:column;
       align-items:center; justify-content:flex-end;
       padding:0 16px 6px; gap:10px;
@@ -270,6 +279,23 @@
     ═══════════════════════════════════════════ */
     #chores-card {
       grid-column:3; grid-row:2;
+      /* min-height:0 alone isn't enough here: .glass-card's shared
+         align-self:start (elsewhere a deliberate "don't stretch to fill,
+         size to content" choice, which we want to KEEP — it's what keeps
+         a short chores list compact instead of always padding out to the
+         full row height, which would itself push the Family Notepad's
+         below-#chores-card anchor down and eat into ITS available room on
+         every day, not just long-list days) doesn't cap this card's
+         height at all — a long list still grows past the viewport. Grid
+         (unlike flex) resolves % against the grid area's own definite
+         size regardless of align-self, so max-height:100% caps it to
+         the row's real available space (only kicking in once content
+         actually needs it) while min-height:0 lets it shrink below that
+         content's natural size so the card's own overflow-y:auto (from
+         .glass-card) can take over instead of the card — or the whole
+         #app grid — overflowing past the viewport. */
+      max-height:100%;
+      min-height:0;
       animation: slideRight .8s .3s ease both;
     }
     @keyframes slideRight {
@@ -851,12 +877,32 @@
     ═══════════════════════════════════════════ */
     :root {
       --np-w-expanded: 300px;
-      --np-w-collapsed: 56px;
+      /* 2026-08-12: widened from a 56px label-only tab to fit a short
+         message preview (see .np-handle-preview below) — a new note could
+         previously only be discovered by opening the panel; the pulsing
+         dot alone gave no idea what it said. */
+      --np-w-collapsed: 132px;
     }
     #notepad-panel {
       position:fixed; top:var(--np-top, 150px); right:0; z-index:9995;
       display:flex; flex-direction:row; align-items:stretch;
       width: var(--np-w-collapsed);
+      /* 2026-08-12 (user report, confirmed live): on a non-fullscreen
+         desktop window, computeNotepadTop() can legitimately compute
+         --np-max-height down to 0 -- a real chores list can render close
+         enough to #dashboard-fab that there is genuinely no gap left
+         between them at some window heights (confirmed by reproducing
+         this on the already-committed, unmodified file, independent of
+         any other change here). CSS resolves a min/max-height conflict in
+         min-height's favor, so this floor guarantees at least a thin,
+         clickable sliver of the handle always stays visible/discoverable
+         -- without touching computeNotepadTop()'s own hard "never overlap
+         #chores-card / the FABs" constraints (see that function's own,
+         incident-documented reasoning) or its normal, much larger sizing
+         in the common case. The Expand button inside the opened panel
+         (see #notepad-panel.expanded below) is the real fix once the user
+         can click their way in from this sliver. */
+      min-height:34px;
       max-height:var(--np-max-height, min(70vh, 620px));
       background: var(--glass);
       border:1px solid var(--glass-border);
@@ -906,12 +952,6 @@
     /* while open, the full list already shows this — avoid redundant text
        next to the docked handle, keep just the label as a collapse target */
     #notepad-panel.open .np-handle-preview { display:none; }
-    /* Preview text (a few words of the latest note) still doesn't fit at
-       56px even vertically -- unlike the short fixed "Notepad" label,
-       preview content is arbitrary-length and would need per-character
-       vertical stacking to be legible, not attempted here. Opening the
-       panel shows the full note either way. */
-    .np-handle-preview { display:none; }
 
     #notepad-main {
       flex:1 1 auto; min-width:0; overflow:hidden;
@@ -930,6 +970,34 @@
       font-size:18px; padding:2px 6px; transition:color .2s; line-height:1;
     }
     .np-close:hover { color:var(--gold); }
+    .np-head-actions { display:flex; align-items:center; gap:2px; flex-shrink:0; }
+    .np-expand {
+      background:none; border:none; color:var(--cream-dim); cursor:pointer;
+      font-size:13px; padding:2px 6px; transition:color .2s; line-height:1;
+    }
+    .np-expand:hover { color:var(--gold); }
+
+    /* 2026-08-12 (user report): on a non-fullscreen desktop window, the
+       docked panel's own height is deliberately capped to whatever room is
+       actually free between #chores-card's bottom edge and the FABs
+       (see computeNotepadTop()'s "HARD CONSTRAINT" comments) — on a short
+       window that gap can be genuinely small, and there is no safe way to
+       force a taller minimum there without violating one of those two
+       never-overlap constraints. Rather than touch that geometry, give the
+       user a manual escape hatch: pop the panel out to a centered,
+       viewport-relative modal with generous, constraint-free room, then
+       let them collapse it straight back to the normal docked position/
+       size with the same button. */
+    #notepad-panel.open.expanded {
+      top:50%; right:auto; left:50%;
+      transform:translate(-50%, -50%);
+      width:min(94vw, 560px);
+      max-height:min(86vh, 720px);
+      border-radius:var(--radius);
+      border-right:1px solid var(--glass-border);
+    }
+    #notepad-panel.expanded #notepad-handle { display:none; }
+    #notepad-panel.expanded #notepad-main-inner { width:100%; }
     .np-list {
       flex:1 1 auto; overflow-y:auto; min-height:0;
       display:flex; flex-direction:column; gap:2px;
@@ -1067,7 +1135,7 @@
     #brand-sub { font-size:9px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:var(--gold); opacity:.8; margin-top:4px; }
 
     /* ── Left column: cal + custody stacked ── */
-    #left-col { grid-column:1; grid-row:2; display:flex; flex-direction:column; gap:12px; align-items:stretch; }
+    #left-col { grid-column:1; grid-row:2; min-height:0; display:flex; flex-direction:column; gap:12px; align-items:stretch; }
     #custody-card.home .custody-status-label { color:var(--teal); }
     #custody-card.away .custody-status-label { color:var(--cream-dim); }
     #custody-card .card-label-icon.home-icon { background:rgba(75,200,200,.12); }
@@ -4120,7 +4188,40 @@ function applyNotepadOpenState() {
   if (main) main.inert = !notepadState.open; // no focus/interaction while slid in
   if (main) main.setAttribute('aria-hidden', String(!notepadState.open));
   if (handle) handle.setAttribute('aria-expanded', String(!!notepadState.open));
+  // Sliding in (closing) always resets the pop-out too — "collapse back to
+  // normal state" should be unconditional, not something that can be left
+  // stranded expanded-but-hidden and reappear that way next time it opens.
+  if (!notepadState.open) setNotepadExpanded(false);
   renderNotepadHandle(loadNotes()[0]);
+}
+
+// Manual pop-out for the docked panel's "sized too short to fully render"
+// case (2026-08-12 user report): computeNotepadTop() deliberately shrinks
+// the docked panel to whatever room is actually free between #chores-card
+// and the FABs (both hard, never-overlap constraints — see that function's
+// own comments), which can be genuinely little room on a shorter,
+// non-fullscreen desktop window. Rather than loosen either constraint,
+// this gives the user a manual centered, viewport-relative pop-out with no
+// such squeeze, and an explicit way back to the normal docked size.
+// Deliberately NOT persisted in notepadState/localStorage — a momentary
+// "give me more room right now" action, not a standing preference; every
+// fresh load starts docked-normal.
+function setNotepadExpanded(expanded) {
+  const panel = document.getElementById('notepad-panel');
+  const btn = document.getElementById('notepad-expand-btn');
+  if (!panel) return;
+  panel.classList.toggle('expanded', !!expanded);
+  if (btn) {
+    btn.textContent = expanded ? '⤡' : '⤢';
+    btn.setAttribute('aria-label', expanded ? 'Collapse notepad' : 'Expand notepad');
+    btn.title = expanded ? 'Collapse' : 'Expand';
+  }
+}
+function toggleNotepadExpanded() {
+  const panel = document.getElementById('notepad-panel');
+  const expanding = !(panel && panel.classList.contains('expanded'));
+  if (expanding && !notepadState.open) toggleNotepad(true); // expanding implies opening
+  setNotepadExpanded(expanding);
 }
 
 function toggleNotepad(force) {
@@ -4517,7 +4618,10 @@ window.addEventListener('load', () => {
    <div id="notepad-main-inner">
     <div id="notepad-head">
       <div class="np-title">📝 Notepad</div>
-      <button class="np-close" onclick="toggleNotepad(false)" aria-label="Slide in">›</button>
+      <div class="np-head-actions">
+        <button class="np-expand" id="notepad-expand-btn" onclick="toggleNotepadExpanded()" aria-label="Expand notepad" title="Expand">⤢</button>
+        <button class="np-close" onclick="toggleNotepad(false)" aria-label="Slide in">›</button>
+      </div>
     </div>
     <div id="notepad-list" class="np-list"></div>
     <div id="notepad-compose">

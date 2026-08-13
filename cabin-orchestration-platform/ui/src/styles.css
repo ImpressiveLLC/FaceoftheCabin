@@ -754,13 +754,32 @@ body {
 .dm-advanced-link:hover { color: #8b949e; }
 
 /* ─── Device Manager layout ─────────────────────────────────────────────── */
+/* Found 2026-08-12 (user report): .dm-list (the actual device browsing
+   area -- groups/cards) was the FIRST grid child in DOM order, so it got
+   the FIRST column-width value here. That value was a hardcoded 320px --
+   meaning the browsing area was capped at 320px wide unconditionally,
+   on every viewport, while .dm-detail (a sidebar that's empty most of the
+   time -- only rendered when a device is selected) silently got ALL the
+   flexible remaining space. The 2026-08-11 card-widening fix (clamp(),
+   flex-wrap) could never have had any visible effect: the outer container
+   itself never had more than 320px to give those cards regardless of
+   window width. Swapped so the browsing area is the flexible column and
+   only reserves a real 320px for the detail sidebar when one is actually
+   on screen (:has()), instead of reserving dead space by default. */
 .dm-layout {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 1fr;
   gap: 16px;
   min-height: 400px;
 }
-@media (max-width: 900px) { .dm-layout { grid-template-columns: 1fr; } }
+/* 1fr above is already the base/single-column default -- this only adds
+   a real, fixed detail sidebar on wide-enough screens, and only while
+   .dm-detail actually exists in the DOM (a device is selected). Matches
+   .dm-list's own >900px breakpoint below for the same "wide enough for a
+   two-pane layout" judgment call. */
+@media (min-width: 901px) {
+  .dm-layout:has(.dm-detail) { grid-template-columns: minmax(0, 1fr) 320px; }
+}
 
 /* Found 2026-08-11 (user report, with screenshot): overflow-y:auto +
    max-height here trapped the whole device list/groups area inside a
@@ -789,6 +808,15 @@ body {
 .dm-row-info { flex: 1; min-width: 0; }
 .dm-row-name { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dm-row-meta { display: block; font-size: 11px; color: #6e7681; }
+/* Found 2026-08-12 (user report): neither badge had flex-shrink:0 (unlike
+   .dm-row-icon, which correctly does), so in a tight row they compressed
+   under flexbox's default shrink behavior instead of holding their own
+   size -- visually spilling onto/overlapping .dm-row-name. Scoped to this
+   row specifically rather than changing .candidate-badge/.state-badge's
+   own base rules, which are reused in other layout contexts (device
+   detail panel, KPI tiles) that already work fine. */
+.dm-device-row .candidate-badge,
+.dm-device-row .state-badge { flex-shrink: 0; white-space: nowrap; }
 
 /* ─── Device detail pane ─────────────────────────────────────────────────── */
 .dm-detail {
