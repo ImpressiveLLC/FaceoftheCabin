@@ -29,18 +29,34 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(HomeAssistantAdapter.class);
 
-    // Cabin HA instance (default: runs on cabin-hub via Tailscale or localhost in dev)
-    @Value("${cabin.homeassistant.url:http://localhost:8123}")
+    // Found 2026-08-12 (user report: Kidde CO alarm and other HA-only
+    // devices never appearing in the UI, despite PR #1 explicitly adding
+    // Kidde support): these @Value property paths never matched what's
+    // actually deployed. docker-compose.m920q.yml sets HA_URL/HA_TOKEN
+    // (cabin) and HOME_HA_URL/HOME_HA_TOKEN (home) -- both directly, not
+    // nested under a "cabin.*" prefix. The old paths here
+    // (cabin.homeassistant.token / cabin.locations.home.homeassistant.token)
+    // resolved to Spring env vars CABIN_HOMEASSISTANT_TOKEN / CABIN_
+    // LOCATIONS_HOME_HOMEASSISTANT_TOKEN, which were never set anywhere,
+    // so cabinHaToken/homeHaToken were always empty strings. discover()'s
+    // blank-token check (below) returns List.of() silently -- no
+    // exception, no log line, unlike fetchState()'s equivalent check a
+    // few lines down which does log a warning -- so this was invisible in
+    // normal operation: the scheduled discovery task ran every 60s,
+    // forever, and never found anything, with nothing in the logs to
+    // suggest why. HomeAssistantDiscoveryService/HomeAssistantAdapter had
+    // never actually worked on this deployment, for either location,
+    // since the day they were written.
+    @Value("${HA_URL:http://localhost:8123}")
     private String cabinHaUrl;
 
-    @Value("${cabin.homeassistant.token:}")
+    @Value("${HA_TOKEN:}")
     private String cabinHaToken;
 
-    // Home HA instance (runs on home-hub via Tailscale)
-    @Value("${cabin.locations.home.homeassistant.url:http://home-hub:8123}")
+    @Value("${HOME_HA_URL:http://home-hub:8123}")
     private String homeHaUrl;
 
-    @Value("${cabin.locations.home.homeassistant.token:}")
+    @Value("${HOME_HA_TOKEN:}")
     private String homeHaToken;
 
     private final RestTemplate rest = new RestTemplate();
@@ -56,11 +72,27 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
     public List<DiscoveredEntity> discover(String location) {
         String token = "home".equals(location) ? homeHaToken : cabinHaToken;
         String url = "home".equals(location) ? homeHaUrl : cabinHaUrl;
-        if (token.isBlank()) return List.of();
+        // Found 2026-08-12: this silently returning empty with no log line
+        // is exactly how a real property-binding bug (see the token fields'
+        // own comment) went undetected -- the scheduled discovery task ran
+        // every 60s forever and found nothing, with nothing anywhere to
+        // suggest why. Log once per call now so a misconfigured/missing
+        // token is visible instead of indistinguishable from "HA legitimately
+        // has nothing new to discover."
+        if (token.isBlank()) {
+            // WARN, not debug: a missing token is a persistent configuration
+            // problem, not a transient blip (that's the catch block below) --
+            // it deserves to be visible at default log levels.
+            log.warn("HA discovery skipped for '{}' — no token configured", location);
+            return List.of();
+        }
         try {
             ResponseEntity<List> response = rest.exchange(url + "/api/states", HttpMethod.GET,
                 new HttpEntity<>(bearerHeaders(token)), List.class);
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) return List.of();
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                log.warn("HA discovery for '{}' returned {}", location, response.getStatusCode());
+                return List.of();
+            }
             List<DiscoveredEntity> found = new ArrayList<>();
             for (Object raw : response.getBody()) {
                 if (!(raw instanceof Map<?, ?> row)) continue;
