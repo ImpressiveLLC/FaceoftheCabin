@@ -75,9 +75,7 @@ public class DeviceHealthMonitor {
     @Scheduled(fixedDelay = 60_000)
     public void checkHealth() {
         Instant now = Instant.now();
-        for (DeviceStatus status : registry.all().stream()
-            .filter(device -> !registry.lifecycleState(device.deviceId()).isPreviouslyExposed())
-            .toList()) {
+        for (DeviceStatus status : registry.visible()) {
             String id = status.deviceId();
             Optional<DeviceDescriptor> descriptor = registry.descriptor(id);
 
@@ -200,15 +198,15 @@ public class DeviceHealthMonitor {
 
     /** Returns a structured health summary for GET /api/system/health. */
     public Map<String, Object> getSystemHealth() {
-        List<DeviceStatus> all = registry.inScope();
-        Set<String> inScopeIds = all.stream().map(DeviceStatus::deviceId).collect(java.util.stream.Collectors.toSet());
+        List<DeviceStatus> all = registry.visible();
+        Set<String> visibleIds = all.stream().map(DeviceStatus::deviceId).collect(java.util.stream.Collectors.toSet());
         long online  = all.stream().filter(d -> "ONLINE".equals(d.state())).count();
         long offline = all.stream().filter(d -> "OFFLINE".equals(d.state())).count();
         long alarm   = all.stream().filter(d -> "ALARM".equals(d.state())).count();
         long unknown = all.stream().filter(d -> "UNKNOWN".equals(d.state())).count();
 
         List<Map<String, Object>> staleDevices = staleSince.entrySet().stream()
-            .filter(e -> inScopeIds.contains(e.getKey()))
+            .filter(e -> visibleIds.contains(e.getKey()))
             .map(e -> Map.<String, Object>of(
                 "deviceId", e.getKey(),
                 "staleSince", e.getValue().toString(),
@@ -220,7 +218,7 @@ public class DeviceHealthMonitor {
         Map<String, Long> checkinCounts = new LinkedHashMap<>();
         for (CheckinStatus s : CheckinStatus.values()) {
             checkinCounts.put(s.name(), checkinStatuses.entrySet().stream()
-                .filter(entry -> inScopeIds.contains(entry.getKey()))
+                .filter(entry -> visibleIds.contains(entry.getKey()))
                 .filter(entry -> entry.getValue() == s).count());
         }
 
@@ -250,9 +248,7 @@ public class DeviceHealthMonitor {
     public Map<String, Map<String, Object>> getCheckinDetails() {
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
         Instant now = Instant.now();
-        for (DeviceStatus status : registry.all().stream()
-            .filter(device -> !registry.lifecycleState(device.deviceId()).isPreviouslyExposed())
-            .toList()) {
+        for (DeviceStatus status : registry.visible()) {
             Duration expected = staleThresholdFor(status.deviceId(), status);
             CheckinStatus checkin = checkinStatuses.getOrDefault(status.deviceId(),
                 registry.descriptor(status.deviceId()).filter(DeviceDescriptor::enabled).isPresent()

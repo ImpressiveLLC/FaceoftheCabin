@@ -392,6 +392,25 @@ public class DeviceRegistry {
             .toList();
     }
 
+    /**
+     * Devices worth showing on read-only monitoring/dashboard surfaces (the
+     * main device list, health/checkin counts, My Places) -- everything
+     * except what a person explicitly deferred or ignored. A device sitting
+     * in CANDIDATE can still be online and reporting real telemetry; hiding
+     * it from monitoring just because nobody has reviewed it yet made every
+     * already-working device invisible the moment lifecycle review shipped,
+     * with no migration path (found 2026-08-13, live user report: health
+     * dashboard and My Places went to zero devices even though the real
+     * hardware was online). Command dispatch and active polling stay gated
+     * by lifecycleState(...).allowsActiveUse() separately -- that's a
+     * control decision, not a visibility one, and is deliberately unchanged.
+     */
+    public List<DeviceStatus> visible() {
+        return statuses.values().stream()
+            .filter(status -> !lifecycleState(status.deviceId()).isPreviouslyExposed())
+            .toList();
+    }
+
     public List<DeviceStatus> candidates() {
         return statuses.values().stream()
             .filter(status -> lifecycleState(status.deviceId()) == DeviceLifecycleState.CANDIDATE)
