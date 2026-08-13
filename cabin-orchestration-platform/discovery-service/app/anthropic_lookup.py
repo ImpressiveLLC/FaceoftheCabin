@@ -64,7 +64,7 @@ Search the web for the specific product. Then respond with:
    plainly -- do not invent generic instructions.
 3. End your response with exactly one fenced ```json block, no other text
    inside it, in this exact shape:
-{{"confidence": "high"|"medium"|"low", "suggestedType": one of {VALID_DEVICE_TYPES} or null, "suggestedCapabilities": a subset of {VALID_CAPABILITIES}}}
+{{"confidence": "high"|"medium"|"low", "suggestedName": a short human-readable product name (e.g. "SONOFF SNZB-04P Contact Sensor") or null, "suggestedType": one of {VALID_DEVICE_TYPES} or null, "suggestedCapabilities": a subset of {VALID_CAPABILITIES}}}
 
 Rules:
 - Only claim "high" confidence if you found a clear, specific match for
@@ -163,6 +163,9 @@ def _parse_response(response, request: DiscoverRequest) -> list[Match]:
     if suggested_type not in VALID_DEVICE_TYPES:
         suggested_type = None
     suggested_caps = [c for c in (meta.get("suggestedCapabilities") if meta else []) or [] if c in VALID_CAPABILITIES]
+    suggested_name = (meta.get("suggestedName") if meta else None) or None
+    if suggested_name is not None and not isinstance(suggested_name, str):
+        suggested_name = None
 
     install_guide = InstallGuide(
         mode="summary" if sources else "linkonly",
@@ -172,6 +175,7 @@ def _parse_response(response, request: DiscoverRequest) -> list[Match]:
     return [Match(
         summary=prose[:600] or local_identity_summary(request),
         confidence=confidence,
+        suggestedName=suggested_name or (local_identity_summary(request) if has_local_identity(request) else None),
         suggestedType=suggested_type,
         suggestedCapabilities=suggested_caps,
         installGuide=install_guide,
@@ -193,6 +197,7 @@ def _low_confidence_fallback(request: DiscoverRequest, reason: str) -> Match:
     return Match(
         summary=local_identity_summary(request),
         confidence="low",
+        suggestedName=local_identity_summary(request) if has_local_identity(request) else None,
         suggestedType=None,
         suggestedCapabilities=[],
         installGuide=InstallGuide(mode="linkonly", content=reason),

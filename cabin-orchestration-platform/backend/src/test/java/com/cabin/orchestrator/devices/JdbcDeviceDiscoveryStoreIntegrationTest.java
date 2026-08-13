@@ -37,7 +37,7 @@ class JdbcDeviceDiscoveryStoreIntegrationTest {
             "https://example.com/spec-sheet", "Example Vendor spec sheet",
             "SNZB-04P is a wireless contact sensor...", Instant.now());
         DeviceDiscoveryResult.Match match = new DeviceDiscoveryResult.Match(
-            "SONOFF SNZB-04P — wireless door/window contact sensor", "high",
+            "SONOFF SNZB-04P — wireless door/window contact sensor", "high", "Front door contact",
             DeviceType.CONTACT_SENSOR, Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ACCESS_CONTROL),
             new DeviceDiscoveryResult.InstallGuide("summary", "Pair within 30s of powering on."),
             List.of(source));

@@ -21,6 +21,7 @@ public record DeviceDiscoveryResult(
     public record Match(
         String summary,
         String confidence, // "high" | "medium" | "low"
+        String suggestedName,
         DeviceType suggestedType,
         Set<DeviceCapability> suggestedCapabilities,
         InstallGuide installGuide,

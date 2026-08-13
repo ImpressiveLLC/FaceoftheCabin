@@ -37,6 +37,7 @@ class InstallGuide(BaseModel):
 class Match(BaseModel):
     summary: str
     confidence: Literal["high", "medium", "low"]
+    suggestedName: Optional[str] = None
     suggestedType: Optional[str] = None
     suggestedCapabilities: list[str] = Field(default_factory=list)
     installGuide: InstallGuide

@@ -27,7 +27,7 @@ import {
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
-  Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send
+  Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search
 } from "lucide-react";
 import "./styles.css";
 
@@ -1336,6 +1336,10 @@ function DeviceManagerPanel() {
   const [candidateDevices, setCandidateDevices] = useState([]);
   const [previouslyExposed, setPreviouslyExposed] = useState([]);
   const [reviewingPrevious, setReviewingPrevious] = useState(false);
+  // { device, mode: "new"|"replace" } while the self-discovery overlay is
+  // open, null otherwise. Held here (not in DmSeeView/DmChangeView) so the
+  // overlay renders once, above whichever L2 view is active.
+  const [discoveryTarget, setDiscoveryTarget] = useState(null);
 
   useEffect(() => localStorage.setItem("devices.groupBy", groupBy), [groupBy]);
   useEffect(() => localStorage.setItem("devices.groupFlow", groupFlow), [groupFlow]);
@@ -1474,10 +1478,20 @@ function DeviceManagerPanel() {
         reorderMode={reorderMode} groupBy={groupBy} groupFlow={groupFlow}
         deviceFilter={effectiveDeviceFilter}
         onLifecycleAction={applyLifecycleAction}
+        onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }} />}
-      {view === "change" && <DmChangeView devices={locDevices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)))} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
+      {view === "change" && <DmChangeView devices={locDevices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)))} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
+        onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
       {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
+      {discoveryTarget && (
+        <DeviceDiscoveryOverlay
+          device={discoveryTarget.device}
+          mode={discoveryTarget.mode}
+          onClose={() => setDiscoveryTarget(null)}
+          onApplied={() => { refreshManagerDevices(); setDiscoveryTarget(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -1652,7 +1666,7 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   return { groups, reorderGroup, reorderDevice };
 }
 
-function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction }) {
+function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery }) {
   const { activeLocation } = useApp();
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
@@ -1778,7 +1792,7 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
         <div className="dm-detail">
           <DmDeviceDetail device={sel} checkinStatus={checkinDetails[sel.deviceId]?.status || checkinStatuses[sel.deviceId]}
             checkinDetail={checkinDetails[sel.deviceId]} onConfigure={() => onConfigure(sel.deviceId)}
-            onLifecycleAction={onLifecycleAction} />
+            onLifecycleAction={onLifecycleAction} onOpenDiscovery={onOpenDiscovery} />
         </div>
       )}
     </div>
@@ -1786,7 +1800,7 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
 }
 
 // ── L2/L3: Change ──
-function DmChangeView({ devices, selected, onSelect, onRefresh }) {
+function DmChangeView({ devices, selected, onSelect, onRefresh, onOpenDiscovery }) {
   const sel = selected ? devices.find(d => d.deviceId === selected) : null;
   return (
     <div className="dm-layout">
@@ -1796,7 +1810,7 @@ function DmChangeView({ devices, selected, onSelect, onRefresh }) {
       </div>
       {sel && (
         <div className="dm-detail">
-          <DmEditForm key={sel.deviceId} device={sel} onSaved={onRefresh} />
+          <DmEditForm key={sel.deviceId} device={sel} onSaved={onRefresh} onOpenDiscovery={onOpenDiscovery} />
         </div>
       )}
     </div>
@@ -2099,7 +2113,7 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
   );
 }
 
-export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction }) {
+export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction, onOpenDiscovery }) {
   const override = checkinStatusLabel(device.state, checkinStatus);
   const lifecycle = deviceLifecycleState(device);
   const [lifecycleResult, setLifecycleResult] = useState(null);
@@ -2139,6 +2153,11 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       {lifecycle === "CANDIDATE" && (
         <div className="dm-candidate-card"><strong>New device candidate</strong>
           <span>Discovered from {device.attributes.discoveredFrom || device.attributes.source || "an integration"}. Looking at it or closing this view leaves it a candidate.</span>
+          {onOpenDiscovery && (
+            <button className="btn-secondary" onClick={() => onOpenDiscovery(device, "new")}>
+              <Search size={13}/> Recognize this device
+            </button>
+          )}
           <div className="device-actions">
             <button className="btn-primary" onClick={() => decide("ACCEPT")} disabled={pendingAction}>Use this device</button>
             <button className="btn-secondary" onClick={() => decide("DEFER")} disabled={pendingAction}>Not now</button>
@@ -2230,7 +2249,7 @@ function DmLockActions({ device }) {
   );
 }
 
-function DmEditForm({ device, onSaved }) {
+function DmEditForm({ device, onSaved, onOpenDiscovery }) {
   const [name, setName]       = useState(device.name);
   const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
   const [saving, setSaving]   = useState(false);
@@ -2267,6 +2286,11 @@ function DmEditForm({ device, onSaved }) {
       <div className="dm-detail-name">{device.deviceId}</div>
       {lifecycle === "CANDIDATE" && <p className="config-desc">Reviewing or saving a corrected name does not accept this candidate. Use the explicit decision buttons in See when ready.</p>}
       {lifecycle === "AVAILABLE" && <p className="config-desc">This accepted device is available but unassigned. Saving an actual change assigns it.</p>}
+      {lifecycle !== "CANDIDATE" && onOpenDiscovery && (
+        <button className="btn-secondary" onClick={() => onOpenDiscovery(device, "replace")}>
+          <Search size={13}/> Re-check device info
+        </button>
+      )}
       <label>Display Name
         <input value={name} onChange={e => { setName(e.target.value); setSaved(false); setSaveError(null); }}/>
       </label>
@@ -2283,6 +2307,215 @@ function DmEditForm({ device, onSaved }) {
         <button className="btn-primary" onClick={save} disabled={saving || !changed || !name.trim()}>
           {saving ? "Saving…" : "Save changes"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Self-discovery / assisted-onboarding overlay ──
+// mode="new": a CANDIDATE being reviewed -- "Import" accepts + configures
+//   it in one step (backend: applyLifecycleAction(ACCEPT) + saveConfiguration()).
+// mode="replace": an already-configured device's re-sync -- "Replace" merges
+//   only the checked fields into the live descriptor (backend:
+//   replaceConfiguration()), never touches enabled state.
+// Never mutates anything itself -- every field application happens through
+// POST .../discovery/apply, which a person triggers explicitly by clicking
+// Import/Replace after reviewing sources. First real full-screen overlay in
+// this file; repurposes the .modal-overlay/.modal CSS that existed but had
+// no consumer.
+export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
+  const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+  const [status, setStatus] = useState("loading"); // loading | ok | error
+  const [result, setResult] = useState(null);
+  const [matchIdx, setMatchIdx] = useState(0);
+  const [selectedFields, setSelectedFields] = useState({});
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState(null);
+  const [applyOk, setApplyOk] = useState(false);
+  const pollRef = useRef(null);
+  const timeoutRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const clearTimers = () => { clearInterval(pollRef.current); clearTimeout(timeoutRef.current); };
+
+    setStatus("loading");
+    setResult(null);
+    setApplyOk(false);
+    setApplyError(null);
+
+    const poll = () => {
+      fetch(`${apiBase}/api/devices/${device.deviceId}/discovery/latest`)
+        .then(r => r.json())
+        .then(body => {
+          if (cancelled || body.pending) return;
+          setResult(body);
+          setStatus("ok");
+          const top = body.matches?.[0];
+          setSelectedFields({
+            name: !!top?.suggestedName,
+            type: mode === "new" && !!top?.suggestedType,
+            capabilities: mode === "new" && (top?.suggestedCapabilities || []).length > 0,
+            enabled: false,
+          });
+          clearTimers();
+        })
+        .catch(() => { /* transient error while polling -- keep retrying until the bounded timeout below */ });
+    };
+
+    fetch(`${apiBase}/api/devices/${device.deviceId}/discovery/run`, { method: "POST" })
+      .then(response => { if (!response.ok) throw new Error(`HTTP ${response.status}`); })
+      .then(() => {
+        if (cancelled) return;
+        poll(); // check right away -- no reason to wait a full interval if it's already done
+        pollRef.current = setInterval(poll, 2000);
+        // Bounded like CameraLiveView's connection timeout -- a slow or
+        // hung external lookup must degrade to a clear error, not spin
+        // forever with no explanation.
+        timeoutRef.current = setTimeout(() => {
+          clearTimers();
+          if (!cancelled) setStatus(current => current === "loading" ? "error" : current);
+        }, 25000);
+      })
+      .catch(() => { if (!cancelled) setStatus("error"); });
+
+    return () => { cancelled = true; clearTimers(); };
+  }, [device.deviceId, apiBase, mode]);
+
+  const match = result?.matches?.[matchIdx];
+  const toggleField = (field) => setSelectedFields(f => ({ ...f, [field]: !f[field] }));
+  const nothingSelected = !Object.values(selectedFields).some(Boolean);
+
+  const apply = async () => {
+    if (!match) return;
+    setApplying(true);
+    setApplyError(null);
+    try {
+      const fields = {};
+      if (selectedFields.name && match.suggestedName) fields.name = match.suggestedName;
+      if (selectedFields.type && match.suggestedType) fields.type = match.suggestedType;
+      if (selectedFields.capabilities && (match.suggestedCapabilities || []).length) fields.capabilities = match.suggestedCapabilities;
+      if (mode === "new") fields.enabled = !!selectedFields.enabled;
+
+      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/discovery/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: result.runId, mode, fields }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body.error || `HTTP ${response.status}`);
+      setApplyOk(true);
+      onApplied();
+    } catch (error) {
+      setApplyError(error.message);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal discovery-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>{mode === "replace" ? "Re-check device info" : "Recognize this device"}</h3>
+          <button className="btn-ghost" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        {status === "loading" && (
+          <div className="discovery-status-pane">
+            <p>Looking up {device.name}…</p>
+            <p className="config-hint">
+              Checking local discovery data{mode === "replace" ? " and comparing against the current configuration" : ""},
+              plus an external lookup if one is configured on this deployment.
+            </p>
+          </div>
+        )}
+
+        {status === "error" && (
+          <div className="discovery-status-pane">
+            <p>The discovery service didn't respond in time.</p>
+            <button className="btn-secondary" onClick={onClose}>Close</button>
+          </div>
+        )}
+
+        {status === "ok" && match && (
+          <div className="discovery-result">
+            {result.matches.length > 1 && (
+              <div className="discovery-match-tabs">
+                {result.matches.map((m, i) => (
+                  <button key={i} className={`btn-ghost ${i === matchIdx ? "btn-ghost-active" : ""}`} onClick={() => setMatchIdx(i)}>
+                    Match {i + 1} ({m.confidence})
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <span className={`candidate-badge lifecycle-${match.confidence}`}>{match.confidence} confidence</span>
+            <p className="discovery-summary">{match.summary}</p>
+
+            {mode === "replace" && <p className="config-hint">Check a field to replace its current value with what was found below. Nothing changes until you click Replace.</p>}
+
+            <div className="discovery-fields">
+              {match.suggestedName && (
+                <label className="discovery-field-row">
+                  <input type="checkbox" checked={!!selectedFields.name} onChange={() => toggleField("name")} />
+                  <span className="discovery-field-label">Name</span>
+                  {mode === "replace" && <span className="discovery-field-current">{device.name} →</span>}
+                  <span className="discovery-field-value">{match.suggestedName}</span>
+                </label>
+              )}
+              {match.suggestedType && (
+                <label className="discovery-field-row">
+                  <input type="checkbox" checked={!!selectedFields.type} onChange={() => toggleField("type")} />
+                  <span className="discovery-field-label">Type</span>
+                  {mode === "replace" && <span className="discovery-field-current">{device.type} →</span>}
+                  <span className="discovery-field-value">{match.suggestedType}</span>
+                </label>
+              )}
+              {(match.suggestedCapabilities || []).length > 0 && (
+                <label className="discovery-field-row">
+                  <input type="checkbox" checked={!!selectedFields.capabilities} onChange={() => toggleField("capabilities")} />
+                  <span className="discovery-field-label">Capabilities</span>
+                  <span className="discovery-field-value">{match.suggestedCapabilities.join(", ")}</span>
+                </label>
+              )}
+              {mode === "new" && (
+                <label className="discovery-field-row">
+                  <input type="checkbox" checked={!!selectedFields.enabled} onChange={() => toggleField("enabled")} />
+                  <span className="discovery-field-label">Enable immediately</span>
+                </label>
+              )}
+            </div>
+
+            <div className="dm-why-card">
+              <strong>Setup / install info{match.installGuide.mode !== "linkonly" ? ` (${match.installGuide.mode})` : ""}</strong>
+              <span>{match.installGuide.content}</span>
+            </div>
+
+            {match.sources.length > 0 ? (
+              <div className="discovery-sources">
+                <strong>Sources</strong>
+                {match.sources.map((s, i) => (
+                  <a key={i} href={s.url} target="_blank" rel="noreferrer" className="discovery-source-link">
+                    {s.title || s.url} <ExternalLink size={11}/>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="config-hint">No external sources were found for this match — treat the summary above as unverified.</p>
+            )}
+
+            {applyError && <p className="action-result action-error">Not applied: {applyError}</p>}
+            {applyOk && <p className="action-result action-ok"><CheckCircle size={13}/> Applied.</p>}
+
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={onClose}>Close</button>
+              <button className="btn-primary" onClick={apply} disabled={applying || applyOk || nothingSelected}>
+                {applying ? "Applying…" : mode === "replace" ? "Replace device settings with new definitions" : "Import this device"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

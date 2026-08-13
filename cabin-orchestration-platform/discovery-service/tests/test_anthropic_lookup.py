@@ -42,7 +42,8 @@ def test_response_with_real_citations_produces_matches_with_sources(monkeypatch)
     fake_response = SimpleNamespace(content=[
         _text_block(
             "This is a SONOFF SNZB-04P wireless contact sensor.\n"
-            '```json\n{"confidence": "high", "suggestedType": "CONTACT_SENSOR", '
+            '```json\n{"confidence": "high", "suggestedName": "SONOFF SNZB-04P Contact Sensor", '
+            '"suggestedType": "CONTACT_SENSOR", '
             '"suggestedCapabilities": ["TELEMETRY", "ACCESS_CONTROL"]}\n```',
             citations=[_citation("https://sonoff.tech/product/snzb-04p", "SNZB-04P product page")],
         )
@@ -53,6 +54,7 @@ def test_response_with_real_citations_produces_matches_with_sources(monkeypatch)
 
     assert len(matches) == 1
     match = matches[0]
+    assert match.suggestedName == "SONOFF SNZB-04P Contact Sensor"
     assert match.confidence == "high"
     assert match.suggestedType == "CONTACT_SENSOR"
     assert match.suggestedCapabilities == ["TELEMETRY", "ACCESS_CONTROL"]
