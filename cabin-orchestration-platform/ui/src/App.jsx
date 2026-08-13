@@ -2153,8 +2153,15 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       {lifecycle === "CANDIDATE" && (
         <div className="dm-candidate-card"><strong>New device candidate</strong>
           <span>Discovered from {device.attributes.discoveredFrom || device.attributes.source || "an integration"}. Looking at it or closing this view leaves it a candidate.</span>
+          {device.attributes.discoverySuggested && (
+            <div className="discovery-suggested-banner">
+              <Search size={13}/> New device — want to look it up before deciding?
+            </div>
+          )}
           {onOpenDiscovery && (
-            <button className="btn-secondary" onClick={() => onOpenDiscovery(device, "new")}>
+            <button
+              className={device.attributes.discoverySuggested ? "btn-primary" : "btn-secondary"}
+              onClick={() => onOpenDiscovery(device, "new")}>
               <Search size={13}/> Recognize this device
             </button>
           )}
@@ -2318,6 +2325,12 @@ function DmEditForm({ device, onSaved, onOpenDiscovery }) {
 // mode="replace": an already-configured device's re-sync -- "Replace" merges
 //   only the checked fields into the live descriptor (backend:
 //   replaceConfiguration()), never touches enabled state.
+
+// Marks an error as carrying a real, server-supplied reason (e.g. the
+// rate-limit guard's "try again in Ns") worth showing verbatim. Any other
+// failure -- a bad HTTP status with no JSON body, a raw network rejection --
+// stays generic; a raw fetch/TypeError message isn't fit to show a person.
+class DiscoveryRunError extends Error {}
 // Never mutates anything itself -- every field application happens through
 // POST .../discovery/apply, which a person triggers explicitly by clicking
 // Import/Replace after reviewing sources. First real full-screen overlay in
@@ -2326,6 +2339,7 @@ function DmEditForm({ device, onSaved, onOpenDiscovery }) {
 export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
   const [status, setStatus] = useState("loading"); // loading | ok | error
+  const [errorMessage, setErrorMessage] = useState(null);
   const [result, setResult] = useState(null);
   const [matchIdx, setMatchIdx] = useState(0);
   const [selectedFields, setSelectedFields] = useState({});
@@ -2340,6 +2354,7 @@ export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
     const clearTimers = () => { clearInterval(pollRef.current); clearTimeout(timeoutRef.current); };
 
     setStatus("loading");
+    setErrorMessage(null);
     setResult(null);
     setApplyOk(false);
     setApplyError(null);
@@ -2364,7 +2379,11 @@ export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
     };
 
     fetch(`${apiBase}/api/devices/${device.deviceId}/discovery/run`, { method: "POST" })
-      .then(response => { if (!response.ok) throw new Error(`HTTP ${response.status}`); })
+      .then(async response => {
+        const body = await response.json().catch(() => ({}));
+        if (body.error) throw new DiscoveryRunError(body.error);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      })
       .then(() => {
         if (cancelled) return;
         poll(); // check right away -- no reason to wait a full interval if it's already done
@@ -2377,7 +2396,17 @@ export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
           if (!cancelled) setStatus(current => current === "loading" ? "error" : current);
         }, 25000);
       })
-      .catch(() => { if (!cancelled) setStatus("error"); });
+      // A rejected run (e.g. the rate-limit guard) must surface its own
+      // message, not the generic timeout copy -- otherwise re-opening the
+      // overlay within the cooldown window would silently show whatever
+      // stale result /discovery/latest still has on file, with the person
+      // never told why nothing new ran. Any other failure (bad HTTP status,
+      // a raw network rejection) stays generic -- see DiscoveryRunError.
+      .catch(error => {
+        if (cancelled) return;
+        setErrorMessage(error instanceof DiscoveryRunError ? error.message : null);
+        setStatus("error");
+      });
 
     return () => { cancelled = true; clearTimers(); };
   }, [device.deviceId, apiBase, mode]);
@@ -2433,7 +2462,7 @@ export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
 
         {status === "error" && (
           <div className="discovery-status-pane">
-            <p>The discovery service didn't respond in time.</p>
+            <p>{errorMessage || "The discovery service didn't respond in time."}</p>
             <button className="btn-secondary" onClick={onClose}>Close</button>
           </div>
         )}

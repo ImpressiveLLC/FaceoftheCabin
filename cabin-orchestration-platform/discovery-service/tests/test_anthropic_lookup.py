@@ -20,11 +20,27 @@ def _citation(url: str, title: str = "Example", cited_text: str = "some cited te
 
 def test_no_api_key_falls_back_to_local_only(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    matches = run_discovery(DiscoverRequest(vendor="SONOFF", model="SNZB-04P"))
+    matches = run_discovery(DiscoverRequest(vendor="AcmeCo", model="X1"))
 
     assert len(matches) == 1
     assert matches[0].confidence == "low"
     assert matches[0].sources == []
+
+
+def test_no_api_key_but_known_vendor_gets_medium_confidence_from_local_data(monkeypatch):
+    # Calibrated against the real candidate population on this deployment:
+    # SONOFF SNZB-04P is one of the 13 unreviewed cabin devices, and the
+    # device's own Zigbee handshake -- not a guess -- is what reported this
+    # vendor+model. That's more than "low" deserves, even with zero web
+    # lookups performed.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    matches = run_discovery(DiscoverRequest(vendor="SONOFF", model="SNZB-04P"))
+
+    assert len(matches) == 1
+    assert matches[0].confidence == "medium"
+    assert matches[0].sources == []
+    assert matches[0].suggestedName == "SONOFF SNZB-04P"
+    assert "SONOFF" in matches[0].summary
 
 
 def test_no_local_identity_never_calls_the_api(monkeypatch):
@@ -111,6 +127,10 @@ def test_api_exception_falls_back_gracefully(monkeypatch):
         matches = run_discovery(DiscoverRequest(vendor="SONOFF", model="SNZB-04P"))
 
     assert len(matches) == 1
-    assert matches[0].confidence == "low"
+    # The network call failed, but vendor+model identification came from
+    # the device's own discovery handshake, not the network -- a known
+    # vendor still earns "medium", it isn't dragged down to "low" just
+    # because the (independent) web lookup failed.
+    assert matches[0].confidence == "medium"
     assert matches[0].sources == []
     assert "failed" in matches[0].installGuide.content.lower()
