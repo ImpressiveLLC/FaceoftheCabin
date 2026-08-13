@@ -1036,6 +1036,56 @@ elements:
       never actively pinged. Passive integration broadcasts may still refresh
       their cached discovery metadata.
 
+  - id: device_discovery_result
+    entity_type: owl:Class
+    layer: fullstack
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-13"
+      ref: "JdbcDeviceDiscoveryStore, DeviceDiscoveryController, cabin-discovery/app/main.py"
+    data_class: composite
+    ui_display_name: "Device Self-Discovery Result"
+    rendering:
+      semantic: "What does the self-discovery assistant think this device is, and where did it find that out"
+      systems: "Device Manager candidate review overlay, existing-device re-sync overlay"
+      technical: "device_discovery_result table (run_id, device_id, requested_at, applied_at, result JSONB); GET/POST /api/devices/{id}/discovery/*"
+      compliance: (not shown)
+    definition: >
+      A proposal, never authoritative -- a discovery run's matches are
+      produced by cabin-discovery (local Zigbee2MQTT/Home-Assistant
+      discovery metadata, plus an external Anthropic API web-search lookup
+      when ANTHROPIC_API_KEY is configured) and persisted independently
+      from the live `device` table. Nothing here affects a real device
+      until a person explicitly selects fields and calls
+      POST .../discovery/apply, which routes through the same locked,
+      tested DeviceRegistry paths the manual review UI already used
+      (saveConfiguration()/applyLifecycleAction() for a new candidate,
+      the new replaceConfiguration() for an existing device's re-sync).
+      Every match carries a confidence tier (high/medium/low) and a
+      sources list with real url/title/snippet/fetchedAt provenance --
+      confidence is capped at "low" whenever no genuine citation came
+      back, regardless of what the model's own text claims, so an
+      unverified guess can never present itself as a verified match.
+    relationships:
+      - target: device_candidate_lifecycle
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: [ui_device_manager_panel]
+      elements: [device_candidate_lifecycle]
+    notes: >
+      cabin-discovery is a separate, stateless container (no
+      device-registry or database access of its own) specifically so a
+      slow or flaky third-party AI dependency can never affect the
+      safety-critical Java control path -- it only ever returns a
+      proposal for cabin-backend to persist. Not yet wired into the
+      frontend (that's the review overlay, still to come) -- this entity
+      documents the backend/service contract, which is already real and
+      testable on its own.
+
   - id: device_workflow_affiliation
     entity_type: owl:DatatypeProperty
     layer: frontend
