@@ -195,6 +195,19 @@ public class DeviceRegistry {
                         else attrs.put(key, value);
                     });
                 }
+                // A nudge for a device new to this process's memory. Passive
+                // discovery deliberately never persists (see the comment
+                // below on descriptors/statuses) -- an undecided candidate
+                // does not survive a restart, so firstSeen legitimately
+                // goes true again on the next republish after a deploy.
+                // That's acceptable here: it re-surfaces a still-undecided
+                // device rather than losing the prompt permanently. Cleared
+                // within this process's lifetime by statusWithLifecycle
+                // once the device leaves CANDIDATE, or explicitly by
+                // DeviceDiscoveryController when a lookup is run for it.
+                if (firstSeen && lifecycle == DeviceLifecycleState.CANDIDATE) {
+                    attrs.put("discoverySuggested", true);
+                }
                 putLifecycleAttributes(attrs, lifecycle, merged.enabled());
                 attrs.put("source", merged.protocolAdapter());
                 attrs.put("capabilities", merged.capabilities().stream().map(Enum::name).sorted().toList());
@@ -202,6 +215,23 @@ public class DeviceRegistry {
                     existing == null ? Instant.now() : existing.lastSeen(), attrs, merged.location());
             });
             return firstSeen;
+        }
+    }
+
+    /**
+     * Clear the one-time "new device -- want to look it up?" nudge once a
+     * person has acted on it, whether by explicitly running a discovery
+     * lookup or by deciding the candidate outright. Doesn't touch
+     * lifecycle, descriptor, or any persisted state -- attrs.
+     */
+    public void dismissDiscoverySuggestion(String deviceId) {
+        synchronized (lockFor(deviceId)) {
+            DeviceStatus existing = statuses.get(deviceId);
+            if (existing == null || !existing.attributes().containsKey("discoverySuggested")) return;
+            Map<String, Object> attrs = new LinkedHashMap<>(existing.attributes());
+            attrs.remove("discoverySuggested");
+            statuses.put(deviceId, new DeviceStatus(existing.deviceId(), existing.type(), existing.name(),
+                existing.state(), existing.lastSeen(), attrs, existing.location()));
         }
     }
 
@@ -494,6 +524,7 @@ public class DeviceRegistry {
                                              DeviceStatus existing,
                                              DeviceLifecycleState lifecycle) {
         Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
+        if (lifecycle != DeviceLifecycleState.CANDIDATE) attrs.remove("discoverySuggested");
         putLifecycleAttributes(attrs, lifecycle, descriptor.enabled());
         attrs.put("source", descriptor.protocolAdapter());
         attrs.put("capabilities", descriptor.capabilities().stream().map(Enum::name).sorted().toList());

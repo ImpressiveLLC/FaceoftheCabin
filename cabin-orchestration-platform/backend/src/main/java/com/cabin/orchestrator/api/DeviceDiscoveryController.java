@@ -6,9 +6,11 @@ import com.cabin.orchestrator.devices.model.*;
 import com.cabin.orchestrator.integrations.discovery.DiscoveryServiceClient;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -31,6 +33,12 @@ public class DeviceDiscoveryController {
     // Small fixed pool: discovery runs are person-paced (one review at a
     // time in practice), not a high-throughput path -- no need for a queue.
     private final Executor discoveryExecutor = Executors.newFixedThreadPool(2);
+    // Basic rate-limit guard: each run is a real, costed external AI/search
+    // call. Per-device cooldown stops an accidental double-click or a
+    // reconnect storm re-triggering it for the same device; it's in-memory
+    // (not persisted) since it only needs to survive this process's uptime.
+    private final Map<String, Instant> lastRunRequestedAt = new ConcurrentHashMap<>();
+    private static final Duration MIN_RUN_INTERVAL = Duration.ofSeconds(30);
 
     public DeviceDiscoveryController(DeviceRegistry registry, JdbcDeviceDiscoveryStore discoveryStore,
                                       DiscoveryServiceClient discoveryClient) {
@@ -47,8 +55,21 @@ public class DeviceDiscoveryController {
         if (status == null || descriptor.isEmpty()) {
             return Map.of("error", "not found");
         }
-        String runId = UUID.randomUUID().toString();
+
         Instant requestedAt = Instant.now();
+        Instant previousRequest = lastRunRequestedAt.get(deviceId);
+        if (previousRequest != null) {
+            Duration sinceLast = Duration.between(previousRequest, requestedAt);
+            if (sinceLast.compareTo(MIN_RUN_INTERVAL) < 0) {
+                long retryAfterSeconds = Math.max(1, MIN_RUN_INTERVAL.minus(sinceLast).toSeconds());
+                return Map.of("error", "A discovery run for this device was started recently -- try again in "
+                    + retryAfterSeconds + "s", "retryAfterSeconds", retryAfterSeconds);
+            }
+        }
+        lastRunRequestedAt.put(deviceId, requestedAt);
+        registry.dismissDiscoverySuggestion(deviceId);
+
+        String runId = UUID.randomUUID().toString();
         // A pending row (empty matches, no appliedAt) lets the frontend
         // distinguish "still running" from "no discovery has ever been run
         // for this device" while polling latest().

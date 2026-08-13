@@ -1066,9 +1066,12 @@ elements:
       the new replaceConfiguration() for an existing device's re-sync).
       Every match carries a confidence tier (high/medium/low) and a
       sources list with real url/title/snippet/fetchedAt provenance --
-      confidence is capped at "low" whenever no genuine citation came
-      back, regardless of what the model's own text claims, so an
-      unverified guess can never present itself as a verified match.
+      "high" requires a genuine citation, regardless of what the model's
+      own text claims, so an unverified guess can never present itself as
+      a verified match. Without a citation, confidence is capped at what
+      local discovery data alone justifies: "medium" when the device's own
+      Zigbee/MQTT handshake reported a vendor+model matching a recognized
+      vendor catalog (cabin-discovery/app/catalog.py), "low" otherwise.
     relationships:
       - target: device_candidate_lifecycle
         type: complements

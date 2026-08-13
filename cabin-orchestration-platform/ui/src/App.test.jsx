@@ -498,6 +498,22 @@ describe("Device candidate decision controls", () => {
     fireEvent.click(screen.getByRole("button", { name: /recognize this device/i }));
     expect(onOpenDiscovery).toHaveBeenCalledWith(device, "new");
   });
+
+  it("shows the first-seen nudge and a primary-styled button when discoverySuggested is set", () => {
+    const device = { deviceId: "candidate", name: "New sensor", type: "MOTION_SENSOR", state: "UNKNOWN", location: "cabin", attributes: { deviceLifecycle: "CANDIDATE", discoverySuggested: true } };
+    render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} onOpenDiscovery={() => {}} />);
+
+    expect(screen.getByText(/new device.*want to look it up/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /recognize this device/i }).className).toContain("btn-primary");
+  });
+
+  it("does not show the first-seen nudge for a candidate that isn't newly discovered", () => {
+    const device = { deviceId: "candidate", name: "New sensor", type: "MOTION_SENSOR", state: "UNKNOWN", location: "cabin", attributes: { deviceLifecycle: "CANDIDATE" } };
+    render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} onOpenDiscovery={() => {}} />);
+
+    expect(screen.queryByText(/want to look it up/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /recognize this device/i }).className).toContain("btn-secondary");
+  });
 });
 
 describe("DeviceDiscoveryOverlay", () => {
@@ -578,6 +594,22 @@ describe("DeviceDiscoveryOverlay", () => {
     render(<DeviceDiscoveryOverlay device={candidateDevice} mode="new" onClose={() => {}} onApplied={() => {}} />);
 
     expect(await screen.findByText(/didn't respond in time/i)).toBeTruthy();
+  });
+
+  it("surfaces the rate-limit guard's own message instead of the generic timeout copy", async () => {
+    vi.stubGlobal("fetch", vi.fn((url) => {
+      if (String(url).endsWith("/discovery/run")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ error: "A discovery run for this device was started recently -- try again in 12s", retryAfterSeconds: 12 }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    }));
+    render(<DeviceDiscoveryOverlay device={candidateDevice} mode="new" onClose={() => {}} onApplied={() => {}} />);
+
+    expect(await screen.findByText(/try again in 12s/i)).toBeTruthy();
+    expect(screen.queryByText(/didn't respond in time/i)).toBeNull();
   });
 });
 

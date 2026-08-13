@@ -288,6 +288,70 @@ class DeviceRegistryTest {
         assertFalse(result.changed());
     }
 
+    @Test
+    void firstSeenCandidateGetsDiscoverySuggestedButRepeatedDiscoveryDoesNot() {
+        registry.registerCandidate(descriptor(
+            "new-1", "Mystery sensor", DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/mystery", false, "cabin"), Map.of());
+
+        assertEquals(true, registry.get("new-1").attributes().get("discoverySuggested"));
+
+        registry.registerCandidate(descriptor(
+            "new-1", "Mystery sensor", DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/mystery", false, "cabin"), Map.of());
+
+        assertEquals(true, registry.get("new-1").attributes().get("discoverySuggested"),
+            "still true -- only an explicit dismiss or lifecycle decision clears it, not rediscovery");
+    }
+
+    @Test
+    void discoverySuggestedReappearsAfterARestartBecausePassiveDiscoveryIsNeverPersisted() {
+        // registerCandidate() intentionally never calls lifecycleStore.save()
+        // (see repeatedCandidateDiscoveryRefreshesSourceOwnedFields) --
+        // passive discovery of an undecided device is not a person-authored
+        // persistence event. That means a still-undecided candidate does
+        // not survive a process restart, so a fresh registry sees it as
+        // firstSeen again on the next republish -- discoverySuggested
+        // legitimately re-fires rather than being lost for good.
+        registry.registerCandidate(descriptor(
+            "new-1", "Mystery sensor", DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/mystery", false, "cabin"), Map.of());
+
+        DeviceRegistry restarted = new DeviceRegistry(List.of(), store);
+        restarted.registerCandidate(descriptor(
+            "new-1", "Mystery sensor", DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/mystery", false, "cabin"), Map.of());
+
+        assertEquals(true, restarted.get("new-1").attributes().get("discoverySuggested"));
+    }
+
+    @Test
+    void discoverySuggestedIsClearedWhenCandidateLeavesReview() {
+        registry.registerCandidate(descriptor(
+            "new-2", "Mystery switch", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(DeviceCapability.COMMAND), "mqtt", "zigbee2mqtt/mystery2", false, "cabin"), Map.of());
+        assertEquals(true, registry.get("new-2").attributes().get("discoverySuggested"));
+
+        registry.applyLifecycleAction("new-2", DeviceLifecycleAction.ACCEPT);
+
+        assertNull(registry.get("new-2").attributes().get("discoverySuggested"));
+    }
+
+    @Test
+    void dismissDiscoverySuggestionClearsFlagWithoutTouchingLifecycleOrOtherAttributes() {
+        registry.registerCandidate(descriptor(
+            "new-3", "Mystery leak sensor", DeviceType.WATER_LEAK_SENSOR,
+            Set.of(DeviceCapability.ALARM), "mqtt", "zigbee2mqtt/mystery3", false, "cabin"),
+            Map.of("vendor", "SONOFF"));
+
+        registry.dismissDiscoverySuggestion("new-3");
+
+        var status = registry.get("new-3");
+        assertNull(status.attributes().get("discoverySuggested"));
+        assertEquals("SONOFF", status.attributes().get("vendor"));
+        assertEquals(DeviceLifecycleState.CANDIDATE, registry.lifecycleState("new-3"));
+    }
+
     private DeviceDescriptor descriptor(String id, String name, DeviceType type,
                                         Set<DeviceCapability> capabilities, String adapter,
                                         String connection, boolean enabled, String location) {

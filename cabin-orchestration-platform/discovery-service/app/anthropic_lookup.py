@@ -5,9 +5,11 @@ fabricate, since citations come from actual search results).
 
 Contract this module must uphold (see the "never skip the click" /
 provenance requirements the user gave for this feature): if the model
-doesn't produce a real, cited match, we return confidence="low" and an
-empty sources list -- we never invent a URL or claim a source that isn't
-a genuine citation.
+doesn't produce a real, cited match, confidence is capped at whatever the
+local discovery data alone justifies (see catalog.classify_local_confidence
+-- "medium" for a recognized vendor+model, "low" otherwise) and sources
+stays empty -- we never invent a URL, claim a source that isn't a genuine
+citation, or let an uncited claim reach "high".
 
 NOTE for whoever deploys this: the web-search tool identifier
 ("web_search_20250305" below) and the citation shape on text blocks are
@@ -15,7 +17,7 @@ Anthropic API surface details that can move between API versions --
 verify both against the current Anthropic API docs before relying on
 this in production, and update ANTHROPIC_WEB_SEARCH_TOOL_TYPE below if
 it's changed. Anything that doesn't parse as expected falls through to
-_low_confidence_fallback() rather than guessing.
+_local_only_fallback() rather than guessing.
 """
 
 import json
@@ -26,7 +28,7 @@ from datetime import datetime, timezone
 
 import anthropic
 
-from .catalog import has_local_identity, local_identity_summary
+from .catalog import classify_local_confidence, has_local_identity, known_vendor_note, local_identity_summary
 from .models import DiscoverRequest, InstallGuide, Match, Source
 
 logger = logging.getLogger(__name__)
@@ -85,10 +87,10 @@ def run_discovery(request: DiscoverRequest) -> list[Match]:
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         logger.info("ANTHROPIC_API_KEY not set -- returning local-catalog-only result")
-        return [_low_confidence_fallback(request, reason="No external lookup is configured on this deployment.")]
+        return [_local_only_fallback(request, reason="No external lookup is configured on this deployment.")]
 
     if not has_local_identity(request):
-        return [_low_confidence_fallback(
+        return [_local_only_fallback(
             request, reason="No vendor, model, or description was reported by discovery -- nothing to search for.")]
 
     try:
@@ -108,7 +110,7 @@ def run_discovery(request: DiscoverRequest) -> list[Match]:
         return _parse_response(response, request)
     except Exception as e:  # noqa: BLE001 -- any API/parsing failure must degrade, not crash the request
         logger.warning("Anthropic lookup failed for %s: %s", local_identity_summary(request), e)
-        return [_low_confidence_fallback(
+        return [_local_only_fallback(
             request, reason=f"The external lookup failed ({type(e).__name__}); showing local discovery data only.")]
 
 
@@ -147,17 +149,20 @@ def _parse_response(response, request: DiscoverRequest) -> list[Match]:
 
     full_text = "\n".join(text_parts).strip()
     if not full_text:
-        return [_low_confidence_fallback(request, reason="The model returned no usable response.")]
+        return [_local_only_fallback(request, reason="The model returned no usable response.")]
 
     meta = _extract_trailing_json(full_text)
     prose = re.sub(r"```json.*?```", "", full_text, flags=re.DOTALL).strip()
 
     # No real citations came back at all -- per this module's contract,
-    # that caps confidence at "low" regardless of what the model claimed,
-    # rather than trusting an uncited "high".
+    # that caps confidence regardless of what the model claimed, rather
+    # than trusting an uncited "high". The cap comes from local discovery
+    # data (classify_local_confidence), not a flat "low": a recognized
+    # vendor+model the device reported directly still deserves "medium",
+    # it's only "verified by citation" that's off the table.
     confidence = (meta.get("confidence") if meta else None) or "low"
     if not sources:
-        confidence = "low"
+        confidence = classify_local_confidence(request)
 
     suggested_type = meta.get("suggestedType") if meta else None
     if suggested_type not in VALID_DEVICE_TYPES:
@@ -193,11 +198,18 @@ def _extract_trailing_json(text: str) -> dict | None:
         return None
 
 
-def _low_confidence_fallback(request: DiscoverRequest, reason: str) -> Match:
+def _local_only_fallback(request: DiscoverRequest, reason: str) -> Match:
+    identity = local_identity_summary(request)
+    note = known_vendor_note(request.vendor)
+    # The vendor note is display text for `summary` only -- it must not
+    # leak into `suggestedName`, which prefills the device's name field in
+    # the review UI and should stay a short identity string, not a
+    # sentence-length vendor description.
+    summary = f"{identity} ({note})" if note else identity
     return Match(
-        summary=local_identity_summary(request),
-        confidence="low",
-        suggestedName=local_identity_summary(request) if has_local_identity(request) else None,
+        summary=summary,
+        confidence=classify_local_confidence(request),
+        suggestedName=identity if has_local_identity(request) else None,
         suggestedType=None,
         suggestedCapabilities=[],
         installGuide=InstallGuide(mode="linkonly", content=reason),
