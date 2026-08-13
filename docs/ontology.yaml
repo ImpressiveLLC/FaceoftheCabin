@@ -971,6 +971,71 @@ elements:
       battery sensor is therefore described as within or late for its reporting
       schedule, never declared offline merely for missing a 10-minute heartbeat.
 
+  - id: device_candidate_lifecycle
+    entity_type: owl:DatatypeProperty
+    layer: fullstack
+    primitive: false
+    schema_version: "0.2.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-12"
+      ref: "DeviceRegistry.registerCandidate(), App.jsx filterDeviceManagerDevices()"
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: [CANDIDATE, AVAILABLE, ASSIGNED, DEFERRED, IGNORED]
+      description: >
+        CANDIDATE = passively discovered and awaiting an explicit decision;
+        AVAILABLE = explicitly accepted into the application's scope but not
+        assigned/configured; ASSIGNED = configured for application use;
+        DEFERRED = saved for later outside the active list; IGNORED =
+        deliberately excluded outside the active list. Lifecycle is distinct
+        from enabled/disabled configuration and device health.
+    ui_display_name: "Device Setup Status"
+    rendering:
+      semantic: "Does this newly discovered device still need a person's review"
+      systems: "Device Manager Candidate badge and Show filter"
+      technical: "DeviceStatus.attributes.deviceLifecycle; candidate boolean remains a compatibility projection only"
+      compliance: (not shown)
+    definition: >
+      Candidate is a review lifecycle, not device health. Merely opening,
+      reviewing, closing, or submitting a no-op edit does not change it. Only
+      an explicit persisted decision does: Use this device -> AVAILABLE;
+      Not now -> DEFERRED; Ignore -> IGNORED. An AVAILABLE device is in scope
+      but remains unassigned and disabled until a person persists an actual
+      configuration change, which moves it to ASSIGNED. A corrected candidate
+      name can be persisted without implying acceptance or changing CANDIDATE.
+    relationships:
+      - target: device_state
+        type: complements
+        cardinality: "1:1"
+      - target: device_checkin_status
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: [ui_device_manager_panel]
+      elements: [device_state, device_checkin_status]
+    notes: >
+      Repeated-discovery field ownership is deliberate. Before a person saves
+      configuration, name, location, type and capabilities refresh so a bad
+      first observation can be corrected. Once configuration is asserted,
+      those fields plus enabled state are sticky even if lifecycle remains
+      CANDIDATE; type/capabilities specifically cannot drift on a degraded
+      discovery snapshot because they control safety behavior. Protocol adapter,
+      connection string and discovery attributes remain source-owned and
+      refreshable. The former Zigbee
+      skip-if-descriptor-exists guard was removed, and Home Assistant's final
+      status write now uses the registry's merged descriptor rather than
+      reapplying raw discovery values. Person-authored lifecycle/configuration
+      is stored in the Postgres device table before in-memory state changes.
+      DEFERRED and IGNORED records are excluded from the ordinary in-scope list
+      and surfaced through the explicit previously-exposed review endpoint;
+      activeFetch and command dispatch
+      reject every lifecycle except enabled ASSIGNED, so cached devices are
+      never actively pinged. Passive integration broadcasts may still refresh
+      their cached discovery metadata.
+
   - id: device_workflow_affiliation
     entity_type: owl:DatatypeProperty
     layer: frontend
@@ -1009,10 +1074,12 @@ elements:
       by concept (location, type, state, workflow affiliation like
       alerting vs automations vs hvac-oriented flows eventually)." Location/
       type/state already existed as group dimensions (room/type/state);
-      this entity is the "workflow affiliation" piece. Ships alongside the
-      Group-by dropdown's existing horizontal/vertical flow toggle and
-      per-group reordering, all pre-existing (device_presence_groups work,
-      PR #1) and unchanged by this addition.
+      this entity is the "workflow affiliation" piece. The Group-by dropdown's
+      horizontal/vertical flow toggle remains independent. Device ordering is
+      now scoped inside each derived group and group containers have their own
+      persisted order (`order.devices.{location}.{groupBy}` and
+      `order.deviceGroups.{location}.{groupBy}`), replacing the former single
+      flat list whose indexes did not match the grouped display.
     relationships:
       - target: device_type
         type: derived_from

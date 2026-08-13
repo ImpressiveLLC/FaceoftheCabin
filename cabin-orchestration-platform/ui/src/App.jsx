@@ -1329,9 +1329,54 @@ function DeviceManagerPanel() {
   const [reorderMode, setReorderMode] = useState(false);
   const [groupBy, setGroupBy] = useState(() => localStorage.getItem("devices.groupBy") || "type");
   const [groupFlow, setGroupFlow] = useState(() => localStorage.getItem("devices.groupFlow") || "horizontal");
+  const [deviceFilter, setDeviceFilter] = useState(() => {
+    const saved = localStorage.getItem("devices.filter") || "in_scope";
+    return saved === "configured" ? "in_scope" : saved;
+  });
+  const [candidateDevices, setCandidateDevices] = useState([]);
+  const [previouslyExposed, setPreviouslyExposed] = useState([]);
+  const [reviewingPrevious, setReviewingPrevious] = useState(false);
 
   useEffect(() => localStorage.setItem("devices.groupBy", groupBy), [groupBy]);
   useEffect(() => localStorage.setItem("devices.groupFlow", groupFlow), [groupFlow]);
+  useEffect(() => localStorage.setItem("devices.filter", deviceFilter), [deviceFilter]);
+
+  const reviewLocations = useMemo(() => activeLocation === "both"
+    ? [LOCATIONS.cabin, LOCATIONS.home]
+    : [LOCATIONS[activeLocation] || LOCATIONS.cabin], [activeLocation]);
+
+  const fetchDeviceReviewList = useCallback(async (path) => {
+    const results = await Promise.allSettled(reviewLocations.map(location =>
+      fetch(`${location.apiBase}/api/devices/${path}`)
+        .then(response => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); })
+    ));
+    return results.filter(result => result.status === "fulfilled").flatMap(result => result.value);
+  }, [reviewLocations]);
+
+  const refreshReviewDevices = useCallback(async () => {
+    setCandidateDevices(await fetchDeviceReviewList("candidates"));
+    if (reviewingPrevious) {
+      setPreviouslyExposed(await fetchDeviceReviewList("previously-exposed"));
+    }
+  }, [fetchDeviceReviewList, reviewingPrevious]);
+
+  useEffect(() => {
+    refreshReviewDevices();
+    const timer = setInterval(refreshReviewDevices, 15000);
+    return () => clearInterval(timer);
+  }, [refreshReviewDevices]);
+
+  useEffect(() => {
+    if (deviceFilter !== "previous" || reviewingPrevious) return;
+    setReviewingPrevious(true);
+  }, [deviceFilter, reviewingPrevious]);
+
+  const managerDevices = useMemo(() => {
+    const byId = new Map();
+    [...devices, ...candidateDevices, ...(reviewingPrevious ? previouslyExposed : [])]
+      .forEach(device => byId.set(device.deviceId, device));
+    return [...byId.values()];
+  }, [devices, candidateDevices, previouslyExposed, reviewingPrevious]);
 
   // Found 2026-08-08 (user report): every DmXView below was rendering the
   // FULL, unfiltered devices array regardless of which location tab was
@@ -1341,8 +1386,27 @@ function DeviceManagerPanel() {
   // (See/Change/Remove) share one correct source instead of each needing
   // its own filter (Add doesn't need one -- it creates, not lists).
   const locDevices = activeLocation === "both"
-    ? devices
-    : devices.filter(d => !d.location || d.location === activeLocation);
+    ? managerDevices
+    : managerDevices.filter(d => !d.location || d.location === activeLocation);
+  const effectiveDeviceFilter = resolveDeviceManagerFilter(groupBy, deviceFilter);
+
+  const refreshManagerDevices = useCallback(() => {
+    refreshDevices();
+    refreshReviewDevices();
+  }, [refreshDevices, refreshReviewDevices]);
+
+  const applyLifecycleAction = useCallback(async (device, action) => {
+    const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+    const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/lifecycle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+    refreshManagerDevices();
+    return body;
+  }, [refreshManagerDevices]);
 
   const handleViewChange = (v) => { setView(v); setSelected(null); setReorderMode(false); };
 
@@ -1357,8 +1421,18 @@ function DeviceManagerPanel() {
                 <select value={groupBy} onChange={e => setGroupBy(e.target.value)}>
                   <option value="none">None</option><option value="type">Type</option>
                   <option value="source">Source</option><option value="room">Room</option>
-                  <option value="state">Status</option><option value="candidate">Candidates</option>
+                  <option value="state">Status</option><option value="candidate">Lifecycle</option>
                   <option value="workflow">Workflow</option>
+                </select>
+              </label>
+              <label className="dm-toolbar-select">Show
+                <select value={effectiveDeviceFilter} onChange={e => setDeviceFilter(e.target.value)}
+                  disabled={groupBy === "candidate"}
+                  title={groupBy === "candidate" ? "Candidate grouping always shows both setup states" : undefined}>
+                  <option value="in_scope">In scope</option>
+                  <option value="candidates">Candidates</option>
+                  <option value="previous">Review previously exposed</option>
+                  <option value="all">In scope + candidates</option>
                 </select>
               </label>
               <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
@@ -1372,7 +1446,7 @@ function DeviceManagerPanel() {
               </button>
             </>
           )}
-          <button className="btn-ghost" onClick={refreshDevices}><RefreshCw size={14}/> Refresh</button>
+          <button className="btn-ghost" onClick={refreshManagerDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
       </div>
 
@@ -1396,12 +1470,14 @@ function DeviceManagerPanel() {
         </a>
       </div>
 
-      {view === "see"    && <DmSeeView devices={locDevices} selected={selected} onSelect={setSelected}
+      {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} devices={locDevices} selected={selected} onSelect={setSelected}
         reorderMode={reorderMode} groupBy={groupBy} groupFlow={groupFlow}
+        deviceFilter={effectiveDeviceFilter}
+        onLifecycleAction={applyLifecycleAction}
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }} />}
-      {view === "change" && <DmChangeView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
+      {view === "change" && <DmChangeView devices={locDevices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)))} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
-      {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshDevices} />}
+      {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
     </div>
   );
 }
@@ -1423,6 +1499,20 @@ export const WORKFLOW_BY_TYPE = {
   LOCK: "Automations", HOME_ASSISTANT_ENTITY: "Automations", GOOGLE_HOME_DEVICE: "Automations",
 };
 
+export function deviceLifecycleState(device) {
+  const explicit = device?.attributes?.deviceLifecycle;
+  if (explicit) return String(explicit).toUpperCase();
+  return device?.attributes?.candidate === true ? "CANDIDATE" : "ASSIGNED";
+}
+
+const LIFECYCLE_LABELS = {
+  CANDIDATE: "Candidates",
+  AVAILABLE: "Available",
+  ASSIGNED: "Assigned",
+  DEFERRED: "Saved for later",
+  IGNORED: "Ignored",
+};
+
 // ── L2/L3: See ──
 export function groupDevices(devices, groupBy) {
   if (groupBy === "none") return [["All devices", devices]];
@@ -1430,7 +1520,7 @@ export function groupDevices(devices, groupBy) {
     if (groupBy === "source") return d.attributes?.discoveredFrom || d.attributes?.source || (d.deviceId.startsWith("z2m-") ? "Zigbee2MQTT" : "Other");
     if (groupBy === "room") return d.attributes?.room || d.attributes?.area_name || "Room not assigned";
     if (groupBy === "state") return d.state || "UNKNOWN";
-    if (groupBy === "candidate") return d.attributes?.candidate === true ? "Candidates" : "Configured";
+    if (groupBy === "candidate") return LIFECYCLE_LABELS[deviceLifecycleState(d)] || "Assigned";
     if (groupBy === "workflow") return WORKFLOW_BY_TYPE[d.type] || "Other";
     return d.type || "Other";
   };
@@ -1439,11 +1529,134 @@ export function groupDevices(devices, groupBy) {
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
-function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, onConfigure }) {
+export function filterDeviceManagerDevices(devices, filter = "in_scope") {
+  if (filter === "all") {
+    return devices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
+  }
+  if (filter === "candidates") {
+    return devices.filter(d => deviceLifecycleState(d) === "CANDIDATE");
+  }
+  if (filter === "previous") {
+    return devices.filter(d => ["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
+  }
+  return devices.filter(d => ["AVAILABLE", "ASSIGNED"].includes(deviceLifecycleState(d)));
+}
+
+export function resolveDeviceManagerFilter(groupBy, savedFilter = "in_scope") {
+  return groupBy === "candidate" ? "all" : savedFilter;
+}
+
+function readStoredJson(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key));
+    return value == null ? fallback : value;
+  } catch {
+    return fallback;
+  }
+}
+
+export function reorderIds(ids, fromId, toId) {
+  if (fromId === toId) return ids;
+  const fromIdx = ids.indexOf(fromId);
+  const toIdx = ids.indexOf(toId);
+  if (fromIdx < 0 || toIdx < 0) return ids;
+  const next = [...ids];
+  const [moved] = next.splice(fromIdx, 1);
+  next.splice(toIdx, 0, moved);
+  return next;
+}
+
+export function buildOrderedDeviceGroups(devices, groupBy, savedGroupOrder = [], savedDeviceOrders = {}, isAlarm) {
+  const rawGroups = groupDevices(devices, groupBy);
+  const groupMap = new Map(rawGroups);
+  const rawNames = rawGroups.map(([name]) => name);
+  const orderedNames = [
+    ...savedGroupOrder.filter(name => groupMap.has(name)),
+    ...rawNames.filter(name => !savedGroupOrder.includes(name)),
+  ];
+
+  return orderedNames.map(name => {
+    const items = groupMap.get(name) || [];
+    const byId = new Map(items.map(item => [item.deviceId, item]));
+    const savedIds = Array.isArray(savedDeviceOrders[name]) ? savedDeviceOrders[name] : [];
+    let ordered = [
+      ...savedIds.filter(id => byId.has(id)).map(id => byId.get(id)),
+      ...items.filter(item => !savedIds.includes(item.deviceId)),
+    ];
+    if (isAlarm) ordered = [...ordered.filter(isAlarm), ...ordered.filter(item => !isAlarm(item))];
+    return [name, ordered];
+  });
+}
+
+export function migrateLegacyDeviceOrder(devices, groupBy, legacyOrder) {
+  if (!Array.isArray(legacyOrder) || legacyOrder.length === 0) return {};
+  // Device data arrives asynchronously. null means "migration pending" and
+  // prevents the persistence effect from overwriting the legacy order with an
+  // empty object before the first real /api/devices response arrives.
+  if (devices.length === 0) return null;
+  return Object.fromEntries(groupDevices(devices, groupBy).map(([name, items]) => {
+    const ids = new Set(items.map(item => item.deviceId));
+    return [name, legacyOrder.filter(id => ids.has(id))];
+  }));
+}
+
+function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStorageKey, devices, groupBy, isAlarm) {
+  const [savedGroupOrder, setSavedGroupOrder] = useState(() => {
+    const saved = readStoredJson(groupStorageKey, []);
+    return Array.isArray(saved) ? saved : [];
+  });
+  const [savedDeviceOrders, setSavedDeviceOrders] = useState(() => {
+    const saved = readStoredJson(deviceStorageKey, null);
+    const legacy = readStoredJson(legacyStorageKey, []);
+    if (saved && !Array.isArray(saved) && typeof saved === "object"
+        && (Object.keys(saved).length > 0 || !Array.isArray(legacy) || legacy.length === 0)) {
+      return saved;
+    }
+    return migrateLegacyDeviceOrder(devices, groupBy, legacy);
+  });
+
+  useEffect(() => {
+    localStorage.setItem(groupStorageKey, JSON.stringify(savedGroupOrder));
+  }, [groupStorageKey, savedGroupOrder]);
+  useEffect(() => {
+    if (savedDeviceOrders !== null) {
+      localStorage.setItem(deviceStorageKey, JSON.stringify(savedDeviceOrders));
+    }
+  }, [deviceStorageKey, savedDeviceOrders]);
+
+  useEffect(() => {
+    if (savedDeviceOrders !== null || devices.length === 0) return;
+    const legacy = readStoredJson(legacyStorageKey, []);
+    setSavedDeviceOrders(migrateLegacyDeviceOrder(devices, groupBy, legacy));
+  }, [savedDeviceOrders, devices, groupBy, legacyStorageKey]);
+
+  const groups = useMemo(() => buildOrderedDeviceGroups(
+    devices, groupBy, savedGroupOrder, savedDeviceOrders || {}, isAlarm
+  ), [devices, groupBy, savedGroupOrder, savedDeviceOrders, isAlarm]);
+
+  const reorderGroup = useCallback((fromName, toName) => {
+    setSavedGroupOrder(reorderIds(groups.map(([name]) => name), fromName, toName));
+  }, [groups]);
+
+  const reorderDevice = useCallback((groupName, fromId, toId) => {
+    const items = groups.find(([name]) => name === groupName)?.[1] || [];
+    const from = items.find(item => item.deviceId === fromId);
+    const to = items.find(item => item.deviceId === toId);
+    if (!from || !to || (isAlarm && (isAlarm(from) || isAlarm(to)))) return;
+    setSavedDeviceOrders(current => ({
+      ...(current || {}),
+      [groupName]: reorderIds(items.map(item => item.deviceId), fromId, toId),
+    }));
+  }, [groups, isAlarm]);
+
+  return { groups, reorderGroup, reorderDevice };
+}
+
+function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction }) {
   const { activeLocation } = useApp();
   const [health, setHealth] = useState(null);
-  const [dragIdx, setDragIdx] = useState(null);
-  const [overIdx, setOverIdx] = useState(null);
+  const [dragItem, setDragItem] = useState(null);
+  const [overItem, setOverItem] = useState(null);
   const checkinStatuses = useCheckinStatuses(LOCATIONS.cabin.apiBase);
   const checkinDetails = useCheckinDetails(LOCATIONS.cabin.apiBase);
 
@@ -1453,21 +1666,55 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
   }, []);
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
-  const { ordered, pinnedCount, reorder } = useDraggableOrder(
-    `order.devices.${activeLocation}`, devices, isAlarm
+  const { groups, reorderGroup, reorderDevice } = useGroupedDraggableOrder(
+    `order.deviceGroups.${activeLocation}.${groupBy}`,
+    `order.devices.${activeLocation}.${groupBy}`,
+    `order.devices.${activeLocation}`,
+    devices, groupBy, isAlarm
   );
 
-  const sel = selected ? ordered.find(d => d.deviceId === selected) : null;
-  const grouped = groupDevices(ordered, groupBy);
+  const visibleGroups = groups
+    .map(([name, items]) => [name, filterDeviceManagerDevices(items, deviceFilter)])
+    .filter(([, items]) => items.length > 0);
+  const visibleDevices = visibleGroups.flatMap(([, items]) => items);
+  const sel = selected ? visibleDevices.find(d => d.deviceId === selected) : null;
 
-  const onDragStart = (idx) => (e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
-  const onDragOver  = (idx) => (e) => { e.preventDefault(); setOverIdx(idx); };
-  const onDrop      = (idx) => (e) => {
-    e.preventDefault();
-    if (dragIdx !== null) reorder(dragIdx, idx);
-    setDragIdx(null); setOverIdx(null);
+  const clearDrag = () => { setDragItem(null); setOverItem(null); };
+  const onGroupDragStart = (groupName) => (e) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", `group:${groupName}`);
+    setDragItem({ kind: "group", groupName });
   };
-  const onDragEnd   = () => { setDragIdx(null); setOverIdx(null); };
+  const onGroupDragOver = (groupName) => (e) => {
+    if (dragItem?.kind !== "group") return;
+    e.preventDefault();
+    setOverItem({ kind: "group", groupName });
+  };
+  const onGroupDrop = (groupName) => (e) => {
+    if (dragItem?.kind !== "group") return;
+    e.preventDefault();
+    reorderGroup(dragItem.groupName, groupName);
+    clearDrag();
+  };
+  const onDeviceDragStart = (groupName, deviceId) => (e) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", `device:${deviceId}`);
+    setDragItem({ kind: "device", groupName, deviceId });
+  };
+  const onDeviceDragOver = (groupName, deviceId) => (e) => {
+    if (dragItem?.kind !== "device" || dragItem.groupName !== groupName) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOverItem({ kind: "device", groupName, deviceId });
+  };
+  const onDeviceDrop = (groupName, deviceId) => (e) => {
+    if (dragItem?.kind !== "device" || dragItem.groupName !== groupName) return;
+    e.preventDefault();
+    e.stopPropagation();
+    reorderDevice(groupName, dragItem.deviceId, deviceId);
+    clearDrag();
+  };
 
   return (
     <div className="dm-layout">
@@ -1481,21 +1728,32 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
           </div>
         )}
         <div className={`dm-groups dm-groups-${groupFlow}`}>
-        {grouped.map(([groupName, groupDevices]) => (
-          <section className="dm-device-group" key={groupName}>
-            <header><span>{groupName}</span><span>{groupDevices.length}</span></header>
-            {groupDevices.map((d) => {
-          const idx = ordered.findIndex(item => item.deviceId === d.deviceId);
-          const isPinned = idx < pinnedCount;
-          const isOver   = reorderMode && overIdx === idx && dragIdx !== idx;
+        {visibleGroups.map(([groupName, groupItems]) => (
+          <section className={`dm-device-group ${reorderMode && overItem?.kind === "group" && overItem.groupName === groupName && dragItem?.groupName !== groupName ? "drag-over-group" : ""}`}
+            key={groupName}
+            onDragOver={reorderMode ? onGroupDragOver(groupName) : undefined}
+            onDrop={reorderMode ? onGroupDrop(groupName) : undefined}>
+            <header className="dm-device-group-header"
+              draggable={reorderMode}
+              onDragStart={reorderMode ? onGroupDragStart(groupName) : undefined}
+              onDragEnd={reorderMode ? clearDrag : undefined}
+              title={reorderMode ? "Drag to reorder this group" : undefined}>
+              <span>{reorderMode && <GripVertical size={12} className="drag-handle"/>}{groupName}</span>
+              <span>{groupItems.length}</span>
+            </header>
+            {groupItems.map((d) => {
+          const isPinned = isAlarm(d);
+          const isOver = reorderMode && overItem?.kind === "device"
+            && overItem.groupName === groupName && overItem.deviceId === d.deviceId
+            && dragItem?.deviceId !== d.deviceId;
           return (
             <div key={d.deviceId}
               className={`reorder-card ${isOver ? "drag-over-card" : ""}`}
               draggable={reorderMode && !isPinned}
-              onDragStart={reorderMode && !isPinned ? onDragStart(idx) : undefined}
-              onDragOver={reorderMode ? onDragOver(idx) : undefined}
-              onDrop={reorderMode ? onDrop(idx) : undefined}
-              onDragEnd={reorderMode ? onDragEnd : undefined}
+              onDragStart={reorderMode && !isPinned ? onDeviceDragStart(groupName, d.deviceId) : undefined}
+              onDragOver={reorderMode ? onDeviceDragOver(groupName, d.deviceId) : undefined}
+              onDrop={reorderMode ? onDeviceDrop(groupName, d.deviceId) : undefined}
+              onDragEnd={reorderMode ? clearDrag : undefined}
             >
               <DmDeviceRow device={d}
                 selected={selected === d.deviceId}
@@ -1513,12 +1771,14 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
           </section>
         ))}
         </div>
-        {devices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/><p>No devices registered.</p></div>}
+        {visibleDevices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/>
+          <p>{devices.length === 0 ? "No devices registered." : "No devices match this view."}</p></div>}
       </div>
       {sel && (
         <div className="dm-detail">
           <DmDeviceDetail device={sel} checkinStatus={checkinDetails[sel.deviceId]?.status || checkinStatuses[sel.deviceId]}
-            checkinDetail={checkinDetails[sel.deviceId]} onConfigure={() => onConfigure(sel.deviceId)} />
+            checkinDetail={checkinDetails[sel.deviceId]} onConfigure={() => onConfigure(sel.deviceId)}
+            onLifecycleAction={onLifecycleAction} />
         </div>
       )}
     </div>
@@ -1531,12 +1791,12 @@ function DmChangeView({ devices, selected, onSelect, onRefresh }) {
   return (
     <div className="dm-layout">
       <div className="dm-list">
-        <p className="dm-hint">Select a device to edit its name or enabled state.</p>
+        <p className="dm-hint">Select a device to review its details or save an actual configuration change.</p>
         {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} />)}
       </div>
       {sel && (
         <div className="dm-detail">
-          <DmEditForm device={sel} onSaved={onRefresh} />
+          <DmEditForm key={sel.deviceId} device={sel} onSaved={onRefresh} />
         </div>
       )}
     </div>
@@ -1818,6 +2078,7 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
   const Icon = deviceIcon(device.type);
   const isZ2m = device.deviceId.startsWith("z2m-");
   const override = checkinStatusLabel(device.state, checkinStatus);
+  const lifecycle = deviceLifecycleState(device);
   return (
     <div className={`dm-device-row ${selected ? "dm-row-selected" : ""}`} onClick={onClick}>
       {dragHandle}
@@ -1826,7 +2087,11 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
         <span className="dm-row-name">{device.name}</span>
         <span className="dm-row-meta">{device.type} · {device.location}{isZ2m ? " · zigbee" : ""}</span>
       </div>
-      {device.attributes?.candidate === true && <span className="candidate-badge">Candidate</span>}
+      {lifecycle !== "ASSIGNED" && (
+        <span className={`candidate-badge lifecycle-${lifecycle.toLowerCase()}`}>
+          {LIFECYCLE_LABELS[lifecycle] || lifecycle}
+        </span>
+      )}
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
@@ -1834,8 +2099,23 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
   );
 }
 
-function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure }) {
+export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction }) {
   const override = checkinStatusLabel(device.state, checkinStatus);
+  const lifecycle = deviceLifecycleState(device);
+  const [lifecycleResult, setLifecycleResult] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
+  const decide = async (action) => {
+    setPendingAction(action);
+    setLifecycleResult(null);
+    try {
+      await onLifecycleAction(device, action);
+      setLifecycleResult({ ok: true, text: "Decision saved." });
+    } catch (error) {
+      setLifecycleResult({ ok: false, text: `Decision was not saved: ${error.message}` });
+    } finally {
+      setPendingAction(null);
+    }
+  };
   return (
     <div className="dm-detail-inner">
       <div className="dm-detail-name">{device.name}</div>
@@ -1856,12 +2136,33 @@ function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure }) {
         <div className="dm-why-card"><strong>Why is this status shown?</strong><span>{checkinDetail.reason}</span>
           <small>Expected within {checkinDetail.expectedMinutes} min; not responding after {checkinDetail.missedAfterMinutes} min.</small></div>
       )}
-      {device.attributes?.candidate === true && (
+      {lifecycle === "CANDIDATE" && (
         <div className="dm-candidate-card"><strong>New device candidate</strong>
-          <span>Discovered from {device.attributes.discoveredFrom || device.attributes.source || "an integration"}. Review its name and enable it before commands are allowed.</span>
-          <button className="btn-primary" onClick={onConfigure}>Configure candidate</button>
+          <span>Discovered from {device.attributes.discoveredFrom || device.attributes.source || "an integration"}. Looking at it or closing this view leaves it a candidate.</span>
+          <div className="device-actions">
+            <button className="btn-primary" onClick={() => decide("ACCEPT")} disabled={pendingAction}>Use this device</button>
+            <button className="btn-secondary" onClick={() => decide("DEFER")} disabled={pendingAction}>Not now</button>
+            <button className="btn-ghost" onClick={() => decide("IGNORE")} disabled={pendingAction}>Ignore</button>
+          </div>
+          <button className="btn-ghost" onClick={onConfigure}>Review details without deciding</button>
         </div>
       )}
+      {lifecycle === "AVAILABLE" && (
+        <div className="dm-candidate-card"><strong>Available</strong>
+          <span>This device is in scope but not assigned. It stays disabled until an actual configuration change is saved.</span>
+          <button className="btn-primary" onClick={onConfigure}>Assign / configure</button>
+        </div>
+      )}
+      {["DEFERRED", "IGNORED"].includes(lifecycle) && (
+        <div className="dm-candidate-card"><strong>Previously exposed device</strong>
+          <span>Only cached identification is shown here. The app does not actively poll or command this device.</span>
+          <div className="device-actions">
+            <button className="btn-primary" onClick={() => decide("ACCEPT")} disabled={pendingAction}>Use this device</button>
+            <button className="btn-secondary" onClick={() => decide("REVIEW")} disabled={pendingAction}>Return to candidates</button>
+          </div>
+        </div>
+      )}
+      {lifecycleResult && <p className={lifecycleResult.ok ? "action-result action-ok" : "action-result action-error"}>{lifecycleResult.text}</p>}
       {Object.keys(device.attributes || {}).length > 0 && (
         <>
           <div className="dm-detail-section">Attributes</div>
@@ -1873,8 +2174,8 @@ function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure }) {
           ))}
         </>
       )}
-      {device.attributes?.candidate !== true && device.type === "LOCK" && <DmLockActions device={device}/>}
-      {device.attributes?.candidate !== true && <DmCapabilityActions device={device}/>}
+      {lifecycle === "ASSIGNED" && device.type === "LOCK" && <DmLockActions device={device}/>}
+      {lifecycle === "ASSIGNED" && <DmCapabilityActions device={device}/>}
     </div>
   );
 }
@@ -1931,39 +2232,55 @@ function DmLockActions({ device }) {
 
 function DmEditForm({ device, onSaved }) {
   const [name, setName]       = useState(device.name);
-  const [enabled, setEnabled] = useState(device.enabled !== false);
+  const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+  const lifecycle = deviceLifecycleState(device);
+  const originalEnabled = device.attributes?.enabled ?? (device.enabled !== false);
+  const changed = name.trim() !== device.name || enabled !== originalEnabled;
 
   const save = async () => {
     setSaving(true);
-    await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, enabled })
-    });
-    setSaving(false);
-    setSaved(true);
-    onSaved();
-    setTimeout(() => setSaved(false), 2000);
+    setSaveError(null);
+    try {
+      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, enabled })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+      setSaved(true);
+      onSaved();
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      setSaveError(error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="dm-edit-form">
       <div className="dm-detail-name">{device.deviceId}</div>
+      {lifecycle === "CANDIDATE" && <p className="config-desc">Reviewing or saving a corrected name does not accept this candidate. Use the explicit decision buttons in See when ready.</p>}
+      {lifecycle === "AVAILABLE" && <p className="config-desc">This accepted device is available but unassigned. Saving an actual change assigns it.</p>}
       <label>Display Name
-        <input value={name} onChange={e => { setName(e.target.value); setSaved(false); }}/>
+        <input value={name} onChange={e => { setName(e.target.value); setSaved(false); setSaveError(null); }}/>
       </label>
       <label className="dm-toggle-row">
         <span>Enabled</span>
-        <button className="btn-ghost" onClick={() => setEnabled(e => !e)}>
+        <button className="btn-ghost" onClick={() => setEnabled(e => !e)} disabled={lifecycle === "CANDIDATE"}
+          title={lifecycle === "CANDIDATE" ? "Accept the candidate before enabling it" : undefined}>
           {enabled ? <ToggleRight size={22} className="toggle-on"/> : <ToggleLeft size={22} className="toggle-off"/>}
         </button>
       </label>
       <div className="modal-actions">
         {saved && <span className="save-ok"><CheckCircle size={13}/> Saved</span>}
-        <button className="btn-primary" onClick={save} disabled={saving}>
+        {saveError && <span className="action-result action-error">Not saved: {saveError}</span>}
+        <button className="btn-primary" onClick={save} disabled={saving || !changed || !name.trim()}>
           {saving ? "Saving…" : "Save changes"}
         </button>
       </div>

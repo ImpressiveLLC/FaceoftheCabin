@@ -137,7 +137,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     }
 
     /**
-     * Parses the zigbee2mqtt/bridge/devices array and registers any new devices.
+     * Parses the zigbee2mqtt/bridge/devices array and refreshes every device.
      * Each element has: ieee_address, friendly_name, type, definition.exposes[]
      */
     private void handleBridgeDeviceList(String payload) {
@@ -149,7 +149,6 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 if (friendlyName == null || friendlyName.equals("Coordinator")) continue;
                 knownFriendlyNames.add(friendlyName);
                 String deviceId = DEVICE_ID_PREFIX + friendlyName.replace(" ", "_");
-                if (registry.descriptor(deviceId).isPresent()) continue; // already registered
 
                 JsonNode definition = device.path("definition");
                 Set<DeviceCapability> caps = inferCapabilities(definition);
@@ -174,9 +173,15 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 discovery.put("powerSource", powerSource);
                 if ("battery".equalsIgnoreCase(powerSource)) {
                     discovery.put("expectedCheckinMinutes", 1560); // 26h: accommodates daily sleepy-device reports
+                } else {
+                    // A nullable discovery value is an explicit removal in the
+                    // registry. Otherwise a device reclassified as mains-powered
+                    // would retain its stale 26-hour battery grace window.
+                    discovery.put("expectedCheckinMinutes", null);
                 }
-                registry.registerCandidate(desc, discovery);
-                log.info("Z2M registered device: {} ({})", friendlyName, type);
+                boolean firstSeen = registry.registerCandidate(desc, discovery);
+                if (firstSeen) log.info("Z2M discovered new device: {} ({})", friendlyName, type);
+                else log.debug("Z2M refreshed device: {} ({})", friendlyName, type);
             }
         } catch (Exception e) {
             log.warn("Failed to parse Z2M device list: {}", e.getMessage());

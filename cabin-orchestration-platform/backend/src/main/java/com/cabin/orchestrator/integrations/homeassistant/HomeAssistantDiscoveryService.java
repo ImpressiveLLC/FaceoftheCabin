@@ -65,12 +65,15 @@ public class HomeAssistantDiscoveryService {
             }
             registry.registerCandidate(descriptor, attrs);
             DeviceStatus current = registry.get(id);
+            if (current == null) continue; // device was removed concurrently
+            DeviceDescriptor registered = registry.descriptor(id).orElse(descriptor);
             Map<String, Object> merged = new LinkedHashMap<>(current.attributes());
             merged.putAll(attrs);
             boolean safetyAlarm = Set.of(DeviceType.SMOKE_ALARM, DeviceType.CO_ALARM,
-                DeviceType.WATER_LEAK_SENSOR).contains(type) && isPresent(entity.state());
-            registry.update(new DeviceStatus(id, type, name, safetyAlarm ? "ALARM" : adapter.normalizedState(entity.state()),
-                Instant.now(), merged, location));
+                DeviceType.WATER_LEAK_SENSOR).contains(registered.type()) && isPresent(entity.state());
+            registry.update(new DeviceStatus(id, registered.type(), registered.name(),
+                safetyAlarm ? "ALARM" : adapter.normalizedState(entity.state()),
+                Instant.now(), merged, registered.location()));
         }
     }
 

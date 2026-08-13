@@ -1,6 +1,9 @@
 package com.cabin.orchestrator.integrations.zigbee;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.model.DeviceCapability;
+import com.cabin.orchestrator.devices.model.DeviceDescriptor;
+import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.signalquality.SignalQualityRegistry;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
@@ -8,6 +11,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -84,5 +89,45 @@ class Zigbee2MqttAdapterTest {
         deliver("zigbee2mqtt/never_registered", "{\"linkquality\": 160}");
 
         assertTrue(signalQualityRegistry.assess("z2m-never_registered").isEmpty());
+    }
+
+    @Test
+    void repeatedBridgeListCorrectsStaleCandidateMetadata() throws Exception {
+        registry.registerCandidate(new DeviceDescriptor(
+            "z2m-temp_kitchen", "main_water_valve", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(DeviceCapability.COMMAND), "mqtt", "zigbee2mqtt/wrong", false, "cabin"),
+            Map.of("model", "wrong"));
+
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"temp_kitchen","type":"EndDevice","definition":{
+              "model":"SNZB-02D","description":"temperature sensor","vendor":"SONOFF",
+              "exposes":[{"type":"numeric","property":"temperature","access":1}]}}]
+            """);
+
+        var descriptor = registry.descriptor("z2m-temp_kitchen").orElseThrow();
+        var status = registry.get("z2m-temp_kitchen");
+        assertEquals("temp_kitchen", descriptor.name());
+        assertEquals(DeviceType.TEMPERATURE_SENSOR, descriptor.type());
+        assertEquals("zigbee2mqtt/temp_kitchen", descriptor.connectionString());
+        assertEquals("temp_kitchen", status.name());
+        assertEquals(DeviceType.TEMPERATURE_SENSOR, status.type());
+        assertEquals("SNZB-02D", status.attributes().get("model"));
+        assertEquals(true, status.attributes().get("candidate"));
+    }
+
+    @Test
+    void mainsPowerRediscoveryClearsBatteryCheckinOverride() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"motion_entry","type":"EndDevice","power_source":"battery","definition":{
+              "model":"SNZB-03PR2","description":"motion","vendor":"SONOFF","exposes":[]}}]
+            """);
+        assertEquals(1560, registry.get("z2m-motion_entry").attributes().get("expectedCheckinMinutes"));
+
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"motion_entry","type":"Router","power_source":"mains","definition":{
+              "model":"SNZB-03PR2","description":"motion","vendor":"SONOFF","exposes":[]}}]
+            """);
+
+        assertFalse(registry.get("z2m-motion_entry").attributes().containsKey("expectedCheckinMinutes"));
     }
 }

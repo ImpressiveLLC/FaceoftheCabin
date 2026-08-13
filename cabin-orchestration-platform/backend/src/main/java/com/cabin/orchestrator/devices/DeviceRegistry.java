@@ -2,6 +2,7 @@ package com.cabin.orchestrator.devices;
 
 import com.cabin.orchestrator.devices.adapter.ProtocolAdapter;
 import com.cabin.orchestrator.devices.model.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -20,10 +21,30 @@ public class DeviceRegistry {
     private final Map<String, DeviceStatus> statuses = new ConcurrentHashMap<>();
     private final Map<String, DeviceDescriptor> descriptors = new ConcurrentHashMap<>();
     private final Map<String, ProtocolAdapter> adapters = new ConcurrentHashMap<>();
+    private final Map<String, DeviceLifecycleState> lifecycleStates = new ConcurrentHashMap<>();
+    private final Set<String> configurationAsserted = ConcurrentHashMap.newKeySet();
+    private final DeviceLifecycleStore lifecycleStore;
+    // Device configuration arrives on HTTP threads while discovery arrives on
+    // MQTT callback and scheduler threads. Both descriptor and status must be
+    // decided and written under the same per-device lock; two independent
+    // ConcurrentHashMaps do not make a cross-map transaction atomic.
+    private final Map<String, Object> deviceLocks = new ConcurrentHashMap<>();
 
-    public DeviceRegistry(List<ProtocolAdapter> adapterList) {
+    @Autowired
+    public DeviceRegistry(List<ProtocolAdapter> adapterList, DeviceLifecycleStore lifecycleStore) {
+        this.lifecycleStore = lifecycleStore;
         adapterList.forEach(a -> adapters.put(a.adapterType(), a));
         seedDefaults();
+        restorePersistedDevices();
+    }
+
+    /** Convenience constructor for isolated unit tests. */
+    public DeviceRegistry(List<ProtocolAdapter> adapterList) {
+        this(adapterList, new DeviceLifecycleStore() {
+            @Override public Map<String, DeviceLifecycleRecord> loadAll() { return Map.of(); }
+            @Override public void save(DeviceLifecycleRecord record) { }
+            @Override public void delete(String deviceId) { }
+        });
     }
 
     private void seedDefaults() {
@@ -113,12 +134,35 @@ public class DeviceRegistry {
             "ha_rest", "climate.home_daikin_aurora", false, "home"));
     }
 
+    private void restorePersistedDevices() {
+        lifecycleStore.loadAll().forEach((deviceId, record) -> {
+            synchronized (lockFor(deviceId)) {
+                DeviceDescriptor descriptor = record.descriptor();
+                descriptors.put(deviceId, descriptor);
+                lifecycleStates.put(deviceId, record.lifecycleState());
+                if (record.configurationAsserted()) configurationAsserted.add(deviceId);
+                else configurationAsserted.remove(deviceId);
+                statuses.put(deviceId, statusWithLifecycle(
+                    descriptor, statuses.get(deviceId), record.lifecycleState()));
+            }
+        });
+    }
+
+    /**
+     * Register trusted code-defined configuration (seeds and tests). A new
+     * descriptor is assigned; updating an existing candidate records that its
+     * configuration was asserted without silently accepting it into scope.
+     * Person-authored API writes use saveConfiguration/registerConfiguredDevice
+     * below so persistence happens before memory changes.
+     */
     public void registerDescriptor(DeviceDescriptor desc) {
-        descriptors.put(desc.deviceId(), desc);
-        if (!statuses.containsKey(desc.deviceId())) {
-            statuses.put(desc.deviceId(), new DeviceStatus(
-                desc.deviceId(), desc.type(), desc.name(), "UNKNOWN",
-                Instant.now(), Map.of(), desc.location()));
+        synchronized (lockFor(desc.deviceId())) {
+            DeviceLifecycleState lifecycle = lifecycleStates.getOrDefault(
+                desc.deviceId(), DeviceLifecycleState.ASSIGNED);
+            descriptors.put(desc.deviceId(), desc);
+            lifecycleStates.put(desc.deviceId(), lifecycle);
+            configurationAsserted.add(desc.deviceId());
+            statuses.put(desc.deviceId(), statusWithLifecycle(desc, statuses.get(desc.deviceId()), lifecycle));
         }
     }
 
@@ -127,17 +171,155 @@ public class DeviceRegistry {
      * configured it. Discovery metadata travels with the status so every UI can
      * render the candidate and explain where it came from.
      */
-    public void registerCandidate(DeviceDescriptor desc, Map<String, Object> discoveryAttributes) {
-        descriptors.putIfAbsent(desc.deviceId(), desc);
-        statuses.compute(desc.deviceId(), (id, existing) -> {
-            Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
-            if (discoveryAttributes != null) attrs.putAll(discoveryAttributes);
-            attrs.putIfAbsent("candidate", !desc.enabled());
-            attrs.put("source", desc.protocolAdapter());
-            attrs.put("capabilities", desc.capabilities().stream().map(Enum::name).sorted().toList());
-            return new DeviceStatus(id, desc.type(), desc.name(), existing == null ? "UNKNOWN" : existing.state(),
-                existing == null ? Instant.now() : existing.lastSeen(), attrs, desc.location());
-        });
+    public boolean registerCandidate(DeviceDescriptor desc, Map<String, Object> discoveryAttributes) {
+        synchronized (lockFor(desc.deviceId())) {
+            DeviceDescriptor existingDescriptor = descriptors.get(desc.deviceId());
+            boolean firstSeen = existingDescriptor == null;
+
+            DeviceLifecycleState lifecycle = lifecycleStates.getOrDefault(
+                desc.deviceId(), DeviceLifecycleState.CANDIDATE);
+            // Human-authored fields become sticky independently from lifecycle:
+            // a renamed candidate remains a candidate until an explicit action,
+            // but discovery must not erase the saved name meanwhile.
+            boolean configured = existingDescriptor != null
+                && (configurationAsserted.contains(desc.deviceId()) || lifecycle != DeviceLifecycleState.CANDIDATE);
+            DeviceDescriptor merged = mergeDiscoveryDescriptor(existingDescriptor, desc, configured);
+            descriptors.put(desc.deviceId(), merged);
+            lifecycleStates.put(desc.deviceId(), lifecycle);
+
+            statuses.compute(desc.deviceId(), (id, existing) -> {
+                Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
+                if (discoveryAttributes != null) {
+                    discoveryAttributes.forEach((key, value) -> {
+                        if (value == null) attrs.remove(key);
+                        else attrs.put(key, value);
+                    });
+                }
+                putLifecycleAttributes(attrs, lifecycle, merged.enabled());
+                attrs.put("source", merged.protocolAdapter());
+                attrs.put("capabilities", merged.capabilities().stream().map(Enum::name).sorted().toList());
+                return new DeviceStatus(id, merged.type(), merged.name(), existing == null ? "UNKNOWN" : existing.state(),
+                    existing == null ? Instant.now() : existing.lastSeen(), attrs, merged.location());
+            });
+            return firstSeen;
+        }
+    }
+
+    /**
+     * Merge ownership for repeated integration discovery.
+     *
+     * Sticky after configuration: enabled, name, location, type and
+     * capabilities. The last two are safety-relevant and require a future
+     * explicit re-detect action rather than trusting a degraded discovery
+     * snapshot. Adapter/connection remain source-owned and refreshable.
+     * A never-configured candidate accepts all corrected discovery fields.
+     */
+    private DeviceDescriptor mergeDiscoveryDescriptor(DeviceDescriptor existing,
+                                                        DeviceDescriptor discovered,
+                                                        boolean configured) {
+        if (existing == null) return discovered;
+        return new DeviceDescriptor(
+            discovered.deviceId(),
+            configured ? existing.name() : discovered.name(),
+            configured ? existing.type() : discovered.type(),
+            configured ? existing.capabilities() : discovered.capabilities(),
+            discovered.protocolAdapter(),
+            discovered.connectionString(),
+            configured ? existing.enabled() : discovered.enabled(),
+            configured ? existing.location() : discovered.location());
+    }
+
+    /** Persist and register a manually-created or fully configured device. */
+    public DeviceDescriptor registerConfiguredDevice(DeviceDescriptor descriptor) {
+        synchronized (lockFor(descriptor.deviceId())) {
+            DeviceLifecycleRecord record = new DeviceLifecycleRecord(
+                descriptor, DeviceLifecycleState.ASSIGNED, true);
+            lifecycleStore.save(record);
+            applyPersistedRecord(record);
+            return descriptor;
+        }
+    }
+
+    /**
+     * Persist only an actual configuration change. Candidate configuration can
+     * be reviewed and renamed without implying acceptance; enabling a candidate
+     * is refused until the person explicitly accepts it as AVAILABLE.
+     */
+    public ConfigurationSaveResult saveConfiguration(String deviceId, String name, boolean enabled) {
+        synchronized (lockFor(deviceId)) {
+            DeviceDescriptor existing = descriptors.get(deviceId);
+            if (existing == null) throw new NoSuchElementException("Device not found: " + deviceId);
+            DeviceLifecycleState current = lifecycleState(deviceId);
+            if (current.isPreviouslyExposed()) {
+                throw new IllegalStateException("Review this previously exposed device before configuring it");
+            }
+            if (current == DeviceLifecycleState.CANDIDATE && enabled != existing.enabled()) {
+                throw new IllegalStateException("Accept this candidate before enabling it");
+            }
+
+            String nextName = name == null ? existing.name() : name.trim();
+            if (nextName.isBlank()) throw new IllegalArgumentException("Device name cannot be blank");
+            boolean changed = !Objects.equals(existing.name(), nextName) || existing.enabled() != enabled;
+            if (!changed) return new ConfigurationSaveResult(false, current, existing);
+
+            DeviceDescriptor updated = new DeviceDescriptor(
+                existing.deviceId(), nextName, existing.type(), existing.capabilities(),
+                existing.protocolAdapter(), existing.connectionString(), enabled, existing.location());
+            DeviceLifecycleState target = current == DeviceLifecycleState.AVAILABLE
+                ? DeviceLifecycleState.ASSIGNED : current;
+            DeviceLifecycleRecord record = new DeviceLifecycleRecord(updated, target, true);
+            lifecycleStore.save(record);
+            applyPersistedRecord(record);
+            return new ConfigurationSaveResult(true, target, updated);
+        }
+    }
+
+    /** Apply a persisted, explicit person-authored lifecycle decision. */
+    public LifecycleChangeResult applyLifecycleAction(String deviceId, DeviceLifecycleAction action) {
+        synchronized (lockFor(deviceId)) {
+            DeviceDescriptor existing = descriptors.get(deviceId);
+            if (existing == null) throw new NoSuchElementException("Device not found: " + deviceId);
+            DeviceLifecycleState current = lifecycleState(deviceId);
+            DeviceLifecycleState target = action.targetState();
+            if (action == DeviceLifecycleAction.REVIEW && !current.isPreviouslyExposed()) {
+                throw new IllegalStateException("Only previously exposed devices need to return to review");
+            }
+            if (current == target) return new LifecycleChangeResult(false, target);
+
+            // None of the review dispositions grants active use. AVAILABLE is
+            // accepted/in-scope but deliberately unassigned and disabled.
+            DeviceDescriptor inactive = new DeviceDescriptor(
+                existing.deviceId(), existing.name(), existing.type(), existing.capabilities(),
+                existing.protocolAdapter(), existing.connectionString(), false, existing.location());
+            DeviceLifecycleRecord record = new DeviceLifecycleRecord(
+                inactive, target, configurationAsserted.contains(deviceId));
+            lifecycleStore.save(record);
+            applyPersistedRecord(record);
+            return new LifecycleChangeResult(true, target);
+        }
+    }
+
+    public DeviceLifecycleState lifecycleState(String deviceId) {
+        DeviceLifecycleState lifecycle = lifecycleStates.get(deviceId);
+        if (lifecycle != null) return lifecycle;
+        DeviceStatus status = statuses.get(deviceId);
+        return status != null && Boolean.TRUE.equals(status.attributes().get("candidate"))
+            ? DeviceLifecycleState.CANDIDATE : DeviceLifecycleState.ASSIGNED;
+    }
+
+    public record ConfigurationSaveResult(
+        boolean changed, DeviceLifecycleState lifecycleState, DeviceDescriptor descriptor) {}
+
+    public record LifecycleChangeResult(boolean changed, DeviceLifecycleState lifecycleState) {}
+
+    private void applyPersistedRecord(DeviceLifecycleRecord record) {
+        DeviceDescriptor descriptor = record.descriptor();
+        descriptors.put(descriptor.deviceId(), descriptor);
+        lifecycleStates.put(descriptor.deviceId(), record.lifecycleState());
+        if (record.configurationAsserted()) configurationAsserted.add(descriptor.deviceId());
+        else configurationAsserted.remove(descriptor.deviceId());
+        statuses.put(descriptor.deviceId(), statusWithLifecycle(
+            descriptor, statuses.get(descriptor.deviceId()), record.lifecycleState()));
     }
 
     public Optional<DeviceDescriptor> descriptorByConnection(String adapter, String connection, String location) {
@@ -149,20 +331,77 @@ public class DeviceRegistry {
     }
 
     public void register(DeviceStatus status) {
-        statuses.put(status.deviceId(), status);
+        synchronized (lockFor(status.deviceId())) {
+            DeviceLifecycleState lifecycle = lifecycleState(status.deviceId());
+            Map<String, Object> attrs = new LinkedHashMap<>(status.attributes());
+            DeviceDescriptor descriptor = descriptors.get(status.deviceId());
+            boolean enabled = descriptor != null
+                ? descriptor.enabled() : Boolean.TRUE.equals(attrs.get("enabled"));
+            putLifecycleAttributes(attrs, lifecycle, enabled);
+            statuses.put(status.deviceId(), new DeviceStatus(
+                status.deviceId(), descriptor == null ? status.type() : descriptor.type(),
+                descriptor == null ? status.name() : descriptor.name(), status.state(),
+                status.lastSeen(), attrs,
+                descriptor == null ? status.location() : descriptor.location()));
+        }
     }
 
     public void update(DeviceStatus status) {
-        statuses.put(status.deviceId(), status);
+        synchronized (lockFor(status.deviceId())) {
+            DeviceStatus current = statuses.get(status.deviceId());
+            if (current == null) return; // deleted devices are not resurrected by a stale runtime write
+            DeviceDescriptor descriptor = descriptors.get(status.deviceId());
+            Map<String, Object> attrs = new LinkedHashMap<>(status.attributes());
+            // A runtime update may have been assembled just before a concurrent
+            // config save. Keep the lifecycle keys and configured descriptor
+            // authoritative when the write finally obtains this device's lock.
+            if (current.attributes().containsKey("candidate")) {
+                attrs.put("candidate", current.attributes().get("candidate"));
+            }
+            if (current.attributes().containsKey("deviceLifecycle")) {
+                attrs.put("deviceLifecycle", current.attributes().get("deviceLifecycle"));
+            }
+            if (current.attributes().containsKey("enabled")) {
+                attrs.put("enabled", current.attributes().get("enabled"));
+            }
+            statuses.put(status.deviceId(), new DeviceStatus(
+                status.deviceId(), descriptor == null ? status.type() : descriptor.type(),
+                descriptor == null ? status.name() : descriptor.name(), status.state(),
+                status.lastSeen(), attrs,
+                descriptor == null ? status.location() : descriptor.location()));
+        }
     }
 
     public void remove(String deviceId) {
-        statuses.remove(deviceId);
-        descriptors.remove(deviceId);
+        synchronized (lockFor(deviceId)) {
+            lifecycleStore.delete(deviceId);
+            statuses.remove(deviceId);
+            descriptors.remove(deviceId);
+            lifecycleStates.remove(deviceId);
+            configurationAsserted.remove(deviceId);
+        }
     }
 
     public List<DeviceStatus> all() {
         return statuses.values().stream().toList();
+    }
+
+    public List<DeviceStatus> inScope() {
+        return statuses.values().stream()
+            .filter(status -> lifecycleState(status.deviceId()).isInScope())
+            .toList();
+    }
+
+    public List<DeviceStatus> candidates() {
+        return statuses.values().stream()
+            .filter(status -> lifecycleState(status.deviceId()) == DeviceLifecycleState.CANDIDATE)
+            .toList();
+    }
+
+    public List<DeviceStatus> previouslyExposed() {
+        return statuses.values().stream()
+            .filter(status -> lifecycleState(status.deviceId()).isPreviouslyExposed())
+            .toList();
     }
 
     public List<DeviceStatus> byLocation(String location) {
@@ -179,9 +418,36 @@ public class DeviceRegistry {
         return Optional.ofNullable(descriptors.get(deviceId));
     }
 
+    private Object lockFor(String deviceId) {
+        return deviceLocks.computeIfAbsent(deviceId, ignored -> new Object());
+    }
+
+    private DeviceStatus statusWithLifecycle(DeviceDescriptor descriptor,
+                                             DeviceStatus existing,
+                                             DeviceLifecycleState lifecycle) {
+        Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
+        putLifecycleAttributes(attrs, lifecycle, descriptor.enabled());
+        attrs.put("source", descriptor.protocolAdapter());
+        attrs.put("capabilities", descriptor.capabilities().stream().map(Enum::name).sorted().toList());
+        return new DeviceStatus(
+            descriptor.deviceId(), descriptor.type(), descriptor.name(),
+            existing == null ? "UNKNOWN" : existing.state(),
+            existing == null ? Instant.now() : existing.lastSeen(),
+            attrs, descriptor.location());
+    }
+
+    private static void putLifecycleAttributes(Map<String, Object> attrs,
+                                               DeviceLifecycleState lifecycle,
+                                               boolean enabled) {
+        attrs.put("deviceLifecycle", lifecycle.name());
+        // Compatibility for older UI clients; deviceLifecycle is authoritative.
+        attrs.put("candidate", lifecycle == DeviceLifecycleState.CANDIDATE);
+        attrs.put("enabled", enabled);
+    }
+
     public boolean sendCommand(String deviceId, String command, Object payload) {
         DeviceDescriptor desc = descriptors.get(deviceId);
-        if (desc == null || !desc.enabled()) return false;
+        if (desc == null || !desc.enabled() || !lifecycleState(deviceId).allowsActiveUse()) return false;
         ProtocolAdapter adapter = adapters.get(desc.protocolAdapter());
         if (adapter == null) return false;
         return adapter.sendCommand(desc, command, payload);
@@ -195,7 +461,9 @@ public class DeviceRegistry {
      */
     public Optional<DeviceStatus> activeFetch(String deviceId) {
         DeviceDescriptor desc = descriptors.get(deviceId);
-        if (desc == null) return Optional.empty();
+        if (desc == null || !desc.enabled() || !lifecycleState(deviceId).allowsActiveUse()) {
+            return Optional.empty();
+        }
         ProtocolAdapter adapter = adapters.get(desc.protocolAdapter());
         if (adapter == null) return Optional.empty();
         return adapter.fetchState(desc);
