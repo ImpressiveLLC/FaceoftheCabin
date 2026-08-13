@@ -15,6 +15,18 @@ CREATE TABLE IF NOT EXISTS device (
 CREATE INDEX IF NOT EXISTS device_lifecycle_state_idx
     ON device ((config->>'lifecycleState'));
 
+-- Self-discovery results (proposals only -- never authoritative until a
+-- person applies selected fields via the device table above)
+CREATE TABLE IF NOT EXISTS device_discovery_result (
+    run_id       TEXT PRIMARY KEY,
+    device_id    TEXT NOT NULL,
+    requested_at TIMESTAMPTZ NOT NULL,
+    applied_at   TIMESTAMPTZ,
+    result       JSONB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS device_discovery_result_device_idx
+    ON device_discovery_result (device_id, requested_at DESC);
+
 -- Time-series telemetry
 CREATE TABLE IF NOT EXISTS telemetry (
     time      TIMESTAMPTZ NOT NULL,
