@@ -540,6 +540,29 @@ body {
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
+/* ─── Self-discovery overlay ────────────────────────────────────────────── */
+/* First real consumer of .modal-overlay/.modal in this file -- everything
+   above was defined but unused. Discovery results (summary, field compare,
+   sources) need more room than the default 420px config modal. */
+.modal-header { display: flex; align-items: center; justify-content: space-between; }
+.modal-header h3 { margin: 0; }
+.discovery-modal { width: 560px; max-height: 82vh; overflow-y: auto; }
+.discovery-status-pane { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; }
+.discovery-result { display: flex; flex-direction: column; gap: 10px; }
+.discovery-match-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.discovery-summary { font-size: 13px; line-height: 1.5; color: var(--text); }
+.discovery-fields { display: flex; flex-direction: column; gap: 6px; border: 1px solid #30363d; border-radius: 8px; padding: 8px 10px; }
+.discovery-field-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.discovery-field-label { color: #8b949e; min-width: 90px; }
+.discovery-field-current { color: #8b949e; text-decoration: line-through; }
+.discovery-field-value { color: var(--text); font-weight: 500; }
+.discovery-sources { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.discovery-source-link { display: flex; align-items: center; gap: 4px; color: var(--accent); text-decoration: none; }
+.discovery-source-link:hover { text-decoration: underline; }
+.candidate-badge.lifecycle-high { border-color: var(--success); color: var(--success); }
+.candidate-badge.lifecycle-medium { border-color: var(--warning); color: var(--warning); }
+.candidate-badge.lifecycle-low { border-color: var(--text-muted); color: var(--text-muted); }
+
 /* ─── Empty State ───────────────────────────────────────────────────────── */
 .empty-state {
   display: flex; flex-direction: column; align-items: center;

@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, CameraEventsPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -488,6 +488,96 @@ describe("Device candidate decision controls", () => {
     fireEvent.click(screen.getByRole("button", { name: /use this device/i }));
     await waitFor(() => expect(onLifecycleAction).toHaveBeenCalledWith(expect.objectContaining({ deviceId: "candidate" }), "ACCEPT"));
     expect(await screen.findByText("Decision saved.")).toBeTruthy();
+  });
+
+  it("offers to recognize a candidate and hands off to onOpenDiscovery", () => {
+    const onOpenDiscovery = vi.fn();
+    const device = { deviceId: "candidate", name: "New sensor", type: "MOTION_SENSOR", state: "UNKNOWN", location: "cabin", attributes: { deviceLifecycle: "CANDIDATE" } };
+    render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} onOpenDiscovery={onOpenDiscovery} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /recognize this device/i }));
+    expect(onOpenDiscovery).toHaveBeenCalledWith(device, "new");
+  });
+});
+
+describe("DeviceDiscoveryOverlay", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const candidateDevice = { deviceId: "z2m-x", name: "Discovered", type: "CONTACT_SENSOR", location: "cabin", attributes: {} };
+
+  function mockDiscoveryFetch(result) {
+    vi.stubGlobal("fetch", vi.fn((url, opts) => {
+      if (String(url).endsWith("/discovery/run")) {
+        return Promise.resolve({ ok: true, json: async () => ({ runId: "run-1" }) });
+      }
+      if (String(url).endsWith("/discovery/latest")) {
+        return Promise.resolve({ ok: true, json: async () => result });
+      }
+      if (String(url).endsWith("/discovery/apply")) {
+        return Promise.resolve({ ok: true, json: async () => ({ deviceId: "z2m-x", changed: true, deviceLifecycle: "ASSIGNED" }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    }));
+  }
+
+  const realMatch = {
+    summary: "A SONOFF SNZB-04P contact sensor.",
+    confidence: "high",
+    suggestedName: "SONOFF SNZB-04P Contact Sensor",
+    suggestedType: "CONTACT_SENSOR",
+    suggestedCapabilities: ["TELEMETRY", "ACCESS_CONTROL"],
+    installGuide: { mode: "summary", content: "Pair within 30 seconds of powering on." },
+    sources: [{ url: "https://example.com/spec", title: "Spec sheet", snippet: "...", fetchedAt: "2026-08-13T00:00:00Z" }],
+  };
+
+  it("shows a loading state, then the result with sources once the poll resolves", async () => {
+    mockDiscoveryFetch({ runId: "run-1", deviceId: "z2m-x", pending: false, matches: [realMatch] });
+    render(<DeviceDiscoveryOverlay device={candidateDevice} mode="new" onClose={() => {}} onApplied={() => {}} />);
+
+    expect(screen.getByText(/looking up discovered/i)).toBeTruthy();
+    expect(await screen.findByText(realMatch.summary)).toBeTruthy();
+    expect(screen.getByText("high confidence")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /spec sheet/i })).toHaveProperty("href", "https://example.com/spec");
+  });
+
+  it("shows an unverified notice when no sources came back", async () => {
+    const noSourceMatch = { ...realMatch, confidence: "low", sources: [] };
+    mockDiscoveryFetch({ runId: "run-1", deviceId: "z2m-x", pending: false, matches: [noSourceMatch] });
+    render(<DeviceDiscoveryOverlay device={candidateDevice} mode="new" onClose={() => {}} onApplied={() => {}} />);
+
+    expect(await screen.findByText(/no external sources were found/i)).toBeTruthy();
+  });
+
+  it("Import applies only the checked fields and calls onApplied", async () => {
+    mockDiscoveryFetch({ runId: "run-1", deviceId: "z2m-x", pending: false, matches: [realMatch] });
+    const onApplied = vi.fn();
+    render(<DeviceDiscoveryOverlay device={candidateDevice} mode="new" onClose={() => {}} onApplied={onApplied} />);
+    await screen.findByText(realMatch.summary);
+
+    fireEvent.click(screen.getByRole("button", { name: /import this device/i }));
+
+    await waitFor(() => expect(onApplied).toHaveBeenCalledOnce());
+    const applyCall = fetch.mock.calls.find(([url]) => String(url).endsWith("/discovery/apply"));
+    const body = JSON.parse(applyCall[1].body);
+    expect(body.mode).toBe("new");
+    expect(body.fields.name).toBe("SONOFF SNZB-04P Contact Sensor");
+  });
+
+  it("replace mode shows the current value struck through next to the suggested value", async () => {
+    mockDiscoveryFetch({ runId: "run-1", deviceId: "z2m-x", pending: false, matches: [realMatch] });
+    const assignedDevice = { ...candidateDevice, name: "Old name", type: "MOTION_SENSOR" };
+    render(<DeviceDiscoveryOverlay device={assignedDevice} mode="replace" onClose={() => {}} onApplied={() => {}} />);
+
+    await screen.findByText(realMatch.summary);
+    expect(screen.getByText("Old name →")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /replace device settings with new definitions/i })).toBeTruthy();
+  });
+
+  it("shows an error state if the discovery/run call itself fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    render(<DeviceDiscoveryOverlay device={candidateDevice} mode="new" onClose={() => {}} onApplied={() => {}} />);
+
+    expect(await screen.findByText(/didn't respond in time/i)).toBeTruthy();
   });
 });
 
