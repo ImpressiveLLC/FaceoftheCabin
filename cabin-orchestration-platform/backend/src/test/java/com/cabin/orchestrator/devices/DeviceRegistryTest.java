@@ -221,6 +221,73 @@ class DeviceRegistryTest {
         assertEquals(DeviceLifecycleState.ASSIGNED, registry.lifecycleState("configured"));
     }
 
+    @Test
+    void replaceConfigurationOnlyTouchesSelectedFieldsAndNeverEnabled() {
+        registry.registerConfiguredDevice(descriptor(
+            "resync-target", "Old name", DeviceType.CONTACT_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/x", true, "cabin"));
+
+        DeviceDescriptor proposed = new DeviceDescriptor(
+            "resync-target", "New name from discovery", DeviceType.CONTACT_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ACCESS_CONTROL),
+            "mqtt", "zigbee2mqtt/x", false /* must be ignored */, "home" /* not selected, must be ignored */);
+
+        DeviceRegistry.ConfigurationSaveResult result =
+            registry.replaceConfiguration("resync-target", proposed, Set.of("name", "capabilities"));
+
+        assertTrue(result.changed());
+        assertEquals("New name from discovery", result.descriptor().name());
+        assertEquals(Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ACCESS_CONTROL), result.descriptor().capabilities());
+        assertTrue(result.descriptor().enabled(), "enabled must never change via replaceConfiguration");
+        assertEquals("cabin", result.descriptor().location(), "unselected fields must not change");
+        assertEquals(DeviceLifecycleState.ASSIGNED, registry.lifecycleState("resync-target"));
+    }
+
+    @Test
+    void replaceConfigurationRefusesOnAnUnreviewedCandidate() {
+        registry.registerCandidate(descriptor(
+            "resync-candidate", "Discovered", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.PRESENCE), "mqtt", "zigbee2mqtt/y", false, "cabin"), Map.of());
+
+        DeviceDescriptor proposed = new DeviceDescriptor(
+            "resync-candidate", "Renamed", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.PRESENCE), "mqtt", "zigbee2mqtt/y", false, "cabin");
+
+        assertThrows(IllegalStateException.class,
+            () -> registry.replaceConfiguration("resync-candidate", proposed, Set.of("name")));
+    }
+
+    @Test
+    void replaceConfigurationRefusesOnAPreviouslyExposedDevice() {
+        registry.registerCandidate(descriptor(
+            "resync-deferred", "Discovered", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.PRESENCE), "mqtt", "zigbee2mqtt/z", false, "cabin"), Map.of());
+        registry.applyLifecycleAction("resync-deferred", DeviceLifecycleAction.DEFER);
+
+        DeviceDescriptor proposed = new DeviceDescriptor(
+            "resync-deferred", "Renamed", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.PRESENCE), "mqtt", "zigbee2mqtt/z", false, "cabin");
+
+        assertThrows(IllegalStateException.class,
+            () -> registry.replaceConfiguration("resync-deferred", proposed, Set.of("name")));
+    }
+
+    @Test
+    void replaceConfigurationIsANoOpWhenNothingSelectedChanges() {
+        registry.registerConfiguredDevice(descriptor(
+            "resync-noop", "Same name", DeviceType.CONTACT_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/w", true, "cabin"));
+
+        DeviceDescriptor proposed = new DeviceDescriptor(
+            "resync-noop", "Same name", DeviceType.CONTACT_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/w", true, "cabin");
+
+        DeviceRegistry.ConfigurationSaveResult result =
+            registry.replaceConfiguration("resync-noop", proposed, Set.of("name"));
+
+        assertFalse(result.changed());
+    }
+
     private DeviceDescriptor descriptor(String id, String name, DeviceType type,
                                         Set<DeviceCapability> capabilities, String adapter,
                                         String connection, boolean enabled, String location) {

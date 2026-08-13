@@ -274,6 +274,55 @@ public class DeviceRegistry {
         }
     }
 
+    /**
+     * Apply a person-approved subset of freshly re-discovered fields onto an
+     * already-configured device -- the "replace device settings with new
+     * definitions" step of a self-discovery re-sync. Unlike
+     * saveConfiguration() (name/enabled only, from the manual edit form),
+     * this can also replace type/capabilities/location, because the person
+     * has explicitly reviewed and approved a discovery result field by
+     * field rather than typing a value. Only touches the fields named in
+     * selectedFields; enabled state is never touched by this path. A
+     * CANDIDATE must go through applyLifecycleAction(ACCEPT) +
+     * saveConfiguration() instead (that's what discovery/apply's mode=new
+     * does) -- this method is specifically the mode=replace path for a
+     * device that's already AVAILABLE or ASSIGNED.
+     */
+    public ConfigurationSaveResult replaceConfiguration(String deviceId, DeviceDescriptor proposed,
+                                                          Set<String> selectedFields) {
+        synchronized (lockFor(deviceId)) {
+            DeviceDescriptor existing = descriptors.get(deviceId);
+            if (existing == null) throw new NoSuchElementException("Device not found: " + deviceId);
+            DeviceLifecycleState current = lifecycleState(deviceId);
+            if (current == DeviceLifecycleState.CANDIDATE) {
+                throw new IllegalStateException("Accept this candidate before replacing its configuration");
+            }
+            if (current.isPreviouslyExposed()) {
+                throw new IllegalStateException("Review this previously exposed device before configuring it");
+            }
+
+            String nextName = selectedFields.contains("name") ? proposed.name() : existing.name();
+            if (nextName == null || nextName.isBlank()) throw new IllegalArgumentException("Device name cannot be blank");
+
+            DeviceDescriptor updated = new DeviceDescriptor(
+                existing.deviceId(),
+                nextName,
+                selectedFields.contains("type") ? proposed.type() : existing.type(),
+                selectedFields.contains("capabilities") ? proposed.capabilities() : existing.capabilities(),
+                existing.protocolAdapter(),   // source-owned, not replaceable through this path
+                existing.connectionString(),  // source-owned, not replaceable through this path
+                existing.enabled(),           // this path never changes enabled state
+                selectedFields.contains("location") ? proposed.location() : existing.location());
+
+            if (updated.equals(existing)) return new ConfigurationSaveResult(false, current, existing);
+
+            DeviceLifecycleRecord record = new DeviceLifecycleRecord(updated, current, true);
+            lifecycleStore.save(record);
+            applyPersistedRecord(record);
+            return new ConfigurationSaveResult(true, current, updated);
+        }
+    }
+
     /** Apply a persisted, explicit person-authored lifecycle decision. */
     public LifecycleChangeResult applyLifecycleAction(String deviceId, DeviceLifecycleAction action) {
         synchronized (lockFor(deviceId)) {
