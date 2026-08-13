@@ -64,7 +64,11 @@ function check(label, actual, expected) {
   // than intended and block other UI -- a user-reported bug, confirmed via
   // this project's own CI failing "collapsed handle is fully on-screen"
   // the same day). Asserting the fixed value directly, not deriving it,
-  // is the point: it should NOT track other elements' layout.
+  // is the point: it should NOT track other elements' layout. Widened from
+  // 56px to 132px on 2026-08-13 to fit a short message preview (a new note
+  // could previously only be discovered by opening the panel) -- still a
+  // fixed, independent constant, just a different one; not a regression of
+  // the thing this test actually guards against.
   const widths = await page.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
     return { expanded: cs.getPropertyValue('--np-w-expanded').trim(), collapsed: cs.getPropertyValue('--np-w-collapsed').trim() };
@@ -73,7 +77,7 @@ function check(label, actual, expected) {
     ['chores-card', 'dashboard-fab', 'settings-btn']
       .map(id => document.getElementById(id).getBoundingClientRect().width));
   check('slid-out width == largest right-side element', widths.expanded, `${Math.round(Math.max(...refWidths))}px`);
-  check('slid-in width is the fixed, narrow constant (not derived from other elements)', widths.collapsed, '56px');
+  check('slid-in width is the fixed, narrow constant (not derived from other elements)', widths.collapsed, '132px');
 
   // The collapsed handle must actually be on-screen and clickable (regression
   // guard for the flex/translateX bug this suite was written to catch).
