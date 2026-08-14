@@ -7249,3 +7249,65 @@ elements:
       done here -- see ROADMAP.md's Item 5 (Home location setup) and
       Item 4's second half in the Codex handoff doc
       (docs/HANDOFF_2026-08-08_codex-fork.md) for what's still open.
+
+
+  - id: production_stack_compose_project
+    entity_type: owl:DatatypeProperty
+    layer: infra
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      description: Docker Compose project "cabin" — the pre-existing mosquitto/homeassistant/nodered/frigate/zigbee2mqtt/blinkbridge/mediamtx/cloudflared/uptime-kuma/homepage stack, now version-controlled
+    ui_display_name: "(not shown)"
+    rendering:
+      semantic: (not shown)
+      systems: Production Stack (M920q)
+      technical: cabin-orchestration-platform/infra/production-stack/docker-compose.yml, project name "cabin"
+      compliance: (not shown)
+    definition: >
+      The M920q's actual running camera/automation/messaging stack —
+      mosquitto, homeassistant, nodered, frigate, zigbee2mqtt,
+      blinkbridge, mediamtx, cloudflared, uptime-kuma, homepage — was,
+      until 2026-08-14, a completely separate, git-untracked compose
+      project at /storage/containers/compose/cabin on the M920q, hand-
+      edited with no PR review and no diff history. This repo's own
+      infra/docker-compose.yml services with the same names
+      (mqtt/homeassistant/nodered/frigate/watchdog) are vestigial —
+      disabled via docker-compose.m920q.yml's profiles: [disabled] —
+      because this separate stack already existed before this project
+      did. Phase 0 of the "Production stack: version control, real
+      health signals, and cross-container regression testing" plan
+      imported it verbatim into infra/production-stack/ (PR #17); Phase
+      0.5 cut the M920q over to actually run docker compose from this
+      git-tracked copy instead of the standalone directory (same
+      session). The old directory was renamed, not deleted, to
+      /storage/containers/compose/cabin.retired-20260813 as a rollback
+      path.
+    relationships:
+      - target: docker_network_cabin_default
+        type: depends_on
+        cardinality: "N:1"
+      - target: machine_hostname
+        type: depends_on
+        cardinality: "N:1"
+    notes: >
+      The cutover itself was not a no-op even though the resolved
+      config diffed identical — Compose also tracks the project's
+      working directory internally, so every container except mediamtx
+      (no relative-path bind mounts, so its resolved config genuinely
+      didn't change) got recreated. That recreation surfaced a real,
+      previously-dormant bug: Frigate's own config substitution only
+      expands FRIGATE_-prefixed env vars into {VAR} placeholders, so
+      config.yml's {CAMERA_PASSWORD} placeholder was never actually
+      resolvable — fixed same session by routing the value through the
+      existing unused FRIGATE_RTSP_PASSWORD slot instead. See
+      MAINTENANCE.md's Known Issues log (2026-08-14 entry) for the full
+      incident writeup. Phase A (real healthcheck: blocks on the 6
+      services that had none — PR #18, merged and deployed same
+      session) and the Uptime Kuma monitor gaps (including the direct
+      MQTT-availability regression test for this exact incident) are
+      the direct follow-up — see docs/DEFINITION_OF_DONE.md's punch
+      list for current status.

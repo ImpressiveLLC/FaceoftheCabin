@@ -163,14 +163,45 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
-- **Fork handoff in effect 2026-08-08 → 2026-08-14** — user working from a
-  git fork with a different AI tool while away from Claude Code. See
-  [`docs/HANDOFF_2026-08-08_codex-fork.md`](HANDOFF_2026-08-08_codex-fork.md)
-  for the full charter: check-down doc order, git/CI/production
-  guardrails (self-hosted runner is repo-specific to `main`, will NOT
-  serve the fork — do not register a second one against the M920q), the
-  5 still-open items from the user's last request, and reconciliation
-  steps for 8/14. Remove this item once reconciled.
+- **Codex-fork handoff (2026-08-08 → 2026-08-14) — partially
+  reconciled, not independently re-verified.** Evidence of real
+  reconciliation work this session: `git log` shows PR #1 ("Device
+  discovery, presence, grouping, and Kidde CO alarm support") and PR #2
+  ("Route Frigate detections through severity classification" —
+  matches Item 6's recommended first fix in the handoff doc) both merged
+  to `main` before tonight's later work began. **Not done**: nobody has
+  gone back through
+  [`docs/HANDOFF_2026-08-08_codex-fork.md`](HANDOFF_2026-08-08_codex-fork.md)'s
+  6 items one by one to confirm current status against real code —
+  Items 2 (camera-auth inheritance from Family Hub) and 5 (Home location
+  hardware) show no matching commits and are almost certainly still
+  fully open; Items 1/3/4/6 need an actual check, not an assumption,
+  before this item can be removed. **Explicitly carried forward per that
+  handoff doc's own §4/§5 instruction not to let it silently vanish:
+  `BLINK_PASSWORD` rotation status is still unconfirmed** — no
+  evidence either way was found this session.
+- **Production stack now under version control (Phase 0/0.5 done,
+  2026-08-14)** — see `docs/ontology.yaml`'s
+  `production_stack_compose_project` and `MAINTENANCE.md`'s matching
+  incident entry for the full story: the cutover itself triggered a
+  real Frigate crash-loop (root-caused and fixed, `c104723`), and Phase
+  A's first piece — Docker healthchecks on the 6 services that had
+  none — is merged and live (PR #18). **Still open**: the other two
+  Phase A items — Uptime Kuma monitor gaps, including the direct
+  `cabin/camera/available` MQTT regression test for this exact incident,
+  and Kuma config-as-code — are blocked on a real decision, not just
+  implementation time: Kuma has no REST API for monitor management
+  (confirmed empirically), so scripting it needs the community
+  `uptime-kuma-api` package authenticating as a real Kuma admin login,
+  and that credential isn't in the Ansible vault yet. Add it to the
+  vault first (matches this project's own "keys and ansible, not
+  recorded passwords" principle) before scripting this. Phase B (CI
+  cross-container smoke test) and the rest of Phase C (REPLICATION.md
+  §10 — the ontology entry itself is done, the doc section isn't) are
+  entirely unstarted. Minor, deliberately not fixed: `mediamtx` is
+  still labeled to the old (now-retired) compose project internally —
+  cosmetic only, no functional difference, will self-correct next time
+  its actual config changes.
 - **Grafana embed resolved 2026-08-08 (real root cause, not the
   suspected one) — then replaced entirely by user decision.** The
   actual blocker was `hub_locations` seeded with unreachable
@@ -243,11 +274,14 @@ accumulate.*
 
 ---
 
-**Last full session close-out:** 2026-08-08 (marathon session — Config
-panel dynamic fields, presence/armed-state/signal-quality MQTT wiring,
-blinkbridge crash fix, mosquitto WebSocket listener, and a real,
-still-open Grafana embed investigation with disproven theories logged
-honestly rather than left as stale "fixed" claims — see punch list
-above for what's genuinely still open). See git log for the actual
-session-by-session record — that's the authoritative history now, not
-this file.
+**Last full session close-out:** 2026-08-14 — partial codex-fork
+reconciliation (PR #1, PR #2), the Device Discovery Assistant feature
+shipped end-to-end (4 phases, all merged), and an unplanned live
+incident: the production-stack cutover (Phase 0/0.5 of a separate,
+approved plan) triggered a real Frigate crash-loop, root-caused and
+fixed after an unrelated mid-session crash lost and then recovered
+context from the crashed session's own transcript. Phase A's healthcheck
+piece shipped (PR #18); Kuma monitor work is blocked on a vault-credential
+decision, not yet made — see the punch list above. See git log for the
+actual session-by-session record — that's the authoritative history
+now, not this file.

@@ -915,9 +915,66 @@ handling, not the backend or Frigate:
   Deliberately did not add CORS to Actuator just to drive a status
   badge — that would widen Actuator's exposure for a cosmetic fix.
 
-See `cabin-orchestration-platform/ui/src/App.jsx`'s `useGoogleAuth`,
-`CameraLiveView`, and `App()`'s `refreshDevices` for the fixed code —
-each carries an inline comment dated the same day explaining the bug.
+### Frigate crash-looped after the production-stack cutover — `{CAMERA_PASSWORD}` was never resolvable (found and fixed 2026-08-14)
+
+Phase 0.5 of bringing the M920q's production stack under version control
+(see `docs/ontology.yaml`'s `production_stack_compose_project`) cut the
+live stack over to running `docker compose` from the git-tracked
+`infra/production-stack/docker-compose.yml` instead of a standalone,
+untracked directory. The resolved config diffed byte-identical
+beforehand, so the cutover looked like a safe no-op — it wasn't. Compose
+also tracks the project's working directory internally, so every
+container except `mediamtx` (no relative-path bind mounts, so its
+resolved config genuinely didn't change) got recreated anyway, and that
+recreation surfaced two real, previously-dormant bugs at once:
+
+1. **A transient empty `CAMERA_PASSWORD`** in the freshly-recreated
+   Frigate container (confirmed via `docker exec frigate ... wc -c` —>
+   `0`), while the same variable resolved correctly moments later via
+   `docker compose config`. Root cause not fully isolated (a `.env`
+   file-copy race against the `up -d` that created the container is the
+   working theory) — resolved by force-recreating just Frigate once
+   `.env` was confirmed resolving correctly.
+2. **The real, underlying bug**: Frigate's own config substitution
+   (`frigate/config/env.py`) only expands env vars *prefixed* `FRIGATE_`
+   into `{VAR}` placeholders in `config.yml` — confirmed via Frigate's
+   actual Python traceback, not inferred. `config.yml` used
+   `{CAMERA_PASSWORD}` (no prefix), which was **never** going to
+   resolve, regardless of the value — a stale comment in the compose
+   file claiming plain `{VAR}` substitution worked was simply wrong.
+   `CAMERA_PASSWORD` itself was correct and present the entire time
+   (verified length 14, functioning) — nothing wrong with the secret
+   itself. **Fixed**: wired the compose file's existing, unused
+   `FRIGATE_RTSP_PASSWORD: ""` slot to `${CAMERA_PASSWORD}`, and
+   repointed `config.yml`'s four RTSP-path placeholders at
+   `{FRIGATE_RTSP_PASSWORD}` instead. Both cameras confirmed reporting
+   real FPS again; `RestartCount` reset to 0 and stayed there.
+
+**A live-debugging session got cut short mid-fix by an unrelated Claude
+Code crash** (Windows reported the working folder "no longer available"
+— root cause not confirmed, a Google-Drive-mounted working directory
+hitting a sync hiccup is the leading theory) after the fix had been
+correctly diagnosed but before it could be applied — the session's own
+auto-mode classifier had also blocked the `sed` edit from running
+autonomously against live infra, twice, so it was already queued as a
+manual step when the crash hit. The next session recovered full context
+from the crashed session's still-intact local transcript (nothing was
+actually lost, despite the UI suggesting otherwise) and applied the
+already-diagnosed fix directly.
+
+**Also found in that recovered transcript, worth naming explicitly**: a
+literal password-like value got typed into a live terminal command and
+landed in that transcript in plaintext — the same class of incident as
+"Never diff secrets by raw value" below. Not reproduced here or anywhere
+downstream; irrelevant to the real fix either way since `CAMERA_PASSWORD`
+was never actually wrong.
+
+**Lesson**: a byte-identical resolved-config diff is necessary but not
+sufficient proof a Compose cutover is a no-op — the working directory
+itself is part of Compose's change-detection, invisible to a `config`
+diff. Treat any change to *where* `docker compose` is invoked from as a
+real deploy, not a bookkeeping move, even when the file contents don't
+change.
 
 ### Blink camera silently stopped producing frames for hours, no auto-recovery (found and fixed 2026-08-03)
 
