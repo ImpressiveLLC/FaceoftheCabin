@@ -248,6 +248,12 @@ services:
     depends_on:
       - postgres
       - kafka
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/actuator/health 2>/dev/null | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # ── cabin-discovery: device self-discovery / assisted-onboarding ─────
   # Stateless lookup service cabin-backend calls (DiscoveryServiceClient) --
@@ -268,6 +274,12 @@ services:
       # Optional -- unset keeps discovery in local-catalog-only mode (see
       # .env.m920q.example). Never logged, never returned in API responses.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     networks:
       - default
 

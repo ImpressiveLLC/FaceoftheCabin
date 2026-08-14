@@ -32,6 +32,13 @@ services:
       - /storage/services/mosquitto/data:/mosquitto/data
       - /storage/services/mosquitto/log:/mosquitto/log
 
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -C 1 -t '$$SYS/broker/uptime' -W 3 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
     logging:
       driver: json-file
       options:
@@ -171,3 +178,9 @@ services:
       - /dev/serial/by-id/usb-Itead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_V2_8224d99c690ff011b85da19a41f80dde-if00-port0:/dev/ttyACM0
     environment:
       - TZ=America/Chicago
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
