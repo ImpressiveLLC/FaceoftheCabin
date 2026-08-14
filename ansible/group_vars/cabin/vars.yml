@@ -22,6 +22,19 @@ tech_id_api_key: "{{ vault_tech_id_api_key | default('') }}"
 # reported), no external calls, no device metadata leaves the host.
 # Add `vault_anthropic_api_key` to vault.yml to enable the real lookup.
 anthropic_api_key: "{{ vault_anthropic_api_key | default('') }}"
+# Optional — Uptime Kuma admin login, for the not-yet-built config-as-code
+# reconciler (see docs/REPLICATION.md Sec 10's Kuma decision record and
+# MAINTENANCE.md). Same "empty is a valid, working state" pattern as the
+# others above: unset just means the reconciler can't run yet, monitors
+# stay UI-managed. Kuma's own monitor-write surface is an internal
+# Socket.IO API, not a public REST endpoint — there is no read-only
+# "API key" equivalent here the way there is for tech_id/anthropic above,
+# it genuinely has to be the real admin login. Add `vault_uptime_kuma_username`
+# / `vault_uptime_kuma_password` to vault.yml when ready to build/run that
+# reconciler — do not add them speculatively before the reconciler code
+# itself exists and has been reviewed.
+uptime_kuma_username: "{{ vault_uptime_kuma_username | default('') }}"
+uptime_kuma_password: "{{ vault_uptime_kuma_password | default('') }}"
 
 # Non-secret config, templated into .env alongside the vaulted values so
 # infra/.env has one generation source instead of being partly-managed.
