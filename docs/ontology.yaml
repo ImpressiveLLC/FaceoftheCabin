@@ -2537,12 +2537,15 @@ elements:
       - target: event_severity
         type: triggers
         cardinality: "1:N" # water_leak: true on this device is one of the three conditions AlertSeverityClassifier maps to CRITICAL
+      - target: trigger_water_leak_detected
+        type: triggers
+        cardinality: "1:1"
       - target: audit_log
         type: consumed_by
         cardinality: "1:N"
     relates_to:
       ui_components: []
-      elements: [z2m_friendly_name, device_state, event_severity]
+      elements: [z2m_friendly_name, device_state, event_severity, trigger_water_leak_detected]
     notes: >
       Live, paired, and confirmed reporting as of 2026-08-07 — part of
       the original 13-device cabin mesh pairing session
@@ -2837,12 +2840,15 @@ elements:
       - target: event_severity
         type: triggers
         cardinality: "1:N"
+      - target: trigger_water_leak_detected
+        type: triggers
+        cardinality: "1:1"
       - target: audit_log
         type: consumed_by
         cardinality: "1:N"
     relates_to:
       ui_components: []
-      elements: [z2m_friendly_name, device_state, event_severity]
+      elements: [z2m_friendly_name, device_state, event_severity, trigger_water_leak_detected]
     notes: >
       Part of the original 13-device mesh pairing (2026-07-25). No
       discovery block, same reasoning as zigbee_leak_alarm_bathroom.
@@ -7311,3 +7317,134 @@ elements:
       MQTT-availability regression test for this exact incident) are
       the direct follow-up — see docs/DEFINITION_OF_DONE.md's punch
       list for current status.
+
+
+  - id: trigger_water_leak_detected
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.4.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Water leak detected"
+    applies_to_device_type: [WATER_LEAK_SENSOR]
+    applies_to_capability: ALARM
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: water_leak }
+    predicate: { op: is_true }
+    rendering:
+      semantic: "A leak sensor detects water"
+      systems: Trigger — Water Leak Detected
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['water_leak']==true"
+      compliance: (not shown)
+    definition: >
+      Fires when any WATER_LEAK_SENSOR/ALARM-capable device reports
+      water_leak=true. Matches by device TYPE, not physical instance —
+      any future leak sensor is eligible with zero new ontology entries.
+      First of the new trigger_definition/action_definition entity types
+      introduced by the human-driven, ontology-exclusive Rules & Alerts
+      engine (2026-08-14) — see WorkflowRuleService for the interpreter
+      that reads this vocabulary.
+    relationships:
+      - target: zigbee_leak_alarm_bathroom
+        type: consumed_by
+        cardinality: "N:1"
+      - target: zigbee_leak_mech_room
+        type: consumed_by
+        cardinality: "N:1"
+      - target: action_main_water_valve_off
+        type: triggers
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [zigbee_leak_alarm_bathroom, zigbee_leak_mech_room, action_main_water_valve_off]
+    notes: >
+      Deliberately independent of AlertSeverityClassifier/CabinEvent.severity
+      -- matches raw payload directly rather than gating on a severity tier,
+      so it fires correctly even for device/event shapes the classifier
+      doesn't recognize. v1's WorkflowRuleService.resolveTriggerDefinitionId()
+      hardcodes this exact field check; a real ontology-driven reverse
+      lookup (device type/capability -> matching trigger_definition ids) is
+      tracked as follow-up work, not built yet.
+
+  - id: action_main_water_valve_off
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.4.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Turn off main water valve"
+    action_kind: command
+    action_target: { device_id: zigbee_main_water_valve, command: "state.set", payload: { state: "OFF" } }
+    requires_capability: COMMAND
+    reversible_by: action_main_water_valve_open
+    rendering:
+      semantic: "Shut off the main water valve"
+      systems: Action — Main Water Valve Off
+      technical: "DeviceRegistry.sendCommand('z2m-main_water_valve', 'state.set', {state: OFF}) -> MqttProtocolAdapter -> Zigbee2MqttAdapter"
+      compliance: Water Shutoff Control — Automated Trigger
+    definition: >
+      Commands zigbee_main_water_valve off via DeviceRegistry ->
+      MqttProtocolAdapter (new 2026-08-14, closes a real gap: Zigbee2MqttAdapter
+      never implemented ProtocolAdapter, so this command path was a silent
+      no-op for every Zigbee device before this class existed). Gated by
+      CommandCatalogService (device must exist, be enabled, and declare
+      COMMAND capability) before DeviceRegistry.sendCommand() is ever called.
+    relationships:
+      - target: zigbee_main_water_valve
+        type: controls
+        cardinality: "1:1"
+      - target: trigger_water_leak_detected
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [zigbee_main_water_valve, trigger_water_leak_detected]
+    notes: >
+      This is the platform's first-ever real device-command action fired by
+      any rule engine here -- automation_alert_see_think_act's own notes
+      flag that the marketing site's "Offer shutoff control" ACT step was
+      never built because main_water_valve's controllability was never
+      verified. It's now verified and wired, closing that gap.
+
+  - id: action_main_water_valve_open
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.4.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Reopen main water valve"
+    action_kind: command
+    action_target: { device_id: zigbee_main_water_valve, command: "state.set", payload: { state: "ON" } }
+    requires_capability: COMMAND
+    reversible_by: action_main_water_valve_off
+    rendering:
+      semantic: "Reopen the main water valve"
+      systems: Action — Main Water Valve Open
+      technical: "DeviceRegistry.sendCommand('z2m-main_water_valve', 'state.set', {state: ON}) -> MqttProtocolAdapter -> Zigbee2MqttAdapter"
+      compliance: Water Shutoff Control — Manual Override
+    definition: >
+      Commands zigbee_main_water_valve back on. Instance-specific by design,
+      not type-generic -- this is "the" single main shutoff, not "a" valve
+      of a class. Human-invoked only (a MANUAL trigger_kind WorkflowRule,
+      never matched against an incoming CabinEvent) -- the platform never
+      reopens this valve automatically. This is the ontology-side half of
+      the user's "layered workflow" example: a human adds a second workflow
+      that reopens the valve after a leak workflow already closed it, logs
+      the action, and flags the tile "recent event" until viewed.
+    relationships:
+      - target: zigbee_main_water_valve
+        type: controls
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [zigbee_main_water_valve]
+    notes: >
+      Deliberately has no relationship to trigger_water_leak_detected --
+      unlike action_main_water_valve_off, this action is never fired by a
+      device-event trigger, only by a person explicitly invoking it via
+      POST /api/rules/workflows/{id}/fire.

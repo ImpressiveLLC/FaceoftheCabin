@@ -1,6 +1,7 @@
 package com.cabin.orchestrator.kafka;
 
 import com.cabin.orchestrator.automation.AutomationRuleService;
+import com.cabin.orchestrator.workflow.WorkflowRuleService;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
 import com.cabin.orchestrator.events.NtfyAlertPublisher;
@@ -56,15 +57,17 @@ public class EventConsumer {
     private final CabinEventService eventService;
     private final NtfyAlertPublisher ntfyAlertPublisher;
     private final AutomationRuleService automationRuleService;
+    private final WorkflowRuleService workflowRuleService;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
 
     public EventConsumer(CabinEventService eventService, NtfyAlertPublisher ntfyAlertPublisher,
-                          AutomationRuleService automationRuleService) {
+                          AutomationRuleService automationRuleService, WorkflowRuleService workflowRuleService) {
         this.eventService = eventService;
         this.ntfyAlertPublisher = ntfyAlertPublisher;
         this.automationRuleService = automationRuleService;
+        this.workflowRuleService = workflowRuleService;
     }
 
     @PostConstruct
@@ -99,6 +102,10 @@ public class EventConsumer {
                         // AUTOMATION_ALERT events this itself produces fall through
                         // evaluate()'s switch to a no-op default -- no feedback loop.
                         automationRuleService.evaluate(event);
+                        // Human-configured workflow rules -- same event, same
+                        // guard-against-own-output pattern (WORKFLOW_* events
+                        // are skipped inside evaluate() itself).
+                        workflowRuleService.evaluate(event);
                     } catch (Exception e) {
                         log.warn("Failed to persist event from {}: {}", TOPIC, e.getMessage());
                     }
