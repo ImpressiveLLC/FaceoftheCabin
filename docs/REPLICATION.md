@@ -293,3 +293,126 @@ it's up, not through code or `.env`. This guide is only about getting an
 *independent instance* running; day-to-day family configuration is the
 whole point of the app's own Settings/Dashboard, not something to hardcode
 per-fork. For that, see [`USER_GUIDE.md`](USER_GUIDE.md).
+
+## 10. Monitoring & cross-container health
+
+Three layers answer different questions and should remain separate:
+
+1. **Docker healthchecks** answer whether one running container can perform
+   its own minimum useful operation. Docker exposes the result through
+   `docker compose ps` and can use it for dependency/startup decisions.
+2. **Uptime Kuma** answers whether one service can reach and observe another
+   continuously, and pages a person when that path fails.
+3. **The cross-container CI smoke test** answers whether a proposed compose
+   or integration change breaks a real message path before it reaches a hub.
+   That workflow is a separate deployment-gate phase; a green Docker or Kuma
+   result does not replace it.
+
+### Docker healthchecks shipped with the M920q stack
+
+The six checks below are already part of the tracked compose definitions. A
+fresh instance should show each service as `(healthy)` in `docker compose ps`
+after its `start_period`; `running` without `(healthy)` is not equivalent.
+
+| Service | Probe | What a passing result proves |
+|---|---|---|
+| `mosquitto` | Subscribe once to `$SYS/broker/uptime` with `mosquitto_sub` | The broker is processing an MQTT subscription and delivering its own live system message, not merely holding TCP port 1883 open. Compose uses `$$SYS` so Compose passes a literal `$SYS` topic to the container instead of treating `$SYS` as interpolation. |
+| `zigbee2mqtt` | `wget` the service UI at `http://localhost:8080/` | The Zigbee2MQTT application has started far enough to answer HTTP inside its container. Coordinator/device-path coverage belongs in the cross-container smoke test and live monitoring; this check does not claim that every Zigbee device is reachable. |
+| `cabin-postgres` | `pg_isready -U cabin -d cabin` | PostgreSQL is accepting connections for the configured application database/user. This is deeper than a port-open check, but it is not a query-level durability test. |
+| `cabin-kafka` | `kafka-broker-api-versions --bootstrap-server localhost:9092` | A Kafka client can complete broker protocol negotiation. A listening socket alone would not pass. |
+| `cabin-backend` | GET `/actuator/health`, require `"status":"UP"` | Spring Boot is serving its application health endpoint and its registered health contributors report UP. The body assertion prevents an arbitrary HTTP response from counting as healthy. |
+| `cabin-discovery` | Python `urllib` GET `/health`, require HTTP 200 | The actual FastAPI process can route and answer a request. Its `python:3.12-slim` image intentionally has no curl/wget, so the probe uses its existing standard-library runtime rather than adding a package solely for healthchecking. The endpoint is process health, not a claim that an optional external discovery provider is reachable. |
+
+The production services (`mosquitto`, `zigbee2mqtt`) live in
+`cabin-orchestration-platform/infra/production-stack/docker-compose.yml`.
+Postgres and Kafka are defined in `infra/docker-compose.yml`; the M920q
+backend and discovery checks are in `infra/docker-compose.m920q.yml`. Read the
+base and overlay together when evaluating the deployed stack.
+
+Useful first checks on a replica are:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.m920q.yml config
+docker compose -f docker-compose.yml -f docker-compose.m920q.yml ps
+docker inspect --format '{{json .State.Health}}' <container-name>
+```
+
+Do not disable a failing check just to make the table green. Inspect its
+recorded health output and the service log, fix the failed function, then
+confirm the check recovers.
+
+### Frigate environment substitution is prefix-restricted
+
+Frigate does not expand every container environment variable referenced as
+`{VAR}` in `config.yml`. Its config loader only makes variables prefixed
+`FRIGATE_` available for that substitution. Keep the two-layer mapping:
+
+```yaml
+# docker-compose.yml
+environment:
+  FRIGATE_RTSP_PASSWORD: "${CAMERA_PASSWORD}"
+
+# frigate/config.yml
+path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@camera/...
+```
+
+`${CAMERA_PASSWORD}` is Compose interpolation from the host-only `.env`;
+`{FRIGATE_RTSP_PASSWORD}` is Frigate's later in-container substitution. A
+plain `{CAMERA_PASSWORD}` placeholder can leave Frigate crash-looping even
+when the original secret is present and correct. Never print or diff the raw
+secret while diagnosing this; compare presence or length only.
+
+### Uptime Kuma monitor set
+
+The reusable target set is:
+
+- MQTT `$SYS/broker/uptime` on `mosquitto:1883`;
+- Zigbee2MQTT HTTP on `http://zigbee2mqtt:8080/`;
+- cabin-backend `http://cabin-backend:8090/actuator/health`;
+- cabin-discovery `http://<hub-lan-ip>:8091/health` (the discovery container
+  deliberately does not join the production stack's `cabin_default` network,
+  so Kuma reaches its published host port rather than container DNS);
+- MQTT `cabin/camera/available` on `mosquitto:1883`, expected payload
+  `online` — this is the direct regression monitor for Frigate being up but
+  disconnected from MQTT; and
+- the existing Frigate `driveway` `camera_fps > 0` JSON-query monitor, which
+  catches a camera bridge that remains running but has stopped producing
+  frames.
+
+Attach the instance's default ntfy notification to every monitor that should
+page; a green/red monitor with no notification route is only a dashboard.
+Clear any stale retained `frigate/available` message once during migration so
+the old topic cannot be mistaken for the current `cabin/camera/available`
+contract.
+
+#### Kuma config-as-code decision — proposed, not yet approved
+
+Uptime Kuma 2.x removed the old JSON backup/restore feature. Its supported
+backup is the whole `/app/data` directory, and monitor writes use an internal,
+version-unstable Socket.IO API after admin authentication. Therefore
+`uptime-kuma-monitors.json` must **not** be described as a Kuma 2.x export or
+as something the UI can import. The safer decision is:
+
+1. The instance owner adds `kuma_username` and `kuma_password` to
+   `group_vars/cabin/vault.yml` themselves. Neither value, a login token, nor
+   a resolved Ansible variable is committed or logged.
+2. Before touching production, run a proof of concept against a disposable
+   Kuma container at the same pinned 2.x version. Use a pinned release of the
+   community `uptime-kuma-api` client to authenticate, list monitors, create
+   one uniquely named test monitor, update it idempotently, and remove it.
+3. Proceed with an Ansible reconciliation task only if that POC proves all
+   five operations and a second run makes no changes. Run the credentialed
+   task with `no_log: true`; match monitors by a stable declared key; create
+   or update by default; never delete an unknown production monitor unless a
+   separate prune flag is explicitly enabled.
+4. Treat a full stopped-container backup of `/app/data` as the rollback before
+   the first production reconciliation. If the POC fails or the pinned Kuma
+   version changes, use the documented UI steps to create the six monitors
+   manually and leave automation blocked rather than writing Kuma's SQLite
+   database directly.
+
+Once approved and proven, commit a **repo-owned declarative monitor spec** at
+`cabin-orchestration-platform/infra/production-stack/uptime-kuma-monitors.json`
+plus the idempotent Ansible reconciliation task. Until then, that file and
+task deliberately do not exist; this section is the explicit decision gate,
+not a claim that a fresh Kuma instance can already be seeded automatically.
