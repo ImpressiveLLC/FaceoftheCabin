@@ -385,34 +385,52 @@ Clear any stale retained `frigate/available` message once during migration so
 the old topic cannot be mistaken for the current `cabin/camera/available`
 contract.
 
-#### Kuma config-as-code decision — proposed, not yet approved
+#### Kuma config-as-code decision — POC passed, production approval pending
 
-Uptime Kuma 2.x removed the old JSON backup/restore feature. Its supported
-backup is the whole `/app/data` directory, and monitor writes use an internal,
-version-unstable Socket.IO API after admin authentication. Therefore
-`uptime-kuma-monitors.json` must **not** be described as a Kuma 2.x export or
-as something the UI can import. The safer decision is:
+[Uptime Kuma 2.x removed JSON backup/restore](https://github.com/louislam/uptime-kuma/wiki/Migration-From-v1-To-v2).
+Its supported backup is the whole `/app/data` directory, and monitor writes use
+an internal, version-unstable Socket.IO API after admin authentication.
+Therefore `uptime-kuma-monitors.json` must **not** be described as a Kuma 2.x
+export or as something the UI can import. A Kuma API key cannot replace the
+admin login for monitor management.
 
-1. The instance owner adds `kuma_username` and `kuma_password` to
-   `group_vars/cabin/vault.yml` themselves. Neither value, a login token, nor
-   a resolved Ansible variable is committed or logged.
-2. Before touching production, run a proof of concept against a disposable
-   Kuma container at the same pinned 2.x version. Use a pinned release of the
-   community `uptime-kuma-api` client to authenticate, list monitors, create
-   one uniquely named test monitor, update it idempotently, and remove it.
-3. Proceed with an Ansible reconciliation task only if that POC proves all
-   five operations and a second run makes no changes. Run the credentialed
-   task with `no_log: true`; match monitors by a stable declared key; create
-   or update by default; never delete an unknown production monitor unless a
-   separate prune flag is explicitly enabled.
-4. Treat a full stopped-container backup of `/app/data` as the rollback before
-   the first production reconciliation. If the POC fails or the pinned Kuma
-   version changes, use the documented UI steps to create the six monitors
-   manually and leave automation blocked rather than writing Kuma's SQLite
-   database directly.
+The disposable proof of concept completed on 2026-08-14 against Uptime Kuma
+2.5.0 with pinned community client
+[`uptime-kuma-api2==2.5.0`](https://github.com/pbarone/uptime-kuma-api2):
 
-Once approved and proven, commit a **repo-owned declarative monitor spec** at
-`cabin-orchestration-platform/infra/production-stack/uptime-kuma-monitors.json`
-plus the idempotent Ansible reconciliation task. Until then, that file and
-task deliberately do not exist; this section is the explicit decision gate,
-not a claim that a fresh Kuma instance can already be seeded automatically.
+- an MQTT monitor for `cabin/camera/available = online` was created by its
+  unique declared name;
+- a second reconciliation updated the same monitor ID and left exactly one
+  monitor, proving no duplicate was created;
+- retained `online` produced a green heartbeat, retained `offline` produced a
+  red message-mismatch heartbeat, and restoring `online` returned it to green;
+- the test used disposable credentials and tmpfs storage, and the container,
+  broker, network, client environment, and credentials were removed afterward;
+- no production URL, vault, monitor, notification, broker topic, or
+  `/app/data` directory was read or changed.
+
+The proof establishes that an idempotent reconciliation is technically
+possible; it does **not** authorize the first production write. The remaining
+decision and dependencies are:
+
+1. Nate/Claude approve adding `vault_uptime_kuma_username` and
+   `vault_uptime_kuma_password` to `group_vars/cabin/vault.yml`, exposed only
+   through non-committed resolved Ansible variables. Never log either value.
+2. Confirm the live Kuma version and its Tailscale/internal-only URL before
+   selecting and pinning the compatible client. The original
+   `uptime-kuma-api`/Ansible collection is not a v2-safe substitute for the
+   tested `uptime-kuma-api2` continuation.
+3. Review a separate repo-owned declarative monitor specification and
+   reconciliation task. The task must use `no_log: true`, match by a stable
+   declared key, create/update without pruning by default, and fail closed on
+   duplicate declared keys or version mismatch.
+4. Stop Kuma and take a complete `/app/data` backup immediately before the
+   first approved production reconciliation. Do not write SQLite directly.
+5. If credentials or the reconciliation implementation are not approved, use
+   the documented UI target list above. Manual creation remains the supported
+   fallback; this PR does not pretend fresh-instance seeding already exists.
+
+The repository's no-new-Python constraint also remains in force. The POC's
+temporary client environment is evidence, not checked-in product code. A
+seeder implementation needs its own review rather than silently introducing a
+Python maintenance surface through this documentation change.
