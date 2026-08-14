@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -27,6 +28,13 @@ import static org.junit.jupiter.api.Assertions.*;
  * for anything JdbcTemplate/SQL-dependent, see EventPipelineIntegrationTest's
  * doc comment), a recording fake for ProtocolAdapter/EventPublisher so
  * command/notify behavior is observable without a real MQTT broker or Kafka.
+ *
+ * Hardening tests added 2026-08-14 (external review of the first live
+ * test) use short millisecond confirmation delays via ReflectionTestUtils
+ * -- same @Value-outside-Spring pattern AutomationRuleServiceTest already
+ * uses -- and a real (not simulated) DeviceRegistry.update() call to stand
+ * in for what Zigbee2MqttAdapter would normally do when the device reports
+ * its own state back.
  */
 @Testcontainers
 class WorkflowRuleServiceTest {
@@ -75,6 +83,9 @@ class WorkflowRuleServiceTest {
         eventPublisher = new RecordingEventPublisher();
         service = new WorkflowRuleService(ruleStore, executionStore, deviceRegistry,
             new CommandCatalogService(deviceRegistry), eventPublisher);
+        // Fast by default for every test; confirmation-specific tests override further.
+        ReflectionTestUtils.setField(service, "confirmationInitialDelayMillis", 50L);
+        ReflectionTestUtils.setField(service, "confirmationFinalDelayMillis", 150L);
     }
 
     /** Mirrors DeviceDiscoveryController.applyNew()'s exact CANDIDATE -> ACCEPT -> saveConfiguration flow -- allowsActiveUse() is only true once ASSIGNED. */
@@ -91,15 +102,23 @@ class WorkflowRuleServiceTest {
             Instant.now(), Map.of("water_leak", true));
     }
 
+    private CabinEvent leakClearedEvent(String deviceId) {
+        return new CabinEvent(UUID.randomUUID().toString(), deviceId, "TELEMETRY", "INFO",
+            Instant.now(), Map.of("water_leak", false));
+    }
+
+    private WorkflowRule compoundLeakWorkflow(String workflowId) {
+        return new WorkflowRule(workflowId, "Leak shutoff", "cabin", "DEVICE_EVENT",
+            "trigger_water_leak_detected", null, true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
+            List.of(
+                new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of()),
+                new WorkflowAction(workflowId + "-a2", workflowId, 1, "action_main_water_valve_off",
+                    "z2m-main_water_valve", Map.of())));
+    }
+
     @Test
     void compoundWorkflowRunsNotifyAndValveOffInOrderAndRecordsAnExecution() {
-        ruleStore.save(new WorkflowRule(
-            "wf-compound", "Leak shutoff", "cabin", "DEVICE_EVENT", "trigger_water_leak_detected", null,
-            true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
-            List.of(
-                new WorkflowAction("a1", "wf-compound", 0, "notify_critical", null, Map.of()),
-                new WorkflowAction("a2", "wf-compound", 1, "action_main_water_valve_off",
-                    "z2m-main_water_valve", Map.of()))));
+        ruleStore.save(compoundLeakWorkflow("wf-compound"));
 
         service.evaluate(leakEvent("z2m-leak_mech_room"));
 
@@ -113,6 +132,8 @@ class WorkflowRuleServiceTest {
         assertEquals(2, executions.get(0).actionResults().size());
         assertEquals(true, executions.get(0).actionResults().get(0).get("success"));
         assertEquals(true, executions.get(0).actionResults().get(1).get("success"));
+        assertEquals("ACCEPTED", executions.get(0).actionResults().get(1).get("commandStatus"),
+            "immediately after evaluate() returns, only the publish is proven -- confirmation is async");
     }
 
     @Test
@@ -132,6 +153,7 @@ class WorkflowRuleServiceTest {
         assertEquals(1, eventPublisher.published.size());
         List<WorkflowExecution> executions = executionStore.recentFor("wf-partial-fail", 10);
         assertEquals(false, executions.get(0).actionResults().get(0).get("success"));
+        assertEquals("PUBLISH_FAILED", executions.get(0).actionResults().get(0).get("commandStatus"));
         assertEquals(true, executions.get(0).actionResults().get(1).get("success"));
     }
 
@@ -214,5 +236,134 @@ class WorkflowRuleServiceTest {
             "CommandCatalogService must reject a non-COMMAND-capable target before DeviceRegistry is ever called");
         WorkflowExecution execution = executionStore.recentFor("wf-e", 10).get(0);
         assertEquals(false, execution.actionResults().get(0).get("success"));
+    }
+
+    // ── Hardening: idempotency, edge detection, auto-clear (added 2026-08-14) ──
+
+    @Test
+    void theSameEventIdDeliveredTwiceProducesExactlyOneExecutionAndOneCommand() {
+        ruleStore.save(compoundLeakWorkflow("wf-dedup"));
+        CabinEvent event = leakEvent("z2m-leak_mech_room");
+
+        service.evaluate(event);
+        service.evaluate(event); // simulates a Kafka redelivery of the identical record
+
+        assertEquals(1, adapter.commands.size(), "the physical command must not repeat on replay");
+        assertEquals(1, eventPublisher.published.size());
+        assertEquals(1, executionStore.recentFor("wf-dedup", 10).size());
+    }
+
+    @Test
+    void aRepeatedTrueReadingWhileAlreadyActiveDoesNotReFire() {
+        ruleStore.save(compoundLeakWorkflow("wf-edge"));
+
+        service.evaluate(leakEvent("z2m-leak_mech_room")); // first real detection
+        adapter.commands.clear();
+        eventPublisher.published.clear();
+        service.evaluate(leakEvent("z2m-leak_mech_room")); // a second, distinct event -- e.g. a routine heartbeat, still wet
+
+        assertTrue(adapter.commands.isEmpty(), "a workflow already active must not re-fire its actions");
+        assertTrue(eventPublisher.published.isEmpty());
+        assertEquals(1, executionStore.recentFor("wf-edge", 10).size(), "still exactly one execution, not two");
+    }
+
+    @Test
+    void aClearingReadingAutoClearsAnActiveAutoOnClearExecution() {
+        ruleStore.save(compoundLeakWorkflow("wf-autoclear"));
+        service.evaluate(leakEvent("z2m-leak_mech_room"));
+        assertTrue(executionStore.findActive("wf-autoclear").isPresent());
+
+        service.evaluate(leakClearedEvent("z2m-leak_mech_room"));
+
+        Optional<WorkflowExecution> active = executionStore.findActive("wf-autoclear");
+        assertTrue(active.isEmpty(), "the execution must no longer read as active once cleared");
+        WorkflowExecution cleared = executionStore.recentFor("wf-autoclear", 1).get(0);
+        assertNotNull(cleared.clearedAt());
+        assertEquals("AUTO", cleared.clearedBy());
+    }
+
+    @Test
+    void manualOnlyResetModeDoesNotAutoClear() {
+        ruleStore.save(new WorkflowRule(
+            "wf-manual-reset", "Strict shutoff", "cabin", "DEVICE_EVENT", "trigger_water_leak_detected", null,
+            true, "MANUAL_ONLY", null, Instant.now(), "test",
+            List.of(new WorkflowAction("mr1", "wf-manual-reset", 0, "notify_critical", null, Map.of()))));
+        service.evaluate(leakEvent("z2m-leak_mech_room"));
+
+        service.evaluate(leakClearedEvent("z2m-leak_mech_room"));
+
+        assertTrue(executionStore.findActive("wf-manual-reset").isPresent(),
+            "MANUAL_ONLY workflows require a human POST .../clear -- a sensor reading alone must never clear them");
+    }
+
+    @Test
+    void aFreshLeakAfterAutoClearFiresAgain() {
+        ruleStore.save(compoundLeakWorkflow("wf-refire"));
+        service.evaluate(leakEvent("z2m-leak_mech_room"));
+        service.evaluate(leakClearedEvent("z2m-leak_mech_room"));
+        adapter.commands.clear();
+        eventPublisher.published.clear();
+
+        service.evaluate(leakEvent("z2m-leak_mech_room")); // a genuinely new leak
+
+        assertEquals(1, adapter.commands.size(), "clearing must not permanently disable the workflow");
+        assertEquals(2, executionStore.recentFor("wf-refire", 10).size());
+    }
+
+    // ── Hardening: command confirmation states (added 2026-08-14) ──
+
+    @Test
+    void commandBecomesConfirmedOnceTheDeviceReportsTheExpectedState() throws InterruptedException {
+        ruleStore.save(compoundLeakWorkflow("wf-confirm"));
+
+        service.evaluate(leakEvent("z2m-leak_mech_room"));
+        // Simulates Zigbee2MqttAdapter.handleDeviceState() processing the
+        // device's own report -- real code path in production, called
+        // directly here since there's no real MQTT broker in this test.
+        deviceRegistry.update(new DeviceStatus("z2m-main_water_valve", DeviceType.HOME_ASSISTANT_ENTITY,
+            "Main Water Valve", "OFFLINE", Instant.now(), Map.of("state", "OFF"), "cabin"));
+
+        String executionId = executionStore.recentFor("wf-confirm", 1).get(0).executionId();
+        String status = awaitCommandStatus(executionId, "wf-confirm-a2", 2000);
+
+        assertEquals("CONFIRMED", status);
+    }
+
+    @Test
+    void commandGoesUnconfirmedAndPublishesACriticalAlertWhenTheDeviceNeverMatches() throws InterruptedException {
+        ruleStore.save(compoundLeakWorkflow("wf-unconfirmed"));
+
+        service.evaluate(leakEvent("z2m-leak_mech_room"));
+        // Deliberately do NOT update the device's reported state -- simulates
+        // exactly what was found live 2026-08-14: a competing automation (or
+        // any other cause) silently reverting the command.
+
+        String executionId = executionStore.recentFor("wf-unconfirmed", 1).get(0).executionId();
+        String status = awaitCommandStatus(executionId, "wf-unconfirmed-a2", 2000);
+
+        assertEquals("UNCONFIRMED", status);
+        boolean sawUnconfirmedAlert = eventPublisher.published.stream()
+            .anyMatch(e -> "WORKFLOW_UNCONFIRMED".equals(e.eventType()) && "CRITICAL".equals(e.severity()));
+        assertTrue(sawUnconfirmedAlert, "an UNCONFIRMED command must raise its own CRITICAL alert, not fail silently");
+    }
+
+    /** Polls executionStore the same way EventPipelineIntegrationTest's awaitEvent()/awaitAutomationAlert() do -- confirmation runs on a background scheduler, not synchronously inside evaluate(). */
+    private String awaitCommandStatus(String executionId, String actionId, long timeoutMillis) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline) {
+            Optional<WorkflowExecution> exec = executionStore.findById(executionId);
+            if (exec.isPresent()) {
+                for (Map<String, Object> result : exec.get().actionResults()) {
+                    if (actionId.equals(result.get("actionId"))) {
+                        String status = (String) result.get("commandStatus");
+                        if ("CONFIRMED".equals(status) || "UNCONFIRMED".equals(status)) {
+                            return status;
+                        }
+                    }
+                }
+            }
+            Thread.sleep(20);
+        }
+        return "TIMED_OUT_WAITING";
     }
 }

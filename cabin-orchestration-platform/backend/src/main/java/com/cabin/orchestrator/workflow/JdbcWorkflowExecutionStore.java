@@ -14,7 +14,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** Persists each firing of a WorkflowRule. Same pattern as JdbcWorkflowRuleStore. */
+/**
+ * Persists each firing of a WorkflowRule. Same pattern as JdbcWorkflowRuleStore.
+ *
+ * The partial unique index on (workflow_id, triggered_by_event_id) is the
+ * durable half of idempotency (found missing 2026-08-14, external review):
+ * without it, a Kafka redelivery of the same source event could create a
+ * second execution and re-issue a physical command. WHERE triggered_by_event_id
+ * IS NOT NULL because MANUAL-trigger executions (a human pressing "fire")
+ * legitimately have no source event and must not be limited to firing once
+ * ever.
+ */
 @Repository
 public class JdbcWorkflowExecutionStore {
 
@@ -39,6 +49,10 @@ public class JdbcWorkflowExecutionStore {
         jdbc.execute("""
             CREATE INDEX IF NOT EXISTS workflow_execution_workflow_idx
             ON workflow_execution (workflow_id, fired_at DESC)""");
+        jdbc.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS workflow_execution_dedup_idx
+            ON workflow_execution (workflow_id, triggered_by_event_id)
+            WHERE triggered_by_event_id IS NOT NULL""");
     }
 
     public void save(WorkflowExecution execution) {
@@ -55,6 +69,24 @@ public class JdbcWorkflowExecutionStore {
             execution.clearedAt() == null ? null : Timestamp.from(execution.clearedAt()),
             execution.clearedBy(), toJson(execution.actionResults()),
             execution.lastViewedAt() == null ? null : Timestamp.from(execution.lastViewedAt()));
+    }
+
+    /** True if this exact (workflow, source event) pair has already produced an execution -- the dedup check callers must run BEFORE executing any action, not just before saving. */
+    public boolean existsForTriggerEvent(String workflowId, String triggeredByEventId) {
+        if (triggeredByEventId == null) return false;
+        Integer count = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM workflow_execution WHERE workflow_id = ? AND triggered_by_event_id = ?
+            """, Integer.class, workflowId, triggeredByEventId);
+        return count != null && count > 0;
+    }
+
+    /** The workflow's current uncleared execution, if any -- the edge-detection check: a workflow with an active execution must not fire again until it clears. */
+    public Optional<WorkflowExecution> findActive(String workflowId) {
+        List<WorkflowExecution> rows = jdbc.query("""
+            SELECT * FROM workflow_execution WHERE workflow_id = ? AND cleared_at IS NULL
+            ORDER BY fired_at DESC LIMIT 1
+            """, (rs, rowNum) -> map(rs), workflowId);
+        return rows.stream().findFirst();
     }
 
     public List<WorkflowExecution> recentFor(String workflowId, int limit) {

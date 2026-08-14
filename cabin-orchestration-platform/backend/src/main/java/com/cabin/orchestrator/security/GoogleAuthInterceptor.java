@@ -67,6 +67,18 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
                 && ("GET".equalsIgnoreCase(request.getMethod()) || "POST".equalsIgnoreCase(request.getMethod()))) {
             return true;
         }
+        // /api/rules/** reads (listing workflows, execution history) stay
+        // open, matching every other read-only resource in this app —
+        // only writes (create/activate/deactivate/delete/fire/view/clear)
+        // need a verified identity, since GET here can't fire a physical
+        // action. Method-only (not exact-path like the findings carve-out
+        // above) because every GET under this prefix is legitimately open
+        // and every non-GET is legitimately gated — no path-specific split
+        // needed the way tech-id's dual-auth-model endpoint required.
+        boolean isRulesRead = path.startsWith(contextPath + "/api/rules/") && "GET".equalsIgnoreCase(request.getMethod());
+        if (isRulesRead) {
+            return true;
+        }
         String token = extractToken(request);
         if (token == null) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Missing bearer token");
