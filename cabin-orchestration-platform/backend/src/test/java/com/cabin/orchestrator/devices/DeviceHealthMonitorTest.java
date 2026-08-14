@@ -96,6 +96,31 @@ class DeviceHealthMonitorTest {
     }
 
     @Test
+    void enabledCandidateSaveImmediatelyReplacesCachedNotConfiguredStatus() {
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of());
+        registry.registerCandidate(new DeviceDescriptor(
+            "candidate-enable", "Leak sensor", DeviceType.WATER_LEAK_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY, DeviceCapability.ALARM),
+            "mqtt", "zigbee2mqtt/leak", false, "cabin"), Map.of());
+        registry.update(new DeviceStatus(
+            "candidate-enable", DeviceType.WATER_LEAK_SENSOR, "Leak sensor", "ONLINE",
+            Instant.now(), Map.of(), "cabin"));
+        DeviceHealthMonitor monitor = monitorWith(registry);
+        monitor.checkHealth();
+        assertEquals(CheckinStatus.NOT_CONFIGURED,
+            monitor.getCheckinStatuses().get("candidate-enable"));
+
+        registry.saveConfiguration("candidate-enable", "Leak sensor", true);
+        monitor.refreshAfterConfigurationChange("candidate-enable");
+
+        assertEquals(DeviceLifecycleState.ASSIGNED, registry.lifecycleState("candidate-enable"));
+        assertEquals(CheckinStatus.ON_SCHEDULE,
+            monitor.getCheckinStatuses().get("candidate-enable"));
+        assertEquals("ON_SCHEDULE",
+            monitor.getCheckinDetails().get("candidate-enable").get("status"));
+    }
+
+    @Test
     void lateDeviceDoesNotFlipStateToOfflineYet() {
         FakeHaAdapter ha = new FakeHaAdapter(); // active fetch fails (respond=false)
         DeviceRegistry registry = new DeviceRegistry(java.util.List.of(ha));

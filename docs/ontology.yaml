@@ -975,7 +975,7 @@ elements:
     entity_type: owl:DatatypeProperty
     layer: fullstack
     primitive: false
-    schema_version: "0.2.0"
+    schema_version: "0.3.0"
     migration_status: complete
     lifecycle_status: used
     first_used:
@@ -1004,8 +1004,10 @@ elements:
       an explicit persisted decision does: Use this device -> AVAILABLE;
       Not now -> DEFERRED; Ignore -> IGNORED. An AVAILABLE device is in scope
       but remains unassigned and disabled until a person persists an actual
-      configuration change, which moves it to ASSIGNED. A corrected candidate
-      name can be persisted without implying acceptance or changing CANDIDATE.
+      configuration change, which moves it to ASSIGNED. Explicitly saving a
+      candidate with Enabled turned on is also a person-authored decision to
+      use it and atomically moves CANDIDATE -> ASSIGNED; saving only a corrected
+      candidate name does not imply acceptance and leaves it CANDIDATE.
     relationships:
       - target: device_state
         type: complements

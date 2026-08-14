@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -513,6 +513,38 @@ describe("Device candidate decision controls", () => {
 
     expect(screen.queryByText(/want to look it up/i)).toBeNull();
     expect(screen.getByRole("button", { name: /recognize this device/i }).className).toContain("btn-secondary");
+  });
+});
+
+describe("Device candidate configuration", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  it("allows Enabled on the first edit and persists the explicit assignment decision", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ changed: true, enabled: true, deviceLifecycle: "ASSIGNED" }),
+    }));
+    const onSaved = vi.fn();
+    render(<DmEditForm
+      device={{
+        deviceId: "candidate-first-save",
+        name: "Basement leak sensor",
+        type: "WATER_LEAK_SENSOR",
+        state: "ONLINE",
+        location: "cabin",
+        attributes: { deviceLifecycle: "CANDIDATE", enabled: false },
+      }}
+      onSaved={onSaved}
+    />);
+
+    const enabledToggle = screen.getByTitle(/saving enabled on accepts and assigns/i);
+    expect(enabledToggle.disabled).toBe(false);
+    fireEvent.click(enabledToggle);
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    const [, options] = fetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ name: "Basement leak sensor", enabled: true });
   });
 });
 
