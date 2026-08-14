@@ -1,11 +1,17 @@
 package com.cabin.orchestrator.events;
 
 import com.cabin.orchestrator.automation.AutomationRuleService;
+import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.kafka.EventConsumer;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceProfile;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
+import com.cabin.orchestrator.workflow.CommandCatalogService;
+import com.cabin.orchestrator.workflow.JdbcWorkflowExecutionStore;
+import com.cabin.orchestrator.workflow.JdbcWorkflowRuleStore;
+import com.cabin.orchestrator.workflow.WorkflowRuleService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -76,7 +82,16 @@ class EventPipelineIntegrationTest {
         ReflectionTestUtils.setField(automationRuleService, "lowPsiAlert", 30.0);
         ReflectionTestUtils.setField(automationRuleService, "highPsiAlert", 75.0);
         ReflectionTestUtils.setField(automationRuleService, "freezeRiskTempF", 38.0);
-        consumer = new EventConsumer(eventService, ntfy, automationRuleService);
+        // Real Jdbc stores against the same Testcontainers Postgres -- same
+        // reasoning as eventService/presenceService above, not a mock.
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        JdbcWorkflowRuleStore workflowRuleStore = new JdbcWorkflowRuleStore(jdbc, mapper);
+        JdbcWorkflowExecutionStore workflowExecutionStore = new JdbcWorkflowExecutionStore(jdbc, mapper);
+        DeviceRegistry deviceRegistry = new DeviceRegistry(List.of());
+        CommandCatalogService commandCatalog = new CommandCatalogService(deviceRegistry);
+        WorkflowRuleService workflowRuleService = new WorkflowRuleService(
+            workflowRuleStore, workflowExecutionStore, deviceRegistry, commandCatalog, publisher);
+        consumer = new EventConsumer(eventService, ntfy, automationRuleService, workflowRuleService);
         ReflectionTestUtils.setField(consumer, "bootstrapServers", kafka.getBootstrapServers());
         consumer.start();
     }
