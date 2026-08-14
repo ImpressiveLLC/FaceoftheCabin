@@ -5,6 +5,7 @@ import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -27,6 +28,18 @@ import java.util.Optional;
  * a named RPC call -- unlike HomeAssistantAdapter's domain.service command
  * strings, the `command` parameter here is advisory/logged only; the real
  * instruction is entirely in `payload`.
+ *
+ * @Lazy on the Zigbee2MqttAdapter dependency breaks a real circular bean
+ * graph found live during deploy (2026-08-14): DeviceRegistry's
+ * List<ProtocolAdapter> injection includes this class, which depends on
+ * Zigbee2MqttAdapter, which itself depends on DeviceRegistry --
+ * DeviceRegistry -> MqttProtocolAdapter -> Zigbee2MqttAdapter ->
+ * DeviceRegistry. Only surfaces when Spring wires the real application
+ * context (unit tests construct beans manually in a safe order, so they
+ * never hit this) -- caught by the health-checked deploy pipeline's
+ * auto-rollback exactly as designed, not by a passing test suite. A lazy
+ * proxy here is safe: z2m is only ever dereferenced inside sendCommand(),
+ * long after the full context has finished initializing.
  */
 @Component
 public class MqttProtocolAdapter implements ProtocolAdapter {
@@ -36,7 +49,7 @@ public class MqttProtocolAdapter implements ProtocolAdapter {
 
     private final Zigbee2MqttAdapter z2m;
 
-    public MqttProtocolAdapter(Zigbee2MqttAdapter z2m) {
+    public MqttProtocolAdapter(@Lazy Zigbee2MqttAdapter z2m) {
         this.z2m = z2m;
     }
 
