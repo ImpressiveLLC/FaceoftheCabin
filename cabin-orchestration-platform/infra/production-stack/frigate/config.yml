@@ -20,8 +20,8 @@
 # of the building instead (not yet — user confirmed 2026-08-02, no ETA).
 #
 # RTSP URL format for Reolink:
-#   main stream: rtsp://admin:{CAMERA_PASSWORD}@<IP>:554/h264Preview_01_main
-#   sub  stream: rtsp://admin:{CAMERA_PASSWORD}@<IP>:554/h264Preview_01_sub
+#   main stream: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@<IP>:554/h264Preview_01_main
+#   sub  stream: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@<IP>:554/h264Preview_01_sub
 #   Use sub for detect (640x480, low CPU), main for record (4K).
 
 mqtt:
@@ -61,11 +61,11 @@ cameras:
     ffmpeg:
       inputs:
         # Sub-stream: low-res, used for motion detection (saves CPU)
-        - path: rtsp://admin:{CAMERA_PASSWORD}@192.168.2.200:554/h264Preview_01_sub
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.2.200:554/h264Preview_01_sub
           roles:
             - detect
         # Main stream: 4K, used for recording
-        - path: rtsp://admin:{CAMERA_PASSWORD}@192.168.2.200:554/h264Preview_01_main
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.2.200:554/h264Preview_01_main
           roles:
             - record
     detect:
