@@ -30,6 +30,16 @@
 > Family Hub too. See the revised Item 5 below for the concrete
 > recommendation. This file is being kept current in place per its own
 > §5 instruction rather than left stale.
+>
+> **Reconciliation audit, 2026-08-14:** checked this handoff against
+> canonical `main` at `bba699e` and compared the complete fork-only range
+> `canonical/main..origin/codex/handoff-20260808` (15 commits, not just the
+> six prose items below). The current disposition is recorded in §3 and §5.
+> A commit existing on the fork is not treated as shipped: only canonical
+> ancestry counts. In particular, shared platform authentication, active
+> Zigbee/RTSP liveness, recovery actions, and the platform contact footer
+> remain fork-only. They need fresh, scoped review branches against current
+> canonical architecture; do not bulk-merge or cherry-pick the old branch.
 
 ---
 
@@ -254,8 +264,19 @@ still open within that item.
 ## 3. Open work items — from the user's most recent request, in their words
 
 The user's last substantive request before the usage-limit/handoff
-message was a 5-part "big things right now" list. **None of these five
-have been started.** Full context for each:
+message was a 5-part "big things right now" list, later extended with Item 6.
+The original snapshot below is retained for its reasoning, but its old
+"none started" statement is no longer true. Canonical status verified on
+2026-08-14:
+
+| Item | Canonical status | What remains |
+|---|---|---|
+| 1 — device check-in semantics | **Partial** | HA active fetch is live in code; Zigbee availability and RTSP reachability implementations exist only on the old fork and must be ported onto the current lifecycle boundary. Real-device threshold tuning is still unverified. |
+| 2 — inherited camera/platform auth | **Open on canonical** | A substantial implementation exists at fork-only `20359f7`, but it was never PR'd or merged and current canonical UI still stores a Google access token in per-origin `sessionStorage`. Rebuild/review it as a dedicated current-main PR. |
+| 3 — Add Place UI | **Code complete** | `6dbbadc` and tests are canonical. Real mobile/kiosk usability verification remains; browser-fixture evidence is not the same as a live device check. |
+| 4 — location-aware Rules & Alerts | **Complete for the scoped rendering change** | `3ffa42c` is canonical. Home-specific automation content still depends on the collector deployment in Item 5. |
+| 5 — Home collector | **Architecture decided; implementation open** | The central-brain/local-collector decision is canonical (`2aef76f`). The detailed fork-only execution plan at `3fb0485` needs selective reconciliation, and physical deployment remains hardware/user dependent. |
+| 6 — armed state/confidence UI | **Partial** | Frigate severity lineage is canonical via PR #2 (`0d9c1a0`). Armed/presence-aware policy, native confidence controls, and truthful native visibility/configuration of HA/Node-RED rules remain open. |
 
 ### Item 1 — Device state semantics are misleading — PARTIALLY DONE
 
@@ -321,7 +342,7 @@ the user asked for, just scoped to one protocol.
   whether that alert path actually reads this new signal or something
   else entirely before claiming it's fixed).
 
-### Item 2 — Camera auth should inherit from Family Hub, single persistent OAuth
+### Item 2 — Camera auth should inherit from Family Hub, single persistent OAuth — FORK IMPLEMENTATION EXISTS, CANONICAL OPEN
 
 > "camera auth's should still be inherited from the parent account thats
 > used as the atomic owner address for the orchestration hub... we should
@@ -332,7 +353,7 @@ the user asked for, just scoped to one protocol.
 > method for the hub as longs as the session is active. no more pivoting,
 > and the ux interaction model will be cleaner."
 
-This directly connects to an **already-logged but unbuilt roadmap item**:
+This directly connects to an **already-logged roadmap item**:
 "App-wide Google OAuth gate + consistent landing page" (see
 `docs/DEFINITION_OF_DONE.md`'s "Next Session — Open Items", second
 bullet). Today auth only gates Camera Events/Opportunities panels, not
@@ -342,7 +363,19 @@ designed and built together with that existing roadmap item rather than
 as a separate pass — check `ROADMAP.md`'s matching entry for whatever
 scope notes already exist there before starting design.
 
-### Item 3 — No UI to add additional "My Places"
+**2026-08-14 reconciliation evidence:** fork commit `20359f7`
+(`Implement shared platform authentication continuity`) contains a real
+31-file implementation: an HttpOnly first-party platform session, backend
+session controller/service and access policy, Family Hub handoff, app-wide
+gate, camera URLs without raw Google tokens, tests, ontology, and docs. It is
+present only on `origin/codex/handoff-20260808`; no canonical PR contains it.
+Canonical `App.jsx` still uses `sessionStorage` keys
+`cabinAccessToken`/`cabinTokenExpiresAt`, so this item is not done. Because
+canonical device lifecycle, discovery, UI, and ontology changed heavily after
+that commit, port the auth design as a dedicated new branch with conflict-aware
+tests; do not cherry-pick the old commit wholesale.
+
+### Item 3 — No UI to add additional "My Places" — CODE COMPLETE, LIVE UX VERIFY OPEN
 
 **Resolved this session** — `AddPlaceForm` shipped in `6dbbadc` (see §2).
 The user asked for this "earlier, but still don't see" it, so verify it
@@ -383,7 +416,7 @@ Both sub-items are done as of this session:
   per-location *flow content* — Home getting its own tailored automations
   once it has its own Node-RED instance — depends on Item 5 below.
 
-### Item 5 — Home location physical setup
+### Item 5 — Home location physical setup — DESIGN DECIDED, IMPLEMENTATION/HARDWARE OPEN
 
 > "I'm happy to set up Home now to help work through some of the
 > considerations, could be done through this machine (ilikethelights), a
@@ -483,7 +516,7 @@ central design work happens in parallel — don't block one on the other.
 
 ---
 
-### Item 6 — Armed state isn't a trigger; no native camera confidence UI
+### Item 6 — Armed state isn't a trigger; no native camera confidence UI — PARTIALLY DONE
 
 > User question, 2026-08-08, paraphrased: is the armed/disarmed icon
 > active or a future trigger, and how can Frigate presence + door
@@ -522,6 +555,13 @@ first:**
   detection `score` is already captured and shown per-event in Camera
   Events (`label (87%)`), but there's no live, confidence-threshold-
   configurable functional-state tile anywhere yet.
+
+**2026-08-14 reconciliation:** the INFO-hardcoding bug is fixed on canonical
+main by merged PR #2 (`0d9c1a0`), with regression tests. The rest of this item
+is still open: `AlertSeverityClassifier` explicitly ignores armed/presence,
+the Node-RED overnight path remains visible only through the editor iframe,
+camera confidence has no native threshold configuration, and the Rules sidebar
+still hardcodes rule `active` values instead of reading a source-of-truth API.
 
 **Full scope, not yet an execution plan** — see `ROADMAP.md`'s new Phase
 7 punch-list item for the five-part breakdown (fix the INFO-hardcoding
@@ -570,6 +610,33 @@ mean UX-wise, not just a wiring change.
 ---
 
 ## 5. Reconciling the fork back into Claude Code on 2026-08-14
+
+### 2026-08-14 fork-only commit disposition
+
+The branch comparison found 15 commits not in canonical ancestry. Merge commits
+are listed too so the accounting is complete.
+
+| Fork-only commit | Disposition after canonical audit |
+|---|---|
+| `b09b7a5` — Termux POC collision guard | **Selective docs candidate.** Useful if USB Termux testing resumes, but the selected network coordinator changes the immediate path. Do not present it as executed hardware evidence. |
+| `3fb0485` — collector hubs around one brain | **Selective port candidate.** The central-brain decision is already canonical; the detailed execution plan and ontology additions are not. Reconcile them against current Phase 8 rather than cherry-picking. |
+| `e497c32` — retained Zigbee availability | **Code candidate, still open.** Rebase the availability semantics and tests onto current PR #6 lifecycle rules; only enabled `ASSIGNED` devices may be actively checked. |
+| `b2a8612` — merge | **No independent product change.** Do not port. |
+| `4d97509` — retention vs. availability semantics | **Carry with the Zigbee liveness port.** The correction is conceptually valid; retention alone is not proof of present availability. |
+| `374dec6` — RTSP reachability probe | **Code candidate, still open.** Port as connect-and-drop reachability, not stream-health or recording proof, and keep credentials out of logs. |
+| `e006916` — exclude unconfigured devices from alerts | **Still-open bug and immediate priority.** Canonical health marks them `NOT_CONFIGURED`, but `useNavAlerts()` still consumes aggregate `offline` counts and stores alert enablement/timers in browser localStorage. Fold this into the truthful active-alert API/UI work. |
+| `3765e56` — ontology-driven admission lifecycle | **Architecturally superseded.** Canonical PR #6 plus PRs #10–#14 established the current lifecycle/discovery model. Audit any unique ideas separately; never bulk-port its 38-file catalog implementation. |
+| `20359f7` — shared platform auth | **Substantial unmerged feature.** Rebuild as a dedicated current-main PR; see Item 2. |
+| `41c8ad7` — Frigate severity/Add Place verification | **Severity superseded by canonical PR #2.** Retain only honest verification notes; do not duplicate code. |
+| `cebb502` — camera viewport evidence | **Docs evidence only.** Desktop fixture evidence exists; mobile/kiosk live-device UX remains open. |
+| `b02fe23` — fixture attribution correction | **Use when reconciling the viewport note.** No product code. |
+| `e9b2576` — device recovery actions | **Valuable but dependent/stale.** Re-spec its audit/retry UI onto canonical lifecycle/discovery APIs after liveness probes; do not port its fork catalog dependencies. |
+| `f94ac6d` — merge | **No independent product change.** Do not port. |
+| `fd0fec6` — platform contact footer | **Separate product-choice candidate.** Not part of the six-item handoff and not canonical; review whether operational contact details belong in this private management UI before proposing it. |
+
+This table closes the reconciliation-accounting gap; it does not declare the
+fork-only features complete. Each surviving candidate still needs its own
+current-main branch, tests, docs, and review.
 
 When the user returns to Claude Code:
 

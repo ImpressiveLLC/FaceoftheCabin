@@ -163,23 +163,22 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
-- **Codex-fork handoff (2026-08-08 → 2026-08-14) — partially
-  reconciled, not independently re-verified.** Evidence of real
-  reconciliation work this session: `git log` shows PR #1 ("Device
-  discovery, presence, grouping, and Kidde CO alarm support") and PR #2
-  ("Route Frigate detections through severity classification" —
-  matches Item 6's recommended first fix in the handoff doc) both merged
-  to `main` before tonight's later work began. **Not done**: nobody has
-  gone back through
-  [`docs/HANDOFF_2026-08-08_codex-fork.md`](HANDOFF_2026-08-08_codex-fork.md)'s
-  6 items one by one to confirm current status against real code —
-  Items 2 (camera-auth inheritance from Family Hub) and 5 (Home location
-  hardware) show no matching commits and are almost certainly still
-  fully open; Items 1/3/4/6 need an actual check, not an assumption,
-  before this item can be removed. **Explicitly carried forward per that
-  handoff doc's own §4/§5 instruction not to let it silently vanish:
-  `BLINK_PASSWORD` rotation status is still unconfirmed** — no
-  evidence either way was found this session.
+- **Codex-fork handoff (2026-08-08 → 2026-08-14) — reconciliation audit
+  complete; surviving features still open.** Canonical `main` at
+  `bba699e` was checked item-by-item and compared with the full fork-only
+  commit range (15 commits). The evidence/disposition table now lives in
+  [`docs/HANDOFF_2026-08-08_codex-fork.md`](HANDOFF_2026-08-08_codex-fork.md)
+  §5. Current result: Item 1 is partial (HA check works; Zigbee/RTSP
+  implementations are fork-only); Item 2 has a substantial fork-only
+  shared-auth implementation (`20359f7`) but remains open on canonical;
+  Item 3 is code-complete with live mobile/kiosk UX verification open;
+  Item 4 is complete for its scoped location rendering; Item 5's central-
+  brain architecture is decided but collector implementation/hardware is
+  open; Item 6's severity bug is fixed by PR #2 while armed/presence,
+  confidence controls, and truthful rule status remain open. Do not merge
+  the old fork wholesale; surviving work needs scoped current-main PRs.
+  **`BLINK_PASSWORD` rotation status is still unconfirmed** — no evidence
+  either way was found, so that live action remains carried forward.
 - **Production stack now under version control (Phase 0/0.5 done,
   2026-08-14)** — see `docs/ontology.yaml`'s
   `production_stack_compose_project` and `MAINTENANCE.md`'s matching
@@ -195,10 +194,13 @@ accumulate.*
   `uptime-kuma-api` package authenticating as a real Kuma admin login,
   and that credential isn't in the Ansible vault yet. Add it to the
   vault first (matches this project's own "keys and ansible, not
-  recorded passwords" principle) before scripting this. Phase B (CI
-  cross-container smoke test) and the rest of Phase C (REPLICATION.md
-  §10 — the ontology entry itself is done, the doc section isn't) are
-  entirely unstarted. Minor, deliberately not fixed: `mediamtx` is
+  recorded passwords" principle) before production reconciliation.
+  **Status correction 2026-08-14:** Phase B and the remaining Phase C
+  documentation are no longer unstarted: draft PR #21 contains the
+  cross-container deploy/smoke gate and draft PR #20 contains
+  `REPLICATION.md` §10. Neither is merged or live; PR #21 specifically
+  must remain review-gated because merging activates production-stack
+  deployment behavior. Minor, deliberately not fixed: `mediamtx` is
   still labeled to the old (now-retired) compose project internally —
   cosmetic only, no functional difference, will self-correct next time
   its actual config changes.
@@ -274,9 +276,10 @@ accumulate.*
 
 ---
 
-**Last full session close-out:** 2026-08-14 — partial codex-fork
-reconciliation (PR #1, PR #2), the Device Discovery Assistant feature
-shipped end-to-end (4 phases, all merged), and an unplanned live
+**Last full session close-out:** 2026-08-14 — complete codex-fork
+accounting audit (with surviving features explicitly left open), the
+Device Discovery Assistant feature shipped end-to-end (4 phases, all
+merged), and an unplanned live
 incident: the production-stack cutover (Phase 0/0.5 of a separate,
 approved plan) triggered a real Frigate crash-loop, root-caused and
 fixed after an unrelated mid-session crash lost and then recovered
