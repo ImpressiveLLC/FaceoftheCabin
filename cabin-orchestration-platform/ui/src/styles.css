@@ -333,6 +333,29 @@ body {
 .automation-alert-critical { border-left-color: var(--state-alarm, #f85149); }
 .automation-alert-warn { border-left-color: var(--state-warning); }
 .automation-alert-none { border-left-color: var(--border); padding: 14px 18px; }
+.active-conditions {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.active-conditions-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.active-conditions-header span {
+  min-width: 20px; padding: 1px 6px; border-radius: 10px;
+  background: var(--bg-tertiary); color: var(--text-dim); text-align: center; font-size: 11px;
+}
+.active-condition { display: flex; gap: 10px; padding: 11px 14px; border-left: 3px solid var(--state-warning); }
+.active-condition + .active-condition { border-top: 1px solid var(--border); }
+.active-condition-critical { border-left-color: var(--state-alarm, #f85149); }
+.active-condition svg { flex-shrink: 0; margin-top: 2px; color: var(--state-warning); }
+.active-condition-critical svg { color: var(--state-alarm, #f85149); }
+.active-condition strong { display: block; font-size: 13px; }
+.active-condition p { margin: 2px 0; color: var(--text-dim); font-size: 12px; }
+.active-condition span { color: var(--text-dim); font-size: 10px; text-transform: capitalize; }
 .automation-alert-header {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 11px; font-weight: 700; letter-spacing: .04em;
@@ -384,9 +407,11 @@ body {
 .rule-row { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; border-bottom: 1px solid #21262d; }
 .rule-dot { font-size: 10px; padding-top: 4px; }
 .rule-active { color: #3fb950; }
+.rule-defined { color: #58a6ff; }
 .rule-inactive { color: #6e7681; }
 .rule-name { font-size: 12px; font-weight: 500; }
 .rule-detail { font-size: 11px; color: #8b949e; }
+.rule-source { margin-top: 2px; font-size: 9px; color: #6e7681; text-transform: uppercase; letter-spacing: .03em; }
 
 /* ─── Event Log ─────────────────────────────────────────────────────────── */
 .event-log {

@@ -1242,8 +1242,12 @@ export function FamilyConfigPanel({ auth }) {
           </div>
         </ConfigCard>
         <ConfigCard title="Notification Preferences" icon={AlertTriangle}>
-          <p className="config-desc">Configure alert escalation: MQTT → email/SMS thresholds.</p>
-          <p className="config-hint">Node-RED flows handle routing. Edit in Rules &amp; Alerts panel.</p>
+          <p className="config-desc">Backend CRITICAL events use the configured notification channel.</p>
+          <p className="config-hint">
+            The backend channel is deploy-time configuration. Home Assistant and Node-RED own their
+            own automation delivery paths; review each source in Rules &amp; Alerts rather than assuming
+            one switch configures all three.
+          </p>
         </ConfigCard>
         <ConfigCard title="Remote Access" icon={Wifi}>
           <p className="config-desc">{remoteAccessMethods.join(", ")}</p>
@@ -1273,24 +1277,34 @@ function ConfigCard({ title, icon: Icon, children }) {
 
 // ─── Alert controls (rendered at top of each alertable panel) ─────────────
 function AlertControls({ panelId }) {
-  const { alertCfg, enableAlert, resetAlert } = useApp();
-  const entry = alertCfg?.[panelId] || { enabled: false, alertSince: null };
+  const {
+    activeAlerts = [], activeAlertLocations = [], activeAlertUnavailableLocations = [],
+    activeLocation = "cabin",
+  } = useApp();
+  const locationAvailable = activeLocation === "both"
+    ? activeAlertLocations.length > 0
+    : activeAlertLocations.includes(activeLocation);
 
-  if (!entry.enabled) {
+  if (!locationAvailable) {
     return (
       <div className="alert-ctrl alert-ctrl-unconfigured">
         <Circle size={12} className="alert-ctrl-dot"/>
-        <span>Alert monitoring not enabled</span>
-        <button className="btn-ghost alert-ctrl-btn" onClick={() => enableAlert(panelId)}>
-          Enable
-        </button>
+        <span>Current alert status unavailable — no badge is inferred for this location.</span>
       </div>
     );
   }
 
-  const alertDur = entry.alertSince ? Date.now() - entry.alertSince : null;
-  const isCritical = alertDur !== null && alertDur >= CRITICAL_MS;
-  const isWarn     = alertDur !== null && alertDur < CRITICAL_MS;
+  const visibleAlerts = activeLocation === "both"
+    ? activeAlerts
+    : activeAlerts.filter(alert => alert.location === activeLocation);
+  const level = alertLevelFor(visibleAlerts);
+  const isCritical = level === "critical";
+  const isWarn = level === "warn";
+  const label = visibleAlerts.length === 1 ? "condition" : "conditions";
+  const partialLocations = activeLocation === "both" ? activeAlertUnavailableLocations : [];
+  const partialSuffix = partialLocations.length > 0
+    ? ` Status unavailable for ${partialLocations.map(id => LOCATIONS[id]?.label || id).join(", ")}.`
+    : "";
 
   return (
     <div className={`alert-ctrl ${isCritical ? "alert-ctrl-critical" : isWarn ? "alert-ctrl-warn" : "alert-ctrl-ok"}`}>
@@ -1298,14 +1312,10 @@ function AlertControls({ panelId }) {
       {isWarn     && <AlertTriangle size={12} className="alert-ctrl-dot"/>}
       {!isCritical && !isWarn && <CheckCircle size={12} className="alert-ctrl-dot"/>}
       <span>
-        {isCritical && `Critical — alert active for ${Math.floor(alertDur / 60000)} min`}
-        {isWarn     && `Warning — alert active for ${Math.floor(alertDur / 60000)} min`}
-        {!isCritical && !isWarn && "Watching — no active alerts"}
+        {isCritical && `Critical — ${visibleAlerts.length} current ${label}.${partialSuffix}`}
+        {isWarn && `Attention — ${visibleAlerts.length} current ${label}.${partialSuffix}`}
+        {!isCritical && !isWarn && `Watching assigned, enabled devices — no current alert conditions from reporting locations.${partialSuffix}`}
       </span>
-      <button className="btn-ghost alert-ctrl-btn" onClick={() => resetAlert(panelId)}
-        title="Reset to unconfigured — stops all alerting until re-enabled">
-        Reset alerts
-      </button>
     </div>
   );
 }
@@ -3095,6 +3105,7 @@ export function RulesPanel() { // exported for src/App.test.jsx's location-split
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>
       </div>
+      <ActiveConditionsCard />
       <AutomationAlertCard />
       <div className="rules-layout">
         <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
@@ -3102,10 +3113,44 @@ export function RulesPanel() { // exported for src/App.test.jsx's location-split
         </div>
         <div className="rules-sidebar">
           <KafkaStatus location={activeLocation} />
-          <BuiltinRules />
+          <BuiltinRules location={activeLocation} />
         </div>
       </div>
     </div>
+  );
+}
+
+function ActiveConditionsCard() {
+  const {
+    activeAlerts = [], activeAlertLocations = [], activeLocation = "cabin",
+  } = useApp();
+  const locationAvailable = activeLocation === "both"
+    ? activeAlertLocations.length > 0
+    : activeAlertLocations.includes(activeLocation);
+  if (!locationAvailable) return null;
+
+  const visibleAlerts = activeLocation === "both"
+    ? activeAlerts
+    : activeAlerts.filter(alert => alert.location === activeLocation);
+  if (visibleAlerts.length === 0) return null;
+
+  return (
+    <section className="active-conditions" aria-label="Current active alert conditions">
+      <div className="active-conditions-header">
+        <strong>Current conditions</strong>
+        <span>{visibleAlerts.length}</span>
+      </div>
+      {visibleAlerts.map(alert => (
+        <div className={`active-condition active-condition-${(alert.severity || "warn").toLowerCase()}`} key={alert.alertId}>
+          <AlertTriangle size={15} />
+          <div>
+            <strong>{alert.title}</strong>
+            <p>{alert.detail}</p>
+            <span>{alert.location} · {alert.condition.replaceAll("_", " ").toLowerCase()}</span>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -3131,7 +3176,7 @@ export function automationAlertSteps(alert) {
     { label: "THINK", headline: critical ? "No routine explains it" : "An ordinary explanation exists",
       detail: "Presence checked" },
     { label: "ACT", headline: act || "Logged only",
-      detail: critical ? "Push notification sent" : "Logged, no push" },
+      detail: critical ? "CRITICAL event published; delivery depends on the configured channel" : "Logged, no push" },
   ];
 }
 
@@ -3209,34 +3254,36 @@ function KafkaStatus({ location }) {
   );
 }
 
-function BuiltinRules() {
-  // Found 2026-08-11 (user report): this table already claimed
-  // "active: true" with "Alert + email"/"+ SMS" for rules whose actual
-  // backend methods were TODO-stubs that only logged -- the sidebar was
-  // making the same overclaim the marketing site made, just quieter. Now
-  // that AutomationRuleService actually publishes real events (see
-  // docs/ontology.yaml's automation_alert_see_think_act), these labels
-  // describe what really happens: a real push notification (via
-  // NtfyAlertPublisher/ntfy.sh) only for CRITICAL-tier rules, which this
-  // codebase has never had an email or SMS channel for -- that part of the
-  // original copy was never accurate, not something this fix broke.
-  const rules = [
-    { id: 1, name: "Water Pressure Low",   trigger: "PSI < 30, cabin unoccupied", action: "Push notification (CRITICAL)", active: true },
-    { id: 2, name: "Water Pressure High",  trigger: "PSI > 75",   action: "Logged only (WARN)", active: true },
-    { id: 3, name: "Freeze Risk",          trigger: "Temp < 38°F", action: "Push notification (CRITICAL)", active: true },
-    { id: 4, name: "Smoke Alarm",          trigger: "alarm=true",  action: "Push notification (CRITICAL)", active: true },
-    { id: 5, name: "Motion After Midnight", trigger: "motion + hour 0-6", action: "Not built yet", active: false },
-  ];
+function BuiltinRules({ location }) {
+  const loc = location === "both" ? LOCATIONS.cabin : (LOCATIONS[location] || LOCATIONS.cabin);
+  const [rules, setRules] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${loc.apiBase}/api/alerts/rules`)
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(list => {
+        if (!cancelled) setRules(Array.isArray(list) ? list.filter(rule => rule?.ruleId) : []);
+      })
+      .catch(() => { if (!cancelled) setRules(null); });
+    return () => { cancelled = true; };
+  }, [loc.apiBase]);
+
   return (
     <div className="sidebar-card">
-      <strong>Built-in Safety Rules</strong>
-      <p className="config-hint">These Java-side rules run even when Node-RED is offline.</p>
-      {rules.map(r => (
-        <div key={r.id} className="rule-row">
-          <span className={`rule-dot ${r.active ? "rule-active" : "rule-inactive"}`}>●</span>
+      <strong>{loc.label} Backend Rules</strong>
+      <p className="config-hint">Read from the backend evaluator. These are separate from the Node-RED and Home Assistant flows.</p>
+      {rules === null && <p className="config-hint">Rule catalog unavailable — no status inferred.</p>}
+      {rules?.map(r => (
+        <div key={r.ruleId} className="rule-row">
+          <span className={`rule-dot ${r.enabled ? "rule-defined" : "rule-inactive"}`}>●</span>
           <div>
             <div className="rule-name">{r.name}</div>
             <div className="rule-detail">{r.trigger} → {r.action}</div>
+            <div className="rule-source">{r.owner} · {r.configurationMode.replaceAll("_", " ").toLowerCase()} · read only</div>
           </div>
         </div>
       ))}
@@ -3245,87 +3292,47 @@ function BuiltinRules() {
 }
 
 // ─── Nav alert system ──────────────────────────────────────────────────────
-//
-// State machine per panel (persisted to localStorage):
-//   unconfigured  → no badge, panel shows "Enable monitoring" button
-//   watching      → no badge, alert condition not yet met
-//   warn          → orange dot, alert condition has been true < 20 min
-//   critical      → red pulsing AlertTriangle, alert condition ≥ 20 min
-//
-// Reset always returns to "unconfigured". Nothing alerts until re-enabled.
-//
-// Panels that support alerting: DEVICE_MANAGER, MONITORING, RULES_ENGINE
-// Alert conditions:
-//   DEVICE_MANAGER / MONITORING: any device OFFLINE or ALARM
-//   RULES_ENGINE:                escalates to warn when others are critical
-//
+// Current conditions come from GET /api/alerts/active. The browser does not
+// opt in, reset, remember a timer, or turn WARN into CRITICAL on its own.
 const ALERT_PANELS   = ["DEVICE_MANAGER", "MONITORING", "RULES_ENGINE"];
-const CRITICAL_MS    = 20 * 60 * 1000;
-const ALERT_CFG_KEY  = "cabin-alert-cfg";  // localStorage key
 
-function loadAlertCfg() {
-  try { return JSON.parse(localStorage.getItem(ALERT_CFG_KEY)) || {}; }
-  catch { return {}; }
+export function alertLevelFor(alerts = []) {
+  if (alerts.some(alert => alert.severity === "CRITICAL")) return "critical";
+  if (alerts.some(alert => alert.severity === "WARN")) return "warn";
+  return null;
 }
 
-// cfg shape per panel: { enabled: bool, alertSince: ms|null }
+export function deriveNavAlertLevels(alerts = []) {
+  const level = alertLevelFor(alerts);
+  return Object.fromEntries(ALERT_PANELS.map(panelId => [panelId, level]));
+}
+
 function useNavAlerts() {
-  const [cfg, setCfg] = useState(loadAlertCfg);
-  // "level" derived each poll cycle, not stored
-  const [levels, setLevels] = useState({});
-
-  // Persist cfg changes
-  useEffect(() => {
-    localStorage.setItem(ALERT_CFG_KEY, JSON.stringify(cfg));
-  }, [cfg]);
-
-  const enableAlert  = (panelId) => setCfg(c => ({ ...c, [panelId]: { enabled: true,  alertSince: null } }));
-  const resetAlert   = (panelId) => setCfg(c => ({ ...c, [panelId]: { enabled: false, alertSince: null } }));
+  const [feed, setFeed] = useState({ alerts: [], locations: [], unavailableLocations: [], generatedAt: null });
 
   useEffect(() => {
     const check = async () => {
-      let h = null;
-      try { h = await fetch(`${LOCATIONS.cabin.apiBase}/api/system/health`).then(r => r.json()); }
-      catch { return; }
-
-      const now       = Date.now();
-      const hasAlarm  = (h.alarm  || 0) > 0;
-      const hasOffline= (h.offline || 0) > 0;
-      const alertCondition = hasAlarm || hasOffline; // true = something needs attention
-
-      setCfg(prev => {
-        const next = { ...prev };
-        for (const panelId of ALERT_PANELS) {
-          const entry = prev[panelId] || { enabled: false, alertSince: null };
-          if (!entry.enabled) { next[panelId] = entry; continue; }
-
-          // RULES_ENGINE only alerts when device panels are in trouble
-          const condition = panelId === "RULES_ENGINE" ? hasOffline : alertCondition;
-
-          if (condition && entry.alertSince === null) {
-            // Condition just started — start the timer
-            next[panelId] = { ...entry, alertSince: now };
-          } else if (!condition && entry.alertSince !== null) {
-            // Condition cleared
-            next[panelId] = { ...entry, alertSince: null };
-          } else {
-            next[panelId] = entry;
-          }
-        }
-        return next;
-      });
-
-      // Derive display levels from the updated cfg (read from prev + above logic)
-      setLevels(prev => {
-        const next = {};
-        for (const panelId of ALERT_PANELS) {
-          // Re-read from localStorage since setCfg above is async
-          const stored = loadAlertCfg()[panelId] || { enabled: false, alertSince: null };
-          if (!stored.enabled || stored.alertSince === null) { next[panelId] = null; continue; }
-          const dur = now - stored.alertSince;
-          next[panelId] = dur >= CRITICAL_MS ? "critical" : "warn";
-        }
-        return next;
+      const targets = Object.values(LOCATIONS)
+        .filter(loc => loc.id === "cabin" || isLocationDeployed(loc));
+      const results = await Promise.allSettled(targets.map(async loc => {
+        const response = await fetch(`${loc.apiBase}/api/alerts/active`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const snapshot = await response.json();
+        return {
+          location: loc.id,
+          generatedAt: snapshot.generatedAt,
+          alerts: (Array.isArray(snapshot.alerts) ? snapshot.alerts : [])
+            .map(alert => ({ ...alert, location: alert.location || loc.id })),
+        };
+      }));
+      const available = results.filter(result => result.status === "fulfilled").map(result => result.value);
+      setFeed({
+        alerts: available.flatMap(result => result.alerts),
+        locations: available.map(result => result.location),
+        unavailableLocations: results
+          .map((result, index) => result.status === "rejected" ? targets[index].id : null)
+          .filter(Boolean),
+        generatedAt: available.map(result => result.generatedAt).filter(Boolean).sort().at(-1) || null,
       });
     };
     check();
@@ -3333,7 +3340,13 @@ function useNavAlerts() {
     return () => clearInterval(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { levels, cfg, enableAlert, resetAlert };
+  return {
+    levels: deriveNavAlertLevels(feed.alerts),
+    alerts: feed.alerts,
+    locations: feed.locations,
+    unavailableLocations: feed.unavailableLocations,
+    generatedAt: feed.generatedAt,
+  };
 }
 
 // ─── Draggable order ──────────────────────────────────────────────────────
@@ -3686,7 +3699,13 @@ function App() {
   const [config,         setConfig]         = useState({});
   const [connected,      setConnected]      = useState(false);
   const [apiError,       setApiError]       = useState(null); // { message, at } | null -- see refreshDevices
-  const { levels: alertLevels, cfg: alertCfg, enableAlert, resetAlert } = useNavAlerts();
+  const {
+    levels: alertLevels,
+    alerts: activeAlerts,
+    locations: activeAlertLocations,
+    unavailableLocations: activeAlertUnavailableLocations,
+    generatedAt: activeAlertsGeneratedAt,
+  } = useNavAlerts();
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence();
   const securityStates = useSecurityState();
@@ -3762,7 +3781,7 @@ function App() {
     <AppContext.Provider value={{
       devices, config, refreshDevices,
       activeLocation, locationCfg,
-      alertCfg, enableAlert, resetAlert,
+      activeAlerts, activeAlertLocations, activeAlertUnavailableLocations, activeAlertsGeneratedAt,
       activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
       securityStates,
       displayConfigs, refreshDisplayConfigs,

@@ -34,10 +34,10 @@ import java.util.UUID;
  * writeup.
  *
  * Rule evaluation order:
- * 1. Safety / life-safety (smoke, CO, freeze)  → immediate MQTT alarm + email
- * 2. Utility alerts (pressure, power)           → MQTT warn + email
- * 3. Security events (motion, lock)             → MQTT notify; severity depends on PresenceProfile
- * 4. Informational telemetry                    → no action
+ * 1. Safety / life-safety (smoke, CO, freeze)  → CRITICAL event; configured notification channel may deliver it
+ * 2. Utility alerts (pressure, power)           → WARN event (low pressure may become CRITICAL from presence context)
+ * 3. Security events (motion, lock)             → WARN/CRITICAL event depending on PresenceProfile
+ * 4. Informational telemetry                    → no automation event
  *
  * Presence-aware rules (PresenceProfile context):
  *   Lock unlocked while AT_CABIN or AWAY  → ALERT (no one should be entering)
@@ -84,6 +84,53 @@ public class AutomationRuleService {
             case "STATE_CHANGE"    -> evaluateStateChange(event);
             default -> log.debug("No rule for event type: {}", event.eventType());
         }
+    }
+
+    /**
+     * Read-only catalog for the Rules & Alerts UI. These entries describe
+     * executable branches in evaluate(); they are not a second configuration
+     * store and they do not imply that an external HA or Node-RED flow exists.
+     */
+    public List<AutomationRuleStatus> ruleStatuses() {
+        String criticalDelivery = "Publishes a CRITICAL AUTOMATION_ALERT; notification delivery runs only when a channel is configured";
+        return List.of(
+            new AutomationRuleStatus(
+                "WATER_PRESSURE_LOW", "Water Pressure Low",
+                "PSI < " + lowPsiAlert + "; severity depends on cabin presence",
+                "Publishes WARN while occupied, otherwise CRITICAL", "WARN_OR_CRITICAL",
+                true, "CABIN_BACKEND", "DEPLOY_TIME",
+                "cabin.devices.waterPressure.lowPsiAlert", false),
+            new AutomationRuleStatus(
+                "WATER_PRESSURE_HIGH", "Water Pressure High",
+                "PSI > " + highPsiAlert,
+                "Publishes a WARN AUTOMATION_ALERT; no push", "WARN",
+                true, "CABIN_BACKEND", "DEPLOY_TIME",
+                "cabin.devices.waterPressure.highPsiAlert", false),
+            new AutomationRuleStatus(
+                "FREEZE_RISK", "Freeze Risk",
+                "Temperature < " + freezeRiskTempF + "°F",
+                criticalDelivery, "CRITICAL",
+                true, "CABIN_BACKEND", "DEPLOY_TIME",
+                "cabin.devices.thermostat.freezeRiskTempF", false),
+            new AutomationRuleStatus(
+                "SAFETY_ALARM", "Safety Alarm",
+                "Incoming event type is ALARM",
+                criticalDelivery, "CRITICAL",
+                true, "CABIN_BACKEND", "CODE",
+                null, false),
+            new AutomationRuleStatus(
+                "MOTION_WHILE_UNOCCUPIED", "Motion Presence Policy",
+                "Motion while presence profile is AWAY or AT_CABIN",
+                "Publishes a WARN AUTOMATION_ALERT; no push", "WARN",
+                true, "CABIN_BACKEND", "CODE",
+                null, false),
+            new AutomationRuleStatus(
+                "LOCK_UNLOCKED", "Lock Unlocked Presence Policy",
+                "Unlocked state; severity depends on presence profile",
+                "Publishes no event, WARN, or CRITICAL according to presence", "CONTEXTUAL",
+                true, "CABIN_BACKEND", "CODE",
+                null, false)
+        );
     }
 
     private void evaluateTelemetry(CabinEvent event) {

@@ -7450,3 +7450,98 @@ elements:
       unlike action_main_water_valve_off, this action is never fired by a
       device-event trigger, only by a person explicitly invoking it via
       POST /api/rules/workflows/{id}/fire.
+
+  - id: active_alert_condition
+    entity_type: owl:Class
+    layer: fullstack
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-14"
+      ref: "ActiveAlertService.java, AlertController.java, App.jsx useNavAlerts"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Current Alert Condition"
+    source: >
+      GET /api/alerts/active, computed from the current DeviceStatus state,
+      the current DeviceHealthMonitor CheckinStatus, the persisted device
+      lifecycle, and descriptor enabled state. It is not reconstructed from
+      CabinEvent history.
+    rendering:
+      semantic: "A condition this person-controlled app is responsible for watching and that needs attention now"
+      systems: "navigation badges, alert status bars, Rules & Alerts current-conditions list"
+      technical: "ActiveAlertService snapshot and ActiveAlertsSnapshot response"
+      compliance: "Rules & Alerts and Monitoring surfaces"
+    definition: >
+      A current DEVICE_ALARM (CRITICAL) or MISSED_CHECKIN (WARN) belonging to
+      a device whose lifecycle is ASSIGNED and whose descriptor is enabled.
+      ALARM takes priority over MISSED_CHECKIN for one device. LATE and raw
+      OFFLINE are not independently alertable. CANDIDATE remains visible for
+      review; AVAILABLE is in scope but unassigned; neither is monitored.
+      Disabled, DEFERRED, and IGNORED devices are also excluded.
+    relationships:
+      - target: device_checkin_status
+        type: derived_from
+        cardinality: "N:1"
+      - target: event_severity
+        type: complements
+        cardinality: "N:N"
+      - target: automation_alert_see_think_act
+        type: complements
+        cardinality: "N:N"
+    relates_to:
+      ui_components: [ui_rules_panel]
+      elements: []
+    notes: >
+      Current-condition severity is deliberately not the same axis as
+      CabinEvent severity. Event history remains after a condition clears;
+      this entity does not. The browser never promotes WARN to CRITICAL based
+      on a local timer and cannot opt out or reset backend monitoring through
+      localStorage. If the endpoint is unreachable, the UI reports status
+      unavailable and infers no badge.
+
+  - id: automation_rule_status
+    entity_type: owl:Class
+    layer: fullstack
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-14"
+      ref: "AutomationRuleService.ruleStatuses, GET /api/alerts/rules, App.jsx BuiltinRules"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Backend Automation Rule Status"
+    source: >
+      AutomationRuleService's executable evaluator branches and injected
+      threshold values, exposed read-only by GET /api/alerts/rules.
+    rendering:
+      semantic: "A rule this backend actually evaluates, who owns it, and where its configuration really lives"
+      systems: "Rules & Alerts built-in backend rule sidebar"
+      technical: "AutomationRuleStatus records returned by AlertController"
+      compliance: "Rules & Alerts panel"
+    definition: >
+      Read-only rule metadata including id, trigger, action, severity,
+      enabled state, owner, configuration mode, and configuration key. It
+      describes only CABIN_BACKEND rules. It makes no claim that a matching
+      Home Assistant or Node-RED flow exists or is running.
+    relationships:
+      - target: automation_alert_see_think_act
+        type: produces
+        cardinality: "N:N"
+      - target: active_alert_condition
+        type: related_to
+        cardinality: "N:N"
+    relates_to:
+      ui_components: [ui_rules_panel]
+      elements: []
+    notes: >
+      editable is false in the current contract. Threshold entries are
+      deploy-time settings and other branches are code configured. CRITICAL
+      rules publish an AUTOMATION_ALERT, but notification delivery is only
+      claimed when a notification channel is configured. An audited durable
+      write model and adapters for external HA/Node-RED flow inventory remain
+      separate open work.
