@@ -3,7 +3,6 @@ package com.cabin.orchestrator.family;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.PostConstruct;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,10 +19,13 @@ public class ChoreCompletionService {
 
     private final JdbcTemplate jdbc;
 
-    public ChoreCompletionService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
-
-    @PostConstruct
-    void init() {
+    // Table creation runs directly in the constructor, not behind
+    // @PostConstruct -- see FamilyProfileService's constructor comment for
+    // why (a @PostConstruct method never fires on a plain `new` outside a
+    // Spring context, which is exactly how this project's Testcontainers
+    // tests construct every service).
+    public ChoreCompletionService(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
         jdbc.execute("""
             CREATE TABLE IF NOT EXISTS chore_completion (
               day_key  VARCHAR(10)  NOT NULL,
@@ -46,18 +48,21 @@ public class ChoreCompletionService {
         return result;
     }
 
-    /** Flips completion and returns the new state. */
-    public boolean toggle(String dayKey, String kidId, String choreId) {
-        List<Map<String, Object>> existing = jdbc.queryForList(
-            "SELECT done FROM chore_completion WHERE day_key=? AND kid_id=? AND chore_id=?",
-            dayKey, kidId, choreId);
-        boolean newDone = existing.isEmpty() || !((Boolean) existing.get(0).get("done"));
+    /**
+     * 2026-08-15: replaces the old toggle(dayKey, kidId, choreId) — a
+     * toggle reads current state and flips it, which is not idempotent:
+     * two devices toggling the same chore around the same time, or a
+     * retried request after a dropped response, can double-flip it back
+     * to the state it started in even though the user's intent was
+     * "mark it done." Setting an explicit target state instead means a
+     * repeated identical request is always a no-op, not a second flip.
+     */
+    public void setDone(String dayKey, String kidId, String choreId, boolean done) {
         jdbc.update("""
             INSERT INTO chore_completion (day_key, kid_id, chore_id, done, updated_at)
             VALUES (?,?,?,?,?)
             ON CONFLICT (day_key, kid_id, chore_id) DO UPDATE SET
               done = EXCLUDED.done, updated_at = EXCLUDED.updated_at""",
-            dayKey, kidId, choreId, newDone, System.currentTimeMillis());
-        return newDone;
+            dayKey, kidId, choreId, done, System.currentTimeMillis());
     }
 }

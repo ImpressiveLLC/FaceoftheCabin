@@ -204,6 +204,123 @@ function check(label, actual, expected) {
   check('history shows all 50 saved messages', await page.locator('#note-history-list .np-row').count(), 50);
   check('"last 50 notes are saved" hint is present', await page.locator('#note-history-overlay .np-save-hint').isVisible(), true);
 
+  // ═══════════════════════════════════════════
+  // CHORE MANAGEMENT (2026-08-15) -- chore library/assignment CRUD, the
+  // idempotent completion PUT, the condensed landing card for >2 kids,
+  // and the add-child rerender fix. This harness has no live cabin-backend
+  // (CABIN_API_URL/accessToken aren't configured), so choreLibrary/
+  // choreAssignments start empty and any write attempt no-ops after a
+  // failed fetch -- same constraint the notes/profiles checks above
+  // already work within. Seeds directly into the in-page cache instead
+  // (mirrors this file's own loadNotes/saveNotes seeding technique above)
+  // to exercise the actual render/interaction logic without a real DB.
+  // ═══════════════════════════════════════════
+
+  // Manage mode must render (all three sub-tabs) without throwing even
+  // against a completely empty library/assignment cache -- the realistic
+  // state for a brand-new instance before any seed migration has run.
+  // #chore-manage-toggle lives inside the dashboard overlay's Chore
+  // Tracker tab-pane, so that has to actually be open (not just present
+  // in the DOM, which even a hidden tab-pane still is) before it's
+  // clickable -- openDashboardTo() is this app's own helper for that.
+  // The note-history overlay opened a few checks up is still open and
+  // sitting on top of everything -- close it first or it intercepts every
+  // click from here on.
+  await page.evaluate(() => closeNoteHistory());
+  await page.evaluate(() => { accessToken = 'test-token'; }); // renderChoreManage() gates on accessToken alone, not a real backend round-trip
+  await page.evaluate(() => openDashboardTo('chores'));
+  await page.waitForTimeout(150);
+  await page.locator('#chore-manage-toggle').click();
+  await page.waitForTimeout(100);
+  check('manage chores toggle switches into manage mode',
+    await page.locator('#chore-manage-body').evaluate(el => !el.classList.contains('hidden')), true);
+  check('chore tracker body hides while in manage mode',
+    await page.locator('#chore-tracker-body').evaluate(el => el.classList.contains('hidden')), true);
+  await page.evaluate(() => switchChoreManageTab('assignments'));
+  await page.waitForTimeout(50);
+  await page.evaluate(() => switchChoreManageTab('today'));
+  await page.waitForTimeout(50);
+  await page.evaluate(() => switchChoreManageTab('library'));
+  await page.waitForTimeout(50);
+  check('cycling through all three manage sub-tabs with an empty cache produces no errors', jsErrors, []);
+  await page.locator('#chore-manage-toggle').click();
+  await page.waitForTimeout(100);
+  check('manage chores toggle switches back to the tracker view',
+    await page.locator('#chore-manage-body').evaluate(el => el.classList.contains('hidden')), true);
+
+  // Seed a realistic chore library + assignment, shaped like what
+  // ChoreDefinitionsController/ChoreAssignmentsController actually return.
+  await page.evaluate(() => {
+    choreLibrary = [{ id: 'test_chore', label: 'Test Chore', points: 1, minAge: 0, tags: ['test'], active: true }];
+    choreAssignments = [{
+      id: 'test-assignment-1', choreDefinitionId: 'test_chore', childId: profiles.find(p => p.role === 'kid').id,
+      recurrence: 'DAILY', effectiveStart: '2000-01-01', effectiveEnd: null, displayOrder: 0,
+      createdBy: 'seed', updatedBy: 'seed', createdAt: Date.now(), updatedAt: Date.now(),
+    }];
+    rerenderChoreViews();
+  });
+  await page.waitForTimeout(100);
+  check('seeded assignment resolves through defaultAssignments() (backend-driven, not age/calendar-derived)',
+    await page.evaluate(() => defaultAssignments(new Date().toISOString().slice(0,10), profiles.find(p => p.role === 'kid').id).some(c => c.id === 'test_chore')), true);
+  check('seeded assignment renders as a real chore row in the chore tracker (Chore Tracker tab is currently active)',
+    await page.locator('#chore-tracker-body .chore-full-label').first().innerText(), 'Test Chore');
+
+  // With the starting 2 kids (sam/emma), the landing card must stay fully
+  // expanded -- condensed mode only kicks in above 2. #today-chores-body
+  // is the always-on-screen ambient card, not inside the dashboard
+  // overlay, but close the overlay anyway so it can't visually cover it
+  // for the click-outside check later in this block.
+  await page.evaluate(() => closeDashboard());
+  await page.waitForTimeout(100);
+  check('with 2 kids, the landing card has no compact rows (present design preserved)',
+    await page.locator('#today-chores-body .kid-section-compact').count(), 0);
+
+  // Add-child rerender fix (2026-08-15 bug): saving a new profile must
+  // immediately update the landing chores card and chore kid selector, not
+  // just the Family tab -- previously required a manual reload even though
+  // the save itself succeeded.
+  await page.evaluate(() => openDashboardTo('profiles'));
+  await page.waitForTimeout(150);
+  await page.locator('button:has-text("+ Add Member")').click();
+  await page.waitForTimeout(100);
+  await page.locator('#pf-name').fill('Testy McTestface');
+  await page.locator('#pf-age').fill('7');
+  await page.locator('#profiles-form-col button:has-text("Save")').click();
+  await page.waitForTimeout(300);
+  check('a newly added child appears in the landing chores card immediately, no reload needed',
+    (await page.locator('#today-chores-body').innerText()).includes('Testy'), true);
+  await page.evaluate(() => switchTab('chores')); // chore-kid-selector is display:none on a non-active tab-pane -- innerText() would read '' regardless of DOM content
+  await page.waitForTimeout(100);
+  check('a newly added child appears in the chore kid selector immediately, no reload needed',
+    (await page.locator('#chore-kid-selector').innerText()).includes('Testy'), true);
+
+  // Condensed landing view (2026-08-15): adding that 3rd kid crosses the
+  // >2 threshold -- must now render compact summary rows instead of the
+  // old always-fully-expanded layout (rejected 40%-opacity alternative
+  // aside, see renderTodayChores()'s own comment).
+  await page.evaluate(() => closeDashboard());
+  await page.waitForTimeout(100);
+  check('with 3 kids, the landing card renders compact rows',
+    await page.locator('#today-chores-body .kid-section-compact').count() >= 1, true);
+
+  const firstCompactId = await page.locator('#today-chores-body [data-landing-kid-compact]').first().getAttribute('data-landing-kid-compact');
+  await page.locator('#today-chores-body [data-landing-kid-compact]').first().click();
+  await page.waitForTimeout(100);
+  check('tapping a compact row expands that kid',
+    await page.locator(`#today-chores-body [data-landing-kid-expanded="${firstCompactId}"]`).count(), 1);
+  check('other kids stay compact instead of also expanding',
+    await page.locator('#today-chores-body .kid-section-compact').count() >= 1, true);
+
+  // Clicking outside the expanded kid (the card background, not a chore
+  // row inside it) collapses it back -- capture-phase document listener,
+  // same pattern as this app's own notepad click-outside-collapse.
+  await page.locator('#custody-card').click();
+  await page.waitForTimeout(100);
+  check('clicking outside the expanded kid collapses it back to compact',
+    await page.locator('#today-chores-body [data-landing-kid-expanded]').count(), 0);
+
+  check('no JS errors from chore management, seeding, or the condensed landing view', jsErrors, []);
+
   check('no JS errors during the run', jsErrors, []);
 
   // Cross-app theme handoff (added 2026-08-07, Phase 7 §2c/2d -- see
