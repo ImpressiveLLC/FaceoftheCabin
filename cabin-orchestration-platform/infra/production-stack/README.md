@@ -10,11 +10,21 @@ Distinct from `cabin-orchestration-platform/infra/docker-compose.yml` +
 `docker-compose.m920q.yml`, which define this repo's *own* services
 (cabin-backend, cabin-discovery, cabin-ui, family-hub, cabin-postgres,
 cabin-kafka, cabin-grafana) — those already deploy via tested/gated CI
-(`deploy-cabin-backend.yml`, `deploy-family-hub.yml`). This directory's
-stack does not yet have its own deploy workflow; see
-`docs/REPLICATION.md` §10 and the project plan this was imported under
-for the phased rollout (health checks, Uptime Kuma config-as-code, a
-cross-container smoke test, then a real gated deploy workflow).
+(`deploy-cabin-backend.yml`, `deploy-family-hub.yml`). This directory deploys
+through `.github/workflows/deploy-production-stack.yml`; see
+`docs/REPLICATION.md` §10 for the monitoring model around it.
+
+The workflow validates both compose layers before it changes the host. For a
+production-stack config change, it preserves the current compose file, live
+Frigate config, and exact running image IDs as the last-known-good set, applies
+the reviewed files, and waits for every container plus every available Docker
+healthcheck. It then publishes a unique, non-retained Zigbee2MQTT-shaped device
+list and proves that `cabin-backend` exposes the synthetic device through
+`/api/devices`; it also requires `cabin/camera/available` to report `online`.
+The memory-only synthetic candidate is deleted after the check. Any failed
+post-deploy gate restores the last-known-good config and images and still leaves
+the Actions run red for review. A `docker-compose.m920q.yml`-only change runs the
+validation and smoke checks without redeploying this separate production stack.
 
 `docker-compose.yml` and `frigate/config.yml` here are byte-for-byte
 copies of the live files on the M920q as of the import (verified via

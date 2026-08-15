@@ -1,0 +1,354 @@
+name: Deploy production stack (validated, smoke-tested, auto-rollback)
+
+# This is the deployment gate for the separately managed M920q services in
+# infra/production-stack (Mosquitto, Frigate, Zigbee2MQTT, Home Assistant,
+# Node-RED, and their supporting services). It intentionally mirrors the
+# cabin-backend workflow's contract:
+#
+#   1. Validate before touching the running host.
+#   2. Preserve an immutable, Git-SHA-labelled last-known-good image set.
+#      Most services are third-party images rather than images built by this
+#      repository, so recording their exact image IDs is the equivalent of
+#      cabin-backend's per-SHA application image tag.
+#   3. Trust the deployment only after every container is running, every
+#      available Docker healthcheck is healthy, and two real cross-container
+#      MQTT smoke tests pass.
+#   4. On any post-deploy failure, restore the last-known-good compose file,
+#      Frigate config, and exact images. The job remains red and writes a
+#      concise report to the Actions summary even when rollback succeeds.
+#
+# The docker-compose.m920q.yml trigger is validation/smoke-only. That file is
+# deployed by the application-specific workflows; this workflow must not race
+# them by also redeploying production-stack services for an unrelated app-stack
+# edit. Its bounded smoke loop republishes while cabin-backend is healthy, so a
+# concurrent backend restart cannot silently turn the check into a false pass.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cabin-orchestration-platform/infra/production-stack/**"
+      - "cabin-orchestration-platform/infra/docker-compose.m920q.yml"
+      - ".github/workflows/deploy-production-stack.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: cabin-production-stack
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, cabin-m920q]
+    steps:
+      - name: Validate, deploy when relevant, smoke-test, and roll back on failure
+        shell: bash
+        env:
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          BACKEND_URL: ${{ vars.CABIN_BACKEND_URL || 'http://localhost:8090' }}
+          LIVE_FRIGATE_CONFIG: ${{ vars.CABIN_FRIGATE_CONFIG_PATH || '/storage/services/frigate/config.yml' }}
+        run: |
+          set -Eeuo pipefail
+
+          STACK_DIR="$DEPLOY_PATH/cabin-orchestration-platform/infra/production-stack"
+          INFRA_DIR="$DEPLOY_PATH/cabin-orchestration-platform/infra"
+          LKG_DIR="$DEPLOY_PATH/.git/cabin-production-stack-lkg"
+          SYNTHETIC_FRIENDLY="codex_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          SYNTHETIC_DEVICE_ID="z2m-${SYNTHETIC_FRIENDLY}"
+          SYNTHETIC_PUBLISHED=false
+          TOUCHED_LIVE=false
+          DEPLOY_NEEDED=false
+          CONFIG_RESULT="not run"
+          DEPLOY_RESULT="not required"
+          DEVICE_SMOKE_RESULT="not run"
+          CAMERA_SMOKE_RESULT="not run"
+          CLEANUP_RESULT="not needed"
+          ROLLBACK_RESULT="not needed"
+
+          compose_args() {
+            local compose_file="$1"
+            local override_file="${2:-}"
+            COMPOSE_ARGS=(
+              docker compose
+              -p cabin
+              --env-file "$STACK_DIR/.env"
+              -f "$compose_file"
+            )
+            if [ -n "$override_file" ]; then
+              COMPOSE_ARGS+=(-f "$override_file")
+            fi
+          }
+
+          wait_for_stack() {
+            local compose_file="$1"
+            local override_file="${2:-}"
+            local attempt service cid state health pending failed
+
+            compose_args "$compose_file" "$override_file"
+            for attempt in $(seq 1 60); do
+              pending=0
+              failed=0
+              while IFS= read -r service; do
+                [ -n "$service" ] || continue
+                cid=$("${COMPOSE_ARGS[@]}" ps -q "$service" 2>/dev/null || true)
+                if [ -z "$cid" ]; then
+                  failed=1
+                  continue
+                fi
+                state=$(docker inspect --format '{{.State.Status}}' "$cid" 2>/dev/null || true)
+                health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$cid" 2>/dev/null || true)
+                if [ "$state" != "running" ]; then
+                  failed=1
+                elif [ -n "$health" ] && [ "$health" != "healthy" ]; then
+                  pending=1
+                fi
+              done < <("${COMPOSE_ARGS[@]}" config --services)
+
+              if [ "$failed" -eq 0 ] && [ "$pending" -eq 0 ]; then
+                return 0
+              fi
+              sleep 2
+            done
+            return 1
+          }
+
+          capture_last_known_good() {
+            local source_sha="$1"
+            local tag_sha service cid image_id lkg_tag
+            local override_tmp="$LKG_DIR/images.override.yml.tmp"
+
+            tag_sha=$(printf '%s' "$source_sha" | cut -c1-12)
+            mkdir -p "$LKG_DIR"
+            cp "$STACK_DIR/docker-compose.yml" "$LKG_DIR/docker-compose.yml"
+            cp "$LIVE_FRIGATE_CONFIG" "$LKG_DIR/frigate-config.yml"
+            ln -sfn "$STACK_DIR/.env" "$LKG_DIR/.env"
+            printf 'services:\n' > "$override_tmp"
+
+            compose_args "$STACK_DIR/docker-compose.yml"
+            while IFS= read -r service; do
+              [ -n "$service" ] || continue
+              cid=$("${COMPOSE_ARGS[@]}" ps -q "$service" 2>/dev/null || true)
+              [ -n "$cid" ] || continue
+              image_id=$(docker inspect --format '{{.Image}}' "$cid")
+              lkg_tag="cabin-production-lkg/${service}:${tag_sha}"
+              docker image tag "$image_id" "$lkg_tag"
+              printf '  %s:\n    image: %s\n' "$service" "$lkg_tag" >> "$override_tmp"
+            done < <("${COMPOSE_ARGS[@]}" config --services)
+            mv "$override_tmp" "$LKG_DIR/images.override.yml"
+            printf '%s\n' "$source_sha" > "$LKG_DIR/source-sha"
+          }
+
+          rollback() {
+            set +e
+            if [ ! -f "$LKG_DIR/docker-compose.yml" ] || [ ! -f "$LKG_DIR/frigate-config.yml" ]; then
+              ROLLBACK_RESULT="failed: no last-known-good snapshot"
+              return 1
+            fi
+
+            echo "Restoring last-known-good production stack..."
+            cp "$LKG_DIR/frigate-config.yml" "$LIVE_FRIGATE_CONFIG"
+            compose_args "$LKG_DIR/docker-compose.yml" "$LKG_DIR/images.override.yml"
+            "${COMPOSE_ARGS[@]}" up -d --no-build
+            if wait_for_stack "$LKG_DIR/docker-compose.yml" "$LKG_DIR/images.override.yml"; then
+              ROLLBACK_RESULT="succeeded"
+              return 0
+            fi
+            ROLLBACK_RESULT="failed health check; manual intervention required"
+            return 1
+          }
+
+          cleanup_synthetic_device() {
+            local attempt
+            if [ "$SYNTHETIC_PUBLISHED" != true ]; then
+              CLEANUP_RESULT="not needed"
+              return 0
+            fi
+            for attempt in $(seq 1 15); do
+              if curl -fsS --connect-timeout 2 --max-time 5 -X DELETE \
+                  "$BACKEND_URL/api/devices/$SYNTHETIC_DEVICE_ID" >/dev/null 2>&1; then
+                CLEANUP_RESULT="succeeded"
+                SYNTHETIC_PUBLISHED=false
+                return 0
+              fi
+              sleep 2
+            done
+            CLEANUP_RESULT="failed; candidate is memory-only and disappears on the next backend restart"
+            return 1
+          }
+
+          write_summary() {
+            local compose_file="$STACK_DIR/docker-compose.yml"
+            local override_file=""
+            if [ "$ROLLBACK_RESULT" = "succeeded" ]; then
+              compose_file="$LKG_DIR/docker-compose.yml"
+              override_file="$LKG_DIR/images.override.yml"
+            fi
+            compose_args "$compose_file" "$override_file"
+            {
+              echo "### Production stack deployment gate"
+              echo
+              echo "| Gate | Result |"
+              echo "|---|---|"
+              echo "| Compose validation | $CONFIG_RESULT |"
+              echo "| Production deploy | $DEPLOY_RESULT |"
+              echo "| MQTT → cabin-backend device path | $DEVICE_SMOKE_RESULT |"
+              echo "| Frigate availability topic | $CAMERA_SMOKE_RESULT |"
+              echo "| Synthetic device cleanup | $CLEANUP_RESULT |"
+              echo "| Automatic rollback | $ROLLBACK_RESULT |"
+              echo
+              echo "#### Final container state"
+              echo
+              echo '```text'
+              "${COMPOSE_ARGS[@]}" ps 2>&1 || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          on_exit() {
+            local rc=$?
+            trap - EXIT
+            set +e
+            if [ "$rc" -ne 0 ] && [ "$TOUCHED_LIVE" = true ]; then
+              DEPLOY_RESULT="$DEPLOY_RESULT; a post-deploy gate failed"
+              rollback
+            fi
+            cleanup_synthetic_device
+            write_summary
+            exit "$rc"
+          }
+          trap on_exit EXIT
+
+          for command in git docker curl jq; do
+            if ! command -v "$command" >/dev/null 2>&1; then
+              echo "::error::Required command is missing on the runner: $command"
+              exit 1
+            fi
+          done
+          if [ ! -f "$STACK_DIR/.env" ]; then
+            echo "::error::Host-only production environment file is missing: $STACK_DIR/.env"
+            exit 1
+          fi
+          if [ ! -f "$LIVE_FRIGATE_CONFIG" ]; then
+            echo "::error::Live Frigate config is missing: $LIVE_FRIGATE_CONFIG"
+            exit 1
+          fi
+
+          cd "$DEPLOY_PATH"
+
+          # Fail-closed dirty-worktree preflight (2026-08-15, required before
+          # merge): $DEPLOY_PATH is the same clone a human operator uses
+          # directly over SSH for one-off config/vault edits between deploys
+          # -- confirmed the hard way this session, when a real, legitimate
+          # vault.yml edit sat uncommitted in this exact clone for over a
+          # day. The reset below is a hard discard; running it against that
+          # state would have destroyed it with zero warning. Evaluate status
+          # before touching anything else so a dirty clone fails loudly
+          # instead of losing work silently.
+          DIRTY_STATUS=$(git status --porcelain --untracked-files=all)
+          if [ -n "$DIRTY_STATUS" ]; then
+            echo "::error::Deploy clone at $DEPLOY_PATH has uncommitted changes -- refusing to fetch/reset/deploy. Commit or stash them on the host, then re-run."
+            printf '%s\n' "$DIRTY_STATUS" | while IFS= read -r line; do
+              echo "::error::  $line"
+            done
+            exit 1
+          fi
+
+          CURRENT_SHA=$(git rev-parse HEAD)
+          if [ ! -f "$LKG_DIR/docker-compose.yml" ]; then
+            echo "Seeding the first last-known-good snapshot from the currently running stack."
+            capture_last_known_good "$CURRENT_SHA"
+          fi
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DEPLOY_NEEDED=true
+          elif [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            DEPLOY_NEEDED=true
+          else
+            CHANGED=$(git diff --name-only "$BEFORE" "$AFTER")
+            if printf '%s\n' "$CHANGED" | grep -Eq '^cabin-orchestration-platform/infra/production-stack/(docker-compose\.yml|frigate/config\.yml)$|^\.github/workflows/deploy-production-stack\.yml$'; then
+              DEPLOY_NEEDED=true
+            fi
+          fi
+
+          compose_args "$STACK_DIR/docker-compose.yml"
+          "${COMPOSE_ARGS[@]}" config --quiet
+          (
+            cd "$INFRA_DIR"
+            docker compose -f docker-compose.yml -f docker-compose.m920q.yml config --quiet
+          )
+          CONFIG_RESULT="passed"
+
+          if [ "$DEPLOY_NEEDED" = true ]; then
+            echo "Applying production stack from git SHA $(git rev-parse --short HEAD)."
+            TOUCHED_LIVE=true
+            cp "$STACK_DIR/frigate/config.yml" "$LIVE_FRIGATE_CONFIG"
+            compose_args "$STACK_DIR/docker-compose.yml"
+            "${COMPOSE_ARGS[@]}" up -d --no-build
+            if ! wait_for_stack "$STACK_DIR/docker-compose.yml"; then
+              DEPLOY_RESULT="failed container health gate"
+              echo "::error::One or more production containers failed to become running/healthy within 120 seconds."
+              exit 1
+            fi
+            DEPLOY_RESULT="container health gate passed"
+          else
+            echo "No production compose/Frigate/workflow change; running validation and smoke tests without redeploying production-stack."
+          fi
+
+          PAYLOAD=$(jq -nc --arg friendly "$SYNTHETIC_FRIENDLY" '[{
+            friendly_name: $friendly,
+            type: "EndDevice",
+            power_source: "Battery",
+            definition: {
+              model: "CI-SMOKE",
+              vendor: "FaceoftheCabin",
+              exposes: [{type: "binary", property: "contact", name: "contact", access: 1}]
+            }
+          }]')
+
+          DEVICE_FOUND=false
+          for attempt in $(seq 1 30); do
+            if curl -fsS --connect-timeout 2 --max-time 5 "$BACKEND_URL/actuator/health" \
+                | jq -e '.status == "UP"' >/dev/null 2>&1; then
+              docker exec mosquitto mosquitto_pub \
+                -t zigbee2mqtt/bridge/devices \
+                -m "$PAYLOAD"
+              SYNTHETIC_PUBLISHED=true
+              sleep 1
+              if curl -fsS --connect-timeout 2 --max-time 5 "$BACKEND_URL/api/devices" \
+                  | jq -e --arg id "$SYNTHETIC_DEVICE_ID" 'any(.[]; .deviceId == $id)' >/dev/null; then
+                DEVICE_FOUND=true
+                break
+              fi
+            fi
+            sleep 2
+          done
+          if [ "$DEVICE_FOUND" != true ]; then
+            DEVICE_SMOKE_RESULT="failed bounded 90-second check"
+            echo "::error::Synthetic Zigbee2MQTT device never appeared in cabin-backend /api/devices."
+            exit 1
+          fi
+          DEVICE_SMOKE_RESULT="passed"
+
+          set +e
+          CAMERA_MESSAGE=$(docker exec mosquitto mosquitto_sub \
+            -C 1 \
+            -t cabin/camera/available \
+            -W 15 | tr -d '\r\n')
+          CAMERA_SUB_EXIT=$?
+          set -e
+          if [ "$CAMERA_SUB_EXIT" -ne 0 ] || [ "$CAMERA_MESSAGE" != "online" ]; then
+            CAMERA_SMOKE_RESULT="failed bounded 15-second check: expected online"
+            echo "::error::cabin/camera/available did not report online."
+            exit 1
+          fi
+          CAMERA_SMOKE_RESULT="passed"
+
+          cleanup_synthetic_device
+          if [ "$DEPLOY_NEEDED" = true ]; then
+            capture_last_known_good "$(git rev-parse HEAD)"
+            DEPLOY_RESULT="succeeded and promoted to last-known-good"
+          fi
