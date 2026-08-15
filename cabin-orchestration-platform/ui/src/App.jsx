@@ -402,13 +402,26 @@ export function cameraEventsWindowLabel(window) {
 // Pure URL-builder, no fetch inside -- extracted specifically so the
 // offset/eventTypePrefix query-param wiring is directly unit-testable
 // without mocking fetch. See src/App.test.jsx.
-export function buildCameraEventsUrl(apiBase, offset, window = "24h") {
-  return `${apiBase}/api/events?limit=${CAMERA_EVENTS_PAGE_SIZE}&offset=${offset}&window=${window}&eventTypePrefix=DETECTION_,MOTION_`;
+export function buildCameraEventsUrl(apiBase, offset, window = "24h", location = null) {
+  const base = `${apiBase}/api/events?limit=${CAMERA_EVENTS_PAGE_SIZE}&offset=${offset}&window=${window}&eventTypePrefix=DETECTION_,MOTION_`;
+  return location ? `${base}&location=${location}` : base;
 }
 
 export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's time-range window test
   const { locationCfg } = useApp();
-  const apiBase = locationCfg?.apiBase || LOCATIONS.cabin.apiBase;
+  // 2026-08-15: a location can have real devices (e.g. Home's AldrichFront,
+  // a Blink camera relayed through the cabin M920q's own blinkbridge/
+  // Frigate) before that location has its own deployed backend -- same
+  // "borrow cabin's until this location is real" fallback RulesPanel's
+  // hasOwnNodeRed already uses for Node-RED embeds. When the active
+  // location isn't actually deployed, query cabin's backend instead and
+  // filter to just that location's devices server-side; a genuinely
+  // deployed location's own backend never needs the filter, since it only
+  // ever has its own data to begin with.
+  const locationDeployed = isLocationDeployed(locationCfg);
+  const apiBase = locationDeployed ? (locationCfg?.apiBase || LOCATIONS.cabin.apiBase) : LOCATIONS.cabin.apiBase;
+  const eventsLocationFilter = (!locationDeployed && locationCfg?.id && locationCfg.id !== "cabin")
+    ? locationCfg.id : null;
   const [window_, setWindow] = useState(() => localStorage.getItem("cameraEvents.window") || "24h");
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -441,7 +454,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   // events to begin with).
   const refresh = useCallback(() => {
     setLoading(true);
-    fetch(buildCameraEventsUrl(apiBase, 0, window_))
+    fetch(buildCameraEventsUrl(apiBase, 0, window_, eventsLocationFilter))
       .then(r => r.json())
       .then(list => {
         setEvents(list);
@@ -449,7 +462,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
       })
       .catch(() => { setEvents([]); setHasMore(false); })
       .finally(() => setLoading(false));
-  }, [apiBase, window_]);
+  }, [apiBase, window_, eventsLocationFilter]);
 
   useEffect(() => localStorage.setItem("cameraEvents.window", window_), [window_]);
 
@@ -459,7 +472,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   // for the initial load and the periodic poll).
   const loadMore = useCallback(() => {
     setLoadingMore(true);
-    fetch(buildCameraEventsUrl(apiBase, events.length, window_))
+    fetch(buildCameraEventsUrl(apiBase, events.length, window_, eventsLocationFilter))
       .then(r => r.json())
       .then(list => {
         setEvents(prev => [...prev, ...list]);
@@ -467,7 +480,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
       })
       .catch(() => setHasMore(false))
       .finally(() => setLoadingMore(false));
-  }, [apiBase, events.length, window_]);
+  }, [apiBase, events.length, window_, eventsLocationFilter]);
 
   // Real, current camera names from Frigate's own config — NOT derived
   // from event history. That was the original approach and broke the
@@ -486,7 +499,10 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   const refreshCameraList = useCallback(() => {
     if (!auth.accessToken) return;
     setCameraListError(null);
-    auth.authedFetch(`${apiBase}/api/camera/list`)
+    const listUrl = eventsLocationFilter
+      ? `${apiBase}/api/camera/list?location=${eventsLocationFilter}`
+      : `${apiBase}/api/camera/list`;
+    auth.authedFetch(listUrl)
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -498,7 +514,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
         // auth.sessionExpired — no need to duplicate that message here.
         if (!auth.sessionExpired) setCameraListError(err.message);
       });
-  }, [apiBase, auth]);
+  }, [apiBase, auth, eventsLocationFilter]);
 
   useEffect(() => {
     if (!auth.signedIn) return;

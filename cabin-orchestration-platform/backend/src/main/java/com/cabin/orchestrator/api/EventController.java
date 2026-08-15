@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
 import org.springframework.web.bind.annotation.*;
@@ -7,6 +8,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/events")
@@ -14,13 +17,15 @@ import java.util.List;
 public class EventController {
 
     private final CabinEventService eventService;
+    private final DeviceRegistry registry;
 
-    public EventController(CabinEventService eventService) {
+    public EventController(CabinEventService eventService, DeviceRegistry registry) {
         this.eventService = eventService;
+        this.registry = registry;
     }
 
     /**
-     * GET /api/events?camera=outdoor_4&limit=20&offset=0&window=10m&eventTypePrefix=DETECTION_,MOTION_
+     * GET /api/events?camera=outdoor_4&limit=20&offset=0&window=10m&eventTypePrefix=DETECTION_,MOTION_&location=home
      * Unauthenticated, same precedent as /api/devices — this is the "at
      * minimum, push events to FaceoftheCabin" tier. All params are
      * optional; defaults to the last 24h, 20 events, offset 0, any
@@ -32,6 +37,17 @@ public class EventController {
      * (isCameraEvent, App.jsx) and being capped at the most recent 30 with
      * no way to page further back — see docs/ontology.yaml's
      * cabin_camera_event entry.
+     *
+     * location added 2026-08-15: cabin_event has no location column of its
+     * own (events are saved from many call sites, not just camera MQTT —
+     * adding one there would touch all of them for one narrow need), so
+     * this filters post-fetch by joining each event's sourceDeviceId
+     * against DeviceRegistry.byLocation() instead. Exists specifically so
+     * a location whose own backend isn't deployed yet (see
+     * cabin-orchestration-platform/locations/home/, still an undeployed
+     * scaffold) can still show its devices' events by querying the
+     * backend that's actually processing them, filtered down to just that
+     * location — see App.jsx's CameraEventsPanel for the caller.
      */
     @GetMapping
     public List<CabinEvent> recentEvents(
@@ -39,7 +55,8 @@ public class EventController {
             @RequestParam(name = "limit", required = false, defaultValue = "20") int limit,
             @RequestParam(name = "offset", required = false, defaultValue = "0") int offset,
             @RequestParam(name = "window", required = false, defaultValue = "24h") String window,
-            @RequestParam(name = "eventTypePrefix", required = false) String eventTypePrefix) {
+            @RequestParam(name = "eventTypePrefix", required = false) String eventTypePrefix,
+            @RequestParam(name = "location", required = false) String location) {
         Instant since = Instant.now().minus(parseWindow(window));
         int cappedLimit = Math.min(Math.max(limit, 1), 200);
         int cappedOffset = Math.max(offset, 0);
@@ -47,6 +64,22 @@ public class EventController {
             ? null
             : java.util.Arrays.stream(eventTypePrefix.split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).toList();
+        // Over-fetch before applying the location join so pagination still
+        // makes sense once devices outside the requested location are
+        // dropped -- the alternative (filter after applying limit/offset)
+        // would silently return fewer than `limit` results, or an empty
+        // page, whenever any non-matching devices exist in that window.
+        if (location != null && !location.isBlank()) {
+            Set<String> deviceIdsInLocation = registry.byLocation(location).stream()
+                .map(d -> d.deviceId()).collect(Collectors.toSet());
+            List<CabinEvent> overFetched = eventService.recent(
+                camera, Math.min(cappedLimit + cappedOffset + 200, 500), 0, since, prefixes);
+            return overFetched.stream()
+                .filter(e -> deviceIdsInLocation.contains(e.sourceDeviceId()))
+                .skip(cappedOffset)
+                .limit(cappedLimit)
+                .toList();
+        }
         return eventService.recent(camera, cappedLimit, cappedOffset, since, prefixes);
     }
 

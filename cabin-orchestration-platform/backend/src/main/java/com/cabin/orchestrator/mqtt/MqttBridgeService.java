@@ -251,18 +251,33 @@ public class MqttBridgeService implements MqttCallback {
     private void touchCamera(String cameraId) {
         DeviceStatus existing = registry.get(cameraId);
         if (existing == null) {
+            String location = deriveCameraLocation(cameraId);
             DeviceDescriptor descriptor = new DeviceDescriptor(cameraId, cameraId, DeviceType.CAMERA,
                 Set.of(DeviceCapability.STREAM, DeviceCapability.PRESENCE), "mqtt",
-                "cabin/camera/" + cameraId, false, "cabin");
+                "cabin/camera/" + cameraId, false, location);
             registry.registerCandidate(descriptor, Map.of("discoveredFrom", "Frigate MQTT"));
             DeviceStatus candidate = registry.get(cameraId);
             registry.update(new DeviceStatus(cameraId, DeviceType.CAMERA, cameraId, "ONLINE",
-                Instant.now(), candidate.attributes(), "cabin"));
-            log.info("Auto-registered new camera: {}", cameraId);
+                Instant.now(), candidate.attributes(), location));
+            log.info("Auto-registered new camera: {} (location={})", cameraId, location);
             return;
         }
         registry.update(new DeviceStatus(existing.deviceId(), existing.type(), existing.name(),
             "ONLINE", Instant.now(), existing.attributes(), existing.location()));
+    }
+
+    /**
+     * Cameras all arrive on the same cabin/camera/# MQTT subscription
+     * regardless of where they physically live (2026-08-15: AldrichFront
+     * is a Home-location Blink camera relayed through the cabin M920q's
+     * own blinkbridge/Frigate, on the same Blink account/sync module as
+     * the cabin's driveway camera -- there is no separate home-location
+     * MQTT broker or backend instance for it to arrive on instead). The
+     * camera id's home_ prefix is the only signal available here for
+     * which location it actually belongs to.
+     */
+    private String deriveCameraLocation(String cameraId) {
+        return cameraId.startsWith("home_") ? "home" : "cabin";
     }
 
     /**

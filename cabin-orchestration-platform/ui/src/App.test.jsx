@@ -75,6 +75,20 @@ describe("buildCameraEventsUrl", () => {
     const url = buildCameraEventsUrl("http://cabin-hub:8090", 0, "240h");
     expect(url).toContain("window=240h");
   });
+
+  // 2026-08-15: a location can have real devices (AldrichFront, Home) before
+  // it has its own deployed backend -- CameraEventsPanel falls back to
+  // querying cabin's own apiBase filtered by this param instead. No filter
+  // by default so cabin's own (already-deployed) behavior is unaffected.
+  it("omits the location filter by default", () => {
+    const url = buildCameraEventsUrl("http://cabin-hub:8090", 0);
+    expect(url).not.toContain("location=");
+  });
+
+  it("adds a location filter when given one", () => {
+    const url = buildCameraEventsUrl("http://cabin-hub:8090", 0, "24h", "home");
+    expect(url).toContain("location=home");
+  });
 });
 
 describe("cameraEventsWindowLabel", () => {
@@ -150,6 +164,56 @@ describe("CameraEventsPanel — time range window", () => {
 
     await waitFor(() => expect(fetchMock2).toHaveBeenCalled());
     expect(fetchMock2.mock.calls[0][0]).toContain("window=72h");
+  });
+});
+
+// 2026-08-15: a location's devices (e.g. Home's AldrichFront, relayed
+// through the cabin M920q's own blinkbridge/Frigate) can exist before that
+// location has its own deployed backend. CameraEventsPanel falls back to
+// cabin's own apiBase, filtered server-side, rather than hitting a
+// non-existent home-hub server -- same fallback pattern RulesPanel's
+// hasOwnNodeRed already uses for Node-RED embeds.
+describe("CameraEventsPanel — undeployed location falls back to cabin, filtered", () => {
+  afterEach(cleanup);
+
+  function mockAuth() {
+    return {
+      configured: true, signedIn: true, sessionExpired: false, userEmail: "nate@example.com",
+      signOut: vi.fn(), signIn: vi.fn(), accessToken: "tok",
+      authedFetch: vi.fn().mockResolvedValue({ ok: true, json: async () => [] }),
+    };
+  }
+
+  it("queries cabin's apiBase with a location filter when Home isn't deployed", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <AppContext.Provider value={{ locationCfg: { id: "home", apiBase: "http://home-hub:8080" } }}>
+        <CameraEventsPanel auth={mockAuth()} />
+      </AppContext.Provider>
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = fetchMock.mock.calls[0][0];
+    expect(url.startsWith("http://cabin-hub:8090/api/events?")).toBe(true);
+    expect(url).toContain("location=home");
+  });
+
+  it("queries cabin's apiBase directly, with no location filter, for cabin itself", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <AppContext.Provider value={{ locationCfg: { id: "cabin", apiBase: "http://cabin-hub:8090" } }}>
+        <CameraEventsPanel auth={mockAuth()} />
+      </AppContext.Provider>
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = fetchMock.mock.calls[0][0];
+    expect(url.startsWith("http://cabin-hub:8090/api/events?")).toBe(true);
+    expect(url).not.toContain("location=");
   });
 });
 

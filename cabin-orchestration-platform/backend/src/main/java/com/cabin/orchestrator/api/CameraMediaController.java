@@ -102,7 +102,8 @@ public class CameraMediaController {
      * names — a real bug found via live testing, not caught by review).
      */
     @GetMapping(value = "/list")
-    public List<Map<String, Object>> list() {
+    public List<Map<String, Object>> list(
+            @RequestParam(name = "location", required = false) String location) {
         List<Map<String, Object>> cameras = new ArrayList<>();
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(frigateUrl + "/api/config"))
@@ -119,6 +120,18 @@ public class CameraMediaController {
             Iterator<String> names = camerasNode.fieldNames();
             while (names.hasNext()) {
                 String name = names.next();
+                // 2026-08-15: this Frigate instance can hold cameras from
+                // more than one logical location (AldrichFront is Home,
+                // relayed through the cabin M920q's own blinkbridge — see
+                // MqttBridgeService.deriveCameraLocation() for the same
+                // home_ prefix convention). Frigate's config has no
+                // location concept of its own to filter server-side by, so
+                // this matches the same naming convention directly.
+                if (location != null && !location.isBlank()) {
+                    boolean isHome = name.startsWith("home_");
+                    if ("home".equals(location) && !isHome) continue;
+                    if (!"home".equals(location) && isHome) continue;
+                }
                 boolean enabled = camerasNode.path(name).path("enabled").asBoolean(false);
                 cameras.add(Map.of("name", name, "enabled", enabled));
             }

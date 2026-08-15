@@ -83,6 +83,27 @@ class MqttBridgeServiceTest {
         assertEquals("cabin", status.location());
     }
 
+    // 2026-08-15: AldrichFront (a Home-location Blink camera relayed through
+    // the cabin M920q's own blinkbridge/Frigate, on the same Blink account/
+    // sync module as the cabin's driveway camera) still arrives on this same
+    // cabin/camera/# subscription -- there is no separate home-location MQTT
+    // broker or backend instance for it to arrive on instead. Before this,
+    // every camera got hardcoded location "cabin" regardless of its own
+    // name, so a home_-prefixed camera showed up mislabeled -- confirmed
+    // against the real code, not assumed, while wiring AldrichFront in.
+    @Test
+    void homePrefixedCameraIsRegisteredWithHomeLocation() throws Exception {
+        assertNull(registry.get("home_aldrich_front"));
+
+        deliver("cabin/camera/home_aldrich_front/motion", "ON");
+
+        DeviceStatus status = registry.get("home_aldrich_front");
+        assertNotNull(status, "camera should be auto-registered on first motion message");
+        assertEquals("home", status.location(),
+            "a home_-prefixed camera id must be tagged location=home even though it arrived " +
+            "on the cabin subscription, so GET /api/events?location=home can find it");
+    }
+
     @Test
     void perLabelCountTopicAlsoTouchesTheCamera() throws Exception {
         deliver("cabin/camera/driveway/car", "1");
