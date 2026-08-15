@@ -233,6 +233,25 @@ jobs:
           fi
 
           cd "$DEPLOY_PATH"
+
+          # Fail-closed dirty-worktree preflight (2026-08-15, required before
+          # merge): $DEPLOY_PATH is the same clone a human operator uses
+          # directly over SSH for one-off config/vault edits between deploys
+          # -- confirmed the hard way this session, when a real, legitimate
+          # vault.yml edit sat uncommitted in this exact clone for over a
+          # day. The reset below is a hard discard; running it against that
+          # state would have destroyed it with zero warning. Evaluate status
+          # before touching anything else so a dirty clone fails loudly
+          # instead of losing work silently.
+          DIRTY_STATUS=$(git status --porcelain --untracked-files=all)
+          if [ -n "$DIRTY_STATUS" ]; then
+            echo "::error::Deploy clone at $DEPLOY_PATH has uncommitted changes -- refusing to fetch/reset/deploy. Commit or stash them on the host, then re-run."
+            printf '%s\n' "$DIRTY_STATUS" | while IFS= read -r line; do
+              echo "::error::  $line"
+            done
+            exit 1
+          fi
+
           CURRENT_SHA=$(git rev-parse HEAD)
           if [ ! -f "$LKG_DIR/docker-compose.yml" ]; then
             echo "Seeding the first last-known-good snapshot from the currently running stack."
