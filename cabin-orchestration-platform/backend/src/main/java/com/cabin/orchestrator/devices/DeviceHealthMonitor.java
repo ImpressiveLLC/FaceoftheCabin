@@ -122,6 +122,38 @@ public class DeviceHealthMonitor {
         }
     }
 
+    /**
+     * Reclassify one device immediately after a persisted lifecycle or enabled
+     * change. Without this, a previously cached NOT_CONFIGURED value can remain
+     * visible until the next 60-second scheduled cycle even though the device is
+     * now enabled and assigned. This deliberately does not actively fetch or
+     * command the device; it only classifies the last observation already held
+     * by the registry.
+     */
+    public void refreshAfterConfigurationChange(String deviceId) {
+        Optional<DeviceDescriptor> descriptor = registry.descriptor(deviceId);
+        if (descriptor.isEmpty() || registry.lifecycleState(deviceId).isPreviouslyExposed()) {
+            clearTracking(deviceId);
+            return;
+        }
+
+        if (!descriptor.get().enabled() || !registry.lifecycleState(deviceId).allowsActiveUse()) {
+            checkinStatuses.put(deviceId, CheckinStatus.NOT_CONFIGURED);
+            staleSince.remove(deviceId);
+            lastKnownState.remove(deviceId);
+            reconnectAttempts.remove(deviceId);
+            return;
+        }
+
+        DeviceStatus status = registry.get(deviceId);
+        Duration staleThreshold = staleThresholdFor(deviceId, status);
+        Duration sinceLastSeen = Duration.between(status.lastSeen(), Instant.now());
+        CheckinStatus classified = classify(
+            sinceLastSeen, staleThreshold, staleThreshold.multipliedBy(MISSED_MULTIPLIER), true);
+        checkinStatuses.put(deviceId, classified);
+        if (classified == CheckinStatus.ON_SCHEDULE) recoverIfNeeded(deviceId, "configuration changed");
+    }
+
     /** Pure classification: given how late a device is, which tier is it in. Package-private for tests. */
     static CheckinStatus classify(Duration sinceLastSeen, Duration staleThreshold, Duration missedThreshold, boolean enabled) {
         if (!enabled) return CheckinStatus.NOT_CONFIGURED;
@@ -156,6 +188,13 @@ public class DeviceHealthMonitor {
             lastKnownState.remove(id);
             reconnectAttempts.remove(id);
         }
+    }
+
+    private void clearTracking(String deviceId) {
+        checkinStatuses.remove(deviceId);
+        staleSince.remove(deviceId);
+        lastKnownState.remove(deviceId);
+        reconnectAttempts.remove(deviceId);
     }
 
     /**
@@ -252,6 +291,7 @@ public class DeviceHealthMonitor {
             Duration expected = staleThresholdFor(status.deviceId(), status);
             CheckinStatus checkin = checkinStatuses.getOrDefault(status.deviceId(),
                 registry.descriptor(status.deviceId()).filter(DeviceDescriptor::enabled).isPresent()
+                    && registry.lifecycleState(status.deviceId()).allowsActiveUse()
                     ? CheckinStatus.ON_SCHEDULE : CheckinStatus.NOT_CONFIGURED);
             boolean battery = expected.equals(STALE_ZIGBEE_BATTERY)
                 || "battery".equalsIgnoreCase(String.valueOf(status.attributes().get("powerSource")));

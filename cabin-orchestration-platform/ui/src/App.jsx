@@ -2256,7 +2256,7 @@ function DmLockActions({ device }) {
   );
 }
 
-function DmEditForm({ device, onSaved, onOpenDiscovery }) {
+export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
   const [name, setName]       = useState(device.name);
   const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
   const [saving, setSaving]   = useState(false);
@@ -2291,7 +2291,7 @@ function DmEditForm({ device, onSaved, onOpenDiscovery }) {
   return (
     <div className="dm-edit-form">
       <div className="dm-detail-name">{device.deviceId}</div>
-      {lifecycle === "CANDIDATE" && <p className="config-desc">Reviewing or saving a corrected name does not accept this candidate. Use the explicit decision buttons in See when ready.</p>}
+      {lifecycle === "CANDIDATE" && <p className="config-desc">Reviewing or saving a corrected name leaves this device a candidate. Turning Enabled on and saving is an explicit decision to use it, and accepts and assigns it in one step.</p>}
       {lifecycle === "AVAILABLE" && <p className="config-desc">This accepted device is available but unassigned. Saving an actual change assigns it.</p>}
       {lifecycle !== "CANDIDATE" && onOpenDiscovery && (
         <button className="btn-secondary" onClick={() => onOpenDiscovery(device, "replace")}>
@@ -2303,8 +2303,8 @@ function DmEditForm({ device, onSaved, onOpenDiscovery }) {
       </label>
       <label className="dm-toggle-row">
         <span>Enabled</span>
-        <button className="btn-ghost" onClick={() => setEnabled(e => !e)} disabled={lifecycle === "CANDIDATE"}
-          title={lifecycle === "CANDIDATE" ? "Accept the candidate before enabling it" : undefined}>
+        <button className="btn-ghost" onClick={() => setEnabled(e => !e)}
+          title={lifecycle === "CANDIDATE" ? "Saving Enabled on accepts and assigns this candidate" : undefined}>
           {enabled ? <ToggleRight size={22} className="toggle-on"/> : <ToggleLeft size={22} className="toggle-off"/>}
         </button>
       </label>

@@ -167,6 +167,7 @@ public class DeviceController {
                 ? Boolean.TRUE.equals(patch.get("enabled")) : existing.enabled();
             DeviceRegistry.ConfigurationSaveResult result =
                 registry.saveConfiguration(deviceId, name, enabled);
+            healthMonitor.refreshAfterConfigurationChange(deviceId);
             return Map.<String, Object>of(
                 "updated", deviceId,
                 "name", result.descriptor().name(),
@@ -183,6 +184,7 @@ public class DeviceController {
         DeviceLifecycleAction action = DeviceLifecycleAction.from(
             body.get("action") == null ? null : String.valueOf(body.get("action")));
         DeviceRegistry.LifecycleChangeResult result = registry.applyLifecycleAction(deviceId, action);
+        healthMonitor.refreshAfterConfigurationChange(deviceId);
         return Map.of(
             "deviceId", deviceId,
             "changed", result.changed(),

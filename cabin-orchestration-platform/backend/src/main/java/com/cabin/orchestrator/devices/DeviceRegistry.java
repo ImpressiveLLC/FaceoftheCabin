@@ -272,8 +272,11 @@ public class DeviceRegistry {
 
     /**
      * Persist only an actual configuration change. Candidate configuration can
-     * be reviewed and renamed without implying acceptance; enabling a candidate
-     * is refused until the person explicitly accepts it as AVAILABLE.
+     * be reviewed and renamed without implying acceptance. Explicitly saving a
+     * candidate as enabled is itself a person-authored decision to use it, so
+     * that write atomically accepts and assigns the device. The separate ACCEPT
+     * lifecycle action remains useful when the person only wants the device in
+     * scope as AVAILABLE without assigning or enabling it yet.
      */
     public ConfigurationSaveResult saveConfiguration(String deviceId, String name, boolean enabled) {
         synchronized (lockFor(deviceId)) {
@@ -283,10 +286,6 @@ public class DeviceRegistry {
             if (current.isPreviouslyExposed()) {
                 throw new IllegalStateException("Review this previously exposed device before configuring it");
             }
-            if (current == DeviceLifecycleState.CANDIDATE && enabled != existing.enabled()) {
-                throw new IllegalStateException("Accept this candidate before enabling it");
-            }
-
             String nextName = name == null ? existing.name() : name.trim();
             if (nextName.isBlank()) throw new IllegalArgumentException("Device name cannot be blank");
             boolean changed = !Objects.equals(existing.name(), nextName) || existing.enabled() != enabled;
@@ -296,6 +295,7 @@ public class DeviceRegistry {
                 existing.deviceId(), nextName, existing.type(), existing.capabilities(),
                 existing.protocolAdapter(), existing.connectionString(), enabled, existing.location());
             DeviceLifecycleState target = current == DeviceLifecycleState.AVAILABLE
+                || (current == DeviceLifecycleState.CANDIDATE && !existing.enabled() && enabled)
                 ? DeviceLifecycleState.ASSIGNED : current;
             DeviceLifecycleRecord record = new DeviceLifecycleRecord(updated, target, true);
             lifecycleStore.save(record);

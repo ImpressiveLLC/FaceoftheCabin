@@ -130,15 +130,19 @@ class DeviceRegistryTest {
     }
 
     @Test
-    void candidateCannotBeEnabledWithoutExplicitAcceptance() {
+    void savingCandidateEnabledAtomicallyAcceptsAndAssignsIt() {
         registry.registerCandidate(descriptor(
             "candidate-6", "Switch", DeviceType.HOME_ASSISTANT_ENTITY,
             Set.of(DeviceCapability.COMMAND), "ha_rest", "switch.test", false, "cabin"), Map.of());
 
-        assertThrows(IllegalStateException.class,
-            () -> registry.saveConfiguration("candidate-6", "Switch", true));
-        assertEquals(DeviceLifecycleState.CANDIDATE, registry.lifecycleState("candidate-6"));
-        assertTrue(store.records.isEmpty());
+        DeviceRegistry.ConfigurationSaveResult result =
+            registry.saveConfiguration("candidate-6", "Switch", true);
+
+        assertTrue(result.changed());
+        assertEquals(DeviceLifecycleState.ASSIGNED, result.lifecycleState());
+        assertTrue(result.descriptor().enabled());
+        assertEquals(DeviceLifecycleState.ASSIGNED, registry.lifecycleState("candidate-6"));
+        assertEquals(DeviceLifecycleState.ASSIGNED, store.records.get("candidate-6").lifecycleState());
     }
 
     @Test
