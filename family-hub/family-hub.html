@@ -830,7 +830,15 @@
        BOTTOM-RIGHT FABS  (Dashboard + Settings)
     ═══════════════════════════════════════════ */
     .br-fab {
-      position:fixed; right:24px; z-index:10000;
+      /* right:30px (was 24px) and width:310px on both buttons below --
+         2026-08-15 user report: #chores-card, #dashboard-fab, #settings-btn,
+         and the notepad handle all had different left edges. 30px matches
+         #app's own right padding (the same value #chores-card's grid
+         column resolves against) and 310px matches that column's width, so
+         both FABs now share an identical left AND right edge with the
+         chores card directly above them instead of floating at their own
+         auto-content width. */
+      position:fixed; right:30px; width:310px; z-index:10000;
       display:flex; align-items:center; gap:10px;
       background:var(--glass); border:1px solid var(--glass-border);
       border-radius:14px; padding:10px 18px;
@@ -840,6 +848,12 @@
       transition:background .15s, color .15s, transform .15s;
     }
     .br-fab:hover { background:rgba(255,255,255,.09); color:var(--cream); transform:translateY(-2px); }
+    /* Neither button previously defined its own focus-visible treatment,
+       so a keyboard/touch focus ring fell back to the browser's native
+       default outline (blue in Chromium) on whichever button last held
+       focus -- inconsistent with its neighbor and with .mobile-action's
+       existing gold focus ring below. Both now behave identically. */
+    .br-fab:focus-visible { outline:2px solid var(--gold); outline-offset:-2px; }
     #settings-btn  { bottom:24px; }
     .br-fab .fab-label { font-size:13px; font-weight:600; color:var(--cream); line-height:1.2; }
     .br-fab .fab-sub   { font-size:10px; color:var(--cream-dim); margin-top:2px; }
@@ -877,14 +891,25 @@
     ═══════════════════════════════════════════ */
     :root {
       --np-w-expanded: 300px;
-      /* 2026-08-12: widened from a 56px label-only tab to fit a short
-         message preview (see .np-handle-preview below) — a new note could
-         previously only be discovered by opening the panel; the pulsing
-         dot alone gave no idea what it said. */
-      --np-w-collapsed: 132px;
+      /* 2026-08-15: widened from 132px (was itself widened from a 56px
+         label-only tab on 2026-08-12, see below) so the collapsed handle
+         can sit flush with #chores-card's left edge, matching the same
+         right:30px/width alignment as #dashboard-fab and #settings-btn
+         below — and, as a direct side effect, gives .np-handle-label
+         enough room to go back to horizontal text (see that rule) instead
+         of the vertical-rl workaround the old 132px width required. This
+         intentionally supersedes the 2026-08-07 "deliberately narrow"
+         decision recorded there — the user's own explicit 2026-08-15
+         direction. computeNotepadWidths() below still guarantees a real
+         content gap in the expanded state regardless of this value. */
+      --np-w-collapsed: 190px;
     }
     #notepad-panel {
-      position:fixed; top:var(--np-top, 150px); right:0; z-index:9995;
+      /* right:30px (was 0) — matches #app's own right padding, the same
+         value #dashboard-fab/#settings-btn now use below, so the docked
+         handle's right edge lines up with the rest of the right-hand
+         column instead of sitting flush against the viewport edge alone. */
+      position:fixed; top:var(--np-top, 150px); right:30px; z-index:9995;
       display:flex; flex-direction:row; align-items:stretch;
       width: var(--np-w-collapsed);
       /* 2026-08-12 (user report, confirmed live): on a non-fullscreen
@@ -931,17 +956,16 @@
     }
     .np-dot.active { background:var(--gold); box-shadow:0 0 8px var(--gold); animation:npPulse 2s ease-in-out infinite; }
     @keyframes npPulse { 0%,100%{opacity:1} 50%{opacity:.45} }
-    /* 2026-08-07: restored per explicit request ("add Notepad to the
-       notepad") after the fixed 56px collapsed width (see :root above)
-       made the old horizontal label overflow. Vertical text -- reads
-       bottom-to-top, the same convention browser/OS side-tabs use -- fits
-       a narrow edge tab naturally by using the panel's height instead of
-       its width, rather than fighting the width constraint. */
+    /* 2026-08-07: was rotated vertical (reads bottom-to-top, the same
+       convention browser/OS side-tabs use) because the then-56px collapsed
+       width made horizontal text overflow. 2026-08-15: --np-w-collapsed
+       grew to 190px specifically so this can go back to horizontal —
+       vertical text at 90° from the rest of the UI's reading direction was
+       reported as a real viewing-angle issue once the handle had room to
+       fix it properly. */
     .np-handle-label {
       font-size:9px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
       color:var(--gold); opacity:.85;
-      writing-mode: vertical-rl;
-      transform: rotate(180deg);
       white-space: nowrap;
     }
     .np-handle-preview {
@@ -4230,6 +4254,18 @@ function toggleNotepad(force) {
   applyNotepadOpenState();
 }
 
+// 2026-08-15 (user report): clicking anywhere outside the open notepad
+// should slide it back to its collapsed handle, matching how the rest of
+// this app's overlays behave. A click on the handle itself still reaches
+// its own onclick=toggleNotepad() first -- closest('#notepad-panel')
+// covers both the handle and the open content area, so this only ever
+// fires for genuinely outside clicks and never fights that handler.
+document.addEventListener('click', (e) => {
+  if (!notepadState.open) return;
+  if (e.target.closest('#notepad-panel')) return;
+  toggleNotepad(false);
+});
+
 function checkNotepadAutoCollapse() {
   if (notepadState.forcedCollapseDone || !notepadState.lastNoteTs) return;
   if (Date.now() - notepadState.lastNoteTs >= NOTE_VISIBLE_MS) {
@@ -4276,14 +4312,26 @@ function renderNoteHistory() {
 // --np-w-expanded (used once actively opened, not the "just tucked in and
 // blocking things" case that was reported) still comes from real elements.
 const NOTEPAD_WIDTH_REF_IDS = ['chores-card', 'dashboard-fab', 'settings-btn'];
+// 2026-08-15: --np-w-collapsed grew from 132px to 190px (see :root's own
+// comment) so the docked handle could align with #chores-card/#dashboard-fab
+// and fit horizontal text. #notepad-main-inner's width is literally
+// `--np-w-expanded - --np-w-collapsed` (see that rule) -- without a floor
+// here, a narrower viewport where the reference elements measure close to
+// 190px would collapse that content area toward zero. 200px is comfortably
+// enough for the compose box/list at their own min practical width.
+const NOTEPAD_MIN_CONTENT_WIDTH = 200;
 function computeNotepadWidths() {
   const widths = NOTEPAD_WIDTH_REF_IDS
     .map(id => document.getElementById(id))
     .filter(Boolean)
     .map(el => el.getBoundingClientRect().width)
     .filter(w => w > 0);
-  if (!widths.length) return;
-  document.documentElement.style.setProperty('--np-w-expanded', `${Math.round(Math.max(...widths))}px`);
+  const collapsedPx = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue('--np-w-collapsed')
+  ) || 190;
+  const measuredMax = widths.length ? Math.max(...widths) : 0;
+  const expanded = Math.max(measuredMax, collapsedPx + NOTEPAD_MIN_CONTENT_WIDTH);
+  document.documentElement.style.setProperty('--np-w-expanded', `${Math.round(expanded)}px`);
 }
 // The panel was fixed at a hardcoded top:150px, which visually covered
 // #chores-card (right column of the main grid) at most viewport sizes.
