@@ -176,4 +176,23 @@ class AutomationRuleServiceTest {
 
         verifyNoInteractions(eventPublisher);
     }
+
+    @Test
+    void ruleCatalogReflectsInjectedThresholdsAndReadOnlyOwnership() {
+        List<AutomationRuleStatus> catalog = rules.ruleStatuses();
+
+        AutomationRuleStatus lowPressure = catalog.stream()
+            .filter(rule -> rule.ruleId().equals("WATER_PRESSURE_LOW"))
+            .findFirst().orElseThrow();
+        assertTrue(lowPressure.trigger().contains("30.0"));
+        assertEquals("CABIN_BACKEND", lowPressure.owner());
+        assertEquals("DEPLOY_TIME", lowPressure.configurationMode());
+        assertFalse(lowPressure.editable(), "the UI must not imply it saved a rule configuration it cannot persist");
+
+        AutomationRuleStatus safety = catalog.stream()
+            .filter(rule -> rule.ruleId().equals("SAFETY_ALARM"))
+            .findFirst().orElseThrow();
+        assertEquals("CRITICAL", safety.severity());
+        assertTrue(safety.action().contains("only when a channel is configured"));
+    }
 }

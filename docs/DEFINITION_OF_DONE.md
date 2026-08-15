@@ -233,13 +233,18 @@ accumulate.*
   any alert path yet. Check whether `anomalous` flags correlate with
   anything real before building further; `ANOMALY_DROP_RATIO` (30%) is
   an untuned placeholder.
-- **Alert/ontology UX retrenchment** (flagged 2026-08-08 via a live
-  screenshot: a "Warning" banner was firing on a known-permanent,
-  harmless condition — 5 undeployed Home cameras — with zero real
-  alarm behind it, no per-device identification, and no armed/disarmed
-  indicator anywhere in the UI at the time). Needs a real design pass
-  against the "See, Think, Act" Northstar goals, not a patch. See
-  `ROADMAP.md`'s matching entry for the full finding.
+- **Alert/ontology UX retrenchment — current-state slice implemented in
+  draft PR (2026-08-14).** The old browser-local opt-in/timer and aggregate
+  OFFLINE inference are replaced by `GET /api/alerts/active`: only enabled,
+  `ASSIGNED` devices can alert; current ALARM is CRITICAL and authoritative
+  MISSED check-in is WARN; LATE, candidate, AVAILABLE, disabled, DEFERRED,
+  and IGNORED never create badges. `GET /api/alerts/rules` also replaces the
+  hardcoded sidebar with real backend rule/threshold ownership. **Still
+  open:** audited edit controls (no fake toggle was added), HA/Node-RED flow
+  inventory and run-state adapters, armed/presence wiring into the generic
+  event severity classifier, native device-confidence evidence, and live
+  mobile/kiosk UX validation after review. See `docs/ontology.yaml`'s
+  `active_alert_condition` and `automation_rule_status` entities.
 - **Reolink (`front_door`) camera still physically off-network** — needs
   on-site checking (power, WiFi re-pairing). Not fixable remotely.
 - **`blinkbridge`'s no-clip crash is fixed (2026-08-08)** — a transient

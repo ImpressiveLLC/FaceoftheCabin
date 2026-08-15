@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -703,7 +703,7 @@ describe("Device Manager grouped ordering", () => {
 // location without its own configured Node-RED should say so rather than
 // silently show Cabin's flows as if they were its own.
 describe("RulesPanel — per-location Node-RED", () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   function renderWith(activeLocation) {
     return render(
@@ -755,14 +755,17 @@ describe("humanizeRuleId", () => {
 });
 
 describe("automationAlertSteps", () => {
-  it("labels the Think step as unexplained and Act as pushed for a CRITICAL alert", () => {
+  it("labels the Think step as unexplained without fabricating a delivery receipt", () => {
     const steps = automationAlertSteps({
       severity: "CRITICAL",
       payload: { ruleId: "WATER_PRESSURE_LOW", act: "Alert Nate" },
     });
     expect(steps.map(s => s.label)).toEqual(["SEE", "THINK", "ACT"]);
     expect(steps[1].headline).toBe("No routine explains it");
-    expect(steps[2]).toMatchObject({ headline: "Alert Nate", detail: "Push notification sent" });
+    expect(steps[2]).toMatchObject({
+      headline: "Alert Nate",
+      detail: "CRITICAL event published; delivery depends on the configured channel",
+    });
   });
 
   it("labels Think/Act differently for a WARN alert -- an ordinary explanation, no push", () => {
@@ -775,8 +778,65 @@ describe("automationAlertSteps", () => {
   });
 });
 
+describe("current active alert projection", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  it("uses backend severity directly instead of a browser duration timer", () => {
+    expect(alertLevelFor([])).toBeNull();
+    expect(alertLevelFor([{ severity: "WARN" }])).toBe("warn");
+    expect(alertLevelFor([{ severity: "WARN" }, { severity: "CRITICAL" }])).toBe("critical");
+    expect(deriveNavAlertLevels([{ severity: "CRITICAL" }])).toEqual({
+      DEVICE_MANAGER: "critical", MONITORING: "critical", RULES_ENGINE: "critical",
+    });
+  });
+
+  it("shows a current backend condition and removes the old browser enable/reset controls", async () => {
+    // This test supplies current conditions through context; keep the two
+    // unrelated history/catalog requests pending so they cannot schedule an
+    // unasserted state update after the synchronous checks below.
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{
+          alertId: "device:leak:alarm", location: "cabin", severity: "CRITICAL",
+          condition: "DEVICE_ALARM", title: "Basement leak reports an alarm",
+          detail: "The device's current runtime state is ALARM.",
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+
+    expect(screen.getByText("Basement leak reports an alarm")).toBeTruthy();
+    expect(screen.getByText(/Critical — 1 current condition/)).toBeTruthy();
+    expect(screen.queryByText("Enable")).toBeNull();
+    expect(screen.queryByText("Reset alerts")).toBeNull();
+  });
+
+  it("renders rule status from the backend catalog with honest ownership", async () => {
+    vi.stubGlobal("fetch", vi.fn((url) => Promise.resolve({
+      ok: true,
+      json: async () => url.includes("/api/alerts/rules") ? [{
+        ruleId: "FREEZE_RISK", name: "Freeze Risk", trigger: "Temperature < 38.0°F",
+        action: "Publishes a CRITICAL AUTOMATION_ALERT", severity: "CRITICAL",
+        enabled: true, owner: "CABIN_BACKEND", configurationMode: "DEPLOY_TIME", editable: false,
+      }] : [],
+    })));
+    render(
+      <AppContext.Provider value={{ activeLocation: "cabin" }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+
+    expect(await screen.findByText("Freeze Risk")).toBeTruthy();
+    expect(screen.getByText(/CABIN_BACKEND · deploy time · read only/)).toBeTruthy();
+  });
+});
+
 describe("AutomationAlertCard (via RulesPanel)", () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   function renderWith(activeLocation = "cabin") {
     return render(

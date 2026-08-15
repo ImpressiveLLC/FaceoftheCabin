@@ -862,7 +862,7 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       to "My Places" (matching the nav label), plus two stale top-of-file
       doc comments in `App.jsx` that described `FAMILY_HUB`/`FAMILY_CONFIG`
       inaccurately corrected.
-- [ ] **[MAJOR, PLANNING NEEDED]** Alert/ontology UX retrenchment — found
+- [ ] **[MAJOR, IN PROGRESS — CURRENT-STATE SLICE IN DRAFT PR 2026-08-14]** Alert/ontology UX retrenchment — found
       2026-08-08 via direct user report + screenshot: the "Warning — alert
       active" banner (`AlertControls`/`useNavAlerts`) fires on a plain
       `offline_count > 0 OR alarm_count > 0` boolean across ALL devices —
@@ -882,10 +882,20 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       "if you're not sure, we have significant retrenchment needed in
       ontology and UX patterns." This needs a real design pass against
       the Northstar "See, Think, Act" goals, not a patch — scope it as
-      its own planning item before touching code. Immediate cheap
-      mitigation worth doing separately/first: exclude known-undeployed-
-      location devices from the offline-alert condition so the banner at
-      least stops firing for a permanently-known-non-issue.
+      its own planning item before touching code. **Implemented in the
+      current draft slice:** `GET /api/alerts/active` identifies the device
+      and reason, gates monitoring to enabled `ASSIGNED` devices, separates
+      current ALARM (CRITICAL) from authoritative MISSED check-in (WARN),
+      excludes LATE/candidate/AVAILABLE/disabled/DEFERRED/IGNORED state,
+      and removes the browser-local Enable/Reset/timer state machine.
+      `GET /api/alerts/rules` also replaces hardcoded rule claims with the
+      backend's real thresholds, ownership, and read-only configuration
+      mode. The armed/disarmed indicator described as absent above was built
+      separately on 2026-08-08 (`SecurityBadge`). **Still open before this
+      roadmap item is complete:** audited rule edit controls; HA/Node-RED
+      flow inventory and health adapters; armed/presence wiring into generic
+      event severity; device-confidence evidence; more specific ACT guidance;
+      and live mobile/kiosk validation after review.
 - [ ] **[NEW FEATURE, PLANNING NEEDED]** WiFi RSSI-based presence/
       proximity detection — user's proposal, 2026-08-08: ping
       signal-strength/intensity between wired devices (smart switches
