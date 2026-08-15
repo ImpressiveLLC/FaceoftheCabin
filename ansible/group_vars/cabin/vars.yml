@@ -35,6 +35,41 @@ anthropic_api_key: "{{ vault_anthropic_api_key | default('') }}"
 # itself exists and has been reviewed.
 uptime_kuma_username: "{{ vault_uptime_kuma_username | default('') }}"
 uptime_kuma_password: "{{ vault_uptime_kuma_password | default('') }}"
+# ntfy.sh push-notification topic for CRITICAL workflow/automation alerts
+# (WorkflowRuleService's publishUnconfirmedAlert, AutomationRuleService's
+# triggerAlert). Optional — see application.yml's ntfyTopic default: blank
+# just means CRITICAL events still persist and show in the UI, they just
+# don't also push to a phone. Add `vault_cabin_alert_ntfy_topic` when
+# ready — ntfy topics are unauthenticated-by-default, so treat the topic
+# name itself as a shared secret (anyone who knows it can publish/subscribe
+# unless the topic is protected on ntfy's side).
+cabin_alert_ntfy_topic: "{{ vault_cabin_alert_ntfy_topic | default('') }}"
+
+# Production-stack credentials — the pre-existing, separately-managed
+# mosquitto/HA/Frigate/blinkbridge/cloudflared/etc. stack, brought under
+# git version control 2026-08-14. These credentials already exist and are
+# needed by already-running live services, but were never brought into the
+# vault, so a cloned instance had no way to reproduce them.
+#
+# blink_username/blink_password are REQUIRED (no `default('')` — unlike
+# tech_id/anthropic above, an empty value here would break something that
+# currently works) and ARE templated into a real file — see
+# production-stack-env.j2. Do NOT run that templating task until these
+# are populated with the REAL CURRENT values (transcribed from the live
+# host, not invented) — see ansible/README.md's credential checklist.
+blink_username: "{{ vault_blink_username }}"
+blink_password: "{{ vault_blink_password }}"
+
+# cloudflare_tunnel_token is vault-STORED ONLY, for backup/reference —
+# cloudflared is deliberately outside this repo's compose/ansible
+# management today (token-based tunnel, no local config file this repo
+# drives — see docker-compose.m920q.yml's cabin-ui comment), so this value
+# is never templated into any generated file. It exists here purely so the
+# token isn't lost/undocumented if cloudflared ever needs recreating. It's
+# straightforward to bring under real ansible management later (a third
+# templated file + a cloudflared service block) if that's ever wanted —
+# nothing about this indirection layer blocks that.
+cloudflare_tunnel_token: "{{ vault_cloudflare_tunnel_token | default('') }}"
 
 # Non-secret config, templated into .env alongside the vaulted values so
 # infra/.env has one generation source instead of being partly-managed.

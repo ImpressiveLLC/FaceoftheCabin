@@ -102,26 +102,85 @@ chmod 600 ~/.ansible_vault_pass
 
 ### One-time: populate the vault
 
+From the repo root (full path if you're starting a fresh SSH session and
+haven't `cd`'d anywhere yet: `cd ~/FaceoftheCabin/ansible` on the M920q, or
+just `cd ansible` if you're already inside the repo checkout):
+
 ```bash
 cd ansible
 ansible-vault create group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass
 ```
 
-Add (real values, not placeholders):
+**Editing the vault — two ways.** `ansible-vault create`/`edit` decrypts the
+file into a temp file, opens it in whatever `$EDITOR` is set to, then
+re-encrypts on save/exit. Which editor opens depends entirely on `$EDITOR`:
+
+- **Default (no `$EDITOR` set) is `vi`/`vim`** — it's *modal*, not a normal
+  text field, which trips people up who haven't used it before: press
+  **`i`** first to enter Insert mode before typing or pasting anything,
+  **`Esc`** to leave Insert mode when done editing, then type **`:wq`** and
+  press Enter to save and re-encrypt. `Esc` then `:q!` (no save) abandons
+  the edit without writing anything.
+- **Easier — `nano`**, a normal type-and-arrow-keys editor with no modes.
+  Set `EDITOR=nano` for just this one command (doesn't change anything
+  permanently, doesn't touch any config file):
+  ```bash
+  EDITOR=nano ansible-vault create group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass
+  ```
+  Type/paste normally, then **`Ctrl+O`** (write out) → Enter to confirm the
+  filename → **`Ctrl+X`** to exit. This is the recommended default for
+  routine credential edits — reach for it any time the instructions below
+  just say "edit the vault."
+
+**Quoting: always wrap values in double quotes**, no exceptions —
+`vault_x: "the-value"`, never `vault_x: the-value` unquoted. Passwords can
+contain characters (colons, `#`, leading/trailing spaces, or a value that
+happens to look like YAML's own `true`/`123`/`null`) that unquoted YAML
+would silently misparse or truncate. The `"..."` you'll see below is
+literal syntax to type — put the real value directly between the quotes,
+there's no `<placeholder>` angle-bracket convention anywhere in this file.
+
+Add every credential the current templates reference. Optional ones are
+safe to leave as `""` — see each variable's own comment in
+`group_vars/cabin/vars.yml` for exactly what stays disabled/inert while
+blank, so you can judge what you actually need right now versus later:
+
 ```yaml
+# Required — already-live services break without these
 vault_postgres_password: "..."
 vault_grafana_password: "..."
-vault_ha_token: ""            # blank is valid — HA integration is inert until set
+vault_camera_password: "..."
+vault_blink_username: "..."       # blinkbridge -> Blink cloud account (driveway camera)
+vault_blink_password: "..."
+
+# Optional — blank is a valid, working state (see vars.yml's own comment
+# on each for exactly what stays disabled while unset)
+vault_ha_token: ""                # HA integration inert until set
 vault_home_ha_token: ""
-vault_camera_password: ""
+vault_tech_id_api_key: ""         # Tech ID Service submissions 503 until set
+vault_anthropic_api_key: ""       # cabin-discovery stays local-catalog-only
+vault_google_client_secret: ""    # Grafana's own Google login stays disabled
+vault_cabin_alert_ntfy_topic: ""  # CRITICAL events persist, just no phone push
+vault_uptime_kuma_username: ""    # blocks the not-yet-built Kuma reconciler only
+vault_uptime_kuma_password: ""
+vault_cloudflare_tunnel_token: "" # backup/reference only — see vars.yml's comment
 ```
 
-To edit later: `ansible-vault edit group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass` — never hand-edit the encrypted file directly.
+That covers every credential this repo currently templates anywhere. If a
+future change adds a new one, add it here (both to this list and to
+`group_vars/cabin/vars.yml`'s indirection layer) in the same change —
+that's how this checklist stays trustworthy for a from-scratch clone
+instead of silently drifting out of date.
+
+To edit later: `ansible-vault edit group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass` (add `EDITOR=nano` in front for the friendlier editor, same as above) — never hand-edit the encrypted file directly.
 
 ### Applying / rotating
 
 ```bash
-# Template infra/.env from the current vault (initial setup, or after a manual vault edit)
+# Templates BOTH infra/.env (app-level: cabin-backend/cabin-ui/family-hub)
+# AND infra/production-stack/.env (the pre-existing stack: mosquitto/HA/
+# Frigate/blinkbridge/etc, added 2026-08-15) from the current vault —
+# initial setup, or after a manual vault edit.
 ansible-playbook -i inventory.ini site.yml --limit cabin --vault-password-file ~/.ansible_vault_pass --tags secrets
 
 # Rotate POSTGRES_PASSWORD end to end (generate, apply live, re-encrypt vault,
