@@ -63,6 +63,18 @@ cabin:
       # here, and startLiveview/stopLiveview become harmless no-ops for
       # every camera. See CameraMediaController's javadoc.
       blinkCameraMap: ${BLINK_CAMERA_MAP:driveway:Outdoor 4 - DHEE}
+      reconciliation:
+        # FrigateEventReconciliationService: Frigate's own REST event
+        # history is the authoritative, durable system of record for
+        # clip/snapshot availability -- MQTT (cabin/camera/events) is only
+        # a low-latency hint, published at Frigate's own QoS 0 with no
+        # redelivery guarantee, and is not sufficient on its own (see that
+        # class's javadoc). This periodic reconciliation is what actually
+        # closes the "watch clip never works" gap. Defaults match this
+        # deployment's own confirmed Frigate retention (5 days).
+        backfillDays: ${CAMERA_RECONCILIATION_BACKFILL_DAYS:5}
+        overlapSeconds: ${CAMERA_RECONCILIATION_OVERLAP_SECONDS:300}
+        pageLimit: ${CAMERA_RECONCILIATION_PAGE_LIMIT:200}
   alerts:
     # ntfy.sh topic for CRITICAL-severity CabinEvents (water leak / smoke /
     # alarm) — same delivery mechanism as the existing Node-RED overnight-

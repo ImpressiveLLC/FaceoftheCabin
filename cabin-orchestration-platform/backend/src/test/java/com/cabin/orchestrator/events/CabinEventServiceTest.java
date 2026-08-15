@@ -106,4 +106,58 @@ class CabinEventServiceTest {
         List<CabinEvent> all = service.recent(null, 20, Instant.now().minusSeconds(60));
         assertThat(all).hasSize(5);
     }
+
+    // 2026-08-15: added for FrigateEventReconciliationService, which
+    // upserts the same Frigate detection (keyed frigate:{id}) more than
+    // once as it evolves -- e.g. hasClip starts false and flips true once
+    // Frigate finishes encoding the clip. save()'s ON CONFLICT DO NOTHING
+    // would mean whichever report arrived first wins forever, even if it
+    // was the least complete one -- exactly the bug this method exists to
+    // avoid. See CabinEventService.upsert()'s own javadoc.
+    @Test
+    void upsertUpdatesExistingRowInsteadOfIgnoringIt() {
+        Instant firstSeen = Instant.now().minusSeconds(30);
+        service.upsert(new CabinEvent("frigate:1723-abc", "driveway", "DETECTION_NEW",
+            "INFO", firstSeen, Map.of("hasClip", false, "hasSnapshot", false)));
+
+        Instant updated = Instant.now();
+        service.upsert(new CabinEvent("frigate:1723-abc", "driveway", "DETECTION_END",
+            "WARN", updated, Map.of("hasClip", true, "hasSnapshot", true)));
+
+        // setUp() already seeds 5 unrelated rows (including one for
+        // "driveway") -- filter to this test's own id rather than
+        // asserting total table size.
+        List<CabinEvent> rows = service.recent(null, 10, Instant.now().minusSeconds(60)).stream()
+            .filter(e -> e.eventId().equals("frigate:1723-abc")).toList();
+        assertThat(rows).hasSize(1);
+        CabinEvent row = rows.get(0);
+        assertThat(row.eventType()).isEqualTo("DETECTION_END");
+        assertThat(row.severity()).isEqualTo("WARN");
+        assertThat(row.payload()).containsEntry("hasClip", true).containsEntry("hasSnapshot", true);
+    }
+
+    @Test
+    void upsertInsertsNormallyWhenTheIdIsNew() {
+        service.upsert(new CabinEvent("frigate:new-id", "driveway", "DETECTION_NEW",
+            "INFO", Instant.now(), Map.of()));
+
+        List<CabinEvent> rows = service.recent("driveway", 10, Instant.now().minusSeconds(60));
+        assertThat(rows).extracting(CabinEvent::eventId).contains("frigate:new-id");
+    }
+
+    // The reverse guarantee that makes the two-method split meaningful --
+    // save() must stay DO NOTHING (first write wins) for every other event
+    // source, which relies on a fresh random UUID per event never
+    // colliding and has no reason to want a "duplicate" to overwrite an
+    // earlier row.
+    @Test
+    void saveStillIgnoresADuplicateIdInsteadOfOverwriting() {
+        save(service, "dup-1", "front_door", "STATE_CHANGE", "INFO", Instant.now());
+        save(service, "dup-1", "front_door", "STATE_CHANGE", "CRITICAL", Instant.now());
+
+        List<CabinEvent> rows = service.recent("front_door", 10, Instant.now().minusSeconds(60));
+        List<CabinEvent> matching = rows.stream().filter(r -> r.eventId().equals("dup-1")).toList();
+        assertThat(matching).hasSize(1);
+        assertThat(matching.get(0).severity()).isEqualTo("INFO");
+    }
 }

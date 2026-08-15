@@ -473,6 +473,17 @@ body {
 }
 .camera-clip-player { width: 100%; max-height: 360px; border-radius: 6px; background: #000; }
 
+.camera-motion-section { margin-top: 10px; }
+.camera-motion-toggle { font-size: 12px; }
+.camera-motion-list { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; }
+.camera-motion-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 14px; background: #0d1117; border: 1px solid #161b22;
+  border-radius: 6px; color: #6e7681; font-size: 12px;
+}
+.camera-motion-camera { color: #8b949e; }
+.camera-motion-state { color: #6e7681; }
+
 .camera-live-section {
   margin-top: 12px; padding-bottom: 12px; border-bottom: 1px solid #21262d;
 }

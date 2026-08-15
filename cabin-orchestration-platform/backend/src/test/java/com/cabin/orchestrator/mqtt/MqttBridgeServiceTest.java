@@ -4,6 +4,7 @@ import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.events.CabinEventService;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceProfile;
 import com.cabin.orchestrator.presence.PresenceService;
@@ -13,6 +14,10 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
 import java.util.List;
@@ -20,7 +25,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 /**
  * Regression coverage for the 2026-08-07 finding: handleCameraTopic()
@@ -35,10 +39,10 @@ import static org.mockito.Mockito.verify;
  * it despite AutomationRuleService using it for real security-severity
  * decisions -- see handlePresenceTopic's tests below.
  *
- * No Testcontainers here -- DeviceRegistry/PresenceSignalRegistry are
- * plain in-memory maps, EventPublisher safely no-ops when constructed
- * without @PostConstruct init() (producer stays null, publish() logs and
- * returns), and PresenceService's JdbcTemplate is mocked (Mockito, via
+ * DeviceRegistry/PresenceSignalRegistry are plain in-memory maps,
+ * EventPublisher safely no-ops when constructed without @PostConstruct
+ * init() (producer stays null, publish() logs and returns), and
+ * PresenceService's JdbcTemplate is mocked (Mockito, via
  * spring-boot-starter-test) rather than pointed at real Postgres --
  * these tests exercise the real derivation logic in PresenceService/
  * PresenceSignalRegistry, just without needing a live DB connection for
@@ -46,14 +50,29 @@ import static org.mockito.Mockito.verify;
  * PresenceSignalRegistry's own comment on why it's not Postgres-backed).
  * This exercises MqttBridgeService.messageArrived() -- the real public
  * entry point Paho calls -- directly against real Kafka/DB.
+ *
+ * 2026-08-15: Testcontainers Postgres was added specifically for
+ * FrigateEventReconciliationService -- handleFrigateDetectionEvent() now
+ * calls its upsertDetection() directly instead of publishing a CabinEvent
+ * through Kafka (see that service's own javadoc for why: MQTT/REST share
+ * one idempotent upsert path, and going through Kafka's
+ * ON-CONFLICT-DO-NOTHING save() would defeat the "hasClip can flip from
+ * false to true later" requirement this whole change exists for). A mock
+ * eventPublisher stays for the presence/security/device-telemetry tests
+ * below, which still go through the ordinary publish() path unchanged.
  */
+@Testcontainers
 class MqttBridgeServiceTest {
+
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     private DeviceRegistry registry;
     private PresenceService presenceService;
     private PresenceSignalRegistry presenceSignalRegistry;
     private SecurityStateRegistry securityStateRegistry;
     private EventPublisher eventPublisher;
+    private CabinEventService eventService;
     private MqttBridgeService bridge;
 
     @BeforeEach
@@ -63,7 +82,19 @@ class MqttBridgeServiceTest {
         presenceService = new PresenceService(mock(JdbcTemplate.class), presenceSignalRegistry);
         securityStateRegistry = new SecurityStateRegistry();
         eventPublisher = mock(EventPublisher.class);
-        bridge = new MqttBridgeService(registry, eventPublisher, presenceService, presenceSignalRegistry, securityStateRegistry);
+        JdbcTemplate jdbc = new JdbcTemplate(new SimpleDriverDataSource(
+            new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
+        jdbc.execute("DROP TABLE IF EXISTS cabin_event");
+        eventService = new CabinEventService(jdbc);
+        // frigateUrl/backfillDays/overlapSeconds/pageLimit are irrelevant
+        // here -- these tests only exercise upsertDetection() via the MQTT
+        // path, never initialBackfill()/periodicReconcile()'s own HTTP
+        // call, so a bogus URL is fine. See FrigateEventReconciliationServiceTest
+        // for coverage of the REST fetch/cursor/health side.
+        FrigateEventReconciliationService frigateReconciliation =
+            new FrigateEventReconciliationService(eventService, registry, "http://unused:0", 5, 300, 200);
+        bridge = new MqttBridgeService(registry, eventPublisher, presenceService, presenceSignalRegistry,
+            securityStateRegistry, frigateReconciliation);
     }
 
     private void deliver(String topic, String payload) throws Exception {
@@ -152,29 +183,69 @@ class MqttBridgeServiceTest {
             "the bridge-wide availability topic must never be registered as a camera device");
     }
 
+    // 2026-08-15: handleFrigateDetectionEvent() now writes through
+    // FrigateEventReconciliationService.upsertDetection() -> CabinEventService
+    // .upsert() directly (Postgres), not eventPublisher.publish() -- see this
+    // class's own javadoc. Assertions read the persisted row back instead of
+    // capturing a publish() call that no longer happens for this path.
     @Test
     void frigateDetectionUsesClassifierInsteadOfHardcodedInfo() throws Exception {
         deliver("cabin/camera/events", """
-            {"type":"new","after":{"camera":"driveway","label":"person","score":0.93,"alarm":true}}
+            {"type":"new","after":{"id":"1723000000.123456-abcdef","camera":"driveway","label":"person","score":0.93,"alarm":true}}
             """);
 
-        var eventCaptor = org.mockito.ArgumentCaptor.forClass(CabinEvent.class);
-        verify(eventPublisher).publish(eventCaptor.capture());
-        CabinEvent event = eventCaptor.getValue();
+        List<CabinEvent> events = eventService.recent("driveway", 10, Instant.now().minusSeconds(60));
+        assertEquals(1, events.size());
+        CabinEvent event = events.get(0);
         assertEquals("CRITICAL", event.severity());
         assertEquals("DETECTION_NEW", event.eventType());
         assertEquals("driveway", event.sourceDeviceId());
+        assertEquals("frigate:1723000000.123456-abcdef", event.eventId(),
+            "must use the deterministic frigate:{id} key, not a fresh random UUID, or REST reconciliation can never dedupe against this same detection");
     }
 
     @Test
     void ordinaryFrigateDetectionRemainsInfo() throws Exception {
         deliver("cabin/camera/events", """
-            {"type":"update","after":{"camera":"driveway","label":"person","score":0.71}}
+            {"type":"update","after":{"id":"1723000001.000000-fedcba","camera":"driveway","label":"person","score":0.71}}
             """);
 
-        var eventCaptor = org.mockito.ArgumentCaptor.forClass(CabinEvent.class);
-        verify(eventPublisher).publish(eventCaptor.capture());
-        assertEquals("INFO", eventCaptor.getValue().severity());
+        List<CabinEvent> events = eventService.recent("driveway", 10, Instant.now().minusSeconds(60));
+        assertEquals(1, events.size());
+        assertEquals("INFO", events.get(0).severity());
+    }
+
+    // 2026-08-15: without a Frigate event id there's nothing to key a
+    // deterministic upsert on and nothing to ever fetch a clip for (see
+    // handleFrigateDetectionEvent's own comment) -- must be skipped, not
+    // persisted under some other made-up key.
+    @Test
+    void frigateDetectionWithNoIdIsSkipped() throws Exception {
+        deliver("cabin/camera/events", """
+            {"type":"new","after":{"camera":"driveway","label":"person","score":0.5}}
+            """);
+
+        assertTrue(eventService.recent("driveway", 10, Instant.now().minusSeconds(60)).isEmpty(),
+            "a detection with no Frigate event id must not be persisted");
+    }
+
+    // 2026-08-15: this is the actual bug the whole reconciliation change
+    // exists to fix -- the same underlying Frigate detection re-reported
+    // (e.g. hasClip flips from false to true once encoding finishes) must
+    // update the same row, not create a duplicate or get silently dropped.
+    @Test
+    void repeatedFrigateDetectionUpsertsTheSameRowInsteadOfDuplicating() throws Exception {
+        deliver("cabin/camera/events", """
+            {"type":"new","after":{"id":"1723000002.0-cc","camera":"driveway","label":"person","score":0.5,"has_clip":false}}
+            """);
+        deliver("cabin/camera/events", """
+            {"type":"end","after":{"id":"1723000002.0-cc","camera":"driveway","label":"person","score":0.5,"has_clip":true}}
+            """);
+
+        List<CabinEvent> events = eventService.recent("driveway", 10, Instant.now().minusSeconds(60));
+        assertEquals(1, events.size(), "the second message must update the existing row, not add a second one");
+        assertEquals(Boolean.TRUE, events.get(0).payload().get("hasClip"),
+            "the later, more complete report (hasClip=true) must win, not the first-seen one");
     }
 
     @Test
