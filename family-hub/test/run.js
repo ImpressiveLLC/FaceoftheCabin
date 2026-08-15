@@ -57,18 +57,22 @@ function check(label, actual, expected) {
   check('default state is slid-in',
     await page.locator('#notepad-panel').evaluate(el => el.classList.contains('open')), false);
 
-  // Expanded width is still computed from real right-side elements.
-  // Collapsed width is a fixed constant as of 2026-08-07 (see
-  // computeNotepadWidths()'s own comment: it used to also be computed from
-  // these same elements, which caused the tucked-in handle to end up wider
-  // than intended and block other UI -- a user-reported bug, confirmed via
-  // this project's own CI failing "collapsed handle is fully on-screen"
-  // the same day). Asserting the fixed value directly, not deriving it,
-  // is the point: it should NOT track other elements' layout. Widened from
-  // 56px to 132px on 2026-08-13 to fit a short message preview (a new note
-  // could previously only be discovered by opening the panel) -- still a
-  // fixed, independent constant, just a different one; not a regression of
-  // the thing this test actually guards against.
+  // Collapsed width is a fixed constant, not derived from other elements'
+  // layout (see computeNotepadWidths()'s own comment for why: it used to
+  // be, which caused the tucked-in handle to end up wider than intended
+  // and block other UI -- a user-reported bug). Widened 132px -> 190px on
+  // 2026-08-15 so the collapsed handle could align its right edge with
+  // #chores-card/#dashboard-fab/#settings-btn (all newly aligned to a
+  // shared right:30px/width:310px that same day) and fit horizontal text
+  // instead of the 2026-08-07 vertical-rl rotation workaround -- still a
+  // fixed, independent constant, just a different one.
+  //
+  // Expanded width is still derived from real right-side elements, but as
+  // of 2026-08-15 with a floor: collapsed width + NOTEPAD_MIN_CONTENT_WIDTH
+  // (200px), so #notepad-main-inner (literally expanded-width minus
+  // collapsed-width) always keeps real room for the compose box/list even
+  // if collapsed width grows close to or past the reference elements'
+  // measured width -- see computeNotepadWidths()'s own comment.
   const widths = await page.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
     return { expanded: cs.getPropertyValue('--np-w-expanded').trim(), collapsed: cs.getPropertyValue('--np-w-collapsed').trim() };
@@ -76,8 +80,12 @@ function check(label, actual, expected) {
   const refWidths = await page.evaluate(() =>
     ['chores-card', 'dashboard-fab', 'settings-btn']
       .map(id => document.getElementById(id).getBoundingClientRect().width));
-  check('slid-out width == largest right-side element', widths.expanded, `${Math.round(Math.max(...refWidths))}px`);
-  check('slid-in width is the fixed, narrow constant (not derived from other elements)', widths.collapsed, '132px');
+  const expectedCollapsed = 190;
+  const expectedExpanded = Math.max(Math.max(...refWidths), expectedCollapsed + 200);
+  check('slid-out width == max(largest right-side element, collapsed width + content floor)',
+    widths.expanded, `${Math.round(expectedExpanded)}px`);
+  check('slid-in width is the fixed, narrow constant (not derived from other elements)',
+    widths.collapsed, `${expectedCollapsed}px`);
 
   // The collapsed handle must actually be on-screen and clickable (regression
   // guard for the flex/translateX bug this suite was written to catch).

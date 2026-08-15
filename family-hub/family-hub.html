@@ -4256,15 +4256,34 @@ function toggleNotepad(force) {
 
 // 2026-08-15 (user report): clicking anywhere outside the open notepad
 // should slide it back to its collapsed handle, matching how the rest of
-// this app's overlays behave. A click on the handle itself still reaches
-// its own onclick=toggleNotepad() first -- closest('#notepad-panel')
-// covers both the handle and the open content area, so this only ever
-// fires for genuinely outside clicks and never fights that handler.
+// this app's overlays behave.
+//
+// Capture phase, not bubble -- found via two real CI failures, not caught
+// by manual testing, both from the same root cause (reading notepadState
+// and the DOM too late, after some other click handler already changed
+// them this same tick):
+//   1. #mobile-action-dock's "Notes" button lives outside #notepad-panel
+//      and calls toggleNotepad(true) from its own onclick. On the bubble
+//      phase, that onclick already ran first, so notepadState.open was
+//      already true and this element's path already doesn't include the
+//      panel -- undoing the very click that just opened it.
+//   2. Each .np-author-pill's onclick (setCurrentActor) synchronously
+//      calls renderNoteAuthorRow(), which replaces #notepad-author-row's
+//      innerHTML and detaches the pill just clicked. On the bubble phase
+//      that already happened, so even e.target.closest('#notepad-panel')
+//      or composedPath() looking for the panel would find a click whose
+//      only tie to the panel was a now-detached node.
+// Capture fires before the target's own onclick can run at all, so both
+// reads happen against the state as it was BEFORE this click's own
+// handler did anything -- the actually-correct question for "was this a
+// genuine outside click." composedPath() (vs. e.target.closest()) is kept
+// as defense in depth for any other handler with the same detach pattern.
 document.addEventListener('click', (e) => {
   if (!notepadState.open) return;
-  if (e.target.closest('#notepad-panel')) return;
+  const path = e.composedPath ? e.composedPath() : [e.target];
+  if (path.some(node => node.id === 'notepad-panel')) return;
   toggleNotepad(false);
-});
+}, true);
 
 function checkNotepadAutoCollapse() {
   if (notepadState.forcedCollapseDone || !notepadState.lastNoteTs) return;
