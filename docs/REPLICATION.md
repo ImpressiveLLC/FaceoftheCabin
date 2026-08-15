@@ -410,12 +410,16 @@ The disposable proof of concept completed on 2026-08-14 against Uptime Kuma
   `/app/data` directory was read or changed.
 
 The proof establishes that an idempotent reconciliation is technically
-possible; it does **not** authorize the first production write. The remaining
-decision and dependencies are:
+possible; it does **not** authorize the first production write. Status as of
+2026-08-15: item 1 below is done (`vault_uptime_kuma_username` and
+`vault_uptime_kuma_password` were added to `group_vars/cabin/vault.yml` in
+commit `659d37c`) — this closes only the credential-presence prerequisite.
+Items 2-5 remain open and unauthorized:
 
-1. Nate/Claude approve adding `vault_uptime_kuma_username` and
+1. ~~Nate/Claude approve adding `vault_uptime_kuma_username` and
    `vault_uptime_kuma_password` to `group_vars/cabin/vault.yml`, exposed only
-   through non-committed resolved Ansible variables. Never log either value.
+   through non-committed resolved Ansible variables. Never log either
+   value.~~ Done, `659d37c`.
 2. Confirm the live Kuma version and its Tailscale/internal-only URL before
    selecting and pinning the compatible client. The original
    `uptime-kuma-api`/Ansible collection is not a v2-safe substitute for the
