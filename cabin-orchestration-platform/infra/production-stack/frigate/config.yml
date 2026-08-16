@@ -134,6 +134,55 @@ cameras:
         - dog
         - cat
 
+  # Second Blink camera on the same account/sync module as `driveway`
+  # above -- "AldrichFront" is Blink's own device name (confirmed
+  # 2026-08-16, same convention as "Outdoor 4 - DHEE" for driveway: not
+  # a meaningful semantic name for this platform, just what blinkCameraMap
+  # needs verbatim to trigger on-demand liveview via blinkbridge). A
+  # Home-location camera physically, but relayed through this same cabin
+  # M920q blinkbridge/Frigate instance -- there is no separate
+  # home-location broker or Frigate instance for it to arrive on instead
+  # (see MqttBridgeService.deriveCameraLocation() and CameraMediaController's
+  # javadoc, both already written for this camera's home_ prefix). Camera
+  # key here MUST be home_aldrich_front: MQTT motion events are already
+  # arriving on cabin/camera/home_aldrich_front/motion (Frigate publishes
+  # under whatever key is configured here), and deriveCameraLocation()
+  # keys off that exact home_ prefix to route it to the Home tab.
+  #
+  # detect width/height/fps and objects.track are MIRRORED from driveway,
+  # not independently confirmed for this specific camera -- driveway's own
+  # header comment notes its resolution was confirmed via ffprobe against
+  # the live stream; do the same for this camera once blinkbridge is
+  # actually relaying it, and correct these values if they differ.
+  home_aldrich_front:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://mediamtx:8554/aldrichfront
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+    snapshots:
+      enabled: true
+    objects:
+      track:
+        - person
+        - car
+        - bicycle
+        - motorcycle
+        - truck
+        - bus
+        - bear
+        - dog
+        - cat
+
 detectors:
   cpu1:
     type: cpu

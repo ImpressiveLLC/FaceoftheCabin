@@ -210,6 +210,28 @@ different angles — the names describe available semantic slots, not
 fixed device identities; one is expected to eventually relocate to cover
 the building's rear.
 
+**`home_aldrich_front` added 2026-08-16** — a second Blink camera on the
+same account/sync module as `driveway`, physically at the Home location
+but relayed through this same cabin M920q `blinkbridge`/Frigate instance
+(no separate home-location broker or Frigate instance exists for it to
+arrive on instead — see `MqttBridgeService.deriveCameraLocation()` and
+`CameraMediaController`'s javadoc). Camera stanza in
+`infra/production-stack/frigate/config.yml` and `blinkCameraMap` entry in
+`application.yml` mirror `driveway` exactly (Blink device name
+`AldrichFront`, relay path `rtsp://mediamtx:8554/aldrichfront`). **Not
+yet confirmed against the live stream** — detect resolution/fps and the
+mediamtx path slug are mirrored from `driveway`'s working config, not
+independently verified via `ffprobe` the way `driveway`'s own values
+were. Motion events were already arriving via MQTT
+(`cabin/camera/home_aldrich_front/motion`) before this config existed in
+git, meaning some form of this camera's Frigate config was likely
+already live on the M920q, uncommitted — reconcile this stanza against
+whatever is actually running there (`docker exec frigate curl
+localhost:5000/api/config`) before assuming this commit is what's live.
+Restart after deploying: `docker restart frigate`, then confirm
+`camera_fps` for `home_aldrich_front` is nonzero (see the `driveway`
+outage notes below for the exact diagnostic commands).
+
 Restart after any config change: `docker restart frigate`, then verify:
 ```bash
 curl -s http://localhost:5000/api/config | python3 -c "import sys,json; print(list(json.load(sys.stdin)['cameras'].keys()))"

@@ -62,7 +62,10 @@ cabin:
       # by default -- an instance with no Blink camera needs nothing
       # here, and startLiveview/stopLiveview become harmless no-ops for
       # every camera. See CameraMediaController's javadoc.
-      blinkCameraMap: ${BLINK_CAMERA_MAP:driveway:Outdoor 4 - DHEE}
+      # home_aldrich_front added 2026-08-16 -- same Blink account/sync
+      # module as driveway, see infra/production-stack/frigate/config.yml's
+      # matching camera stanza for the full reasoning.
+      blinkCameraMap: ${BLINK_CAMERA_MAP:driveway:Outdoor 4 - DHEE,home_aldrich_front:AldrichFront}
   alerts:
     # ntfy.sh topic for CRITICAL-severity CabinEvents (water leak / smoke /
     # alarm) — same delivery mechanism as the existing Node-RED overnight-
