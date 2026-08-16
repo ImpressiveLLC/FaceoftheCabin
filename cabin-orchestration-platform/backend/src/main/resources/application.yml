@@ -92,6 +92,19 @@ cabin:
     # is a write endpoint reachable from the open internet. See
     # docs/REPLICATION.md's Tech ID Service section for setup.
     apiKey: ${TECH_ID_API_KEY:}
+  blinkMotionWebhook:
+    # Shared secret a phone-side notification-listener automation
+    # (Tasker/MacroDroid watching for the Blink app's own push
+    # notification) must present via X-Blink-Motion-Api-Key to
+    # POST /api/webhooks/blink-motion. Added 2026-08-16 after live M920q
+    # diagnostics confirmed Blink's own clip/motion API never fires for
+    # this account -- home_aldrich_front and driveway came back identical
+    # on every attribute blinkpy exposes (subscription, sync-module arm
+    # state, motion_enabled), yet only driveway ever produces a clip.
+    # See BlinkMotionWebhookController's javadoc. Unset by default --
+    # refused (503) until an operator opts in, same reasoning as
+    # techid.apiKey above.
+    apiKey: ${BLINK_MOTION_WEBHOOK_API_KEY:}
   # Path docs/ontology.yaml is readable at inside the running container --
   # see OntologyLookupService's javadoc for why this needs a bind mount
   # (docker-compose.m920q.yml) rather than being baked into the image.
