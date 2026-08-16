@@ -134,6 +134,62 @@ cameras:
         - dog
         - cat
 
+  # 2026-08-15: AldrichFront, a Home-location camera on the same Blink
+  # account/sync module as "driveway" above -- same relay pattern (Blink
+  # has no local live stream; blinkbridge builds this feed from Blink's
+  # own cloud motion clips, so it's only "live" when Blink already
+  # detected motion, not continuous), and per the user this is the same
+  # physical camera model as "driveway", so the same 1280x720 detect
+  # resolution is a reasoned assumption, not a blind guess -- reconfirm
+  # via ffprobe against the real stream once it's actually flowing, same
+  # as "driveway"'s own comment already asks for that camera. Path
+  # "aldrichfront" matches blinkbridge's own slugification exactly
+  # (camera_name.lower().replace(' ', '_') on "AldrichFront" -> no spaces
+  # to replace -- confirmed directly against blinkbridge's installed
+  # source, blink.py/stream_server.py, not assumed). home_ prefix matches
+  # MqttBridgeService.deriveCameraLocation()'s existing convention for
+  # tagging a camera as Home rather than Cabin. Retention/pre-post-capture
+  # inherited from the top-level record: block below, same as every other
+  # camera here -- no per-camera override needed.
+  #
+  # Known issue, NOT fixed by adding this block: blinkbridge's own
+  # clip/thumbnail fetch for AldrichFront is currently failing (42
+  # consecutive failures, 15-minute backoff loop, confirmed live in
+  # blinkbridge's logs 2026-08-15) -- the same Blink account's other
+  # camera ("Outdoor 4 - DHEE" / driveway) is unaffected, so this looks
+  # camera-specific, not an account-wide auth/rate-limit problem. This
+  # camera existing here makes the "watch live"/clip UI possible at all;
+  # it doesn't make blinkbridge's own fetch succeed. See blinkbridge's
+  # own repo (main.py:298, camera.py:365) for that separate fix.
+  home_aldrich_front:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://mediamtx:8554/aldrichfront
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+    snapshots:
+      enabled: true
+    objects:
+      track:
+        - person
+        - car
+        - bicycle
+        - motorcycle
+        - truck
+        - bus
+        - bear
+        - dog
+        - cat
+
 detectors:
   cpu1:
     type: cpu

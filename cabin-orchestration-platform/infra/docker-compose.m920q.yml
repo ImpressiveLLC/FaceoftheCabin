@@ -203,6 +203,17 @@ services:
       # empty by default (CRITICAL events still persist, just no phone push).
       # Real value lives only in infra/.env on this host, never committed.
       CABIN_ALERT_NTFY_TOPIC: ${CABIN_ALERT_NTFY_TOPIC:-}
+      # "cabinCameraName:blinkDeviceName" pairs, comma-separated -- see
+      # CameraMediaController's javadoc. Was never set here before
+      # 2026-08-15 (the app-level @Value default silently covered the
+      # cabin's own driveway/"Outdoor 4 - DHEE" mapping, so nobody
+      # noticed) -- explicit now that a second Blink-relayed camera
+      # exists (Home's AldrichFront, added to Frigate the same day; see
+      # production-stack/frigate/config.yml's home_aldrich_front entry).
+      # Not a secret -- both sides are already-public device/camera
+      # names -- so no infra/.env entry needed, just override here if a
+      # future camera needs remapping.
+      BLINK_CAMERA_MAP: ${BLINK_CAMERA_MAP:-driveway:Outdoor 4 - DHEE,home_aldrich_front:AldrichFront}
       # cabin-discovery's internal container hostname/port -- DiscoveryServiceClient's
       # own @Value default already matches this, set explicitly here for the
       # same reason MQTT_URL/KAFKA_BOOTSTRAP are: one obvious place to override.
