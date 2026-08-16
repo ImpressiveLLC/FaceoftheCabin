@@ -214,6 +214,12 @@ services:
       # names -- so no infra/.env entry needed, just override here if a
       # future camera needs remapping.
       BLINK_CAMERA_MAP: ${BLINK_CAMERA_MAP:-driveway:Outdoor 4 - DHEE,home_aldrich_front:AldrichFront}
+      # Shared secret for POST /api/webhooks/blink-motion (BlinkMotionWebhookController)
+      # -- optional, empty by default (endpoint returns 503 until an
+      # operator sets this). Real value lives only in infra/.env on this
+      # host, never committed. See that controller's javadoc for why it
+      # exists: Blink's own clip/motion API never fires for this account.
+      BLINK_MOTION_WEBHOOK_API_KEY: ${BLINK_MOTION_WEBHOOK_API_KEY:-}
       # cabin-discovery's internal container hostname/port -- DiscoveryServiceClient's
       # own @Value default already matches this, set explicitly here for the
       # same reason MQTT_URL/KAFKA_BOOTSTRAP are: one obvious place to override.
