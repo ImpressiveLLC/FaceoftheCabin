@@ -1,6 +1,5 @@
 package com.cabin.orchestrator.family;
 
-import jakarta.annotation.PostConstruct;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -24,10 +23,17 @@ public class FamilyProfileService {
 
     private final JdbcTemplate jdbc;
 
-    public FamilyProfileService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
-
-    @PostConstruct
-    void init() {
+    // Table creation runs directly in the constructor, not behind
+    // @PostConstruct -- a @PostConstruct method is only ever invoked by
+    // Spring's own bean lifecycle, so a plain `new FamilyProfileService(jdbc)`
+    // (the pattern this project's Testcontainers-based tests all use,
+    // e.g. EventControllerTest's `new CabinEventService(jdbc)`) would
+    // silently skip it and every query would fail with "relation does not
+    // exist" -- found 2026-08-15 while adding the first direct tests for
+    // this class (via ChoreAssignmentServiceTest, which constructs this
+    // service to seed its own migration).
+    public FamilyProfileService(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
         jdbc.execute("""
             CREATE TABLE IF NOT EXISTS family_profiles (
               id         VARCHAR(128) PRIMARY KEY,

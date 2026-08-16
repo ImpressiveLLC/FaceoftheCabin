@@ -325,6 +325,21 @@
       font-size:10px; font-weight:600; letter-spacing:.5px;
       color:var(--gold); opacity:.9;
     }
+
+    /* Condensed landing card (2026-08-15, >2 kids) -- see
+       renderTodayChores()'s own comment. 70-80% opacity for a dimmed
+       nonselected kid, deliberately well above the 40% considered and
+       rejected (that read as disabled, not collapsed). */
+    .kid-section-compact { cursor:pointer; padding:4px 0; transition:opacity .2s; }
+    .kid-section-compact:hover { opacity:.85; }
+    .kid-section-dimmed { opacity:.75; }
+    .kid-compact-preview {
+      font-size:11px; color:var(--cream-dim); white-space:nowrap;
+      overflow:hidden; text-overflow:ellipsis; margin:2px 0;
+    }
+    .kid-compact-expand {
+      font-size:9.5px; color:var(--gold); opacity:.7; letter-spacing:.3px;
+    }
     .chore-row {
       display:flex; align-items:center; gap:9px;
       padding:6px 0; border-bottom:1px solid rgba(255,255,255,.048);
@@ -661,6 +676,28 @@
     .chore-history-toggle.open { color:var(--gold); }
     .chore-history-body { margin-top:8px; }
     .chore-history-body.hidden { display:none; }
+
+    /* Generic show/hide utility -- added 2026-08-15 for Manage chores mode
+       (toggling chore-tracker-body/chore-kid-selector/chore-manage-body),
+       nothing this general existed before (only scoped .foo.hidden rules). */
+    .hidden { display:none; }
+
+    .chore-manage-toggle-btn { width:auto; flex-shrink:0; }
+    .chore-manage-tabs {
+      display:flex; gap:4px; border-bottom:1px solid var(--glass-border); margin-bottom:2px;
+    }
+    .chore-manage-tabs .d-tab { padding:8px 14px 10px; }
+    .chore-lib-row { display:flex; align-items:center; justify-content:space-between; cursor:default; }
+    /* Native <select> elements in the Manage chores/Today panels otherwise
+       render with the browser's default light-theme chrome, clashing hard
+       against this app's dark glass UI -- every other input already gets
+       themed via .s-field, but these selects live outside that scope. */
+    #chore-manage-body select, #chore-tracker-body select {
+      background:rgba(255,255,255,.06); border:1px solid var(--glass-border);
+      border-radius:8px; padding:6px 10px; color:var(--cream);
+      font-family:var(--font-ui); font-size:12px; outline:none;
+    }
+    #chore-manage-body select option, #chore-tracker-body select option { background:#111827; }
 
     /* ── Rewards Tab ── */
     .rewards-layout { display:grid; grid-template-columns:1fr 340px; gap:20px; }
@@ -1579,8 +1616,10 @@
     <div class="tab-pane" id="tab-chores">
       <div class="chores-tab-header">
         <div class="kid-selector" id="chore-kid-selector"></div>
+        <button class="btn-ghost chore-manage-toggle-btn" id="chore-manage-toggle" onclick="toggleChoreManageMode()">Manage chores</button>
       </div>
       <div id="chore-tracker-body"></div>
+      <div id="chore-manage-body" class="hidden"></div>
     </div>
 
     <!-- REWARDS -->
@@ -2725,21 +2764,86 @@ function generateSchedule(days=28) {
 }
 
 /* ═══════════════════════════════════════════
-   CHORE ASSIGNMENTS
+   CHORE LIBRARY + ASSIGNMENTS (backend-owned, 2026-08-15)
+   The architectural correction this replaces: assignments used to be
+   computed live in the browser from age + `dayOfMonth % rotating.length`
+   (see git history for the old defaultAssignments()) -- silently
+   recomputed, and silently able to change, every day, with no way to
+   add/remove/reassign a chore short of editing source. cabin-backend now
+   owns chore_definition (the library, see CHORES's replacement below) and
+   chore_assignment (who has what, and when) as real, editable data; the
+   browser's job is reduced to rendering what the backend returns and
+   doing the trivial date-range/recurrence match a client-side render
+   across several days unavoidably needs (see assignmentAppliesOnDate) --
+   categorically different from deciding WHICH chores exist for a kid.
 ═══════════════════════════════════════════ */
-function choresByAge(age) { return CHORES.filter(c => c.minAge <= age); }
+let choreLibrary = [];      // chore_definition rows (active only)
+let choreAssignments = [];  // chore_assignment rows (active only, every child)
 
+// includeArchived=true even for this general-purpose cache (not just the
+// Manage UI's library view) -- defaultAssignments() resolves a chore
+// definition by id regardless of its active flag, so an assignment that
+// still references a since-archived chore (archiving doesn't touch
+// existing assignments -- see ChoreDefinitionService's own javadoc on why
+// archive, not delete) keeps rendering correctly for the child checking
+// it off, instead of silently vanishing from their list.
+async function refreshChoreLibraryFromServer() {
+  if (!CABIN_API_URL || !accessToken) return false;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/chores/definitions?includeArchived=true`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return false;
+    choreLibrary = await res.json();
+    return true;
+  } catch (e) {
+    console.warn('Could not sync chore library from cabin-backend:', e);
+    return false;
+  }
+}
+
+async function refreshChoreAssignmentsFromServer() {
+  if (!CABIN_API_URL || !accessToken) return false;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/chores/assignments`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return false;
+    choreAssignments = await res.json();
+    return true;
+  } catch (e) {
+    console.warn('Could not sync chore assignments from cabin-backend:', e);
+    return false;
+  }
+}
+
+// Mirrors ChoreAssignmentService.applies() (backend) exactly: DAILY
+// applies on every date within [effectiveStart, effectiveEnd] (open-ended
+// if effectiveEnd is null); ONE_DAY applies only on effectiveStart. Plain
+// string comparison is safe and correct here (not a Date parse) because
+// every date here is already the same zero-padded yyyy-MM-dd shape ymd()
+// produces and the backend's LocalDate.toString() also produces --
+// lexicographic order matches chronological order for that shape.
+function assignmentAppliesOnDate(a, dayKey) {
+  if (dayKey < a.effectiveStart) return false;
+  if (a.recurrence === 'ONE_DAY') return dayKey === a.effectiveStart;
+  return !a.effectiveEnd || dayKey <= a.effectiveEnd;
+}
+
+// Same name/signature as the old age-derived version, so every existing
+// call site (renderTodayChores, renderChoreTracker) needed zero changes
+// -- only what's inside changed. Each returned chore also carries
+// assignmentId (needed by toggleChoreCompletion's new idempotent PUT,
+// which is keyed by assignment, not bare chore id).
 function defaultAssignments(dayKey, kidId) {
-  const kid = getKids().find(k => k.id === kidId);
-  if (!kid) return [];
-  const available = choresByAge(kid.age);
-  const daily = ['brush_teeth','make_bed','reading'];
-  const rotating = kid.age >= 9
-    ? ['clear_table','unload_dishwasher','take_trash','walk_frankie','homework']
-    : ['set_table','wipe_table','outfit_ready','lunch_backpack','put_away_laundry'];
-  const dayOfMonth = parseInt(dayKey.split('-')[2], 10);
-  const extra = rotating[dayOfMonth % rotating.length];
-  return [...daily, extra].map(id => available.find(c => c.id === id)).filter(Boolean);
+  return choreAssignments
+    .filter(a => a.childId === kidId && assignmentAppliesOnDate(a, dayKey))
+    .sort((a, b) => a.displayOrder - b.displayOrder)
+    .map(a => {
+      const chore = choreLibrary.find(c => c.id === a.choreDefinitionId);
+      return chore ? { ...chore, assignmentId: a.id } : null;
+    })
+    .filter(Boolean);
 }
 
 /* ═══════════════════════════════════════════
@@ -2791,30 +2895,37 @@ async function refreshCompletionFromServer() {
   }
 }
 
+// 2026-08-15: was POST .../completion/toggle -- a toggle reads current
+// state and flips it, which isn't safe against two devices acting near-
+// simultaneously or a retried request after a dropped response (either
+// can double-flip a chore back to where it started even though the real
+// intent was "mark it done"). This client already decides its own target
+// state for the optimistic local flip below; sending that same boolean
+// as an explicit PUT means the server only ever applies exactly what was
+// asked, so there's nothing left to reconcile against a server-computed
+// result the way the old toggle response needed.
 async function toggleChoreCompletion(dayKey, kidId, choreId) {
   const k = `${dayKey}_${kidId}`;
   if (!completion[k]) completion[k] = {};
-  // Optimistic local flip so the tap feels instant; reconciled below against
-  // whatever the server actually recorded, in case another device toggled
-  // the same chore in between.
-  completion[k][choreId] = !completion[k][choreId];
+  const nextDone = !completion[k][choreId];
+  completion[k][choreId] = nextDone;
   saveCompletion();
   rerenderChoreViews();
 
   if (!CABIN_API_URL || !accessToken) return;
+  const assignment = defaultAssignments(dayKey, kidId).find(c => c.id === choreId);
+  if (!assignment) {
+    console.warn('No active assignment for', kidId, choreId, 'on', dayKey, '-- completion saved locally only.');
+    return;
+  }
   try {
-    const res = await fetch(`${CABIN_API_URL}/api/chores/completion/toggle`, {
-      method: 'POST',
+    const res = await fetch(
+      `${CABIN_API_URL}/api/chores/completions/${dayKey}/${kidId}/${assignment.assignmentId}`, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ dayKey, kidId, choreId }),
+      body: JSON.stringify({ done: nextDone }),
     });
-    if (!res.ok) return;
-    const result = await res.json();
-    if (completion[k][choreId] !== result.done) {
-      completion[k][choreId] = result.done;
-      saveCompletion();
-      rerenderChoreViews();
-    }
+    if (!res.ok) console.warn('Chore completion did not sync to cabin-backend, saved locally only:', res.status);
   } catch (e) {
     console.warn('Could not sync chore completion to cabin-backend:', e);
   }
@@ -2822,6 +2933,372 @@ async function toggleChoreCompletion(dayKey, kidId, choreId) {
 
 function countDayCompleted(dayKey, kidId) {
   return Object.values(completion[`${dayKey}_${kidId}`] || {}).filter(Boolean).length;
+}
+
+/* ═══════════════════════════════════════════
+   CHORE MANAGEMENT (Manage chores mode) — 2026-08-15
+   Primary authoring surface for the chore library and per-child
+   assignments — see refreshChoreLibraryFromServer/refreshChoreAssignments
+   FromServer above for how choreLibrary/choreAssignments get populated.
+   All authenticated family users get the same controls here (no
+   adult/kid/guest gating yet); createdBy/updatedBy on every write is
+   whichever profile is the current actor (or the signed-in Google email
+   as a fallback), the same "same trust as a fridge note" model as
+   FamilyNote's authorId — not itself an authorization boundary, just who
+   to show credit to.
+═══════════════════════════════════════════ */
+let choreManageMode = false;
+let choreManageTab = 'library'; // 'library' | 'assignments' | 'today'
+let choreManageAssignChild = null;
+
+function actorIdForRequest() { return currentActorId || currentUserEmail || null; }
+
+function toggleChoreManageMode() {
+  choreManageMode = !choreManageMode;
+  document.getElementById('chore-manage-toggle').textContent = choreManageMode ? '← Back to Chore Tracker' : 'Manage chores';
+  document.getElementById('chore-tracker-body').classList.toggle('hidden', choreManageMode);
+  document.getElementById('chore-kid-selector').classList.toggle('hidden', choreManageMode);
+  document.getElementById('chore-manage-body').classList.toggle('hidden', !choreManageMode);
+  if (choreManageMode) renderChoreManage();
+}
+
+function switchChoreManageTab(tab) {
+  choreManageTab = tab;
+  renderChoreManage();
+}
+
+function renderChoreManage() {
+  const el = document.getElementById('chore-manage-body');
+  if (!el) return;
+  if (!accessToken) {
+    el.innerHTML = `<p class="config-desc">Sign in to manage chores.</p>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="chore-manage-tabs">
+      <button class="d-tab ${choreManageTab==='library'?'active':''}" onclick="switchChoreManageTab('library')">Chore Library</button>
+      <button class="d-tab ${choreManageTab==='assignments'?'active':''}" onclick="switchChoreManageTab('assignments')">Assignments</button>
+      <button class="d-tab ${choreManageTab==='today'?'active':''}" onclick="switchChoreManageTab('today')">Today</button>
+    </div>
+    <div id="chore-manage-panel" style="margin-top:16px"></div>`;
+  const panel = document.getElementById('chore-manage-panel');
+  if (choreManageTab === 'library') panel.innerHTML = renderChoreLibraryPanel();
+  else if (choreManageTab === 'assignments') panel.innerHTML = renderChoreAssignmentsPanel();
+  else panel.innerHTML = renderChoreTodayPanel();
+}
+
+/* ── Library sub-tab ── */
+function renderChoreLibraryPanel() {
+  const active = choreLibrary.filter(c => c.active).sort((a, b) => a.label.localeCompare(b.label));
+  const rows = active.map(c => `
+    <div class="chore-day-block chore-lib-row">
+      <div>
+        <div class="chore-full-label">${esc(c.label)}</div>
+        <div class="chore-full-tags">${c.points} pt${c.points===1?'':'s'} · min age ${c.minAge}${(c.tags||[]).length ? ' · ' + esc(c.tags.join(', ')) : ''}</div>
+      </div>
+      <div class="profile-card-actions">
+        <button onclick="editChoreLibraryEntry('${c.id}')">Edit</button>
+        <button class="del" onclick="archiveChoreLibraryEntry('${c.id}')">Archive</button>
+      </div>
+    </div>`).join('');
+  return `
+    ${rows || '<p class="config-desc">No chores in the library yet.</p>'}
+    <button class="btn-gold" style="width:auto;margin-top:10px" onclick="openChoreLibraryForm()">+ Add custom chore</button>
+    <div id="chore-lib-form-col" style="margin-top:14px"></div>
+    ${renderArchivedChoresSection()}`;
+}
+
+function renderArchivedChoresSection() {
+  const archived = choreLibrary.filter(c => !c.active).sort((a, b) => a.label.localeCompare(b.label));
+  if (!archived.length) return '';
+  const rows = archived.map(c => `
+    <div class="chore-day-block chore-lib-row" style="opacity:.6">
+      <div class="chore-full-label">${esc(c.label)}</div>
+      <div class="profile-card-actions"><button onclick="restoreChoreLibraryEntry('${c.id}')">Restore</button></div>
+    </div>`).join('');
+  return `<div class="chore-week-header chore-history-toggle" onclick="this.nextElementSibling.classList.toggle('hidden');this.classList.toggle('open')">▸ Archived chores (${archived.length})</div>
+    <div class="chore-history-body hidden">${rows}</div>`;
+}
+
+function openChoreLibraryForm(chore) {
+  const col = document.getElementById('chore-lib-form-col');
+  if (!col) return;
+  col.innerHTML = `
+    <div class="profiles-form-col">
+      <div class="profiles-section-title">${chore ? 'Edit Chore' : 'New Chore'}</div>
+      <input type="hidden" id="cl-id" value="${chore ? esc(chore.id) : ''}">
+      <div class="s-field"><label>Label</label><input id="cl-label" value="${chore ? esc(chore.label) : ''}"></div>
+      <div class="s-field"><label>Points</label><input id="cl-points" type="number" min="1" value="${chore ? chore.points : 1}"></div>
+      <div class="s-field"><label>Minimum age</label><input id="cl-minage" type="number" min="0" value="${chore ? chore.minAge : 0}"></div>
+      <div class="s-field"><label>Tags (comma separated)</label><input id="cl-tags" value="${chore ? esc((chore.tags||[]).join(', ')) : ''}"></div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn-gold" style="width:auto" onclick="saveChoreLibraryEntry()">Save</button>
+        <button class="btn-ghost" style="width:auto" onclick="closeChoreLibraryForm()">Cancel</button>
+      </div>
+    </div>`;
+}
+function closeChoreLibraryForm() {
+  const col = document.getElementById('chore-lib-form-col');
+  if (col) col.innerHTML = '';
+}
+function editChoreLibraryEntry(id) {
+  const chore = choreLibrary.find(c => c.id === id);
+  if (chore) openChoreLibraryForm(chore);
+}
+
+async function saveChoreLibraryEntry() {
+  const id = document.getElementById('cl-id').value;
+  const label = document.getElementById('cl-label').value.trim();
+  if (!label) { alert('Label is required'); return; }
+  const points = parseInt(document.getElementById('cl-points').value, 10) || 1;
+  const minAge = parseInt(document.getElementById('cl-minage').value, 10) || 0;
+  const tags = document.getElementById('cl-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+  if (!CABIN_API_URL || !accessToken) { alert('Sign in required to manage the chore library.'); return; }
+  const body = { label, points, minAge, tags, actorId: actorIdForRequest() };
+  if (!id) body.id = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') + '_' + Date.now().toString(36);
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/chores/definitions${id ? '/' + id : ''}`, {
+      method: id ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { alert('Could not save the chore.'); return; }
+    const saved = await res.json();
+    const idx = choreLibrary.findIndex(c => c.id === saved.id);
+    if (idx >= 0) choreLibrary[idx] = saved; else choreLibrary.push(saved);
+    closeChoreLibraryForm();
+    renderChoreManage();
+    rerenderChoreViews();
+  } catch (e) {
+    console.warn('Could not save chore to cabin-backend:', e);
+    alert('Could not reach the server to save this chore.');
+  }
+}
+
+async function archiveChoreLibraryEntry(id) {
+  if (!confirm('Archive this chore? It stays in history but can no longer be newly assigned.')) return;
+  await setChoreLibraryActive(id, false);
+}
+async function restoreChoreLibraryEntry(id) {
+  await setChoreLibraryActive(id, true);
+}
+async function setChoreLibraryActive(id, active) {
+  if (!CABIN_API_URL || !accessToken) { alert('Sign in required to manage the chore library.'); return; }
+  const actorParam = `?actorId=${encodeURIComponent(actorIdForRequest() || '')}`;
+  const url = active
+    ? `${CABIN_API_URL}/api/chores/definitions/${id}/restore${actorParam}`
+    : `${CABIN_API_URL}/api/chores/definitions/${id}${actorParam}`;
+  try {
+    const res = await fetch(url, { method: active ? 'POST' : 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) { alert('Could not update this chore.'); return; }
+    const chore = choreLibrary.find(c => c.id === id);
+    if (chore) chore.active = active;
+    renderChoreManage();
+    rerenderChoreViews();
+  } catch (e) {
+    console.warn('Could not update chore active state:', e);
+  }
+}
+
+/* ── Assignments sub-tab ── */
+function renderChoreAssignmentsPanel() {
+  if (!choreManageAssignChild || !getKids().some(k => k.id === choreManageAssignChild)) {
+    choreManageAssignChild = getKids()[0]?.id || null;
+  }
+  if (!choreManageAssignChild) return `<p class="config-desc">Add a child first.</p>`;
+
+  const kidButtons = getKids().map(k =>
+    `<button class="kid-sel-btn ${choreManageAssignChild===k.id?'active':''}" onclick="selectChoreManageAssignChild('${k.id}')">${k.avatar} ${esc(k.name)}</button>`
+  ).join('');
+
+  const assigned = choreAssignments.filter(a => a.childId === choreManageAssignChild).sort((a, b) => a.displayOrder - b.displayOrder);
+  const assignedChoreIds = new Set(assigned.map(a => a.choreDefinitionId));
+  const available = choreLibrary.filter(c => c.active && !assignedChoreIds.has(c.id));
+  const otherKids = getKids().filter(k => k.id !== choreManageAssignChild);
+
+  const rows = assigned.map(a => {
+    const chore = choreLibrary.find(c => c.id === a.choreDefinitionId);
+    const label = chore ? chore.label : a.choreDefinitionId;
+    return `<div class="chore-full-row future">
+      <div>
+        <div class="chore-full-label">${esc(label)}</div>
+        <div class="chore-full-tags">${a.recurrence === 'ONE_DAY' ? `One day only — ${a.effectiveStart}` : `Ongoing since ${a.effectiveStart}`}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        ${otherKids.length ? `<select onchange="if(this.value) reassignChore('${a.id}', this.value)">
+          <option value="">Reassign to…</option>
+          ${otherKids.map(k => `<option value="${k.id}">${esc(k.name)}</option>`).join('')}
+        </select>` : ''}
+        <button class="btn-ghost" style="width:auto;padding:4px 8px" onclick="moveAssignmentOrder('${a.id}', -1)" title="Move up">↑</button>
+        <button class="btn-ghost" style="width:auto;padding:4px 8px" onclick="moveAssignmentOrder('${a.id}', 1)" title="Move down">↓</button>
+        <button class="btn-ghost" style="width:auto;padding:4px 8px" onclick="removeChoreAssignment('${a.id}')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="kid-selector" style="margin-bottom:14px">${kidButtons}</div>
+    ${rows || '<p class="config-desc">No chores assigned yet.</p>'}
+    <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
+      <select id="chore-assign-add-select" style="flex:1">
+        <option value="">Select a chore to assign…</option>
+        ${available.map(c => `<option value="${c.id}">${esc(c.label)}</option>`).join('')}
+      </select>
+      <button class="btn-gold" style="width:auto" onclick="assignChoreToChild()">+ Assign</button>
+    </div>`;
+}
+
+function selectChoreManageAssignChild(kidId) {
+  choreManageAssignChild = kidId;
+  renderChoreManage();
+}
+
+async function assignChoreToChild() {
+  const sel = document.getElementById('chore-assign-add-select');
+  const choreId = sel?.value;
+  if (!choreId || !choreManageAssignChild) return;
+  await createChoreAssignment({ choreDefinitionId: choreId, childId: choreManageAssignChild, recurrence: 'DAILY' });
+}
+
+async function createChoreAssignment(fields) {
+  if (!CABIN_API_URL || !accessToken) { alert('Sign in required to change chore assignments.'); return; }
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/chores/assignments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ ...fields, actorId: actorIdForRequest() }),
+    });
+    if (!res.ok) { alert('Could not save the assignment.'); return; }
+    const created = await res.json();
+    choreAssignments.push(created);
+    rerenderChoreViews();
+    renderChoreManage();
+  } catch (e) {
+    console.warn('Could not create chore assignment:', e);
+    alert('Could not reach the server to save the assignment.');
+  }
+}
+
+// Also used by the Today panel's "Move to…" control -- a reassignment is
+// permanent (moves the standing assignment to the new child going
+// forward), not a today-only swap. See this feature's delivery notes for
+// why a true today-only override was scoped out of this first release.
+async function reassignChore(assignmentId, newChildId) {
+  if (!newChildId) return;
+  await patchChoreAssignment(assignmentId, { childId: newChildId });
+}
+
+async function moveAssignmentOrder(assignmentId, direction) {
+  const list = choreAssignments.filter(a => a.childId === choreManageAssignChild).sort((a, b) => a.displayOrder - b.displayOrder);
+  const idx = list.findIndex(a => a.id === assignmentId);
+  const swapIdx = idx + direction;
+  if (idx < 0 || swapIdx < 0 || swapIdx >= list.length) return;
+  [list[idx], list[swapIdx]] = [list[swapIdx], list[idx]];
+  await reorderChoreAssignments(choreManageAssignChild, list.map(a => a.id));
+}
+
+async function reorderChoreAssignments(childId, orderedIds) {
+  orderedIds.forEach((id, i) => { const a = choreAssignments.find(x => x.id === id); if (a) a.displayOrder = i; });
+  renderChoreManage(); // optimistic
+  if (!CABIN_API_URL || !accessToken) return;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/chores/assignments/reorder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ childId, orderedIds, actorId: actorIdForRequest() }),
+    });
+    if (!res.ok) console.warn('Assignment reorder did not sync to cabin-backend:', res.status);
+  } catch (e) {
+    console.warn('Could not sync assignment reorder:', e);
+  }
+}
+
+async function removeChoreAssignment(assignmentId) {
+  if (!confirm('Remove this chore assignment?')) return;
+  if (!CABIN_API_URL || !accessToken) { alert('Sign in required to change chore assignments.'); return; }
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/chores/assignments/${assignmentId}`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) { alert('Could not remove the assignment.'); return; }
+    choreAssignments = choreAssignments.filter(a => a.id !== assignmentId);
+    rerenderChoreViews();
+    renderChoreManage();
+  } catch (e) {
+    console.warn('Could not remove chore assignment:', e);
+  }
+}
+
+async function patchChoreAssignment(assignmentId, fields) {
+  if (!CABIN_API_URL || !accessToken) { alert('Sign in required to change chore assignments.'); return; }
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/chores/assignments/${assignmentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ ...fields, actorId: actorIdForRequest() }),
+    });
+    if (!res.ok) { alert('Could not update the assignment.'); return; }
+    const updated = await res.json();
+    const idx = choreAssignments.findIndex(a => a.id === assignmentId);
+    if (idx >= 0) choreAssignments[idx] = updated;
+    rerenderChoreViews();
+    renderChoreManage();
+  } catch (e) {
+    console.warn('Could not update chore assignment:', e);
+  }
+}
+
+/* ── Today sub-tab ── */
+function renderChoreTodayPanel() {
+  const todayKey = ymd(new Date());
+  const sections = getKids().map(kid => {
+    const assigned = defaultAssignments(todayKey, kid.id);
+    const otherKids = getKids().filter(k => k.id !== kid.id);
+    const rows = assigned.map(c => {
+      const a = choreAssignments.find(x => x.id === c.assignmentId);
+      const isDone = getChoreState(todayKey, kid.id, c.id);
+      const changedBy = a?.updatedBy || a?.createdBy;
+      const changedAt = a?.updatedAt || a?.createdAt;
+      return `<div class="chore-full-row ${isDone?'done':''}">
+        <div class="chore-full-cb" onclick="toggleChoreCompletion('${todayKey}','${kid.id}','${c.id}')">${isDone?'✓':''}</div>
+        <div style="flex:1">
+          <div class="chore-full-label">${esc(c.label)}</div>
+          ${changedBy ? `<div class="chore-full-tags">by ${esc(changedBy)}${changedAt ? ' · ' + relTime(changedAt) : ''}</div>` : ''}
+        </div>
+        ${otherKids.length ? `<select onchange="if(this.value) reassignChore('${c.assignmentId}', this.value)">
+          <option value="">Move to…</option>
+          ${otherKids.map(k => `<option value="${k.id}">${esc(k.name)}</option>`).join('')}
+        </select>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="chore-day-block">
+      <div class="chore-day-name" style="margin-bottom:8px">${kid.avatar} ${esc(kid.name)}</div>
+      ${rows || '<p class="config-desc">No chores assigned today.</p>'}
+    </div>`;
+  }).join('');
+
+  const choreOptions = choreLibrary.filter(c => c.active).map(c => `<option value="${c.id}">${esc(c.label)}</option>`).join('');
+  const kidOptions = getKids().map(k => `<option value="${k.id}">${esc(k.name)}</option>`).join('');
+
+  return `
+    ${sections}
+    <div class="chore-day-block" style="margin-top:14px">
+      <div class="config-desc" style="margin-bottom:8px">+ Add a one-day chore for today</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="chore-today-add-chore" style="flex:1;min-width:140px"><option value="">Chore…</option>${choreOptions}</select>
+        <select id="chore-today-add-kid" style="flex:1;min-width:120px"><option value="">Child…</option>${kidOptions}</select>
+        <button class="btn-gold" style="width:auto" onclick="addOneDayChore()">Add for today</button>
+      </div>
+    </div>`;
+}
+
+async function addOneDayChore() {
+  const choreId = document.getElementById('chore-today-add-chore').value;
+  const kidId = document.getElementById('chore-today-add-kid').value;
+  if (!choreId || !kidId) return;
+  await createChoreAssignment({ choreDefinitionId: choreId, childId: kidId, recurrence: 'ONE_DAY', effectiveStart: ymd(new Date()) });
+  document.getElementById('chore-today-add-chore').value = '';
+  document.getElementById('chore-today-add-kid').value = '';
 }
 
 /* ═══════════════════════════════════════════
@@ -2916,6 +3393,21 @@ function updateCustodyBadge() {
 /* ═══════════════════════════════════════════
    TODAY'S CHORES (ambient panel)
 ═══════════════════════════════════════════ */
+// 2026-08-15: at 4+ kids, every one of them always fully expanded made
+// this ambient card grow tall enough to clip or push the rest of the
+// dashboard, and 40% opacity for "inactive" kids (an earlier idea) reads
+// as disabled/broken rather than collapsed -- neither actually solves the
+// vertical-space problem. Condensed/expanded instead: 2 or fewer kids
+// keeps today's always-expanded layout unchanged; more than that, every
+// kid starts as a compact summary row (avatar/name/count/first couple of
+// incomplete chores/expand indicator) and tapping one expands just that
+// kid's full checklist, dimming (not hiding) the rest. See the capture-
+// phase click listener below for how expand/collapse-on-outside-click is
+// wired -- same pattern as the notepad's own click-outside-collapse
+// (see that listener's comment for the two real detached-node bugs
+// bubble-phase handling caused there), reused here for the same reason.
+let expandedLandingKidId = null;
+
 function renderTodayChores() {
   const el = document.getElementById('today-chores-body');
   const today = new Date();
@@ -2927,45 +3419,94 @@ function renderTodayChores() {
     return;
   }
 
+  const kids = getKids();
+  const condensed = kids.length > 2;
+  if (!condensed) expandedLandingKidId = null; // 2-or-fewer always renders fully expanded -- no stale expand state
+  else if (expandedLandingKidId && !kids.some(k => k.id === expandedLandingKidId)) expandedLandingKidId = null; // expanded kid was removed
+
   let html = '';
-  for (const kid of getKids()) {
+  kids.forEach((kid, i) => {
     const assigned = defaultAssignments(todayKey, kid.id);
     const done = assigned.filter(c => getChoreState(todayKey, kid.id, c.id)).length;
-    const elig = rewardEligibility(kid.id, recentHomeDays(7));
+    const isExpanded = !condensed || expandedLandingKidId === kid.id;
 
-    html += `<div class="kid-section">
-      <div class="kid-header">
-        <div class="kid-name-row">
-          <span class="kid-avatar-sm">${kid.avatar}</span>
-          <span class="kid-name-sm">${esc(kid.name)}</span>
+    if (!isExpanded) {
+      const incomplete = assigned.filter(c => !getChoreState(todayKey, kid.id, c.id)).slice(0, 2).map(c => c.label);
+      const dimmed = expandedLandingKidId ? ' kid-section-dimmed' : '';
+      html += `<div class="kid-section kid-section-compact${dimmed}" data-landing-kid-compact="${kid.id}">
+        <div class="kid-header">
+          <div class="kid-name-row">
+            <span class="kid-avatar-sm">${kid.avatar}</span>
+            <span class="kid-name-sm">${esc(kid.name)}</span>
+          </div>
+          <span class="kid-score">${done}/${assigned.length}</span>
         </div>
-        <span class="kid-score">${done}/${assigned.length}</span>
+        <div class="kid-compact-preview">${incomplete.length ? esc(incomplete.join(' · ')) : (assigned.length ? 'All done! 🎉' : 'No chores today')}</div>
+        <div class="kid-compact-expand">▾ Tap to expand</div>
       </div>`;
+    } else {
+      const elig = rewardEligibility(kid.id, recentHomeDays(7));
+      html += `<div class="kid-section" ${condensed ? `data-landing-kid-expanded="${kid.id}"` : ''}>
+        <div class="kid-header">
+          <div class="kid-name-row">
+            <span class="kid-avatar-sm">${kid.avatar}</span>
+            <span class="kid-name-sm">${esc(kid.name)}</span>
+          </div>
+          <span class="kid-score">${done}/${assigned.length}</span>
+        </div>`;
 
-    assigned.forEach(c => {
-      const isDone = getChoreState(todayKey, kid.id, c.id);
-      html += `<div class="chore-row ${isDone?'done':''}" onclick="toggleChoreCompletion('${todayKey}','${kid.id}','${c.id}')">
-        <div class="chore-cb">${isDone?'✓':''}</div>
-        <div class="chore-label">${esc(c.label)}</div>
-      </div>`;
-    });
+      assigned.forEach(c => {
+        const isDone = getChoreState(todayKey, kid.id, c.id);
+        html += `<div class="chore-row ${isDone?'done':''}" onclick="toggleChoreCompletion('${todayKey}','${kid.id}','${c.id}')">
+          <div class="chore-cb">${isDone?'✓':''}</div>
+          <div class="chore-label">${esc(c.label)}</div>
+        </div>`;
+      });
 
-    html += `<div class="reward-strip">
-      <div class="reward-strip-top">
-        <div class="reward-strip-name">Weekly reward</div>
-        <div class="reward-pct">${elig.qualifying}/4 nights</div>
-      </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${elig.pct}%"></div></div>
-      ${elig.eligible ? '<div class="reward-unlocked">⭐ Reward unlocked!</div>' : ''}
-    </div></div>`;
+      html += `<div class="reward-strip">
+        <div class="reward-strip-top">
+          <div class="reward-strip-name">Weekly reward</div>
+          <div class="reward-pct">${elig.qualifying}/4 nights</div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${elig.pct}%"></div></div>
+        ${elig.eligible ? '<div class="reward-unlocked">⭐ Reward unlocked!</div>' : ''}
+      </div></div>`;
+    }
 
-    // divider between kids
-    if (kid !== getKids()[getKids().length-1]) {
+    if (i < kids.length - 1) {
       html += '<div class="card-divider" style="margin:6px 0;"></div>';
     }
-  }
+  });
   el.innerHTML = html;
 }
+
+// Single source of truth for landing-card expand/collapse -- capture
+// phase, before toggleChoreCompletion's own chore-row onclick can run,
+// same reasoning as the notepad's click-outside listener. A chore-row
+// click is excluded up front and left completely alone (no state change,
+// no re-render here) so that separate, pre-existing handler never races
+// against this one. Expanding a compact row and collapsing on an outside
+// click both happen inside this one handler rather than split across a
+// competing inline onclick, specifically to avoid the same
+// detached-DOM-node race the notepad's own comment documents (this
+// handler's re-render would otherwise detach an inline onclick's own
+// target mid-dispatch).
+document.addEventListener('click', (e) => {
+  const path = e.composedPath ? e.composedPath() : [e.target];
+  if (path.some(node => node.classList?.contains('chore-row'))) return;
+
+  const compactRow = path.find(node => node.dataset && node.dataset.landingKidCompact);
+  if (compactRow) {
+    expandedLandingKidId = compactRow.dataset.landingKidCompact;
+    renderTodayChores();
+    return;
+  }
+  if (!expandedLandingKidId) return;
+  const insideExpanded = path.some(node => node.dataset && node.dataset.landingKidExpanded === expandedLandingKidId);
+  if (insideExpanded) return;
+  expandedLandingKidId = null;
+  renderTodayChores();
+}, true);
 
 /* ═══════════════════════════════════════════
    DASHBOARD SECTIONS
@@ -3592,6 +4133,12 @@ async function deleteProfile(id) {
   profiles = profiles.filter(x => x.id !== id);
   saveProfiles();
   renderProfilesTab();
+  // Found 2026-08-15: this only ever updated the Family tab -- the landing
+  // chores card, child selector, overview, and rewards all read `profiles`
+  // too, but nothing told them to redraw, so a removed profile lingered
+  // everywhere else until a manual reload. Same fix as saveProfile() below.
+  rerenderProfileViews();
+  rerenderChoreViews();
 }
 
 async function saveProfile() {
@@ -3641,6 +4188,16 @@ async function saveProfile() {
   saveProfiles();
   closeProfileForm();
   renderProfilesTab();
+  // Found 2026-08-15: adding/editing a profile (e.g. a new child) updated
+  // the `profiles` array and the Family tab, but nothing told the landing
+  // chores card, child selector, overview, or rewards to redraw -- they'd
+  // keep showing the pre-save state until a manual reload even though the
+  // save itself succeeded. rerenderProfileViews() covers the actor
+  // picker/note-author row/chore kid selector; rerenderChoreViews() covers
+  // the landing chores card/chore tracker/overview/rewards -- together
+  // that's every surface that reads `profiles` or `getKids()`.
+  rerenderProfileViews();
+  rerenderChoreViews();
 }
 
 /* ═══════════════════════════════════════════
@@ -3705,8 +4262,16 @@ async function onToken(resp) {
   loadCalendar();
   restorePhotos();
   refreshNotesFromServer().then(ok => { if (ok) renderNotepad(); });
-  refreshCompletionFromServer().then(ok => { if (ok) rerenderChoreViews(); });
   refreshProfilesFromServer().then(ok => { if (ok) rerenderProfileViews(); });
+  // Library and assignments must both be loaded before defaultAssignments()
+  // can resolve anything, and completion needs assignments loaded first too
+  // (toggleChoreCompletion resolves an assignmentId via defaultAssignments())
+  // -- sequenced with Promise.all + then rather than three independent
+  // .then() calls like the other refreshes above, so the first real render
+  // after sign-in never runs against a half-loaded cache.
+  Promise.all([refreshChoreLibraryFromServer(), refreshChoreAssignmentsFromServer()])
+    .then(() => refreshCompletionFromServer())
+    .then(() => rerenderChoreViews());
 }
 
 // Cross-device sync poll — picks up notes/chore/profile changes made on
@@ -3734,7 +4299,10 @@ setInterval(async () => {
     }
     renderNotepad();
   }
-  if (await refreshCompletionFromServer()) rerenderChoreViews();
+  const libraryChanged = await refreshChoreLibraryFromServer();
+  const assignmentsChanged = await refreshChoreAssignmentsFromServer();
+  const completionChanged = await refreshCompletionFromServer();
+  if (libraryChanged || assignmentsChanged || completionChanged) rerenderChoreViews();
   if (await refreshProfilesFromServer()) rerenderProfileViews();
 }, 20000);
 
