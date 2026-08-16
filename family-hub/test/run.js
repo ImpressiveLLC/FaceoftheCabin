@@ -216,6 +216,19 @@ function check(label, actual, expected) {
   // to exercise the actual render/interaction logic without a real DB.
   // ═══════════════════════════════════════════
 
+  // renderTodayChores() early-returns a "kids are at Mom's" message
+  // instead of rendering any kid cards at all when isKidsHome(new Date())
+  // is false for the real, current wall-clock date -- which depends on
+  // the actual custody-rotation math and the container's own timezone
+  // (found via a real CI failure: passed against local-timezone "now" on
+  // one run, failed against the CI container's UTC "now" a few minutes
+  // later, because the two clocks landed on different sides of the
+  // custody day boundary). None of the checks below care what the real
+  // custody schedule says today -- forcing isKidsHome() to always return
+  // true here makes this deterministic regardless of what day or
+  // timezone this suite happens to run in.
+  await page.evaluate(() => { window.isKidsHome = () => true; });
+
   // Manage mode must render (all three sub-tabs) without throwing even
   // against a completely empty library/assignment cache -- the realistic
   // state for a brand-new instance before any seed migration has run.
