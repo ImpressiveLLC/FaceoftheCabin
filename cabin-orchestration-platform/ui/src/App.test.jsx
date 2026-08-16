@@ -249,7 +249,13 @@ describe("CameraEventsPanel — undeployed location falls back to cabin, filtere
     expect(url).toContain("location=home");
   });
 
-  it("queries cabin's apiBase directly, with no location filter, for cabin itself", async () => {
+  // 2026-08-16 (user report): this test used to assert the opposite --
+  // "no location filter for cabin" -- on the theory that cabin's own
+  // backend only ever holds cabin's own data. That stopped being true the
+  // moment Home's AldrichFront started reconciling into the same shared
+  // cabin_event table (it has no independently deployed backend of its
+  // own yet), so viewing "Cabin" was silently showing Home's camera too.
+  it("queries cabin's apiBase WITH a location=cabin filter, since cabin's backend can also hold another location's events", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -262,6 +268,21 @@ describe("CameraEventsPanel — undeployed location falls back to cabin, filtere
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const url = fetchMock.mock.calls[0][0];
     expect(url.startsWith("http://cabin-hub:8090/api/events?")).toBe(true);
+    expect(url).toContain("location=cabin");
+  });
+
+  it("applies no location filter when viewing 'both' (locationCfg is null)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <AppContext.Provider value={{ locationCfg: null }}>
+        <CameraEventsPanel auth={mockAuth()} />
+      </AppContext.Provider>
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = fetchMock.mock.calls[0][0];
     expect(url).not.toContain("location=");
   });
 });

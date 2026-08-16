@@ -466,7 +466,19 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   // ever has its own data to begin with.
   const locationDeployed = isLocationDeployed(locationCfg);
   const apiBase = locationDeployed ? (locationCfg?.apiBase || LOCATIONS.cabin.apiBase) : LOCATIONS.cabin.apiBase;
-  const eventsLocationFilter = (!locationDeployed && locationCfg?.id && locationCfg.id !== "cabin")
+  // 2026-08-16 (user report): the comment above only accounted for an
+  // undeployed location borrowing cabin's backend -- it missed that
+  // cabin's OWN backend is the same shared instance, so it can contain
+  // another location's events too (Home's AldrichFront, reconciled from
+  // the same Frigate). Filtering only kicked in for a non-cabin location,
+  // so viewing "Cabin" specifically returned every location's events
+  // unfiltered. The real distinguishing question isn't "is this cabin?"
+  // but "are we hitting the shared backend at all?" -- apply the filter
+  // any time apiBase resolves to cabin's, regardless of which location
+  // that is. Skipped only once a location has a genuinely separate,
+  // independently deployed backend of its own (apiBase !== cabin's),
+  // since that backend can only ever hold its own location's data.
+  const eventsLocationFilter = (apiBase === LOCATIONS.cabin.apiBase && locationCfg?.id)
     ? locationCfg.id : null;
   const [window_, setWindow] = useState(() => localStorage.getItem("cameraEvents.window") || "24h");
   const [events, setEvents] = useState([]);
