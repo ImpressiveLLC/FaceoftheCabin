@@ -45,6 +45,37 @@ public class CabinEventService {
             event.eventType(), event.severity(), toJson(event.payload()));
     }
 
+    /**
+     * Same shape as save(), but updates the existing row on a collision
+     * instead of silently keeping whatever was there first. Exists
+     * specifically for Frigate-sourced events keyed by a deterministic id
+     * (frigate:{frigateEventId}, see MqttBridgeService/
+     * FrigateEventReconciliationService) -- the same underlying Frigate
+     * tracked object is legitimately re-reported multiple times as it
+     * evolves (hasClip/hasSnapshot can start false and flip true once the
+     * clip finishes encoding; MQTT and the periodic REST reconciliation
+     * can both observe the same event independently). DO NOTHING would
+     * mean whichever report arrived first wins forever, even if it was
+     * the least complete one -- the opposite of what's wanted here.
+     * save() above stays untouched for every other event source
+     * (motion/telemetry/direct-injection), which use a fresh random UUID
+     * per event and have no reason to ever collide, let alone want a
+     * later "duplicate" to overwrite an earlier one.
+     */
+    public void upsert(CabinEvent event) {
+        jdbc.update("""
+            INSERT INTO cabin_event (event_id, time, device_id, event_type, severity, payload)
+            VALUES (?,?,?,?,?,?::jsonb)
+            ON CONFLICT (event_id) DO UPDATE SET
+                time = EXCLUDED.time,
+                device_id = EXCLUDED.device_id,
+                event_type = EXCLUDED.event_type,
+                severity = EXCLUDED.severity,
+                payload = EXCLUDED.payload""",
+            event.eventId(), java.sql.Timestamp.from(event.timestamp()), event.sourceDeviceId(),
+            event.eventType(), event.severity(), toJson(event.payload()));
+    }
+
     /** Most recent events, newest first, optionally filtered by camera/device and a lookback window. */
     public List<CabinEvent> recent(String deviceId, int limit, Instant since) {
         return recent(deviceId, limit, 0, since, null);

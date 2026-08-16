@@ -65,22 +65,38 @@ public class MqttBridgeService implements MqttCallback {
     private final PresenceService presenceService;
     private final PresenceSignalRegistry presenceSignalRegistry;
     private final SecurityStateRegistry securityStateRegistry;
+    private final FrigateEventReconciliationService frigateReconciliation;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     public MqttBridgeService(DeviceRegistry registry, EventPublisher eventPublisher,
                               PresenceService presenceService, PresenceSignalRegistry presenceSignalRegistry,
-                              SecurityStateRegistry securityStateRegistry) {
+                              SecurityStateRegistry securityStateRegistry,
+                              FrigateEventReconciliationService frigateReconciliation) {
         this.registry = registry;
         this.eventPublisher = eventPublisher;
         this.presenceService = presenceService;
         this.presenceSignalRegistry = presenceSignalRegistry;
         this.securityStateRegistry = securityStateRegistry;
+        this.frigateReconciliation = frigateReconciliation;
     }
 
     @PostConstruct
     public void connect() {
         try {
-            client = new MqttClient(brokerUrl, clientId + "-" + UUID.randomUUID());
+            // 2026-08-15: was clientId + "-" + UUID.randomUUID() -- a fresh
+            // random suffix on every connect, which silently defeated
+            // setCleanSession(false) below. A persistent MQTT session (QoS
+            // 1/2 messages queued by the broker while this client is briefly
+            // offline) is keyed on the exact client id staying the same
+            // across reconnects/restarts; a new id each time means the
+            // broker sees a brand-new client with no session to resume,
+            // every single time. Stable id now, so the persistent-session
+            // machinery actually does something -- though see
+            // FrigateEventReconciliationService's own comment for why this
+            // alone still isn't sufficient for Frigate's detection events
+            // specifically (those publish at QoS 0 on Frigate's end; a
+            // subscriber's QoS doesn't retroactively upgrade a publisher's).
+            client = new MqttClient(brokerUrl, clientId);
             client.setCallback(this);
             MqttConnectOptions opts = new MqttConnectOptions();
             opts.setAutomaticReconnect(true);
@@ -316,6 +332,19 @@ public class MqttBridgeService implements MqttCallback {
         securityStateRegistry.record(location, armed);
     }
 
+    /**
+     * 2026-08-15: no longer builds/publishes its own CabinEvent. Frigate
+     * publishes this topic at its own QoS 0 with no redelivery guarantee --
+     * whatever arrives here is a best-effort, low-latency hint that
+     * something just happened, not something this backend can treat as the
+     * only chance to record it. FrigateEventReconciliationService.
+     * upsertDetection() is the single write path both this handler and that
+     * service's own REST-backed periodic reconciliation call, keyed on
+     * Frigate's own event id (not a fresh random UUID per message) so
+     * whichever of the two sees a given detection first doesn't matter and
+     * neither can leave stale hasClip/hasSnapshot data the other would have
+     * corrected. See that class's javadoc for the full rationale.
+     */
     @SuppressWarnings("unchecked")
     private void handleFrigateDetectionEvent(String payload) {
         try {
@@ -325,22 +354,29 @@ public class MqttBridgeService implements MqttCallback {
             String camera = String.valueOf(after.getOrDefault("camera", "unknown"));
             String label = String.valueOf(after.getOrDefault("label", "object"));
             // Frigate's own event id (TrackedObject.to_dict()'s "id" field) --
-            // required to fetch that specific event's snapshot/clip via
-            // Frigate's /api/events/{id}/... endpoints. Not the same as this
-            // CabinEvent's own random UUID below.
+            // required both to fetch that specific event's snapshot/clip via
+            // Frigate's /api/events/{id}/... endpoints and to build the
+            // deterministic frigate:{id} CabinEvent id upsertDetection()
+            // uses. Without one there's nothing to key an upsert on and
+            // nothing to ever fetch a clip for, so such a message (seen on
+            // Frigate's intermediate "new" event states in practice) isn't
+            // useful to record at all.
             Object frigateEventId = after.get("id");
-            Map<String, Object> eventPayload = new HashMap<>();
-            eventPayload.put("label", label);
-            eventPayload.put("score", after.getOrDefault("score", 0));
-            eventPayload.put("type", type);
-            if (frigateEventId != null) eventPayload.put("frigateEventId", frigateEventId);
-            eventPayload.put("hasSnapshot", after.getOrDefault("has_snapshot", false));
-            eventPayload.put("hasClip", after.getOrDefault("has_clip", false));
-            CabinEvent event = new CabinEvent(
-                UUID.randomUUID().toString(), camera,
-                "DETECTION_" + type.toUpperCase(),
-                AlertSeverityClassifier.classify(after), Instant.now(), eventPayload);
-            eventPublisher.publish(event);
+            if (frigateEventId == null) {
+                log.debug("Frigate detection event has no id, skipping: {}", payload);
+                return;
+            }
+            double score = after.get("score") instanceof Number n ? n.doubleValue() : 0;
+            boolean hasSnapshot = Boolean.TRUE.equals(after.get("has_snapshot"));
+            boolean hasClip = Boolean.TRUE.equals(after.get("has_clip"));
+            // Frigate's own start_time (unix epoch seconds, fractional) --
+            // when the detection actually happened, not whenever this
+            // backend happened to be connected and receive the message.
+            Object startTime = after.get("start_time");
+            Instant occurredAt = startTime instanceof Number n
+                ? Instant.ofEpochMilli((long) (n.doubleValue() * 1000)) : Instant.now();
+            frigateReconciliation.upsertDetection(String.valueOf(frigateEventId), camera, label, score,
+                hasSnapshot, hasClip, occurredAt, type, after);
         } catch (Exception e) {
             log.warn("Failed to parse Frigate detection event: {}", e.getMessage());
         }

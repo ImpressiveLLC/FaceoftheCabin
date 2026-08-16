@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -88,6 +88,55 @@ describe("buildCameraEventsUrl", () => {
   it("adds a location filter when given one", () => {
     const url = buildCameraEventsUrl("http://cabin-hub:8090", 0, "24h", "home");
     expect(url).toContain("location=home");
+  });
+});
+
+// 2026-08-15: FrigateEventReconciliationService/MqttBridgeService now feed
+// MOTION_ON/OFF events into the same stream as real DETECTION_* activity
+// -- this is CameraEventsPanel's client-side split that keeps motion from
+// burying replayable detections (rendered as a separate, collapsed-by-
+// default section instead of inline at the same weight).
+describe("groupCameraEvents", () => {
+  const detection = { eventId: "d1", eventType: "DETECTION_UPDATE" };
+  const motionOn = { eventId: "m1", eventType: "MOTION_ON" };
+  const motionOff = { eventId: "m2", eventType: "MOTION_OFF" };
+
+  it("splits detections and motion events into separate buckets", () => {
+    const { detections, motionEvents } = groupCameraEvents([detection, motionOn, motionOff]);
+    expect(detections).toEqual([detection]);
+    expect(motionEvents).toEqual([motionOn, motionOff]);
+  });
+
+  it("preserves original order within each bucket", () => {
+    const detection2 = { eventId: "d2", eventType: "DETECTION_NEW" };
+    const { detections } = groupCameraEvents([detection, motionOn, detection2]);
+    expect(detections.map(e => e.eventId)).toEqual(["d1", "d2"]);
+  });
+
+  it("handles an empty list", () => {
+    expect(groupCameraEvents([])).toEqual({ detections: [], motionEvents: [] });
+  });
+
+  it("does not throw on an entry with a missing eventType", () => {
+    const { detections } = groupCameraEvents([{ eventId: "x" }]);
+    expect(detections).toHaveLength(1);
+  });
+});
+
+// 2026-08-15: a media 404 (clip/snapshot expired out of Frigate's shorter
+// retention window, or never had footage) is expected now that the event
+// list itself can reach back further than clips are ever kept -- see
+// FrigateEventReconciliationService's backfillDays vs Frigate's own
+// retain.days. Any other status is a real failure and should read as one.
+describe("classifyMediaFetchStatus", () => {
+  it("classifies 404 as missing, not an error", () => {
+    expect(classifyMediaFetchStatus(404)).toBe("missing");
+  });
+
+  it("classifies every other status as a real error", () => {
+    expect(classifyMediaFetchStatus(500)).toBe("error");
+    expect(classifyMediaFetchStatus(401)).toBe("error");
+    expect(classifyMediaFetchStatus(undefined)).toBe("error");
   });
 });
 

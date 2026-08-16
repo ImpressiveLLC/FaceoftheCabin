@@ -238,30 +238,47 @@ function useGoogleAuth() {
 // fetch as a blob with fetch() (which can) and hand the component an
 // object URL instead. Revokes the previous URL on cleanup/change so this
 // doesn't leak memory as someone scrolls through a long event list.
+// 2026-08-15: a media 404 (Frigate genuinely has no clip/snapshot for this
+// event -- expired past retention, or the event never got footage in the
+// first place) is an expected, everyday outcome now that
+// FrigateEventReconciliationService backfills up to 10 days of event
+// history while Frigate itself only retains clips for a much shorter
+// window -- not a sign anything is broken. Distinguishing it from a real
+// fetch failure (network/auth/5xx) is what lets the two render different,
+// honest messages instead of one generic "something went wrong" that
+// trains a user to distrust every clip button. Exported so
+// src/App.test.jsx can test the classification without mocking fetch.
+export function classifyMediaFetchStatus(status) {
+  return status === 404 ? "missing" : "error";
+}
+
 function useAuthedMediaUrl(url, authedFetch) {
   const [objectUrl, setObjectUrl] = useState(null);
-  const [error, setError] = useState(false);
+  const [status, setStatus] = useState(null); // null | "missing" | "error"
 
   useEffect(() => {
-    if (!url) { setObjectUrl(null); return; }
+    if (!url) { setObjectUrl(null); setStatus(null); return; }
     let cancelled = false;
     let currentUrl = null;
-    setError(false);
+    setStatus(null);
     authedFetch(url)
-      .then(res => { if (!res.ok) throw new Error(res.status); return res.blob(); })
+      .then(res => {
+        if (!res.ok) return Promise.reject(Object.assign(new Error(String(res.status)), { status: res.status }));
+        return res.blob();
+      })
       .then(blob => {
         if (cancelled) return;
         currentUrl = URL.createObjectURL(blob);
         setObjectUrl(currentUrl);
       })
-      .catch(() => { if (!cancelled) setError(true); });
+      .catch(err => { if (!cancelled) setStatus(classifyMediaFetchStatus(err?.status)); });
     return () => {
       cancelled = true;
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
   }, [url, authedFetch]);
 
-  return { objectUrl, error };
+  return { objectUrl, status };
 }
 
 // DTM (date/time) stamp overlay, rendered directly on the thumbnail image
@@ -273,11 +290,11 @@ function useAuthedMediaUrl(url, authedFetch) {
 // docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md §4b), this
 // overlay would be redundant with that and worth dropping once confirmed.
 function CameraEventThumbnail({ apiBase, authedFetch, frigateEventId, timestamp }) {
-  const { objectUrl, error } = useAuthedMediaUrl(
+  const { objectUrl, status } = useAuthedMediaUrl(
     frigateEventId ? `${apiBase}/api/camera/events/${frigateEventId}/snapshot` : null,
     authedFetch
   );
-  if (!frigateEventId || error) {
+  if (!frigateEventId || status) {
     return <div className="camera-event-thumb camera-event-thumb-empty"><Camera size={18} /></div>;
   }
   if (!objectUrl) {
@@ -292,11 +309,21 @@ function CameraEventThumbnail({ apiBase, authedFetch, frigateEventId, timestamp 
 }
 
 function CameraEventClip({ apiBase, authedFetch, frigateEventId }) {
-  const { objectUrl, error } = useAuthedMediaUrl(
+  const { objectUrl, status } = useAuthedMediaUrl(
     `${apiBase}/api/camera/events/${frigateEventId}/clip`,
     authedFetch
   );
-  if (error) return <p className="config-desc">Clip not available for this event.</p>;
+  // "missing" (404) is Frigate simply no longer having this clip -- an
+  // everyday, expected outcome (clip retention is much shorter than how
+  // far back the event list itself now reaches), not something to word
+  // like a bug. Any other failure is worded differently on purpose, since
+  // that one IS worth a user reporting.
+  if (status === "missing") {
+    return <p className="config-desc">Clip expired or unavailable — Frigate only keeps clips for a limited time after the event.</p>;
+  }
+  if (status === "error") {
+    return <p className="config-desc camera-live-error">Couldn't load this clip — try again shortly.</p>;
+  }
   if (!objectUrl) return <p className="config-desc">Loading clip…</p>;
   return <video className="camera-clip-player" src={objectUrl} controls autoPlay muted />;
 }
@@ -399,6 +426,25 @@ export function cameraEventsWindowLabel(window) {
   return CAMERA_EVENTS_WINDOWS.find(w => w.value === window)?.label || "the selected range";
 }
 
+// MOTION_ON/OFF is real operational telemetry (it's how touchCamera()
+// keeps a camera's liveness state fresh -- see MqttBridgeService) but it
+// fires far more often than actual replayable detections and has no
+// clip/snapshot of its own to show. Rendering it inline at the same
+// weight as DETECTION_* rows buried real activity under a wall of "motion
+// on/off" -- this splits the two so detections stay the primary,
+// always-visible list and motion becomes a separate, collapsed-by-default
+// summary instead of disappearing outright. Exported so
+// src/App.test.jsx can test the split without rendering the panel.
+export function groupCameraEvents(events) {
+  const detections = [];
+  const motionEvents = [];
+  for (const e of events) {
+    if ((e?.eventType || "").startsWith("MOTION_")) motionEvents.push(e);
+    else detections.push(e);
+  }
+  return { detections, motionEvents };
+}
+
 // Pure URL-builder, no fetch inside -- extracted specifically so the
 // offset/eventTypePrefix query-param wiring is directly unit-testable
 // without mocking fetch. See src/App.test.jsx.
@@ -431,6 +477,8 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   const [liveCamera, setLiveCamera] = useState(null);
   const [cameras, setCameras] = useState([]);
   const [cameraListError, setCameraListError] = useState(null);
+  const [showMotion, setShowMotion] = useState(false);
+  const { detections, motionEvents } = useMemo(() => groupCameraEvents(events), [events]);
 
   // Triggers/ends a real on-demand liveview session for Blink-backed
   // cameras (a no-op server-side for the Reolink, which is already
@@ -587,7 +635,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
       {loading && events.length === 0 && <p className="config-desc">Loading…</p>}
       {!loading && events.length === 0 && <p className="config-desc">No camera activity in {cameraEventsWindowLabel(window_).toLowerCase()}.</p>}
       <div className="camera-events-list">
-        {events.map(e => {
+        {detections.map(e => {
           const frigateEventId = e.payload?.frigateEventId;
           const isExpanded = expandedEventId === e.eventId;
           const canExpand = !!frigateEventId && e.payload?.hasClip;
@@ -600,7 +648,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
                 <CameraEventThumbnail apiBase={apiBase} authedFetch={auth.authedFetch} frigateEventId={e.payload?.hasSnapshot ? frigateEventId : null} timestamp={e.timestamp} />
                 <div>
                   <div className="camera-event-title">
-                    {e.sourceDeviceId} — {e.eventType.replace("DETECTION_", "").replace("MOTION_", "motion ").toLowerCase()}
+                    {e.sourceDeviceId} — {e.eventType.replace("DETECTION_", "").toLowerCase()}
                     {e.payload?.label ? ` (${e.payload.label}${e.payload.score ? `, ${Math.round(e.payload.score * 100)}%` : ""})` : ""}
                   </div>
                   <div className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</div>
@@ -614,7 +662,31 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
             </div>
           );
         })}
+        {!loading && detections.length === 0 && motionEvents.length > 0 && (
+          <p className="config-desc">No detections in {cameraEventsWindowLabel(window_).toLowerCase()} — {motionEvents.length} motion-only event{motionEvents.length === 1 ? "" : "s"} below.</p>
+        )}
       </div>
+
+      {motionEvents.length > 0 && (
+        <div className="camera-motion-section">
+          <button className="btn-ghost camera-motion-toggle" onClick={() => setShowMotion(s => !s)}>
+            {showMotion ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {motionEvents.length} motion event{motionEvents.length === 1 ? "" : "s"} (camera activity, no clip)
+          </button>
+          {showMotion && (
+            <div className="camera-motion-list">
+              {motionEvents.map(e => (
+                <div key={e.eventId} className="camera-motion-row">
+                  <span className="camera-motion-camera">{e.sourceDeviceId}</span>
+                  <span className="camera-motion-state">{e.eventType === "MOTION_ON" ? "motion started" : "motion ended"}</span>
+                  <span className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {hasMore && (
         <button className="btn-secondary camera-events-load-more" onClick={loadMore} disabled={loadingMore}>
           {loadingMore ? "Loading…" : "Load older events"}

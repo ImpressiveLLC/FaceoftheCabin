@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.mqtt.FrigateEventReconciliationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -81,6 +82,25 @@ public class CameraMediaController {
         .build();
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final FrigateEventReconciliationService reconciliation;
+
+    public CameraMediaController(FrigateEventReconciliationService reconciliation) {
+        this.reconciliation = reconciliation;
+    }
+
+    /**
+     * Surfaces FrigateEventReconciliationService's own health state --
+     * last run/success, the newest Frigate event it has seen and how far
+     * behind that is right now, how many rows its last cycle upserted, and
+     * the last error if any. That service runs unattended in the
+     * background (startup backfill + a 60s scheduler); without this
+     * endpoint the only way to know it's actually keeping up is grepping
+     * backend logs.
+     */
+    @GetMapping(value = "/reconciliation/status")
+    public Map<String, Object> reconciliationStatus() {
+        return reconciliation.healthStatus();
+    }
 
     private java.util.Map<String, String> blinkCameraMap() {
         java.util.Map<String, String> map = new java.util.HashMap<>();
