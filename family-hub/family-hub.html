@@ -1433,6 +1433,222 @@
       .mobile-action { min-height:54px; }
       .mobile-action-label { font-size:10.5px; }
     }
+/* ═══════════════════════════════════════════
+       THEME-AWARE CONTROLS + PROMINENT OUTLINES
+       This final layer intentionally follows the older component rules.
+       Several of those rules used fixed dark colors, so presets did not
+       reach dropdowns, banners, header actions, or Close controls.
+    ═══════════════════════════════════════════ */
+    :root {
+      --ui-outline: var(--glass-border);
+      --control-outline: var(--gold);
+      --control-surface: var(--glass-light);
+    }
+
+    button, select, input, textarea { font-family:var(--font-ui); }
+    button:focus-visible {
+      outline:3px solid var(--control-outline);
+      outline-offset:2px;
+    }
+
+    .glass-card,
+    .dash-card,
+    .location-link,
+    .br-fab,
+    #notepad-panel,
+    #settings-panel,
+    #album-list {
+      border-color:var(--ui-outline);
+    }
+    .glass-card { border-width:2px; }
+    #settings-panel {
+      background:color-mix(in srgb, var(--glass) 94%, var(--night));
+      border-left:2px solid var(--ui-outline);
+    }
+    #dashboard-overlay,
+    #note-history-overlay,
+    #auth-overlay {
+      background:color-mix(in srgb, var(--night) 92%, var(--glass));
+    }
+
+    #dash-close,
+    #note-history-close,
+    .settings-close,
+    .np-close,
+    .np-expand {
+      background:var(--control-surface);
+      border:2px solid var(--control-outline);
+      color:var(--cream);
+      border-radius:var(--radius);
+      padding:5px 9px;
+      font-family:var(--font-ui);
+      box-shadow:0 0 0 1px var(--gold-faint);
+    }
+    #dash-close:hover,
+    #note-history-close:hover,
+    .settings-close:hover,
+    .np-close:hover,
+    .np-expand:hover {
+      background:var(--gold-faint);
+      border-color:var(--gold);
+      color:var(--gold);
+    }
+
+    .btn-gold,
+    .np-send {
+      border:2px solid color-mix(in srgb, var(--gold) 70%, var(--cream));
+      color:#0d0d0d;
+    }
+    .btn-ghost,
+    .kid-sel-btn,
+    .profile-card-actions button,
+    .theme-pill,
+    .np-author-pill,
+    #next-photo-btn,
+    .br-fab {
+      border-width:2px;
+      border-color:var(--ui-outline);
+    }
+    .btn-ghost:hover,
+    .kid-sel-btn:hover,
+    .profile-card-actions button:hover,
+    .theme-pill:hover,
+    .np-author-pill:hover,
+    #next-photo-btn:hover,
+    .br-fab:hover {
+      border-color:var(--control-outline);
+      background:var(--gold-faint);
+      color:var(--gold);
+    }
+    .d-tab {
+      background:transparent;
+      color:var(--cream-dim);
+      border:1px solid transparent;
+      border-bottom:2px solid transparent;
+    }
+    .d-tab:hover {
+      background:var(--glass-light);
+      color:var(--cream);
+      border-color:var(--ui-outline);
+    }
+    .d-tab.active {
+      background:var(--gold-faint);
+      color:var(--gold);
+      border-color:var(--ui-outline);
+      border-bottom-color:var(--gold);
+    }
+    .mobile-action {
+      border:2px solid transparent;
+      color:var(--cream-dim);
+    }
+    .mobile-action:active,
+    .mobile-action:focus-visible {
+      border-color:var(--control-outline);
+    }
+
+    select,
+    .s-field select,
+    #chore-manage-body select,
+    #chore-tracker-body select,
+    .upcoming-holidays-controls select {
+      appearance:auto;
+      min-height:36px;
+      background:color-mix(in srgb, var(--glass) 88%, var(--night));
+      border:2px solid var(--control-outline);
+      border-radius:var(--radius);
+      color:var(--cream);
+      padding:7px 30px 7px 10px;
+      box-shadow:0 0 0 1px var(--gold-faint);
+    }
+    select:hover,
+    .s-field select:hover,
+    #chore-manage-body select:hover,
+    #chore-tracker-body select:hover,
+    .upcoming-holidays-controls select:hover {
+      background:var(--glass-light);
+      border-color:var(--gold);
+    }
+    select:focus-visible,
+    .s-field select:focus-visible,
+    #chore-manage-body select:focus-visible,
+    #chore-tracker-body select:focus-visible,
+    .upcoming-holidays-controls select:focus-visible {
+      outline:3px solid var(--gold-glow);
+      outline-offset:2px;
+      border-color:var(--gold);
+    }
+    select option,
+    .s-field select option,
+    #chore-manage-body select option,
+    #chore-tracker-body select option {
+      background:var(--night);
+      color:var(--cream);
+    }
+
+    .chore-reward-banner {
+      background:var(--gold-faint);
+      border:2px solid var(--control-outline);
+    }
+    .context-explainer {
+      background:var(--teal-glow);
+      border:2px solid color-mix(in srgb, var(--teal) 55%, transparent);
+    }
+
+    /* Asteroid City: the supplied turquoise sky, bleached sand, terracotta,
+       yellow signage, charcoal outlines, rigid postcard geometry, and flat
+       hard shadows adapted to the existing Family Hub components. */
+    [data-theme="asteroidcity"] #photo-overlay {
+      background:
+        linear-gradient(to bottom, rgba(249,245,235,.82), rgba(60,169,196,.24) 34%, rgba(60,169,196,.24) 64%, rgba(249,245,235,.82)),
+        linear-gradient(to right, rgba(249,245,235,.72), transparent 32%, transparent 68%, rgba(249,245,235,.72));
+    }
+    [data-theme="asteroidcity"] :is(
+      #clock,
+      #dash-title,
+      .settings-title,
+      #note-history-title,
+      .np-title,
+      .card-label,
+      button
+    ) {
+      font-family:Impact, "Arial Black", "Futura-CondensedExtraBold", sans-serif;
+      letter-spacing:.045em;
+    }
+    [data-theme="asteroidcity"] #clock {
+      color:var(--gold);
+      -webkit-text-stroke:2px var(--cream);
+      text-shadow:4px 4px 0 var(--cream);
+      text-transform:uppercase;
+    }
+    [data-theme="asteroidcity"] :is(
+      .glass-card,
+      .dash-card,
+      .br-fab,
+      #notepad-panel,
+      #settings-panel
+    ) {
+      background:var(--glass);
+      border-width:3px;
+      box-shadow:8px 8px 0 rgba(31,52,56,.80);
+    }
+    [data-theme="asteroidcity"] :is(
+      button,
+      select,
+      input,
+      textarea,
+      .glass-card,
+      .dash-card,
+      .location-link,
+      .br-fab,
+      #notepad-panel,
+      #settings-panel
+    ) {
+      border-radius:2px;
+    }
+    [data-theme="asteroidcity"] :is(.btn-gold, .np-send) {
+      color:var(--cream);
+    }
+
   </style>
 <style id="googleidentityservice_button_styles">.qJTHM{-moz-user-select:none;-webkit-user-select:none;-ms-user-select:none;color:#202124;direction:ltr;-webkit-touch-callout:none;font-family:"Roboto-Regular",arial,sans-serif;-webkit-font-smoothing:antialiased;font-weight:400;margin:0;overflow:hidden;-webkit-text-size-adjust:100%}.ynRLnc{left:-9999px;position:absolute;top:-9999px}.L6cTce{display:none}.bltWBb{overflow-wrap:break-word;word-break:break-word}.hSRGPd{color:#1a73e8;cursor:pointer;font-weight:500;text-decoration:none}.Bz112c-W3lGp{height:16px;width:16px}.Bz112c-E3DyYd{height:20px;width:20px}.Bz112c-r9oPif{height:24px;width:24px}.Bz112c-u2z5K{height:36px;width:36px}.Bz112c-uaxL4e{border-radius:10px}.LgbsSe-Bz112c{display:block}.S9gUrf-YoZ4jf{border:none;margin:0;padding:0}.S9gUrf-YoZ4jf *{border:none;margin:0;padding:0}.fFW7wc-ibnC6b>.aZ2wEe>div{border-color:#4285f4}.P1ekSe-ZMv3u{-webkit-transition:height linear .2s;transition:height linear .2s}.P1ekSe-ZMv3u>div:nth-child(1){background-color:#1a73e8!important;-webkit-transition:width linear .3s;transition:width linear .3s}.P1ekSe-ZMv3u>div:nth-child(2){background-image:-webkit-gradient(linear,left top,right top,from(rgba(255,255,255,.7)),to(rgba(255,255,255,.7))),-webkit-gradient(linear,left top,right top,from(#1a73e8),to(#1a73e8))!important;background-image:-webkit-linear-gradient(left,rgba(255,255,255,.7),rgba(255,255,255,.7)),-webkit-linear-gradient(left,#1a73e8,#1a73e8)!important;background-image:linear-gradient(to right,rgba(255,255,255,.7),rgba(255,255,255,.7)),linear-gradient(to right,#1a73e8,#1a73e8)!important}.P1ekSe-ZMv3u>div:nth-child(3){background-image:-webkit-gradient(linear,left top,right top,from(rgba(255,255,255,.7)),to(rgba(255,255,255,.7))),-webkit-gradient(linear,left top,right top,from(#1a73e8),to(#1a73e8))!important;background-image:-webkit-linear-gradient(left,rgba(255,255,255,.7),rgba(255,255,255,.7)),-webkit-linear-gradient(left,#1a73e8,#1a73e8)!important;background-image:linear-gradient(to right,rgba(255,255,255,.7),rgba(255,255,255,.7)),linear-gradient(to right,#1a73e8,#1a73e8)!important}.haAclf{display:inline-block}.nsm7Bb-HzV7m-LgbsSe{border-radius:4px;box-sizing:border-box;-webkit-transition:background-color .218s,border-color .218s;transition:background-color .218s,border-color .218s;-moz-user-select:none;-webkit-user-select:none;-ms-user-select:none;-webkit-appearance:none;background-color:#fff;background-image:none;border:1px solid #dadce0;color:#3c4043;cursor:pointer;font-family:"Google Sans",arial,sans-serif;font-size:14px;height:40px;letter-spacing:.25px;outline:none;overflow:hidden;padding:0 12px;position:relative;text-align:center;vertical-align:middle;white-space:nowrap;width:auto}@media screen and (-ms-high-contrast:active){.nsm7Bb-HzV7m-LgbsSe{border:2px solid windowText;color:windowText}}@media screen and (preferes-contrast:more){.nsm7Bb-HzV7m-LgbsSe{color:#000}}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe{font-size:14px;height:32px;letter-spacing:.25px;padding:0 10px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe{font-size:11px;height:20px;letter-spacing:.3px;padding:0 8px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe{padding:0;width:40px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.pSzOP-SxQuSe{width:32px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.purZT-SxQuSe{width:20px}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK{border-radius:20px}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK.pSzOP-SxQuSe{border-radius:16px}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK.purZT-SxQuSe{border-radius:10px}.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc{border:none;color:#fff}.nsm7Bb-HzV7m-LgbsSe.MFS4be-v3pZbf-Ia7Qfc{background-color:#1a73e8}.nsm7Bb-HzV7m-LgbsSe.MFS4be-JaPV2b-Ia7Qfc{background-color:#202124;color:#e8eaed}@media screen and (prefers-contrast:more){.nsm7Bb-HzV7m-LgbsSe.MFS4be-JaPV2b-Ia7Qfc{color:#fff}}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{height:18px;margin-right:8px;min-width:18px;width:18px}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{height:14px;min-width:14px;width:14px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{height:10px;min-width:10px;width:10px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-Bz112c{margin-left:8px;margin-right:-4px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{margin:0;padding:10px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.pSzOP-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{padding:8px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c{padding:4px}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-top-left-radius:3px;border-bottom-left-radius:3px;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;-webkit-box-align:center;-webkit-align-items:center;align-items:center;background-color:#fff;height:36px;margin-left:-10px;margin-right:12px;min-width:36px;width:36px}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf .nsm7Bb-HzV7m-LgbsSe-Bz112c,.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf .nsm7Bb-HzV7m-LgbsSe-Bz112c{margin:0;padding:0}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{height:28px;margin-left:-8px;margin-right:10px;min-width:28px;width:28px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{height:16px;margin-left:-6px;margin-right:8px;min-width:16px;width:16px}.nsm7Bb-HzV7m-LgbsSe.Bz112c-LgbsSe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:3px;margin-left:2px;margin-right:0;padding:0}.nsm7Bb-HzV7m-LgbsSe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:18px}.nsm7Bb-HzV7m-LgbsSe.pSzOP-SxQuSe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:14px}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:8px}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-bN97Pc-sM5MNb{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-align-items:center;-webkit-box-align:center;align-items:center;-webkit-flex-direction:row;-webkit-box-orient:horizontal;-webkit-box-direction:normal;flex-direction:row;-webkit-box-pack:justify;-webkit-justify-content:space-between;justify-content:space-between;-webkit-flex-wrap:nowrap;flex-wrap:nowrap;height:100%;position:relative;width:100%}.nsm7Bb-HzV7m-LgbsSe .oXtfBe-l4eHX{-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-BPrWId{-webkit-flex-grow:1;-webkit-box-flex:1;flex-grow:1;font-family:"Google Sans",arial,sans-serif;font-weight:500;overflow:hidden;text-overflow:ellipsis;vertical-align:top}.nsm7Bb-HzV7m-LgbsSe.purZT-SxQuSe .nsm7Bb-HzV7m-LgbsSe-BPrWId{font-weight:300}.nsm7Bb-HzV7m-LgbsSe .oXtfBe-l4eHX .nsm7Bb-HzV7m-LgbsSe-BPrWId{-webkit-flex-grow:0;-webkit-box-flex:0;flex-grow:0}.nsm7Bb-HzV7m-LgbsSe .nsm7Bb-HzV7m-LgbsSe-MJoBVe{-webkit-transition:background-color .218s;transition:background-color .218s;bottom:0;left:0;position:absolute;right:0;top:0}.nsm7Bb-HzV7m-LgbsSe:hover,.nsm7Bb-HzV7m-LgbsSe:focus{box-shadow:none;border-color:rgb(210,227,252);outline:none}.nsm7Bb-HzV7m-LgbsSe:focus-within{outline:2px solid #00639b;border-color:transparent}.nsm7Bb-HzV7m-LgbsSe:hover .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(66,133,244,.08)}.nsm7Bb-HzV7m-LgbsSe:active .nsm7Bb-HzV7m-LgbsSe-MJoBVe,.nsm7Bb-HzV7m-LgbsSe:focus .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(66,133,244,.1)}.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc:hover .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(255,255,255,.24)}.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc:active .nsm7Bb-HzV7m-LgbsSe-MJoBVe,.nsm7Bb-HzV7m-LgbsSe.MFS4be-Ia7Qfc:focus .nsm7Bb-HzV7m-LgbsSe-MJoBVe{background:rgba(255,255,255,.32)}.nsm7Bb-HzV7m-LgbsSe .n1UuX-DkfjY{border-radius:50%;display:-webkit-box;display:-webkit-flex;display:flex;height:20px;margin-left:-4px;margin-right:8px;min-width:20px;width:20px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId{font-family:"Roboto";font-size:12px;text-align:left}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .ssJRIf,.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff .fmcmS{overflow:hidden;text-overflow:ellipsis}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-align-items:center;-webkit-box-align:center;align-items:center;color:#5f6368;fill:#5f6368;font-size:11px;font-weight:400}.nsm7Bb-HzV7m-LgbsSe.jVeSEe.MFS4be-Ia7Qfc .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff{color:#e8eaed;fill:#e8eaed}@media screen and (prefers-contrast:more){.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff,.nsm7Bb-HzV7m-LgbsSe.jVeSEe.MFS4be-Ia7Qfc .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff{color:#000;fill:#000}}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-BPrWId .K4efff .Bz112c{height:18px;margin:-3px -3px -3px 2px;min-width:18px;width:18px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-top-left-radius:0;border-bottom-left-radius:0;border-top-right-radius:3px;border-bottom-right-radius:3px;margin-left:12px;margin-right:-10px}.nsm7Bb-HzV7m-LgbsSe.jVeSEe.JGcpL-RbRzK .nsm7Bb-HzV7m-LgbsSe-Bz112c-haAclf{border-radius:18px}.L5Fo6c-sM5MNb{border:0;display:block;left:0;position:relative;top:0}.L5Fo6c-bF1uUb{border-radius:4px;bottom:0;cursor:pointer;left:0;position:absolute;right:0;top:0}.L5Fo6c-bF1uUb:focus{border:none;outline:none}sentinel{}</style></head>
 <body>
@@ -5171,6 +5387,20 @@ const THEMES = {
        literal pixels, so it stays legible at heading sizes. */
     fonts: [{ id:'fh-font-pacman', href:'https://fonts.googleapis.com/css2?family=Bungee&family=VT323&display=swap' }],
   },
+  asteroidcity: {
+    label: 'Asteroid City', id: 'asteroidcity',
+    vars: {
+      '--night':'#3ca9c4', '--glass':'rgba(249,245,235,0.94)', '--glass-light':'rgba(242,193,78,0.20)',
+      '--glass-border':'rgba(31,52,56,0.78)', '--shadow':'12px 12px 0 rgba(31,52,56,.80)',
+      '--gold':'#e57c4a', '--gold-glow':'rgba(229,124,74,0.30)', '--gold-faint':'rgba(229,124,74,0.16)',
+      '--teal':'#2a8da6', '--teal-glow':'rgba(42,141,166,0.22)',
+      '--rose':'#b33a2b', '--rose-glow':'rgba(179,58,43,0.20)',
+      '--cream':'#1f3438', '--cream-dim':'rgba(31,52,56,0.72)', '--cream-ghost':'rgba(31,52,56,0.42)',
+      '--radius':'2px', '--font-display':"'Impact','Arial Black','Futura-CondensedExtraBold',sans-serif", '--font-ui':"'Georgia','Times New Roman',serif",
+    },
+    fonts: [],
+  },
+
 };
 
 // A cross-app link-out (cabin-ui's "Open Family Hub" button) carries the

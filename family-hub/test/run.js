@@ -349,10 +349,40 @@ function check(label, actual, expected) {
   const themedPage = await browser.newPage();
   const themedJsErrors = [];
   themedPage.on('pageerror', e => themedJsErrors.push(e.message));
-  await themedPage.goto(`http://localhost:${PORT}/family-hub.html?theme=lcars`, { waitUntil: 'load' });
+  await themedPage.goto(`http://localhost:${PORT}/family-hub.html?theme=asteroidcity`, { waitUntil: 'load' });
   check('?theme= URL param is applied on load, not just the last-saved localStorage value',
-    await themedPage.evaluate(() => activeThemeId), 'lcars');
+    await themedPage.evaluate(() => activeThemeId), 'asteroidcity');
   check('?theme= param application produces no JS errors', themedJsErrors, []);
+  const themedControlStyles = await themedPage.evaluate(() => {
+    const select = getComputedStyle(document.getElementById('set-interval'));
+    const close = getComputedStyle(document.getElementById('dash-close'));
+    const settings = getComputedStyle(document.getElementById('settings-panel'));
+    const card = getComputedStyle(document.querySelector('.glass-card'));
+    const banner = document.createElement('div');
+    banner.className = 'chore-reward-banner';
+    document.body.appendChild(banner);
+    const bannerStyle = getComputedStyle(banner);
+    const result = {
+      accent: getComputedStyle(document.documentElement).getPropertyValue('--gold').trim(),
+      selectBorderWidth: select.borderTopWidth,
+      closeBorderWidth: close.borderTopWidth,
+      closeBackground: close.backgroundColor,
+      settingsOutline: settings.borderLeftColor,
+      cardOutline: card.borderTopColor,
+      bannerBorderWidth: bannerStyle.borderTopWidth,
+    };
+    banner.remove();
+    return result;
+  });
+  check('Asteroid City uses the supplied terracotta accent', themedControlStyles.accent, '#e57c4a');
+  check('theme styling gives dropdowns a prominent outline', themedControlStyles.selectBorderWidth, '2px');
+  check('Family Hub Close control receives the themed outline', themedControlStyles.closeBorderWidth, '2px');
+  check('Family Hub Close control receives a themed surface',
+    themedControlStyles.closeBackground === 'rgba(0, 0, 0, 0)', false);
+  check('Settings outline matches the other Family Hub UI boxes',
+    themedControlStyles.settingsOutline, themedControlStyles.cardOutline);
+  check('theme styling reaches banners', themedControlStyles.bannerBorderWidth, '2px');
+
   await themedPage.close();
 
   // Phone journey: every high-frequency family action must be visible and

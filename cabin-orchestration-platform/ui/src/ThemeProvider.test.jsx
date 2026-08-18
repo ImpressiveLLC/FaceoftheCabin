@@ -36,4 +36,16 @@ describe("resolveInitialThemeId", () => {
       expect(resolveInitialThemeId(params, null)).toBe(id);
     }
   });
+  it("maps the supplied Asteroid City palette into the cabin UI variables", () => {
+    const theme = THEMES.asteroidcity;
+    expect(theme.label).toBe("Asteroid City");
+    expect(theme.vars).toMatchObject({
+      "--bg": "#3ca9c4",
+      "--bg-secondary": "#f9f5eb",
+      "--accent": "#e57c4a",
+      "--border": "#1f3438",
+      "--bg-tertiary": "#f2c14e",
+    });
+  });
+
 });

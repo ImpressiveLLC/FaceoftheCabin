@@ -131,7 +131,7 @@ Polling every 30 s via `/api/system/health`. Reset returns to `unconfigured` —
 
 ### Theme System
 
-Six presets via `ThemeProvider`:
+Ten synchronized presets via `ThemeProvider` and Family Hub:
 
 | Preset | Character |
 |--------|-----------|
@@ -141,8 +141,12 @@ Six presets via `ThemeProvider`:
 | **Retro-CRT** | Phosphor green |
 | **Bluefin-mono** | Navy monochrome |
 | **Mad Science** | Neon green / UV purple on near-black |
+| **Deep Space** | HAL-inspired matte black / data cyan |
+| **80s Neon** | Magenta / cyan / yellow |
+| **Pac-Man** | Arcade black / yellow / blue / red |
+| **Asteroid City** | Turquoise sky / bleached sand / terracotta signage |
 
-Themes stamp CSS custom properties on `:root` and a `data-theme` attribute on `<html>`. Mad Science loads Share Tech Mono from Google Fonts dynamically; all other themes use system stacks.
+Themes stamp CSS custom properties on `:root` and a `data-theme` attribute on `<html>`. Theme-aware control tokens carry every preset into dropdowns, banners, header actions, and buttons. Presets that need web fonts load them dynamically; Asteroid City uses the supplied system Impact/Georgia stacks.
 
 ### Drag-and-Drop Card Reorder
 

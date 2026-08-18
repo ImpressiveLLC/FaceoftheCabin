@@ -2,7 +2,8 @@
  * ThemeProvider — independently-selectable palette + font presets.
  *
  * Presets: Modern (default), LCARS, Monolith, Retro-CRT, Bluefin-mono,
- * Mad Science, Deep Space, 80s Neon, Pac-Man -- same 9-preset catalog as
+ * Mad Science, Deep Space, 80s Neon, Pac-Man, Asteroid City -- same
+ * 10-preset catalog as
  * family-hub.html's own THEMES object (kept in sync manually as of
  * 2026-08-07; see docs/ontology.yaml's theme_preference entry for the
  * cross-app drift this file and family-hub.html are both prone to).
@@ -259,6 +260,31 @@ export const THEMES = {
       "--font-mono":    "'VT323', 'Share Tech Mono', monospace",
       "--radius":       "16px",
       "--radius-sm":    "8px",
+    },
+  },
+
+  asteroidcity: {
+    id: "asteroidcity",
+    label: "Asteroid City",
+    vars: {
+      "--bg":           "#3ca9c4", // saturated mid-century turquoise sky
+      "--bg-secondary": "#f9f5eb", // bleached white sand
+      "--bg-tertiary":  "#f2c14e", // highway-sign yellow
+      "--surface":      "#ffffff",
+      "--border":       "#1f3438", // deep matte charcoal signage outline
+      "--border-focus": "#e57c4a", // desert terracotta
+      "--text":         "#1f3438",
+      "--text-muted":   "#425d62",
+      "--text-dim":     "#62787c",
+      "--accent":       "#e57c4a",
+      "--accent-hover": "#f2c14e",
+      "--success":      "#257765",
+      "--warning":      "#9a6414",
+      "--danger":       "#b33a2b",
+      "--font-display": "'Georgia', 'Times New Roman', serif",
+      "--font-mono":    "'Courier New', monospace",
+      "--radius":       "2px",
+      "--radius-sm":    "2px",
     },
   },
 };
