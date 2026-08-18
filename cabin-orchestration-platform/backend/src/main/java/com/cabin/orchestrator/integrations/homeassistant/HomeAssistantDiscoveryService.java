@@ -18,8 +18,17 @@ import java.util.*;
  */
 @Service
 public class HomeAssistantDiscoveryService {
+    // number/select added 2026-08-18: found live that the Liebherr fridge's
+    // two setpoint entities (number.*) and its icemaker mode (select.*)
+    // were silently skipped by this allowlist every discovery cycle,
+    // forever -- no error, no log line, they just never became candidates.
+    // 6 of the fridge's 9 real entities were already discoverable
+    // (sensor/switch); this closes the remaining gap rather than leaving
+    // a third of one real device permanently invisible regardless of what
+    // a user does in Device Manager.
     private static final Set<String> DEVICE_DOMAINS = Set.of(
-        "binary_sensor", "sensor", "lock", "climate", "switch", "light", "cover", "camera");
+        "binary_sensor", "sensor", "lock", "climate", "switch", "light", "cover", "camera",
+        "number", "select");
 
     private final HomeAssistantAdapter adapter;
     private final DeviceRegistry registry;
@@ -42,6 +51,18 @@ public class HomeAssistantDiscoveryService {
     }
 
     void discoverLocation(String location) {
+        // One bulk lookup per cycle, not one per entity -- see
+        // HomeAssistantAdapter.deviceIdsByEntity's own javadoc for what
+        // this is and why it fails safe to an empty map (blank token,
+        // unreachable HA, template error). Composite grouping is then
+        // just "these entities share the same haDeviceId attribute" --
+        // no device_id resolved for an entity (helpers/templates
+        // genuinely have none, or the lookup failed entirely) simply
+        // means it stays ungrouped, exactly like every entity did before
+        // this existed. Real device/UI grouping into a single expandable
+        // card lives client-side (Device Manager) -- this only supplies
+        // the raw fact.
+        Map<String, String> deviceIds = adapter.deviceIdsByEntity(location);
         for (HomeAssistantAdapter.DiscoveredEntity entity : adapter.discover(location)) {
             String domain = domain(entity.entityId());
             if (isPresence(entity, domain)) {
@@ -60,6 +81,10 @@ public class HomeAssistantDiscoveryService {
             Map<String, Object> attrs = new LinkedHashMap<>(entity.attributes());
             attrs.put("entityId", entity.entityId());
             attrs.put("discoveredFrom", "Home Assistant");
+            String haDeviceId = deviceIds.get(entity.entityId());
+            if (haDeviceId != null && !haDeviceId.isBlank()) {
+                attrs.put("haDeviceId", haDeviceId);
+            }
             if (attrs.containsKey("battery_level") && !attrs.containsKey("battery")) {
                 attrs.put("battery", attrs.get("battery_level"));
             }
