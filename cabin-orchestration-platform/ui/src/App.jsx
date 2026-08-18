@@ -308,18 +308,28 @@ function CameraEventThumbnail({ apiBase, authedFetch, frigateEventId, timestamp 
   );
 }
 
-function CameraEventClip({ apiBase, authedFetch, frigateEventId }) {
-  const { objectUrl, status } = useAuthedMediaUrl(
-    `${apiBase}/api/camera/events/${frigateEventId}/clip`,
-    authedFetch
-  );
+// Takes a ready-made clipUrl rather than building one internally -- reused
+// by both the detection flow (keyed off Frigate's own frigateEventId) and
+// the motion-only flow below (keyed off cabin-backend's eventId, via
+// clipByTime -- see CameraMediaController.clipByTime's javadoc). frigateUrl
+// is only used to build the "Open in Frigate" fallback link on a genuine
+// miss, never fetched from directly.
+function CameraEventClip({ authedFetch, clipUrl, frigateUrl, cameraName }) {
+  const { objectUrl, status } = useAuthedMediaUrl(clipUrl, authedFetch);
   // "missing" (404) is Frigate simply no longer having this clip -- an
   // everyday, expected outcome (clip retention is much shorter than how
   // far back the event list itself now reaches), not something to word
   // like a bug. Any other failure is worded differently on purpose, since
   // that one IS worth a user reporting.
   if (status === "missing") {
-    return <p className="config-desc">Clip expired or unavailable — Frigate only keeps clips for a limited time after the event.</p>;
+    return (
+      <p className="config-desc">
+        Clip expired or unavailable — Frigate only keeps recordings for a limited time.
+        {frigateUrl && (
+          <> <a href={frigateUrl} target="_blank" rel="noreferrer">Open {cameraName ? `${cameraName} in` : ""} Frigate ↗</a> to check its own history directly.</>
+        )}
+      </p>
+    );
   }
   if (status === "error") {
     return <p className="config-desc camera-live-error">Couldn't load this clip — try again shortly.</p>;
@@ -480,12 +490,16 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   // since that backend can only ever hold its own location's data.
   const eventsLocationFilter = (apiBase === LOCATIONS.cabin.apiBase && locationCfg?.id)
     ? locationCfg.id : null;
+  // Same fallback reasoning as apiBase just above -- used only to build the
+  // "Open in Frigate" escape hatch below, never for a real API call.
+  const frigateUrl = locationDeployed ? (locationCfg?.frigateUrl || LOCATIONS.cabin.frigateUrl) : LOCATIONS.cabin.frigateUrl;
   const [window_, setWindow] = useState(() => localStorage.getItem("cameraEvents.window") || "24h");
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [expandedEventId, setExpandedEventId] = useState(null);
+  const [expandedMotionId, setExpandedMotionId] = useState(null);
   const [liveCamera, setLiveCamera] = useState(null);
   const [cameras, setCameras] = useState([]);
   const [cameraListError, setCameraListError] = useState(null);
@@ -668,7 +682,12 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
               </div>
               {isExpanded && (
                 <div className="camera-clip-expanded">
-                  <CameraEventClip apiBase={apiBase} authedFetch={auth.authedFetch} frigateEventId={frigateEventId} />
+                  <CameraEventClip
+                    authedFetch={auth.authedFetch}
+                    clipUrl={`${apiBase}/api/camera/events/${frigateEventId}/clip`}
+                    frigateUrl={frigateUrl}
+                    cameraName={e.sourceDeviceId}
+                  />
                 </div>
               )}
             </div>
@@ -683,17 +702,41 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
         <div className="camera-motion-section">
           <button className="btn-ghost camera-motion-toggle" onClick={() => setShowMotion(s => !s)}>
             {showMotion ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            {motionEvents.length} motion event{motionEvents.length === 1 ? "" : "s"} (camera activity, no clip)
+            {motionEvents.length} motion event{motionEvents.length === 1 ? "" : "s"} (no Frigate detection — tap to try the recording)
           </button>
           {showMotion && (
             <div className="camera-motion-list">
-              {motionEvents.map(e => (
-                <div key={e.eventId} className="camera-motion-row">
-                  <span className="camera-motion-camera">{e.sourceDeviceId}</span>
-                  <span className="camera-motion-state">{e.eventType === "MOTION_ON" ? "motion started" : "motion ended"}</span>
-                  <span className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</span>
-                </div>
-              ))}
+              {motionEvents.map(e => {
+                const isMotionExpanded = expandedMotionId === e.eventId;
+                return (
+                  <div key={e.eventId} className="camera-motion-item">
+                    <div
+                      className="camera-motion-row clickable"
+                      onClick={() => setExpandedMotionId(isMotionExpanded ? null : e.eventId)}
+                    >
+                      <span className="camera-motion-camera">{e.sourceDeviceId}</span>
+                      <span className="camera-motion-state">{e.eventType === "MOTION_ON" ? "motion started" : "motion ended"}</span>
+                      <span className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</span>
+                    </div>
+                    {isMotionExpanded && (
+                      <div className="camera-clip-expanded">
+                        {/* No native Frigate event behind a motion-only row -- this asks
+                            Frigate for whatever it continuously recorded around this
+                            timestamp instead (record.enabled is true regardless of
+                            detection, confirmed live 2026-08-18). Falls back to the
+                            same "Open in Frigate" link CameraEventClip already renders
+                            on a genuine miss (retention expired, camera was down). */}
+                        <CameraEventClip
+                          authedFetch={auth.authedFetch}
+                          clipUrl={`${apiBase}/api/camera/events/${e.eventId}/clip-by-time`}
+                          frigateUrl={frigateUrl}
+                          cameraName={e.sourceDeviceId}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

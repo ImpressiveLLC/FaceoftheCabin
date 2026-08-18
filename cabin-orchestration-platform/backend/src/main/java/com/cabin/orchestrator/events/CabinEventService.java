@@ -82,6 +82,20 @@ public class CabinEventService {
     }
 
     /**
+     * Single event by its own id, or null if it doesn't exist. Added for
+     * CameraMediaController's clip-by-time fallback (2026-08-18): a
+     * motion-only event (MOTION_ON/OFF) has no frigateEventId to key the
+     * existing /events/{frigateEventId}/clip endpoint off, so that
+     * fallback needs to look the event back up by cabin-backend's own id
+     * to recover its camera/timestamp instead.
+     */
+    public CabinEvent findById(String eventId) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+            "SELECT * FROM cabin_event WHERE event_id = ?", eventId);
+        return rows.isEmpty() ? null : fromRow(rows.get(0));
+    }
+
+    /**
      * Same as recent(), plus real server-side pagination (offset) and an
      * eventType-prefix filter -- added 2026-08-07 (Phase 7 §4a/§4c) so
      * CameraEventsPanel can ask for "just camera events" (DETECTION_*,

@@ -476,11 +476,17 @@ body {
 .camera-motion-section { margin-top: 10px; }
 .camera-motion-toggle { font-size: 12px; }
 .camera-motion-list { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; }
+.camera-motion-item { display: flex; flex-direction: column; }
 .camera-motion-row {
   display: flex; align-items: center; gap: 10px;
   padding: 6px 14px; background: #0d1117; border: 1px solid #161b22;
   border-radius: 6px; color: #6e7681; font-size: 12px;
 }
+/* Rows now expand into a clip-by-time attempt (see CameraEventsPanel /
+   CameraMediaController.clipByTime) instead of being flat, unclickable
+   summary text -- same clickable affordance as .camera-event-row.clickable. */
+.camera-motion-row.clickable { cursor: pointer; }
+.camera-motion-row.clickable:hover { border-color: #388bfd; }
 .camera-motion-camera { color: #8b949e; }
 .camera-motion-state { color: #6e7681; }
 
