@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -678,7 +678,107 @@ describe("Device candidate configuration", () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     const [, options] = fetch.mock.calls[0];
-    expect(JSON.parse(options.body)).toEqual({ name: "Basement leak sensor", enabled: true });
+    expect(JSON.parse(options.body)).toEqual({ name: "Basement leak sensor", enabled: true, room: "" });
+  });
+
+  it("prefills Room from the device's existing attribute and includes it unchanged when saving something else", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ changed: true, enabled: false, deviceLifecycle: "ASSIGNED" }),
+    }));
+    const onSaved = vi.fn();
+    render(<DmEditForm
+      device={{
+        deviceId: "fridge-partymode", name: "Party Mode", type: "HOME_ASSISTANT_ENTITY",
+        state: "ONLINE", location: "cabin",
+        attributes: { deviceLifecycle: "ASSIGNED", enabled: false, room: "Kitchen" },
+      }}
+      onSaved={onSaved}
+    />);
+
+    expect(screen.getByLabelText(/room/i).value).toBe("Kitchen");
+    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: "Party Mode Switch" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    const [, options] = fetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ name: "Party Mode Switch", enabled: false, room: "Kitchen" });
+  });
+
+  it("saving a room-only edit is enabled and sends the new room", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ changed: true, enabled: false, deviceLifecycle: "ASSIGNED" }),
+    }));
+    render(<DmEditForm
+      device={{
+        deviceId: "kidde-co", name: "Kidde CO Alarm", type: "CO_ALARM",
+        state: "ONLINE", location: "cabin",
+        attributes: { deviceLifecycle: "ASSIGNED", enabled: true, room: "" },
+      }}
+      onSaved={() => {}}
+    />);
+
+    const saveButton = screen.getByRole("button", { name: /save changes/i });
+    expect(saveButton.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/room/i), { target: { value: "Mechanical Room" } });
+    expect(saveButton.disabled).toBe(false);
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const [, options] = fetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ name: "Kidde CO Alarm", enabled: true, room: "Mechanical Room" });
+  });
+});
+
+describe("DmDeviceRow inline enable toggle", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const enabledDevice = {
+    deviceId: "z2m-entry", name: "Entry motion", type: "MOTION_SENSOR",
+    state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED", enabled: true },
+  };
+
+  it("does not render the toggle when the caller doesn't pass onToggled (DmRemoveView, MnChangeView)", () => {
+    render(<DmDeviceRow device={enabledDevice} onClick={() => {}} />);
+    expect(screen.queryByTitle(/disable|enable/i)).toBeNull();
+  });
+
+  it("clicking the toggle flips enabled and calls onToggled on success, without also triggering row selection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ changed: true, enabled: false, deviceLifecycle: "ASSIGNED" }),
+    }));
+    const onClick = vi.fn();
+    const onToggled = vi.fn();
+    render(<DmDeviceRow device={enabledDevice} onClick={onClick} onToggled={onToggled} />);
+
+    fireEvent.click(screen.getByTitle("Disable"));
+
+    await waitFor(() => expect(onToggled).toHaveBeenCalledOnce());
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toContain("/api/devices/z2m-entry/config");
+    expect(JSON.parse(options.body)).toEqual({ enabled: false });
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("a failed toggle surfaces the error without calling onToggled", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false, status: 500, json: async () => ({}),
+    }));
+    const onToggled = vi.fn();
+    render(<DmDeviceRow device={enabledDevice} onClick={() => {}} onToggled={onToggled} />);
+
+    fireEvent.click(screen.getByTitle("Disable"));
+
+    await waitFor(() => expect(screen.getByTitle(/not saved/i)).toBeTruthy());
+    expect(onToggled).not.toHaveBeenCalled();
+  });
+
+  it("a still-CANDIDATE device's toggle explains that enabling accepts and assigns it", () => {
+    const candidate = {
+      deviceId: "candidate-1", name: "New sensor", type: "CONTACT_SENSOR",
+      state: "UNKNOWN", location: "cabin", attributes: { deviceLifecycle: "CANDIDATE", enabled: false },
+    };
+    render(<DmDeviceRow device={candidate} onClick={() => {}} onToggled={() => {}} />);
+    expect(screen.getByTitle(/enabling accepts and assigns/i)).toBeTruthy();
   });
 });
 

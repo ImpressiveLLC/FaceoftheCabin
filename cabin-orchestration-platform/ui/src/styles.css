@@ -883,6 +883,13 @@ body {
    detail panel, KPI tiles) that already work fine. */
 .dm-device-row .candidate-badge,
 .dm-device-row .state-badge { flex-shrink: 0; white-space: nowrap; }
+/* Enable/disable directly from the row -- see DmRowEnableToggle. Same
+   flex-shrink:0 treatment as the badges above so a tight row can't
+   compress it either; padding kept small (2px) since the icon itself
+   already reads clearly at this size, unlike a text badge. */
+.dm-row-enable-toggle {
+  flex-shrink: 0; padding: 2px; line-height: 0;
+}
 
 /* ─── Device detail pane ─────────────────────────────────────────────────── */
 .dm-detail {

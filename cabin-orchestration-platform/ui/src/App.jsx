@@ -1632,7 +1632,8 @@ function DeviceManagerPanel() {
         deviceFilter={effectiveDeviceFilter}
         onLifecycleAction={applyLifecycleAction}
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
-        onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }} />}
+        onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }}
+        onRefresh={refreshManagerDevices} />}
       {view === "change" && <DmChangeView devices={locDevices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)))} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
@@ -1819,7 +1820,7 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   return { groups, reorderGroup, reorderDevice };
 }
 
-function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery }) {
+function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh }) {
   const { activeLocation } = useApp();
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
@@ -1926,6 +1927,7 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
                 selected={selected === d.deviceId}
                 checkinStatus={checkinDetails[d.deviceId]?.status || checkinStatuses[d.deviceId]}
                 onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)}
+                onToggled={onRefresh}
                 dragHandle={reorderMode
                   ? (isPinned
                     ? <Lock size={12} className="auto-pin-icon" title="Auto-pinned: alarm active"/>
@@ -1959,7 +1961,7 @@ function DmChangeView({ devices, selected, onSelect, onRefresh, onOpenDiscovery 
     <div className="dm-layout">
       <div className="dm-list">
         <p className="dm-hint">Select a device to review its details or save an actual configuration change.</p>
-        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} />)}
+        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} />)}
       </div>
       {sel && (
         <div className="dm-detail">
@@ -2241,7 +2243,56 @@ function DmRemoveView({ devices, selected, onSelect, onRefresh }) {
 
 // ── Shared sub-components ──
 
-function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
+// Found (user report): enabling a device required clicking into its name,
+// switching to the "Change" tab, re-selecting it there, THEN toggling --
+// two-plus clicks and a tab switch for something that should be one click
+// from the row itself. onToggled is only passed by callers that make sense
+// for it (DmSeeView/DmChangeView's browsing lists) -- DmRemoveView and
+// MnChangeView (display-config overrides, an unrelated "Change" concept)
+// don't pass it, so the toggle simply doesn't render there, matching their
+// existing behavior unchanged.
+function DmRowEnableToggle({ device, onToggled }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const enabled = device.attributes?.enabled ?? (device.enabled !== false);
+  const lifecycle = deviceLifecycleState(device);
+  const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+
+  const toggle = async (e) => {
+    e.stopPropagation(); // don't also trigger the row's own onClick (select)
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !enabled })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+      onToggled();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <button
+      className="btn-ghost dm-row-enable-toggle"
+      onClick={toggle}
+      disabled={saving}
+      title={error ? `Not saved: ${error}` : (lifecycle === "CANDIDATE"
+        ? "Enabling accepts and assigns this device"
+        : (enabled ? "Disable" : "Enable"))}
+    >
+      {enabled ? <ToggleRight size={18} className="toggle-on"/> : <ToggleLeft size={18} className="toggle-off"/>}
+    </button>
+  );
+}
+
+export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus, onToggled }) {
   const Icon = deviceIcon(device.type);
   const isZ2m = device.deviceId.startsWith("z2m-");
   const override = checkinStatusLabel(device.state, checkinStatus);
@@ -2262,6 +2313,7 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
+      {onToggled && <DmRowEnableToggle device={device} onToggled={onToggled} />}
     </div>
   );
 }
@@ -2412,13 +2464,21 @@ function DmLockActions({ device }) {
 export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
   const [name, setName]       = useState(device.name);
   const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
+  // Room (added 2026-08-18): the grouping dimension wired up on request --
+  // was always readable in groupDevices()'s "room" option, but nothing in
+  // the backend ever set it, so every device showed "Room not assigned"
+  // with no way to change that. Persists durably via PATCH .../config's
+  // new 'room' field (DeviceLifecycleRecord.extraAttributes), not just in
+  // memory -- see DeviceController's own comment.
+  const [room, setRoom]       = useState(device.attributes?.room || "");
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
   const [saveError, setSaveError] = useState(null);
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
   const lifecycle = deviceLifecycleState(device);
   const originalEnabled = device.attributes?.enabled ?? (device.enabled !== false);
-  const changed = name.trim() !== device.name || enabled !== originalEnabled;
+  const originalRoom = device.attributes?.room || "";
+  const changed = name.trim() !== device.name || enabled !== originalEnabled || room.trim() !== originalRoom;
 
   const save = async () => {
     setSaving(true);
@@ -2427,7 +2487,7 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
       const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, enabled })
+        body: JSON.stringify({ name, enabled, room: room.trim() })
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
@@ -2453,6 +2513,10 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
       )}
       <label>Display Name
         <input value={name} onChange={e => { setName(e.target.value); setSaved(false); setSaveError(null); }}/>
+      </label>
+      <label>Room
+        <input value={room} placeholder="e.g. Kitchen, Mechanical Room"
+          onChange={e => { setRoom(e.target.value); setSaved(false); setSaveError(null); }}/>
       </label>
       <label className="dm-toggle-row">
         <span>Enabled</span>
