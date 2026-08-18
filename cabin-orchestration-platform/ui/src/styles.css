@@ -243,6 +243,12 @@ body {
 .candidate-badge.lifecycle-available { border-color:var(--success); color:var(--success); }
 .candidate-badge.lifecycle-deferred { border-color:var(--warning); color:var(--warning); }
 .candidate-badge.lifecycle-ignored { border-color:var(--text-muted); color:var(--text-muted); }
+/* Same outlined-pill shape as .candidate-badge -- a different, informational
+   blue (matching .health-z2m's existing accent) rather than reusing
+   --accent, so it never reads as a lifecycle/status signal. Shows real
+   WorkflowRule membership (see workflowsForDevice), not the cosmetic
+   WORKFLOW_BY_TYPE groupBy bucket. */
+.workflow-badge { border:1px solid #79c0ff; color:#79c0ff; border-radius:999px; padding:2px 7px; font-size:10px; flex-shrink:0; white-space:nowrap; }
 .dm-why-card,.dm-candidate-card { display:flex; flex-direction:column; gap:6px; margin-top:12px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); font-size:12px; }
 .dm-why-card small { color:var(--text-dim); }
 .action-result { margin:8px 0 0; padding:7px 9px; border-radius:7px; font-size:12px; }

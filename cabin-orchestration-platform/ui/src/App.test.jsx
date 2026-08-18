@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -557,6 +557,41 @@ describe("groupDevices", () => {
   });
 });
 
+describe("workflowsForDevice", () => {
+  const leakDetected = { workflowId: "wf-leak", name: "Leak shutoff", location: "cabin", enabled: true,
+    triggerDeviceId: "z2m-leak_mech_room", actions: [{ targetDeviceId: "z2m-main_water_valve" }] };
+  const partyModeAlert = { workflowId: "wf-party", name: "Party mode alert", location: "cabin", enabled: true,
+    triggerDeviceId: "fridge-partymode", actions: [{ targetDeviceId: "notify-nate" }] };
+  const twoStepNotify = { workflowId: "wf-two-step", name: "Two-step notify", location: "cabin", enabled: false,
+    triggerDeviceId: "z2m-door_front_contact",
+    actions: [{ targetDeviceId: "notify-nate" }, { targetDeviceId: "z2m-leak_mech_room" }] };
+  const workflows = [leakDetected, partyModeAlert, twoStepNotify];
+
+  it("matches a device that is the trigger", () => {
+    expect(workflowsForDevice(workflows, "z2m-leak_mech_room").map(w => w.workflowId))
+      .toEqual(["wf-leak", "wf-two-step"]); // also matches as an action target in the second workflow
+  });
+
+  it("matches a device that is only an action target, not the trigger", () => {
+    expect(workflowsForDevice(workflows, "z2m-main_water_valve").map(w => w.workflowId)).toEqual(["wf-leak"]);
+  });
+
+  it("matches a device referenced by more than one action step in the same workflow only once", () => {
+    const selfReferencing = { workflowId: "wf-self", name: "Self", triggerDeviceId: "x",
+      actions: [{ targetDeviceId: "x" }, { targetDeviceId: "x" }] };
+    expect(workflowsForDevice([selfReferencing], "x")).toHaveLength(1);
+  });
+
+  it("returns an empty list for a device in no workflow, not a fallback category", () => {
+    expect(workflowsForDevice(workflows, "z2m-motion_entry")).toEqual([]);
+  });
+
+  it("handles a missing/undefined workflows list without throwing", () => {
+    expect(workflowsForDevice(undefined, "any-device")).toEqual([]);
+    expect(workflowsForDevice(workflows, null)).toEqual([]);
+  });
+});
+
 describe("Device Manager lifecycle visibility", () => {
   const assigned = { deviceId: "assigned", attributes: { deviceLifecycle: "ASSIGNED" } };
   const available = { deviceId: "available", attributes: { deviceLifecycle: "AVAILABLE" } };
@@ -779,6 +814,66 @@ describe("DmDeviceRow inline enable toggle", () => {
     };
     render(<DmDeviceRow device={candidate} onClick={() => {}} onToggled={() => {}} />);
     expect(screen.getByTitle(/enabling accepts and assigns/i)).toBeTruthy();
+  });
+});
+
+describe("DmDeviceRow workflow badge", () => {
+  afterEach(cleanup);
+
+  const device = {
+    deviceId: "z2m-leak_mech_room", name: "Mech room leak sensor", type: "WATER_LEAK_SENSOR",
+    state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED" },
+  };
+  const workflows = [
+    { workflowId: "wf-1", name: "Leak shutoff", triggerDeviceId: "z2m-leak_mech_room", actions: [] },
+    { workflowId: "wf-2", name: "Leak notify", triggerDeviceId: "z2m-leak_mech_room", actions: [] },
+  ];
+
+  it("shows no badge when workflows isn't passed at all (DmRemoveView, MnChangeView)", () => {
+    render(<DmDeviceRow device={device} onClick={() => {}} />);
+    expect(screen.queryByText(/workflow/i)).toBeNull();
+  });
+
+  it("shows no badge when workflows is passed but this device isn't in any", () => {
+    render(<DmDeviceRow device={device} onClick={() => {}} workflows={[]} />);
+    expect(screen.queryByText(/workflow/i)).toBeNull();
+  });
+
+  it("shows a count badge with the workflow names in its title when the device is in one or more workflows", () => {
+    render(<DmDeviceRow device={device} onClick={() => {}} workflows={workflows} />);
+    expect(screen.getByText("2 workflows")).toBeTruthy();
+    expect(screen.getByText("2 workflows").title).toBe("Leak shutoff, Leak notify");
+  });
+
+  it("singular wording for exactly one workflow", () => {
+    render(<DmDeviceRow device={device} onClick={() => {}} workflows={[workflows[0]]} />);
+    expect(screen.getByText("1 workflow")).toBeTruthy();
+  });
+});
+
+describe("WorkflowRulesCard", () => {
+  afterEach(cleanup);
+
+  it("shows an empty state when there are no workflows", () => {
+    render(<WorkflowRulesCard workflows={[]} />);
+    expect(screen.getByText(/no workflows configured yet/i)).toBeTruthy();
+  });
+
+  it("shows each workflow's name, trigger, actions, and active/draft status", () => {
+    render(<WorkflowRulesCard workflows={[
+      { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true,
+        triggerDeviceId: "z2m-leak_mech_room", actions: [{ targetDeviceId: "z2m-main_water_valve" }] },
+      { workflowId: "wf-2", name: "Draft alert", location: "cabin", enabled: false,
+        triggerDeviceId: "z2m-door_front_contact", actions: [] },
+    ]} />);
+
+    expect(screen.getByText("Leak shutoff")).toBeTruthy();
+    expect(screen.getByText(/z2m-leak_mech_room.*z2m-main_water_valve/)).toBeTruthy();
+    expect(screen.getByText(/cabin.*active/)).toBeTruthy();
+
+    expect(screen.getByText("Draft alert")).toBeTruthy();
+    expect(screen.getByText(/no actions/i)).toBeTruthy();
+    expect(screen.getByText(/cabin.*draft/)).toBeTruthy();
   });
 });
 

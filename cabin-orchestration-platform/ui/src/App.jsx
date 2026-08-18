@@ -1476,7 +1476,7 @@ const DM_VIEWS = [
 ];
 
 function DeviceManagerPanel() {
-  const { devices, refreshDevices, activeLocation } = useApp();
+  const { devices, refreshDevices, activeLocation, workflows } = useApp();
   const [view, setView]             = useState("see");
   const [selected, setSelected]     = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
@@ -1633,9 +1633,9 @@ function DeviceManagerPanel() {
         onLifecycleAction={applyLifecycleAction}
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }}
-        onRefresh={refreshManagerDevices} />}
+        onRefresh={refreshManagerDevices} workflows={workflows} />}
       {view === "change" && <DmChangeView devices={locDevices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)))} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
-        onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })} />}
+        onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })} workflows={workflows} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
       {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
       {discoveryTarget && (
@@ -1695,6 +1695,22 @@ export function groupDevices(devices, groupBy) {
   const groups = new Map();
   devices.forEach(d => { const key = keyFor(d); groups.set(key, [...(groups.get(key) || []), d]); });
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
+// Real workflow membership -- deliberately separate from WORKFLOW_BY_TYPE
+// above, which is a cosmetic, single-valued, client-only groupBy bucket
+// derived from device TYPE and never persisted anywhere. This instead asks
+// "which real, persisted WorkflowRule objects (GET /api/rules/workflows)
+// actually reference this device" -- as either the trigger device or the
+// target of any of its ordered actions -- which is the thing a device can
+// genuinely belong to more than one of. A device with zero matches here is
+// in zero workflows, full stop; there's no fallback "Other" bucket the way
+// groupDevices has one, because "not in any workflow" is a real, accurate
+// answer rather than a missing categorization.
+export function workflowsForDevice(workflows, deviceId) {
+  if (!deviceId) return [];
+  return (workflows || []).filter(w =>
+    w.triggerDeviceId === deviceId || (w.actions || []).some(a => a.targetDeviceId === deviceId));
 }
 
 export function filterDeviceManagerDevices(devices, filter = "in_scope") {
@@ -1820,7 +1836,7 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   return { groups, reorderGroup, reorderDevice };
 }
 
-function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh }) {
+function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows }) {
   const { activeLocation } = useApp();
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
@@ -1928,6 +1944,7 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
                 checkinStatus={checkinDetails[d.deviceId]?.status || checkinStatuses[d.deviceId]}
                 onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)}
                 onToggled={onRefresh}
+                workflows={workflows}
                 dragHandle={reorderMode
                   ? (isPinned
                     ? <Lock size={12} className="auto-pin-icon" title="Auto-pinned: alarm active"/>
@@ -1955,13 +1972,13 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
 }
 
 // ── L2/L3: Change ──
-function DmChangeView({ devices, selected, onSelect, onRefresh, onOpenDiscovery }) {
+function DmChangeView({ devices, selected, onSelect, onRefresh, onOpenDiscovery, workflows }) {
   const sel = selected ? devices.find(d => d.deviceId === selected) : null;
   return (
     <div className="dm-layout">
       <div className="dm-list">
         <p className="dm-hint">Select a device to review its details or save an actual configuration change.</p>
-        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} />)}
+        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} workflows={workflows} />)}
       </div>
       {sel && (
         <div className="dm-detail">
@@ -2292,11 +2309,14 @@ function DmRowEnableToggle({ device, onToggled }) {
   );
 }
 
-export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus, onToggled }) {
+export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus, onToggled, workflows }) {
   const Icon = deviceIcon(device.type);
   const isZ2m = device.deviceId.startsWith("z2m-");
   const override = checkinStatusLabel(device.state, checkinStatus);
   const lifecycle = deviceLifecycleState(device);
+  // workflows is undefined for callers that don't fetch it (DmRemoveView,
+  // MnChangeView) -- same opt-in shape as onToggled/DmRowEnableToggle above.
+  const deviceWorkflows = workflows ? workflowsForDevice(workflows, device.deviceId) : [];
   return (
     <div className={`dm-device-row ${selected ? "dm-row-selected" : ""}`} onClick={onClick}>
       {dragHandle}
@@ -2308,6 +2328,11 @@ export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStat
       {lifecycle !== "ASSIGNED" && (
         <span className={`candidate-badge lifecycle-${lifecycle.toLowerCase()}`}>
           {LIFECYCLE_LABELS[lifecycle] || lifecycle}
+        </span>
+      )}
+      {deviceWorkflows.length > 0 && (
+        <span className="workflow-badge" title={deviceWorkflows.map(w => w.name).join(", ")}>
+          {deviceWorkflows.length} workflow{deviceWorkflows.length === 1 ? "" : "s"}
         </span>
       )}
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
@@ -3300,7 +3325,7 @@ function LocationRulesSection({ locCfg }) {
 }
 
 export function RulesPanel() { // exported for src/App.test.jsx's location-split test
-  const { activeLocation } = useApp();
+  const { activeLocation, workflows } = useApp();
   const locationIds = Object.keys(LOCATIONS);
   const locs = activeLocation === "both"
     ? locationIds.map(id => LOCATIONS[id])
@@ -3320,6 +3345,7 @@ export function RulesPanel() { // exported for src/App.test.jsx's location-split
         </div>
         <div className="rules-sidebar">
           <KafkaStatus location={activeLocation} />
+          <WorkflowRulesCard workflows={workflows} />
           <BuiltinRules location={activeLocation} />
         </div>
       </div>
@@ -3457,6 +3483,42 @@ function KafkaStatus({ location }) {
         ))}
       </div>
       <p className="config-hint">Node-RED consumes {prefix}.events.raw. Broker: localhost:9092.</p>
+    </div>
+  );
+}
+
+// The real, persisted trigger->action rules engine (WorkflowRuleService,
+// GET /api/rules/workflows) had zero frontend surface anywhere before this
+// -- BuiltinRules below shows AutomationRuleService's older, separate,
+// hardcoded-in-Java rule catalog, not this one. Read-only for now: creating
+// and editing a workflow (trigger/action selection, device targets) is a
+// real form-design task of its own, tracked separately -- this card's job
+// is making what already exists in Postgres visible at all, since right
+// now the only way to see a workflow's real shape is querying the API
+// directly. See workflowsForDevice for how a device row's own badge
+// (DmDeviceRow) cross-references this same data.
+export function WorkflowRulesCard({ workflows = [] }) {
+  return (
+    <div className="sidebar-card">
+      <strong>Workflows</strong>
+      <p className="config-hint">Real, persisted trigger → action rules (separate from the rules below and from Node-RED). Read only here for now.</p>
+      {workflows.length === 0 && <p className="config-hint">No workflows configured yet.</p>}
+      {workflows.map(w => (
+        <div key={w.workflowId} className="rule-row">
+          <span className={`rule-dot ${w.enabled ? "rule-defined" : "rule-inactive"}`}>●</span>
+          <div>
+            <div className="rule-name">{w.name}</div>
+            <div className="rule-detail">
+              {w.triggerDeviceId || w.triggerDefinitionId || "any trigger"}
+              {" → "}
+              {(w.actions || []).length > 0
+                ? w.actions.map(a => a.targetDeviceId || a.actionDefinitionId).join(", ")
+                : "no actions"}
+            </div>
+            <div className="rule-source">{w.location} · {w.enabled ? "active" : "draft"}</div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -3903,6 +3965,7 @@ function App() {
   });
   const [activeLocation, setActiveLocation] = useState("cabin");
   const [devices,        setDevices]        = useState([]);
+  const [workflows,      setWorkflows]      = useState([]);
   const [config,         setConfig]         = useState({});
   const [connected,      setConnected]      = useState(false);
   const [apiError,       setApiError]       = useState(null); // { message, at } | null -- see refreshDevices
@@ -3980,6 +4043,30 @@ function App() {
     return () => clearInterval(t);
   }, [refreshDevices, locationCfg]);
 
+  // Real WorkflowRule membership (see workflowsForDevice) -- same
+  // per-location fetch shape as refreshDevices above, just a slower
+  // refresh interval since workflows change far less often than device
+  // state. GET /api/rules/workflows is unauthenticated/read-only (see
+  // RulesController's own doc comment), so this needs no auth token.
+  const refreshWorkflows = useCallback(() => {
+    const attempts = [];
+    if (activeLocation === "cabin" || activeLocation === "both") {
+      attempts.push(fetch(`${LOCATIONS.cabin.apiBase}/api/rules/workflows`)
+        .then(r => r.ok ? r.json() : []).catch(() => []));
+    }
+    if (activeLocation === "home" || activeLocation === "both") {
+      attempts.push(fetch(`${LOCATIONS.home.apiBase}/api/rules/workflows`)
+        .then(r => r.ok ? r.json() : []).catch(() => []));
+    }
+    Promise.all(attempts).then(results => setWorkflows(results.flat()));
+  }, [activeLocation]);
+
+  useEffect(() => {
+    refreshWorkflows();
+    const t = setInterval(refreshWorkflows, 30000);
+    return () => clearInterval(t);
+  }, [refreshWorkflows]);
+
   const locationLabel = activeLocation === "both"
     ? "Cabin + Home"
     : (LOCATIONS[activeLocation]?.label || "Hub");
@@ -3987,6 +4074,7 @@ function App() {
   return (
     <AppContext.Provider value={{
       devices, config, refreshDevices,
+      workflows, refreshWorkflows,
       activeLocation, locationCfg,
       activeAlerts, activeAlertLocations, activeAlertUnavailableLocations, activeAlertsGeneratedAt,
       activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
