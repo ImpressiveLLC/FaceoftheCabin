@@ -28,6 +28,14 @@ import java.util.stream.Collectors;
 public class JdbcDeviceLifecycleStore implements DeviceLifecycleStore {
 
     private static final Logger log = LoggerFactory.getLogger(JdbcDeviceLifecycleStore.class);
+
+    // The fixed set of keys toJson() always writes -- everything else found
+    // in a row's config JSONB on load is a DeviceLifecycleRecord.extraAttributes
+    // entry (room, and any future durable per-device setting riding the same
+    // slot). Kept as one named set so the write and read sides can't drift.
+    private static final Set<String> RESERVED_CONFIG_KEYS = Set.of(
+        "connectionString", "enabled", "location", "lifecycleState", "configurationAsserted");
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
 
@@ -72,8 +80,15 @@ public class JdbcDeviceLifecycleStore implements DeviceLifecycleStore {
                         text(config, "location", "cabin"));
                     DeviceLifecycleState lifecycle = DeviceLifecycleState.valueOf(
                         config.path("lifecycleState").asText());
+                    Map<String, Object> extraAttributes = new LinkedHashMap<>();
+                    config.fields().forEachRemaining(field -> {
+                        if (!RESERVED_CONFIG_KEYS.contains(field.getKey())) {
+                            extraAttributes.put(field.getKey(), mapper.convertValue(field.getValue(), Object.class));
+                        }
+                    });
                     records.put(deviceId, new DeviceLifecycleRecord(
-                        descriptor, lifecycle, config.path("configurationAsserted").asBoolean(false)));
+                        descriptor, lifecycle, config.path("configurationAsserted").asBoolean(false),
+                        extraAttributes));
                 } catch (Exception parsingFailure) {
                     // A malformed or future-version row must not prevent every
                     // other persisted device from being restored.
@@ -116,6 +131,17 @@ public class JdbcDeviceLifecycleStore implements DeviceLifecycleStore {
         config.put("location", record.descriptor().location());
         config.put("lifecycleState", record.lifecycleState().name());
         config.put("configurationAsserted", record.configurationAsserted());
+        // Only the keys THIS save actually touches -- an ordinary
+        // name/enabled-only save() (extraAttributes == Map.of()) adds
+        // nothing here, and the UPDATE below's `||` JSONB merge leaves
+        // whatever was already persisted (e.g. a previously-set room)
+        // untouched rather than wiping it.
+        record.extraAttributes().forEach((key, value) -> {
+            if (RESERVED_CONFIG_KEYS.contains(key)) {
+                throw new IllegalArgumentException("extraAttributes key '" + key + "' collides with a reserved config key");
+            }
+            config.put(key, value);
+        });
         try {
             return mapper.writeValueAsString(config);
         } catch (Exception e) {

@@ -143,7 +143,7 @@ public class DeviceRegistry {
                 if (record.configurationAsserted()) configurationAsserted.add(deviceId);
                 else configurationAsserted.remove(deviceId);
                 statuses.put(deviceId, statusWithLifecycle(
-                    descriptor, statuses.get(deviceId), record.lifecycleState()));
+                    descriptor, statuses.get(deviceId), record.lifecycleState(), record.extraAttributes()));
             }
         });
     }
@@ -279,6 +279,22 @@ public class DeviceRegistry {
      * scope as AVAILABLE without assigning or enabling it yet.
      */
     public ConfigurationSaveResult saveConfiguration(String deviceId, String name, boolean enabled) {
+        return saveConfiguration(deviceId, name, enabled, Map.of());
+    }
+
+    /**
+     * extraAttributes (added 2026-08-18, UX rework's room field) rides the
+     * same DeviceLifecycleRecord slot saveConfiguration already persists
+     * name/enabled through -- see DeviceLifecycleRecord's own comment for
+     * why this wasn't added as a real DeviceDescriptor field instead.
+     * Always treated as a real change when non-empty: unlike name/enabled,
+     * the registry has no cheap prior value to diff extraAttributes
+     * against here (it's not part of `existing`, a DeviceDescriptor), so
+     * a caller explicitly passing extraAttributes is trusted to mean "save
+     * this" rather than optimized away as a possible no-op.
+     */
+    public ConfigurationSaveResult saveConfiguration(String deviceId, String name, boolean enabled,
+                                                       Map<String, Object> extraAttributes) {
         synchronized (lockFor(deviceId)) {
             DeviceDescriptor existing = descriptors.get(deviceId);
             if (existing == null) throw new NoSuchElementException("Device not found: " + deviceId);
@@ -288,7 +304,8 @@ public class DeviceRegistry {
             }
             String nextName = name == null ? existing.name() : name.trim();
             if (nextName.isBlank()) throw new IllegalArgumentException("Device name cannot be blank");
-            boolean changed = !Objects.equals(existing.name(), nextName) || existing.enabled() != enabled;
+            boolean changed = !Objects.equals(existing.name(), nextName) || existing.enabled() != enabled
+                || !extraAttributes.isEmpty();
             if (!changed) return new ConfigurationSaveResult(false, current, existing);
 
             DeviceDescriptor updated = new DeviceDescriptor(
@@ -297,7 +314,7 @@ public class DeviceRegistry {
             DeviceLifecycleState target = current == DeviceLifecycleState.AVAILABLE
                 || (current == DeviceLifecycleState.CANDIDATE && !existing.enabled() && enabled)
                 ? DeviceLifecycleState.ASSIGNED : current;
-            DeviceLifecycleRecord record = new DeviceLifecycleRecord(updated, target, true);
+            DeviceLifecycleRecord record = new DeviceLifecycleRecord(updated, target, true, extraAttributes);
             lifecycleStore.save(record);
             applyPersistedRecord(record);
             return new ConfigurationSaveResult(true, target, updated);
@@ -398,7 +415,7 @@ public class DeviceRegistry {
         if (record.configurationAsserted()) configurationAsserted.add(descriptor.deviceId());
         else configurationAsserted.remove(descriptor.deviceId());
         statuses.put(descriptor.deviceId(), statusWithLifecycle(
-            descriptor, statuses.get(descriptor.deviceId()), record.lifecycleState()));
+            descriptor, statuses.get(descriptor.deviceId()), record.lifecycleState(), record.extraAttributes()));
     }
 
     public Optional<DeviceDescriptor> descriptorByConnection(String adapter, String connection, String location) {
@@ -523,11 +540,27 @@ public class DeviceRegistry {
     private DeviceStatus statusWithLifecycle(DeviceDescriptor descriptor,
                                              DeviceStatus existing,
                                              DeviceLifecycleState lifecycle) {
+        return statusWithLifecycle(descriptor, existing, lifecycle, Map.of());
+    }
+
+    /**
+     * extraAttributes (added 2026-08-18) layers DeviceLifecycleRecord's
+     * durable per-device facts (room, and any future one riding the same
+     * slot) onto the live runtime status -- called from both
+     * restorePersistedDevices() (so a set room survives a restart) and
+     * applyPersistedRecord() (so it's visible immediately on save, not
+     * just after the next restart).
+     */
+    private DeviceStatus statusWithLifecycle(DeviceDescriptor descriptor,
+                                             DeviceStatus existing,
+                                             DeviceLifecycleState lifecycle,
+                                             Map<String, Object> extraAttributes) {
         Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
         if (lifecycle != DeviceLifecycleState.CANDIDATE) attrs.remove("discoverySuggested");
         putLifecycleAttributes(attrs, lifecycle, descriptor.enabled());
         attrs.put("source", descriptor.protocolAdapter());
         attrs.put("capabilities", descriptor.capabilities().stream().map(Enum::name).sorted().toList());
+        attrs.putAll(extraAttributes);
         return new DeviceStatus(
             descriptor.deviceId(), descriptor.type(), descriptor.name(),
             existing == null ? "UNKNOWN" : existing.state(),
