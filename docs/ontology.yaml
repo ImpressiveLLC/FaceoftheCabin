@@ -5267,7 +5267,7 @@ elements:
     entity_type: owl:DatatypeProperty
     layer: frontend
     primitive: true
-    schema_version: "0.4.0"
+    schema_version: "0.4.1"
     migration_status: complete
     lifecycle_status: used
     first_used:
@@ -5284,11 +5284,11 @@ elements:
     data_class: raw
     data_type: xsd:string
     constraint:
-      enum: "deepspace | modern | lcars | monolith | retrocrt | bluefin | madscience | neon80s | pacman"
+      enum: "deepspace | modern | lcars | monolith | retrocrt | bluefin | madscience | neon80s | pacman | asteroidcity"
     ui_display_name: "Theme"
     source: localStorage["cabin-theme"]
     rendering:
-      semantic: "e.g. \"80s Neon\" or \"Pac-Man\""
+      semantic: "e.g. \"80s Neon\", \"Pac-Man\", or \"Asteroid City\""
       systems: Display Theme Selection
       technical: "THEME_KEY; THEMES[id] → { vars: {CSS custom properties}, fonts: [] }"
       compliance: (not shown)
@@ -5308,7 +5308,7 @@ elements:
       ui_components: [settings_panel]
       elements: []
     notes: >
-      8 presets as of 2026-07-31, added incrementally across sessions:
+      9 presets as of 2026-08-07, added incrementally across sessions:
       deepspace (default), modern, lcars, monolith, retrocrt, bluefin,
       madscience, neon80s ("80s Neon" — magenta/cyan/yellow, Monoton +
       Orbitron, sharp 2px radius), pacman ("Pac-Man" — black/yellow/blue/red,
@@ -5346,6 +5346,13 @@ elements:
       duplication itself. See
       `docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md` §2c/2d for
       the still-open shared-source work.
+      ADDED 2026-08-18: asteroidcity ("Asteroid City" — turquoise sky,
+      bleached-sand surfaces, terracotta controls, yellow signage, charcoal
+      outlines, rectilinear geometry, Impact/Georgia typography) brings both
+      catalogs to 10 presets. The shared control CSS in both apps now derives
+      dropdowns, banners, header actions, Close controls, and other buttons
+      from each preset's semantic palette instead of fixed Modern-theme colors.
+
 
   - id: family_hub_access_log
     entity_type: owl:Class

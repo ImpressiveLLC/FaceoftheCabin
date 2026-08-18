@@ -1342,3 +1342,254 @@ body {
 }
 .btn-ghost-sm  { font-size: 11px; padding: 2px 7px; }
 .btn-ghost-xs  { font-size: 10px; padding: 1px 5px; align-self: flex-start; }
+/* ─── Theme-aware interactive controls ──────────────────────────────────────
+   Keep this final layer after component rules: several older selectors used
+   literal Modern-theme colors, so changing a preset never reached header
+   actions, dropdowns, banners, or secondary buttons. These semantic tokens
+   derive from every active theme's core palette. */
+:root {
+  --control-surface:       var(--bg-secondary);
+  --control-surface-hover: var(--bg-tertiary);
+  --control-border:        var(--border-focus);
+  --control-text:          var(--text);
+}
+
+button, select, input, textarea { font-family: var(--font-display); }
+.platform-name { color: var(--text); }
+.toolbar-right { color: var(--text-muted); }
+.main-toolbar { border-bottom: 2px solid var(--border); }
+
+.nav-item { border: 2px solid transparent; }
+.nav-active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-secondary)) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: 2px solid var(--accent);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.btn-secondary {
+  background: var(--control-surface);
+  color: var(--control-text);
+  border: 2px solid var(--control-border);
+}
+.btn-secondary:hover { background: var(--control-surface-hover); }
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--control-border) 58%, transparent);
+}
+.btn-ghost:hover {
+  color: var(--text);
+  background: var(--control-surface-hover);
+  border-color: var(--control-border);
+}
+.btn-danger {
+  background: color-mix(in srgb, var(--danger) 16%, var(--bg-secondary));
+  color: var(--danger);
+  border: 2px solid var(--danger);
+}
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 28%, var(--bg-secondary));
+}
+.btn-ghost-active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+button:focus-visible,
+a.btn-primary:focus-visible,
+a.btn-secondary:focus-visible,
+a.btn-ghost:focus-visible {
+  outline: 3px solid var(--control-border);
+  outline-offset: 2px;
+}
+
+select:not(.presence-select),
+.modal select,
+.dm-edit-form select {
+  appearance: auto;
+  min-height: 32px;
+  background: var(--control-surface);
+  color: var(--control-text);
+  border: 2px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 28px 5px 9px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--control-border) 22%, transparent);
+}
+select:not(.presence-select):hover,
+.modal select:hover,
+.dm-edit-form select:hover {
+  background: var(--control-surface-hover);
+  border-color: var(--accent-hover);
+}
+select:not(.presence-select):focus-visible,
+.modal select:focus-visible,
+.dm-edit-form select:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--control-border) 38%, transparent);
+  outline-offset: 2px;
+  border-color: var(--control-border);
+}
+select option { background: var(--bg-secondary); color: var(--text); }
+
+.presence-toggle {
+  background: var(--control-surface);
+  border: 2px solid var(--control-border);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--control-border) 22%, transparent);
+}
+.presence-toggle:focus-within {
+  outline: 3px solid color-mix(in srgb, var(--control-border) 38%, transparent);
+  outline-offset: 2px;
+}
+.presence-select { color: var(--control-text); }
+
+.location-switcher {
+  background: var(--control-surface);
+  border: 2px solid var(--control-border);
+}
+.loc-btn {
+  color: var(--text-muted);
+  border: 1px solid transparent;
+}
+.loc-btn:hover { background: var(--control-surface-hover); color: var(--text); }
+.loc-active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--control-surface)) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+.dm-l1-nav { border-bottom-color: var(--border); }
+.dm-l1-btn {
+  background: var(--control-surface);
+  border: 2px solid var(--border);
+  color: var(--text-muted);
+}
+.dm-l1-btn:hover {
+  background: var(--control-surface-hover);
+  color: var(--text);
+  border-color: var(--control-border);
+}
+.dm-l1-active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--control-surface)) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+.theme-dropdown {
+  background: var(--control-surface);
+  border: 2px solid var(--control-border);
+}
+.theme-option {
+  color: var(--text-muted);
+  border: 1px solid transparent;
+}
+.theme-option:hover {
+  background: var(--control-surface-hover);
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--control-border) 60%, transparent);
+}
+.theme-option-active {
+  color: var(--text) !important;
+  background: color-mix(in srgb, var(--accent) 14%, var(--control-surface-hover));
+  border-color: var(--accent);
+}
+
+.opportunity-see-more { color: var(--accent); }
+.dm-add-option {
+  background: var(--control-surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+.dm-add-option:hover {
+  border-color: var(--control-border);
+  background: var(--control-surface-hover);
+}
+
+.discovery-suggested-banner,
+.automation-alert-card,
+.alert-ctrl {
+  border-width: 2px;
+}
+.discovery-suggested-banner {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary));
+}
+.alert-ctrl-ok {
+  background: color-mix(in srgb, var(--success) 12%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--success) 58%, var(--border));
+}
+.alert-ctrl-warn {
+  background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--warning) 58%, var(--border));
+}
+.alert-ctrl-critical {
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--danger) 58%, var(--border));
+}
+.active-conditions,
+.active-conditions-header,
+.location-section-header,
+.event-log-header,
+.automation-alert-header {
+  border-color: var(--border);
+}
+
+/* Asteroid City: rectilinear postcard geometry, hard shadows, geometric
+   signage headings, and the supplied turquoise / terracotta / sand palette. */
+[data-theme="asteroidcity"] body {
+  background: var(--bg);
+  background-image: none;
+}
+[data-theme="asteroidcity"] :is(
+  .platform-name,
+  .panel-header-bar h2,
+  .location-section-header,
+  .dm-device-group > header,
+  button
+) {
+  font-family: Impact, "Arial Black", "Futura-CondensedExtraBold", sans-serif;
+  letter-spacing: 0.035em;
+}
+[data-theme="asteroidcity"] .platform-name {
+  color: var(--accent);
+  -webkit-text-stroke: 1px var(--border);
+  text-shadow: 2px 2px 0 var(--border);
+  text-transform: uppercase;
+}
+[data-theme="asteroidcity"] :is(
+  .kpi-tile,
+  .device-card,
+  .dm-device-group,
+  .dm-detail,
+  .family-hub-card,
+  .automation-alert-card,
+  .modal
+) {
+  border-width: 3px;
+  box-shadow: 6px 6px 0 var(--border);
+}
+[data-theme="asteroidcity"] :is(
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-danger,
+  select,
+  .presence-toggle,
+  .location-switcher,
+  .dm-l1-btn,
+  .theme-dropdown,
+  .theme-option
+) {
+  border-radius: 2px;
+}
+[data-theme="asteroidcity"] .btn-primary:hover {
+  color: var(--border);
+}
