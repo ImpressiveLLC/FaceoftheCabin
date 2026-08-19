@@ -4000,10 +4000,15 @@ function SecurityBadge() {
 // ─── Navigation Rail ───────────────────────────────────────────────────────
 function NavRail({ active, onSelect, alertLevels }) {
   const alerts = alertLevels;
+  // Asteroid City loads a second, purpose-recolored crest file (2026-08-19
+  // approval) -- an <img> can't be recolored via the host page's CSS, and
+  // every other theme keeps loading the original file untouched.
+  const { themeId } = useTheme();
+  const crestSrc = themeId === "asteroidcity" ? "/hodgson-crest-asteroidcity.svg" : "/hodgson-crest.svg";
 
   return (
     <nav className="nav-rail">
-      <img className="nav-logo" src="/hodgson-crest.svg" alt="" />
+      <img className="nav-logo" src={crestSrc} alt="" />
       {PANELS.map(p => {
         const level = alerts[p.id];
         const isCritical = level === "critical";

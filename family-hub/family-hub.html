@@ -1602,17 +1602,44 @@
         linear-gradient(to bottom, rgba(249,245,235,.82), rgba(60,169,196,.24) 34%, rgba(60,169,196,.24) 64%, rgba(249,245,235,.82)),
         linear-gradient(to right, rgba(249,245,235,.72), transparent 32%, transparent 68%, rgba(249,245,235,.72));
     }
+    /* Three-tier typography (2026-08-19 approval). `button` intentionally
+       excluded here -- it falls through to the generic
+       `button{font-family:var(--font-ui)}` rule, i.e. IBM Plex Mono under
+       this theme, matching "ordinary UI text" in the approved spec. */
     [data-theme="asteroidcity"] :is(
       #clock,
       #dash-title,
       .settings-title,
       #note-history-title,
       .np-title,
-      .card-label,
-      button
+      .dash-card-title,
+      .rule-title,
+      .profiles-section-title,
+      .chore-day-title,
+      .sched-num
     ) {
-      font-family:Impact, "Arial Black", "Futura-CondensedExtraBold", sans-serif;
-      letter-spacing:.045em;
+      font-family:var(--font-display);
+      letter-spacing:.04em;
+    }
+    [data-theme="asteroidcity"] :is(
+      .d-tab,
+      .card-label,
+      .sched-weekday,
+      .sched-status,
+      .sched-day-label,
+      .sched-day-owner,
+      .custody-status-label,
+      .chore-day-name,
+      .s-section-title,
+      .crb-label
+    ) {
+      font-family:var(--font-subhead);
+      letter-spacing:.03em;
+    }
+    /* Recolored crest (see applyTheme()'s crest-src swap) gets its own
+       "spruce shadow" glow instead of the default gold one. */
+    [data-theme="asteroidcity"] :is(.auth-crest, #brand-crest, .title-crest) {
+      filter:drop-shadow(0 3px 6px var(--logo-shadow));
     }
     [data-theme="asteroidcity"] #clock {
       color:var(--gold);
@@ -1649,37 +1676,55 @@
       color:var(--cream);
     }
 
-    /* Found (user report, with screenshot): every card/UI-box "secondary"
-       accent below is a hardcoded rgba(75,200,200,...) teal-blue, entirely
-       outside the theme variable system -- fine against every other
-       theme's background, but nearly indistinguishable from Asteroid
-       City's own turquoise --night, so HOME days, active day chips, the
-       custody-card icon, and the completed-chore glow all visually
-       merged into the page background instead of standing out.
-       Reworked 2026-08-19 (second user report, with screenshot: the
-       first pass's khaki was still too low-opacity/subtle over a
-       saturated turquoise background to actually read as its own color)
-       -- now built on Cactus Green at real, opaque-enough strength to
-       stand apart from the page background, and reuses --teal directly
-       so "HOME"/"Dad's" reads as the same one color everywhere in this
-       view (the legend dot included) instead of two different greens
-       that happen to look similar. Scoped override, not a base-rule
-       change, so every other theme keeps its own original teal untouched. */
+    /* Dad/Mom/Today now use the permanent custody tokens (2026-08-19
+       approval) instead of a translucent wash of --teal/--gold over the
+       page gradient -- opaque pastel surfaces read as their own card
+       regardless of what's behind them, which a translucent overlay
+       (tried in two earlier passes) could never fully guarantee. Ink text
+       uses --custody-dad (spruce) on BOTH surfaces rather than
+       --custody-mom directly: measured against --custody-mom-surface,
+       --custody-mom itself is ~2:1 contrast (fails WCAG AA even at
+       large-text size), while spruce reads clearly on both pastels. The
+       Dad/Mom distinction still comes through via background tint, border
+       color, and the literal HOME/AWAY text -- not text color alone.
+       Scoped override, not a base-rule change, so every other theme keeps
+       its own original teal/gold-derived styling untouched. */
     [data-theme="asteroidcity"] .sched-day.home {
-      background:rgba(96,140,74,.38); border-color:rgba(96,140,74,.75);
+      background:var(--custody-dad-surface); border:2px solid var(--custody-dad-border);
     }
-    [data-theme="asteroidcity"] .sched-day.home .sched-status { color:#33471f; }
+    [data-theme="asteroidcity"] .sched-day.away {
+      background:var(--custody-mom-surface); border:2px solid var(--custody-mom-border);
+    }
+    [data-theme="asteroidcity"] .sched-day.home :is(.sched-weekday, .sched-num, .sched-status),
+    [data-theme="asteroidcity"] .sched-day.away :is(.sched-weekday, .sched-num, .sched-status) {
+      color:var(--custody-dad);
+    }
+    [data-theme="asteroidcity"] .sched-day.today {
+      box-shadow:0 0 0 3px var(--custody-today), 0 6px 14px var(--custody-today-shadow);
+    }
     [data-theme="asteroidcity"] .kid-sel-btn.active { border-color:rgba(96,140,74,.7); }
     [data-theme="asteroidcity"] .chore-full-row.done .chore-full-cb {
       box-shadow:0 0 10px rgba(96,140,74,.55);
     }
     [data-theme="asteroidcity"] .sched-day-chip.active {
-      border-color:rgba(96,140,74,.7); background:rgba(96,140,74,.22);
+      border-color:var(--custody-dad-border); background:var(--custody-dad-surface);
     }
     [data-theme="asteroidcity"] .sched-day-chip.active .sched-day-label,
-    [data-theme="asteroidcity"] .sched-day-chip.active .sched-day-owner { color:#33471f; }
+    [data-theme="asteroidcity"] .sched-day-chip.active .sched-day-owner { color:var(--custody-dad); }
     [data-theme="asteroidcity"] #custody-card .card-label-icon.home-icon {
-      background:rgba(96,140,74,.38);
+      background:var(--custody-dad-surface);
+    }
+    [data-theme="asteroidcity"] #custody-card.home .custody-status-label { color:var(--custody-dad); }
+    [data-theme="asteroidcity"] #custody-card.away .custody-status-label { color:var(--custody-mom); }
+    [data-theme="asteroidcity"] .upcoming-holiday-card.dad { border-color:var(--custody-dad-border); }
+    [data-theme="asteroidcity"] .upcoming-holiday-card.mom { border-color:var(--custody-mom-border); }
+    /* "Attention-oriented panel edges" (sparing Navajo Red use). */
+    [data-theme="asteroidcity"] .cabin-activity-warning { border-color:var(--custody-today); }
+    /* "Secondary header accent bar" + focus rings on the controls that
+       hardcode --gold-glow instead of going through --control-outline. */
+    [data-theme="asteroidcity"] #dash-tabs { border-bottom-color:var(--custody-today); border-bottom-width:3px; }
+    [data-theme="asteroidcity"] :is(select, .s-field select, #chore-manage-body select, #chore-tracker-body select, .upcoming-holidays-controls select):focus-visible {
+      outline-color:var(--custody-today);
     }
 
     /* Found 2026-08-19 (second user report, with a screenshot of the
@@ -1722,17 +1767,56 @@
       );
     }
 
-    /* "be sure we're matching the Asteroid City header font and colors
-       too (h1 and h2 would be great for the navajo red)" -- #dash-title
-       is this app's real h1 (the one large title on the dashboard
-       overlay); it already used --font-display but was still --cream
-       (dark charcoal text color), not the accent. The h2-equivalent
-       section titles (.dash-card-title/.rule-title/.profiles-section-
-       title) already used --gold, just not the display font -- added
-       here for full title-card consistency, not changing their color. */
-    [data-theme="asteroidcity"] #dash-title { color:var(--gold); }
-    [data-theme="asteroidcity"] :is(.dash-card-title, .rule-title, .profiles-section-title, .chore-day-title) {
-      font-family:var(--font-display); letter-spacing:.04em;
+    /* h1 stays the primary blazing-orange accent; the display/subhead font
+       tiers for this and the h2-equivalent section titles are handled by
+       the consolidated typography rule above. A soft Navajo Red shadow
+       under the title text stands in for a "small title-underline"
+       without touching #dash-title's layout/display. */
+    [data-theme="asteroidcity"] #dash-title {
+      color:var(--gold);
+      text-shadow:0 2px 0 var(--custody-today-shadow);
+    }
+    /* "Use teal for active navigation" -- the base .d-tab.active rule is
+       gold-derived (the app's default primary-action color); overridden
+       here so the active tab reads as calm/informational teal instead. */
+    [data-theme="asteroidcity"] .d-tab.active {
+      background:var(--teal-glow); color:var(--teal); border-bottom-color:var(--teal);
+    }
+    [data-theme="asteroidcity"] .d-tab:hover { border-color:var(--teal); }
+
+    /* "Replace large blue/cyan fields with warm sand, parchment, or cream
+       surfaces" across all five tabs. These classes all share the same
+       near-invisible rgba(255,255,255,.03-.06) wash the base theme uses
+       for "a subtle highlight over dark" -- correct there, but over this
+       theme's sand/teal backdrop it either shows the backdrop straight
+       through or barely lightens it, so nested rows in Chores/Rewards/
+       Family/Overview read as the same surface as their container. Given
+       an opaque warm parchment fill instead (the same rgba(249,245,235,…)
+       cream already used for the poster-gradient overlay above), so each
+       row reads as its own card the way .dash-card and the schedule tiles
+       already do. */
+    [data-theme="asteroidcity"] :is(
+      .location-link,
+      .cabin-activity-row,
+      .chore-day-block,
+      .chore-full-row,
+      .reward-tile,
+      .reward-rule-card,
+      .kid-reward-row,
+      .profile-card,
+      .profiles-form-col,
+      .avatar-search,
+      .theme-pill,
+      .upcoming-holiday-card,
+      .np-author-pill,
+      #chore-manage-body select,
+      #chore-tracker-body select
+    ) {
+      background:rgba(249,245,235,.9);
+      border-color:rgba(63,113,102,.4);
+    }
+    [data-theme="asteroidcity"] :is(.chore-full-row:hover, .location-link-disabled:hover) {
+      background:rgba(249,245,235,.72);
     }
 
   </style>
@@ -1907,8 +1991,8 @@
       </p>
       <div class="schedule-grid" id="schedule-grid"></div>
       <div class="schedule-legend">
-        <span><span class="legend-dot" style="background:var(--teal);"></span>Kids at Dad's</span>
-        <span><span class="legend-dot" style="background:rgba(255,255,255,.2);"></span>Kids at Mom's</span>
+        <span><span class="legend-dot" style="background:var(--custody-dad, var(--teal));"></span>Kids at Dad's</span>
+        <span><span class="legend-dot" style="background:var(--custody-mom, rgba(255,255,255,.2));"></span>Kids at Mom's</span>
         <!-- Found (user report, with screenshot): this was the only one of the
              three legend dots with an added outline -- outline doesn't affect
              CSS layout width, but it does make this dot visually read as
@@ -1916,7 +2000,7 @@
              unaligned even though all three are the same 10x10 .legend-dot.
              The gold fill alone already distinguishes "Today" from the other
              two colors; dropping the outline makes it match their size. -->
-        <span><span class="legend-dot" style="background:var(--gold);"></span>Today</span>
+        <span><span class="legend-dot" style="background:var(--custody-today, var(--gold));"></span>Today</span>
       </div>
       <div id="custody-counter" style="font-size:11px;color:var(--cream-dim);margin-top:10px"></div>
     </div>
@@ -5507,9 +5591,43 @@ const THEMES = {
       '--teal':'#608c4a', '--teal-glow':'rgba(96,140,74,0.22)',
       '--rose':'#ad7154', '--rose-glow':'rgba(173,113,84,0.20)',
       '--cream':'#1f3438', '--cream-dim':'rgba(31,52,56,0.72)', '--cream-ghost':'rgba(31,52,56,0.42)',
-      '--radius':'2px', '--font-display':"'Impact','Arial Black','Futura-CondensedExtraBold',sans-serif", '--font-ui':"'Georgia','Times New Roman',serif",
+      '--radius':'2px',
+      // Three-tier typography, approved 2026-08-19: Roboto Slab for display
+      // (H1/H2, major titles, prominent numbers), Futura for nav/section/
+      // card-label mid-tier headings (no licensed Futura asset ships with
+      // this app -- Montserrat is the loaded web-safe fallback, see `fonts`
+      // below), IBM Plex Mono for everything else.
+      '--font-display':'"Roboto Slab", Rockwell, Georgia, serif',
+      '--font-subhead':'Futura, "Futura PT", Montserrat, "Avenir Next", Arial, sans-serif',
+      '--font-ui':'"IBM Plex Mono", "Courier New", monospace',
+      // Keyboard focus rings use Navajo Red (--custody-today below), not the
+      // primary blazing-orange accent -- see the sparing-use list in the
+      // 2026-08-19 approval. Other themes are untouched: this key only
+      // exists in this theme's own vars object, so the plain :root fallback
+      // (var(--gold)) still governs everywhere else.
+      '--control-outline':'var(--custody-today)',
+      // Approved reference-palette tokens (2026-08-19). Not everything below
+      // is consumed by name yet -- kept 1:1 with the approved spec so a
+      // future rule can reference the exact approved hex directly instead
+      // of re-deriving it.
+      '--ac-bg-sky':'#009ca6', '--ac-bg-sand':'#dcb881', '--ac-bg-mint':'#4bb5a4',
+      '--ac-accent-orange':'#e34e24', '--ac-accent-rust':'#ad7154', '--ac-accent-terracotta':'#c98f5c',
+      '--ac-accent-navajo-red':'#a63d32',
+      '--ac-green-cactus':'#608c4a', '--ac-green-shadow':'#3f7166', '--ac-green-bleached':'#82bfa9', '--ac-green-sage':'#a1c19b',
+      // Permanent Dad/Mom/Today tokens -- previously both custody roles were
+      // derived from generic --teal/--gold, so changing the theme's accent
+      // scheme could accidentally change "whose color is whose." These are
+      // fixed regardless of the active accent, applied to the existing
+      // "home"(Dad)/"away"(Mom) states.
+      '--custody-dad':'#3f7166', '--custody-dad-surface':'#d7e7e1', '--custody-dad-border':'#82bfa9',
+      '--custody-mom':'#c98f5c', '--custody-mom-surface':'#f2dfcf', '--custody-mom-border':'#d7aa83',
+      '--custody-today':'#a63d32', '--custody-today-shadow':'rgba(166,61,50,0.28)',
+      // Asteroid-City-only crest recolor -- consumed by applyTheme()'s
+      // crest-src swap below (a second, purpose-recolored SVG file), kept
+      // here as the documented source of truth for those exact values.
+      '--logo-fg':'#245548', '--logo-fill':'#608c4a', '--logo-highlight':'#a1c19b', '--logo-shadow':'rgba(36,85,72,0.34)',
     },
-    fonts: [],
+    fonts: [{ id:'fh-font-asteroid', href:'https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;500;700&family=Montserrat:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap' }],
   },
 
 };
@@ -5548,6 +5666,17 @@ function applyTheme(id) {
   // Re-render theme picker if open
   const grid = document.getElementById('theme-grid');
   if (grid) renderThemeGrid();
+
+  // Asteroid City crest recolor (2026-08-19 approval): a second, purpose-
+  // recolored SVG file swapped in by src, not a CSS recolor -- the crest is
+  // loaded via <img>, which can't be recolored from the host page's CSS.
+  // Every other theme keeps loading the original file untouched.
+  const CREST_DEFAULT = './hodgson-crest.svg';
+  const CREST_ASTEROID = './hodgson-crest-asteroidcity.svg';
+  const crestSrc = t.id === 'asteroidcity' ? CREST_ASTEROID : CREST_DEFAULT;
+  document.querySelectorAll('.auth-crest, #brand-crest, .title-crest').forEach(img => {
+    if (img.getAttribute('src') !== crestSrc) img.setAttribute('src', crestSrc);
+  });
 }
 
 function renderThemeGrid() {

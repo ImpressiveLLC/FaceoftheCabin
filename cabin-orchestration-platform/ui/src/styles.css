@@ -1595,15 +1595,25 @@ select option { background: var(--bg-secondary); color: var(--text); }
   );
   background-attachment: fixed;
 }
+/* Three-tier typography (2026-08-19 approval, matches family-hub.html's
+   own asteroidcity theme): h1/h2 stay the display tier (Roboto Slab);
+   `button` intentionally excluded -- it falls through to the app-wide
+   `button{font-family:var(--font-display)}` rule already in place below,
+   consistent with how every other theme's buttons render here. */
 [data-theme="asteroidcity"] :is(
   .platform-name,
-  .panel-header-bar h2,
+  .panel-header-bar h2
+) {
+  font-family: var(--font-display);
+  letter-spacing: 0.035em;
+}
+[data-theme="asteroidcity"] :is(
   .location-section-header,
   .dm-device-group > header,
-  button
+  .nav-label
 ) {
-  font-family: Impact, "Arial Black", "Futura-CondensedExtraBold", sans-serif;
-  letter-spacing: 0.035em;
+  font-family: var(--font-subhead);
+  letter-spacing: 0.03em;
 }
 [data-theme="asteroidcity"] .platform-name {
   color: var(--accent);
@@ -1655,4 +1665,17 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 [data-theme="asteroidcity"] .btn-primary:hover {
   color: var(--border);
+}
+/* "Use teal for active navigation" -- the base .nav-active rule (line
+   ~1392) is --accent-derived (blazing orange); overridden here so the
+   active nav-rail item reads as calm/informational teal instead. */
+[data-theme="asteroidcity"] .nav-active {
+  background: color-mix(in srgb, var(--bg-tertiary) 30%, var(--bg-secondary)) !important;
+  color: var(--bg-tertiary) !important;
+  border-color: var(--bg-tertiary) !important;
+}
+/* Recolored crest (NavRail's crest-src swap) gets its own "spruce shadow"
+   glow instead of no shadow at all. */
+[data-theme="asteroidcity"] .nav-logo {
+  filter: drop-shadow(0 2px 4px var(--logo-shadow));
 }

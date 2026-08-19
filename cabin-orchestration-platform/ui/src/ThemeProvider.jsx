@@ -299,10 +299,33 @@ export const THEMES = {
       "--success":      "#608c4a", // Cactus Green
       "--warning":      "#ad7154", // Sun-Baked Rust
       "--danger":       "#b33a2b",
-      "--font-display": "'Georgia', 'Times New Roman', serif",
-      "--font-mono":    "'Courier New', monospace",
+      // Three-tier typography, approved 2026-08-19 (matches family-hub.html's
+      // own asteroidcity theme): Roboto Slab for h1/h2/major titles, Futura
+      // (Montserrat fallback -- no licensed Futura asset ships with this
+      // app) for nav/section-header mid-tier labels, IBM Plex Mono for
+      // ordinary body/UI text.
+      "--font-display": '"Roboto Slab", Rockwell, Georgia, serif',
+      "--font-subhead": 'Futura, "Futura PT", Montserrat, "Avenir Next", Arial, sans-serif',
+      "--font-mono":    '"IBM Plex Mono", "Courier New", monospace',
       "--radius":       "2px",
       "--radius-sm":    "2px",
+      // Navajo Red -- sparing use only (focus rings, today/attention
+      // accents, small underlines), never a large fill. Distinct from
+      // --accent (blazing orange), which stays the primary/branding color.
+      "--navajo-red":   "#a63d32",
+      // Routes every --control-border consumer (focus rings, select/toggle
+      // borders) to Navajo Red instead of the muted rust used for
+      // --border-focus elsewhere -- other themes are untouched, since the
+      // base :root rule (--control-border: var(--border-focus)) only
+      // applies where a theme doesn't set this key itself.
+      "--control-border": "var(--navajo-red)",
+      // Asteroid-City-only crest recolor, consumed by NavRail's crest-src
+      // swap (a second, purpose-recolored SVG file) -- kept here as the
+      // documented source of truth for those exact approved values.
+      "--logo-fg":        "#245548",
+      "--logo-fill":      "#608c4a",
+      "--logo-highlight": "#a1c19b",
+      "--logo-shadow":    "rgba(36, 85, 72, 0.34)",
     },
   },
 };
@@ -360,6 +383,10 @@ export function ThemeProvider({ children }) {
       pacman: {
         id: "cabin-font-pacman",
         href: "https://fonts.googleapis.com/css2?family=Bungee&family=VT323&display=swap",
+      },
+      asteroidcity: {
+        id: "cabin-font-asteroid",
+        href: "https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;500;700&family=Montserrat:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap",
       },
     };
     Object.entries(THEME_FONTS).forEach(([tid, font]) => {
