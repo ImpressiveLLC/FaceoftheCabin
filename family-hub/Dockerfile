@@ -18,7 +18,7 @@ ARG CABIN_API_URL=https://api.unicornpingpong.com
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Explicit allowlist, not `COPY . .` — this directory also holds dev/test
 # tooling (package.json, test/) that must never be served publicly.
-COPY family-hub.html css2.css google.svg hodgson-crest.svg /usr/share/nginx/html/
+COPY family-hub.html css2.css google.svg hodgson-crest.svg hodgson-crest-asteroidcity.svg /usr/share/nginx/html/
 RUN echo "window.HOST_CONFIG = { googleClientId: \"${GOOGLE_CLIENT_ID}\", adminEmails: \"${ADMIN_EMAILS}\", cabinApiUrl: \"${CABIN_API_URL}\" };" \
     > /usr/share/nginx/html/host-config.js
 EXPOSE 80
