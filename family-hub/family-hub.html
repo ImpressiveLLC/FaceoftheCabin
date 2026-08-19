@@ -1775,6 +1775,18 @@
         #dcb881 100%
       );
     }
+    /* Found: the rule above never actually rendered on the live hub page,
+       unlike cabin-ui (which has no competing background layer). .photo-slide
+       (the ambient photo-slideshow layer, z-index:0, ALWAYS opaque via
+       background-color:#060b10 as its letterbox fill for background-size:
+       contain) sits directly above html/body, so any letterboxed area
+       around a non-matching-aspect-ratio photo showed flat near-black
+       instead of the gradient, every load, regardless of theme -- cabin-ui
+       has no such layer to compete with. Making the fallback transparent
+       here lets the gradient above show through the letterbox bars. */
+    [data-theme="asteroidcity"] .photo-slide {
+      background-color: transparent;
+    }
 
     /* h1 stays the primary blazing-orange accent; the display/subhead font
        tiers for this and the h2-equivalent section titles are handled by
