@@ -629,6 +629,40 @@ describe("Device Manager lifecycle visibility", () => {
   });
 });
 
+describe("DmDeviceDetail ontology metadata (category/capabilities)", () => {
+  afterEach(cleanup);
+
+  const baseDevice = {
+    deviceId: "cam-1", name: "Driveway", type: "CAMERA", state: "ONLINE", location: "cabin",
+    attributes: { deviceLifecycle: "ASSIGNED", category: "SECURITY", capabilities: ["STREAM", "TELEMETRY"] },
+  };
+
+  it("shows the real backend category as a badge, not a client-side WORKFLOW_BY_TYPE guess", () => {
+    render(<DmDeviceDetail device={baseDevice} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByText("SECURITY")).toBeTruthy();
+  });
+
+  it("shows each real capability as its own chip", () => {
+    render(<DmDeviceDetail device={baseDevice} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByText("STREAM")).toBeTruthy();
+    expect(screen.getByText("TELEMETRY")).toBeTruthy();
+  });
+
+  it("does not duplicate category/capabilities in the generic Attributes dump below", () => {
+    render(<DmDeviceDetail device={baseDevice} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.queryByText("category")).toBeNull();
+    expect(screen.queryByText("capabilities")).toBeNull();
+  });
+
+  it("renders cleanly when category/capabilities are absent (older cached device, or a fetch that predates this)", () => {
+    const device = { deviceId: "old-1", name: "Legacy", type: "SENSOR", state: "ONLINE", location: "cabin",
+      attributes: { deviceLifecycle: "ASSIGNED" } };
+    render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.queryByText(/category/i)).toBeNull();
+    expect(screen.queryByText(/capabilities/i)).toBeNull();
+  });
+});
+
 describe("Device candidate decision controls", () => {
   afterEach(cleanup);
 

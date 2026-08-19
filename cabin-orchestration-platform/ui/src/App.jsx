@@ -2432,6 +2432,18 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       <div className="dm-detail-id">{device.deviceId}</div>
       <div className="dm-detail-rows">
         <div className="dm-detail-row"><span>Type</span><span>{device.type}</span></div>
+        {device.attributes?.category && (
+          <div className="dm-detail-row"><span>Category</span>
+            <span className="category-badge">{device.attributes.category}</span>
+          </div>
+        )}
+        {device.attributes?.capabilities?.length > 0 && (
+          <div className="dm-detail-row"><span>Capabilities</span>
+            <span className="capability-chips">
+              {device.attributes.capabilities.map(c => <span key={c} className="capability-chip">{c}</span>)}
+            </span>
+          </div>
+        )}
         <div className="dm-detail-row"><span>Location</span><span>{device.location}</span></div>
         <div className="dm-detail-row"><span>State</span>
           <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
@@ -2488,12 +2500,17 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       {Object.keys(device.attributes || {}).length > 0 && (
         <>
           <div className="dm-detail-section">Attributes</div>
-          {Object.entries(device.attributes).map(([k, v]) => v != null && (
-            <div key={k} className="attr-row">
-              <span className="attr-key">{k}</span>
-              <span className="attr-val">{String(v)}</span>
-            </div>
-          ))}
+          {/* category/capabilities have their own structured rows above (real
+              ontology data, not free-form) -- shown there only, not duplicated
+              here as raw key/value text. */}
+          {Object.entries(device.attributes)
+            .filter(([k]) => k !== "category" && k !== "capabilities")
+            .map(([k, v]) => v != null && (
+              <div key={k} className="attr-row">
+                <span className="attr-key">{k}</span>
+                <span className="attr-val">{String(v)}</span>
+              </div>
+            ))}
         </>
       )}
       {lifecycle === "ASSIGNED" && device.type === "LOCK" && <DmLockActions device={device}/>}

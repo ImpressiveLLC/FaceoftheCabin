@@ -396,6 +396,60 @@ class DeviceRegistryTest {
         assertEquals(DeviceLifecycleState.CANDIDATE, registry.lifecycleState("new-3"));
     }
 
+    // ── Ontology metadata on read (added 2026-08-19) ──
+
+    @Test
+    void getAttachesCategoryAndCapabilitiesFromTheRealDescriptor() {
+        registry.registerCandidate(descriptor(
+            "cam-1", "Driveway", DeviceType.CAMERA,
+            Set.of(DeviceCapability.STREAM, DeviceCapability.TELEMETRY), "mqtt", "cabin/camera/driveway", false, "cabin"),
+            Map.of());
+
+        var status = registry.get("cam-1");
+
+        assertEquals("SECURITY", status.attributes().get("category"));
+        assertEquals(List.of("STREAM", "TELEMETRY"), status.attributes().get("capabilities"));
+    }
+
+    @Test
+    void categoryReflectsTheDeviceTypeEvenWithNoDescriptorLookupNeeded() {
+        registry.registerCandidate(descriptor(
+            "thermo-1", "Living Room", DeviceType.THERMOSTAT,
+            Set.of(DeviceCapability.CLIMATE, DeviceCapability.COMMAND), "ha_rest", "climate.living_room", false, "cabin"),
+            Map.of());
+
+        assertEquals("CLIMATE", registry.get("thermo-1").attributes().get("category"));
+    }
+
+    @Test
+    void ontologyMetadataIsAttachedAcrossEveryReadPathNotJustGet() {
+        registry.registerCandidate(descriptor(
+            "leak-1", "Mech Room", DeviceType.WATER_LEAK_SENSOR,
+            Set.of(DeviceCapability.ALARM, DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/leak", false, "cabin"),
+            Map.of());
+
+        assertEquals("SAFETY", registry.visible().stream()
+            .filter(d -> d.deviceId().equals("leak-1")).findFirst().orElseThrow().attributes().get("category"));
+        assertEquals("SAFETY", registry.candidates().stream()
+            .filter(d -> d.deviceId().equals("leak-1")).findFirst().orElseThrow().attributes().get("category"));
+        assertEquals("SAFETY", registry.byLocation("cabin").stream()
+            .filter(d -> d.deviceId().equals("leak-1")).findFirst().orElseThrow().attributes().get("category"));
+    }
+
+    @Test
+    void ontologyMetadataDoesNotOverwriteUnrelatedExistingAttributes() {
+        registry.registerCandidate(descriptor(
+            "leak-2", "Bathroom", DeviceType.WATER_LEAK_SENSOR,
+            Set.of(DeviceCapability.ALARM), "mqtt", "zigbee2mqtt/leak2", false, "cabin"),
+            Map.of("vendor", "Third Reality", "battery", 100));
+
+        var status = registry.get("leak-2");
+
+        assertEquals("Third Reality", status.attributes().get("vendor"));
+        assertEquals(100, status.attributes().get("battery"));
+        assertEquals("SAFETY", status.attributes().get("category"));
+    }
+
     private DeviceDescriptor descriptor(String id, String name, DeviceType type,
                                         Set<DeviceCapability> capabilities, String adapter,
                                         String connection, boolean enabled, String location) {

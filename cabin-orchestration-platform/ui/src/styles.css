@@ -911,6 +911,13 @@ body {
 .dm-detail-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .dm-detail-row  { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid #21262d; }
 .dm-detail-row span:first-child { color: #8b949e; }
+/* Real ontology data (DeviceType.category(), DeviceDescriptor.capabilities())
+   -- see DeviceRegistry.withOntologyMetadata(). Purple/gray, deliberately
+   distinct from state-badge's semantic colors and workflow-badge's blue:
+   this is descriptive metadata, not a status or membership signal. */
+.category-badge { background: #2d2440; color: #a371f7; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.capability-chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.capability-chip { border: 1px solid #30363d; color: #8b949e; border-radius: 999px; padding: 1px 6px; font-size: 10px; }
 .dm-detail-section { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; margin: 8px 0 4px; }
 
 /* ─── Health bar ─────────────────────────────────────────────────────────── */

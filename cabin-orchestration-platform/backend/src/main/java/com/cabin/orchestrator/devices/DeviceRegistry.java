@@ -504,29 +504,62 @@ public class DeviceRegistry {
     public List<DeviceStatus> visible() {
         return statuses.values().stream()
             .filter(status -> !lifecycleState(status.deviceId()).isPreviouslyExposed())
+            .map(this::withOntologyMetadata)
             .toList();
     }
 
     public List<DeviceStatus> candidates() {
         return statuses.values().stream()
             .filter(status -> lifecycleState(status.deviceId()) == DeviceLifecycleState.CANDIDATE)
+            .map(this::withOntologyMetadata)
             .toList();
     }
 
     public List<DeviceStatus> previouslyExposed() {
         return statuses.values().stream()
             .filter(status -> lifecycleState(status.deviceId()).isPreviouslyExposed())
+            .map(this::withOntologyMetadata)
             .toList();
     }
 
     public List<DeviceStatus> byLocation(String location) {
         return statuses.values().stream()
             .filter(s -> location.equals(s.location()))
+            .map(this::withOntologyMetadata)
             .toList();
     }
 
     public DeviceStatus get(String deviceId) {
-        return statuses.get(deviceId);
+        return withOntologyMetadata(statuses.get(deviceId));
+    }
+
+    /**
+     * Attaches capabilities/category to every DeviceStatus this registry
+     * ever returns to a caller -- added 2026-08-19 to close a real gap: a
+     * device's DeviceCapability set lives only on DeviceDescriptor and was
+     * never serialized into DeviceStatus, the one shape the frontend
+     * actually receives (App.jsx's own comment on WORKFLOW_BY_TYPE says so
+     * explicitly), so the UI built a second, hand-maintained, drifting
+     * shadow of this exact taxonomy instead of ever seeing the real thing.
+     *
+     * Computed fresh on every read rather than cached in `attrs` at write
+     * time (registerCandidate()/statusWithLifecycle() already stuff a
+     * capabilities snapshot into attrs at a few specific mutation points,
+     * left as-is, harmless redundancy) -- capabilities/category are a
+     * static fact of the descriptor/type, fixed at registration, so
+     * deriving them here is both simpler and can never go stale the way a
+     * cached copy could if some future write path forgot to refresh it.
+     */
+    private DeviceStatus withOntologyMetadata(DeviceStatus status) {
+        if (status == null) return null;
+        Map<String, Object> attrs = new LinkedHashMap<>(status.attributes());
+        attrs.put("category", status.type().category().name());
+        DeviceDescriptor descriptor = descriptors.get(status.deviceId());
+        if (descriptor != null) {
+            attrs.put("capabilities", descriptor.capabilities().stream().map(Enum::name).sorted().toList());
+        }
+        return new DeviceStatus(status.deviceId(), status.type(), status.name(), status.state(),
+            status.lastSeen(), attrs, status.location());
     }
 
     public Optional<DeviceDescriptor> descriptor(String deviceId) {
