@@ -121,6 +121,18 @@ public class WorkflowRuleService {
         if ("TELEMETRY".equals(event.eventType()) && Boolean.TRUE.equals(event.payload().get("water_leak"))) {
             return "trigger_water_leak_detected";
         }
+        // DETECTION_NEW only, not UPDATE/END -- matches cabin_camera_event's
+        // own documented shape (docs/ontology.yaml): NEW is Frigate first
+        // recognizing an object, UPDATE/END are the same tracked object
+        // continuing to be seen/leaving frame. A workflow should fire once
+        // per new detection, not once per frame of an object already being
+        // tracked -- findActive()'s edge-detection guard in handleTriggerMatch
+        // would suppress repeats within one tracked object's lifetime anyway,
+        // but matching only NEW keeps the intent explicit rather than relying
+        // on that guard to paper over matching every UPDATE too.
+        if ("DETECTION_NEW".equals(event.eventType())) {
+            return "trigger_camera_detection";
+        }
         return null;
     }
 
@@ -164,6 +176,32 @@ public class WorkflowRuleService {
         }
     }
 
+    /**
+     * A DEVICE_EVENT trigger belongs here iff resolveClearedTriggerDefinitionId()
+     * has a matching branch for it -- i.e. it represents an ongoing, sampled
+     * STATE (water_leak, re-reported on every telemetry tick) rather than a
+     * discrete EVENT (a camera detection, each occurrence independent of the
+     * last). A state-trigger's execution must stay "active" until that state
+     * actually clears (or a human clears it) so the SAME ongoing condition
+     * doesn't re-notify on every sample -- findActive()'s edge-detection
+     * guard above is what that protects. A trigger with no symmetric clear
+     * signal has no such repeat-sampling to guard against, so fire() below
+     * self-clears it immediately: each firing is already a distinct
+     * occurrence, and never auto-clearing would mean exactly one
+     * notification, ever, per workflow (found 2026-08-18 designing the
+     * camera-detection trigger against the water-leak workflow's original,
+     * action-list-based first draft of this rule, which wrongly self-cleared
+     * ANY workflow whose actions were all notify_critical/log_event --
+     * including the existing MANUAL_ONLY notify-only leak workflow this
+     * class's own manualOnlyResetModeDoesNotAutoClear test depends on
+     * staying active until a human clears it. Scoping to the TRIGGER,
+     * not the action list, is what keeps that test's invariant true while
+     * still giving camera-detection workflows the "notify every time"
+     * behavior they need).
+     */
+    private static final java.util.Set<String> STATE_TRIGGERS_WITH_CLEAR_SIGNAL =
+        java.util.Set.of("trigger_water_leak_detected");
+
     private void fire(WorkflowRule rule, CabinEvent triggeringEvent) {
         log.info("Workflow '{}' ({}) firing on event {}", rule.name(), rule.workflowId(), triggeringEvent.eventId());
         String executionId = UUID.randomUUID().toString();
@@ -171,9 +209,11 @@ public class WorkflowRuleService {
         for (WorkflowAction action : rule.actions()) {
             results.add(executeAction(executionId, action, rule, triggeringEvent));
         }
+        boolean selfClears = !STATE_TRIGGERS_WITH_CLEAR_SIGNAL.contains(rule.triggerDefinitionId());
+        Instant now = Instant.now();
         WorkflowExecution execution = new WorkflowExecution(
             executionId, rule.workflowId(), triggeringEvent.eventId(),
-            Instant.now(), null, null, results, null);
+            now, selfClears ? now : null, selfClears ? "AUTO" : null, results, null);
         executionStore.save(execution);
     }
 
@@ -293,17 +333,58 @@ public class WorkflowRuleService {
             UUID.randomUUID().toString(), deviceId, "WORKFLOW_UNCONFIRMED", "CRITICAL", Instant.now(), payload));
     }
 
-    /** Reuses AutomationRuleService's exact see/think/act/tags payload shape so NtfyAlertPublisher/AutomationAlertCard need zero changes. */
+    /**
+     * Reuses AutomationRuleService's exact see/think/act/tags payload shape
+     * so NtfyAlertPublisher/AutomationAlertCard need zero changes.
+     *
+     * "see"/"act" were hardcoded to the water-leak flagship scenario's own
+     * text ("Water leak detected" / "Notify + shut off main water valve")
+     * until 2026-08-18 -- harmless while notify_critical only ever fired
+     * from that one trigger, but a real, silent-until-triggered bug: any
+     * other trigger type using this same action (e.g. a camera detection)
+     * would have sent a notification falsely describing a water leak. No
+     * test pinned the literal strings (checked before changing this), so
+     * nothing to update alongside this fix.
+     */
     private void publishNotification(WorkflowRule rule, CabinEvent triggeringEvent) {
         Map<String, Object> payload = new LinkedHashMap<>(triggeringEvent.payload());
         payload.put("ruleId", "WORKFLOW_" + rule.workflowId());
-        payload.put("see", "Water leak detected");
+        payload.put("see", describeTriggeringEvent(triggeringEvent));
         payload.put("think", "Human-configured workflow '" + rule.name() + "' matched this event");
-        payload.put("act", "Notify + shut off main water valve");
+        payload.put("act", describeActions(rule));
         payload.put("tags", List.of("WORKFLOW"));
         eventPublisher.publish(new CabinEvent(
             UUID.randomUUID().toString(), triggeringEvent.sourceDeviceId(), "WORKFLOW_ACTION", "CRITICAL",
             Instant.now(), payload));
+    }
+
+    /** Human-readable "what happened" for the event that fired this workflow -- one case per resolveTriggerDefinitionId() branch. */
+    private String describeTriggeringEvent(CabinEvent event) {
+        if ("TELEMETRY".equals(event.eventType()) && Boolean.TRUE.equals(event.payload().get("water_leak"))) {
+            return "Water leak detected";
+        }
+        if (event.eventType() != null && event.eventType().startsWith("DETECTION_")) {
+            Object label = event.payload().get("label");
+            Object score = event.payload().get("score");
+            String pct = score instanceof Number n ? " (" + Math.round(n.doubleValue() * 100) + "%)" : "";
+            return event.sourceDeviceId() + " detected " + (label != null ? label : "activity") + pct;
+        }
+        return event.sourceDeviceId() + ": " + event.eventType();
+    }
+
+    /** Human-readable "what this workflow does" -- one case per executeAction()'s own switch, kept in sync with it deliberately (not derived reflectively) so an unmapped id fails loud (falls through to its own raw id) rather than silently miscasting a real action as something it isn't. */
+    private String describeActions(WorkflowRule rule) {
+        return rule.actions().stream()
+            .map(a -> switch (a.actionDefinitionId()) {
+                case "action_main_water_valve_off" -> "Shut off main water valve";
+                case "action_main_water_valve_open" -> "Reopen main water valve";
+                case "notify_critical" -> "Notify";
+                case "log_event" -> "Log";
+                default -> a.actionDefinitionId();
+            })
+            .distinct()
+            .reduce((a, b) -> a + " + " + b)
+            .orElse("no actions");
     }
 
     @PreDestroy

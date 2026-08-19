@@ -139,7 +139,13 @@ public class DeviceController {
 
     /**
      * Get or update per-device config (DeviceDescriptor fields writable by the UI).
-     * PATCH accepts a partial map; only 'name' and 'enabled' are mutable here.
+     * PATCH accepts a partial map: 'name' and 'enabled' (DeviceDescriptor
+     * fields), plus 'room' (added 2026-08-18 -- a durable per-device fact
+     * that rides DeviceLifecycleRecord.extraAttributes instead, see its own
+     * comment for why). Room isn't in getDeviceConfig's response below
+     * because it's runtime DeviceStatus.attributes, not descriptor state --
+     * read it from GET /api/devices/{id} instead, same as any other
+     * discovered/derived attribute.
      */
     @GetMapping("/{deviceId}/config")
     public Map<String, Object> getDeviceConfig(@PathVariable String deviceId) {
@@ -165,8 +171,17 @@ public class DeviceController {
             String name    = patch.containsKey("name") ? (String) patch.get("name") : existing.name();
             boolean enabled = patch.containsKey("enabled")
                 ? Boolean.TRUE.equals(patch.get("enabled")) : existing.enabled();
+            Map<String, Object> extraAttributes = new java.util.LinkedHashMap<>();
+            if (patch.containsKey("room")) {
+                Object room = patch.get("room");
+                // Blank clears it (stored as "" rather than removed -- the
+                // JSONB shallow-merge write path has no delete semantics,
+                // only overwrite; an empty string reads the same as
+                // "no room" everywhere the UI checks it).
+                extraAttributes.put("room", room == null ? "" : String.valueOf(room).trim());
+            }
             DeviceRegistry.ConfigurationSaveResult result =
-                registry.saveConfiguration(deviceId, name, enabled);
+                registry.saveConfiguration(deviceId, name, enabled, extraAttributes);
             healthMonitor.refreshAfterConfigurationChange(deviceId);
             return Map.<String, Object>of(
                 "updated", deviceId,

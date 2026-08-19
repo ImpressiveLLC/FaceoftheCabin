@@ -243,6 +243,12 @@ body {
 .candidate-badge.lifecycle-available { border-color:var(--success); color:var(--success); }
 .candidate-badge.lifecycle-deferred { border-color:var(--warning); color:var(--warning); }
 .candidate-badge.lifecycle-ignored { border-color:var(--text-muted); color:var(--text-muted); }
+/* Same outlined-pill shape as .candidate-badge -- a different, informational
+   blue (matching .health-z2m's existing accent) rather than reusing
+   --accent, so it never reads as a lifecycle/status signal. Shows real
+   WorkflowRule membership (see workflowsForDevice), not the cosmetic
+   WORKFLOW_BY_TYPE groupBy bucket. */
+.workflow-badge { border:1px solid #79c0ff; color:#79c0ff; border-radius:999px; padding:2px 7px; font-size:10px; flex-shrink:0; white-space:nowrap; }
 .dm-why-card,.dm-candidate-card { display:flex; flex-direction:column; gap:6px; margin-top:12px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); font-size:12px; }
 .dm-why-card small { color:var(--text-dim); }
 .action-result { margin:8px 0 0; padding:7px 9px; border-radius:7px; font-size:12px; }
@@ -476,11 +482,17 @@ body {
 .camera-motion-section { margin-top: 10px; }
 .camera-motion-toggle { font-size: 12px; }
 .camera-motion-list { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; }
+.camera-motion-item { display: flex; flex-direction: column; }
 .camera-motion-row {
   display: flex; align-items: center; gap: 10px;
   padding: 6px 14px; background: #0d1117; border: 1px solid #161b22;
   border-radius: 6px; color: #6e7681; font-size: 12px;
 }
+/* Rows now expand into a clip-by-time attempt (see CameraEventsPanel /
+   CameraMediaController.clipByTime) instead of being flat, unclickable
+   summary text -- same clickable affordance as .camera-event-row.clickable. */
+.camera-motion-row.clickable { cursor: pointer; }
+.camera-motion-row.clickable:hover { border-color: #388bfd; }
 .camera-motion-camera { color: #8b949e; }
 .camera-motion-state { color: #6e7681; }
 
@@ -489,6 +501,9 @@ body {
 }
 .camera-live-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .camera-live-buttons .btn-secondary.active { border-color: #388bfd; color: #79c0ff; }
+/* Each camera's live-view button paired with its own CameraNotifyToggle -- see App.jsx. */
+.camera-live-row { display: flex; align-items: center; gap: 6px; }
+.camera-notify-toggle.active { border-color: #79c0ff; color: #79c0ff; }
 .camera-live-view { margin-top: 10px; }
 .camera-live-view img {
   width: 100%; max-height: 400px; object-fit: contain;
@@ -877,6 +892,13 @@ body {
    detail panel, KPI tiles) that already work fine. */
 .dm-device-row .candidate-badge,
 .dm-device-row .state-badge { flex-shrink: 0; white-space: nowrap; }
+/* Enable/disable directly from the row -- see DmRowEnableToggle. Same
+   flex-shrink:0 treatment as the badges above so a tight row can't
+   compress it either; padding kept small (2px) since the icon itself
+   already reads clearly at this size, unlike a text badge. */
+.dm-row-enable-toggle {
+  flex-shrink: 0; padding: 2px; line-height: 0;
+}
 
 /* ─── Device detail pane ─────────────────────────────────────────────────── */
 .dm-detail {
@@ -889,6 +911,13 @@ body {
 .dm-detail-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .dm-detail-row  { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid #21262d; }
 .dm-detail-row span:first-child { color: #8b949e; }
+/* Real ontology data (DeviceType.category(), DeviceDescriptor.capabilities())
+   -- see DeviceRegistry.withOntologyMetadata(). Purple/gray, deliberately
+   distinct from state-badge's semantic colors and workflow-badge's blue:
+   this is descriptive metadata, not a status or membership signal. */
+.category-badge { background: #2d2440; color: #a371f7; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.capability-chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.capability-chip { border: 1px solid #30363d; color: #8b949e; border-radius: 999px; padding: 1px 6px; font-size: 10px; }
 .dm-detail-section { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; margin: 8px 0 4px; }
 
 /* ─── Health bar ─────────────────────────────────────────────────────────── */

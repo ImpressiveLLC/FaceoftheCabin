@@ -59,6 +59,23 @@ class HomeAssistantAdapterTest {
         assertEquals(List.of(), adapter.discover("home"));
     }
 
+    /**
+     * 2026-08-18: deviceIdsByEntity (composite-device grouping, see
+     * HomeAssistantDiscoveryService's own comment) must degrade exactly
+     * like discover() does -- confirmed live on the M920q the same
+     * session this was added that HA_TOKEN/HOME_HA_TOKEN are currently
+     * blank in production, so this fail-safe path is not hypothetical.
+     */
+    @Test
+    void deviceIdsByEntityReturnsEmptyMapRatherThanThrowingWhenTokenIsBlank() {
+        HomeAssistantAdapter adapter = new HomeAssistantAdapter();
+        ReflectionTestUtils.setField(adapter, "cabinHaToken", "");
+        ReflectionTestUtils.setField(adapter, "homeHaToken", "");
+
+        assertEquals(java.util.Map.of(), adapter.deviceIdsByEntity("cabin"));
+        assertEquals(java.util.Map.of(), adapter.deviceIdsByEntity("home"));
+    }
+
     @Test
     void adapterTypeIsHaRest() {
         assertEquals("ha_rest", new HomeAssistantAdapter().adapterType());

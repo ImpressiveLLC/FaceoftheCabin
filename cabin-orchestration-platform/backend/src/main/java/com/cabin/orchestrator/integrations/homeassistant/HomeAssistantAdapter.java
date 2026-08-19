@@ -3,6 +3,8 @@ package com.cabin.orchestrator.integrations.homeassistant;
 import com.cabin.orchestrator.devices.adapter.ProtocolAdapter;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -60,6 +62,7 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
     private String homeHaToken;
 
     private final RestTemplate rest = new RestTemplate();
+    private final ObjectMapper jsonMapper = new ObjectMapper();
 
     public record DiscoveredEntity(String entityId, String state, Map<String, Object> attributes) {}
 
@@ -111,6 +114,70 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
     }
 
     public String normalizedState(String state) { return mapHaState(state); }
+
+    /**
+     * Maps every currently-known entity_id to its HA device registry id, in
+     * one call. /api/states (used by discover() above) has no device_id of
+     * its own -- HA's device grouping (which entities belong to the same
+     * physical thing, e.g. the Liebherr fridge's 9 separate number/select/
+     * sensor/switch entities) only exists via the template engine's builtin
+     * device_id() function or the WebSocket API; this uses /api/template
+     * (plain REST, same auth as everything else here) since it's the one
+     * that doesn't require a second client/protocol just for this.
+     *
+     * 2026-08-18: added for HomeAssistantDiscoveryService's composite-device
+     * grouping (see its own comment) after live investigation confirmed the
+     * Liebherr fridge and Kidde each surface as several unrelated
+     * candidates today with no shared identity. Not yet verified against a
+     * live response -- HA_TOKEN/HOME_HA_TOKEN are both currently blank in
+     * the M920q's deployed .env (a separate, blocking infra gap, see
+     * docs/DEFINITION_OF_DONE.md), so discover() itself has been returning
+     * List.of() the same way this will. device_id() is a long-standing,
+     * documented HA template builtin, not something version-fragile, but
+     * this still needs a real run against a working token to confirm the
+     * exact response shape once that's restored. Same fail-safe shape as
+     * discover(): any problem (blank token, unreachable HA, unexpected
+     * response, template error) returns an empty map rather than throwing,
+     * so a caller can always treat "not grouped" as the safe default.
+     */
+    public Map<String, String> deviceIdsByEntity(String location) {
+        String token = "home".equals(location) ? homeHaToken : cabinHaToken;
+        String url = "home".equals(location) ? homeHaUrl : cabinHaUrl;
+        if (token.isBlank()) {
+            return Map.of();
+        }
+        try {
+            HttpHeaders headers = bearerHeaders(token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            // Jinja2, HA's own template language: builds {entity_id: device_id}
+            // for every entity that actually belongs to a device (device_id()
+            // returns None -- rendered "null" -- for helpers/templates that
+            // don't, which the JSON parse below simply drops).
+            String template = "{% set ns = namespace(result={}) %}"
+                + "{% for s in states %}"
+                + "{% set ns.result = dict(ns.result, **{s.entity_id: device_id(s.entity_id)}) %}"
+                + "{% endfor %}"
+                + "{{ ns.result | tojson }}";
+            Map<String, Object> body = Map.of("template", template);
+            ResponseEntity<String> response = rest.exchange(url + "/api/template", HttpMethod.POST,
+                new HttpEntity<>(body, headers), String.class);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                log.warn("HA device_id template for '{}' returned {}", location, response.getStatusCode());
+                return Map.of();
+            }
+            Map<String, String> result = new LinkedHashMap<>();
+            JsonNode root = jsonMapper.readTree(response.getBody());
+            root.fields().forEachRemaining(entry -> {
+                if (entry.getValue().isTextual()) {
+                    result.put(entry.getKey(), entry.getValue().asText());
+                }
+            });
+            return result;
+        } catch (Exception e) {
+            log.debug("HA device_id lookup unavailable for {}: {}", location, e.getMessage());
+            return Map.of();
+        }
+    }
 
     @Override
     public Optional<DeviceStatus> fetchState(DeviceDescriptor descriptor) {

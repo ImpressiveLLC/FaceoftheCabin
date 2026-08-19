@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.events.CabinEventService;
 import com.cabin.orchestrator.integrations.cameras.BlinkLiveviewService;
 import com.cabin.orchestrator.mqtt.FrigateEventReconciliationService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -42,6 +44,10 @@ import java.util.Map;
  *   GET /api/events/{event_id}/snapshot.jpg
  *   GET /api/events/{event_id}/clip.mp4
  *   GET /api/{camera_name}                   (MJPEG live stream)
+ *   GET /api/{camera_name}/start/{epoch}/end/{epoch}/clip.mp4
+ *                                             (ad-hoc export from continuous
+ *                                              recording, confirmed live
+ *                                              2026-08-18 -- see clipByTime())
  * {event_id} here is Frigate's own event id (the "frigateEventId" field
  * MqttBridgeService now captures from the MQTT events payload), not
  * cabin-backend's own CabinEvent.eventId.
@@ -72,11 +78,26 @@ public class CameraMediaController {
     // BlinkMotionWebhookController's automatic trigger can share the same
     // logic -- see that service's javadoc).
     private final BlinkLiveviewService liveviewService;
+    private final CabinEventService eventService;
 
-    public CameraMediaController(FrigateEventReconciliationService reconciliation, BlinkLiveviewService liveviewService) {
+    public CameraMediaController(FrigateEventReconciliationService reconciliation, BlinkLiveviewService liveviewService,
+                                  CabinEventService eventService) {
         this.reconciliation = reconciliation;
         this.liveviewService = liveviewService;
+        this.eventService = eventService;
     }
+
+    // Padding around a motion-only event's own timestamp for clipByTime()
+    // below. MOTION_ON/OFF is raw Blink motion relayed over MQTT (see
+    // MqttBridgeService) -- it never goes through Frigate's own object
+    // detection, so it has no frigateEventId and no native clip. 10s
+    // lead / 30s trail is a deliberately generous, simple window (not
+    // event-pair-aware -- MOTION_ON and MOTION_OFF are independent rows,
+    // correlating them into a tighter start/end would be real complexity
+    // for marginal benefit) chosen to reliably straddle whatever actually
+    // happened around that timestamp either direction.
+    static final long CLIP_LEAD_SECONDS = 10;
+    static final long CLIP_TRAIL_SECONDS = 30;
 
     /**
      * Surfaces FrigateEventReconciliationService's own health state --
@@ -148,6 +169,40 @@ public class CameraMediaController {
     @GetMapping(value = "/events/{frigateEventId}/clip")
     public ResponseEntity<byte[]> clip(@PathVariable String frigateEventId) {
         return proxyBytes("/api/events/" + frigateEventId + "/clip.mp4", MediaType.valueOf("video/mp4"));
+    }
+
+    /**
+     * Fallback clip source for events with no native Frigate detection clip
+     * (today: MOTION_ON/OFF, and any DETECTION_* row that never got a
+     * hasClip flip). Live investigation on the M920q (2026-08-18, the
+     * driveway/AldrichFront outage) confirmed Frigate keeps
+     * record.enabled=true and continuously records every camera regardless
+     * of whether its own object detector ever tracks anything -- so a
+     * timestamp is recoverable even with no Frigate "event" behind it,
+     * just not through the detection-event API above. Keyed by
+     * cabin-backend's own eventId (not Frigate's) since that's the only id
+     * a clip-less event has.
+     */
+    @GetMapping(value = "/events/{eventId}/clip-by-time")
+    public ResponseEntity<byte[]> clipByTime(@PathVariable String eventId) {
+        CabinEvent event = eventService.findById(eventId);
+        if (event == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return proxyBytes(frigateTimeRangeClipPath(event), MediaType.valueOf("video/mp4"));
+    }
+
+    /**
+     * Package-private and pure (no HTTP, no Spring context) so the
+     * time-window math is directly unit-testable. Path shape confirmed
+     * live against this instance's real Frigate (0.17.2): GET
+     * /api/{camera}/start/{epochSeconds}/end/{epochSeconds}/clip.mp4 ->
+     * 200 video/mp4, exporting straight from continuous recording.
+     */
+    static String frigateTimeRangeClipPath(CabinEvent event) {
+        long start = event.timestamp().minusSeconds(CLIP_LEAD_SECONDS).getEpochSecond();
+        long end = event.timestamp().plusSeconds(CLIP_TRAIL_SECONDS).getEpochSecond();
+        return "/api/" + event.sourceDeviceId() + "/start/" + start + "/end/" + end + "/clip.mp4";
     }
 
     /** MJPEG live stream, proxied continuously — not buffered like snapshot/clip above. */

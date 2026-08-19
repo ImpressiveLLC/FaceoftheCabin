@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -557,6 +557,41 @@ describe("groupDevices", () => {
   });
 });
 
+describe("workflowsForDevice", () => {
+  const leakDetected = { workflowId: "wf-leak", name: "Leak shutoff", location: "cabin", enabled: true,
+    triggerDeviceId: "z2m-leak_mech_room", actions: [{ targetDeviceId: "z2m-main_water_valve" }] };
+  const partyModeAlert = { workflowId: "wf-party", name: "Party mode alert", location: "cabin", enabled: true,
+    triggerDeviceId: "fridge-partymode", actions: [{ targetDeviceId: "notify-nate" }] };
+  const twoStepNotify = { workflowId: "wf-two-step", name: "Two-step notify", location: "cabin", enabled: false,
+    triggerDeviceId: "z2m-door_front_contact",
+    actions: [{ targetDeviceId: "notify-nate" }, { targetDeviceId: "z2m-leak_mech_room" }] };
+  const workflows = [leakDetected, partyModeAlert, twoStepNotify];
+
+  it("matches a device that is the trigger", () => {
+    expect(workflowsForDevice(workflows, "z2m-leak_mech_room").map(w => w.workflowId))
+      .toEqual(["wf-leak", "wf-two-step"]); // also matches as an action target in the second workflow
+  });
+
+  it("matches a device that is only an action target, not the trigger", () => {
+    expect(workflowsForDevice(workflows, "z2m-main_water_valve").map(w => w.workflowId)).toEqual(["wf-leak"]);
+  });
+
+  it("matches a device referenced by more than one action step in the same workflow only once", () => {
+    const selfReferencing = { workflowId: "wf-self", name: "Self", triggerDeviceId: "x",
+      actions: [{ targetDeviceId: "x" }, { targetDeviceId: "x" }] };
+    expect(workflowsForDevice([selfReferencing], "x")).toHaveLength(1);
+  });
+
+  it("returns an empty list for a device in no workflow, not a fallback category", () => {
+    expect(workflowsForDevice(workflows, "z2m-motion_entry")).toEqual([]);
+  });
+
+  it("handles a missing/undefined workflows list without throwing", () => {
+    expect(workflowsForDevice(undefined, "any-device")).toEqual([]);
+    expect(workflowsForDevice(workflows, null)).toEqual([]);
+  });
+});
+
 describe("Device Manager lifecycle visibility", () => {
   const assigned = { deviceId: "assigned", attributes: { deviceLifecycle: "ASSIGNED" } };
   const available = { deviceId: "available", attributes: { deviceLifecycle: "AVAILABLE" } };
@@ -591,6 +626,40 @@ describe("Device Manager lifecycle visibility", () => {
     expect(deviceLifecycleState({ attributes: { candidate: true } })).toBe("CANDIDATE");
     expect(deviceLifecycleState({ attributes: { candidate: true, deviceLifecycle: "available" } })).toBe("AVAILABLE");
     expect(deviceLifecycleState({ attributes: {} })).toBe("ASSIGNED");
+  });
+});
+
+describe("DmDeviceDetail ontology metadata (category/capabilities)", () => {
+  afterEach(cleanup);
+
+  const baseDevice = {
+    deviceId: "cam-1", name: "Driveway", type: "CAMERA", state: "ONLINE", location: "cabin",
+    attributes: { deviceLifecycle: "ASSIGNED", category: "SECURITY", capabilities: ["STREAM", "TELEMETRY"] },
+  };
+
+  it("shows the real backend category as a badge, not a client-side WORKFLOW_BY_TYPE guess", () => {
+    render(<DmDeviceDetail device={baseDevice} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByText("SECURITY")).toBeTruthy();
+  });
+
+  it("shows each real capability as its own chip", () => {
+    render(<DmDeviceDetail device={baseDevice} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByText("STREAM")).toBeTruthy();
+    expect(screen.getByText("TELEMETRY")).toBeTruthy();
+  });
+
+  it("does not duplicate category/capabilities in the generic Attributes dump below", () => {
+    render(<DmDeviceDetail device={baseDevice} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.queryByText("category")).toBeNull();
+    expect(screen.queryByText("capabilities")).toBeNull();
+  });
+
+  it("renders cleanly when category/capabilities are absent (older cached device, or a fetch that predates this)", () => {
+    const device = { deviceId: "old-1", name: "Legacy", type: "SENSOR", state: "ONLINE", location: "cabin",
+      attributes: { deviceLifecycle: "ASSIGNED" } };
+    render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.queryByText(/category/i)).toBeNull();
+    expect(screen.queryByText(/capabilities/i)).toBeNull();
   });
 });
 
@@ -678,7 +747,247 @@ describe("Device candidate configuration", () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     const [, options] = fetch.mock.calls[0];
-    expect(JSON.parse(options.body)).toEqual({ name: "Basement leak sensor", enabled: true });
+    expect(JSON.parse(options.body)).toEqual({ name: "Basement leak sensor", enabled: true, room: "" });
+  });
+
+  it("prefills Room from the device's existing attribute and includes it unchanged when saving something else", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ changed: true, enabled: false, deviceLifecycle: "ASSIGNED" }),
+    }));
+    const onSaved = vi.fn();
+    render(<DmEditForm
+      device={{
+        deviceId: "fridge-partymode", name: "Party Mode", type: "HOME_ASSISTANT_ENTITY",
+        state: "ONLINE", location: "cabin",
+        attributes: { deviceLifecycle: "ASSIGNED", enabled: false, room: "Kitchen" },
+      }}
+      onSaved={onSaved}
+    />);
+
+    expect(screen.getByLabelText(/room/i).value).toBe("Kitchen");
+    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: "Party Mode Switch" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    const [, options] = fetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ name: "Party Mode Switch", enabled: false, room: "Kitchen" });
+  });
+
+  it("saving a room-only edit is enabled and sends the new room", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ changed: true, enabled: false, deviceLifecycle: "ASSIGNED" }),
+    }));
+    render(<DmEditForm
+      device={{
+        deviceId: "kidde-co", name: "Kidde CO Alarm", type: "CO_ALARM",
+        state: "ONLINE", location: "cabin",
+        attributes: { deviceLifecycle: "ASSIGNED", enabled: true, room: "" },
+      }}
+      onSaved={() => {}}
+    />);
+
+    const saveButton = screen.getByRole("button", { name: /save changes/i });
+    expect(saveButton.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/room/i), { target: { value: "Mechanical Room" } });
+    expect(saveButton.disabled).toBe(false);
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const [, options] = fetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ name: "Kidde CO Alarm", enabled: true, room: "Mechanical Room" });
+  });
+});
+
+describe("DmDeviceRow inline enable toggle", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const enabledDevice = {
+    deviceId: "z2m-entry", name: "Entry motion", type: "MOTION_SENSOR",
+    state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED", enabled: true },
+  };
+
+  it("does not render the toggle when the caller doesn't pass onToggled (DmRemoveView, MnChangeView)", () => {
+    render(<DmDeviceRow device={enabledDevice} onClick={() => {}} />);
+    expect(screen.queryByTitle(/disable|enable/i)).toBeNull();
+  });
+
+  it("clicking the toggle flips enabled and calls onToggled on success, without also triggering row selection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ changed: true, enabled: false, deviceLifecycle: "ASSIGNED" }),
+    }));
+    const onClick = vi.fn();
+    const onToggled = vi.fn();
+    render(<DmDeviceRow device={enabledDevice} onClick={onClick} onToggled={onToggled} />);
+
+    fireEvent.click(screen.getByTitle("Disable"));
+
+    await waitFor(() => expect(onToggled).toHaveBeenCalledOnce());
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toContain("/api/devices/z2m-entry/config");
+    expect(JSON.parse(options.body)).toEqual({ enabled: false });
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("a failed toggle surfaces the error without calling onToggled", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false, status: 500, json: async () => ({}),
+    }));
+    const onToggled = vi.fn();
+    render(<DmDeviceRow device={enabledDevice} onClick={() => {}} onToggled={onToggled} />);
+
+    fireEvent.click(screen.getByTitle("Disable"));
+
+    await waitFor(() => expect(screen.getByTitle(/not saved/i)).toBeTruthy());
+    expect(onToggled).not.toHaveBeenCalled();
+  });
+
+  it("a still-CANDIDATE device's toggle explains that enabling accepts and assigns it", () => {
+    const candidate = {
+      deviceId: "candidate-1", name: "New sensor", type: "CONTACT_SENSOR",
+      state: "UNKNOWN", location: "cabin", attributes: { deviceLifecycle: "CANDIDATE", enabled: false },
+    };
+    render(<DmDeviceRow device={candidate} onClick={() => {}} onToggled={() => {}} />);
+    expect(screen.getByTitle(/enabling accepts and assigns/i)).toBeTruthy();
+  });
+});
+
+describe("DmDeviceRow workflow badge", () => {
+  afterEach(cleanup);
+
+  const device = {
+    deviceId: "z2m-leak_mech_room", name: "Mech room leak sensor", type: "WATER_LEAK_SENSOR",
+    state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED" },
+  };
+  const workflows = [
+    { workflowId: "wf-1", name: "Leak shutoff", triggerDeviceId: "z2m-leak_mech_room", actions: [] },
+    { workflowId: "wf-2", name: "Leak notify", triggerDeviceId: "z2m-leak_mech_room", actions: [] },
+  ];
+
+  it("shows no badge when workflows isn't passed at all (DmRemoveView, MnChangeView)", () => {
+    render(<DmDeviceRow device={device} onClick={() => {}} />);
+    expect(screen.queryByText(/workflow/i)).toBeNull();
+  });
+
+  it("shows no badge when workflows is passed but this device isn't in any", () => {
+    render(<DmDeviceRow device={device} onClick={() => {}} workflows={[]} />);
+    expect(screen.queryByText(/workflow/i)).toBeNull();
+  });
+
+  it("shows a count badge with the workflow names in its title when the device is in one or more workflows", () => {
+    render(<DmDeviceRow device={device} onClick={() => {}} workflows={workflows} />);
+    expect(screen.getByText("2 workflows")).toBeTruthy();
+    expect(screen.getByText("2 workflows").title).toBe("Leak shutoff, Leak notify");
+  });
+
+  it("singular wording for exactly one workflow", () => {
+    render(<DmDeviceRow device={device} onClick={() => {}} workflows={[workflows[0]]} />);
+    expect(screen.getByText("1 workflow")).toBeTruthy();
+  });
+});
+
+describe("WorkflowRulesCard", () => {
+  afterEach(cleanup);
+
+  it("shows an empty state when there are no workflows", () => {
+    render(<WorkflowRulesCard workflows={[]} />);
+    expect(screen.getByText(/no workflows configured yet/i)).toBeTruthy();
+  });
+
+  it("shows each workflow's name, trigger, actions, and active/draft status", () => {
+    render(<WorkflowRulesCard workflows={[
+      { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true,
+        triggerDeviceId: "z2m-leak_mech_room", actions: [{ targetDeviceId: "z2m-main_water_valve" }] },
+      { workflowId: "wf-2", name: "Draft alert", location: "cabin", enabled: false,
+        triggerDeviceId: "z2m-door_front_contact", actions: [] },
+    ]} />);
+
+    expect(screen.getByText("Leak shutoff")).toBeTruthy();
+    expect(screen.getByText(/z2m-leak_mech_room.*z2m-main_water_valve/)).toBeTruthy();
+    expect(screen.getByText(/cabin.*active/)).toBeTruthy();
+
+    expect(screen.getByText("Draft alert")).toBeTruthy();
+    expect(screen.getByText(/no actions/i)).toBeTruthy();
+    expect(screen.getByText(/cabin.*draft/)).toBeTruthy();
+  });
+});
+
+describe("CameraNotifyToggle", () => {
+  afterEach(cleanup);
+
+  it("shows 'Notify me' (inactive) when this camera has no trigger_camera_detection workflow", () => {
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={vi.fn()} workflows={[]} onChanged={() => {}} />);
+    expect(screen.getByText("Notify me")).toBeTruthy();
+  });
+
+  it("ignores a workflow that targets this camera as an action, not as the trigger", () => {
+    const workflows = [{ workflowId: "wf-x", triggerDefinitionId: "trigger_water_leak_detected",
+      triggerDeviceId: "z2m-leak_mech_room", actions: [{ targetDeviceId: "driveway" }] }];
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={vi.fn()} workflows={workflows} onChanged={() => {}} />);
+    expect(screen.getByText("Notify me")).toBeTruthy();
+  });
+
+  it("ignores another camera's trigger_camera_detection workflow", () => {
+    const workflows = [{ workflowId: "wf-other-cam", triggerDefinitionId: "trigger_camera_detection",
+      triggerDeviceId: "home_aldrich_front", actions: [] }];
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={vi.fn()} workflows={workflows} onChanged={() => {}} />);
+    expect(screen.getByText("Notify me")).toBeTruthy();
+  });
+
+  it("shows 'Notifying' (active) when this camera has a real, matching workflow", () => {
+    const workflows = [{ workflowId: "wf-driveway", triggerDefinitionId: "trigger_camera_detection",
+      triggerDeviceId: "driveway", actions: [{ actionDefinitionId: "notify_critical" }] }];
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={vi.fn()} workflows={workflows} onChanged={() => {}} />);
+    expect(screen.getByText("Notifying")).toBeTruthy();
+  });
+
+  it("clicking while inactive creates a disabled workflow scoped to this camera, then activates it", async () => {
+    const calls = [];
+    const authedFetch = vi.fn((url, opts) => {
+      calls.push({ url, opts });
+      if (opts?.method === "POST" && url.endsWith("/api/rules/workflows")) {
+        return Promise.resolve({ ok: true, json: async () => ({ workflowId: "wf-new", enabled: false }) });
+      }
+      if (opts?.method === "POST" && url.endsWith("/activate")) {
+        return Promise.resolve({ ok: true, json: async () => ({ workflowId: "wf-new", enabled: true }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    const onChanged = vi.fn();
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={authedFetch} workflows={[]} onChanged={onChanged} />);
+
+    fireEvent.click(screen.getByText("Notify me"));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    const createCall = calls.find(c => c.url.endsWith("/api/rules/workflows") && !c.url.includes("activate"));
+    const body = JSON.parse(createCall.opts.body);
+    expect(body.triggerDefinitionId).toBe("trigger_camera_detection");
+    expect(body.triggerDeviceId).toBe("driveway");
+    expect(body.actions).toEqual([expect.objectContaining({ actionDefinitionId: "notify_critical" })]);
+    expect(calls.some(c => c.url === "http://cabin/api/rules/workflows/wf-new/activate")).toBe(true);
+  });
+
+  it("clicking while active deletes the existing workflow", async () => {
+    const workflows = [{ workflowId: "wf-driveway", triggerDefinitionId: "trigger_camera_detection",
+      triggerDeviceId: "driveway", actions: [] }];
+    const authedFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    const onChanged = vi.fn();
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={authedFetch} workflows={workflows} onChanged={onChanged} />);
+
+    fireEvent.click(screen.getByText("Notifying"));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    expect(authedFetch).toHaveBeenCalledWith("http://cabin/api/rules/workflows/wf-driveway", { method: "DELETE" });
+  });
+
+  it("a failed toggle surfaces the error without calling onChanged", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+    const onChanged = vi.fn();
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={authedFetch} workflows={[]} onChanged={onChanged} />);
+
+    fireEvent.click(screen.getByText("Notify me"));
+
+    await waitFor(() => expect(screen.getByTitle(/not saved/i)).toBeTruthy());
+    expect(onChanged).not.toHaveBeenCalled();
   });
 });
 

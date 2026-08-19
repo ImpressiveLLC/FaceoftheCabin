@@ -27,7 +27,7 @@ import {
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
-  Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search
+  Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell
 } from "lucide-react";
 import "./styles.css";
 
@@ -308,18 +308,28 @@ function CameraEventThumbnail({ apiBase, authedFetch, frigateEventId, timestamp 
   );
 }
 
-function CameraEventClip({ apiBase, authedFetch, frigateEventId }) {
-  const { objectUrl, status } = useAuthedMediaUrl(
-    `${apiBase}/api/camera/events/${frigateEventId}/clip`,
-    authedFetch
-  );
+// Takes a ready-made clipUrl rather than building one internally -- reused
+// by both the detection flow (keyed off Frigate's own frigateEventId) and
+// the motion-only flow below (keyed off cabin-backend's eventId, via
+// clipByTime -- see CameraMediaController.clipByTime's javadoc). frigateUrl
+// is only used to build the "Open in Frigate" fallback link on a genuine
+// miss, never fetched from directly.
+function CameraEventClip({ authedFetch, clipUrl, frigateUrl, cameraName }) {
+  const { objectUrl, status } = useAuthedMediaUrl(clipUrl, authedFetch);
   // "missing" (404) is Frigate simply no longer having this clip -- an
   // everyday, expected outcome (clip retention is much shorter than how
   // far back the event list itself now reaches), not something to word
   // like a bug. Any other failure is worded differently on purpose, since
   // that one IS worth a user reporting.
   if (status === "missing") {
-    return <p className="config-desc">Clip expired or unavailable — Frigate only keeps clips for a limited time after the event.</p>;
+    return (
+      <p className="config-desc">
+        Clip expired or unavailable — Frigate only keeps recordings for a limited time.
+        {frigateUrl && (
+          <> <a href={frigateUrl} target="_blank" rel="noreferrer">Open {cameraName ? `${cameraName} in` : ""} Frigate ↗</a> to check its own history directly.</>
+        )}
+      </p>
+    );
   }
   if (status === "error") {
     return <p className="config-desc camera-live-error">Couldn't load this clip — try again shortly.</p>;
@@ -453,8 +463,69 @@ export function buildCameraEventsUrl(apiBase, offset, window = "24h", location =
   return location ? `${base}&location=${location}` : base;
 }
 
+// "Assign a workflow directly from Camera Events" -- creates/removes a
+// real WorkflowRule (trigger_camera_detection, scoped to this one camera
+// via triggerDeviceId, existing notify_critical action -- see
+// WorkflowRuleService/docs/ontology.yaml, nothing new needed action-side)
+// via the real /api/rules/workflows API rather than the hardcoded
+// WORKFLOW_BY_TYPE groupBy bucket Device Manager already has. Toggle
+// semantics, matching DmRowEnableToggle's own pattern elsewhere in this
+// file: off->on creates (workflows are always created disabled, see
+// RulesController's own doc comment) then activates in one user action;
+// on->off deletes outright rather than leaving a disabled row behind,
+// since a simple per-camera notify toggle has no reason to keep history.
+export function CameraNotifyToggle({ cameraName, apiBase, authedFetch, workflows, onChanged }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const existing = (workflows || []).find(w =>
+    w.triggerDefinitionId === "trigger_camera_detection" && w.triggerDeviceId === cameraName);
+
+  const toggle = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      if (existing) {
+        const response = await authedFetch(`${apiBase}/api/rules/workflows/${existing.workflowId}`, { method: "DELETE" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      } else {
+        const createResponse = await authedFetch(`${apiBase}/api/rules/workflows`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workflowId: `notify-${cameraName}-${Date.now()}`, name: `Notify: ${cameraName}`,
+            location: "cabin", triggerKind: "DEVICE_EVENT", triggerDefinitionId: "trigger_camera_detection",
+            triggerDeviceId: cameraName, enabled: false, resetMode: "MANUAL_ONLY", parentWorkflowId: null,
+            actions: [{ actionId: `notify-${cameraName}-${Date.now()}-a1`, stepOrder: 0, actionDefinitionId: "notify_critical" }],
+          }),
+        });
+        const created = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok || created.error) throw new Error(created.error || `HTTP ${createResponse.status}`);
+        const activated = await authedFetch(`${apiBase}/api/rules/workflows/${created.workflowId}/activate`, { method: "POST" });
+        if (!activated.ok) throw new Error(`HTTP ${activated.status}`);
+      }
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <button
+      className={`btn-ghost camera-notify-toggle${existing ? " active" : ""}`}
+      onClick={toggle}
+      disabled={saving}
+      title={error ? `Not saved: ${error}` : (existing
+        ? `Notifying on ${cameraName} activity -- click to stop`
+        : `Notify me when ${cameraName} detects something`)}
+    >
+      <Bell size={14} /> {existing ? "Notifying" : "Notify me"}
+    </button>
+  );
+}
+
 export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's time-range window test
-  const { locationCfg } = useApp();
+  const { locationCfg, workflows, refreshWorkflows } = useApp();
   // 2026-08-15: a location can have real devices (e.g. Home's AldrichFront,
   // a Blink camera relayed through the cabin M920q's own blinkbridge/
   // Frigate) before that location has its own deployed backend -- same
@@ -480,12 +551,16 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   // since that backend can only ever hold its own location's data.
   const eventsLocationFilter = (apiBase === LOCATIONS.cabin.apiBase && locationCfg?.id)
     ? locationCfg.id : null;
+  // Same fallback reasoning as apiBase just above -- used only to build the
+  // "Open in Frigate" escape hatch below, never for a real API call.
+  const frigateUrl = locationDeployed ? (locationCfg?.frigateUrl || LOCATIONS.cabin.frigateUrl) : LOCATIONS.cabin.frigateUrl;
   const [window_, setWindow] = useState(() => localStorage.getItem("cameraEvents.window") || "24h");
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [expandedEventId, setExpandedEventId] = useState(null);
+  const [expandedMotionId, setExpandedMotionId] = useState(null);
   const [liveCamera, setLiveCamera] = useState(null);
   const [cameras, setCameras] = useState([]);
   const [cameraListError, setCameraListError] = useState(null);
@@ -629,13 +704,18 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
         <div className="camera-live-section">
           <div className="camera-live-buttons">
             {cameras.map(cam => (
-              <button
-                key={cam}
-                className={`btn-secondary${liveCamera === cam ? " active" : ""}`}
-                onClick={() => setLiveCamera(liveCamera === cam ? null : cam)}
-              >
-                <Radio size={14} /> {liveCamera === cam ? `Stop ${cam}` : `Watch ${cam} live`}
-              </button>
+              <div key={cam} className="camera-live-row">
+                <button
+                  className={`btn-secondary${liveCamera === cam ? " active" : ""}`}
+                  onClick={() => setLiveCamera(liveCamera === cam ? null : cam)}
+                >
+                  <Radio size={14} /> {liveCamera === cam ? `Stop ${cam}` : `Watch ${cam} live`}
+                </button>
+                <CameraNotifyToggle
+                  cameraName={cam} apiBase={apiBase} authedFetch={auth.authedFetch}
+                  workflows={workflows} onChanged={refreshWorkflows}
+                />
+              </div>
             ))}
           </div>
           {liveCamera && (
@@ -668,7 +748,12 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
               </div>
               {isExpanded && (
                 <div className="camera-clip-expanded">
-                  <CameraEventClip apiBase={apiBase} authedFetch={auth.authedFetch} frigateEventId={frigateEventId} />
+                  <CameraEventClip
+                    authedFetch={auth.authedFetch}
+                    clipUrl={`${apiBase}/api/camera/events/${frigateEventId}/clip`}
+                    frigateUrl={frigateUrl}
+                    cameraName={e.sourceDeviceId}
+                  />
                 </div>
               )}
             </div>
@@ -683,17 +768,41 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
         <div className="camera-motion-section">
           <button className="btn-ghost camera-motion-toggle" onClick={() => setShowMotion(s => !s)}>
             {showMotion ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            {motionEvents.length} motion event{motionEvents.length === 1 ? "" : "s"} (camera activity, no clip)
+            {motionEvents.length} motion event{motionEvents.length === 1 ? "" : "s"} (no Frigate detection — tap to try the recording)
           </button>
           {showMotion && (
             <div className="camera-motion-list">
-              {motionEvents.map(e => (
-                <div key={e.eventId} className="camera-motion-row">
-                  <span className="camera-motion-camera">{e.sourceDeviceId}</span>
-                  <span className="camera-motion-state">{e.eventType === "MOTION_ON" ? "motion started" : "motion ended"}</span>
-                  <span className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</span>
-                </div>
-              ))}
+              {motionEvents.map(e => {
+                const isMotionExpanded = expandedMotionId === e.eventId;
+                return (
+                  <div key={e.eventId} className="camera-motion-item">
+                    <div
+                      className="camera-motion-row clickable"
+                      onClick={() => setExpandedMotionId(isMotionExpanded ? null : e.eventId)}
+                    >
+                      <span className="camera-motion-camera">{e.sourceDeviceId}</span>
+                      <span className="camera-motion-state">{e.eventType === "MOTION_ON" ? "motion started" : "motion ended"}</span>
+                      <span className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</span>
+                    </div>
+                    {isMotionExpanded && (
+                      <div className="camera-clip-expanded">
+                        {/* No native Frigate event behind a motion-only row -- this asks
+                            Frigate for whatever it continuously recorded around this
+                            timestamp instead (record.enabled is true regardless of
+                            detection, confirmed live 2026-08-18). Falls back to the
+                            same "Open in Frigate" link CameraEventClip already renders
+                            on a genuine miss (retention expired, camera was down). */}
+                        <CameraEventClip
+                          authedFetch={auth.authedFetch}
+                          clipUrl={`${apiBase}/api/camera/events/${e.eventId}/clip-by-time`}
+                          frigateUrl={frigateUrl}
+                          cameraName={e.sourceDeviceId}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1433,7 +1542,7 @@ const DM_VIEWS = [
 ];
 
 function DeviceManagerPanel() {
-  const { devices, refreshDevices, activeLocation } = useApp();
+  const { devices, refreshDevices, activeLocation, workflows } = useApp();
   const [view, setView]             = useState("see");
   const [selected, setSelected]     = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
@@ -1589,9 +1698,10 @@ function DeviceManagerPanel() {
         deviceFilter={effectiveDeviceFilter}
         onLifecycleAction={applyLifecycleAction}
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
-        onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }} />}
+        onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }}
+        onRefresh={refreshManagerDevices} workflows={workflows} />}
       {view === "change" && <DmChangeView devices={locDevices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)))} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
-        onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })} />}
+        onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })} workflows={workflows} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
       {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
       {discoveryTarget && (
@@ -1651,6 +1761,22 @@ export function groupDevices(devices, groupBy) {
   const groups = new Map();
   devices.forEach(d => { const key = keyFor(d); groups.set(key, [...(groups.get(key) || []), d]); });
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
+// Real workflow membership -- deliberately separate from WORKFLOW_BY_TYPE
+// above, which is a cosmetic, single-valued, client-only groupBy bucket
+// derived from device TYPE and never persisted anywhere. This instead asks
+// "which real, persisted WorkflowRule objects (GET /api/rules/workflows)
+// actually reference this device" -- as either the trigger device or the
+// target of any of its ordered actions -- which is the thing a device can
+// genuinely belong to more than one of. A device with zero matches here is
+// in zero workflows, full stop; there's no fallback "Other" bucket the way
+// groupDevices has one, because "not in any workflow" is a real, accurate
+// answer rather than a missing categorization.
+export function workflowsForDevice(workflows, deviceId) {
+  if (!deviceId) return [];
+  return (workflows || []).filter(w =>
+    w.triggerDeviceId === deviceId || (w.actions || []).some(a => a.targetDeviceId === deviceId));
 }
 
 export function filterDeviceManagerDevices(devices, filter = "in_scope") {
@@ -1776,7 +1902,7 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   return { groups, reorderGroup, reorderDevice };
 }
 
-function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery }) {
+function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows }) {
   const { activeLocation } = useApp();
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
@@ -1883,6 +2009,8 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
                 selected={selected === d.deviceId}
                 checkinStatus={checkinDetails[d.deviceId]?.status || checkinStatuses[d.deviceId]}
                 onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)}
+                onToggled={onRefresh}
+                workflows={workflows}
                 dragHandle={reorderMode
                   ? (isPinned
                     ? <Lock size={12} className="auto-pin-icon" title="Auto-pinned: alarm active"/>
@@ -1910,13 +2038,13 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
 }
 
 // ── L2/L3: Change ──
-function DmChangeView({ devices, selected, onSelect, onRefresh, onOpenDiscovery }) {
+function DmChangeView({ devices, selected, onSelect, onRefresh, onOpenDiscovery, workflows }) {
   const sel = selected ? devices.find(d => d.deviceId === selected) : null;
   return (
     <div className="dm-layout">
       <div className="dm-list">
         <p className="dm-hint">Select a device to review its details or save an actual configuration change.</p>
-        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} />)}
+        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} workflows={workflows} />)}
       </div>
       {sel && (
         <div className="dm-detail">
@@ -2198,11 +2326,63 @@ function DmRemoveView({ devices, selected, onSelect, onRefresh }) {
 
 // ── Shared sub-components ──
 
-function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
+// Found (user report): enabling a device required clicking into its name,
+// switching to the "Change" tab, re-selecting it there, THEN toggling --
+// two-plus clicks and a tab switch for something that should be one click
+// from the row itself. onToggled is only passed by callers that make sense
+// for it (DmSeeView/DmChangeView's browsing lists) -- DmRemoveView and
+// MnChangeView (display-config overrides, an unrelated "Change" concept)
+// don't pass it, so the toggle simply doesn't render there, matching their
+// existing behavior unchanged.
+function DmRowEnableToggle({ device, onToggled }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const enabled = device.attributes?.enabled ?? (device.enabled !== false);
+  const lifecycle = deviceLifecycleState(device);
+  const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+
+  const toggle = async (e) => {
+    e.stopPropagation(); // don't also trigger the row's own onClick (select)
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !enabled })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+      onToggled();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <button
+      className="btn-ghost dm-row-enable-toggle"
+      onClick={toggle}
+      disabled={saving}
+      title={error ? `Not saved: ${error}` : (lifecycle === "CANDIDATE"
+        ? "Enabling accepts and assigns this device"
+        : (enabled ? "Disable" : "Enable"))}
+    >
+      {enabled ? <ToggleRight size={18} className="toggle-on"/> : <ToggleLeft size={18} className="toggle-off"/>}
+    </button>
+  );
+}
+
+export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus, onToggled, workflows }) {
   const Icon = deviceIcon(device.type);
   const isZ2m = device.deviceId.startsWith("z2m-");
   const override = checkinStatusLabel(device.state, checkinStatus);
   const lifecycle = deviceLifecycleState(device);
+  // workflows is undefined for callers that don't fetch it (DmRemoveView,
+  // MnChangeView) -- same opt-in shape as onToggled/DmRowEnableToggle above.
+  const deviceWorkflows = workflows ? workflowsForDevice(workflows, device.deviceId) : [];
   return (
     <div className={`dm-device-row ${selected ? "dm-row-selected" : ""}`} onClick={onClick}>
       {dragHandle}
@@ -2216,9 +2396,15 @@ function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus }) {
           {LIFECYCLE_LABELS[lifecycle] || lifecycle}
         </span>
       )}
+      {deviceWorkflows.length > 0 && (
+        <span className="workflow-badge" title={deviceWorkflows.map(w => w.name).join(", ")}>
+          {deviceWorkflows.length} workflow{deviceWorkflows.length === 1 ? "" : "s"}
+        </span>
+      )}
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
+      {onToggled && <DmRowEnableToggle device={device} onToggled={onToggled} />}
     </div>
   );
 }
@@ -2246,6 +2432,18 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       <div className="dm-detail-id">{device.deviceId}</div>
       <div className="dm-detail-rows">
         <div className="dm-detail-row"><span>Type</span><span>{device.type}</span></div>
+        {device.attributes?.category && (
+          <div className="dm-detail-row"><span>Category</span>
+            <span className="category-badge">{device.attributes.category}</span>
+          </div>
+        )}
+        {device.attributes?.capabilities?.length > 0 && (
+          <div className="dm-detail-row"><span>Capabilities</span>
+            <span className="capability-chips">
+              {device.attributes.capabilities.map(c => <span key={c} className="capability-chip">{c}</span>)}
+            </span>
+          </div>
+        )}
         <div className="dm-detail-row"><span>Location</span><span>{device.location}</span></div>
         <div className="dm-detail-row"><span>State</span>
           <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
@@ -2302,12 +2500,17 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       {Object.keys(device.attributes || {}).length > 0 && (
         <>
           <div className="dm-detail-section">Attributes</div>
-          {Object.entries(device.attributes).map(([k, v]) => v != null && (
-            <div key={k} className="attr-row">
-              <span className="attr-key">{k}</span>
-              <span className="attr-val">{String(v)}</span>
-            </div>
-          ))}
+          {/* category/capabilities have their own structured rows above (real
+              ontology data, not free-form) -- shown there only, not duplicated
+              here as raw key/value text. */}
+          {Object.entries(device.attributes)
+            .filter(([k]) => k !== "category" && k !== "capabilities")
+            .map(([k, v]) => v != null && (
+              <div key={k} className="attr-row">
+                <span className="attr-key">{k}</span>
+                <span className="attr-val">{String(v)}</span>
+              </div>
+            ))}
         </>
       )}
       {lifecycle === "ASSIGNED" && device.type === "LOCK" && <DmLockActions device={device}/>}
@@ -2369,13 +2572,21 @@ function DmLockActions({ device }) {
 export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
   const [name, setName]       = useState(device.name);
   const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
+  // Room (added 2026-08-18): the grouping dimension wired up on request --
+  // was always readable in groupDevices()'s "room" option, but nothing in
+  // the backend ever set it, so every device showed "Room not assigned"
+  // with no way to change that. Persists durably via PATCH .../config's
+  // new 'room' field (DeviceLifecycleRecord.extraAttributes), not just in
+  // memory -- see DeviceController's own comment.
+  const [room, setRoom]       = useState(device.attributes?.room || "");
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
   const [saveError, setSaveError] = useState(null);
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
   const lifecycle = deviceLifecycleState(device);
   const originalEnabled = device.attributes?.enabled ?? (device.enabled !== false);
-  const changed = name.trim() !== device.name || enabled !== originalEnabled;
+  const originalRoom = device.attributes?.room || "";
+  const changed = name.trim() !== device.name || enabled !== originalEnabled || room.trim() !== originalRoom;
 
   const save = async () => {
     setSaving(true);
@@ -2384,7 +2595,7 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
       const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, enabled })
+        body: JSON.stringify({ name, enabled, room: room.trim() })
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
@@ -2410,6 +2621,10 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
       )}
       <label>Display Name
         <input value={name} onChange={e => { setName(e.target.value); setSaved(false); setSaveError(null); }}/>
+      </label>
+      <label>Room
+        <input value={room} placeholder="e.g. Kitchen, Mechanical Room"
+          onChange={e => { setRoom(e.target.value); setSaved(false); setSaveError(null); }}/>
       </label>
       <label className="dm-toggle-row">
         <span>Enabled</span>
@@ -3193,7 +3408,7 @@ function LocationRulesSection({ locCfg }) {
 }
 
 export function RulesPanel() { // exported for src/App.test.jsx's location-split test
-  const { activeLocation } = useApp();
+  const { activeLocation, workflows } = useApp();
   const locationIds = Object.keys(LOCATIONS);
   const locs = activeLocation === "both"
     ? locationIds.map(id => LOCATIONS[id])
@@ -3213,6 +3428,7 @@ export function RulesPanel() { // exported for src/App.test.jsx's location-split
         </div>
         <div className="rules-sidebar">
           <KafkaStatus location={activeLocation} />
+          <WorkflowRulesCard workflows={workflows} />
           <BuiltinRules location={activeLocation} />
         </div>
       </div>
@@ -3350,6 +3566,42 @@ function KafkaStatus({ location }) {
         ))}
       </div>
       <p className="config-hint">Node-RED consumes {prefix}.events.raw. Broker: localhost:9092.</p>
+    </div>
+  );
+}
+
+// The real, persisted trigger->action rules engine (WorkflowRuleService,
+// GET /api/rules/workflows) had zero frontend surface anywhere before this
+// -- BuiltinRules below shows AutomationRuleService's older, separate,
+// hardcoded-in-Java rule catalog, not this one. Read-only for now: creating
+// and editing a workflow (trigger/action selection, device targets) is a
+// real form-design task of its own, tracked separately -- this card's job
+// is making what already exists in Postgres visible at all, since right
+// now the only way to see a workflow's real shape is querying the API
+// directly. See workflowsForDevice for how a device row's own badge
+// (DmDeviceRow) cross-references this same data.
+export function WorkflowRulesCard({ workflows = [] }) {
+  return (
+    <div className="sidebar-card">
+      <strong>Workflows</strong>
+      <p className="config-hint">Real, persisted trigger → action rules (separate from the rules below and from Node-RED). Read only here for now.</p>
+      {workflows.length === 0 && <p className="config-hint">No workflows configured yet.</p>}
+      {workflows.map(w => (
+        <div key={w.workflowId} className="rule-row">
+          <span className={`rule-dot ${w.enabled ? "rule-defined" : "rule-inactive"}`}>●</span>
+          <div>
+            <div className="rule-name">{w.name}</div>
+            <div className="rule-detail">
+              {w.triggerDeviceId || w.triggerDefinitionId || "any trigger"}
+              {" → "}
+              {(w.actions || []).length > 0
+                ? w.actions.map(a => a.targetDeviceId || a.actionDefinitionId).join(", ")
+                : "no actions"}
+            </div>
+            <div className="rule-source">{w.location} · {w.enabled ? "active" : "draft"}</div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -3796,6 +4048,7 @@ function App() {
   });
   const [activeLocation, setActiveLocation] = useState("cabin");
   const [devices,        setDevices]        = useState([]);
+  const [workflows,      setWorkflows]      = useState([]);
   const [config,         setConfig]         = useState({});
   const [connected,      setConnected]      = useState(false);
   const [apiError,       setApiError]       = useState(null); // { message, at } | null -- see refreshDevices
@@ -3873,6 +4126,30 @@ function App() {
     return () => clearInterval(t);
   }, [refreshDevices, locationCfg]);
 
+  // Real WorkflowRule membership (see workflowsForDevice) -- same
+  // per-location fetch shape as refreshDevices above, just a slower
+  // refresh interval since workflows change far less often than device
+  // state. GET /api/rules/workflows is unauthenticated/read-only (see
+  // RulesController's own doc comment), so this needs no auth token.
+  const refreshWorkflows = useCallback(() => {
+    const attempts = [];
+    if (activeLocation === "cabin" || activeLocation === "both") {
+      attempts.push(fetch(`${LOCATIONS.cabin.apiBase}/api/rules/workflows`)
+        .then(r => r.ok ? r.json() : []).catch(() => []));
+    }
+    if (activeLocation === "home" || activeLocation === "both") {
+      attempts.push(fetch(`${LOCATIONS.home.apiBase}/api/rules/workflows`)
+        .then(r => r.ok ? r.json() : []).catch(() => []));
+    }
+    Promise.all(attempts).then(results => setWorkflows(results.flat()));
+  }, [activeLocation]);
+
+  useEffect(() => {
+    refreshWorkflows();
+    const t = setInterval(refreshWorkflows, 30000);
+    return () => clearInterval(t);
+  }, [refreshWorkflows]);
+
   const locationLabel = activeLocation === "both"
     ? "Cabin + Home"
     : (LOCATIONS[activeLocation]?.label || "Hub");
@@ -3880,6 +4157,7 @@ function App() {
   return (
     <AppContext.Provider value={{
       devices, config, refreshDevices,
+      workflows, refreshWorkflows,
       activeLocation, locationCfg,
       activeAlerts, activeAlertLocations, activeAlertUnavailableLocations, activeAlertsGeneratedAt,
       activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,

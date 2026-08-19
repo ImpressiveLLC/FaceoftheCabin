@@ -81,6 +81,46 @@ class DeviceRegistryTest {
         assertTrue(store.records.get("candidate-2").configurationAsserted());
     }
 
+    /**
+     * 2026-08-18: room (UX rework's wired-up grouping dimension) rides
+     * saveConfiguration's new extraAttributes parameter -- see
+     * DeviceLifecycleRecord's own comment for why it's not a real
+     * DeviceDescriptor field. Must be visible on the live status
+     * immediately (not just after a restart -- that round-trip is
+     * JdbcDeviceLifecycleStoreIntegrationTest's job).
+     */
+    @Test
+    void savingRoomAsExtraAttributesIsVisibleOnTheLiveStatusImmediately() {
+        registry.registerCandidate(descriptor(
+            "candidate-room", "Kitchen temp", DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/temp", false, "cabin"), Map.of());
+
+        DeviceRegistry.ConfigurationSaveResult saved = registry.saveConfiguration(
+            "candidate-room", "Kitchen temp", false, Map.of("room", "Kitchen"));
+
+        assertTrue(saved.changed());
+        assertEquals("Kitchen", registry.get("candidate-room").attributes().get("room"));
+        assertEquals("Kitchen", store.records.get("candidate-room").extraAttributes().get("room"));
+    }
+
+    /**
+     * The changed() short-circuit above name/enabled must not swallow a
+     * room-only edit -- name and enabled are unchanged here, only room is.
+     */
+    @Test
+    void roomOnlyChangeIsStillTreatedAsAChangeEvenWhenNameAndEnabledMatch() {
+        registry.registerCandidate(descriptor(
+            "candidate-room-2", "Front door lock", DeviceType.LOCK,
+            Set.of(DeviceCapability.ACCESS_CONTROL), "ha_rest", "lock.front_door", false, "cabin"), Map.of());
+        registry.saveConfiguration("candidate-room-2", "Front door lock", false);
+
+        DeviceRegistry.ConfigurationSaveResult saved = registry.saveConfiguration(
+            "candidate-room-2", "Front door lock", false, Map.of("room", "Entry"));
+
+        assertTrue(saved.changed(), "a room-only edit must still count as a real, persisted change");
+        assertEquals("Entry", registry.get("candidate-room-2").attributes().get("room"));
+    }
+
     @Test
     void reviewingOrSavingNoEffectiveChangeLeavesCandidateAndWritesNothing() {
         registry.registerCandidate(descriptor(
@@ -354,6 +394,60 @@ class DeviceRegistryTest {
         assertNull(status.attributes().get("discoverySuggested"));
         assertEquals("SONOFF", status.attributes().get("vendor"));
         assertEquals(DeviceLifecycleState.CANDIDATE, registry.lifecycleState("new-3"));
+    }
+
+    // ── Ontology metadata on read (added 2026-08-19) ──
+
+    @Test
+    void getAttachesCategoryAndCapabilitiesFromTheRealDescriptor() {
+        registry.registerCandidate(descriptor(
+            "cam-1", "Driveway", DeviceType.CAMERA,
+            Set.of(DeviceCapability.STREAM, DeviceCapability.TELEMETRY), "mqtt", "cabin/camera/driveway", false, "cabin"),
+            Map.of());
+
+        var status = registry.get("cam-1");
+
+        assertEquals("SECURITY", status.attributes().get("category"));
+        assertEquals(List.of("STREAM", "TELEMETRY"), status.attributes().get("capabilities"));
+    }
+
+    @Test
+    void categoryReflectsTheDeviceTypeEvenWithNoDescriptorLookupNeeded() {
+        registry.registerCandidate(descriptor(
+            "thermo-1", "Living Room", DeviceType.THERMOSTAT,
+            Set.of(DeviceCapability.CLIMATE, DeviceCapability.COMMAND), "ha_rest", "climate.living_room", false, "cabin"),
+            Map.of());
+
+        assertEquals("CLIMATE", registry.get("thermo-1").attributes().get("category"));
+    }
+
+    @Test
+    void ontologyMetadataIsAttachedAcrossEveryReadPathNotJustGet() {
+        registry.registerCandidate(descriptor(
+            "leak-1", "Mech Room", DeviceType.WATER_LEAK_SENSOR,
+            Set.of(DeviceCapability.ALARM, DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/leak", false, "cabin"),
+            Map.of());
+
+        assertEquals("SAFETY", registry.visible().stream()
+            .filter(d -> d.deviceId().equals("leak-1")).findFirst().orElseThrow().attributes().get("category"));
+        assertEquals("SAFETY", registry.candidates().stream()
+            .filter(d -> d.deviceId().equals("leak-1")).findFirst().orElseThrow().attributes().get("category"));
+        assertEquals("SAFETY", registry.byLocation("cabin").stream()
+            .filter(d -> d.deviceId().equals("leak-1")).findFirst().orElseThrow().attributes().get("category"));
+    }
+
+    @Test
+    void ontologyMetadataDoesNotOverwriteUnrelatedExistingAttributes() {
+        registry.registerCandidate(descriptor(
+            "leak-2", "Bathroom", DeviceType.WATER_LEAK_SENSOR,
+            Set.of(DeviceCapability.ALARM), "mqtt", "zigbee2mqtt/leak2", false, "cabin"),
+            Map.of("vendor", "Third Reality", "battery", 100));
+
+        var status = registry.get("leak-2");
+
+        assertEquals("Third Reality", status.attributes().get("vendor"));
+        assertEquals(100, status.attributes().get("battery"));
+        assertEquals("SAFETY", status.attributes().get("category"));
     }
 
     private DeviceDescriptor descriptor(String id, String name, DeviceType type,
