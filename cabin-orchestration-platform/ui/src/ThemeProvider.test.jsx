@@ -1,6 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { resolveInitialThemeId, THEMES } from "./ThemeProvider.jsx";
 
+// Test-only, not a theming utility this app itself needs elsewhere --
+// see "Asteroid City's card surface is clearly distinguishable..." below.
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16),
+  };
+}
+
 // Covers the actual reported bug this session (theme resets on cross-app
 // link-out) at its root cause -- see docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md
 // §2c/2d and this function's own comment in ThemeProvider.jsx.
@@ -40,12 +51,26 @@ describe("resolveInitialThemeId", () => {
     const theme = THEMES.asteroidcity;
     expect(theme.label).toBe("Asteroid City");
     expect(theme.vars).toMatchObject({
-      "--bg": "#3ca9c4",
-      "--bg-secondary": "#f9f5eb",
-      "--accent": "#e57c4a",
+      "--bg": "#009ca6",
+      "--bg-secondary": "#dcb881",
+      "--accent": "#e34e24",
       "--border": "#1f3438",
-      "--bg-tertiary": "#f2c14e",
+      "--bg-tertiary": "#a1c19b",
     });
+  });
+  // 2026-08-19 (user report, with screenshot): the theme's own card surface
+  // must be clearly distinguishable from its own page background -- this
+  // was the actual bug, not a specific hex pairing. Locks in the fix as a
+  // property (real hue distance, not "any two different-looking colors")
+  // rather than pinning it to today's literal choice of sand vs. turquoise,
+  // so a future palette nudge can't silently regress the same complaint.
+  it("Asteroid City's card surface is clearly distinguishable from its own page background", () => {
+    const { vars } = THEMES.asteroidcity;
+    const bg = hexToRgb(vars["--bg"]);
+    const surface = hexToRgb(vars["--bg-secondary"]);
+    const distance = Math.sqrt(
+      (bg.r - surface.r) ** 2 + (bg.g - surface.g) ** 2 + (bg.b - surface.b) ** 2);
+    expect(distance).toBeGreaterThan(120);
   });
 
 });

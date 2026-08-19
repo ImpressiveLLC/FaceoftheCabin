@@ -374,7 +374,7 @@ function check(label, actual, expected) {
     banner.remove();
     return result;
   });
-  check('Asteroid City uses the supplied terracotta accent', themedControlStyles.accent, '#e57c4a');
+  check('Asteroid City uses the supplied blazing-orange accent', themedControlStyles.accent, '#e34e24');
   check('theme styling gives dropdowns a prominent outline', themedControlStyles.selectBorderWidth, '2px');
   check('Family Hub Close control receives the themed outline', themedControlStyles.closeBorderWidth, '2px');
   check('Family Hub Close control receives a themed surface',

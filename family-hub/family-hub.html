@@ -1653,28 +1653,33 @@
        accent below is a hardcoded rgba(75,200,200,...) teal-blue, entirely
        outside the theme variable system -- fine against every other
        theme's background, but nearly indistinguishable from Asteroid
-       City's own turquoise --night (#3ca9c4), so HOME days, active day
-       chips, the custody-card icon, and the completed-chore glow all
-       visually merged into the page background instead of standing out.
-       Scoped override, not a base-rule change, so every other theme keeps
-       its original teal untouched -- replaced with a warm khaki that has
-       no collision with any other Asteroid City hue (turquoise sky, sand,
-       yellow signage, terracotta). */
+       City's own turquoise --night, so HOME days, active day chips, the
+       custody-card icon, and the completed-chore glow all visually
+       merged into the page background instead of standing out.
+       Reworked 2026-08-19 (second user report, with screenshot: the
+       first pass's khaki was still too low-opacity/subtle over a
+       saturated turquoise background to actually read as its own color)
+       -- now built on Cactus Green at real, opaque-enough strength to
+       stand apart from the page background, and reuses --teal directly
+       so "HOME"/"Dad's" reads as the same one color everywhere in this
+       view (the legend dot included) instead of two different greens
+       that happen to look similar. Scoped override, not a base-rule
+       change, so every other theme keeps its own original teal untouched. */
     [data-theme="asteroidcity"] .sched-day.home {
-      background:rgba(195,165,114,.22); border-color:rgba(195,165,114,.55);
+      background:rgba(96,140,74,.38); border-color:rgba(96,140,74,.75);
     }
-    [data-theme="asteroidcity"] .sched-day.home .sched-status { color:#8a7038; }
-    [data-theme="asteroidcity"] .kid-sel-btn.active { border-color:rgba(195,165,114,.6); }
+    [data-theme="asteroidcity"] .sched-day.home .sched-status { color:#33471f; }
+    [data-theme="asteroidcity"] .kid-sel-btn.active { border-color:rgba(96,140,74,.7); }
     [data-theme="asteroidcity"] .chore-full-row.done .chore-full-cb {
-      box-shadow:0 0 10px rgba(195,165,114,.5);
+      box-shadow:0 0 10px rgba(96,140,74,.55);
     }
     [data-theme="asteroidcity"] .sched-day-chip.active {
-      border-color:rgba(195,165,114,.6); background:rgba(195,165,114,.16);
+      border-color:rgba(96,140,74,.7); background:rgba(96,140,74,.22);
     }
     [data-theme="asteroidcity"] .sched-day-chip.active .sched-day-label,
-    [data-theme="asteroidcity"] .sched-day-chip.active .sched-day-owner { color:#8a7038; }
+    [data-theme="asteroidcity"] .sched-day-chip.active .sched-day-owner { color:#33471f; }
     [data-theme="asteroidcity"] #custody-card .card-label-icon.home-icon {
-      background:rgba(195,165,114,.22);
+      background:rgba(96,140,74,.38);
     }
 
   </style>
@@ -1851,7 +1856,14 @@
       <div class="schedule-legend">
         <span><span class="legend-dot" style="background:var(--teal);"></span>Kids at Dad's</span>
         <span><span class="legend-dot" style="background:rgba(255,255,255,.2);"></span>Kids at Mom's</span>
-        <span><span class="legend-dot" style="background:var(--gold);outline:2px solid var(--gold);border-radius:50%;"></span>Today</span>
+        <!-- Found (user report, with screenshot): this was the only one of the
+             three legend dots with an added outline -- outline doesn't affect
+             CSS layout width, but it does make this dot visually read as
+             larger than the other two plain ones, so the row looked
+             unaligned even though all three are the same 10x10 .legend-dot.
+             The gold fill alone already distinguishes "Today" from the other
+             two colors; dropping the outline makes it match their size. -->
+        <span><span class="legend-dot" style="background:var(--gold);"></span>Today</span>
       </div>
       <div id="custody-counter" style="font-size:11px;color:var(--cream-dim);margin-top:10px"></div>
     </div>
@@ -5415,14 +5427,30 @@ const THEMES = {
        literal pixels, so it stays legible at heading sizes. */
     fonts: [{ id:'fh-font-pacman', href:'https://fonts.googleapis.com/css2?family=Bungee&family=VT323&display=swap' }],
   },
+  // Reworked 2026-08-19 (user report, with screenshot + the film's own
+  // reference color swatch): the actual bug was --glass already being a
+  // reasonable sand tone (fine for glass-card/dash-card/etc.), but the
+  // schedule day cells never used --glass at all -- .sched-day.home/.away
+  // are their own hardcoded rgba(75,200,200,...) background, entirely
+  // outside the theme variable system (see this file's own [data-theme=
+  // "asteroidcity"] .sched-day.home rule below, now rebuilt on this same
+  // new palette instead of last pass's khaki patch). Colors below are the
+  // user-supplied swatch's own values: deep sky turquoise stays the page
+  // background as requested; desert sand/dusty sage are the "larger UI
+  // element boxes... across the site" tiers (unmistakably different from
+  // teal in hue AND lightness, not a low-opacity tint of it); blazing
+  // orange is --gold only (primary actions, "today"), used sparingly per
+  // "a minimal amount of navajo red as accent" -- everyday control
+  // borders elsewhere in this file already reference --glass-border, not
+  // --gold, so this alone keeps orange from spreading across every input.
   asteroidcity: {
     label: 'Asteroid City', id: 'asteroidcity',
     vars: {
-      '--night':'#3ca9c4', '--glass':'rgba(249,245,235,0.94)', '--glass-light':'rgba(242,193,78,0.20)',
-      '--glass-border':'rgba(31,52,56,0.78)', '--shadow':'12px 12px 0 rgba(31,52,56,.80)',
-      '--gold':'#e57c4a', '--gold-glow':'rgba(229,124,74,0.30)', '--gold-faint':'rgba(229,124,74,0.16)',
-      '--teal':'#2a8da6', '--teal-glow':'rgba(42,141,166,0.22)',
-      '--rose':'#b33a2b', '--rose-glow':'rgba(179,58,43,0.20)',
+      '--night':'#009ca6', '--glass':'rgba(220,184,129,0.94)', '--glass-light':'rgba(161,193,155,0.30)',
+      '--glass-border':'rgba(63,113,102,0.85)', '--shadow':'12px 12px 0 rgba(63,113,102,.55)',
+      '--gold':'#e34e24', '--gold-glow':'rgba(227,78,36,0.30)', '--gold-faint':'rgba(227,78,36,0.16)',
+      '--teal':'#608c4a', '--teal-glow':'rgba(96,140,74,0.22)',
+      '--rose':'#ad7154', '--rose-glow':'rgba(173,113,84,0.20)',
       '--cream':'#1f3438', '--cream-dim':'rgba(31,52,56,0.72)', '--cream-ghost':'rgba(31,52,56,0.42)',
       '--radius':'2px', '--font-display':"'Impact','Arial Black','Futura-CondensedExtraBold',sans-serif", '--font-ui':"'Georgia','Times New Roman',serif",
     },

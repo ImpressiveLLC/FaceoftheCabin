@@ -263,23 +263,41 @@ export const THEMES = {
     },
   },
 
+  // Reworked 2026-08-19 (user report, with screenshot + the film's own
+  // reference color swatch): the first pass's card surface (#f9f5eb,
+  // near-white) didn't actually blend with the turquoise background --
+  // family-hub.html's hardcoded rgba(75,200,200,...) card colors were the
+  // real culprit there (see that file's own comment) -- but this app's
+  // highway-sign yellow (--bg-tertiary) and broad terracotta accent usage
+  // weren't drawn from the film's own palette at all, just an approximation.
+  // Rebuilt from the user-supplied swatch (an actual Asteroid City still):
+  // deep sky turquoise stays the page background as requested; "larger UI
+  // element boxes... across the site" get desert sand (unmistakably
+  // different from teal in both hue and lightness, not just a low-opacity
+  // tint of it) as the primary surface and dusty sage as the secondary/
+  // hover tier -- the sky/ground/foliage layering the reference image
+  // itself uses. Blazing orange is reserved for --accent only (primary
+  // actions, focus, "today"-class highlights) per "a minimal amount of
+  // navajo red as accent" -- every rounded control border (--border-focus)
+  // uses the more muted sun-baked rust instead, so orange doesn't spread
+  // across every input/button on the page.
   asteroidcity: {
     id: "asteroidcity",
     label: "Asteroid City",
     vars: {
-      "--bg":           "#3ca9c4", // saturated mid-century turquoise sky
-      "--bg-secondary": "#f9f5eb", // bleached white sand
-      "--bg-tertiary":  "#f2c14e", // highway-sign yellow
+      "--bg":           "#009ca6", // Deep Sky Turquoise
+      "--bg-secondary": "#dcb881", // Desert Sand -- primary card/box surface
+      "--bg-tertiary":  "#a1c19b", // Dusty Sage -- secondary/hover surface
       "--surface":      "#ffffff",
       "--border":       "#1f3438", // deep matte charcoal signage outline
-      "--border-focus": "#e57c4a", // desert terracotta
+      "--border-focus": "#ad7154", // Sun-Baked Rust -- everyday control borders (muted, not the accent)
       "--text":         "#1f3438",
-      "--text-muted":   "#425d62",
-      "--text-dim":     "#62787c",
-      "--accent":       "#e57c4a",
-      "--accent-hover": "#f2c14e",
-      "--success":      "#257765",
-      "--warning":      "#9a6414",
+      "--text-muted":   "#3f7166", // Sage Shadow
+      "--text-dim":     "#5c7d74",
+      "--accent":       "#e34e24", // Blazing Orange -- minimal, high-impact accent only
+      "--accent-hover": "#c98f5c", // Muted Terracotta
+      "--success":      "#608c4a", // Cactus Green
+      "--warning":      "#ad7154", // Sun-Baked Rust
       "--danger":       "#b33a2b",
       "--font-display": "'Georgia', 'Times New Roman', serif",
       "--font-mono":    "'Courier New', monospace",
