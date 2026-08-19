@@ -1381,6 +1381,15 @@
       #chores-card { grid-column:1; grid-row:4; }
       #bottom-bar { grid-column:1; grid-row:5; padding-right:0; }
 
+      /* Requested 2026-08-04 (re-applied against the real current file
+         after a stale-clone discovery mid-session -- see git history
+         around this commit for that incident): on a phone, the device's
+         own status bar
+         already shows the time/date, and the custody/"kids home today"
+         card is redundant screen space at this width -- both dropped on
+         mobile only, desktop/tablet (>900px) unchanged. */
+      #clock-center, #custody-card { display:none; }
+
       #dashboard-fab, #settings-btn { display:none; }
       #mobile-action-dock {
         position:fixed; left:10px; right:10px; bottom:calc(8px + env(safe-area-inset-bottom));
