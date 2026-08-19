@@ -1572,10 +1572,28 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 
 /* Asteroid City: rectilinear postcard geometry, hard shadows, geometric
-   signage headings, and the supplied turquoise / terracotta / sand palette. */
+   signage headings, and the supplied turquoise / terracotta / sand palette.
+   2026-08-19 (second user report, with screenshots): "blend-in like the
+   Asteroid City movie poster with sand, mountain, horizon, sky blue" --
+   a plain vertical gradient standing in for that sky/mesa/ground
+   composition, same stops as Family Hub's own version of this fix so both
+   apps read as one consistent theme. --bg itself stays the plain solid
+   color other rules still rely on (color-mix-style compositing, etc.);
+   this only repaints the actual page fill. background-attachment:fixed
+   because unlike Family Hub (a fixed single viewport), this app's panels
+   genuinely scroll -- without it the gradient would visibly shift/tile
+   as content scrolled instead of reading as a stable backdrop. */
 [data-theme="asteroidcity"] body {
-  background: var(--bg);
-  background-image: none;
+  background-image: linear-gradient(
+    to bottom,
+    #009ca6 0%,
+    #4bb5a4 38%,
+    #82bfa9 52%,
+    #ad7154 62%,
+    #c98f5c 72%,
+    #dcb881 100%
+  );
+  background-attachment: fixed;
 }
 [data-theme="asteroidcity"] :is(
   .platform-name,
@@ -1592,6 +1610,22 @@ select option { background: var(--bg-secondary); color: var(--text); }
   -webkit-text-stroke: 1px var(--border);
   text-shadow: 2px 2px 0 var(--border);
   text-transform: uppercase;
+}
+/* "h1 and h2 would be great for the navajo red" -- .platform-name (h1)
+   already used --accent above; real <h2> panel titles didn't. */
+[data-theme="asteroidcity"] .panel-header-bar h2 {
+  color: var(--accent);
+}
+/* Found 2026-08-19 (second user report, cross-referencing Family Hub's
+   analogous fix): .device-card and .dm-device-group both use plain
+   --bg-secondary (sand) -- fine for .dm-device-group as the outer
+   container, but every device-card nested inside one was the exact same
+   sand as its own parent, no differentiation at all. --bg-tertiary is
+   already cactus green (see ThemeProvider.jsx, matching Family Hub's own
+   --glass-light), so this just applies it where nesting actually occurs. */
+[data-theme="asteroidcity"] .dm-device-group .device-card {
+  background: var(--bg-tertiary);
+  border-color: rgba(63, 113, 102, 0.65);
 }
 [data-theme="asteroidcity"] :is(
   .kpi-tile,

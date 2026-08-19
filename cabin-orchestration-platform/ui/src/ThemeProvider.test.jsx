@@ -55,7 +55,7 @@ describe("resolveInitialThemeId", () => {
       "--bg-secondary": "#dcb881",
       "--accent": "#e34e24",
       "--border": "#1f3438",
-      "--bg-tertiary": "#a1c19b",
+      "--bg-tertiary": "#608c4a",
     });
   });
   // 2026-08-19 (user report, with screenshot): the theme's own card surface

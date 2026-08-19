@@ -287,7 +287,7 @@ export const THEMES = {
     vars: {
       "--bg":           "#009ca6", // Deep Sky Turquoise
       "--bg-secondary": "#dcb881", // Desert Sand -- primary card/box surface
-      "--bg-tertiary":  "#a1c19b", // Dusty Sage -- secondary/hover surface
+      "--bg-tertiary":  "#608c4a", // Cactus Green -- secondary/hover surface (2026-08-19: same green Family Hub's schedule/legend and secondary UI tier now use, so "the green from calendar" reads as one consistent color across both apps, not two different greens that happen to look similar)
       "--surface":      "#ffffff",
       "--border":       "#1f3438", // deep matte charcoal signage outline
       "--border-focus": "#ad7154", // Sun-Baked Rust -- everyday control borders (muted, not the accent)
