@@ -501,6 +501,9 @@ body {
 }
 .camera-live-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .camera-live-buttons .btn-secondary.active { border-color: #388bfd; color: #79c0ff; }
+/* Each camera's live-view button paired with its own CameraNotifyToggle -- see App.jsx. */
+.camera-live-row { display: flex; align-items: center; gap: 6px; }
+.camera-notify-toggle.active { border-color: #79c0ff; color: #79c0ff; }
 .camera-live-view { margin-top: 10px; }
 .camera-live-view img {
   width: 100%; max-height: 400px; object-fit: contain;

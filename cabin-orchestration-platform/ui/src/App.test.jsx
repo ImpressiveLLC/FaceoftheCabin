@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, DeviceDiscoveryOverlay } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -874,6 +874,86 @@ describe("WorkflowRulesCard", () => {
     expect(screen.getByText("Draft alert")).toBeTruthy();
     expect(screen.getByText(/no actions/i)).toBeTruthy();
     expect(screen.getByText(/cabin.*draft/)).toBeTruthy();
+  });
+});
+
+describe("CameraNotifyToggle", () => {
+  afterEach(cleanup);
+
+  it("shows 'Notify me' (inactive) when this camera has no trigger_camera_detection workflow", () => {
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={vi.fn()} workflows={[]} onChanged={() => {}} />);
+    expect(screen.getByText("Notify me")).toBeTruthy();
+  });
+
+  it("ignores a workflow that targets this camera as an action, not as the trigger", () => {
+    const workflows = [{ workflowId: "wf-x", triggerDefinitionId: "trigger_water_leak_detected",
+      triggerDeviceId: "z2m-leak_mech_room", actions: [{ targetDeviceId: "driveway" }] }];
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={vi.fn()} workflows={workflows} onChanged={() => {}} />);
+    expect(screen.getByText("Notify me")).toBeTruthy();
+  });
+
+  it("ignores another camera's trigger_camera_detection workflow", () => {
+    const workflows = [{ workflowId: "wf-other-cam", triggerDefinitionId: "trigger_camera_detection",
+      triggerDeviceId: "home_aldrich_front", actions: [] }];
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={vi.fn()} workflows={workflows} onChanged={() => {}} />);
+    expect(screen.getByText("Notify me")).toBeTruthy();
+  });
+
+  it("shows 'Notifying' (active) when this camera has a real, matching workflow", () => {
+    const workflows = [{ workflowId: "wf-driveway", triggerDefinitionId: "trigger_camera_detection",
+      triggerDeviceId: "driveway", actions: [{ actionDefinitionId: "notify_critical" }] }];
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={vi.fn()} workflows={workflows} onChanged={() => {}} />);
+    expect(screen.getByText("Notifying")).toBeTruthy();
+  });
+
+  it("clicking while inactive creates a disabled workflow scoped to this camera, then activates it", async () => {
+    const calls = [];
+    const authedFetch = vi.fn((url, opts) => {
+      calls.push({ url, opts });
+      if (opts?.method === "POST" && url.endsWith("/api/rules/workflows")) {
+        return Promise.resolve({ ok: true, json: async () => ({ workflowId: "wf-new", enabled: false }) });
+      }
+      if (opts?.method === "POST" && url.endsWith("/activate")) {
+        return Promise.resolve({ ok: true, json: async () => ({ workflowId: "wf-new", enabled: true }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    const onChanged = vi.fn();
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={authedFetch} workflows={[]} onChanged={onChanged} />);
+
+    fireEvent.click(screen.getByText("Notify me"));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    const createCall = calls.find(c => c.url.endsWith("/api/rules/workflows") && !c.url.includes("activate"));
+    const body = JSON.parse(createCall.opts.body);
+    expect(body.triggerDefinitionId).toBe("trigger_camera_detection");
+    expect(body.triggerDeviceId).toBe("driveway");
+    expect(body.actions).toEqual([expect.objectContaining({ actionDefinitionId: "notify_critical" })]);
+    expect(calls.some(c => c.url === "http://cabin/api/rules/workflows/wf-new/activate")).toBe(true);
+  });
+
+  it("clicking while active deletes the existing workflow", async () => {
+    const workflows = [{ workflowId: "wf-driveway", triggerDefinitionId: "trigger_camera_detection",
+      triggerDeviceId: "driveway", actions: [] }];
+    const authedFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    const onChanged = vi.fn();
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={authedFetch} workflows={workflows} onChanged={onChanged} />);
+
+    fireEvent.click(screen.getByText("Notifying"));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    expect(authedFetch).toHaveBeenCalledWith("http://cabin/api/rules/workflows/wf-driveway", { method: "DELETE" });
+  });
+
+  it("a failed toggle surfaces the error without calling onChanged", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+    const onChanged = vi.fn();
+    render(<CameraNotifyToggle cameraName="driveway" apiBase="http://cabin" authedFetch={authedFetch} workflows={[]} onChanged={onChanged} />);
+
+    fireEvent.click(screen.getByText("Notify me"));
+
+    await waitFor(() => expect(screen.getByTitle(/not saved/i)).toBeTruthy());
+    expect(onChanged).not.toHaveBeenCalled();
   });
 });
 

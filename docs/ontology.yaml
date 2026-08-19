@@ -7458,6 +7458,155 @@ elements:
       device-event trigger, only by a person explicitly invoking it via
       POST /api/rules/workflows/{id}/fire.
 
+  - id: notify_critical
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.4.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-14"
+      ref: "WorkflowRuleService.executeAction()'s notify_critical case"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Notify"
+    action_kind: notify
+    requires_capability: (none -- not device-targeted, unlike a command action)
+    rendering:
+      semantic: "Push a CRITICAL See/Think/Act notification for this workflow's firing"
+      systems: Action — Notify
+      technical: "WorkflowRuleService.publishNotification() -> CabinEvent(eventType=WORKFLOW_ACTION, severity=CRITICAL) -> NtfyAlertPublisher"
+      compliance: (not shown)
+    definition: >
+      Publishes a WORKFLOW_ACTION event reusing AutomationRuleService's own
+      see/think/act/tags payload shape, so NtfyAlertPublisher and
+      AutomationAlertCard need zero changes to render it. Documented here
+      2026-08-18 -- this action kind, and log_event alongside it, shipped
+      2026-08-14 (same pass as trigger_water_leak_detected/
+      action_main_water_valve_off/_open) but were never given their own
+      ontology entries, an oversight in the other direction from this
+      vocabulary's usual pattern (ontology entities describing not-yet-built
+      behavior) -- these were real and working, just undocumented.
+    relationships:
+      - target: trigger_water_leak_detected
+        type: consumed_by
+        cardinality: "N:1"
+      - target: trigger_camera_detection
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      id intentionally has no action_ prefix, unlike action_main_water_
+      valve_off/_open -- WorkflowRuleService.executeAction()'s switch
+      already shipped and is matched against literal, already-persisted
+      workflow_rule rows; renaming the Java-side string to fit this
+      vocabulary's usual naming convention would break existing data, so
+      this entity's id matches the real string instead of the convention.
+      "see"/"act" notification text is derived per-trigger/per-action
+      (describeTriggeringEvent()/describeActions()) as of 2026-08-18 -- it
+      was hardcoded to the water-leak flagship scenario's own wording
+      before that, a real bug that would have mislabeled any other
+      trigger's notification (e.g. a camera detection reported as "Water
+      leak detected") had anything else used this action before now.
+
+  - id: log_event
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.4.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-14"
+      ref: "WorkflowRuleService.executeAction()'s log_event case"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Log"
+    action_kind: log
+    requires_capability: (none)
+    rendering:
+      semantic: "Record that this workflow fired, with no other side effect"
+      systems: Action — Log
+      technical: "No-op in executeAction() -- CabinEventService already persists every event this engine reacts to, and the WORKFLOW_EXECUTION row itself is the log"
+      compliance: (not shown)
+    definition: >
+      Exists purely so a human building a workflow sees "log" as an
+      explicit, selectable step rather than a workflow with zero
+      user-visible actions looking broken or incomplete. See
+      notify_critical's own notes for why this and log_event were
+      undocumented here until 2026-08-18 despite shipping 2026-08-14.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      Same id-has-no-action_-prefix reasoning as notify_critical.
+
+  - id: trigger_camera_detection
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Camera detects something"
+    applies_to_device_type: [CAMERA]
+    applies_to_capability: STREAM
+    trigger_source: { event_type_pattern: "DETECTION_NEW", payload_field: label }
+    predicate: { op: is_present }
+    rendering:
+      semantic: "A camera's own object detector recognizes something new in frame"
+      systems: Trigger — Camera Detection
+      technical: "CabinEvent.eventType()=='DETECTION_NEW'"
+      compliance: (not shown)
+    definition: >
+      Fires on Frigate's own object-detection pipeline recognizing a new
+      tracked object (see cabin_camera_event) -- NOT on MOTION_ON/OFF
+      (Blink's simpler PIR-style signal, no label/score/clip) and NOT on
+      DETECTION_UPDATE/END (the same already-tracked object continuing to
+      be seen or leaving frame). Matches by device TYPE, same as
+      trigger_water_leak_detected -- any camera is eligible with zero new
+      ontology entries, and triggerDeviceId scopes a specific workflow to
+      one camera (JdbcWorkflowRuleStore.findByTrigger: null
+      triggerDeviceId matches any camera, a real id matches only that one).
+      Added 2026-08-18 for the "assign a workflow directly from Camera
+      Events" request -- CameraEventsPanel's per-camera "Notify me" control
+      creates a workflow with this trigger_definition_id and the existing
+      notify_critical action, nothing new needed action-side.
+    relationships:
+      - target: cabin_camera_event
+        type: derived_from
+        cardinality: "N:1"
+      - target: notify_critical
+        type: triggers
+        cardinality: "1:N"
+    relates_to:
+      ui_components: [ui_camera_events_panel]
+      elements: [cabin_camera_event, notify_critical]
+    notes: >
+      A real, live design fork from trigger_water_leak_detected's own
+      behavior, not an oversight: water_leak is an ongoing, sampled STATE
+      (re-reported on every telemetry tick), so a leak workflow stays
+      "active" (WorkflowExecution.clearedAt stays null) until it explicitly
+      clears or a human clears it -- otherwise the SAME persistent leak
+      would re-fire on every tick. A camera detection is a discrete EVENT
+      with no symmetric "cleared" signal -- each one is already its own
+      distinct occurrence, nothing to de-duplicate against. This is a
+      property of the TRIGGER, not the action list attached to it (see
+      WorkflowRuleService.STATE_TRIGGERS_WITH_CLEAR_SIGNAL, which fire()
+      checks against rule.triggerDefinitionId()) -- deliberately corrected
+      from an earlier, wrong first draft of this rule that self-cleared
+      based on whether EVERY action was stateless (notify_critical/
+      log_event), which would have also self-cleared the pre-existing
+      MANUAL_ONLY notify-only leak workflow immediately on firing,
+      breaking its own "stays active until a human clears it" guarantee.
+      Any future trigger with no clear signal gets this same "notify every
+      time" behavior automatically, with zero changes to fire() itself --
+      only STATE_TRIGGERS_WITH_CLEAR_SIGNAL needs a new entry for a
+      future trigger that DOES have one.
+
   - id: active_alert_condition
     entity_type: owl:Class
     layer: fullstack

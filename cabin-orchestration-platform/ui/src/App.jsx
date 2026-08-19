@@ -27,7 +27,7 @@ import {
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
-  Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search
+  Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell
 } from "lucide-react";
 import "./styles.css";
 
@@ -463,8 +463,69 @@ export function buildCameraEventsUrl(apiBase, offset, window = "24h", location =
   return location ? `${base}&location=${location}` : base;
 }
 
+// "Assign a workflow directly from Camera Events" -- creates/removes a
+// real WorkflowRule (trigger_camera_detection, scoped to this one camera
+// via triggerDeviceId, existing notify_critical action -- see
+// WorkflowRuleService/docs/ontology.yaml, nothing new needed action-side)
+// via the real /api/rules/workflows API rather than the hardcoded
+// WORKFLOW_BY_TYPE groupBy bucket Device Manager already has. Toggle
+// semantics, matching DmRowEnableToggle's own pattern elsewhere in this
+// file: off->on creates (workflows are always created disabled, see
+// RulesController's own doc comment) then activates in one user action;
+// on->off deletes outright rather than leaving a disabled row behind,
+// since a simple per-camera notify toggle has no reason to keep history.
+export function CameraNotifyToggle({ cameraName, apiBase, authedFetch, workflows, onChanged }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const existing = (workflows || []).find(w =>
+    w.triggerDefinitionId === "trigger_camera_detection" && w.triggerDeviceId === cameraName);
+
+  const toggle = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      if (existing) {
+        const response = await authedFetch(`${apiBase}/api/rules/workflows/${existing.workflowId}`, { method: "DELETE" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      } else {
+        const createResponse = await authedFetch(`${apiBase}/api/rules/workflows`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workflowId: `notify-${cameraName}-${Date.now()}`, name: `Notify: ${cameraName}`,
+            location: "cabin", triggerKind: "DEVICE_EVENT", triggerDefinitionId: "trigger_camera_detection",
+            triggerDeviceId: cameraName, enabled: false, resetMode: "MANUAL_ONLY", parentWorkflowId: null,
+            actions: [{ actionId: `notify-${cameraName}-${Date.now()}-a1`, stepOrder: 0, actionDefinitionId: "notify_critical" }],
+          }),
+        });
+        const created = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok || created.error) throw new Error(created.error || `HTTP ${createResponse.status}`);
+        const activated = await authedFetch(`${apiBase}/api/rules/workflows/${created.workflowId}/activate`, { method: "POST" });
+        if (!activated.ok) throw new Error(`HTTP ${activated.status}`);
+      }
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <button
+      className={`btn-ghost camera-notify-toggle${existing ? " active" : ""}`}
+      onClick={toggle}
+      disabled={saving}
+      title={error ? `Not saved: ${error}` : (existing
+        ? `Notifying on ${cameraName} activity -- click to stop`
+        : `Notify me when ${cameraName} detects something`)}
+    >
+      <Bell size={14} /> {existing ? "Notifying" : "Notify me"}
+    </button>
+  );
+}
+
 export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's time-range window test
-  const { locationCfg } = useApp();
+  const { locationCfg, workflows, refreshWorkflows } = useApp();
   // 2026-08-15: a location can have real devices (e.g. Home's AldrichFront,
   // a Blink camera relayed through the cabin M920q's own blinkbridge/
   // Frigate) before that location has its own deployed backend -- same
@@ -643,13 +704,18 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
         <div className="camera-live-section">
           <div className="camera-live-buttons">
             {cameras.map(cam => (
-              <button
-                key={cam}
-                className={`btn-secondary${liveCamera === cam ? " active" : ""}`}
-                onClick={() => setLiveCamera(liveCamera === cam ? null : cam)}
-              >
-                <Radio size={14} /> {liveCamera === cam ? `Stop ${cam}` : `Watch ${cam} live`}
-              </button>
+              <div key={cam} className="camera-live-row">
+                <button
+                  className={`btn-secondary${liveCamera === cam ? " active" : ""}`}
+                  onClick={() => setLiveCamera(liveCamera === cam ? null : cam)}
+                >
+                  <Radio size={14} /> {liveCamera === cam ? `Stop ${cam}` : `Watch ${cam} live`}
+                </button>
+                <CameraNotifyToggle
+                  cameraName={cam} apiBase={apiBase} authedFetch={auth.authedFetch}
+                  workflows={workflows} onChanged={refreshWorkflows}
+                />
+              </div>
             ))}
           </div>
           {liveCamera && (

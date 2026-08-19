@@ -366,4 +366,109 @@ class WorkflowRuleServiceTest {
         }
         return "TIMED_OUT_WAITING";
     }
+
+    // ── Camera detection trigger + generalized notification text (added 2026-08-18) ──
+
+    private CabinEvent cameraDetectionEvent(String cameraId, String label, double score) {
+        return new CabinEvent(UUID.randomUUID().toString(), cameraId, "DETECTION_NEW", "INFO",
+            Instant.now(), Map.of("label", label, "score", score, "hasClip", true));
+    }
+
+    private WorkflowRule notifyOnlyCameraWorkflow(String workflowId, String cameraId) {
+        return new WorkflowRule(workflowId, "Notify: driveway", "cabin", "DEVICE_EVENT",
+            "trigger_camera_detection", cameraId, true, "MANUAL_ONLY", null, Instant.now(), "test",
+            List.of(new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of())));
+    }
+
+    @Test
+    void aNewCameraDetectionFiresAMatchingWorkflow() {
+        ruleStore.save(notifyOnlyCameraWorkflow("wf-cam", "driveway"));
+
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.83));
+
+        assertEquals(1, eventPublisher.published.size());
+        assertEquals("WORKFLOW_ACTION", eventPublisher.published.get(0).eventType());
+        assertEquals(1, executionStore.recentFor("wf-cam", 10).size());
+    }
+
+    @Test
+    void detectionUpdateAndEndAndPlainMotionDoNotMatchTheCameraTrigger() {
+        ruleStore.save(notifyOnlyCameraWorkflow("wf-cam-2", "driveway"));
+
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "driveway", "DETECTION_UPDATE", "INFO",
+            Instant.now(), Map.of("label", "person", "score", 0.9)));
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "driveway", "DETECTION_END", "INFO",
+            Instant.now(), Map.of("label", "person", "score", 0.9)));
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "driveway", "MOTION_ON", "INFO",
+            Instant.now(), Map.of("camera", "driveway")));
+
+        assertTrue(eventPublisher.published.isEmpty(), "only DETECTION_NEW should match trigger_camera_detection");
+        assertTrue(executionStore.recentFor("wf-cam-2", 10).isEmpty());
+    }
+
+    @Test
+    void aCameraWorkflowScopedToOneCameraIgnoresDetectionsFromAnother() {
+        ruleStore.save(notifyOnlyCameraWorkflow("wf-cam-3", "driveway"));
+
+        service.evaluate(cameraDetectionEvent("home_aldrich_front", "person", 0.7));
+
+        assertTrue(eventPublisher.published.isEmpty());
+        assertTrue(executionStore.recentFor("wf-cam-3", 10).isEmpty());
+    }
+
+    @Test
+    void aCameraWorkflowSelfClearsSoItFiresAgainOnTheNextDetection() {
+        ruleStore.save(notifyOnlyCameraWorkflow("wf-cam-repeat", "driveway"));
+
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.83));
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.91)); // a second, later, distinct detection
+
+        assertEquals(2, eventPublisher.published.size(),
+            "unlike the sticky leak workflow, a camera-detection workflow must not get stuck 'active' after firing once");
+        assertEquals(2, executionStore.recentFor("wf-cam-repeat", 10).size());
+        assertNotNull(executionStore.recentFor("wf-cam-repeat", 10).get(0).clearedAt(),
+            "a camera-detection execution self-clears immediately (clearedBy=AUTO)");
+        assertEquals("AUTO", executionStore.recentFor("wf-cam-repeat", 10).get(0).clearedBy());
+    }
+
+    @Test
+    void aCompoundLeakWorkflowStillStaysActiveUntilClearedRegardlessOfActionList() {
+        // Regression guard for the self-clear rework above: this must stay
+        // scoped to the TRIGGER (water_leak has a symmetric clear signal,
+        // camera detection doesn't), never to whether the action list
+        // happens to be all-notify -- manualOnlyResetModeDoesNotAutoClear
+        // above already covers a notify-only leak workflow's behavior
+        // end-to-end; this asserts the same clearedAt/clearedBy fact
+        // directly for the compound (notify + command) case too.
+        ruleStore.save(compoundLeakWorkflow("wf-stays-active"));
+
+        service.evaluate(leakEvent("z2m-leak_mech_room"));
+
+        WorkflowExecution execution = executionStore.recentFor("wf-stays-active", 10).get(0);
+        assertNull(execution.clearedAt());
+        assertNull(execution.clearedBy());
+    }
+
+    @Test
+    void notificationTextDescribesTheActualCameraDetectionNotAHardcodedLeakMessage() {
+        ruleStore.save(notifyOnlyCameraWorkflow("wf-cam-text", "driveway"));
+
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.83));
+
+        Map<String, Object> payload = eventPublisher.published.get(0).payload();
+        assertEquals("driveway detected person (83%)", payload.get("see"));
+        assertEquals("Notify", payload.get("act"));
+        assertTrue(String.valueOf(payload.get("think")).contains("Notify: driveway"));
+    }
+
+    @Test
+    void notificationTextForTheLeakWorkflowIsUnchangedByTheGeneralization() {
+        ruleStore.save(compoundLeakWorkflow("wf-leak-text"));
+
+        service.evaluate(leakEvent("z2m-leak_mech_room"));
+
+        Map<String, Object> payload = eventPublisher.published.get(0).payload();
+        assertEquals("Water leak detected", payload.get("see"));
+        assertEquals("Notify + Shut off main water valve", payload.get("act"));
+    }
 }
