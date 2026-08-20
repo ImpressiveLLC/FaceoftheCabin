@@ -5057,6 +5057,18 @@ elements:
     notes: >
       Home = true gates all chore and reward computations for the current day.
       Away = true: chore card shows "Kids at Mom's today" message.
+      2026-08-20: source/technical description above (parenting_schedule_
+      anchor + parenting_home_days, a flat single-rule model) is stale —
+      superseded by parenting_schedule_rule_version + holiday_override
+      (ownerOfDate()/ruleForDate()), which is what isKidsHome() actually
+      calls today. A duplicate, non-holiday-aware isKidsHome() definition
+      shadowed the correct one everywhere except this file's own
+      observation_report path until it was deleted 2026-08-20 — this entity
+      itself stays layer: frontend (still client-computed), but its real
+      upstream is now the backend-synced parenting_schedule_rule_version/
+      holiday_override, not the pre-versioning anchor/home-days pair this
+      entry still describes. Full rewrite of this entity's technical section
+      is out of scope for that fix — flagged here, not yet done.
 
   - id: next_custody_transition
     entity_type: owl:DatatypeProperty
@@ -5099,14 +5111,19 @@ elements:
 
   - id: parenting_schedule_rule_version
     entity_type: owl:Class
-    layer: frontend
+    layer: backend
     primitive: true
     schema_version: "0.3.0"
     migration_status: complete
     data_class: raw
     data_type: owl:Class
     ui_display_name: "Schedule version"
-    source: localStorage["smrekar_schedule_rules"] (array of rule objects)
+    source: >
+      Postgres schedule_rule table (ScheduleRuleService), via
+      GET/POST /api/schedule/rules (Google-auth gated). localStorage
+      ["smrekar_schedule_rules"] remains an offline mirror/fallback for
+      when signed out or unreachable, same role it plays for family_note/
+      family_profile — no longer the primary store as of 2026-08-20.
     rendering:
       semantic: "Schedule effective from {date}"
       systems: Custody Rule Version
@@ -5149,17 +5166,32 @@ elements:
       flat smrekar_schedule_cfg value, or an earlier build of this app that
       stored rules as a `homeDays` array instead of `dayOwners`, migrates
       automatically into the current explicit-map shape via normalizeRule().
+      2026-08-20: moved off localStorage-only (each Google-linked browser/
+      device kept an independent copy, requiring manual re-entry on each to
+      stay aligned) to a shared backend, matching family_note/family_profile.
+      A device with pre-existing local-only rule versions pushes them to the
+      server on its first sync after this change rather than having them
+      silently overwritten by the server's list (see
+      refreshScheduleRulesFromServer() in family-hub.html). createdBy is now
+      a family_profile id (the shared actor-picker identity, same as
+      family_note.authorId), not the raw signed-in Google account email as
+      before this change.
 
   - id: holiday_override
     entity_type: owl:Class
-    layer: frontend
+    layer: backend
     primitive: true
     schema_version: "0.3.0"
     migration_status: complete
     data_class: raw
     data_type: owl:Class
     ui_display_name: "Holiday / vacation"
-    source: localStorage["smrekar_holidays"] (array of holiday objects)
+    source: >
+      Postgres holiday table (HolidayService), via GET/POST/PATCH/DELETE
+      /api/schedule/holidays (Google-auth gated). localStorage
+      ["smrekar_holidays"] remains an offline mirror/fallback, no longer the
+      primary store as of 2026-08-20. No seed data — ships empty, same as
+      the localStorage-only version always did.
     rendering:
       semantic: "Christmas Day — Dad's"
       systems: Holiday Owner Override
@@ -5195,6 +5227,12 @@ elements:
     relates_to:
       ui_components: [settings_panel]
       elements: [parenting_schedule_rule_version, observation_report, holiday_history_entry, upcoming_holidays_view]
+    notes: >
+      2026-08-20: moved off localStorage-only to the shared backend, same
+      migration-safety and createdBy-attribution change as
+      parenting_schedule_rule_version — see that entity's notes. DELETE is a
+      hard delete server-side (no other record references a holiday by id,
+      unlike family_profile's soft-delete-for-authorship-history need).
 
   - id: upcoming_holidays_view
     entity_type: owl:Class
@@ -5433,8 +5471,15 @@ elements:
       elements: [observation_report]
     notes: >
       Local to whichever browser/device ran the materialization — not yet
-      synced across devices. See ROADMAP.md for moving this to the shared
-      Platform API backend if a cross-device record is needed.
+      synced across devices. Its two inputs (parenting_schedule_rule_version,
+      holiday_override) became backend-synced 2026-08-20 — this materialized
+      log itself is still out of scope for that move, deliberately: it's a
+      per-device derived cache of what ownerOfDate() computed on past visits,
+      not authoritative input data, and rebuilding it identically on every
+      device from the now-shared upstream rules/holidays is possible without
+      a dedicated sync of its own. Revisit only if a genuine cross-device
+      need for the materialized log specifically (not just its inputs)
+      shows up.
 
   - id: observation_report
     entity_type: owl:Class
@@ -5445,7 +5490,10 @@ elements:
     data_class: derived
     data_type: owl:Class
     ui_display_name: "Observations"
-    source: custody_day_log (recorded) + parenting_schedule_rule_version + holiday_override (scheduled)
+    source: >
+      custody_day_log (recorded, still frontend-local) + the now
+      backend-synced parenting_schedule_rule_version + holiday_override
+      (scheduled)
     rendering:
       semantic: "Recorded: Dad 6 · Mom 8 nights this cycle"
       systems: Custody Pivot Report

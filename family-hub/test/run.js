@@ -205,6 +205,108 @@ function check(label, actual, expected) {
   check('"last 50 notes are saved" hint is present', await page.locator('#note-history-overlay .np-save-hint').isVisible(), true);
 
   // ═══════════════════════════════════════════
+  // PARENTING SCHEDULE / HOLIDAYS BACKEND MIGRATION (2026-08-20) -- moved
+  // off localStorage-only, fixed a real isKidsHome() hoisting bug, and
+  // switched attribution from the raw signed-in Google email to the shared
+  // actor-picker identity (same pattern notes already used). This harness
+  // has no live cabin-backend either, same constraint as the chore checks
+  // below -- refreshScheduleRulesFromServer()/refreshHolidaysFromServer()
+  // early-exit and every save falls through to the local-only path, which
+  // is exactly what these checks exercise.
+  // ═══════════════════════════════════════════
+
+  // Pure diff functions (the actual "don't silently discard a device's
+  // existing schedule/holidays on first sync" logic), tested directly
+  // rather than only indirectly through a real network round trip.
+  check('localOnlyRulesNotOnServer keeps only ids the server does not have',
+    await page.evaluate(() => localOnlyRulesNotOnServer(
+      [{ id: 'a' }, { id: 'b' }], [{ id: 'a' }]).map(r => r.id)),
+    ['b']);
+  check('localOnlyHolidaysNotOnServer keeps only ids the server does not have',
+    await page.evaluate(() => localOnlyHolidaysNotOnServer(
+      [{ id: 'x' }, { id: 'y' }], [{ id: 'x' }, { id: 'y' }]).map(h => h.id)),
+    []);
+
+  // Hoisting-fix regression guard, run BEFORE the chore section below stubs
+  // window.isKidsHome for its own determinism needs (that stub would mask
+  // this exact bug). A holiday for today, owner opposite of what the plain
+  // rule alone would say, must flip isKidsHome(today) -- the deleted legacy
+  // definition never consulted holidays at all, so this fails against it.
+  const holidayFlip = await page.evaluate(() => {
+    const today = new Date();
+    const todayKey = ymd(today);
+    const ruleOwner = ruleDayOwner(ruleForDate(todayKey), today);
+    const oppositeOwner = ruleOwner === 'dad' ? 'mom' : 'dad';
+    HOLIDAYS.push({ id: 'test-holiday-flip', date: todayKey, name: 'Test Override', owner: oppositeOwner, createdAt: new Date().toISOString(), createdBy: 'seed' });
+    saveHolidaysState();
+    const result = { ruleOwner, oppositeOwner, isKidsHomeResult: isKidsHome(today) };
+    HOLIDAYS = HOLIDAYS.filter(h => h.id !== 'test-holiday-flip');
+    saveHolidaysState();
+    return result;
+  });
+  check('a holiday overriding today flips isKidsHome() away from the plain rule (regression guard for the deleted duplicate isKidsHome)',
+    holidayFlip.isKidsHomeResult, holidayFlip.oppositeOwner === 'dad');
+
+  // Open Settings so #sched-actor-row/#sched-actor-prompt/#hol-* actually
+  // exist with real content (populateSettings() -> renderSchedDayPicker()),
+  // same as a real user would before touching the Parenting Schedule section.
+  await page.evaluate(() => toggleSettings());
+  await page.waitForTimeout(100);
+
+  // Attribution switch: schedule/holiday writes must credit the selected
+  // actor (a family_profiles id), not the raw signed-in Google account --
+  // an actor is already selected at this point in the suite (re-selected
+  // after the earlier notepad actor-expiry check).
+  const actorId = await page.evaluate(() => currentActorId);
+  await page.evaluate(() => saveSchedCfg('2026-09-01', [0, 1, 4, 5, 8, 9, 12, 13]));
+  await page.waitForTimeout(100);
+  check('a saved schedule rule is attributed to the selected actor, not an email',
+    await page.evaluate(() => currentRule().createdBy), actorId);
+
+  await page.evaluate(() => { holidayFormState = 'new'; });
+  await page.evaluate((id) => {
+    // saveHoliday() reads its inputs from #hol-date/#hol-name/#hol-owner --
+    // these only exist once holidayFormMarkup() has rendered them into
+    // #holiday-form-container, same as opening "+ Add Holiday" for real.
+    document.getElementById('holiday-form-container').innerHTML = holidayFormMarkup();
+  }, actorId);
+  await page.locator('#hol-date').fill('2026-12-25');
+  await page.locator('#hol-name').fill('Test Holiday Attribution');
+  await page.evaluate(() => saveHoliday());
+  await page.waitForTimeout(100);
+  check('a saved holiday is attributed to the selected actor, not an email',
+    await page.evaluate(() => HOLIDAYS.find(h => h.name === 'Test Holiday Attribution')?.createdBy), actorId);
+  check('"added by {name}" attribution renders on the holiday row',
+    (await page.evaluate(() => {
+      renderHolidays();
+      return document.getElementById('holidays-list').innerText;
+    })).includes('added by'), true);
+
+  // Actor-required gate: clearing the actor must block a schedule save
+  // (row count unchanged) and surface the same prompt notes already use,
+  // never silently fall back to an email-based attribution.
+  const rulesBefore = await page.evaluate(() => SCHEDULE_RULES.length);
+  await page.evaluate(() => clearActorState());
+  await page.evaluate(() => saveSchedCfg('2026-10-01', [0, 1]));
+  await page.waitForTimeout(100);
+  check('schedule save is blocked with no actor selected (no new/amended rule)',
+    await page.evaluate(() => SCHEDULE_RULES.length), rulesBefore);
+  check('"who\'s making this change" prompt is visible with no actor selected',
+    await page.locator('#sched-actor-prompt').isVisible(), true);
+
+  // Re-select an actor via the schedule section's own picker (not the
+  // notepad's) so the gate's UI, not just its state check, is exercised.
+  await page.locator('#sched-actor-row .np-author-pill').first().click();
+  await page.waitForTimeout(100);
+  check('prompt hides once an actor is reselected via the schedule row',
+    await page.locator('#sched-actor-prompt').isVisible(), false);
+
+  await page.evaluate(() => toggleSettings()); // close, so it can't cover/intercept clicks in the sections below
+  await page.waitForTimeout(100);
+
+  check('no JS errors from the schedule/holiday backend-migration checks', jsErrors, []);
+
+  // ═══════════════════════════════════════════
   // CHORE MANAGEMENT (2026-08-15) -- chore library/assignment CRUD, the
   // idempotent completion PUT, the condensed landing card for >2 kids,
   // and the add-child rerender fix. This harness has no live cabin-backend

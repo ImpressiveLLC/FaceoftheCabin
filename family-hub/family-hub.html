@@ -2421,6 +2421,63 @@ function saveScheduleRules() {
   SCHEDULE_RULES.sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
   localStorage.setItem(SCHED_RULES_KEY, JSON.stringify(SCHEDULE_RULES));
 }
+
+// Pure, network-free: which local rules the server doesn't know about yet.
+// Extracted from refreshScheduleRulesFromServer() so this exact
+// "don't silently discard a device's existing schedule" logic is directly
+// unit-testable without a real backend.
+function localOnlyRulesNotOnServer(localRules, serverRules) {
+  const serverIds = new Set(serverRules.map(r => r.id));
+  return localRules.filter(r => !serverIds.has(r.id));
+}
+
+// 2026-08-20: SCHEDULE_RULES was localStorage-only until now -- each
+// Google-linked browser/device kept an independent copy, and keeping two
+// accounts' schedules aligned meant manually re-entering the same change
+// twice. Same GET-replace-wholesale + one-time local-to-server migration
+// pattern as refreshProfilesFromServer() (see that function's own
+// comments), so a device with a real, already-correct schedule from before
+// this backend existed pushes it up instead of getting silently
+// overwritten by an empty/seed server list on its first sync.
+let scheduleRulesMigrated = false;
+async function refreshScheduleRulesFromServer() {
+  if (!CABIN_API_URL || !accessToken) return false;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/schedule/rules`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return false;
+    let serverRules = await res.json();
+
+    if (!scheduleRulesMigrated) {
+      const localOnly = localOnlyRulesNotOnServer(SCHEDULE_RULES, serverRules);
+      for (const r of localOnly) {
+        try {
+          const createRes = await fetch(`${CABIN_API_URL}/api/schedule/rules`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({ ...r, actorId: actorIdForRequest() }),
+          });
+          if (createRes.ok) serverRules.push(await createRes.json());
+          else serverRules.push(r);
+        } catch (e) {
+          console.warn('Could not migrate local-only schedule rule to cabin-backend, kept locally:', r.id, e);
+          serverRules.push(r);
+        }
+      }
+      scheduleRulesMigrated = true;
+    }
+
+    SCHEDULE_RULES = serverRules.map(normalizeRule).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+    saveScheduleRules();
+    SCHEDULE_START = new Date(currentRule().anchor + 'T12:00:00');
+    KIDS_HOME_DAYS = dadDaySet(currentRule());
+    return true;
+  } catch (e) {
+    console.warn('Could not sync schedule rules from cabin-backend:', e);
+    return false;
+  }
+}
 function currentRule() { return SCHEDULE_RULES[SCHEDULE_RULES.length - 1]; }
 // Latest rule whose effectiveFrom is on/before the given date, or null if
 // the date predates every known rule (no schedule data that far back).
@@ -2467,23 +2524,57 @@ function isKidsHome(date) { return ownerOfDate(date) === 'dad'; }
 // tweaking this cycle's days). A different date = a brand-new rule version
 // effective forward from then; every prior version is left untouched so
 // historical days keep computing under whatever was actually in effect.
-function saveSchedCfg(startDateStr, homeDayArr) {
+async function saveSchedCfg(startDateStr, homeDayArr) {
+  // Same "never discard input, just prompt" gate as sendNote() -- revalidate
+  // right at save time since the actor may have expired since Settings
+  // opened.
+  checkActorTimeout();
+  if (!currentActorId) {
+    renderSchedActorRow();
+    return;
+  }
+  const actorId = currentActorId;
   const dayOwners = homeDaysToOwners(homeDayArr);
   const latest = currentRule();
-  if (latest && latest.effectiveFrom === startDateStr) {
-    latest.anchor = startDateStr;
-    latest.dayOwners = dayOwners;
-    delete latest.homeDays;
+
+  let saved = null;
+  if (CABIN_API_URL && accessToken) {
+    try {
+      const res = await fetch(`${CABIN_API_URL}/api/schedule/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ effectiveFrom: startDateStr, anchor: startDateStr, dayOwners, actorId }),
+      });
+      if (res.ok) saved = await res.json();
+    } catch (e) {
+      console.warn('Could not reach cabin-backend, saving this schedule change locally only:', e);
+    }
+  }
+  // Sync disabled, signed out, or the request failed -- still works offline,
+  // same amend-vs-append fallback as before, just attributed by actor
+  // instead of the raw Google account.
+  if (!saved) {
+    if (latest && latest.effectiveFrom === startDateStr) {
+      latest.anchor = startDateStr;
+      latest.dayOwners = dayOwners;
+      delete latest.homeDays;
+      saved = latest;
+    } else {
+      saved = {
+        id: 'rule-' + startDateStr + '-' + Date.now(),
+        effectiveFrom: startDateStr,
+        anchor: startDateStr,
+        dayOwners,
+        label: '',
+        createdAt: new Date().toISOString(),
+        createdBy: actorId,
+      };
+      SCHEDULE_RULES.push(saved);
+    }
+  } else if (!SCHEDULE_RULES.some(r => r.id === saved.id)) {
+    SCHEDULE_RULES.push(saved);
   } else {
-    SCHEDULE_RULES.push({
-      id: 'rule-' + startDateStr + '-' + Date.now(),
-      effectiveFrom: startDateStr,
-      anchor: startDateStr,
-      dayOwners,
-      label: '',
-      createdAt: new Date().toISOString(),
-      createdBy: currentUserEmail || 'local (not signed in)',
-    });
+    Object.assign(SCHEDULE_RULES.find(r => r.id === saved.id), saved);
   }
   saveScheduleRules();
   SCHEDULE_START = new Date(currentRule().anchor + 'T12:00:00');
@@ -2520,6 +2611,51 @@ function loadHolidaysState() {
 let HOLIDAYS = loadHolidaysState();
 function saveHolidaysState() { localStorage.setItem(HOLIDAYS_KEY, JSON.stringify(HOLIDAYS)); }
 function holidayForDate(dateKey) { return HOLIDAYS.find(h => h.date === dateKey); }
+
+// Same pure-diff + GET-replace-wholesale + one-time migration pattern as
+// refreshScheduleRulesFromServer() -- see that function's comments.
+function localOnlyHolidaysNotOnServer(localHolidays, serverHolidays) {
+  const serverIds = new Set(serverHolidays.map(h => h.id));
+  return localHolidays.filter(h => !serverIds.has(h.id));
+}
+
+let holidaysMigrated = false;
+async function refreshHolidaysFromServer() {
+  if (!CABIN_API_URL || !accessToken) return false;
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/schedule/holidays`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return false;
+    let serverHolidays = await res.json();
+
+    if (!holidaysMigrated) {
+      const localOnly = localOnlyHolidaysNotOnServer(HOLIDAYS, serverHolidays);
+      for (const h of localOnly) {
+        try {
+          const createRes = await fetch(`${CABIN_API_URL}/api/schedule/holidays`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({ ...h, actorId: actorIdForRequest() }),
+          });
+          if (createRes.ok) serverHolidays.push(await createRes.json());
+          else serverHolidays.push(h);
+        } catch (e) {
+          console.warn('Could not migrate local-only holiday to cabin-backend, kept locally:', h.id, e);
+          serverHolidays.push(h);
+        }
+      }
+      holidaysMigrated = true;
+    }
+
+    HOLIDAYS = serverHolidays;
+    saveHolidaysState();
+    return true;
+  } catch (e) {
+    console.warn('Could not sync holidays from cabin-backend:', e);
+    return false;
+  }
+}
 
 const HOLIDAYS_HISTORY_KEY = 'smrekar_holidays_history';
 function loadHolidaysHistory() {
@@ -2676,6 +2812,15 @@ function populateObsYearOptions() {
 let holidayFormState = null; // null closed, 'new', or an existing holiday id
 let holidayHistoryOpen = false;
 
+// Resolves the profile lookup notes already use for "who posted" -- falls
+// back to the raw stored value (e.g. an email, for rows saved before this
+// attribution switch) rather than hiding it.
+function holidayAttributionSuffix(h) {
+  if (!h.createdBy) return '';
+  const author = profiles.find(p => p.id === h.createdBy);
+  return ` · added by ${author?.name || h.createdBy}`;
+}
+
 function renderHolidays() {
   const list = document.getElementById('holidays-list');
   if (!list) return;
@@ -2684,7 +2829,7 @@ function renderHolidays() {
     <div class="profile-card">
       <div class="profile-card-info">
         <div class="profile-card-name">${esc(h.name)}</div>
-        <div class="profile-card-meta">${h.date} · ${h.owner === 'dad' ? "Dad's" : "Mom's"}</div>
+        <div class="profile-card-meta">${h.date} · ${h.owner === 'dad' ? "Dad's" : "Mom's"}${holidayAttributionSuffix(h)}</div>
       </div>
       <div class="profile-card-actions">
         <button onclick="editHoliday('${h.id}')">Edit</button>
@@ -2774,21 +2919,51 @@ function openHolidayForm(id) { holidayFormState = id || 'new'; renderHolidays();
 function closeHolidayForm() { holidayFormState = null; renderHolidays(); }
 function editHoliday(id) { openHolidayForm(id); }
 
-function saveHoliday() {
+async function saveHoliday() {
   const date = document.getElementById('hol-date').value;
   const name = document.getElementById('hol-name').value.trim();
   const owner = document.getElementById('hol-owner').value;
   if (!date || !name) { alert('Date and name are required'); return; }
-  if (holidayFormState === 'new') {
-    const holiday = { id:'holiday-'+Date.now(), date, name, owner, createdAt:new Date().toISOString(), createdBy: currentUserEmail || 'local (not signed in)' };
-    HOLIDAYS.push(holiday);
-    logHolidayChange('add', holiday);
+
+  // Same "never discard input, just prompt" actor gate as saveSchedCfg()/
+  // sendNote() -- the picker shown is the Parenting Schedule section's, the
+  // only one in Settings, since actor identity is shared app-wide.
+  checkActorTimeout();
+  if (!currentActorId) {
+    renderSchedActorRow();
+    return;
+  }
+  const actorId = currentActorId;
+  const isNew = holidayFormState === 'new';
+  const existing = isNew ? null : HOLIDAYS.find(x => x.id === holidayFormState);
+  if (!isNew && !existing) return;
+  const prev = existing ? { date: existing.date, name: existing.name, owner: existing.owner } : null;
+
+  let saved = null;
+  if (CABIN_API_URL && accessToken) {
+    try {
+      const url = isNew ? `${CABIN_API_URL}/api/schedule/holidays` : `${CABIN_API_URL}/api/schedule/holidays/${existing.id}`;
+      const res = await fetch(url, {
+        method: isNew ? 'POST' : 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ date, name, owner, actorId }),
+      });
+      if (res.ok) saved = await res.json();
+    } catch (e) {
+      console.warn('Could not reach cabin-backend, saving this holiday locally only:', e);
+    }
+  }
+  if (!saved) {
+    saved = isNew
+      ? { id: 'holiday-' + Date.now(), date, name, owner, createdAt: new Date().toISOString(), createdBy: actorId }
+      : Object.assign(existing, { date, name, owner, createdBy: actorId });
+  }
+  if (isNew) {
+    HOLIDAYS.push(saved);
+    logHolidayChange('add', saved);
   } else {
-    const h = HOLIDAYS.find(x => x.id === holidayFormState);
-    if (!h) return;
-    const prev = { date: h.date, name: h.name, owner: h.owner };
-    Object.assign(h, { date, name, owner });
-    logHolidayChange('edit', h, prev);
+    Object.assign(HOLIDAYS.find(x => x.id === saved.id) || existing, saved);
+    logHolidayChange('edit', saved, prev);
   }
   saveHolidaysState();
   holidayFormState = null;
@@ -2797,10 +2972,20 @@ function saveHoliday() {
   renderObservations();
 }
 
-function deleteHoliday(id) {
+async function deleteHoliday(id) {
   const h = HOLIDAYS.find(x => x.id === id);
   if (!h) return;
   if (!confirm(`Remove holiday "${h.name}" (${h.date})?`)) return;
+  if (CABIN_API_URL && accessToken) {
+    try {
+      await fetch(`${CABIN_API_URL}/api/schedule/holidays/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    } catch (e) {
+      console.warn('Could not reach cabin-backend, removing this holiday locally only:', e);
+    }
+  }
   HOLIDAYS = HOLIDAYS.filter(x => x.id !== id);
   saveHolidaysState();
   logHolidayChange('delete', h);
@@ -3043,7 +3228,7 @@ async function loadPickedPhotos(sessionId) {
   savePhotoMeta();
 }
 
-function saveSettings() {
+async function saveSettings() {
   CFG.familyName        = document.getElementById('set-fname').value.trim() || CFG.familyName;
   // Host-provided value always wins (see hostGoogleClientId above) — the
   // field is read-only in that case anyway, but guard here too so a saved
@@ -3054,10 +3239,11 @@ function saveSettings() {
   CFG.slideshowInterval = parseInt(document.getElementById('set-interval').value) || 12;
   CFG.maxPhotos         = parseInt(document.getElementById('set-max-photos').value) || 50;
   CFG.cabinActivityDetail = document.getElementById('set-cabin-activity').value || 'full';
-  // Save parenting schedule
+  // Save parenting schedule -- awaited so the re-renders below (and the
+  // panel close) never run against a stale/in-flight schedule save.
   const startVal = document.getElementById('set-sched-start').value;
   const homeDays = [...document.querySelectorAll('.sched-day-cb:checked')].map(cb => parseInt(cb.value));
-  if (startVal) saveSchedCfg(startVal, homeDays);
+  if (startVal) await saveSchedCfg(startVal, homeDays);
   saveCfg();
   updateGreeting();
   startSlideshow();
@@ -3109,6 +3295,31 @@ function renderSchedDayPicker() {
   }
   html += '</div>';
   document.getElementById('sched-day-picker').innerHTML = html;
+  renderSchedActorRow();
+  renderSchedUpdatedBy();
+}
+
+// Same pill-picker pattern as renderNoteAuthorRow() (notepad), reused here
+// since Settings has no actor-picker surface of its own -- schedule/holiday
+// edits need the same "who's making this change" attribution notes already
+// get, not the raw signed-in Google account.
+function renderSchedActorRow() {
+  const row = document.getElementById('sched-actor-row');
+  const prompt = document.getElementById('sched-actor-prompt');
+  if (!row) return;
+  row.innerHTML = profiles.map(p =>
+    `<button type="button" class="np-author-pill${p.id === currentActorId ? ' active' : ''}" onclick="setCurrentActor('${p.id}'); renderSchedActorRow();" title="${esc(p.name)}">${p.avatar || '🙂'}</button>`
+  ).join('');
+  if (prompt) prompt.style.display = currentActorId ? 'none' : '';
+}
+
+function renderSchedUpdatedBy() {
+  const el = document.getElementById('sched-updated-by');
+  if (!el) return;
+  const rule = currentRule();
+  if (!rule || !rule.createdBy) { el.textContent = ''; return; }
+  const author = profiles.find(p => p.id === rule.createdBy);
+  el.textContent = `Last updated by ${author?.name || rule.createdBy}`;
 }
 
 /* ═══════════════════════════════════════════
@@ -3150,11 +3361,14 @@ function ymd(date) {
 }
 function addDays(date, n) { const d=new Date(date); d.setDate(d.getDate()+n); return d; }
 
-function isKidsHome(date) {
-  const diff = Math.floor((new Date(ymd(date)) - new Date(ymd(SCHEDULE_START))) / 86400000);
-  if (diff < 0) return false;
-  return KIDS_HOME_DAYS.has(diff % 14);
-}
+// isKidsHome() used to be defined twice at top-level (here, and the correct
+// holiday-aware version above near ownerOfDate()) -- both were `function`
+// declarations, so hoisting meant THIS one (no holiday awareness, single-
+// rule only) silently won at every call site in the file except the
+// observations path, which calls ownerOfDate() directly. Deleted 2026-08-20;
+// the surviving definition (see ownerOfDate()/ruleForDate() above) is
+// holiday- and multi-rule-version-aware and is what every call site here
+// actually needs.
 
 function generateSchedule(days=28) {
   const today = new Date();
@@ -4673,6 +4887,8 @@ async function onToken(resp) {
   restorePhotos();
   refreshNotesFromServer().then(ok => { if (ok) renderNotepad(); });
   refreshProfilesFromServer().then(ok => { if (ok) rerenderProfileViews(); });
+  refreshScheduleRulesFromServer().then(ok => { if (ok) { renderSchedule(); renderSchedDayPicker(); renderObservations(); } });
+  refreshHolidaysFromServer().then(ok => { if (ok) { renderHolidays(); renderSchedule(); renderObservations(); } });
   // Library and assignments must both be loaded before defaultAssignments()
   // can resolve anything, and completion needs assignments loaded first too
   // (toggleChoreCompletion resolves an assignmentId via defaultAssignments())
@@ -4714,6 +4930,8 @@ setInterval(async () => {
   const completionChanged = await refreshCompletionFromServer();
   if (libraryChanged || assignmentsChanged || completionChanged) rerenderChoreViews();
   if (await refreshProfilesFromServer()) rerenderProfileViews();
+  if (await refreshScheduleRulesFromServer()) { renderSchedule(); renderSchedDayPicker(); renderObservations(); }
+  if (await refreshHolidaysFromServer()) { renderHolidays(); renderSchedule(); renderObservations(); }
 }, 20000);
 
 // Cabin activity widget — unlike the poll above, this one is NOT gated on
@@ -5864,6 +6082,8 @@ window.addEventListener('load', () => {
     </div>
     <div class="s-section">
       <div class="s-section-title">Parenting Schedule</div>
+      <div id="sched-actor-prompt" class="s-hint" style="display:none">Who's making this change? Pick below before saving.</div>
+      <div id="sched-actor-row" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
       <div class="s-field">
         <label>Cycle Anchor Date</label>
         <input id="set-sched-start" type="date" value="2026-03-13">
@@ -5874,6 +6094,7 @@ window.addEventListener('load', () => {
         <div id="sched-day-picker"></div>
         <div class="s-hint">Tap to toggle. Highlighted = Dad's days. Changing the anchor date to a new date starts a new schedule version from then forward — past days keep computing under whatever schedule was actually in effect. Changes take effect on Save.</div>
       </div>
+      <div id="sched-updated-by" class="s-hint"></div>
     </div>
     <div class="s-section">
       <div class="s-section-title">Holidays &amp; Vacations</div>

@@ -6,9 +6,10 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * Only /api/notes, /api/chores, /api/profiles, /api/camera, /api/rules (writes
- * only — see GoogleAuthInterceptor's GET carve-out, added 2026-08-14), and (PATCH only,
- * see GoogleAuthInterceptor) /api/tech-id/findings require a Google token —
+ * Only /api/notes, /api/chores, /api/profiles, /api/camera, /api/schedule,
+ * /api/rules (writes only — see GoogleAuthInterceptor's GET carve-out, added
+ * 2026-08-14), and (PATCH only, see GoogleAuthInterceptor) /api/tech-id/findings
+ * require a Google token —
  * every other endpoint (device status, dashboard config, events) stays open,
  * matching how it already worked before this interceptor existed.
  *
@@ -36,6 +37,6 @@ public class WebConfig implements WebMvcConfigurer {
         if (!googleAuthEnabled) return;
         registry.addInterceptor(authInterceptor)
             .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**",
-                "/api/tech-id/findings/**", "/api/rules/**");
+                "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**");
     }
 }
