@@ -3407,8 +3407,8 @@ function LocationRulesSection({ locCfg }) {
   );
 }
 
-export function RulesPanel() { // exported for src/App.test.jsx's location-split test
-  const { activeLocation, workflows } = useApp();
+export function RulesPanel({ auth }) { // exported for src/App.test.jsx's location-split test
+  const { activeLocation, workflows, refreshWorkflows, devices } = useApp();
   const locationIds = Object.keys(LOCATIONS);
   const locs = activeLocation === "both"
     ? locationIds.map(id => LOCATIONS[id])
@@ -3428,7 +3428,8 @@ export function RulesPanel() { // exported for src/App.test.jsx's location-split
         </div>
         <div className="rules-sidebar">
           <KafkaStatus location={activeLocation} />
-          <WorkflowRulesCard workflows={workflows} />
+          <WorkflowRulesCard workflows={workflows} auth={auth} devices={devices}
+            defaultLocation={activeLocation !== "both" ? activeLocation : "cabin"} onChanged={refreshWorkflows} />
           <BuiltinRules location={activeLocation} />
         </div>
       </div>
@@ -3571,37 +3572,221 @@ function KafkaStatus({ location }) {
 }
 
 // The real, persisted trigger->action rules engine (WorkflowRuleService,
-// GET /api/rules/workflows) had zero frontend surface anywhere before this
-// -- BuiltinRules below shows AutomationRuleService's older, separate,
-// hardcoded-in-Java rule catalog, not this one. Read-only for now: creating
-// and editing a workflow (trigger/action selection, device targets) is a
-// real form-design task of its own, tracked separately -- this card's job
-// is making what already exists in Postgres visible at all, since right
-// now the only way to see a workflow's real shape is querying the API
-// directly. See workflowsForDevice for how a device row's own badge
+// GET /api/rules/workflows) had zero frontend surface anywhere before
+// 2026-08-18 -- BuiltinRules below shows AutomationRuleService's older,
+// separate, hardcoded-in-Java rule catalog, not this one. Was read-only
+// ("creating and editing a workflow is a real form-design task of its own,
+// tracked separately" per that commit's own comment) until this change
+// (2026-08-20) added WorkflowCreateForm below plus per-row activate/
+// deactivate/delete, reusing CameraNotifyToggle's already-proven
+// create-then-activate / delete API sequence rather than inventing a new
+// one. See workflowsForDevice for how a device row's own badge
 // (DmDeviceRow) cross-references this same data.
-export function WorkflowRulesCard({ workflows = [] }) {
+//
+// The trigger/action option lists are hardcoded to exactly what
+// WorkflowRuleService actually interprets (resolveTriggerDefinitionId's
+// two cases, executeAction's four-case switch) -- there is no ontology
+// catalog API yet to drive this dynamically, so offering anything wider
+// would create workflows that silently never fire or error at
+// execution time. Narrower-but-genuinely-functional over broader-but-fake.
+const WORKFLOW_TRIGGERS = [
+  { id: "trigger_water_leak_detected", label: "Water leak detected" },
+  { id: "trigger_camera_detection", label: "Camera detects motion" },
+];
+const WORKFLOW_ACTIONS = [
+  { id: "action_main_water_valve_off", label: "Shut off the main water valve", needsTarget: true },
+  { id: "action_main_water_valve_open", label: "Open the main water valve", needsTarget: true },
+  { id: "notify_critical", label: "Send a critical notification", needsTarget: false },
+  { id: "log_event", label: "Log this event only", needsTarget: false },
+];
+
+function newActionRow() {
+  return { key: `a${Date.now()}${Math.random().toString(36).slice(2, 6)}`, actionDefinitionId: WORKFLOW_ACTIONS[0].id, targetDeviceId: "" };
+}
+
+function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCancel }) {
+  const [name, setName] = useState("");
+  const [location, setLocation] = useState(defaultLocation);
+  const [triggerDefinitionId, setTriggerDefinitionId] = useState(WORKFLOW_TRIGGERS[0].id);
+  const [triggerDeviceId, setTriggerDeviceId] = useState("");
+  const [resetMode, setResetMode] = useState("AUTO_ON_CLEAR");
+  const [actionRows, setActionRows] = useState([newActionRow()]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const updateAction = (key, patch) =>
+    setActionRows(rows => rows.map(r => (r.key === key ? { ...r, ...patch } : r)));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim() || actionRows.length === 0) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const apiBase = LOCATIONS[location]?.apiBase || LOCATIONS.cabin.apiBase;
+      const workflowId = `wf-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now()}`;
+      const res = await auth.authedFetch(`${apiBase}/api/rules/workflows`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workflowId, name: name.trim(), location, triggerKind: "DEVICE_EVENT",
+          triggerDefinitionId, triggerDeviceId: triggerDeviceId || null,
+          enabled: false, resetMode, parentWorkflowId: null,
+          actions: actionRows.map((r, i) => ({
+            actionId: `${workflowId}-a${i}`, stepOrder: i, actionDefinitionId: r.actionDefinitionId,
+            targetDeviceId: WORKFLOW_ACTIONS.find(a => a.id === r.actionDefinitionId)?.needsTarget ? (r.targetDeviceId || null) : null,
+          })),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`);
+      onCreated();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="add-place-form workflow-create-form" onSubmit={submit}>
+      <div className="add-place-grid">
+        <label className="add-place-field">
+          Name
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Leak shutoff — mech room" required />
+        </label>
+        <label className="add-place-field">
+          Location
+          <select value={location} onChange={e => setLocation(e.target.value)}>
+            {Object.values(LOCATIONS).map(loc => <option key={loc.id} value={loc.id}>{loc.label}</option>)}
+          </select>
+        </label>
+        <label className="add-place-field">
+          When
+          <select value={triggerDefinitionId} onChange={e => setTriggerDefinitionId(e.target.value)}>
+            {WORKFLOW_TRIGGERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </label>
+        <label className="add-place-field">
+          On this device (optional)
+          <select value={triggerDeviceId} onChange={e => setTriggerDeviceId(e.target.value)}>
+            <option value="">Any device</option>
+            {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
+          </select>
+        </label>
+        <label className="add-place-field">
+          Resets
+          <select value={resetMode} onChange={e => setResetMode(e.target.value)}>
+            <option value="AUTO_ON_CLEAR">Automatically, once the trigger clears</option>
+            <option value="MANUAL_ONLY">Only when someone clears it manually</option>
+          </select>
+        </label>
+      </div>
+      <div className="workflow-actions-list">
+        <div className="add-place-field" style={{ marginBottom: 6 }}>Then, do this</div>
+        {actionRows.map((row, i) => {
+          const def = WORKFLOW_ACTIONS.find(a => a.id === row.actionDefinitionId);
+          return (
+            <div key={row.key} className="workflow-action-row">
+              <select value={row.actionDefinitionId} onChange={e => updateAction(row.key, { actionDefinitionId: e.target.value })}>
+                {WORKFLOW_ACTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+              </select>
+              {def?.needsTarget && (
+                <select value={row.targetDeviceId} onChange={e => updateAction(row.key, { targetDeviceId: e.target.value })}>
+                  <option value="">Choose a device…</option>
+                  {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
+                </select>
+              )}
+              {actionRows.length > 1 && (
+                <button type="button" className="btn-ghost" onClick={() => setActionRows(rows => rows.filter(r => r.key !== row.key))}>Remove</button>
+              )}
+            </div>
+          );
+        })}
+        <button type="button" className="btn-ghost" onClick={() => setActionRows(rows => [...rows, newActionRow()])}>+ Add another action</button>
+      </div>
+      {error && <p className="add-place-error">Not saved: {error}</p>}
+      <p className="config-hint">Saves as a draft — it won't run until you tap Activate on it below.</p>
+      <div className="add-place-actions">
+        <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving…" : "Save draft"}</button>
+        <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function WorkflowRow({ workflow, auth, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const apiBase = LOCATIONS[workflow.location]?.apiBase || LOCATIONS.cabin.apiBase;
+
+  const act = async (path, method) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await auth.authedFetch(`${apiBase}/api/rules/workflows/${workflow.workflowId}${path}`, { method });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rule-row">
+      <span className={`rule-dot ${workflow.enabled ? "rule-defined" : "rule-inactive"}`}>●</span>
+      <div>
+        <div className="rule-name">{workflow.name}</div>
+        <div className="rule-detail">
+          {workflow.triggerDeviceId || workflow.triggerDefinitionId || "any trigger"}
+          {" → "}
+          {(workflow.actions || []).length > 0
+            ? workflow.actions.map(a => a.targetDeviceId || a.actionDefinitionId).join(", ")
+            : "no actions"}
+        </div>
+        <div className="rule-source">{workflow.location} · {workflow.enabled ? "active" : "draft"}</div>
+        {auth?.signedIn && (
+          <div className="workflow-row-actions">
+            <button type="button" className="btn-ghost" disabled={busy}
+              onClick={() => act(workflow.enabled ? "/deactivate" : "/activate", "POST")}>
+              {workflow.enabled ? "Deactivate" : "Activate"}
+            </button>
+            <button type="button" className="btn-ghost" disabled={busy} onClick={() => act("", "DELETE")}>Delete</button>
+          </div>
+        )}
+        {error && <p className="config-hint" style={{ color: "var(--danger, #e05555)" }}>{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultLocation = "cabin", onChanged = () => {} }) {
+  const [creating, setCreating] = useState(false);
   return (
     <div className="sidebar-card">
       <strong>Workflows</strong>
-      <p className="config-hint">Real, persisted trigger → action rules (separate from the rules below and from Node-RED). Read only here for now.</p>
+      <p className="config-hint">Real, persisted trigger → action rules (separate from the rules below and from Node-RED).</p>
       {workflows.length === 0 && <p className="config-hint">No workflows configured yet.</p>}
-      {workflows.map(w => (
-        <div key={w.workflowId} className="rule-row">
-          <span className={`rule-dot ${w.enabled ? "rule-defined" : "rule-inactive"}`}>●</span>
-          <div>
-            <div className="rule-name">{w.name}</div>
-            <div className="rule-detail">
-              {w.triggerDeviceId || w.triggerDefinitionId || "any trigger"}
-              {" → "}
-              {(w.actions || []).length > 0
-                ? w.actions.map(a => a.targetDeviceId || a.actionDefinitionId).join(", ")
-                : "no actions"}
-            </div>
-            <div className="rule-source">{w.location} · {w.enabled ? "active" : "draft"}</div>
-          </div>
-        </div>
-      ))}
+      {workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} onChanged={onChanged} />)}
+      {!creating && (
+        auth?.signedIn
+          ? <button type="button" className="btn-secondary" onClick={() => setCreating(true)}>+ New Workflow</button>
+          : (
+            <>
+              <p className="config-hint">Sign in with Google (Configuration tab) to create or manage workflows.</p>
+              {auth?.signIn && <button type="button" className="btn-secondary" onClick={auth.signIn}>Sign in with Google</button>}
+            </>
+          )
+      )}
+      {creating && (
+        <WorkflowCreateForm
+          auth={auth} devices={devices} defaultLocation={defaultLocation}
+          onCreated={() => { setCreating(false); onChanged(); }}
+          onCancel={() => setCreating(false)}
+        />
+      )}
     </div>
   );
 }
@@ -4204,7 +4389,7 @@ function App() {
             {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} />}
-            {activePanel === "RULES_ENGINE"   && <RulesPanel />}
+            {activePanel === "RULES_ENGINE"   && <RulesPanel auth={cameraAuth} />}
             {activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
             {activePanel === "OPPORTUNITY_MAP" && <OpportunityMapPanel auth={cameraAuth} />}
           </div>
