@@ -1261,6 +1261,27 @@
         radial-gradient(ellipse at 72% 28%, rgba(20,60,140,.18) 0%, transparent 38%),
         radial-gradient(ellipse at 20% 30%, #0c0e2e 0%, #020409 55%, #00010a 100%);
     }
+    /* Found live 2026-08-20: this fallback (shown whenever no real photo is
+       loaded -- e.g. photos not yet configured, or between slideshow
+       loads) is a deliberately dark night sky, which reads as completely
+       "unaligned" against cabin-ui's clean Asteroid City gradient (no
+       photo-slideshow concept there, so it never has an equivalent dark
+       fallback). Stars/nebula suit every other (dark-background) theme
+       fine, but fight this one's bright turquoise-desert-daytime mood
+       specifically -- drop them here and just reuse the same page gradient
+       html/body already paints, so "no photo yet" looks identical to the
+       intended background instead of a jarring night-sky flash. */
+    [data-theme="asteroidcity"] #starfield-slide {
+      background: linear-gradient(
+        to bottom,
+        #009ca6 0%,
+        #4bb5a4 38%,
+        #82bfa9 52%,
+        #ad7154 62%,
+        #c98f5c 72%,
+        #dcb881 100%
+      );
+    }
 
     /* ── Heraldic crest image ── */
     .auth-crest  { width:88px; height:88px; filter:drop-shadow(0 0 24px rgba(200,164,74,.45)); }
@@ -1606,9 +1627,17 @@
     /* Asteroid City: the supplied turquoise sky, bleached sand, terracotta,
        yellow signage, charcoal outlines, rigid postcard geometry, and flat
        hard shadows adapted to the existing Family Hub components. */
+    /* Found live 2026-08-20: with no photo active (or in the empty
+       letterbox around one), this wash was compounding with the page
+       gradient's own teal tones in the 34-64% band, muddying it into a
+       dark navy smear -- cabin-ui has no equivalent overlay, so its
+       identical gradient read clean by comparison. .24 -> .08 matches the
+       middle-band opacity the base (non-themed) #photo-overlay already
+       uses (line 68 above) -- same balance of "still tints a real photo"
+       vs "doesn't fight the gradient when there isn't one". */
     [data-theme="asteroidcity"] #photo-overlay {
       background:
-        linear-gradient(to bottom, rgba(249,245,235,.82), rgba(60,169,196,.24) 34%, rgba(60,169,196,.24) 64%, rgba(249,245,235,.82)),
+        linear-gradient(to bottom, rgba(249,245,235,.82), rgba(60,169,196,.08) 34%, rgba(60,169,196,.08) 64%, rgba(249,245,235,.82)),
         linear-gradient(to right, rgba(249,245,235,.72), transparent 32%, transparent 68%, rgba(249,245,235,.72));
     }
     /* Three-tier typography (2026-08-19 approval). `button` intentionally
@@ -1749,6 +1778,35 @@
     }
     [data-theme="asteroidcity"] .kid-sel-btn {
       background:var(--glass-light);
+    }
+    /* Landing (.glass-card: Upcoming/Birthdays/Today's Chores etc.) and
+       Dashboard tabs (.dash-card) read as two different colors under this
+       theme -- .glass-card fell through to the base --glass (opaque tan,
+       tuned for #settings-panel's solid slide-out surface), while
+       .dash-card already got its own --glass-light (cactus green) override
+       above. Matching landing to the tab treatment so both read as the
+       same "box" regardless of which surface they're on. */
+    [data-theme="asteroidcity"] .glass-card {
+      background:var(--glass-light);
+      /* border intentionally left alone -- .glass-card's base rule already
+         uses var(--glass-border), the same variable #settings-panel's own
+         border derives from, so they already matched before this override
+         and a hardcoded border-color here would only break that. */
+    }
+    /* Found live 2026-08-20: Edit/Delete on a Family Member row (and any
+       other .profile-card, e.g. the Holidays list) were unreadable --
+       cream text at 60% opacity over this theme's pale, near-white card
+       surfaces has almost no contrast (unlike the dark glass this class
+       was designed against on every other theme). --custody-dad (spruce)
+       is already established elsewhere in this theme as legible on light
+       pastel surfaces regardless of which one -- same fix. */
+    [data-theme="asteroidcity"] .profile-card-actions button {
+      border-color:var(--custody-dad);
+      color:var(--custody-dad);
+    }
+    [data-theme="asteroidcity"] .profile-card-actions button.del {
+      border-color:var(--custody-today);
+      color:var(--custody-today);
     }
 
     /* "blend-in like the Asteroid City movie poster with sand, mountain,
