@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
@@ -886,7 +886,17 @@ describe("DmDeviceRow workflow badge", () => {
 });
 
 describe("WorkflowRulesCard", () => {
-  afterEach(cleanup);
+  // 2026-08-21: WorkflowRulesCard now renders RecentExecutionsList, which
+  // fetches GET .../api/rules/executions/recent on mount (see App.jsx) --
+  // every test in this block needs a default fetch stub now, not just the
+  // ones that explicitly exercise history/recent, or it would otherwise
+  // hit real (unresolvable "http://cabin"/"http://home") network calls in
+  // an unmocked jsdom+Node fetch environment. Individual tests below
+  // override this default where they need specific recent-executions data.
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it("shows an empty state when there are no workflows", () => {
     render(<WorkflowRulesCard workflows={[]} />);
@@ -976,6 +986,129 @@ describe("WorkflowRulesCard", () => {
 
     await waitFor(() => expect(auth.authedFetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/rules/workflows/wf-manual-active/fire"), expect.objectContaining({ method: "POST" })));
+  });
+
+  // 2026-08-21: RulesController.executions()/clearExecution() (GET
+  // .../workflows/{id}/executions, POST .../executions/{id}/clear) already
+  // existed server-side with zero frontend caller -- ROADMAP Phase 5's
+  // "Active→Reset" reductive UI item. Covers the fix: History reveals real
+  // execution rows, and Reset only appears while still active and posts
+  // to the real clear endpoint (never a device command -- see
+  // WorkflowExecutionHistory's own comment on why "Reset" must stay
+  // bookkeeping-only, not an undo of the workflow's actions).
+  describe("per-workflow execution history", () => {
+    function executionsFetch(executions) {
+      return vi.fn((url) => Promise.resolve({
+        ok: true,
+        json: async () => url.includes("/executions/recent") ? [] : executions,
+      }));
+    }
+
+    it("History reveals fired/cleared status and per-action results, Reset only on an active execution", async () => {
+      vi.stubGlobal("fetch", executionsFetch([
+        { executionId: "exec-active", workflowId: "wf-1", firedAt: new Date().toISOString(), clearedAt: null, clearedBy: null,
+          actionResults: [{ actionId: "a1", actionDefinitionId: "action_main_water_valve_off", success: true, commandStatus: "ACCEPTED" }] },
+        { executionId: "exec-cleared", workflowId: "wf-1", firedAt: new Date().toISOString(), clearedAt: new Date().toISOString(), clearedBy: "AUTO",
+          actionResults: [{ actionId: "a2", actionDefinitionId: "notify_critical", success: true }] },
+      ]));
+      render(<WorkflowRulesCard auth={mockAuth()} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true, actions: [] },
+      ]} />);
+
+      fireEvent.click(screen.getByText("History"));
+
+      expect(await screen.findByText("Active")).toBeTruthy();
+      expect(screen.getByText(/Cleared · AUTO/)).toBeTruthy();
+      expect(screen.getByText(/action_main_water_valve_off: ACCEPTED/)).toBeTruthy();
+      expect(screen.getAllByText("Reset")).toHaveLength(1); // only the active execution gets one
+    });
+
+    it("tapping Reset calls the clear endpoint for that execution, never a fire/activate endpoint", async () => {
+      const auth = mockAuth();
+      vi.stubGlobal("fetch", executionsFetch([
+        { executionId: "exec-active", workflowId: "wf-1", firedAt: new Date().toISOString(), clearedAt: null, clearedBy: null, actionResults: [] },
+      ]));
+      render(<WorkflowRulesCard auth={auth} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true, actions: [] },
+      ]} />);
+      fireEvent.click(screen.getByText("History"));
+      await screen.findByText("Reset");
+
+      fireEvent.click(screen.getByText("Reset"));
+
+      await waitFor(() => expect(auth.authedFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/rules/executions/exec-active/clear"), expect.objectContaining({ method: "POST" })));
+      expect(auth.authedFetch).not.toHaveBeenCalledWith(expect.stringContaining("/fire"), expect.anything());
+      expect(auth.authedFetch).not.toHaveBeenCalledWith(expect.stringContaining("/activate"), expect.anything());
+    });
+
+    it("shows no Reset control for a signed-out viewer -- Reset is a gated write, not a read", async () => {
+      vi.stubGlobal("fetch", executionsFetch([
+        { executionId: "exec-active", workflowId: "wf-1", firedAt: new Date().toISOString(), clearedAt: null, clearedBy: null, actionResults: [] },
+      ]));
+      render(<WorkflowRulesCard workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true, actions: [] },
+      ]} />);
+
+      fireEvent.click(screen.getByText("History"));
+
+      expect(await screen.findByText("Active")).toBeTruthy();
+      expect(screen.queryByText("Reset")).toBeNull();
+    });
+  });
+
+  // The "Recent" half of Phase 5's "Active→Reset, Recent→Undo" item --
+  // GET /api/rules/executions/recent already existed server-side with zero
+  // frontend caller. "Mark seen" is deliberately named for what
+  // POST .../view actually does (see RecentExecutionsList's own comment):
+  // there is no real undo primitive in this engine.
+  describe("recent (unviewed) executions", () => {
+    it("shows unviewed executions resolved to their workflow's real name", async () => {
+      vi.stubGlobal("fetch", vi.fn((url) => Promise.resolve({
+        ok: true,
+        json: async () => url.includes("/executions/recent")
+          ? [{ executionId: "exec-1", workflowId: "wf-1", firedAt: new Date().toISOString(), clearedAt: null }]
+          : [],
+      })));
+      render(<WorkflowRulesCard auth={mockAuth()} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true, actions: [] },
+      ]} />);
+
+      const recentHeading = await screen.findByText("Recent");
+      // "Leak shutoff" legitimately appears twice on the page (the Recent
+      // row's resolved name, and the workflow's own row in the main list
+      // below) -- scope to the Recent section specifically.
+      expect(within(recentHeading.closest(".workflow-recent-executions")).getByText("Leak shutoff")).toBeTruthy();
+    });
+
+    it("tapping Mark seen calls the view endpoint for that execution", async () => {
+      const auth = mockAuth();
+      vi.stubGlobal("fetch", vi.fn((url) => Promise.resolve({
+        ok: true,
+        json: async () => url.includes("/executions/recent")
+          ? [{ executionId: "exec-1", workflowId: "wf-1", firedAt: new Date().toISOString(), clearedAt: null }]
+          : [],
+      })));
+      render(<WorkflowRulesCard auth={auth} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true, actions: [] },
+      ]} />);
+      await screen.findByText("Mark seen");
+
+      fireEvent.click(screen.getByText("Mark seen"));
+
+      await waitFor(() => expect(auth.authedFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/rules/executions/exec-1/view"), expect.objectContaining({ method: "POST" })));
+    });
+
+    it("renders nothing when there is nothing unviewed, rather than an empty section", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+      render(<WorkflowRulesCard auth={mockAuth()} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true, actions: [] },
+      ]} />);
+
+      await waitFor(() => expect(screen.queryByText(/no workflows configured/i)).toBeNull()); // sanity: real render happened
+      expect(screen.queryByText("Recent")).toBeNull();
+    });
   });
 });
 
@@ -1263,6 +1396,16 @@ describe("humanizeRuleId", () => {
     expect(humanizeRuleId(undefined)).toBe("Alert");
     expect(humanizeRuleId(null)).toBe("Alert");
   });
+
+  // 2026-08-21: WorkflowRuleService.publishNotification() sets
+  // ruleId="WORKFLOW_"+workflowId, and a generated workflowId (e.g.
+  // "wf-leak-shutoff-1729123456789") has no underscores of its own to
+  // Title Case sensibly -- the naive split would render something like
+  // "Workflow Wf-leak-shutoff-1729123456789". Special-cased instead.
+  it("shows a short, honest category for a workflow-engine-sourced ruleId instead of humanizing its generated id", () => {
+    expect(humanizeRuleId("WORKFLOW_wf-leak-shutoff-1729123456789")).toBe("Workflow");
+    expect(humanizeRuleId("WORKFLOW_UNCONFIRMED_a1b2c3")).toBe("Workflow Unconfirmed");
+  });
 });
 
 describe("automationAlertSteps", () => {
@@ -1396,6 +1539,80 @@ describe("AutomationAlertCard (via RulesPanel)", () => {
     renderWith();
 
     expect(await screen.findByText(/No automation alerts in the last 24 hours/)).toBeTruthy();
+  });
+
+  // 2026-08-21: WorkflowRuleService.publishNotification() reuses this
+  // card's exact {see,think,act,tags,ruleId} shape for WORKFLOW_ACTION
+  // events (docs/ontology.yaml's notify_critical entity), but this card
+  // used to only query eventTypePrefix=AUTOMATION_ALERT -- every
+  // workflow-engine-driven alert was silently invisible here. Covers the
+  // fix: the broadened prefix list actually reaches the fetch call, and a
+  // WORKFLOW_ACTION event renders through the same narrative markup.
+  it("also surfaces WORKFLOW_ACTION events, not just AUTOMATION_ALERT ones", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{
+        eventId: "e2", sourceDeviceId: "z2m-leak_mech_room", eventType: "WORKFLOW_ACTION",
+        severity: "CRITICAL", timestamp: new Date().toISOString(),
+        payload: {
+          ruleId: "WORKFLOW_wf-leak-shutoff-1", see: "Water leak detected",
+          think: "Human-configured workflow 'Leak shutoff' matched this event",
+          act: "Shut off main water valve + Notify", tags: ["WORKFLOW"],
+        },
+      }],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWith();
+
+    expect(await screen.findByText("Water leak detected")).toBeTruthy();
+    // "WORKFLOW" itself renders twice by design here (the humanizeRuleId
+    // category badge AND the tags chip both read "WORKFLOW" for this
+    // payload) -- assert the category badge specifically rather than an
+    // ambiguous bare-text match.
+    expect(screen.getByText("Water leak detected").closest(".automation-alert-card")
+      .querySelector(".automation-alert-category").textContent).toBe("WORKFLOW");
+    // Other RulesPanel siblings (WorkflowRulesCard's RecentExecutionsList,
+    // BuiltinRules) also call fetch on mount -- assert by content, not by
+    // call order, since effect ordering across sibling components isn't
+    // this test's concern.
+    expect(fetchMock.mock.calls.some(([url]) =>
+      url.includes("eventTypePrefix=AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED"))).toBe(true);
+  });
+
+  it("shows a real recent list (more than just the single latest alert)", async () => {
+    const now = Date.now();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { eventId: "older", sourceDeviceId: "d1", eventType: "AUTOMATION_ALERT", severity: "WARN",
+          timestamp: new Date(now - 60_000).toISOString(), payload: { ruleId: "FREEZE_RISK", see: "Older alert" } },
+        { eventId: "newer", sourceDeviceId: "d2", eventType: "AUTOMATION_ALERT", severity: "CRITICAL",
+          timestamp: new Date(now).toISOString(), payload: { ruleId: "WATER_PRESSURE_LOW", see: "Newer alert" } },
+      ],
+    }));
+
+    renderWith();
+
+    expect(await screen.findByText("Newer alert")).toBeTruthy();
+    expect(screen.getByText("Older alert")).toBeTruthy();
+  });
+
+  it("queries both cabin and home when the location switcher is set to Both", async () => {
+    const fetchMock = vi.fn((url) => Promise.resolve({
+      ok: true,
+      json: async () => url.startsWith("http://home-hub:8080")
+        ? [{ eventId: "home1", sourceDeviceId: "d3", eventType: "WORKFLOW_ACTION", severity: "WARN",
+              timestamp: new Date().toISOString(), payload: { ruleId: "WORKFLOW_wf-home-1", see: "Home alert" } }]
+        : [{ eventId: "cabin1", sourceDeviceId: "d4", eventType: "AUTOMATION_ALERT", severity: "WARN",
+              timestamp: new Date().toISOString(), payload: { ruleId: "FREEZE_RISK", see: "Cabin alert" } }],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWith("both");
+
+    expect(await screen.findByText("Cabin alert")).toBeTruthy();
+    expect(screen.getByText("Home alert")).toBeTruthy();
   });
 });
 

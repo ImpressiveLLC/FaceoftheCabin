@@ -339,6 +339,8 @@ body {
 .automation-alert-critical { border-left-color: var(--state-alarm, #f85149); }
 .automation-alert-warn { border-left-color: var(--state-warning); }
 .automation-alert-none { border-left-color: var(--border); padding: 14px 18px; }
+.automation-alert-list .automation-alert-card { margin-bottom: 10px; }
+.automation-alert-list .automation-alert-card:last-child { margin-bottom: 16px; }
 .active-conditions {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -983,6 +985,18 @@ body {
 }
 .workflow-row-actions { display: flex; gap: 8px; margin-top: 6px; }
 .workflow-row-actions .btn-ghost { font-size: 11px; padding: 3px 9px; }
+.workflow-execution-history {
+  margin-top: 6px; padding: 8px; border-radius: 6px;
+  background: #010409; border: 1px solid #21262d;
+}
+.workflow-execution-row + .workflow-execution-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid #21262d; }
+.workflow-execution-meta { display: flex; justify-content: space-between; font-size: 11px; color: #8b949e; }
+.workflow-execution-active { color: #58a6ff; font-weight: 600; }
+.workflow-execution-cleared { color: #6e7681; }
+.workflow-execution-actions { margin: 4px 0 0; padding-left: 16px; font-size: 11px; color: #8b949e; }
+.workflow-execution-history .btn-ghost { font-size: 11px; padding: 2px 8px; margin-top: 4px; }
+.workflow-recent-executions { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #21262d; }
+.workflow-recent-executions .rule-row:last-child { border-bottom: none; }
 
 /* ─── Add flow ───────────────────────────────────────────────────────────── */
 .dm-add-root { max-width: 600px; }

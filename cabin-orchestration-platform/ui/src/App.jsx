@@ -3428,7 +3428,7 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
         </div>
         <div className="rules-sidebar">
           <KafkaStatus location={activeLocation} />
-          <WorkflowRulesCard workflows={workflows} auth={auth} devices={devices}
+          <WorkflowRulesCard workflows={workflows} auth={auth} devices={devices} activeLocation={activeLocation}
             defaultLocation={activeLocation !== "both" ? activeLocation : "cabin"} onChanged={refreshWorkflows} />
           <BuiltinRules location={activeLocation} />
         </div>
@@ -3478,10 +3478,21 @@ function ActiveConditionsCard() {
 // the first real one, backed by AutomationRuleService's now-real
 // AUTOMATION_ALERT events (see docs/ontology.yaml's
 // automation_alert_see_think_act entity for the full backend-to-UI trace).
-// Cabin-only for now, matching reality: the water-pressure/freeze/lock rules
-// this reads only exist for Cabin devices today, not Home.
+//
+// Broadened 2026-08-21: WorkflowRuleService.publishNotification() reuses
+// this exact same {see,think,act,tags,ruleId} payload shape for its own
+// WORKFLOW_ACTION/WORKFLOW_UNCONFIRMED events (docs/ontology.yaml's
+// notify_critical entity), but until now this card only ever queried
+// eventTypePrefix=AUTOMATION_ALERT -- every workflow-engine-driven alert
+// (leak shutoff, camera-detection notify, unconfirmed commands) was
+// invisible here even though the backend already narrates it identically.
+// Also was hardcoded to LOCATIONS.cabin and limit=1 -- now follows
+// activeLocation (same per-location fetch shape as refreshWorkflows) and
+// shows a real recent list, not just the single latest.
 export function humanizeRuleId(ruleId) {
   if (!ruleId) return "Alert";
+  if (ruleId.startsWith("WORKFLOW_UNCONFIRMED_")) return "Workflow Unconfirmed";
+  if (ruleId.startsWith("WORKFLOW_")) return "Workflow";
   return ruleId.split("_").map(w => w[0] + w.slice(1).toLowerCase()).join(" ");
 }
 
@@ -3497,23 +3508,42 @@ export function automationAlertSteps(alert) {
   ];
 }
 
+const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED";
+
 function AutomationAlertCard() {
-  const apiBase = LOCATIONS.cabin.apiBase;
-  const [alert, setAlert] = useState(null);
+  const { activeLocation } = useApp();
+  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBase}/api/events?eventTypePrefix=AUTOMATION_ALERT&limit=1&window=24h`)
-      .then(r => r.json())
-      .then(list => { if (!cancelled) setAlert(list[0] || null); })
-      .catch(() => { if (!cancelled) setAlert(null); })
+    setLoading(true);
+    // Same "cabin or both" / "home or both" attempt shape as
+    // refreshWorkflows -- an unrecognized/missing activeLocation falls
+    // back to cabin-only, matching RulesPanel's own LOCATIONS[activeLocation]
+    // || LOCATIONS.cabin default just above where this card is rendered.
+    const loc = activeLocation === "both" ? "both" : (LOCATIONS[activeLocation] ? activeLocation : "cabin");
+    const attempts = [];
+    if (loc === "cabin" || loc === "both") {
+      attempts.push(fetch(`${LOCATIONS.cabin.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=5&window=24h`)
+        .then(r => r.ok ? r.json() : []).catch(() => []));
+    }
+    if (loc === "home" || loc === "both") {
+      attempts.push(fetch(`${LOCATIONS.home.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=5&window=24h`)
+        .then(r => r.ok ? r.json() : []).catch(() => []));
+    }
+    Promise.all(attempts)
+      .then(results => {
+        if (cancelled) return;
+        const merged = results.flat().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        setAlerts(merged.slice(0, 5));
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [apiBase]);
+  }, [activeLocation]);
 
   if (loading) return null;
-  if (!alert) {
+  if (alerts.length === 0) {
     return (
       <div className="automation-alert-card automation-alert-none">
         <p className="config-desc">No automation alerts in the last 24 hours — built-in safety rules are watching.</p>
@@ -3521,6 +3551,14 @@ function AutomationAlertCard() {
     );
   }
 
+  return (
+    <div className="automation-alert-list">
+      {alerts.map(alert => <AutomationAlertEntry key={alert.eventId} alert={alert} />)}
+    </div>
+  );
+}
+
+function AutomationAlertEntry({ alert }) {
   const { see, think, tags = [], ruleId } = alert.payload || {};
   const steps = automationAlertSteps(alert);
 
@@ -3766,9 +3804,84 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
   );
 }
 
+// One firing of a workflow -- actionResults' shape matches
+// WorkflowRuleService.executeAction()'s result map exactly (success,
+// commandStatus, skipped/reason for a cooldown-suppressed action, error).
+// "Reset" here is deliberately just RulesController's POST .../clear --
+// bookkeeping that marks the execution row resolved, never a device
+// command. It must never reopen/reverse anything: reopening the main
+// valve stays human-only via the "Fire now" MANUAL-workflow path above,
+// not a side effect of clearing a record (flagged by the session that
+// built fireManual()/validateReopenGuard() as an easy trap to reintroduce
+// from this exact angle).
+function WorkflowExecutionHistory({ workflow, apiBase, auth, onCleared }) {
+  const [executions, setExecutions] = useState(null); // null = not yet loaded
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(() => {
+    fetch(`${apiBase}/api/rules/workflows/${workflow.workflowId}/executions?limit=10`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setExecutions)
+      .catch(() => setExecutions([]));
+  }, [apiBase, workflow.workflowId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const clear = async (executionId) => {
+    setBusyId(executionId);
+    setError(null);
+    try {
+      const res = await auth.authedFetch(`${apiBase}/api/rules/executions/${executionId}/clear`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      load();
+      onCleared();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (executions === null) return <p className="config-hint">Loading history…</p>;
+  if (executions.length === 0) return <p className="config-hint">No executions yet.</p>;
+
+  return (
+    <div className="workflow-execution-history">
+      {executions.map(exec => (
+        <div key={exec.executionId} className="workflow-execution-row">
+          <div className="workflow-execution-meta">
+            <span>{new Date(exec.firedAt).toLocaleString()}</span>
+            <span className={exec.clearedAt ? "workflow-execution-cleared" : "workflow-execution-active"}>
+              {exec.clearedAt ? `Cleared · ${exec.clearedBy}` : "Active"}
+            </span>
+          </div>
+          <ul className="workflow-execution-actions">
+            {(exec.actionResults || []).map((r, i) => (
+              <li key={i}>
+                {r.actionDefinitionId}: {r.success
+                  ? (r.skipped ? `skipped (${r.reason})` : (r.commandStatus || "ok"))
+                  : `failed — ${r.error}`}
+              </li>
+            ))}
+          </ul>
+          {!exec.clearedAt && auth?.signedIn && (
+            <button type="button" className="btn-ghost" disabled={busyId === exec.executionId}
+              onClick={() => clear(exec.executionId)} title="Marks this execution resolved -- does not undo or reverse its actions">
+              Reset
+            </button>
+          )}
+        </div>
+      ))}
+      {error && <p className="config-hint" style={{ color: "var(--danger, #e05555)" }}>{error}</p>}
+    </div>
+  );
+}
+
 function WorkflowRow({ workflow, auth, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
   const apiBase = LOCATIONS[workflow.location]?.apiBase || LOCATIONS.cabin.apiBase;
 
   const act = async (path, method) => {
@@ -3813,18 +3926,90 @@ function WorkflowRow({ workflow, auth, onChanged }) {
             <button type="button" className="btn-ghost" disabled={busy} onClick={() => act("", "DELETE")}>Delete</button>
           </div>
         )}
+        <button type="button" className="btn-ghost" style={{ marginTop: 4 }} onClick={() => setShowHistory(v => !v)}>
+          {showHistory ? "Hide history" : "History"}
+        </button>
+        {showHistory && (
+          <WorkflowExecutionHistory workflow={workflow} apiBase={apiBase} auth={auth} onCleared={onChanged} />
+        )}
         {error && <p className="config-hint" style={{ color: "var(--danger, #e05555)" }}>{error}</p>}
       </div>
     </div>
   );
 }
 
-export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultLocation = "cabin", onChanged = () => {} }) {
+// The "Recent" half of ROADMAP Phase 5's "Active→Reset, Recent→Undo"
+// reductive UI item -- GET /api/rules/executions/recent (unviewed
+// executions) already existed server-side with zero frontend caller
+// before this. "Undo" is deliberately not offered here: there's no real
+// undo primitive in this engine (reopening the valve is its own separate,
+// human-only MANUAL workflow, not an automatic reversal of the close
+// action) -- this button is honestly named for what POST .../view
+// actually does, mark the notification acknowledged.
+function RecentExecutionsList({ workflows, activeLocation, auth }) {
+  const [recent, setRecent] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    const loc = activeLocation === "both" ? "both" : (LOCATIONS[activeLocation] ? activeLocation : "cabin");
+    const attempts = [];
+    if (loc === "cabin" || loc === "both") {
+      attempts.push(fetch(`${LOCATIONS.cabin.apiBase}/api/rules/executions/recent`)
+        .then(r => r.ok ? r.json() : []).catch(() => []));
+    }
+    if (loc === "home" || loc === "both") {
+      attempts.push(fetch(`${LOCATIONS.home.apiBase}/api/rules/executions/recent`)
+        .then(r => r.ok ? r.json() : []).catch(() => []));
+    }
+    Promise.all(attempts)
+      .then(results => setRecent(results.flat().sort((a, b) => new Date(b.firedAt) - new Date(a.firedAt))))
+      .finally(() => setLoading(false));
+  }, [activeLocation]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const dismiss = async (exec) => {
+    const wf = workflows.find(w => w.workflowId === exec.workflowId);
+    const apiBase = LOCATIONS[wf?.location]?.apiBase || LOCATIONS.cabin.apiBase;
+    try {
+      await auth.authedFetch(`${apiBase}/api/rules/executions/${exec.executionId}/view`, { method: "POST" });
+    } catch { /* refresh() below still re-shows it if the write failed -- no silent loss */ }
+    refresh();
+  };
+
+  if (loading || recent.length === 0) return null;
+
+  return (
+    <div className="workflow-recent-executions">
+      <strong>Recent</strong>
+      <p className="config-hint">Unviewed workflow firings.</p>
+      {recent.map(exec => {
+        const wf = workflows.find(w => w.workflowId === exec.workflowId);
+        return (
+          <div key={exec.executionId} className="rule-row">
+            <span className={`rule-dot ${exec.clearedAt ? "rule-inactive" : "rule-defined"}`}>●</span>
+            <div>
+              <div className="rule-name">{wf?.name || exec.workflowId}</div>
+              <div className="rule-detail">{new Date(exec.firedAt).toLocaleString()} · {exec.clearedAt ? "cleared" : "active"}</div>
+              {auth?.signedIn && (
+                <button type="button" className="btn-ghost" onClick={() => dismiss(exec)}>Mark seen</button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultLocation = "cabin", activeLocation = "cabin", onChanged = () => {} }) {
   const [creating, setCreating] = useState(false);
   return (
     <div className="sidebar-card">
       <strong>Workflows</strong>
       <p className="config-hint">Real, persisted trigger → action rules (separate from the rules below and from Node-RED).</p>
+      <RecentExecutionsList workflows={workflows} activeLocation={activeLocation} auth={auth} />
       {workflows.length === 0 && <p className="config-hint">No workflows configured yet.</p>}
       {workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} onChanged={onChanged} />)}
       {!creating && (
