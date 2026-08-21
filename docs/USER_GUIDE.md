@@ -232,6 +232,17 @@ devices are signed in. New profiles push to the shared directory
 immediately on save, but a device that's signed out or offline won't see
 it until it's back online and re-syncs.
 
+**"The presence pin (At Home / At Cabin / Away) is showing the wrong
+location, or 'Away' when someone is clearly home."** This isn't guessed
+from the app itself — it only knows what a real signal has told it (a
+phone's Wi-Fi being seen on a location's network, or a GPS zone crossing).
+A location with no signal source configured for it will always read as
+not-present, correctly reflecting that it has no way to know otherwise —
+this is a setup-time requirement (each location's real coordinates and a
+matching Home Assistant automation), not something fixable from inside
+the app. See `REPLICATION.md`'s Presence detection notes, or check with
+whoever manages the platform for this household.
+
 ---
 
 ## Who to ask

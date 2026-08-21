@@ -49,8 +49,12 @@ public class JdbcWorkflowRuleStore {
               step_order            INTEGER NOT NULL,
               action_definition_id  TEXT NOT NULL,
               target_device_id      TEXT,
-              action_config         JSONB
+              action_config         JSONB,
+              cooldown_seconds      INTEGER
             )""");
+        // Added 2026-08-21 -- ALTER for any table created before this column
+        // existed; a no-op on a fresh table (already has it from CREATE above).
+        jdbc.execute("ALTER TABLE workflow_action ADD COLUMN IF NOT EXISTS cooldown_seconds INTEGER");
         jdbc.execute("""
             CREATE INDEX IF NOT EXISTS workflow_action_workflow_idx
             ON workflow_action (workflow_id, step_order)""");
@@ -78,11 +82,11 @@ public class JdbcWorkflowRuleStore {
         for (WorkflowAction action : rule.actions()) {
             jdbc.update("""
                 INSERT INTO workflow_action (action_id, workflow_id, step_order, action_definition_id,
-                  target_device_id, action_config)
-                VALUES (?, ?, ?, ?, ?, ?::jsonb)
+                  target_device_id, action_config, cooldown_seconds)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?)
                 """,
                 action.actionId(), rule.workflowId(), action.stepOrder(), action.actionDefinitionId(),
-                action.targetDeviceId(), toJson(action.actionConfig()));
+                action.targetDeviceId(), toJson(action.actionConfig()), action.cooldownSeconds());
         }
     }
 
@@ -108,7 +112,7 @@ public class JdbcWorkflowRuleStore {
                 rule.actions().add(new WorkflowAction(
                     rs.getString("action_id"), workflowId, rs.getInt("step_order"),
                     rs.getString("action_definition_id"), rs.getString("target_device_id"),
-                    fromJson(rs.getString("action_config"))));
+                    fromJson(rs.getString("action_config")), (Integer) rs.getObject("cooldown_seconds")));
             } catch (Exception e) {
                 log.warn("Skipping invalid workflow_action row: {}", e.getMessage());
             }

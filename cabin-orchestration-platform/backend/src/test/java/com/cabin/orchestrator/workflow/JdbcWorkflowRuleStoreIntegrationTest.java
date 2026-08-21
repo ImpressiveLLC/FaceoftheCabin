@@ -58,9 +58,9 @@ class JdbcWorkflowRuleStoreIntegrationTest {
             "trigger_water_leak_detected", null, true, "AUTO_ON_CLEAR", null,
             Instant.now(), "test",
             List.of(
-                new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of()),
+                new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of(), null),
                 new WorkflowAction(workflowId + "-a2", workflowId, 1, "action_main_water_valve_off",
-                    "z2m-main_water_valve", Map.of("state", "OFF"))));
+                    "z2m-main_water_valve", Map.of("state", "OFF"), null)));
     }
 
     @Test
@@ -87,7 +87,7 @@ class JdbcWorkflowRuleStoreIntegrationTest {
         WorkflowRule trimmed = new WorkflowRule(
             "wf-2", "Leak shutoff", "cabin", "DEVICE_EVENT", "trigger_water_leak_detected", null,
             true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
-            List.of(new WorkflowAction("wf-2-a1", "wf-2", 0, "log_event", null, Map.of())));
+            List.of(new WorkflowAction("wf-2-a1", "wf-2", 0, "log_event", null, Map.of(), null)));
         store.save(trimmed);
 
         WorkflowRule reloaded = store.findById("wf-2").orElseThrow();
@@ -126,7 +126,7 @@ class JdbcWorkflowRuleStoreIntegrationTest {
             "wf-5", "Reopen valve", "cabin", "MANUAL", null, null,
             true, "MANUAL_ONLY", null, Instant.now(), "test", // parentWorkflowId null -- this test doesn't exercise the layered-workflow FK link, just MANUAL exclusion
             List.of(new WorkflowAction("wf-5-a1", "wf-5", 0, "action_main_water_valve_open",
-                "z2m-main_water_valve", Map.of())));
+                "z2m-main_water_valve", Map.of(), null)));
         store.save(manualReopen);
 
         List<WorkflowRule> matches = store.findByTrigger("trigger_water_leak_detected", "z2m-leak_mech_room");

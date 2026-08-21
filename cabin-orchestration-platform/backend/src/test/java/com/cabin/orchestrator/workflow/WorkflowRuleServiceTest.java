@@ -111,9 +111,9 @@ class WorkflowRuleServiceTest {
         return new WorkflowRule(workflowId, "Leak shutoff", "cabin", "DEVICE_EVENT",
             "trigger_water_leak_detected", null, true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
             List.of(
-                new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of()),
+                new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of(), null),
                 new WorkflowAction(workflowId + "-a2", workflowId, 1, "action_main_water_valve_off",
-                    "z2m-main_water_valve", Map.of())));
+                    "z2m-main_water_valve", Map.of(), null)));
     }
 
     @Test
@@ -144,8 +144,8 @@ class WorkflowRuleServiceTest {
             true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
             List.of(
                 new WorkflowAction("a1", "wf-partial-fail", 0, "action_main_water_valve_off",
-                    "z2m-main_water_valve", Map.of()),
-                new WorkflowAction("a2", "wf-partial-fail", 1, "notify_critical", null, Map.of()))));
+                    "z2m-main_water_valve", Map.of(), null),
+                new WorkflowAction("a2", "wf-partial-fail", 1, "notify_critical", null, Map.of(), null))));
 
         service.evaluate(leakEvent("z2m-leak_mech_room"));
 
@@ -162,11 +162,11 @@ class WorkflowRuleServiceTest {
         ruleStore.save(new WorkflowRule(
             "wf-a", "Shutoff", "cabin", "DEVICE_EVENT", "trigger_water_leak_detected", null,
             true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
-            List.of(new WorkflowAction("a1", "wf-a", 0, "action_main_water_valve_off", "z2m-main_water_valve", Map.of()))));
+            List.of(new WorkflowAction("a1", "wf-a", 0, "action_main_water_valve_off", "z2m-main_water_valve", Map.of(), null))));
         ruleStore.save(new WorkflowRule(
             "wf-b", "Notify only", "cabin", "DEVICE_EVENT", "trigger_water_leak_detected", null,
             true, "AUTO_ON_CLEAR", "wf-a", Instant.now(), "test",
-            List.of(new WorkflowAction("b1", "wf-b", 0, "notify_critical", null, Map.of()))));
+            List.of(new WorkflowAction("b1", "wf-b", 0, "notify_critical", null, Map.of(), null))));
 
         service.evaluate(leakEvent("z2m-leak_mech_room"));
 
@@ -181,7 +181,7 @@ class WorkflowRuleServiceTest {
         ruleStore.save(new WorkflowRule(
             "wf-manual", "Reopen valve", "cabin", "MANUAL", null, null,
             true, "MANUAL_ONLY", null, Instant.now(), "test",
-            List.of(new WorkflowAction("m1", "wf-manual", 0, "action_main_water_valve_open", "z2m-main_water_valve", Map.of()))));
+            List.of(new WorkflowAction("m1", "wf-manual", 0, "action_main_water_valve_open", "z2m-main_water_valve", Map.of(), null))));
 
         service.evaluate(leakEvent("z2m-leak_mech_room"));
 
@@ -194,7 +194,7 @@ class WorkflowRuleServiceTest {
         ruleStore.save(new WorkflowRule(
             "wf-c", "Leak shutoff", "cabin", "DEVICE_EVENT", "trigger_water_leak_detected", null,
             true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
-            List.of(new WorkflowAction("c1", "wf-c", 0, "action_main_water_valve_off", "z2m-main_water_valve", Map.of()))));
+            List.of(new WorkflowAction("c1", "wf-c", 0, "action_main_water_valve_off", "z2m-main_water_valve", Map.of(), null))));
 
         service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "psi_mech_room", "TELEMETRY", "INFO",
             Instant.now(), Map.of("psi", 26.0)));
@@ -208,7 +208,7 @@ class WorkflowRuleServiceTest {
         ruleStore.save(new WorkflowRule(
             "wf-d", "Leak shutoff", "cabin", "DEVICE_EVENT", "trigger_water_leak_detected", null,
             true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
-            List.of(new WorkflowAction("d1", "wf-d", 0, "action_main_water_valve_off", "z2m-main_water_valve", Map.of()))));
+            List.of(new WorkflowAction("d1", "wf-d", 0, "action_main_water_valve_off", "z2m-main_water_valve", Map.of(), null))));
 
         // A WORKFLOW_ACTION event, even one that happens to carry water_leak=true, must be skipped outright.
         service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "z2m-leak_mech_room", "WORKFLOW_ACTION",
@@ -228,7 +228,7 @@ class WorkflowRuleServiceTest {
         ruleStore.save(new WorkflowRule(
             "wf-e", "Misconfigured", "cabin", "DEVICE_EVENT", "trigger_water_leak_detected", null,
             true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
-            List.of(new WorkflowAction("e1", "wf-e", 0, "action_main_water_valve_off", "z2m-temp_kitchen", Map.of()))));
+            List.of(new WorkflowAction("e1", "wf-e", 0, "action_main_water_valve_off", "z2m-temp_kitchen", Map.of(), null))));
 
         service.evaluate(leakEvent("z2m-leak_mech_room"));
 
@@ -287,7 +287,7 @@ class WorkflowRuleServiceTest {
         ruleStore.save(new WorkflowRule(
             "wf-manual-reset", "Strict shutoff", "cabin", "DEVICE_EVENT", "trigger_water_leak_detected", null,
             true, "MANUAL_ONLY", null, Instant.now(), "test",
-            List.of(new WorkflowAction("mr1", "wf-manual-reset", 0, "notify_critical", null, Map.of()))));
+            List.of(new WorkflowAction("mr1", "wf-manual-reset", 0, "notify_critical", null, Map.of(), null))));
         service.evaluate(leakEvent("z2m-leak_mech_room"));
 
         service.evaluate(leakClearedEvent("z2m-leak_mech_room"));
@@ -377,7 +377,7 @@ class WorkflowRuleServiceTest {
     private WorkflowRule notifyOnlyCameraWorkflow(String workflowId, String cameraId) {
         return new WorkflowRule(workflowId, "Notify: driveway", "cabin", "DEVICE_EVENT",
             "trigger_camera_detection", cameraId, true, "MANUAL_ONLY", null, Instant.now(), "test",
-            List.of(new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of())));
+            List.of(new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of(), null)));
     }
 
     @Test
@@ -470,5 +470,141 @@ class WorkflowRuleServiceTest {
         Map<String, Object> payload = eventPublisher.published.get(0).payload();
         assertEquals("Water leak detected", payload.get("see"));
         assertEquals("Notify + Shut off main water valve", payload.get("act"));
+    }
+
+    // ── Cleared-condition as a matchable trigger (added 2026-08-21) ──
+
+    @Test
+    void aWorkflowRegisteredAgainstTheClearedTriggerFiresWhenTheConditionClears() {
+        ruleStore.save(new WorkflowRule(
+            "wf-on-clear", "Notify: leak resolved", "cabin", "DEVICE_EVENT", "trigger_water_leak_cleared", null,
+            true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
+            List.of(new WorkflowAction("wf-on-clear-a1", "wf-on-clear", 0, "notify_critical", null, Map.of(), null))));
+
+        service.evaluate(leakClearedEvent("z2m-leak_mech_room"));
+
+        assertEquals(1, eventPublisher.published.size());
+        assertEquals(1, executionStore.recentFor("wf-on-clear", 10).size());
+    }
+
+    @Test
+    void theClearedTriggerDoesNotFireWhenTheConditionIsStillActive() {
+        ruleStore.save(new WorkflowRule(
+            "wf-on-clear-2", "Notify: leak resolved", "cabin", "DEVICE_EVENT", "trigger_water_leak_cleared", null,
+            true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
+            List.of(new WorkflowAction("wf-on-clear-2-a1", "wf-on-clear-2", 0, "notify_critical", null, Map.of(), null))));
+
+        service.evaluate(leakEvent("z2m-leak_mech_room")); // still detecting, not clearing
+
+        assertTrue(eventPublisher.published.isEmpty());
+        assertTrue(executionStore.recentFor("wf-on-clear-2", 10).isEmpty());
+    }
+
+    @Test
+    void bothTheOriginalAutoClearBookkeepingAndTheNewClearedTriggerFireFromOneEvent() {
+        // The cleared-trigger dispatch is additive -- it must not replace
+        // handleTriggerCleared()'s existing auto-clear-the-active-execution
+        // behavior for AUTO_ON_CLEAR workflows on the original trigger.
+        ruleStore.save(compoundLeakWorkflow("wf-both-effects"));
+        ruleStore.save(new WorkflowRule(
+            "wf-both-effects-notify", "Notify: leak resolved", "cabin", "DEVICE_EVENT",
+            "trigger_water_leak_cleared", null, true, "AUTO_ON_CLEAR", null, Instant.now(), "test",
+            List.of(new WorkflowAction("wf-both-effects-notify-a1", "wf-both-effects-notify", 0,
+                "notify_critical", null, Map.of(), null))));
+        service.evaluate(leakEvent("z2m-leak_mech_room"));
+        adapter.commands.clear();
+        eventPublisher.published.clear();
+
+        service.evaluate(leakClearedEvent("z2m-leak_mech_room"));
+
+        assertTrue(executionStore.findActive("wf-both-effects").isEmpty(), "original workflow's execution still auto-clears");
+        assertEquals(1, executionStore.recentFor("wf-both-effects-notify", 10).size(), "and the new cleared-trigger workflow fires");
+    }
+
+    // ── Manual firing (added 2026-08-21) ──
+
+    private WorkflowRule manualReopenWorkflow(String id) {
+        return new WorkflowRule(id, "Reopen valve", "cabin", "MANUAL", null, null,
+            true, "MANUAL_ONLY", null, Instant.now(), "test",
+            List.of(new WorkflowAction(id + "-a1", id, 0, "action_main_water_valve_open", "z2m-main_water_valve", Map.of(), null)));
+    }
+
+    @Test
+    void fireManualExecutesEveryActionAndRecordsAnExecutionWithNoSourceEvent() {
+        WorkflowRule rule = manualReopenWorkflow("wf-manual-a");
+        ruleStore.save(rule);
+
+        WorkflowExecution execution = service.fireManual(rule, "nate@example.com");
+
+        assertEquals(1, adapter.commands.size());
+        assertEquals("ON", ((Map<?, ?>) adapter.commands.get(0).get("payload")).get("state"));
+        assertNull(execution.triggeredByEventId());
+        assertEquals("MANUAL:nate@example.com", execution.clearedBy());
+        assertNotNull(execution.clearedAt(), "a manual fire self-clears immediately");
+    }
+
+    @Test
+    void fireManualCanBeCalledRepeatedlyWithoutAnyDedupGuard() {
+        WorkflowRule rule = manualReopenWorkflow("wf-manual-b");
+        ruleStore.save(rule);
+
+        service.fireManual(rule, "nate@example.com");
+        service.fireManual(rule, "nate@example.com");
+
+        assertEquals(2, adapter.commands.size(), "no source event to dedupe against -- every tap is a distinct action");
+        assertEquals(2, executionStore.recentFor("wf-manual-b", 10).size());
+    }
+
+    // ── Per-action cooldown (added 2026-08-21) ──
+
+    @Test
+    void anActionWithNoCooldownAlwaysRunsOnEveryFiring() {
+        ruleStore.save(notifyOnlyCameraWorkflow("wf-no-cooldown", "driveway"));
+
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.8));
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.9));
+
+        assertEquals(2, eventPublisher.published.size(), "unchanged default behavior -- null cooldown never skips");
+    }
+
+    @Test
+    void anActionWithACooldownIsSkippedOnASecondFireWithinTheWindowButSiblingActionsStillRun() {
+        String workflowId = "wf-cooldown";
+        ruleStore.save(new WorkflowRule(workflowId, "Notify + log", "cabin", "DEVICE_EVENT",
+            "trigger_camera_detection", "driveway", true, "MANUAL_ONLY", null, Instant.now(), "test",
+            List.of(
+                new WorkflowAction(workflowId + "-cooled", workflowId, 0, "notify_critical", null, Map.of(), 3600),
+                new WorkflowAction(workflowId + "-uncooled", workflowId, 1, "log_event", null, Map.of(), null))));
+
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.8));
+        eventPublisher.published.clear();
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.9)); // within the 1hr cooldown window
+
+        assertTrue(eventPublisher.published.isEmpty(), "notify_critical must be skipped the second time");
+        List<WorkflowExecution> executions = executionStore.recentFor(workflowId, 10);
+        assertEquals(2, executions.size(), "the rule itself still fires -- only the cooled-down action is skipped");
+        Map<String, Object> secondFiringNotifyResult = executions.get(0).actionResults().get(0);
+        assertEquals(true, secondFiringNotifyResult.get("success"));
+        assertEquals(true, secondFiringNotifyResult.get("skipped"));
+        Map<String, Object> secondFiringLogResult = executions.get(0).actionResults().get(1);
+        assertEquals(true, secondFiringLogResult.get("success"));
+        assertNull(secondFiringLogResult.get("skipped"), "the sibling action with no cooldown must not be affected");
+    }
+
+    @Test
+    void aCooledDownActionRunsAgainOnceTheWindowElapses() throws InterruptedException {
+        String workflowId = "wf-cooldown-elapsed";
+        ruleStore.save(new WorkflowRule(workflowId, "Notify", "cabin", "DEVICE_EVENT",
+            "trigger_camera_detection", "driveway", true, "MANUAL_ONLY", null, Instant.now(), "test",
+            List.of(new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of(), 0))));
+        // cooldownSeconds=0 -- functionally "no meaningful cooldown," used
+        // here purely to exercise the elapsed-window code path fast and
+        // deterministically rather than sleeping past a real window.
+
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.8));
+        Thread.sleep(50);
+        service.evaluate(cameraDetectionEvent("driveway", "person", 0.9));
+
+        assertEquals(2, eventPublisher.published.size(), "the cooldown has already elapsed, so it must run again");
     }
 }

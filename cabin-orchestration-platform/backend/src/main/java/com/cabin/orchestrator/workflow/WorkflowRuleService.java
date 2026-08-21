@@ -100,6 +100,23 @@ public class WorkflowRuleService {
         this.eventPublisher = eventPublisher;
     }
 
+    /**
+     * The cleared side of a state-trigger, keyed by its normal (detected)
+     * trigger id, mapped to its own matchable trigger id -- added 2026-08-21
+     * so a SEPARATE workflow can react automatically to a condition
+     * clearing (e.g. "when the leak clears, notify" or "turn off a wet-vac"),
+     * through the exact same fire()/executeAction() pipeline as any other
+     * trigger, no new schema or engine path needed. Deliberately does NOT
+     * let the water valve back into the picture this way:
+     * RulesController.validateReopenGuard() blocks action_main_water_valve_open
+     * from any DEVICE_EVENT-triggered workflow regardless of which trigger
+     * id, so a workflow built against trigger_water_leak_cleared still can't
+     * touch it -- reopening the valve stays human-only via fireManual()
+     * below, by design, not by omission here.
+     */
+    private static final Map<String, String> CLEARED_TRIGGER_IDS =
+        Map.of("trigger_water_leak_detected", "trigger_water_leak_cleared");
+
     public void evaluate(CabinEvent event) {
         // This class's own WORKFLOW_ACTION output loops back through this
         // same consumer -- never re-match it (same guard shape as
@@ -114,6 +131,10 @@ public class WorkflowRuleService {
         String clearedTriggerId = resolveClearedTriggerDefinitionId(event);
         if (clearedTriggerId != null) {
             handleTriggerCleared(clearedTriggerId, event);
+            String clearedVariantTriggerId = CLEARED_TRIGGER_IDS.get(clearedTriggerId);
+            if (clearedVariantTriggerId != null) {
+                handleTriggerMatch(clearedVariantTriggerId, event);
+            }
         }
     }
 
@@ -217,11 +238,58 @@ public class WorkflowRuleService {
         executionStore.save(execution);
     }
 
+    /**
+     * A human explicitly firing a MANUAL trigger_kind workflow -- e.g. the
+     * "Reopen valve" workflow, the one legitimate way to reopen the main
+     * water valve (validateReopenGuard() in RulesController keeps that
+     * action out of every DEVICE_EVENT-triggered workflow, on purpose).
+     * Reuses executeAction() exactly, but with no source CabinEvent to
+     * point at -- triggeredByEventId is null, matching
+     * JdbcWorkflowExecutionStore's own dedup-index comment ("MANUAL-trigger
+     * executions legitimately have no source event and must not be limited
+     * to firing once ever"): every tap creates a new execution, since a
+     * human explicitly chose this one moment, not a repeat of the same
+     * signal. Always self-clears immediately -- there's no ongoing sampled
+     * condition for a manual fire to wait on.
+     */
+    public WorkflowExecution fireManual(WorkflowRule rule, String actorEmail) {
+        log.info("Workflow '{}' ({}) manually fired by {}", rule.name(), rule.workflowId(), actorEmail);
+        String executionId = UUID.randomUUID().toString();
+        CabinEvent syntheticEvent = new CabinEvent(UUID.randomUUID().toString(), rule.location(),
+            "WORKFLOW_MANUAL_FIRE", "INFO", Instant.now(), Map.of("firedBy", actorEmail));
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (WorkflowAction action : rule.actions()) {
+            results.add(executeAction(executionId, action, rule, syntheticEvent));
+        }
+        Instant now = Instant.now();
+        WorkflowExecution execution = new WorkflowExecution(
+            executionId, rule.workflowId(), null, now, now, "MANUAL:" + actorEmail, results, null);
+        executionStore.save(execution);
+        return execution;
+    }
+
     private Map<String, Object> executeAction(String executionId, WorkflowAction action, WorkflowRule rule,
                                                CabinEvent triggeringEvent) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("actionId", action.actionId());
         result.put("actionDefinitionId", action.actionDefinitionId());
+
+        // Per-action cooldown (added 2026-08-21) -- independent of the
+        // rule-level findActive() edge-detection guard above, which exists
+        // for a different reason (don't re-fire while one ongoing sampled
+        // state is unchanged). This is what lets e.g. a notify_critical
+        // action (no cooldown set) re-fire on every occurrence while a
+        // sibling actuator action on the same rule (a cooldown set) is
+        // rate-limited or effectively one-shot.
+        if (action.cooldownSeconds() != null) {
+            Instant lastSuccess = mostRecentSuccessAt(rule.workflowId(), action.actionId());
+            if (lastSuccess != null && lastSuccess.isAfter(Instant.now().minusSeconds(action.cooldownSeconds()))) {
+                result.put("success", true);
+                result.put("skipped", true);
+                result.put("reason", "cooldown");
+                return result;
+            }
+        }
         try {
             switch (action.actionDefinitionId()) {
                 case "action_main_water_valve_off" -> executeValveCommand(executionId, action, "OFF", result);
@@ -247,6 +315,28 @@ public class WorkflowRuleService {
             result.put("error", e.getMessage());
         }
         return result;
+    }
+
+    /**
+     * Most recent firedAt among this workflow's past executions where this
+     * specific action recorded success:true -- the per-action cooldown
+     * check above. Scans recent executions in Java rather than a
+     * JSON-querying SQL clause, matching this store's existing "keep the
+     * SQL layer simple" shape; cooldown windows are short and this list is
+     * small. A skipped ("success":true,"skipped":true) result does NOT
+     * count as a success here -- it would otherwise indefinitely extend its
+     * own cooldown from a run that never actually did anything.
+     */
+    private Instant mostRecentSuccessAt(String workflowId, String actionId) {
+        for (WorkflowExecution exec : executionStore.recentFor(workflowId, 20)) {
+            for (Map<String, Object> r : exec.actionResults()) {
+                if (actionId.equals(r.get("actionId")) && Boolean.TRUE.equals(r.get("success"))
+                        && !Boolean.TRUE.equals(r.get("skipped"))) {
+                    return exec.firedAt();
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -368,6 +458,9 @@ public class WorkflowRuleService {
             Object score = event.payload().get("score");
             String pct = score instanceof Number n ? " (" + Math.round(n.doubleValue() * 100) + "%)" : "";
             return event.sourceDeviceId() + " detected " + (label != null ? label : "activity") + pct;
+        }
+        if ("WORKFLOW_MANUAL_FIRE".equals(event.eventType())) {
+            return "Manually fired by " + event.payload().get("firedBy");
         }
         return event.sourceDeviceId() + ": " + event.eventType();
     }

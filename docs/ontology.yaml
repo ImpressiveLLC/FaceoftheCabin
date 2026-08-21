@@ -3955,6 +3955,57 @@ elements:
       published a genuine, live signal that the orchestration platform
       never read at all.
 
+  - id: automation_home_presence_publish_nate_presence_from_phone_gps
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: drafted
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: ["home", "not_home"]
+    ui_display_name: "Publish Nate Presence (phone GPS zone — home)"
+    source: >
+      Drafted 2026-08-21, NOT YET APPLIED to the live HA instance —
+      pending the user pairing the HA Companion app to their phone
+      (Tailscale-only, this instance's HA is deliberately not
+      internet-reachable, see MAINTENANCE.md) and supplying their real
+      home GPS coordinates. Same shell_command.cabin_security_publish
+      path and asymmetric debounce convention as the WiFi-ARP automation
+      above, but keyed to a `zone: home` enter/leave trigger instead of a
+      LAN ARP check — the mechanism this instance's `home` location uses
+      instead of a local WiFi-ARP check, since it has no LAN-based HA
+      instance of its own (borrows cabin's, over the internet, via GPS
+      zone crossing rather than network presence).
+    rendering:
+      semantic: "Nate's phone in the home GPS zone"
+      systems: Presence Publisher (phone GPS zone)
+      technical: "shell_command.cabin_security_publish -> home/presence/nate, retain=true, qos=1"
+      compliance: Occupant Presence — Publication Record (GPS-derived)
+    definition: >
+      Republishes home/not_home to home/presence/nate based on whether
+      the paired phone's device_tracker reports inside a `zone: home`
+      entry (real lat/long supplied at setup time, never committed to
+      this repo — see REPLICATION.md's "Home/cabin GPS coordinates"
+      callout). Same asymmetric debounce reasoning as the WiFi-ARP
+      version, if anything more warranted here since GPS is noisier near
+      a zone boundary than a LAN ARP check.
+    relationships:
+      - target: active_presence_profile
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      This is the concrete, real-world instance of what
+      active_presence_profile's own source note already described as
+      "any instance can plug in real detection just by publishing to
+      that topic contract" — home/presence/nate needed zero backend
+      changes to start working the moment this automation goes live,
+      confirming that design held up in practice, not just in theory.
+
   - id: active_presence_profile
     entity_type: owl:Class
     layer: backend

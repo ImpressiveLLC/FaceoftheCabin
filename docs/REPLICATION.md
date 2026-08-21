@@ -44,10 +44,14 @@
   exactly what's used until the first real signal ever arrives, see
   `docs/ontology.yaml`'s `active_presence_profile` entity — but any
   instance can plug in real detection just by publishing to that topic
-  contract; nothing backend-side needs editing. This instance's example:
-  an HA automation doing a WiFi ARP check, publishing `home`/`not_home`
-  to `cabin/presence/nate` (see `ontology.yaml`'s
-  `automation_cabin_security_publish_nate_presence_from_phone`).
+  contract; nothing backend-side needs editing. This instance's examples:
+  an HA automation doing a WiFi ARP check for a phone on the local
+  network (publishing `home`/`not_home` to `cabin/presence/nate`, see
+  `ontology.yaml`'s
+  `automation_cabin_security_publish_nate_presence_from_phone`), and a
+  GPS-zone automation for locations with no local network to ARP-scan
+  (see §3's "Home/cabin GPS coordinates" callout below — **this second
+  kind requires real address input at setup time**, not just accounts).
 
 ## 2. What still needs your own values (find-and-replace)
 
@@ -84,6 +88,19 @@ whoever forks the repo — not bugs, just template points:
   cheap VPS, if you don't mind moving off "self-hosted for free") works.
 - A **mesh VPN** for private/admin access (SSH, Grafana, Home Assistant) —
   this instance uses Tailscale (free tier, generous device limits).
+- **Home/cabin GPS coordinates** (latitude/longitude), for every physical
+  location where you want zone-based presence detection (see §1's
+  Presence detection bullet) — **required input, not optional, if you want
+  that location's presence pin to be real instead of manual.** Gather
+  this at the same time as your other setup values (§4 below), not as an
+  afterthought once the app is already live: it's used to define an HA
+  `zone:` entry, so a location with no zone defined simply has no
+  automatic presence signal for that site, same as if you'd skipped
+  creating a Google OAuth Client ID. These values are deliberately **never
+  committed to this repo** — they live only in each instance's own
+  `homeassistant/packages/` config (untracked, same posture as every other
+  per-instance secret/PII value — see §7), not in `.env`, not in any
+  docs file, not in git history.
 
 ## 4. Setup order
 
@@ -111,10 +128,17 @@ whoever forks the repo — not bugs, just template points:
    compose environment. Both display verbatim in the Config panel's
    Platform / Remote Access cards — see `DashboardController`'s
    `/api/dashboard/config`.
-5. **Host machine**: install Docker + Compose, join it to your mesh VPN.
-6. **Domain + tunnel**: point your domain at your DNS/tunnel provider,
+5. **Home/cabin GPS coordinates** (see §3): gather the real latitude/
+   longitude for every physical location you want zone-based presence
+   detection at, at the same time you're gathering your other setup
+   values — not something to circle back for after the app is already
+   live and someone notices presence looks wrong. You'll enter these into
+   an HA `zone:` block per location in step 9; nothing to do with them
+   yet, just don't lose them between now and then.
+6. **Host machine**: install Docker + Compose, join it to your mesh VPN.
+7. **Domain + tunnel**: point your domain at your DNS/tunnel provider,
    configure it to forward to your host's Family Hub port.
-7. **Secrets**: `.env` is Ansible Vault-managed now, not hand-copied from
+8. **Secrets**: `.env` is Ansible Vault-managed now, not hand-copied from
    the example file — follow `ansible/README.md`'s Secrets section
    end to end (create your own vault password, `ansible-vault create
    ansible/group_vars/cabin/vault.yml`, fill in your own
@@ -122,15 +146,21 @@ whoever forks the repo — not bugs, just template points:
    `GOOGLE_CLIENT_ID`/`ADMIN_EMAILS` from step 3 in
    `group_vars/cabin/vars.yml`). Your vault password is a brand-new secret
    for this instance — never reuse the original instance's.
-8. **Bring up the stack**: `docker compose -f docker-compose.yml -f
+9. **Bring up the stack**: `docker compose -f docker-compose.yml -f
    docker-compose.m920q.yml up -d --build` — or write your own override
    file (copy `docker-compose.m920q.yml` as a starting point) if your host
    doesn't need to coexist with a separately-managed Home Assistant/camera
-   stack the way this instance's M920q does.
-9. **CI/CD**: follow `ansible/README.md` end to end against your own repo
-   and host — it's already written generically (`{{ ansible_user }}`,
-   configurable inventory groups), just needs your registration token and
-   inventory values.
+   stack the way this instance's M920q does. If you're wiring up real
+   presence detection, this is also where you add each location's
+   `zone:` block (using the GPS coordinates from step 5) and matching
+   automation to Home Assistant's own config — see §1's Presence
+   detection bullet; these files live in HA's own config directory, not
+   this repo, same "never committed" posture as every other per-instance
+   secret.
+10. **CI/CD**: follow `ansible/README.md` end to end against your own repo
+    and host — it's already written generically (`{{ ansible_user }}`,
+    configurable inventory groups), just needs your registration token and
+    inventory values.
 
 ## 5. New Instance Acceptance Test
 
@@ -159,6 +189,12 @@ straight to "it's up" without checking the actual behavior.
 - [ ] A push to `main` touching `family-hub/**` triggers an automatic
       deploy, confirmed against the live served page — not just a green
       Actions checkmark.
+- [ ] If real presence detection is wired up for a location: `GET
+      /api/presence` shows a real signal for that location (not just the
+      manual-fallback default), and walking a paired phone in/out of that
+      location's zone (or WiFi range) actually changes it within one
+      debounce cycle — confirmed live, not just "the automation looks
+      right in the YAML."
 
 ## 6. Onboarding a new device or integration
 

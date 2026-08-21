@@ -3,6 +3,7 @@ package com.cabin.orchestrator.api;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
 import com.cabin.orchestrator.workflow.JdbcWorkflowExecutionStore;
 import com.cabin.orchestrator.workflow.JdbcWorkflowRuleStore;
+import com.cabin.orchestrator.workflow.WorkflowRuleService;
 import com.cabin.orchestrator.workflow.model.WorkflowAction;
 import com.cabin.orchestrator.workflow.model.WorkflowExecution;
 import com.cabin.orchestrator.workflow.model.WorkflowRule;
@@ -55,10 +56,13 @@ public class RulesController {
 
     private final JdbcWorkflowRuleStore ruleStore;
     private final JdbcWorkflowExecutionStore executionStore;
+    private final WorkflowRuleService workflowRuleService;
 
-    public RulesController(JdbcWorkflowRuleStore ruleStore, JdbcWorkflowExecutionStore executionStore) {
+    public RulesController(JdbcWorkflowRuleStore ruleStore, JdbcWorkflowExecutionStore executionStore,
+                            WorkflowRuleService workflowRuleService) {
         this.ruleStore = ruleStore;
         this.executionStore = executionStore;
+        this.workflowRuleService = workflowRuleService;
     }
 
     @GetMapping("/workflows")
@@ -155,7 +159,20 @@ public class RulesController {
         return Map.of("executionId", id, "cleared", true);
     }
 
-    /** MANUAL trigger_kind workflows only (e.g. the "reopen valve" layered example) -- see WorkflowRuleService, which never auto-fires these. */
+    /**
+     * MANUAL trigger_kind workflows only (e.g. the "Reopen valve" layered
+     * example) -- see WorkflowRuleService, which never auto-fires these.
+     * Implemented 2026-08-21 (was a stub until now, deliberately: "reopen
+     * ships only after the close path is fully proven, per the reviewed
+     * plan"): now calls WorkflowRuleService.fireManual(), which records a
+     * new execution with no source CabinEvent (triggeredByEventId=null --
+     * every tap creates a new execution, matching
+     * JdbcWorkflowExecutionStore's own dedup-index comment about MANUAL
+     * fires). validateReopenGuard() above still keeps
+     * action_main_water_valve_open out of every DEVICE_EVENT-triggered
+     * workflow -- this endpoint is the only legitimate way that action
+     * ever runs.
+     */
     @PostMapping("/workflows/{id}/fire")
     public Map<String, Object> fireManual(@PathVariable String id, HttpServletRequest request) {
         Optional<WorkflowRule> existing = ruleStore.findById(id);
@@ -167,15 +184,8 @@ public class RulesController {
         if (!rule.enabled()) {
             return Map.of("error", "Workflow is not active -- activate it first");
         }
-        // Manual fires are recorded the same shape a device-triggered
-        // execution is, just with no source CabinEvent to point at.
-        // Actual action execution reuses WorkflowRuleService's own fire()
-        // path in a real implementation; left as a follow-up endpoint stub
-        // deliberately narrow in this hardening pass, which is scoped to
-        // the leak-shutoff path already proven live, not the reopen path
-        // (see ontology's action_main_water_valve_open notes -- reopen
-        // ships only after the close path is proven, per the reviewed plan).
-        return Map.of("error", "Manual firing is not yet implemented -- reopen ships after the close path is fully proven");
+        WorkflowExecution execution = workflowRuleService.fireManual(rule, actorEmail(request));
+        return Map.of("executionId", execution.executionId(), "fired", true);
     }
 
     private String validateReopenGuard(WorkflowRule rule) {
