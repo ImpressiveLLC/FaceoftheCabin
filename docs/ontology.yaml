@@ -3959,38 +3959,51 @@ elements:
     entity_type: owl:Class
     layer: integration
     primitive: false
-    schema_version: "0.1.0"
-    migration_status: drafted
+    schema_version: "0.2.0"
+    migration_status: complete
+    first_verified_live:
+      date: "2026-08-21"
+      ref: >
+        GET /api/presence on the live M920q showing a real "home" signal
+        (present:true) for the first time ever, confirmed while the user
+        was physically at the address, cabin signal correctly present:false
+        at the same moment.
     data_class: derived
     data_type: xsd:string
     constraint:
       enum: ["home", "not_home"]
     ui_display_name: "Publish Nate Presence (phone GPS zone — home)"
     source: >
-      Drafted 2026-08-21, NOT YET APPLIED to the live HA instance —
-      pending the user pairing the HA Companion app to their phone
-      (Tailscale-only, this instance's HA is deliberately not
-      internet-reachable, see MAINTENANCE.md) and supplying their real
-      home GPS coordinates. Same shell_command.cabin_security_publish
-      path and asymmetric debounce convention as the WiFi-ARP automation
-      above, but keyed to a `zone: home` enter/leave trigger instead of a
-      LAN ARP check — the mechanism this instance's `home` location uses
-      instead of a local WiFi-ARP check, since it has no LAN-based HA
-      instance of its own (borrows cabin's, over the internet, via GPS
-      zone crossing rather than network presence).
+      Applied 2026-08-21, live — the user paired the HA Companion app over
+      Tailscale (this instance's HA is deliberately not internet-reachable,
+      see MAINTENANCE.md), enabled its "Zone Location" sensor only (not
+      Background Location/Geocoded Location/Single Accurate Location --
+      those either duplicate what Zone Location already provides or cost
+      battery for no benefit to this automation), and supplied their real
+      home GPS coordinates. Same shell_command.cabin_security_publish path
+      as the WiFi-ARP automation above, keyed to a zone enter/leave trigger
+      instead of a LAN ARP check -- the mechanism this instance's `home`
+      location uses since it has no LAN-based HA instance of its own
+      (borrows cabin's, over the internet, via GPS zone crossing rather
+      than network presence).
     rendering:
-      semantic: "Nate's phone in the home GPS zone"
+      semantic: "Nate's phone in the House GPS zone"
       systems: Presence Publisher (phone GPS zone)
       technical: "shell_command.cabin_security_publish -> home/presence/nate, retain=true, qos=1"
       compliance: Occupant Presence — Publication Record (GPS-derived)
     definition: >
-      Republishes home/not_home to home/presence/nate based on whether
-      the paired phone's device_tracker reports inside a `zone: home`
-      entry (real lat/long supplied at setup time, never committed to
-      this repo — see REPLICATION.md's "Home/cabin GPS coordinates"
-      callout). Same asymmetric debounce reasoning as the WiFi-ARP
-      version, if anything more warranted here since GPS is noisier near
-      a zone boundary than a LAN ARP check.
+      Republishes home/not_home to home/presence/nate based on whether the
+      paired phone's device_tracker reports inside the `zone.house` zone
+      entry (real lat/long supplied at setup time, never committed to this
+      repo — see REPLICATION.md's "Home/cabin GPS coordinates" callout).
+      Debounce is NOT the trigger-level `for:` the WiFi-ARP automation
+      uses -- confirmed live that HA's `zone` trigger platform rejects a
+      `for:` key entirely ("extra keys not allowed"). Implemented instead
+      as a delay in the action path (only on the "leave" branch), relying
+      on the automation's own mode: restart to cancel that pending delay
+      if a fresh "enter" fires first -- same asymmetric intent (home
+      publishes immediately, not_home needs 3 continuous minutes away)
+      reached by a different mechanism than the sibling automation uses.
     relationships:
       - target: active_presence_profile
         type: consumed_by
@@ -4003,8 +4016,33 @@ elements:
       active_presence_profile's own source note already described as
       "any instance can plug in real detection just by publishing to
       that topic contract" — home/presence/nate needed zero backend
-      changes to start working the moment this automation goes live,
+      changes to start working the moment this automation went live,
       confirming that design held up in practice, not just in theory.
+
+      REAL INCIDENT, caught and fixed 2026-08-21 before this ever shipped
+      as broken: the zone was originally named `Home`, which Home
+      Assistant registers as its own reserved `zone.home` entity id --
+      HA's built-in Person integration treats entry into that specific id
+      as the literal state "home" for ANY linked device_tracker, and the
+      phone's tracker was auto-linked to `person.natecabin` (the cabin's
+      own dormant person entity). The moment the phone entered this new
+      zone, `person.natecabin` reported "home" too, which woke up the
+      CABIN's own dormant WiFi-based presence automation
+      (automation_cabin_security_publish_nate_presence, the person-entity
+      one, not the WiFi-ARP one) and republished a false "home" to
+      cabin/presence/nate -- confirmed live: cabin's own real WiFi sensor
+      (binary_sensor.nate_phone_on_wifi) correctly read "off" the whole
+      time, so the false signal came entirely from the naming collision,
+      not from any actual WiFi detection. Fixed by renaming the zone to
+      `House` (zone.house) -- see REPLICATION.md's own gotcha note on
+      this. A second, related bug found in the same pass: the startup
+      republish automation checked
+      `is_state('device_tracker.nates_s23', 'home')`, which silently never
+      matches once the zone isn't named "Home" (HA sets a tracker's state
+      to the zone's own name when inside a non-"home" zone) -- fixed to
+      check zone membership directly
+      (`'zone.house' in state_attr(..., 'in_zones')`) instead of comparing
+      against a string that depends on the zone's display name.
 
   - id: active_presence_profile
     entity_type: owl:Class

@@ -101,6 +101,23 @@ whoever forks the repo — not bugs, just template points:
   `homeassistant/packages/` config (untracked, same posture as every other
   per-instance secret/PII value — see §7), not in `.env`, not in any
   docs file, not in git history.
+- **Whatever you call a location in this app's own UI is not the same as
+  what Home Assistant is allowed to call its zone.** Found live 2026-08-21,
+  the hard way: naming a new HA `zone:` entry literally `Home` registers it
+  as HA's own reserved `zone.home` entity id — HA's built-in Person
+  integration treats that id specially (any linked device_tracker entering
+  it reports state literally `"home"`), which can wake up an unrelated
+  automation elsewhere in the same HA instance that was written assuming
+  only the *original* physical "home" zone could ever produce that state
+  (a phone entering a second location's zone falsely triggered the
+  *cabin's* own presence automation, since both zones resolved to the same
+  reserved id). This app's own `hub_location`/"Add Place" concept (§1,
+  §4's step 9) already separates a technical `id` from a free-text
+  `label` correctly — this gotcha is one layer *below* that, inside
+  Home Assistant's own zone-naming, not something this app's UI exposes
+  or can fix. **Name every non-primary location's HA zone something that
+  is not literally "Home"** (this instance uses `House`) to avoid the
+  collision entirely.
 
 ## 4. Setup order
 
