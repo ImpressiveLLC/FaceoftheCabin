@@ -1,12 +1,14 @@
 /**
  * ThemeProvider — independently-selectable palette + font presets.
  *
- * Presets: Modern (default), LCARS, Monolith, Retro-CRT, Bluefin-mono,
- * Mad Science, Deep Space, 80s Neon, Pac-Man, Asteroid City -- same
- * 10-preset catalog as
+ * Presets: Modern (default), Impressive (matches impressive.llc's live
+ * palette, added 2026-08-21 for cross-site continuity), LCARS, Monolith,
+ * Retro-CRT, Bluefin-mono, Mad Science, Deep Space, 80s Neon, Pac-Man,
+ * Asteroid City -- same 11-preset catalog as
  * family-hub.html's own THEMES object (kept in sync manually as of
  * 2026-08-07; see docs/ontology.yaml's theme_preference entry for the
- * cross-app drift this file and family-hub.html are both prone to).
+ * cross-app drift this file and family-hub.html are both prone to --
+ * ThemeCatalogDrift.test.jsx is the automated guard).
  * Persisted to localStorage under key "cabin-theme".
  *
  * Usage:
@@ -39,6 +41,40 @@ export const THEMES = {
       "--warning":      "#d29922",
       "--danger":       "#f85149",
       "--font-display": "'Inter', system-ui, sans-serif",
+      "--font-mono":    "'JetBrains Mono', 'Fira Code', monospace",
+      "--radius":       "10px",
+      "--radius-sm":    "6px",
+    },
+  },
+
+  // Matches impressive.llc's actual live palette (2026-08-21, sampled
+  // directly from the deployed site's computed styles -- body background,
+  // text color, and its one CSS custom property, --accent: #2121de -- not
+  // guessed). impressive.llc uses no custom webfont, just the system-ui
+  // stack, matched here rather than substituting a branded typeface it
+  // doesn't actually use. warning/danger weren't directly observed on the
+  // page (only --accent and a green success/status color were) -- reused
+  // from Modern's values as a reasonable default until/unless the org site
+  // defines its own.
+  impressive: {
+    id: "impressive",
+    label: "Impressive",
+    vars: {
+      "--bg":           "#090b10",
+      "--bg-secondary": "#0f1219",
+      "--bg-tertiary":  "#111722",
+      "--surface":      "#0d121a",
+      "--border":       "#17222f",
+      "--border-focus": "#2121de",
+      "--text":         "#eff0ec",
+      "--text-muted":   "#989d9e",
+      "--text-dim":     "#6b7072",
+      "--accent":       "#2121de",
+      "--accent-hover": "#3d3dff",
+      "--success":      "#34d35d",
+      "--warning":      "#d29922",
+      "--danger":       "#ef4444",
+      "--font-display": "ui-sans-serif, system-ui, -apple-system, sans-serif",
       "--font-mono":    "'JetBrains Mono', 'Fira Code', monospace",
       "--radius":       "10px",
       "--radius-sm":    "6px",
