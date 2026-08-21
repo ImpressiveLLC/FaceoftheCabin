@@ -7800,3 +7800,336 @@ elements:
       claimed when a notification channel is configured. An audited durable
       write model and adapters for external HA/Node-RED flow inventory remain
       separate open work.
+
+  # ─── Known hardware backlog -- design-ahead candidates, 2026-08-21 ───────
+  # CLAUDE.md's "Still pending hardware" list (entry light, deterrent plug,
+  # RF tripwire routers, spare siren, water heater switch) has no ontology
+  # entries at all today -- none of it is physically paired yet, so none of
+  # this can get a real WorkflowRuleService case or a live test the way
+  # action_main_water_valve_off/_open did (see that entity's own "first
+  # real device-command action" note). Documented here anyway, following
+  # the same candidate-status precedent action_main_water_valve_open
+  # already set (a conceptual action with no real device to point at yet),
+  # so the trigger/action shape is ready the moment each device is paired
+  # rather than re-derived from scratch then. Every entry below is
+  # deliberately honest about that: lifecycle_status: candidate,
+  # data_class: conceptual, no relationships to a real zigbee_* device
+  # entity (none exists), and a notes: block saying so explicitly rather
+  # than implying anything here is wired or tested.
+
+  - id: trigger_rf_tripwire_crossed
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "RF tripwire crossed"
+    applies_to_device_type: [RF_TRIPWIRE]
+    applies_to_capability: (undetermined -- see notes)
+    trigger_source: { event_type_pattern: "TRIPWIRE_CROSSED", payload_field: (undetermined) }
+    predicate: { op: is_present }
+    rendering:
+      semantic: "A perimeter RF tripwire detects a crossing"
+      systems: Trigger — RF Tripwire Crossed
+      technical: "(undetermined -- no real event shape exists yet, see notes)"
+      compliance: (not shown)
+    definition: >
+      Intended to fire when one of the spare-router-based RF tripwires
+      (CLAUDE.md's hardware backlog) detects a crossing near the cabin
+      perimeter -- modeled as a discrete event with no symmetric clear
+      signal, the same shape as trigger_camera_detection (each crossing is
+      its own occurrence, nothing to de-duplicate against), not the ongoing
+      sampled-state shape trigger_water_leak_detected uses. This is a
+      design choice pinned ahead of the hardware existing, not a
+      measurement of real behavior.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      NOT INSTALLED. The exact mechanism (which router firmware, what MQTT
+      topic/payload it would publish, how "crossed" is actually detected)
+      is genuinely undetermined -- CLAUDE.md lists "RF tripwire routers" as
+      pending hardware with no further spec. applies_to_capability and
+      trigger_source.payload_field are left explicitly unresolved rather
+      than guessed, unlike trigger_camera_detection's real, verified
+      DETECTION_NEW/label shape. WorkflowRuleService's
+      resolveTriggerDefinitionId() has no case for this id and must not
+      gain one until a real event shape is confirmed against actual
+      hardware -- adding a guessed case now would let a workflow appear
+      configurable in the creation form while silently never firing.
+
+  - id: action_entry_light_on
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Turn on the entry light"
+    action_kind: command
+    action_target: { device_id: zigbee_entry_light, command: "state.set", payload: { state: "ON" } }
+    requires_capability: COMMAND
+    reversible_by: action_entry_light_off
+    rendering:
+      semantic: "Turn on the entry light"
+      systems: Action — Entry Light On
+      technical: "(undetermined -- DeviceRegistry.sendCommand('zigbee_entry_light', 'state.set', {state: ON}), pending real device registration)"
+      compliance: (not shown)
+    definition: >
+      Intended shape for commanding the entry light on, mirroring
+      action_main_water_valve_off/_open's DeviceRegistry.sendCommand
+      pattern exactly -- an on/off pair per actuator, not a single
+      toggle action, matching this vocabulary's existing convention.
+      device_id (zigbee_entry_light) is a placeholder id, not a real
+      DeviceRegistry entry.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      NOT INSTALLED (CLAUDE.md's hardware backlog). This and
+      action_entry_light_off exist purely so the trigger/action shape is
+      ready to wire (WorkflowRuleService.executeAction()'s switch, plus a
+      WORKFLOW_TRIGGERS/WORKFLOW_ACTIONS entry in App.jsx's
+      WorkflowCreateForm) the moment a real zigbee_entry_light device
+      entity exists and is verified controllable -- see
+      action_main_water_valve_off's own notes for why that verification
+      step matters (Zigbee2MqttAdapter never implementing ProtocolAdapter
+      was a real, previously-silent gap for every Zigbee device).
+
+  - id: action_entry_light_off
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Turn off the entry light"
+    action_kind: command
+    action_target: { device_id: zigbee_entry_light, command: "state.set", payload: { state: "OFF" } }
+    requires_capability: COMMAND
+    reversible_by: action_entry_light_on
+    rendering:
+      semantic: "Turn off the entry light"
+      systems: Action — Entry Light Off
+      technical: "(undetermined -- DeviceRegistry.sendCommand('zigbee_entry_light', 'state.set', {state: OFF}), pending real device registration)"
+      compliance: (not shown)
+    definition: >
+      The off half of the action_entry_light_on/_off pair -- see that
+      entity's definition, same reasoning in reverse.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      NOT INSTALLED -- see action_entry_light_on's notes, which apply here
+      identically.
+
+  - id: action_deterrent_plug_on
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Turn on the deterrent plug"
+    action_kind: command
+    action_target: { device_id: zigbee_deterrent_plug, command: "state.set", payload: { state: "ON" } }
+    requires_capability: COMMAND
+    reversible_by: action_deterrent_plug_off
+    rendering:
+      semantic: "Turn on the deterrent plug"
+      systems: Action — Deterrent Plug On
+      technical: "(undetermined -- DeviceRegistry.sendCommand('zigbee_deterrent_plug', 'state.set', {state: ON}), pending real device registration)"
+      compliance: (not shown)
+    definition: >
+      Intended shape for a smart plug driving whatever deterrent device
+      (light, speaker, siren) ends up plugged into it -- same on/off pair
+      convention as action_entry_light_on/_off. What exactly is plugged in
+      is undetermined; this entity documents the plug's own command shape,
+      not a specific deterrent mechanism.
+    relationships:
+      - target: trigger_camera_detection
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_camera_detection]
+    notes: >
+      NOT INSTALLED (CLAUDE.md's hardware backlog). The relationship to
+      trigger_camera_detection is aspirational, not live -- it documents
+      the most obvious intended use (a camera detection driving a
+      deterrent) so the connection is visible in lineage tracing, but
+      WorkflowRuleService has no case wiring these together yet, same
+      caveat as action_entry_light_on's notes.
+
+  - id: action_deterrent_plug_off
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Turn off the deterrent plug"
+    action_kind: command
+    action_target: { device_id: zigbee_deterrent_plug, command: "state.set", payload: { state: "OFF" } }
+    requires_capability: COMMAND
+    reversible_by: action_deterrent_plug_on
+    rendering:
+      semantic: "Turn off the deterrent plug"
+      systems: Action — Deterrent Plug Off
+      technical: "(undetermined -- DeviceRegistry.sendCommand('zigbee_deterrent_plug', 'state.set', {state: OFF}), pending real device registration)"
+      compliance: (not shown)
+    definition: >
+      The off half of the action_deterrent_plug_on/_off pair -- see that
+      entity's definition, same reasoning in reverse.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      NOT INSTALLED -- see action_deterrent_plug_on's notes, which apply
+      here identically.
+
+  - id: action_spare_siren_on
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Sound the spare siren"
+    action_kind: command
+    action_target: { device_id: zigbee_spare_siren, command: "state.set", payload: { state: "ON" } }
+    requires_capability: COMMAND
+    reversible_by: action_spare_siren_off
+    rendering:
+      semantic: "Sound the spare siren"
+      systems: Action — Spare Siren On
+      technical: "(undetermined -- DeviceRegistry.sendCommand('zigbee_spare_siren', 'state.set', {state: ON}), pending real device registration)"
+      compliance: (not shown)
+    definition: >
+      Intended shape for commanding the spare siren on -- same on/off pair
+      convention as the other candidate actuators here. Unlike
+      notify_critical (a push notification only), this is a physical,
+      audible action -- CRITICAL-severity by nature, not by configuration.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      NOT INSTALLED (CLAUDE.md's hardware backlog). Same "shape only, not
+      wired" caveat as action_entry_light_on's notes. Worth flagging
+      explicitly when this is eventually wired: an audible siren has a
+      much higher false-positive cost than a push notification, so it
+      should get its own deliberate trigger review (e.g. requiring
+      armed-away + a higher-confidence detection than notify_critical
+      needs today), not just a drop-in swap for notify_critical in an
+      existing workflow.
+
+  - id: action_spare_siren_off
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Silence the spare siren"
+    action_kind: command
+    action_target: { device_id: zigbee_spare_siren, command: "state.set", payload: { state: "OFF" } }
+    requires_capability: COMMAND
+    reversible_by: action_spare_siren_on
+    rendering:
+      semantic: "Silence the spare siren"
+      systems: Action — Spare Siren Off
+      technical: "(undetermined -- DeviceRegistry.sendCommand('zigbee_spare_siren', 'state.set', {state: OFF}), pending real device registration)"
+      compliance: (not shown)
+    definition: >
+      The off half of the action_spare_siren_on/_off pair -- see that
+      entity's definition, same reasoning in reverse. Given the false-
+      positive cost noted there, this is also the natural pairing for a
+      cooldown-bounded or MANUAL-only silence action once real, not an
+      auto-silence-after-N-seconds default assumed here.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      NOT INSTALLED -- see action_spare_siren_on's notes, which apply here
+      identically.
+
+  - id: action_water_heater_switch_on
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Turn on the water heater"
+    action_kind: command
+    action_target: { device_id: zigbee_water_heater_switch, command: "state.set", payload: { state: "ON" } }
+    requires_capability: COMMAND
+    reversible_by: action_water_heater_switch_off
+    rendering:
+      semantic: "Turn on the water heater"
+      systems: Action — Water Heater Switch On
+      technical: "(undetermined -- DeviceRegistry.sendCommand('zigbee_water_heater_switch', 'state.set', {state: ON}), pending real device registration)"
+      compliance: (not shown)
+    definition: >
+      Intended shape for a smart switch on the water heater's power
+      circuit -- same on/off pair convention as the other candidate
+      actuators here. The obvious pairing (mirroring
+      action_main_water_valve_off's own role) is a freeze-risk or
+      unoccupied-away workflow cutting power to the water heater, but that
+      pairing is not wired -- see relationships below, which stay empty
+      pending a real decision about whether that pairing is even correct
+      (an unoccupied cabin may still want its water heater running to
+      support freeze-prevention heat trace, depending on setup -- an
+      assumption worth a real product decision, not a default baked in
+      here).
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      NOT INSTALLED (CLAUDE.md's hardware backlog). Same "shape only, not
+      wired" caveat as action_entry_light_on's notes.
+
+  - id: action_water_heater_switch_off
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Turn off the water heater"
+    action_kind: command
+    action_target: { device_id: zigbee_water_heater_switch, command: "state.set", payload: { state: "OFF" } }
+    requires_capability: COMMAND
+    reversible_by: action_water_heater_switch_on
+    rendering:
+      semantic: "Turn off the water heater"
+      systems: Action — Water Heater Switch Off
+      technical: "(undetermined -- DeviceRegistry.sendCommand('zigbee_water_heater_switch', 'state.set', {state: OFF}), pending real device registration)"
+      compliance: (not shown)
+    definition: >
+      The off half of the action_water_heater_switch_on/_off pair -- see
+      that entity's definition, same reasoning in reverse.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      NOT INSTALLED -- see action_water_heater_switch_on's notes, which
+      apply here identically.
