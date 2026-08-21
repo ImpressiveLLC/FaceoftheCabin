@@ -251,6 +251,81 @@ per-device:
    test** — not after the config merely validates or the container starts
    cleanly.
 
+### Third-party cloud device with no native HA integration — the HACS path
+
+Some devices (this instance's Kidde CO/air-quality alarm, confirmed
+2026-08-21) have no integration built into Home Assistant core at all, only
+a community-maintained one distributed through HACS. This is a different,
+longer path than step 1-5 above — call it out early rather than discovering
+the extra steps mid-setup:
+
+1. **Check HACS itself is installed first** — `docker exec homeassistant
+   find /config/custom_components -maxdepth 1` on a fresh instance will
+   come back empty. If so, bootstrap it before anything else: `docker exec
+   homeassistant bash -c "cd /config && wget -O - https://get.hacs.xyz |
+   bash -"`, then restart HA.
+2. **HACS itself needs a one-time GitHub device-code authorization** —
+   Settings → Devices & Services → Add Integration → "HACS" shows a URL
+   and a short code; the account owner opens the URL and enters the code
+   in their own browser. Any GitHub account works, including a throwaway
+   one — this is purely how HACS avoids GitHub's anonymous API rate
+   limits, not a real permission grant to your instance. Not something an
+   agent session can complete headlessly.
+3. **Pick the integration by actual maintenance activity, not just star
+   count** — for Kidde, `gh repo view <owner>/<repo> --json pushedAt,
+   stargazerCount` showed one candidate pushed 4 days prior vs. another
+   stale for ~7 months; the more-starred one was the *older*, less
+   actively maintained one. A cloud-API-dependent integration breaks
+   silently when the vendor's endpoint changes, so recency of maintenance
+   matters more than popularity here. Confirm your exact device model is
+   listed as explicitly verified/supported in the README before
+   installing, not just "should probably work."
+4. **Install through HACS's own UI** (search → Download), restart HA
+   again, then **Add Integration** for the new component by name — this
+   is where the device owner's actual account login for that cloud
+   service happens, through HA's own config flow UI. Same rule as every
+   other credential in this project: not something an agent session
+   enters on the user's behalf, regardless of convenience.
+5. **Gather that account's credentials at the same point you gather every
+   other setup-time account** (§3 above) — don't wait for someone to
+   notice a device is missing and treat it as a one-off surprise. If you
+   already know at fork-time which cloud-connected devices exist (Kidde,
+   Liebherr, Bosch, Ring, etc.), list their accounts alongside GitHub/
+   Google/domain/GPS in your own setup checklist before you start, so
+   HACS's existence and the account-login step aren't a mid-setup detour.
+6. **Check for a dead placeholder before assuming nothing exists.** This
+   project's Kidde device already had 3 MQTT-backed entities in HA before
+   this integration was installed — an orphaned retained message from an
+   earlier, incomplete attempt, frozen at fixed fake values with nothing
+   publishing to it anymore. A `mosquitto_sub -t '#' -C <n> -v` sweep (or
+   equivalent for your broker) catches this class of "looks configured,
+   isn't real" trap; don't assume existing entities are live without
+   checking who's actually still publishing to them.
+7. **`HA_TOKEN`/`HOME_HA_TOKEN` are per-instance, not per-device.** One
+   Long-Lived Access Token (HA UI → profile → Security → Long-Lived
+   Access Tokens → Create Token) authorizes this app's read access to
+   *everything* in that Home Assistant instance — Kidde, Liebherr, or
+   anything else, present or future. It does not need per-integration
+   renewal; it's a fixed ~10-year token by design, the deliberate
+   non-expiring alternative to short-lived OAuth tokens. If discovery
+   (`GET /api/devices/candidates`) is coming back empty or missing devices
+   you know are configured in HA, check this token is actually set and
+   non-blank in the running `cabin-backend` container before assuming any
+   single device's integration is broken — a blank token silently
+   suppresses discovery for the *whole* instance, not just one device
+   (found live 2026-08-21: this exact thing hid a fully-working Liebherr
+   integration for weeks).
+8. **If you hand-edit `HA_TOKEN` into `.env` directly for a quick fix,
+   also update `vault_ha_token` in `ansible/group_vars/cabin/vault.yml`
+   (`ansible-vault edit ... --vault-password-file ~/.ansible_vault_pass`)
+   in the same sitting.** `.env` is templated *from* the vault by the
+   `secrets` role (see `MAINTENANCE.md`'s Secrets section) — a hand-edit
+   that skips the vault works until the next `ansible-playbook --tags
+   secrets` run or the monthly automated `rotate-secrets.yml`, at which
+   point it's silently overwritten back to blank with no obvious cause.
+   Treat a direct `.env` edit as a temporary patch, not the actual fix,
+   until the vault matches it.
+
 ## 7. Security & credential handling posture
 
 Worth being explicit about, since this differs meaningfully by surface:

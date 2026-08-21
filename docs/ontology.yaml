@@ -3562,6 +3562,102 @@ elements:
       cross-referenced by device_id against entities — not a substring
       match — every time "does X exist" needs a real answer.
 
+      SEPARATE GAP found 2026-08-21, worth recording since it looks like
+      this entity's own problem but wasn't: this fridge (and every other
+      HA entity) was invisible in the app's own Device Manager candidate
+      list the whole time, purely because `HA_TOKEN` was blank in the
+      deployed `.env` on the M920q — `HomeAssistantDiscoveryService`
+      fails safe on a blank token and returns no candidates at all,
+      regardless of what's actually live in HA. This entity's own HA-side
+      integration was never broken; the app's ability to *see* it was.
+      Fixed by generating a real HA Long-Lived Access Token and
+      recreating `cabin-backend` with it — see
+      `automation_home_presence_publish_nate_presence_from_phone_gps`'s
+      neighboring entity below for the same-day Kidde rollout that
+      surfaced this, and `smart_appliance_co_air_quality_kidde` for the
+      device it directly unblocked.
+
+  - id: smart_appliance_co_air_quality_kidde
+    entity_type: owl:Class
+    layer: integration
+    primitive: true
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live:
+      date: "2026-08-21"
+      ref: >
+        HA core.entity_registry query on the M920q showing 20 real,
+        enabled entities under platform kidde_homesafe, all state ONLINE.
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Living Room Kidde CO/Temp/Humidity (Cabin Upstairs)"
+    source: >
+      Kidde's own cloud API (Kidde Smart / HomeSafe app), via the
+      community HACS integration `snell-evan-itt/Kidde-HomeSafe`
+      (Apache-2.0, actively maintained, this exact model listed as
+      Verified). No official public API exists for this device — Kidde's
+      WiFi consumer alarms only expose a local API to their own app,
+      confirmed by both the user and this project's own
+      `KiddeIntegration.java` placeholder note before this rollout.
+    rendering:
+      semantic: "Cabin upstairs CO / air-quality alarm"
+      systems: Kidde HomeSafe — model KN-COP-DP-10YL-AQ-WF
+      technical: "HA custom_components/kidde_homesafe, platform 'kidde_homesafe', 20 entities under device 'Living Room Kidde CO Temp and Humidity Cabin Upstairs'"
+      compliance: (not shown)
+    definition: >
+      The cabin's Kidde CO alarm with indoor air quality monitoring:
+      CO level, CO2 level, TVOC, overall/indoor air quality index, indoor
+      temperature, humidity, air pressure, battery level/state, WiFi
+      signal/SSID, weeks-to-replace, last-seen, plus binary sensors for
+      CO alarm, online/lost/contact-lost, battery-low, and reset-flag.
+      **Does not report O2/oxygen** — confirmed against this real,
+      live device, not just its spec sheet: this model measures CO and
+      general air-quality indicators, not oxygen saturation. No amount
+      of further integration work will produce an O2 reading because the
+      hardware doesn't have that sensor.
+    relationships:
+      - target: platform_secret
+        type: depends_on
+        cardinality: "1:1" # Kidde Smart/HomeSafe account credentials, entered via HA's config flow UI, not stored in this repo
+      - target: smart_appliance_fridge_liebherr
+        type: related_to
+        cardinality: "N:N" # both required the same HA_TOKEN discovery-gap fix on the same day, see that entity's notes
+    relates_to:
+      ui_components: []
+      elements: [platform_secret]
+    notes: >
+      REAL INCIDENT preceding this fix, worth keeping so it isn't
+      rediscovered as a mystery later: `sensor.kidde_air_quality_alarm_*`
+      (3 entities: temperature, humidity, a CO binary_sensor) already
+      existed in HA before this rollout, fed by a single orphaned,
+      retained MQTT message on `home/kidde_iaq_01/state` frozen at
+      72.5°F / 45.2% / CO "Off" forever. Traced exhaustively 2026-08-21 —
+      not in Zigbee2MQTT's device list, not referenced anywhere in this
+      repo, no cron/systemd job, not in Node-RED's flows, mosquitto
+      backups showing the retained message present since at least
+      2026-07-03 — nothing on the whole stack was publishing to it. Likely
+      a leftover manual test from an earlier conversation about whether
+      Kidde should render as one composite device or several standalone
+      entities in the app's own device-grouping UI (a display-layer
+      question, unrelated to whether real data existed) that never got
+      backfilled with an actual bridge. Those 3 dead MQTT entities are
+      now fully superseded by this one's 20 real entities and should be
+      disabled/removed from HA rather than left to confuse a future
+      "why are there two Kidde devices" search.
+
+      SETUP MECHANICS, since this was the first HACS install on this
+      instance: HACS itself was not present (`custom_components/hacs`
+      didn't exist) and had to be bootstrapped first
+      (`wget -O - https://get.hacs.xyz | bash -` inside the HA
+      container's `/config`, then a restart, then a one-time GitHub
+      device-code authorization completed by the user in the HA UI —
+      not something an agent session can complete headlessly). Only
+      after HACS itself was authorized could `Kidde-HomeSafe` be found
+      and downloaded through it, followed by one more HA restart and the
+      user's own Kidde account login through HA's config flow. See
+      `REPLICATION.md` §6's "third-party cloud device via HACS" pattern
+      for the generalized version of these same steps.
+
   - id: smart_appliance_dishwasher_bosch
     entity_type: owl:Class
     layer: integration
