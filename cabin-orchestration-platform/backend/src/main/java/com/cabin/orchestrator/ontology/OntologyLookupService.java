@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.ontology;
 
+import com.cabin.orchestrator.workflow.model.ActionVocabularyEntry;
+import com.cabin.orchestrator.workflow.model.TriggerVocabularyEntry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
@@ -8,10 +10,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Resolves raw docs/ontology.yaml entity ids into non-technical-safe
@@ -57,21 +61,73 @@ public class OntologyLookupService {
         }).toList();
     }
 
+    /**
+     * The candidate (not-yet-wired) half of RulesController's vocabulary
+     * endpoints -- added 2026-08-21 alongside JdbcWorkflowVocabularyStore's
+     * seeded SUPPORTED rows. Scans for trigger_* entities carrying a
+     * trigger_source field and lifecycle_status: candidate (the exact
+     * shape docs/ontology.yaml's own trigger_camera_detection/
+     * trigger_rf_tripwire_crossed entries use), skipping any id already
+     * covered by excludeIds (the seeded supported set) -- a candidate
+     * that's actually shipped but still mislabeled `candidate` in the
+     * ontology (a real, if minor, drift risk this project already flags
+     * elsewhere) must never render twice.
+     */
+    public List<TriggerVocabularyEntry> listCandidateTriggers(Set<String> excludeIds) {
+        List<TriggerVocabularyEntry> out = new ArrayList<>();
+        for (Map<String, Object> el : parseElements()) {
+            String id = Objects.toString(el.get("id"), null);
+            if (id == null || excludeIds.contains(id)) continue;
+            if (!"candidate".equals(Objects.toString(el.get("lifecycle_status"), null))) continue;
+            if (el.get("trigger_source") == null) continue;
+            out.add(new TriggerVocabularyEntry(
+                id, Objects.toString(el.get("ui_display_name"), humanize(id)),
+                firstOf(el.get("applies_to_device_type")), Objects.toString(el.get("applies_to_capability"), null),
+                false));
+        }
+        return out;
+    }
+
+    /** The action-side counterpart to listCandidateTriggers() -- see that method's own doc. */
+    public List<ActionVocabularyEntry> listCandidateActions(Set<String> excludeIds) {
+        List<ActionVocabularyEntry> out = new ArrayList<>();
+        for (Map<String, Object> el : parseElements()) {
+            String id = Objects.toString(el.get("id"), null);
+            if (id == null || excludeIds.contains(id)) continue;
+            if (!"candidate".equals(Objects.toString(el.get("lifecycle_status"), null))) continue;
+            Object actionKind = el.get("action_kind");
+            if (actionKind == null) continue;
+            out.add(new ActionVocabularyEntry(
+                id, Objects.toString(el.get("ui_display_name"), humanize(id)), actionKind.toString(),
+                Objects.toString(el.get("requires_capability"), null),
+                "command".equals(actionKind.toString()), null, false, false));
+        }
+        return out;
+    }
+
     @SuppressWarnings("unchecked")
-    private Map<String, Map<String, Object>> parseElementsById() {
-        Map<String, Map<String, Object>> byId = new HashMap<>();
+    private String firstOf(Object listOrNull) {
+        if (!(listOrNull instanceof List<?> list) || list.isEmpty()) return null;
+        return Objects.toString(list.get(0), null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> parseElements() {
         try (InputStream in = Files.newInputStream(Path.of(ontologyPath))) {
             Map<String, Object> root = new Yaml().load(in);
             List<Map<String, Object>> elements = (List<Map<String, Object>>) root.get("elements");
-            if (elements != null) {
-                for (Map<String, Object> el : elements) {
-                    Object elId = el.get("id");
-                    if (elId != null) byId.put(elId.toString(), el);
-                }
-            }
+            return elements != null ? elements : List.of();
         } catch (IOException | RuntimeException e) {
             // Missing mount, unparsable file, etc. -- degrade, do not 500.
-            // Every id simply misses the map and falls back below.
+            return List.of();
+        }
+    }
+
+    private Map<String, Map<String, Object>> parseElementsById() {
+        Map<String, Map<String, Object>> byId = new HashMap<>();
+        for (Map<String, Object> el : parseElements()) {
+            Object elId = el.get("id");
+            if (elId != null) byId.put(elId.toString(), el);
         }
         return byId;
     }

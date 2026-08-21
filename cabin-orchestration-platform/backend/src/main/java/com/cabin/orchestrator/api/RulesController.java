@@ -1,9 +1,13 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.ontology.OntologyLookupService;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
 import com.cabin.orchestrator.workflow.JdbcWorkflowExecutionStore;
 import com.cabin.orchestrator.workflow.JdbcWorkflowRuleStore;
+import com.cabin.orchestrator.workflow.JdbcWorkflowVocabularyStore;
 import com.cabin.orchestrator.workflow.WorkflowRuleService;
+import com.cabin.orchestrator.workflow.model.ActionVocabularyEntry;
+import com.cabin.orchestrator.workflow.model.TriggerVocabularyEntry;
 import com.cabin.orchestrator.workflow.model.WorkflowAction;
 import com.cabin.orchestrator.workflow.model.WorkflowExecution;
 import com.cabin.orchestrator.workflow.model.WorkflowRule;
@@ -11,10 +15,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Human-configured workflow rule CRUD + execution history/view-tracking.
@@ -43,9 +49,14 @@ import java.util.Set;
  * note -- a real ontology-flag-driven version of this guard is follow-up
  * work once that vocabulary exists.)
  *
- * v1 (2026-08-14): vocabulary lookup endpoints (GET .../vocabulary/*) are
- * NOT included here -- that's Codex's parallel slice (OntologyLookupService
- * reverse-lookup), landing separately.
+ * GET .../vocabulary/triggers and .../vocabulary/actions (added
+ * 2026-08-21, the path this class's own 2026-08-14 comment reserved for
+ * "Codex's parallel slice") give WorkflowCreateForm a real, ontology-
+ * traceable catalog to render instead of the hardcoded JS lists it used
+ * before -- see JdbcWorkflowVocabularyStore's own doc for the full design
+ * (seeded/supported rows own the DB table, candidate/unsupported rows are
+ * merged in live from docs/ontology.yaml via OntologyLookupService, and
+ * none of it is ever writable through this or any other endpoint).
  */
 @RestController
 @RequestMapping("/api/rules")
@@ -57,12 +68,37 @@ public class RulesController {
     private final JdbcWorkflowRuleStore ruleStore;
     private final JdbcWorkflowExecutionStore executionStore;
     private final WorkflowRuleService workflowRuleService;
+    private final JdbcWorkflowVocabularyStore vocabularyStore;
+    private final OntologyLookupService ontologyLookupService;
 
     public RulesController(JdbcWorkflowRuleStore ruleStore, JdbcWorkflowExecutionStore executionStore,
-                            WorkflowRuleService workflowRuleService) {
+                            WorkflowRuleService workflowRuleService, JdbcWorkflowVocabularyStore vocabularyStore,
+                            OntologyLookupService ontologyLookupService) {
         this.ruleStore = ruleStore;
         this.executionStore = executionStore;
         this.workflowRuleService = workflowRuleService;
+        this.vocabularyStore = vocabularyStore;
+        this.ontologyLookupService = ontologyLookupService;
+    }
+
+    /** Supported (seeded, DB-owned) triggers plus candidate ones merged live from docs/ontology.yaml -- see class doc. */
+    @GetMapping("/vocabulary/triggers")
+    public List<TriggerVocabularyEntry> triggerVocabulary() {
+        List<TriggerVocabularyEntry> supported = vocabularyStore.loadSupportedTriggers();
+        Set<String> supportedIds = supported.stream().map(TriggerVocabularyEntry::id).collect(Collectors.toSet());
+        List<TriggerVocabularyEntry> all = new ArrayList<>(supported);
+        all.addAll(ontologyLookupService.listCandidateTriggers(supportedIds));
+        return all;
+    }
+
+    /** The action-side counterpart to triggerVocabulary() -- see that method's own doc. */
+    @GetMapping("/vocabulary/actions")
+    public List<ActionVocabularyEntry> actionVocabulary() {
+        List<ActionVocabularyEntry> supported = vocabularyStore.loadSupportedActions();
+        Set<String> supportedIds = supported.stream().map(ActionVocabularyEntry::id).collect(Collectors.toSet());
+        List<ActionVocabularyEntry> all = new ArrayList<>(supported);
+        all.addAll(ontologyLookupService.listCandidateActions(supportedIds));
+        return all;
     }
 
     @GetMapping("/workflows")

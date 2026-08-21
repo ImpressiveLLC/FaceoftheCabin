@@ -3621,70 +3621,111 @@ function KafkaStatus({ location }) {
 // one. See workflowsForDevice for how a device row's own badge
 // (DmDeviceRow) cross-references this same data.
 //
-// The trigger/action option lists are hardcoded to exactly what
-// WorkflowRuleService actually interprets (resolveTriggerDefinitionId's
-// two cases, executeAction's four-case switch) -- there is no ontology
-// catalog API yet to drive this dynamically, so offering anything wider
-// would create workflows that silently never fire or error at
-// execution time. Narrower-but-genuinely-functional over broader-but-fake.
-const WORKFLOW_TRIGGERS = [
-  { id: "trigger_water_leak_detected", label: "Water leak detected" },
-  { id: "trigger_water_leak_cleared", label: "Water leak cleared" },
-  { id: "trigger_camera_detection", label: "Camera detects motion" },
-];
-// needsTarget: a device picker is required. privileged: RulesController's
-// validateReopenGuard() rejects this on ANY DEVICE_EVENT-triggered
-// workflow server-side (reopening the valve is human-only, by design) --
-// filtered out of the picker below whenever triggerKind is DEVICE_EVENT so
-// the form can't offer a combination guaranteed to be rejected on save.
-const WORKFLOW_ACTIONS = [
-  { id: "action_main_water_valve_off", label: "Shut off the main water valve", needsTarget: true },
-  { id: "action_main_water_valve_open", label: "Open the main water valve", needsTarget: true, privileged: true },
-  { id: "notify_critical", label: "Send a critical notification", needsTarget: false },
-  { id: "log_event", label: "Log this event only", needsTarget: false },
-];
+// The trigger/action option lists used to be hardcoded here to exactly
+// what WorkflowRuleService interprets -- replaced 2026-08-21 with a real
+// fetch from GET /api/rules/vocabulary/triggers|actions (RulesController),
+// backed by JdbcWorkflowVocabularyStore's seeded rows (the exact same set
+// this file used to hardcode) plus candidate entries merged in live from
+// docs/ontology.yaml (OntologyLookupService). The user's own ask: this
+// should "trace back to the ontology from a DB table owned by the
+// system," not a JS constant with no connection to either.
+//
+// supported:false (candidate) entries are still rendered, deliberately --
+// as disabled options with an explanatory suffix, not hidden -- so a
+// person can see what's designed but not yet buildable (the hardware
+// backlog: entry light, deterrent plug, RF tripwire, spare siren, water
+// heater) instead of the option silently not existing. Never selectable,
+// so the "narrower-but-genuinely-functional over broader-but-fake"
+// guarantee this form always had is unchanged.
+function useWorkflowVocabulary(apiBase) {
+  const [triggers, setTriggers] = useState([]);
+  const [actions, setActions] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-function actionsFor(triggerKind) {
-  return triggerKind === "MANUAL" ? WORKFLOW_ACTIONS : WORKFLOW_ACTIONS.filter(a => !a.privileged);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      fetch(`${apiBase}/api/rules/vocabulary/triggers`).then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch(`${apiBase}/api/rules/vocabulary/actions`).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([t, a]) => {
+      if (cancelled) return;
+      setTriggers(Array.isArray(t) ? t : []);
+      setActions(Array.isArray(a) ? a : []);
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [apiBase]);
+
+  return { triggers, actions, loading };
 }
 
-function newActionRow(triggerKind) {
+// privileged actions (server-enforced by RulesController.validateReopenGuard(),
+// this is a UI convenience only) are excluded from a DEVICE_EVENT workflow's
+// picker so the form can't offer a combination guaranteed to be rejected on
+// save; unsupported (candidate) actions stay in the list but disabled.
+function actionsFor(actions, triggerKind) {
+  return triggerKind === "MANUAL" ? actions : actions.filter(a => !a.privileged);
+}
+
+function newActionRow(actions, triggerKind) {
+  const firstSelectable = actionsFor(actions, triggerKind).find(a => a.supported);
   return {
     key: `a${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
-    actionDefinitionId: actionsFor(triggerKind)[0].id, targetDeviceId: "", cooldownSeconds: "",
+    actionDefinitionId: firstSelectable?.id || "", targetDeviceId: "", cooldownSeconds: "",
   };
 }
 
 function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCancel }) {
-  const [name, setName] = useState("");
   const [location, setLocation] = useState(defaultLocation);
+  const apiBase = LOCATIONS[location]?.apiBase || LOCATIONS.cabin.apiBase;
+  const { triggers, actions, loading: vocabLoading } = useWorkflowVocabulary(apiBase);
+  const [name, setName] = useState("");
   const [triggerKind, setTriggerKind] = useState("DEVICE_EVENT");
-  const [triggerDefinitionId, setTriggerDefinitionId] = useState(WORKFLOW_TRIGGERS[0].id);
+  const [triggerDefinitionId, setTriggerDefinitionId] = useState("");
   const [triggerDeviceId, setTriggerDeviceId] = useState("");
   const [resetMode, setResetMode] = useState("AUTO_ON_CLEAR");
-  const [actionRows, setActionRows] = useState([newActionRow("DEVICE_EVENT")]);
+  const [actionRows, setActionRows] = useState(null); // null until vocabulary loads
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const availableActions = actionsFor(triggerKind);
+  const availableActions = actionsFor(actions, triggerKind);
+
+  // Seed the first-selectable defaults once the real vocabulary arrives --
+  // can't do this at useState-init time since triggers/actions start empty.
+  useEffect(() => {
+    if (vocabLoading) return;
+    setTriggerDefinitionId(prev => prev || triggers.find(t => t.supported)?.id || "");
+    setActionRows(prev => prev || [newActionRow(actions, "DEVICE_EVENT")]);
+  }, [vocabLoading, triggers, actions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changeTriggerKind = (kind) => {
     setTriggerKind(kind);
-    // A privileged action already picked while switching away from MANUAL
-    // would silently fail on save -- reset to something valid instead.
-    setActionRows(rows => rows.map(r =>
-      actionsFor(kind).some(a => a.id === r.actionDefinitionId) ? r : { ...r, actionDefinitionId: actionsFor(kind)[0].id }));
+    // A privileged or now-unsupported action already picked while switching
+    // away from MANUAL would silently fail (or never fire) on save.
+    setActionRows(rows => (rows || []).map(r =>
+      actionsFor(actions, kind).some(a => a.id === r.actionDefinitionId && a.supported)
+        ? r : { ...r, actionDefinitionId: actionsFor(actions, kind).find(a => a.supported)?.id || "" }));
   };
 
   const updateAction = (key, patch) =>
-    setActionRows(rows => rows.map(r => (r.key === key ? { ...r, ...patch } : r)));
+    setActionRows(rows => (rows || []).map(r => (r.key === key ? { ...r, ...patch } : r)));
+
+  const selectedTrigger = triggers.find(t => t.id === triggerDefinitionId);
+  // Filters the device-scoping picker to devices of the selected trigger's
+  // own type when the vocabulary knows one (e.g. only water-leak sensors
+  // for "Water leak detected") -- purely a UI aid using ontology metadata,
+  // WorkflowRuleService itself still matches by event payload, not device
+  // type. Falls back to every visible device when the vocabulary doesn't
+  // say (or a device's own type is missing), same as before this change.
+  const triggerScopedDevices = selectedTrigger?.appliesToDeviceType
+    ? devices.filter(d => !d.type || d.type === selectedTrigger.appliesToDeviceType)
+    : devices;
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!name.trim() || actionRows.length === 0) return;
+    if (!name.trim() || !actionRows || actionRows.length === 0) return;
     setSaving(true);
     setError(null);
     try {
-      const apiBase = LOCATIONS[location]?.apiBase || LOCATIONS.cabin.apiBase;
       const workflowId = `wf-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now()}`;
       const res = await auth.authedFetch(`${apiBase}/api/rules/workflows`, {
         method: "POST",
@@ -3694,11 +3735,19 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
           triggerDefinitionId: triggerKind === "MANUAL" ? null : triggerDefinitionId,
           triggerDeviceId: triggerKind === "MANUAL" ? null : (triggerDeviceId || null),
           enabled: false, resetMode: triggerKind === "MANUAL" ? "MANUAL_ONLY" : resetMode, parentWorkflowId: null,
-          actions: actionRows.map((r, i) => ({
-            actionId: `${workflowId}-a${i}`, stepOrder: i, actionDefinitionId: r.actionDefinitionId,
-            targetDeviceId: WORKFLOW_ACTIONS.find(a => a.id === r.actionDefinitionId)?.needsTarget ? (r.targetDeviceId || null) : null,
-            cooldownSeconds: r.cooldownSeconds === "" ? null : Number(r.cooldownSeconds),
-          })),
+          actions: actionRows.map((r, i) => {
+            const def = actions.find(a => a.id === r.actionDefinitionId);
+            return {
+              actionId: `${workflowId}-a${i}`, stepOrder: i, actionDefinitionId: r.actionDefinitionId,
+              // An instance-specific action (a fixed targetDeviceId in the
+              // vocabulary, e.g. "the" main valve) always commands that
+              // device -- the row's own free-picker value is for a
+              // type-generic action only and is ignored otherwise, closing
+              // the mistargeting risk a free picker had for this case.
+              targetDeviceId: def?.targetDeviceId || (def?.needsTarget ? (r.targetDeviceId || null) : null),
+              cooldownSeconds: r.cooldownSeconds === "" ? null : Number(r.cooldownSeconds),
+            };
+          }),
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -3710,6 +3759,10 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
       setSaving(false);
     }
   };
+
+  if (vocabLoading || actionRows === null) {
+    return <p className="config-hint">Loading available triggers and actions…</p>;
+  }
 
   return (
     <form className="add-place-form workflow-create-form" onSubmit={submit}>
@@ -3736,15 +3789,24 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
             <label className="add-place-field">
               Specifically
               <select value={triggerDefinitionId} onChange={e => setTriggerDefinitionId(e.target.value)}>
-                {WORKFLOW_TRIGGERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                {triggers.map(t => (
+                  <option key={t.id} value={t.id} disabled={!t.supported}>
+                    {t.label}{!t.supported ? " — not available yet" : ""}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="add-place-field">
               On this device (optional)
               <select value={triggerDeviceId} onChange={e => setTriggerDeviceId(e.target.value)}>
                 <option value="">Any device</option>
-                {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
+                {triggerScopedDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
               </select>
+              {triggerScopedDevices.length === 0 && (
+                <span className="config-hint">
+                  No matching devices registered yet on this instance — device discovery populates this list from live traffic.
+                </span>
+              )}
             </label>
             <label className="add-place-field">
               After it fires
@@ -3767,13 +3829,30 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
       <div className="workflow-actions-list">
         <div className="add-place-field" style={{ marginBottom: 6 }}>Then, do this</div>
         {actionRows.map((row, i) => {
-          const def = WORKFLOW_ACTIONS.find(a => a.id === row.actionDefinitionId);
+          const def = actions.find(a => a.id === row.actionDefinitionId);
+          // An instance-specific action (a fixed targetDeviceId in the
+          // vocabulary -- today, "the" one main water valve, not "a" valve
+          // of a class, see action_main_water_valve_off/_open's own
+          // docs/ontology.yaml notes) locks the device instead of offering
+          // a free picker: nothing before this stopped a person from
+          // pointing this action at an unrelated device.
+          const lockedDeviceLabel = def?.targetDeviceId
+            ? (devices.find(d => d.deviceId === def.targetDeviceId)?.name || def.targetDeviceId)
+            : null;
           return (
             <div key={row.key} className="workflow-action-row">
               <select value={row.actionDefinitionId} onChange={e => updateAction(row.key, { actionDefinitionId: e.target.value })}>
-                {availableActions.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                {availableActions.map(a => (
+                  <option key={a.id} value={a.id} disabled={!a.supported}>
+                    {a.label}{!a.supported ? " — not available yet" : ""}
+                  </option>
+                ))}
               </select>
-              {def?.needsTarget && (
+              {lockedDeviceLabel ? (
+                <span className="config-hint workflow-action-locked-device" title="This action always targets this specific device">
+                  → {lockedDeviceLabel}
+                </span>
+              ) : def?.needsTarget && (
                 <select value={row.targetDeviceId} onChange={e => updateAction(row.key, { targetDeviceId: e.target.value })}>
                   <option value="">Choose a device…</option>
                   {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
@@ -3792,7 +3871,7 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
             </div>
           );
         })}
-        <button type="button" className="btn-ghost" onClick={() => setActionRows(rows => [...rows, newActionRow(triggerKind)])}>+ Add another action</button>
+        <button type="button" className="btn-ghost" onClick={() => setActionRows(rows => [...rows, newActionRow(actions, triggerKind)])}>+ Add another action</button>
       </div>
       {error && <p className="add-place-error">Not saved: {error}</p>}
       <p className="config-hint">Saves as a draft — it won't run until you tap Activate on it below.</p>

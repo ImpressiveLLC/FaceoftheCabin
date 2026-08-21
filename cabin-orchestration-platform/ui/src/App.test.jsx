@@ -934,18 +934,52 @@ describe("WorkflowRulesCard", () => {
     };
   }
 
-  it("the creation form defaults to device-triggered and excludes the privileged reopen action", () => {
+  // 2026-08-21: WorkflowCreateForm's trigger/action lists used to be
+  // hardcoded JS constants -- now fetched from GET
+  // /api/rules/vocabulary/{triggers,actions} (RulesController), backed by
+  // JdbcWorkflowVocabularyStore's seeded rows plus candidate entries
+  // merged in from docs/ontology.yaml. This fixture mirrors that real
+  // seeded shape (same ids/labels the backend actually seeds) plus one
+  // candidate of each kind, matching two of docs/ontology.yaml's real
+  // 2026-08-21 additions (trigger_rf_tripwire_crossed, action_entry_light_on).
+  function vocabularyFetch(overrides = {}) {
+    return vi.fn((url) => {
+      if (url.includes("/vocabulary/triggers")) {
+        return Promise.resolve({ ok: true, json: async () => (overrides.triggers ?? [
+          { id: "trigger_water_leak_detected", label: "Water leak detected", appliesToDeviceType: "WATER_LEAK_SENSOR", supported: true },
+          { id: "trigger_water_leak_cleared", label: "Water leak cleared", appliesToDeviceType: "WATER_LEAK_SENSOR", supported: true },
+          { id: "trigger_camera_detection", label: "Camera detects motion", appliesToDeviceType: "CAMERA", supported: true },
+          { id: "trigger_rf_tripwire_crossed", label: "RF tripwire crossed", appliesToDeviceType: "RF_TRIPWIRE", supported: false },
+        ]) });
+      }
+      if (url.includes("/vocabulary/actions")) {
+        return Promise.resolve({ ok: true, json: async () => (overrides.actions ?? [
+          { id: "action_main_water_valve_off", label: "Shut off the main water valve", needsTarget: true, targetDeviceId: "z2m-main_water_valve", privileged: false, supported: true },
+          { id: "action_main_water_valve_open", label: "Open the main water valve", needsTarget: true, targetDeviceId: "z2m-main_water_valve", privileged: true, supported: true },
+          { id: "notify_critical", label: "Send a critical notification", needsTarget: false, privileged: false, supported: true },
+          { id: "log_event", label: "Log this event only", needsTarget: false, privileged: false, supported: true },
+          { id: "action_entry_light_on", label: "Turn on the entry light", needsTarget: true, privileged: false, supported: false },
+        ]) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+  }
+
+  it("the creation form defaults to device-triggered and excludes the privileged reopen action", async () => {
+    vi.stubGlobal("fetch", vocabularyFetch());
     render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[]} />);
     fireEvent.click(screen.getByText("+ New Workflow"));
 
-    expect(screen.getByLabelText("Specifically")).toBeTruthy(); // only shown for DEVICE_EVENT
+    expect(await screen.findByLabelText("Specifically")).toBeTruthy(); // only shown for DEVICE_EVENT
     const actionOptions = [...screen.getAllByRole("option")].map(o => o.textContent);
     expect(actionOptions).not.toContain("Open the main water valve");
   });
 
-  it("switching to a person-triggered workflow hides the device-trigger fields and allows the reopen action", () => {
+  it("switching to a person-triggered workflow hides the device-trigger fields and allows the reopen action", async () => {
+    vi.stubGlobal("fetch", vocabularyFetch());
     render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[]} />);
     fireEvent.click(screen.getByText("+ New Workflow"));
+    await screen.findByLabelText("Specifically");
 
     fireEvent.change(screen.getByLabelText("When"), { target: { value: "MANUAL" } });
 
@@ -955,15 +989,66 @@ describe("WorkflowRulesCard", () => {
     expect(actionOptions).toContain("Open the main water valve");
   });
 
-  it("switching back to device-triggered after picking the privileged action resets it to a valid choice", () => {
+  it("switching back to device-triggered after picking the privileged action resets it to a valid choice", async () => {
+    vi.stubGlobal("fetch", vocabularyFetch());
     render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[]} />);
     fireEvent.click(screen.getByText("+ New Workflow"));
+    await screen.findByLabelText("Specifically");
     fireEvent.change(screen.getByLabelText("When"), { target: { value: "MANUAL" } });
     fireEvent.change(screen.getByDisplayValue("Shut off the main water valve"), { target: { value: "action_main_water_valve_open" } });
 
     fireEvent.change(screen.getByLabelText("When"), { target: { value: "DEVICE_EVENT" } });
 
     expect(screen.queryByDisplayValue("Open the main water valve")).toBeNull();
+  });
+
+  it("renders a candidate (not-yet-supported) trigger and action as disabled, not selectable, not hidden", async () => {
+    vi.stubGlobal("fetch", vocabularyFetch());
+    render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+    await screen.findByLabelText("Specifically");
+
+    const tripwireOption = screen.getByText(/RF tripwire crossed — not available yet/);
+    expect(tripwireOption.disabled).toBe(true);
+    const entryLightOption = screen.getByText(/Turn on the entry light — not available yet/);
+    expect(entryLightOption.disabled).toBe(true);
+    // A disabled option can never become the real selection this form submits.
+    expect(screen.getByLabelText("Specifically").value).not.toBe("trigger_rf_tripwire_crossed");
+  });
+
+  it("locks the device field for an instance-specific action instead of offering a free picker", async () => {
+    vi.stubGlobal("fetch", vocabularyFetch());
+    render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[
+      { deviceId: "z2m-main_water_valve", name: "Main water valve" },
+      { deviceId: "z2m-leak_mech_room", name: "Mech room leak sensor" },
+    ]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+    await screen.findByLabelText("Specifically");
+    // Default action row is the first supported one (Shut off the main
+    // water valve) -- its vocabulary entry ships a fixed targetDeviceId.
+    // "Main water valve" legitimately also appears as a plain <option> in
+    // the trigger's own device-scoping picker below -- scope to the
+    // locked-device element specifically, not a bare text search.
+
+    const locked = document.querySelector(".workflow-action-locked-device");
+    expect(locked?.textContent).toContain("Main water valve");
+    expect(screen.queryByText("Choose a device…")).toBeNull();
+  });
+
+  it("scopes the device-scoping picker to the selected trigger's own device type", async () => {
+    vi.stubGlobal("fetch", vocabularyFetch());
+    render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[
+      { deviceId: "z2m-leak_mech_room", name: "Mech room leak sensor", type: "WATER_LEAK_SENSOR" },
+      { deviceId: "z2m-driveway-cam", name: "Driveway camera", type: "CAMERA" },
+    ]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+    await screen.findByLabelText("Specifically");
+    // Default trigger is Water leak detected (WATER_LEAK_SENSOR) -- the
+    // camera shouldn't be offered as a device to scope this trigger to.
+
+    expect(screen.getByLabelText("On this device (optional)")).toBeTruthy();
+    expect(screen.getByText("Mech room leak sensor")).toBeTruthy();
+    expect(screen.queryByText("Driveway camera")).toBeNull();
   });
 
   it("Fire now is only offered for active MANUAL workflows, not device-triggered or draft ones", () => {

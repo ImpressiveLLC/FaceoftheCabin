@@ -2,11 +2,15 @@ package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.kafka.EventPublisher;
+import com.cabin.orchestrator.ontology.OntologyLookupService;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
 import com.cabin.orchestrator.workflow.CommandCatalogService;
 import com.cabin.orchestrator.workflow.JdbcWorkflowExecutionStore;
 import com.cabin.orchestrator.workflow.JdbcWorkflowRuleStore;
+import com.cabin.orchestrator.workflow.JdbcWorkflowVocabularyStore;
 import com.cabin.orchestrator.workflow.WorkflowRuleService;
+import com.cabin.orchestrator.workflow.model.ActionVocabularyEntry;
+import com.cabin.orchestrator.workflow.model.TriggerVocabularyEntry;
 import com.cabin.orchestrator.workflow.model.WorkflowAction;
 import com.cabin.orchestrator.workflow.model.WorkflowExecution;
 import com.cabin.orchestrator.workflow.model.WorkflowRule;
@@ -43,6 +47,7 @@ class RulesControllerTest {
     private RulesController controller;
     private JdbcWorkflowRuleStore ruleStore;
     private JdbcWorkflowExecutionStore executionStore;
+    private JdbcWorkflowVocabularyStore vocabularyStore;
 
     @BeforeEach
     void setUp() {
@@ -58,7 +63,17 @@ class RulesControllerTest {
         DeviceRegistry deviceRegistry = new DeviceRegistry(List.of());
         WorkflowRuleService workflowRuleService = new WorkflowRuleService(ruleStore, executionStore,
             deviceRegistry, new CommandCatalogService(deviceRegistry), new EventPublisher());
-        controller = new RulesController(ruleStore, executionStore, workflowRuleService);
+        vocabularyStore = new JdbcWorkflowVocabularyStore(jdbc);
+        // No real ontology.yaml mount in this no-Spring-context test --
+        // ontologyPath stays null, so listCandidate*() degrades to empty
+        // (parseElements()'s own IOException|RuntimeException catch),
+        // same graceful-degradation path a fork with no docs/ bind mount
+        // hits in production. Candidate-merging itself is covered in
+        // isolation by OntologyLookupServiceTest, against a real fixture
+        // file, rather than coupling this test to docs/ontology.yaml's
+        // real repo-relative path.
+        OntologyLookupService ontologyLookupService = new OntologyLookupService();
+        controller = new RulesController(ruleStore, executionStore, workflowRuleService, vocabularyStore, ontologyLookupService);
     }
 
     private MockHttpServletRequest authedRequest(String email) {
@@ -245,5 +260,45 @@ class RulesControllerTest {
         controller.fireManual("wf-manual-repeat", authedRequest("nate@example.com"));
 
         assertEquals(2, executionStore.recentFor("wf-manual-repeat", 10).size());
+    }
+
+    // 2026-08-21: the real fix for "I can't configure anything beyond leak
+    // detection and the device picker only shows 'any device'" -- these
+    // endpoints give WorkflowCreateForm a DB-backed catalog to render
+    // instead of App.jsx's old hardcoded WORKFLOW_TRIGGERS/WORKFLOW_ACTIONS
+    // arrays. See JdbcWorkflowVocabularyStore's own doc for the design.
+    @Test
+    void triggerVocabularyReturnsExactlyWhatWorkflowRuleServiceInterprets() {
+        List<TriggerVocabularyEntry> triggers = controller.triggerVocabulary();
+
+        assertEquals(3, triggers.size());
+        assertTrue(triggers.stream().allMatch(TriggerVocabularyEntry::supported));
+        assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_water_leak_detected") && t.label().equals("Water leak detected")));
+        assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_camera_detection") && "CAMERA".equals(t.appliesToDeviceType())));
+    }
+
+    @Test
+    void actionVocabularyMarksTheReopenActionPrivilegedAndLocksItsTargetDevice() {
+        List<ActionVocabularyEntry> actions = controller.actionVocabulary();
+
+        assertEquals(4, actions.size());
+        assertTrue(actions.stream().allMatch(ActionVocabularyEntry::supported));
+        ActionVocabularyEntry reopen = actions.stream().filter(a -> a.id().equals("action_main_water_valve_open")).findFirst().orElseThrow();
+        assertTrue(reopen.privileged());
+        assertEquals("z2m-main_water_valve", reopen.targetDeviceId(), "instance-specific action must ship a fixed target, not a free picker");
+        ActionVocabularyEntry notify = actions.stream().filter(a -> a.id().equals("notify_critical")).findFirst().orElseThrow();
+        assertFalse(notify.privileged());
+        assertFalse(notify.needsTarget());
+    }
+
+    @Test
+    void vocabularyDegradesToSupportedOnlyWhenNoOntologyFileIsMounted() {
+        // ontologyLookupService in this test's setUp has no real ontologyPath
+        // (no Spring @Value injection outside a container) -- same
+        // graceful-degradation path a fresh fork with no docs/ bind mount
+        // hits in production (see OntologyLookupService's own class doc).
+        // Real candidate-merging is covered by OntologyLookupServiceTest.
+        assertEquals(3, controller.triggerVocabulary().size());
+        assertEquals(4, controller.actionVocabulary().size());
     }
 }

@@ -983,6 +983,7 @@ body {
   background: #010409; border: 1px solid #30363d; border-radius: 6px;
   color: #e6edf3; padding: 6px 9px; font-size: 12px; flex: 1; min-width: 160px;
 }
+.workflow-action-locked-device { white-space: nowrap; }
 .workflow-row-actions { display: flex; gap: 8px; margin-top: 6px; }
 .workflow-row-actions .btn-ghost { font-size: 11px; padding: 3px 9px; }
 .workflow-execution-history {
