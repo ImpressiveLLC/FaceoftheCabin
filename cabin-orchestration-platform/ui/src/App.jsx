@@ -3591,28 +3591,51 @@ function KafkaStatus({ location }) {
 // execution time. Narrower-but-genuinely-functional over broader-but-fake.
 const WORKFLOW_TRIGGERS = [
   { id: "trigger_water_leak_detected", label: "Water leak detected" },
+  { id: "trigger_water_leak_cleared", label: "Water leak cleared" },
   { id: "trigger_camera_detection", label: "Camera detects motion" },
 ];
+// needsTarget: a device picker is required. privileged: RulesController's
+// validateReopenGuard() rejects this on ANY DEVICE_EVENT-triggered
+// workflow server-side (reopening the valve is human-only, by design) --
+// filtered out of the picker below whenever triggerKind is DEVICE_EVENT so
+// the form can't offer a combination guaranteed to be rejected on save.
 const WORKFLOW_ACTIONS = [
   { id: "action_main_water_valve_off", label: "Shut off the main water valve", needsTarget: true },
-  { id: "action_main_water_valve_open", label: "Open the main water valve", needsTarget: true },
+  { id: "action_main_water_valve_open", label: "Open the main water valve", needsTarget: true, privileged: true },
   { id: "notify_critical", label: "Send a critical notification", needsTarget: false },
   { id: "log_event", label: "Log this event only", needsTarget: false },
 ];
 
-function newActionRow() {
-  return { key: `a${Date.now()}${Math.random().toString(36).slice(2, 6)}`, actionDefinitionId: WORKFLOW_ACTIONS[0].id, targetDeviceId: "" };
+function actionsFor(triggerKind) {
+  return triggerKind === "MANUAL" ? WORKFLOW_ACTIONS : WORKFLOW_ACTIONS.filter(a => !a.privileged);
+}
+
+function newActionRow(triggerKind) {
+  return {
+    key: `a${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+    actionDefinitionId: actionsFor(triggerKind)[0].id, targetDeviceId: "", cooldownSeconds: "",
+  };
 }
 
 function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCancel }) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState(defaultLocation);
+  const [triggerKind, setTriggerKind] = useState("DEVICE_EVENT");
   const [triggerDefinitionId, setTriggerDefinitionId] = useState(WORKFLOW_TRIGGERS[0].id);
   const [triggerDeviceId, setTriggerDeviceId] = useState("");
   const [resetMode, setResetMode] = useState("AUTO_ON_CLEAR");
-  const [actionRows, setActionRows] = useState([newActionRow()]);
+  const [actionRows, setActionRows] = useState([newActionRow("DEVICE_EVENT")]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const availableActions = actionsFor(triggerKind);
+
+  const changeTriggerKind = (kind) => {
+    setTriggerKind(kind);
+    // A privileged action already picked while switching away from MANUAL
+    // would silently fail on save -- reset to something valid instead.
+    setActionRows(rows => rows.map(r =>
+      actionsFor(kind).some(a => a.id === r.actionDefinitionId) ? r : { ...r, actionDefinitionId: actionsFor(kind)[0].id }));
+  };
 
   const updateAction = (key, patch) =>
     setActionRows(rows => rows.map(r => (r.key === key ? { ...r, ...patch } : r)));
@@ -3629,12 +3652,14 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workflowId, name: name.trim(), location, triggerKind: "DEVICE_EVENT",
-          triggerDefinitionId, triggerDeviceId: triggerDeviceId || null,
-          enabled: false, resetMode, parentWorkflowId: null,
+          workflowId, name: name.trim(), location, triggerKind,
+          triggerDefinitionId: triggerKind === "MANUAL" ? null : triggerDefinitionId,
+          triggerDeviceId: triggerKind === "MANUAL" ? null : (triggerDeviceId || null),
+          enabled: false, resetMode: triggerKind === "MANUAL" ? "MANUAL_ONLY" : resetMode, parentWorkflowId: null,
           actions: actionRows.map((r, i) => ({
             actionId: `${workflowId}-a${i}`, stepOrder: i, actionDefinitionId: r.actionDefinitionId,
             targetDeviceId: WORKFLOW_ACTIONS.find(a => a.id === r.actionDefinitionId)?.needsTarget ? (r.targetDeviceId || null) : null,
+            cooldownSeconds: r.cooldownSeconds === "" ? null : Number(r.cooldownSeconds),
           })),
         }),
       });
@@ -3663,25 +3688,44 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
         </label>
         <label className="add-place-field">
           When
-          <select value={triggerDefinitionId} onChange={e => setTriggerDefinitionId(e.target.value)}>
-            {WORKFLOW_TRIGGERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          <select value={triggerKind} onChange={e => changeTriggerKind(e.target.value)}>
+            <option value="DEVICE_EVENT">A device reports something</option>
+            <option value="MANUAL">A person triggers it</option>
           </select>
         </label>
-        <label className="add-place-field">
-          On this device (optional)
-          <select value={triggerDeviceId} onChange={e => setTriggerDeviceId(e.target.value)}>
-            <option value="">Any device</option>
-            {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
-          </select>
-        </label>
-        <label className="add-place-field">
-          Resets
-          <select value={resetMode} onChange={e => setResetMode(e.target.value)}>
-            <option value="AUTO_ON_CLEAR">Automatically, once the trigger clears</option>
-            <option value="MANUAL_ONLY">Only when someone clears it manually</option>
-          </select>
-        </label>
+        {triggerKind === "DEVICE_EVENT" && (
+          <>
+            <label className="add-place-field">
+              Specifically
+              <select value={triggerDefinitionId} onChange={e => setTriggerDefinitionId(e.target.value)}>
+                {WORKFLOW_TRIGGERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </label>
+            <label className="add-place-field">
+              On this device (optional)
+              <select value={triggerDeviceId} onChange={e => setTriggerDeviceId(e.target.value)}>
+                <option value="">Any device</option>
+                {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
+              </select>
+            </label>
+            <label className="add-place-field">
+              After it fires
+              <select value={resetMode} onChange={e => setResetMode(e.target.value)}>
+                <option value="AUTO_ON_CLEAR">Ready to fire again once the condition clears</option>
+                <option value="MANUAL_ONLY">Stays fired until someone clears it manually</option>
+              </select>
+            </label>
+          </>
+        )}
       </div>
+      {triggerKind === "DEVICE_EVENT" && (
+        <p className="config-hint">
+          This never resets the device itself — the actions below only run the moment this workflow
+          fires, not when it clears. To restore something automatically once a condition resolves,
+          build a separate workflow triggered by "Water leak cleared" (or fire a Manual workflow
+          yourself, like reopening the water valve — that one's human-only, by design).
+        </p>
+      )}
       <div className="workflow-actions-list">
         <div className="add-place-field" style={{ marginBottom: 6 }}>Then, do this</div>
         {actionRows.map((row, i) => {
@@ -3689,7 +3733,7 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
           return (
             <div key={row.key} className="workflow-action-row">
               <select value={row.actionDefinitionId} onChange={e => updateAction(row.key, { actionDefinitionId: e.target.value })}>
-                {WORKFLOW_ACTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                {availableActions.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
               {def?.needsTarget && (
                 <select value={row.targetDeviceId} onChange={e => updateAction(row.key, { targetDeviceId: e.target.value })}>
@@ -3697,13 +3741,20 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
                   {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
                 </select>
               )}
+              <input
+                type="number" min="0" placeholder="No limit" value={row.cooldownSeconds}
+                title="Don't repeat this specific action for this many seconds after it last ran — leave blank to always run it"
+                onChange={e => updateAction(row.key, { cooldownSeconds: e.target.value })}
+                style={{ width: 90 }}
+              />
+              <span className="config-hint" style={{ margin: 0 }}>sec cooldown</span>
               {actionRows.length > 1 && (
                 <button type="button" className="btn-ghost" onClick={() => setActionRows(rows => rows.filter(r => r.key !== row.key))}>Remove</button>
               )}
             </div>
           );
         })}
-        <button type="button" className="btn-ghost" onClick={() => setActionRows(rows => [...rows, newActionRow()])}>+ Add another action</button>
+        <button type="button" className="btn-ghost" onClick={() => setActionRows(rows => [...rows, newActionRow(triggerKind)])}>+ Add another action</button>
       </div>
       {error && <p className="add-place-error">Not saved: {error}</p>}
       <p className="config-hint">Saves as a draft — it won't run until you tap Activate on it below.</p>
@@ -3749,6 +3800,12 @@ function WorkflowRow({ workflow, auth, onChanged }) {
         <div className="rule-source">{workflow.location} · {workflow.enabled ? "active" : "draft"}</div>
         {auth?.signedIn && (
           <div className="workflow-row-actions">
+            {workflow.triggerKind === "MANUAL" && workflow.enabled && (
+              <button type="button" className="btn-ghost" disabled={busy} onClick={() => act("/fire", "POST")}
+                title="Runs this workflow's actions right now">
+                Fire now
+              </button>
+            )}
             <button type="button" className="btn-ghost" disabled={busy}
               onClick={() => act(workflow.enabled ? "/deactivate" : "/activate", "POST")}>
               {workflow.enabled ? "Deactivate" : "Activate"}

@@ -909,6 +909,74 @@ describe("WorkflowRulesCard", () => {
     expect(screen.getByText(/no actions/i)).toBeTruthy();
     expect(screen.getByText(/cabin.*draft/)).toBeTruthy();
   });
+
+  it("prompts to sign in instead of offering workflow creation when not signed in", () => {
+    render(<WorkflowRulesCard workflows={[]} auth={{ signedIn: false, signIn: vi.fn() }} />);
+    expect(screen.getByRole("button", { name: /sign in with google/i })).toBeTruthy();
+    expect(screen.queryByText("+ New Workflow")).toBeNull();
+  });
+
+  function mockAuth() {
+    return {
+      configured: true, signedIn: true, sessionExpired: false, userEmail: "nate@example.com",
+      signOut: vi.fn(), signIn: vi.fn(), accessToken: "tok",
+      authedFetch: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ workflowId: "wf-new" }) }),
+    };
+  }
+
+  it("the creation form defaults to device-triggered and excludes the privileged reopen action", () => {
+    render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+
+    expect(screen.getByLabelText("Specifically")).toBeTruthy(); // only shown for DEVICE_EVENT
+    const actionOptions = [...screen.getAllByRole("option")].map(o => o.textContent);
+    expect(actionOptions).not.toContain("Open the main water valve");
+  });
+
+  it("switching to a person-triggered workflow hides the device-trigger fields and allows the reopen action", () => {
+    render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+
+    fireEvent.change(screen.getByLabelText("When"), { target: { value: "MANUAL" } });
+
+    expect(screen.queryByLabelText("Specifically")).toBeNull();
+    expect(screen.queryByLabelText("On this device (optional)")).toBeNull();
+    const actionOptions = [...screen.getAllByRole("option")].map(o => o.textContent);
+    expect(actionOptions).toContain("Open the main water valve");
+  });
+
+  it("switching back to device-triggered after picking the privileged action resets it to a valid choice", () => {
+    render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+    fireEvent.change(screen.getByLabelText("When"), { target: { value: "MANUAL" } });
+    fireEvent.change(screen.getByDisplayValue("Shut off the main water valve"), { target: { value: "action_main_water_valve_open" } });
+
+    fireEvent.change(screen.getByLabelText("When"), { target: { value: "DEVICE_EVENT" } });
+
+    expect(screen.queryByDisplayValue("Open the main water valve")).toBeNull();
+  });
+
+  it("Fire now is only offered for active MANUAL workflows, not device-triggered or draft ones", () => {
+    render(<WorkflowRulesCard auth={mockAuth()} workflows={[
+      { workflowId: "wf-manual-active", name: "Reopen valve", location: "cabin", triggerKind: "MANUAL", enabled: true, actions: [] },
+      { workflowId: "wf-manual-draft", name: "Reopen valve (draft)", location: "cabin", triggerKind: "MANUAL", enabled: false, actions: [] },
+      { workflowId: "wf-device", name: "Leak shutoff", location: "cabin", triggerKind: "DEVICE_EVENT", enabled: true, actions: [] },
+    ]} />);
+
+    expect(screen.getAllByText("Fire now")).toHaveLength(1);
+  });
+
+  it("tapping Fire now calls the fire endpoint for that workflow", async () => {
+    const auth = mockAuth();
+    render(<WorkflowRulesCard auth={auth} onChanged={vi.fn()} workflows={[
+      { workflowId: "wf-manual-active", name: "Reopen valve", location: "cabin", triggerKind: "MANUAL", enabled: true, actions: [] },
+    ]} />);
+
+    fireEvent.click(screen.getByText("Fire now"));
+
+    await waitFor(() => expect(auth.authedFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/rules/workflows/wf-manual-active/fire"), expect.objectContaining({ method: "POST" })));
+  });
 });
 
 describe("CameraNotifyToggle", () => {
