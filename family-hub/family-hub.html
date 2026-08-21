@@ -5726,21 +5726,14 @@ setInterval(checkNotepadAutoCollapse, 30000);
 ═══════════════════════════════════════════ */
 const THEME_KEY = 'cabin-theme';
 
-// Maps cabin-ui theme vars → family-hub CSS vars
+// Maps cabin-ui theme vars → family-hub CSS vars. modern is listed first
+// deliberately (2026-08-21, user request) -- it's the default for anyone
+// who hasn't picked a theme yet (see activeThemeId's fallback below), same
+// as cabin-ui's own ThemeProvider.resolveInitialThemeId(); the picker's own
+// on-screen order follows this object's key order, so listing modern first
+// here is what makes it "top of the list" in the UI too, not just the
+// silent default.
 const THEMES = {
-  deepspace: {
-    label: 'Deep Space', id: 'deepspace',
-    vars: {
-      '--night':'#080a0f', '--glass':'rgba(8,10,15,0.78)', '--glass-light':'rgba(255,255,255,0.04)',
-      '--glass-border':'rgba(0,163,255,0.18)', '--shadow':'0 10px 60px rgba(0,0,0,.9)',
-      '--gold':'#00a3ff', '--gold-glow':'rgba(0,163,255,0.24)', '--gold-faint':'rgba(0,163,255,0.10)',
-      '--teal':'#00a3ff', '--teal-glow':'rgba(0,163,255,0.18)',
-      '--rose':'#ff2d55', '--rose-glow':'rgba(255,45,85,0.18)',
-      '--cream':'#ffffff', '--cream-dim':'rgba(255,255,255,0.62)', '--cream-ghost':'rgba(255,255,255,0.28)',
-      '--radius':'0px', '--font-display':"'Chakra Petch','Helvetica Neue',sans-serif", '--font-ui':"'Chakra Petch','Helvetica Neue',sans-serif",
-    },
-    fonts: [{ id:'fh-font-deepspace', href:'https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Share+Tech+Mono&display=swap' }],
-  },
   modern: {
     label: 'Modern', id: 'modern',
     vars: {
@@ -5753,6 +5746,43 @@ const THEMES = {
       '--radius':'10px', '--font-display':"'Inter',system-ui,sans-serif", '--font-ui':"'Inter',system-ui,sans-serif",
     },
     fonts: [],
+  },
+  // Matches impressive.llc's actual live palette (2026-08-21, sampled
+  // directly from the deployed site's computed styles -- body background,
+  // text color, and its one CSS custom property, --accent: #2121de -- not
+  // guessed). No custom webfont on that site, just the system font stack,
+  // matched here rather than substituting a branded typeface it doesn't
+  // use. warning/danger weren't directly observed (only --accent and a
+  // green success/status color were) -- teal/rose reused from what WAS
+  // sampled (the green) and a standard danger red as a reasonable default.
+  // Mirrors cabin-ui's ThemeProvider.jsx "impressive" entry -- see
+  // ThemeCatalogDrift.test.jsx, which fails the build if these two files'
+  // theme id sets ever diverge.
+  impressive: {
+    label: 'Impressive', id: 'impressive',
+    vars: {
+      '--night':'#090b10', '--glass':'rgba(15,18,25,0.72)', '--glass-light':'rgba(255,255,255,0.04)',
+      '--glass-border':'rgba(23,34,47,0.85)', '--shadow':'0 10px 60px rgba(0,0,0,.8)',
+      '--gold':'#2121de', '--gold-glow':'rgba(33,33,222,0.24)', '--gold-faint':'rgba(33,33,222,0.10)',
+      '--teal':'#34d35d', '--teal-glow':'rgba(52,211,93,0.18)',
+      '--rose':'#ef4444', '--rose-glow':'rgba(239,68,68,0.18)',
+      '--cream':'#eff0ec', '--cream-dim':'rgba(239,240,236,0.62)', '--cream-ghost':'rgba(239,240,236,0.28)',
+      '--radius':'10px', '--font-display':"-apple-system,system-ui,sans-serif", '--font-ui':"-apple-system,system-ui,sans-serif",
+    },
+    fonts: [],
+  },
+  deepspace: {
+    label: 'Deep Space', id: 'deepspace',
+    vars: {
+      '--night':'#080a0f', '--glass':'rgba(8,10,15,0.78)', '--glass-light':'rgba(255,255,255,0.04)',
+      '--glass-border':'rgba(0,163,255,0.18)', '--shadow':'0 10px 60px rgba(0,0,0,.9)',
+      '--gold':'#00a3ff', '--gold-glow':'rgba(0,163,255,0.24)', '--gold-faint':'rgba(0,163,255,0.10)',
+      '--teal':'#00a3ff', '--teal-glow':'rgba(0,163,255,0.18)',
+      '--rose':'#ff2d55', '--rose-glow':'rgba(255,45,85,0.18)',
+      '--cream':'#ffffff', '--cream-dim':'rgba(255,255,255,0.62)', '--cream-ghost':'rgba(255,255,255,0.28)',
+      '--radius':'0px', '--font-display':"'Chakra Petch','Helvetica Neue',sans-serif", '--font-ui':"'Chakra Petch','Helvetica Neue',sans-serif",
+    },
+    fonts: [{ id:'fh-font-deepspace', href:'https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Share+Tech+Mono&display=swap' }],
   },
   lcars: {
     label: 'LCARS', id: 'lcars',
@@ -5932,7 +5962,7 @@ const THEMES = {
 // over this app's own last-saved choice on first load only; every
 // subsequent in-app change persists to localStorage as before.
 const THEME_FROM_URL = new URLSearchParams(window.location.search).get('theme');
-let activeThemeId = (THEME_FROM_URL && THEMES[THEME_FROM_URL]) ? THEME_FROM_URL : (localStorage.getItem(THEME_KEY) || 'deepspace');
+let activeThemeId = (THEME_FROM_URL && THEMES[THEME_FROM_URL]) ? THEME_FROM_URL : (localStorage.getItem(THEME_KEY) || 'modern');
 
 function applyTheme(id) {
   const t = THEMES[id] || THEMES.deepspace;
