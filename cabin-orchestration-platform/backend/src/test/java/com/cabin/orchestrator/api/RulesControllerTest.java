@@ -271,10 +271,14 @@ class RulesControllerTest {
     void triggerVocabularyReturnsExactlyWhatWorkflowRuleServiceInterprets() {
         List<TriggerVocabularyEntry> triggers = controller.triggerVocabulary();
 
-        assertEquals(3, triggers.size());
+        // 2026-08-21 (Part E): 3 -> 22 after wiring the real triggers already
+        // flowing from the 13 paired devices/cameras plus armed/presence/HA.
+        assertEquals(22, triggers.size());
         assertTrue(triggers.stream().allMatch(TriggerVocabularyEntry::supported));
         assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_water_leak_detected") && t.label().equals("Water leak detected")));
         assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_camera_detection") && "CAMERA".equals(t.appliesToDeviceType())));
+        assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_door_contact_opened") && "CONTACT_SENSOR".equals(t.appliesToDeviceType())));
+        assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_ha_entity_state_changed")));
     }
 
     @Test
@@ -298,7 +302,7 @@ class RulesControllerTest {
         // graceful-degradation path a fresh fork with no docs/ bind mount
         // hits in production (see OntologyLookupService's own class doc).
         // Real candidate-merging is covered by OntologyLookupServiceTest.
-        assertEquals(3, controller.triggerVocabulary().size());
+        assertEquals(22, controller.triggerVocabulary().size());
         assertEquals(4, controller.actionVocabulary().size());
     }
 }

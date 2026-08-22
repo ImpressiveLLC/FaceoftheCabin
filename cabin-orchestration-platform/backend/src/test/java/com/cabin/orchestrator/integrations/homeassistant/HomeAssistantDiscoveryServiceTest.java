@@ -2,11 +2,14 @@ package com.cabin.orchestrator.integrations.homeassistant;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
+import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -28,8 +31,14 @@ import static org.mockito.Mockito.when;
  */
 class HomeAssistantDiscoveryServiceTest {
 
+    private static class RecordingEventPublisher extends EventPublisher {
+        final List<CabinEvent> published = new ArrayList<>();
+        @Override public void publish(CabinEvent event) { published.add(event); }
+    }
+
     private HomeAssistantAdapter adapter;
     private DeviceRegistry registry;
+    private RecordingEventPublisher eventPublisher;
     private HomeAssistantDiscoveryService service;
 
     @BeforeEach
@@ -38,7 +47,8 @@ class HomeAssistantDiscoveryServiceTest {
         registry = new DeviceRegistry(List.of());
         PresenceSignalRegistry presenceSignals = new PresenceSignalRegistry();
         PresenceService presenceService = mock(PresenceService.class);
-        service = new HomeAssistantDiscoveryService(adapter, registry, presenceSignals, presenceService);
+        eventPublisher = new RecordingEventPublisher();
+        service = new HomeAssistantDiscoveryService(adapter, registry, presenceSignals, presenceService, eventPublisher);
         when(adapter.normalizedState(org.mockito.ArgumentMatchers.anyString())).thenReturn("ONLINE");
     }
 
@@ -94,5 +104,62 @@ class HomeAssistantDiscoveryServiceTest {
         List<DeviceStatus> discovered = registry.byLocation("cabin");
         assertThat(discovered).hasSize(1);
         assertThat(discovered.get(0).attributes()).doesNotContainKey("haDeviceId");
+    }
+
+    // 2026-08-21 (E5) -- the poll-to-event bridge. Before this,
+    // HomeAssistantAdapter/HomeAssistantDiscoveryService had no
+    // CabinEvent/eventPublisher reference at all, so WorkflowRuleService
+    // could never react to Kidde/Liebherr/any HA entity changing.
+
+    @Test
+    void firstDiscoveryOfAnEntityPublishesNothing() {
+        // registerCandidate() already syncs the device's attrs on first
+        // sight -- current.attributes() equals the freshly-merged attrs by
+        // the time publishIfChanged() runs, so there's genuinely nothing
+        // to diff against yet. Matches Device Manager's own candidate flow
+        // being the real "something new showed up" surface, not this
+        // trigger.
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_co", "37", Map.of("friendly_name", "Kidde CO"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        assertThat(eventPublisher.published).isEmpty();
+    }
+
+    @Test
+    void anUnchangedPollCyclePublishesNothing() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_co", "37", Map.of("friendly_name", "Kidde CO"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+        service.discoverLocation("cabin"); // baseline (first-sight, asserted empty above)
+        eventPublisher.published.clear();
+
+        service.discoverLocation("cabin"); // identical data, real ~60s-later cycle
+
+        assertThat(eventPublisher.published).isEmpty();
+    }
+
+    @Test
+    void aChangedAttributePublishesExactlyOneTelemetryEventWithTheRealAttrsAndHaState() {
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_co", "37", Map.of("friendly_name", "Kidde CO", "co_ppm", 0))));
+        service.discoverLocation("cabin"); // baseline
+        eventPublisher.published.clear();
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_co", "37", Map.of("friendly_name", "Kidde CO", "co_ppm", 12))));
+
+        service.discoverLocation("cabin");
+
+        assertThat(eventPublisher.published).hasSize(1);
+        CabinEvent event = eventPublisher.published.get(0);
+        assertThat(event.eventType()).isEqualTo("TELEMETRY");
+        assertThat(event.payload()).containsEntry("co_ppm", 12).containsEntry("haState", "ONLINE");
     }
 }

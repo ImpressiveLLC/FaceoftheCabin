@@ -2,6 +2,9 @@ package com.cabin.orchestrator.integrations.homeassistant;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.*;
+import com.cabin.orchestrator.events.AlertSeverityClassifier;
+import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -9,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Turns recognized Home Assistant entities into visible candidates and consumes
@@ -34,13 +38,28 @@ public class HomeAssistantDiscoveryService {
     private final DeviceRegistry registry;
     private final PresenceSignalRegistry presenceSignals;
     private final PresenceService presenceService;
+    private final EventPublisher eventPublisher;
+
+    // deviceId -> the raw, as-discovered attrs (+ normalized state) from the
+    // PREVIOUS poll cycle -- deliberately NOT compared against
+    // DeviceRegistry.get()'s own return value. DeviceRegistry.withOntologyMetadata()
+    // layers freshly-recomputed capabilities/category onto every .get() call,
+    // and this class's own `merged` (built from that decorated view) then
+    // gets written straight back via registry.update() -- comparing against
+    // that decorated/round-tripped shape produced a false "changed" on the
+    // very first poll of every entity (found writing this class's own test).
+    // Tracking a private, undecorated snapshot sidesteps DeviceRegistry's
+    // internal bookkeeping entirely.
+    private final Map<String, Map<String, Object>> lastPolledAttrs = new ConcurrentHashMap<>();
+    private final Map<String, String> lastPolledState = new ConcurrentHashMap<>();
 
     public HomeAssistantDiscoveryService(HomeAssistantAdapter adapter, DeviceRegistry registry,
-            PresenceSignalRegistry presenceSignals, PresenceService presenceService) {
+            PresenceSignalRegistry presenceSignals, PresenceService presenceService, EventPublisher eventPublisher) {
         this.adapter = adapter;
         this.registry = registry;
         this.presenceSignals = presenceSignals;
         this.presenceService = presenceService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Scheduled(fixedDelayString = "${cabin.homeassistant.discovery-interval-ms:60000}")
@@ -96,10 +115,50 @@ public class HomeAssistantDiscoveryService {
             merged.putAll(attrs);
             boolean safetyAlarm = Set.of(DeviceType.SMOKE_ALARM, DeviceType.CO_ALARM,
                 DeviceType.WATER_LEAK_SENSOR).contains(registered.type()) && isPresent(entity.state());
+            String newState = safetyAlarm ? "ALARM" : adapter.normalizedState(entity.state());
             registry.update(new DeviceStatus(id, registered.type(), registered.name(),
-                safetyAlarm ? "ALARM" : adapter.normalizedState(entity.state()),
-                Instant.now(), merged, registered.location()));
+                newState, Instant.now(), merged, registered.location()));
+            publishIfChanged(id, attrs, newState);
         }
+    }
+
+    /**
+     * E5, 2026-08-21 -- the poll-to-event bridge. Before this, every HA
+     * entity's live DeviceRegistry state refreshed every cycle
+     * unconditionally, but nothing downstream (WorkflowRuleService
+     * included) ever saw a *change* -- HomeAssistantAdapter has no
+     * CabinEvent/eventPublisher reference anywhere. Diffs the raw,
+     * as-discovered `attrs` against lastPolledAttrs (see that field's own
+     * comment for why NOT DeviceRegistry.get()'s decorated view) and
+     * publishes exactly one TELEMETRY event when the normalized state or
+     * any attribute actually changed since the previous cycle. `haState`
+     * is added to the payload alongside the raw attrs specifically because
+     * an HA binary_sensor's meaningful value often *is* DeviceStatus.state
+     * itself (on/off), not a nested attribute the way Zigbee's
+     * water_leak/contact/etc. are -- trigger_ha_entity_state_changed
+     * (docs/ontology.yaml) matches on it.
+     *
+     * delivery_mode: pull -- see that trigger's own ontology entry for the
+     * full honesty note: this can only ever see what HA itself already
+     * polls, on this method's own ~60s cycle, and is not a true push
+     * channel. Also not verified against live Kidde/Liebherr attribute
+     * payloads in this session -- if a given integration's `attributes`
+     * happens to include something that legitimately changes every poll
+     * (a raw timestamp, for instance), this would fire more often than a
+     * real "something changed" signal should; a real running instance
+     * should confirm this isn't spammy for a specific entity before
+     * building anything rate-sensitive against it.
+     */
+    private void publishIfChanged(String deviceId, Map<String, Object> attrs, String newState) {
+        Map<String, Object> previousAttrs = lastPolledAttrs.put(deviceId, attrs);
+        String previousState = lastPolledState.put(deviceId, newState);
+        if (previousAttrs == null) return; // first sight -- nothing to diff against yet
+        if (Objects.equals(previousAttrs, attrs) && Objects.equals(previousState, newState)) return;
+        Map<String, Object> payload = new LinkedHashMap<>(attrs);
+        payload.put("haState", newState);
+        eventPublisher.publish(new CabinEvent(
+            UUID.randomUUID().toString(), deviceId, "TELEMETRY",
+            AlertSeverityClassifier.classify(payload), Instant.now(), payload));
     }
 
     private String domain(String entityId) {

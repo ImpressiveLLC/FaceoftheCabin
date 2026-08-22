@@ -35,10 +35,45 @@ import java.util.List;
 @Repository
 public class JdbcWorkflowVocabularyStore {
 
+    // 2026-08-21 (Part E) -- expanded from 3 to 19 after the user reported
+    // only water-leak/camera existed as real trigger options despite far
+    // more already flowing. Every label here matches
+    // WorkflowRuleService.FIELD_TRIGGERS'/describeTriggeringEvent()'s own
+    // text exactly (kept in sync by hand, same discipline as everything
+    // else in this class) so the dropdown label and the eventual
+    // notification's "see" text never disagree.
     private static final List<TriggerVocabularyEntry> SUPPORTED_TRIGGERS = List.of(
         new TriggerVocabularyEntry("trigger_water_leak_detected", "Water leak detected", "WATER_LEAK_SENSOR", "ALARM", true),
         new TriggerVocabularyEntry("trigger_water_leak_cleared", "Water leak cleared", "WATER_LEAK_SENSOR", "ALARM", true),
-        new TriggerVocabularyEntry("trigger_camera_detection", "Camera detects motion", "CAMERA", "STREAM", true)
+        new TriggerVocabularyEntry("trigger_camera_detection", "Camera detects motion", "CAMERA", "STREAM", true),
+        new TriggerVocabularyEntry("trigger_door_contact_opened", "Door contact opened", "CONTACT_SENSOR", "ACCESS_CONTROL", true),
+        new TriggerVocabularyEntry("trigger_door_contact_closed", "Door contact closed", "CONTACT_SENSOR", "ACCESS_CONTROL", true),
+        new TriggerVocabularyEntry("trigger_motion_detected", "Motion detected", "MOTION_SENSOR", "PRESENCE", true),
+        new TriggerVocabularyEntry("trigger_motion_cleared", "Motion cleared", "MOTION_SENSOR", "PRESENCE", true),
+        // Tamper/battery-low apply to any device reporting that field, not
+        // one device type -- appliesToDeviceType stays null deliberately
+        // (the creation form falls back to showing every visible device
+        // when it's null, same as before device-type filtering existed).
+        new TriggerVocabularyEntry("trigger_tamper_detected", "Tamper detected", null, "ALARM", true),
+        new TriggerVocabularyEntry("trigger_tamper_cleared", "Tamper cleared", null, "ALARM", true),
+        new TriggerVocabularyEntry("trigger_battery_low_detected", "Battery low", null, null, true),
+        new TriggerVocabularyEntry("trigger_battery_low_cleared", "Battery no longer low", null, null, true),
+        new TriggerVocabularyEntry("trigger_plug_turned_on", "Device turned on", "POWER_METER", "COMMAND", true),
+        new TriggerVocabularyEntry("trigger_plug_turned_off", "Device turned off", "POWER_METER", "COMMAND", true),
+        new TriggerVocabularyEntry("trigger_freeze_risk_detected", "Freeze risk (below 32°F)", "TEMPERATURE_SENSOR", "TELEMETRY", true),
+        new TriggerVocabularyEntry("trigger_freeze_risk_cleared", "Freeze risk cleared (36°F or above)", "TEMPERATURE_SENSOR", "TELEMETRY", true),
+        new TriggerVocabularyEntry("trigger_blink_motion_detected", "Camera motion detected (Blink)", "CAMERA", "STREAM", true),
+        new TriggerVocabularyEntry("trigger_blink_motion_cleared", "Camera motion cleared (Blink)", "CAMERA", "STREAM", true),
+        // Armed/presence are location- and person-scoped, not device-scoped
+        // -- appliesToDeviceType stays null, same reasoning as tamper/battery.
+        new TriggerVocabularyEntry("trigger_security_armed", "Armed away", null, null, true),
+        new TriggerVocabularyEntry("trigger_security_disarmed", "Disarmed", null, null, true),
+        new TriggerVocabularyEntry("trigger_presence_arrived", "Someone arrived", null, null, true),
+        new TriggerVocabularyEntry("trigger_presence_departed", "Someone departed", null, null, true),
+        // E5's generic HA-entity trigger -- no clear-signal pair (discrete,
+        // any change), always meant to be scoped via triggerDeviceId (see
+        // its own docs/ontology.yaml entry).
+        new TriggerVocabularyEntry("trigger_ha_entity_state_changed", "Home Assistant entity changed", null, null, true)
     );
 
     private static final List<ActionVocabularyEntry> SUPPORTED_ACTIONS = List.of(

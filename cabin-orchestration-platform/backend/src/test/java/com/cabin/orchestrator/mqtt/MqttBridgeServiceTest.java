@@ -13,6 +13,7 @@ import com.cabin.orchestrator.security.SecurityStateRegistry;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -25,6 +26,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * Regression coverage for the 2026-08-07 finding: handleCameraTopic()
@@ -353,5 +355,56 @@ class MqttBridgeServiceTest {
         deliver("cabin/security/armed_away", "ON");
 
         assertNull(registry.get("armed_away"), "an armed-state signal must never register a device");
+    }
+
+    // 2026-08-21 (Part E4) -- before this, handleArmedTopic()/
+    // handlePresenceTopic() only ever updated SecurityStateRegistry/
+    // PresenceSignalRegistry, invisible to WorkflowRuleService. These
+    // assert the new publish() call exists and carries the right shape,
+    // additive to (not instead of) the registry-update assertions above.
+
+    @Test
+    void armedTopicNowAlsoPublishesASecurityArmedChangedEvent() throws Exception {
+        deliver("cabin/security/armed_away", "ON");
+
+        ArgumentCaptor<CabinEvent> captor = ArgumentCaptor.forClass(CabinEvent.class);
+        verify(eventPublisher).publish(captor.capture());
+        CabinEvent event = captor.getValue();
+        assertEquals("SECURITY_ARMED_CHANGED", event.eventType());
+        assertEquals(Boolean.TRUE, event.payload().get("armed"));
+        assertEquals("cabin", event.payload().get("location"));
+    }
+
+    @Test
+    void disarmingAlsoPublishesWithArmedFalse() throws Exception {
+        deliver("cabin/security/armed_away", "OFF");
+
+        ArgumentCaptor<CabinEvent> captor = ArgumentCaptor.forClass(CabinEvent.class);
+        verify(eventPublisher).publish(captor.capture());
+        assertEquals(Boolean.FALSE, captor.getValue().payload().get("armed"));
+    }
+
+    @Test
+    void presenceTopicNowAlsoPublishesAPresenceChangedEvent() throws Exception {
+        deliver("cabin/presence/nate", "home");
+
+        ArgumentCaptor<CabinEvent> captor = ArgumentCaptor.forClass(CabinEvent.class);
+        verify(eventPublisher).publish(captor.capture());
+        CabinEvent event = captor.getValue();
+        assertEquals("PRESENCE_CHANGED", event.eventType());
+        assertEquals(Boolean.TRUE, event.payload().get("present"));
+        assertEquals("nate", event.payload().get("personId"));
+        assertEquals("cabin", event.payload().get("location"));
+        assertEquals("presence:cabin:nate", event.sourceDeviceId(),
+            "synthetic per-person id, not a real DeviceRegistry entry -- presence signals aren't devices");
+    }
+
+    @Test
+    void departingPublishesWithPresentFalse() throws Exception {
+        deliver("cabin/presence/nate", "not_home");
+
+        ArgumentCaptor<CabinEvent> captor = ArgumentCaptor.forClass(CabinEvent.class);
+        verify(eventPublisher).publish(captor.capture());
+        assertEquals(Boolean.FALSE, captor.getValue().payload().get("present"));
     }
 }

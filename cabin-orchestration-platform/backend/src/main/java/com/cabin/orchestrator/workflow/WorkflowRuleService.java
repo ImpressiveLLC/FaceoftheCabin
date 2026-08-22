@@ -18,11 +18,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * The human-configured workflow interpreter. Reads workflow_rule rows (via
@@ -63,6 +66,25 @@ import java.util.concurrent.TimeUnit;
  * resolveTriggerDefinitionId()/resolveClearedTriggerDefinitionId() once
  * that vocabulary exists -- tracked as real follow-up, not silently
  * permanent.
+ *
+ * Expanded 2026-08-21 (user report: only water-leak/camera existed as real
+ * trigger options despite far more already flowing) from that single
+ * hardcoded water_leak check into FIELD_TRIGGERS below, a declarative table
+ * of every TELEMETRY/SECURITY_ARMED_CHANGED/PRESENCE_CHANGED payload-field
+ * trigger this engine now understands -- CLEARED_TRIGGER_IDS and
+ * STATE_TRIGGERS_WITH_CLEAR_SIGNAL both derive from it now instead of being
+ * hand-kept in sync separately. Every new field trigger's real payload
+ * field name is confirmed against a live-verified docs/ontology.yaml device
+ * entry (e.g. zigbee_door_front_contact's own documented `contact` field),
+ * not guessed. resolveTriggerDefinitionId()/resolveClearedTriggerDefinitionId()
+ * became resolveTriggerDefinitionIds()/resolveClearedTriggerDefinitionIds()
+ * (plural) in the same pass -- a real bug fix, not just refactor
+ * convenience: Zigbee2MqttAdapter.handleDeviceState() merges each new
+ * message onto the device's *entire existing* attribute map before
+ * publishing, so one TELEMETRY event can legitimately carry more than one
+ * already-true condition at once (e.g. a device mid water-leak that also
+ * just tripped tamper) -- the old single-String-return version would have
+ * silently fired only the first match.
  */
 @Service
 public class WorkflowRuleService {
@@ -101,21 +123,74 @@ public class WorkflowRuleService {
     }
 
     /**
-     * The cleared side of a state-trigger, keyed by its normal (detected)
-     * trigger id, mapped to its own matchable trigger id -- added 2026-08-21
-     * so a SEPARATE workflow can react automatically to a condition
-     * clearing (e.g. "when the leak clears, notify" or "turn off a wet-vac"),
-     * through the exact same fire()/executeAction() pipeline as any other
-     * trigger, no new schema or engine path needed. Deliberately does NOT
-     * let the water valve back into the picture this way:
-     * RulesController.validateReopenGuard() blocks action_main_water_valve_open
-     * from any DEVICE_EVENT-triggered workflow regardless of which trigger
-     * id, so a workflow built against trigger_water_leak_cleared still can't
-     * touch it -- reopening the valve stays human-only via fireManual()
-     * below, by design, not by omission here.
+     * One TELEMETRY/SECURITY_ARMED_CHANGED/PRESENCE_CHANGED payload field
+     * this engine treats as a state+clear-signal trigger pair. Both
+     * directions are independently matchable/selectable triggers (e.g. a
+     * workflow can react to either "water leak detected" or "water leak
+     * cleared") -- see class doc for why this table exists and the real
+     * multi-match bug fixing it closed. Every payloadField/detectedValue/
+     * clearedValue here is a real, live-verified device field, not a guess
+     * -- see each new trigger's own docs/ontology.yaml entry for the
+     * exact citation.
      */
-    private static final Map<String, String> CLEARED_TRIGGER_IDS =
-        Map.of("trigger_water_leak_detected", "trigger_water_leak_cleared");
+    private record FieldTrigger(String detectedId, String clearedId, String eventType, String payloadField,
+                                 Object detectedValue, Object clearedValue,
+                                 String detectedDescription, String clearedDescription) {}
+
+    private static final List<FieldTrigger> FIELD_TRIGGERS = List.of(
+        new FieldTrigger("trigger_water_leak_detected", "trigger_water_leak_cleared", "TELEMETRY",
+            "water_leak", true, false, "Water leak detected", "Water leak cleared"),
+        // contact:false = open -- see zigbee_door_front_contact's own
+        // docs/ontology.yaml definition ("Reports contact (boolean, false = open)").
+        new FieldTrigger("trigger_door_contact_opened", "trigger_door_contact_closed", "TELEMETRY",
+            "contact", false, true, "Door contact opened", "Door contact closed"),
+        new FieldTrigger("trigger_motion_detected", "trigger_motion_cleared", "TELEMETRY",
+            "occupancy", true, false, "Motion detected", "Motion cleared"),
+        new FieldTrigger("trigger_tamper_detected", "trigger_tamper_cleared", "TELEMETRY",
+            "tamper", true, false, "Tamper detected", "Tamper cleared"),
+        new FieldTrigger("trigger_battery_low_detected", "trigger_battery_low_cleared", "TELEMETRY",
+            "battery_low", true, false, "Battery low", "Battery no longer low"),
+        // zigbee_heater_mech_room/zigbee_smart_switch_breaker_box's own
+        // docs/ontology.yaml entries both document "state (on/off)".
+        new FieldTrigger("trigger_plug_turned_on", "trigger_plug_turned_off", "TELEMETRY",
+            "state", "ON", "OFF", "Device turned on", "Device turned off"),
+        // Bridged in by E4 below (MqttBridgeService.handleArmedTopic()) --
+        // previously updated SecurityStateRegistry only, never published.
+        new FieldTrigger("trigger_security_armed", "trigger_security_disarmed", "SECURITY_ARMED_CHANGED",
+            "armed", true, false, "Armed away", "Disarmed"),
+        // Bridged in by E4 below (MqttBridgeService.handlePresenceTopic()) --
+        // description is dynamic (per-person), handled in
+        // describeTriggeringEvent() rather than these static strings.
+        new FieldTrigger("trigger_presence_arrived", "trigger_presence_departed", "PRESENCE_CHANGED",
+            "present", true, false, null, null)
+    );
+
+    private static final Map<String, String> CLEARED_TRIGGER_IDS = buildClearedTriggerIds();
+    private static final Set<String> STATE_TRIGGERS_WITH_CLEAR_SIGNAL = CLEARED_TRIGGER_IDS.keySet();
+
+    /**
+     * CLEARED_TRIGGER_IDS/STATE_TRIGGERS_WITH_CLEAR_SIGNAL both derive from
+     * FIELD_TRIGGERS plus two manual entries for the pairs that aren't a
+     * simple payload-field equality match (E2's freeze-risk numeric
+     * threshold, E3's Blink MOTION_ON/MOTION_OFF eventType pair) -- one row
+     * to add a new state+clear trigger, not three places to keep in sync
+     * by hand the way the original single water-leak check was.
+     */
+    private static Map<String, String> buildClearedTriggerIds() {
+        Map<String, String> ids = FIELD_TRIGGERS.stream()
+            .collect(Collectors.toMap(FieldTrigger::detectedId, FieldTrigger::clearedId, (a, b) -> a, LinkedHashMap::new));
+        ids.put("trigger_blink_motion_detected", "trigger_blink_motion_cleared");
+        ids.put("trigger_freeze_risk_detected", "trigger_freeze_risk_cleared");
+        return Map.copyOf(ids);
+    }
+
+    // E2 -- freeze-risk numeric threshold. A 4°F hysteresis band (not a
+    // single 32.0°F boundary both directions) avoids rapid detected/cleared
+    // flapping right at freezing -- the same reasoning AutomationRuleService's
+    // existing separate 38°F threshold implies but doesn't itself need
+    // (it has no clear-signal concept to flap).
+    private static final double FREEZE_RISK_THRESHOLD_F = 32.0;
+    private static final double FREEZE_RISK_CLEAR_THRESHOLD_F = 36.0;
 
     public void evaluate(CabinEvent event) {
         // This class's own WORKFLOW_ACTION output loops back through this
@@ -123,13 +198,10 @@ public class WorkflowRuleService {
         // AutomationRuleService's own default no-op case for AUTOMATION_ALERT).
         if (event.eventType().startsWith("WORKFLOW_")) return;
 
-        String triggerId = resolveTriggerDefinitionId(event);
-        if (triggerId != null) {
+        for (String triggerId : resolveTriggerDefinitionIds(event)) {
             handleTriggerMatch(triggerId, event);
-            return;
         }
-        String clearedTriggerId = resolveClearedTriggerDefinitionId(event);
-        if (clearedTriggerId != null) {
+        for (String clearedTriggerId : resolveClearedTriggerDefinitionIds(event)) {
             handleTriggerCleared(clearedTriggerId, event);
             String clearedVariantTriggerId = CLEARED_TRIGGER_IDS.get(clearedTriggerId);
             if (clearedVariantTriggerId != null) {
@@ -138,9 +210,19 @@ public class WorkflowRuleService {
         }
     }
 
-    private String resolveTriggerDefinitionId(CabinEvent event) {
-        if ("TELEMETRY".equals(event.eventType()) && Boolean.TRUE.equals(event.payload().get("water_leak"))) {
-            return "trigger_water_leak_detected";
+    /**
+     * Every trigger id this event's DETECTED side matches -- plural because
+     * one TELEMETRY event can legitimately carry more than one already-true
+     * condition at once (see class doc). Camera/Blink/freeze-risk aren't
+     * simple field-equality matches so stay as explicit checks alongside
+     * the FIELD_TRIGGERS table scan.
+     */
+    private List<String> resolveTriggerDefinitionIds(CabinEvent event) {
+        List<String> ids = new ArrayList<>();
+        for (FieldTrigger ft : FIELD_TRIGGERS) {
+            if (ft.eventType().equals(event.eventType()) && Objects.equals(event.payload().get(ft.payloadField()), ft.detectedValue())) {
+                ids.add(ft.detectedId());
+            }
         }
         // DETECTION_NEW only, not UPDATE/END -- matches cabin_camera_event's
         // own documented shape (docs/ontology.yaml): NEW is Frigate first
@@ -152,17 +234,55 @@ public class WorkflowRuleService {
         // but matching only NEW keeps the intent explicit rather than relying
         // on that guard to paper over matching every UPDATE too.
         if ("DETECTION_NEW".equals(event.eventType())) {
-            return "trigger_camera_detection";
+            ids.add("trigger_camera_detection");
         }
-        return null;
+        // E3 -- Blink's own MOTION_ON/MOTION_OFF are already distinct
+        // CabinEvent.eventType() values (MqttBridgeService.handleCameraTopic()),
+        // not a payload field -- a separate signal from Frigate's DETECTION_NEW.
+        if ("MOTION_ON".equals(event.eventType())) {
+            ids.add("trigger_blink_motion_detected");
+        }
+        // E2 -- see FREEZE_RISK_THRESHOLD_F's own comment for the hysteresis reasoning.
+        if ("TELEMETRY".equals(event.eventType())
+                && event.payload().get("temperature") instanceof Number n && n.doubleValue() < FREEZE_RISK_THRESHOLD_F) {
+            ids.add("trigger_freeze_risk_detected");
+        }
+        // E5 -- generic, deliberately unconditional on payload content
+        // (any HA entity, any change) unlike every other trigger above.
+        // Real device-scoping happens the same way trigger_camera_detection's
+        // own doc already documents: ruleStore.findByTrigger() only returns
+        // workflows whose triggerDeviceId is null (any) or matches this
+        // exact sourceDeviceId -- a workflow meant for one specific HA
+        // entity is scoped there, not here. "ha-" prefix matches
+        // HomeAssistantDiscoveryService's own generatedId convention
+        // ("ha-"+location+"-"+entityId), so this never matches a Zigbee
+        // z2m- device's own telemetry even when unscoped. Can co-fire
+        // alongside a more specific FIELD_TRIGGERS match on the same event
+        // (e.g. an HA moisture sensor reporting water_leak:true matches
+        // both trigger_water_leak_detected AND this) -- both are
+        // independent, legitimate workflows if a person built both.
+        if ("TELEMETRY".equals(event.eventType()) && event.sourceDeviceId() != null && event.sourceDeviceId().startsWith("ha-")) {
+            ids.add("trigger_ha_entity_state_changed");
+        }
+        return ids;
     }
 
-    /** The inverse of resolveTriggerDefinitionId() -- an explicit false, not merely absent, is what counts as "cleared." */
-    private String resolveClearedTriggerDefinitionId(CabinEvent event) {
-        if ("TELEMETRY".equals(event.eventType()) && Boolean.FALSE.equals(event.payload().get("water_leak"))) {
-            return "trigger_water_leak_detected";
+    /** The inverse of resolveTriggerDefinitionIds() -- an explicit cleared value, not merely absent, is what counts as "cleared." Returns the DETECTED id (matching the pre-2026-08-21 convention), not the cleared id -- see evaluate()'s own CLEARED_TRIGGER_IDS lookup for why. */
+    private List<String> resolveClearedTriggerDefinitionIds(CabinEvent event) {
+        List<String> ids = new ArrayList<>();
+        for (FieldTrigger ft : FIELD_TRIGGERS) {
+            if (ft.eventType().equals(event.eventType()) && Objects.equals(event.payload().get(ft.payloadField()), ft.clearedValue())) {
+                ids.add(ft.detectedId());
+            }
         }
-        return null;
+        if ("MOTION_OFF".equals(event.eventType())) {
+            ids.add("trigger_blink_motion_detected");
+        }
+        if ("TELEMETRY".equals(event.eventType())
+                && event.payload().get("temperature") instanceof Number n && n.doubleValue() >= FREEZE_RISK_CLEAR_THRESHOLD_F) {
+            ids.add("trigger_freeze_risk_detected");
+        }
+        return ids;
     }
 
     private void handleTriggerMatch(String triggerId, CabinEvent event) {
@@ -198,31 +318,29 @@ public class WorkflowRuleService {
     }
 
     /**
-     * A DEVICE_EVENT trigger belongs here iff resolveClearedTriggerDefinitionId()
-     * has a matching branch for it -- i.e. it represents an ongoing, sampled
-     * STATE (water_leak, re-reported on every telemetry tick) rather than a
-     * discrete EVENT (a camera detection, each occurrence independent of the
-     * last). A state-trigger's execution must stay "active" until that state
-     * actually clears (or a human clears it) so the SAME ongoing condition
-     * doesn't re-notify on every sample -- findActive()'s edge-detection
-     * guard above is what that protects. A trigger with no symmetric clear
-     * signal has no such repeat-sampling to guard against, so fire() below
-     * self-clears it immediately: each firing is already a distinct
-     * occurrence, and never auto-clearing would mean exactly one
-     * notification, ever, per workflow (found 2026-08-18 designing the
-     * camera-detection trigger against the water-leak workflow's original,
-     * action-list-based first draft of this rule, which wrongly self-cleared
-     * ANY workflow whose actions were all notify_critical/log_event --
-     * including the existing MANUAL_ONLY notify-only leak workflow this
-     * class's own manualOnlyResetModeDoesNotAutoClear test depends on
-     * staying active until a human clears it. Scoping to the TRIGGER,
-     * not the action list, is what keeps that test's invariant true while
-     * still giving camera-detection workflows the "notify every time"
-     * behavior they need).
+     * A DEVICE_EVENT trigger belongs in STATE_TRIGGERS_WITH_CLEAR_SIGNAL
+     * (declared above, derived from FIELD_TRIGGERS) iff it represents an
+     * ongoing, sampled STATE (water_leak, re-reported on every telemetry
+     * tick) rather than a discrete EVENT (a camera detection, each
+     * occurrence independent of the last). A state-trigger's execution must
+     * stay "active" until that state actually clears (or a human clears it)
+     * so the SAME ongoing condition doesn't re-notify on every sample --
+     * findActive()'s edge-detection guard above is what that protects. A
+     * trigger with no symmetric clear signal has no such repeat-sampling to
+     * guard against, so fire() below self-clears it immediately: each
+     * firing is already a distinct occurrence, and never auto-clearing
+     * would mean exactly one notification, ever, per workflow (found
+     * 2026-08-18 designing the camera-detection trigger against the
+     * water-leak workflow's original, action-list-based first draft of
+     * this rule, which wrongly self-cleared ANY workflow whose actions
+     * were all notify_critical/log_event -- including the existing
+     * MANUAL_ONLY notify-only leak workflow this class's own
+     * manualOnlyResetModeDoesNotAutoClear test depends on staying active
+     * until a human clears it. Scoping to the TRIGGER, not the action
+     * list, is what keeps that test's invariant true while still giving
+     * camera-detection workflows the "notify every time" behavior they
+     * need).
      */
-    private static final java.util.Set<String> STATE_TRIGGERS_WITH_CLEAR_SIGNAL =
-        java.util.Set.of("trigger_water_leak_detected");
-
     private void fire(WorkflowRule rule, CabinEvent triggeringEvent) {
         log.info("Workflow '{}' ({}) firing on event {}", rule.name(), rule.workflowId(), triggeringEvent.eventId());
         String executionId = UUID.randomUUID().toString();
@@ -448,10 +566,26 @@ public class WorkflowRuleService {
             Instant.now(), payload));
     }
 
-    /** Human-readable "what happened" for the event that fired this workflow -- one case per resolveTriggerDefinitionId() branch. */
+    /**
+     * Human-readable "what happened" for the event that fired this
+     * workflow -- one case per resolveTriggerDefinitionIds()/
+     * resolveClearedTriggerDefinitionIds() branch. Checks FIELD_TRIGGERS
+     * first (covers both the detected and cleared side of every table
+     * row, e.g. this now correctly says "Water leak cleared" for a
+     * cleared-side notification instead of falling through to the
+     * generic deviceId:eventType text below, a real improvement found
+     * while generalizing this method, not just parity).
+     */
     private String describeTriggeringEvent(CabinEvent event) {
-        if ("TELEMETRY".equals(event.eventType()) && Boolean.TRUE.equals(event.payload().get("water_leak"))) {
-            return "Water leak detected";
+        for (FieldTrigger ft : FIELD_TRIGGERS) {
+            if (!ft.eventType().equals(event.eventType())) continue;
+            Object value = event.payload().get(ft.payloadField());
+            if (Objects.equals(value, ft.detectedValue()) && ft.detectedDescription() != null) {
+                return ft.detectedDescription();
+            }
+            if (Objects.equals(value, ft.clearedValue()) && ft.clearedDescription() != null) {
+                return ft.clearedDescription();
+            }
         }
         if (event.eventType() != null && event.eventType().startsWith("DETECTION_")) {
             Object label = event.payload().get("label");
@@ -459,8 +593,31 @@ public class WorkflowRuleService {
             String pct = score instanceof Number n ? " (" + Math.round(n.doubleValue() * 100) + "%)" : "";
             return event.sourceDeviceId() + " detected " + (label != null ? label : "activity") + pct;
         }
+        if ("MOTION_ON".equals(event.eventType())) {
+            return event.sourceDeviceId() + " camera motion detected";
+        }
+        if ("MOTION_OFF".equals(event.eventType())) {
+            return event.sourceDeviceId() + " camera motion cleared";
+        }
+        if ("TELEMETRY".equals(event.eventType()) && event.payload().get("temperature") instanceof Number n) {
+            if (n.doubleValue() < FREEZE_RISK_THRESHOLD_F) return "Freeze risk: temperature dropped to " + n + "°F";
+            if (n.doubleValue() >= FREEZE_RISK_CLEAR_THRESHOLD_F) return "Freeze risk cleared: temperature back up to " + n + "°F";
+        }
+        // PRESENCE_CHANGED's description is dynamic (per-person), not a
+        // static FIELD_TRIGGERS string -- see that row's own comment.
+        if ("PRESENCE_CHANGED".equals(event.eventType())) {
+            Object personId = event.payload().get("personId");
+            boolean present = Boolean.TRUE.equals(event.payload().get("present"));
+            return (personId != null ? personId : "Someone") + (present ? " arrived" : " departed");
+        }
         if ("WORKFLOW_MANUAL_FIRE".equals(event.eventType())) {
             return "Manually fired by " + event.payload().get("firedBy");
+        }
+        // E5's generic HA-entity trigger -- haState is what
+        // HomeAssistantDiscoveryService.publishIfChanged() adds alongside
+        // the raw attrs, see that method's own doc.
+        if ("TELEMETRY".equals(event.eventType()) && event.payload().get("haState") != null) {
+            return event.sourceDeviceId() + " changed to " + event.payload().get("haState");
         }
         return event.sourceDeviceId() + ": " + event.eventType();
     }

@@ -607,4 +607,182 @@ class WorkflowRuleServiceTest {
 
         assertEquals(2, eventPublisher.published.size(), "the cooldown has already elapsed, so it must run again");
     }
+
+    // ── Part E, 2026-08-21: real triggers from what devices actually report ──
+    // Payload field names are each confirmed against a live-verified
+    // docs/ontology.yaml device entry (see WorkflowRuleService's own class
+    // doc) -- not guessed.
+
+    private WorkflowRule notifyOnlyWorkflow(String workflowId, String triggerDefinitionId, String resetMode) {
+        return new WorkflowRule(workflowId, "Test: " + triggerDefinitionId, "cabin", "DEVICE_EVENT",
+            triggerDefinitionId, null, true, resetMode, null, Instant.now(), "test",
+            List.of(new WorkflowAction(workflowId + "-a1", workflowId, 0, "notify_critical", null, Map.of(), null)));
+    }
+
+    private CabinEvent telemetry(String deviceId, Map<String, Object> payload) {
+        return new CabinEvent(UUID.randomUUID().toString(), deviceId, "TELEMETRY", "INFO", Instant.now(), payload);
+    }
+
+    @Test
+    void doorContactOpenedAndClosedFireAndAutoClearIndependentWorkflows() {
+        // contact:false = open -- zigbee_door_front_contact's own docs/ontology.yaml definition.
+        ruleStore.save(notifyOnlyWorkflow("wf-door", "trigger_door_contact_opened", "AUTO_ON_CLEAR"));
+        service.evaluate(telemetry("z2m-door_front_contact", Map.of("contact", false)));
+        assertTrue(executionStore.findActive("wf-door").isPresent());
+
+        service.evaluate(telemetry("z2m-door_front_contact", Map.of("contact", true)));
+
+        assertTrue(executionStore.findActive("wf-door").isEmpty());
+    }
+
+    @Test
+    void motionDetectedAndClearedFireAndAutoClearIndependentWorkflows() {
+        ruleStore.save(notifyOnlyWorkflow("wf-motion", "trigger_motion_detected", "AUTO_ON_CLEAR"));
+        service.evaluate(telemetry("z2m-motion_entry", Map.of("occupancy", true)));
+        assertTrue(executionStore.findActive("wf-motion").isPresent());
+
+        service.evaluate(telemetry("z2m-motion_entry", Map.of("occupancy", false)));
+
+        assertTrue(executionStore.findActive("wf-motion").isEmpty());
+    }
+
+    @Test
+    void tamperDetectedAndClearedFireAndAutoClearIndependentWorkflows() {
+        ruleStore.save(notifyOnlyWorkflow("wf-tamper", "trigger_tamper_detected", "AUTO_ON_CLEAR"));
+        service.evaluate(telemetry("z2m-door_front_contact", Map.of("tamper", true)));
+        assertTrue(executionStore.findActive("wf-tamper").isPresent());
+
+        service.evaluate(telemetry("z2m-door_front_contact", Map.of("tamper", false)));
+
+        assertTrue(executionStore.findActive("wf-tamper").isEmpty());
+    }
+
+    @Test
+    void batteryLowDetectedAndClearedFireAndAutoClearIndependentWorkflows() {
+        ruleStore.save(notifyOnlyWorkflow("wf-battery", "trigger_battery_low_detected", "AUTO_ON_CLEAR"));
+        service.evaluate(telemetry("z2m-leak_alarm_bathroom", Map.of("battery_low", true)));
+        assertTrue(executionStore.findActive("wf-battery").isPresent());
+
+        service.evaluate(telemetry("z2m-leak_alarm_bathroom", Map.of("battery_low", false)));
+
+        assertTrue(executionStore.findActive("wf-battery").isEmpty());
+    }
+
+    @Test
+    void plugTurnedOnAndOffFireAndAutoClearIndependentWorkflows() {
+        ruleStore.save(notifyOnlyWorkflow("wf-plug", "trigger_plug_turned_on", "AUTO_ON_CLEAR"));
+        service.evaluate(telemetry("z2m-heater_mech_room", Map.of("state", "ON")));
+        assertTrue(executionStore.findActive("wf-plug").isPresent());
+
+        service.evaluate(telemetry("z2m-heater_mech_room", Map.of("state", "OFF")));
+
+        assertTrue(executionStore.findActive("wf-plug").isEmpty());
+    }
+
+    @Test
+    void freezeRiskDetectedUsesAHysteresisBandNotASingleThreshold() {
+        ruleStore.save(notifyOnlyWorkflow("wf-freeze", "trigger_freeze_risk_detected", "AUTO_ON_CLEAR"));
+        service.evaluate(telemetry("z2m-temp_outside_lowest", Map.of("temperature", 31.0)));
+        assertTrue(executionStore.findActive("wf-freeze").isPresent());
+
+        service.evaluate(telemetry("z2m-temp_outside_lowest", Map.of("temperature", 33.0)));
+        assertTrue(executionStore.findActive("wf-freeze").isPresent(),
+            "33°F is above the 32°F detect threshold but below the 36°F clear threshold -- must not flap clear here");
+
+        service.evaluate(telemetry("z2m-temp_outside_lowest", Map.of("temperature", 36.0)));
+        assertTrue(executionStore.findActive("wf-freeze").isEmpty());
+    }
+
+    @Test
+    void blinkMotionDetectedAndClearedFireAndAutoClearIndependentWorkflows() {
+        ruleStore.save(notifyOnlyWorkflow("wf-blink", "trigger_blink_motion_detected", "AUTO_ON_CLEAR"));
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "home_aldrich_front", "MOTION_ON", "INFO",
+            Instant.now(), Map.of("camera", "home_aldrich_front")));
+        assertTrue(executionStore.findActive("wf-blink").isPresent());
+
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "home_aldrich_front", "MOTION_OFF", "INFO",
+            Instant.now(), Map.of("camera", "home_aldrich_front")));
+
+        assertTrue(executionStore.findActive("wf-blink").isEmpty());
+    }
+
+    @Test
+    void securityArmedAndDisarmedFireAndAutoClearIndependentWorkflows() {
+        ruleStore.save(notifyOnlyWorkflow("wf-armed", "trigger_security_armed", "AUTO_ON_CLEAR"));
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "security:cabin", "SECURITY_ARMED_CHANGED",
+            "INFO", Instant.now(), Map.of("armed", true, "location", "cabin")));
+        assertTrue(executionStore.findActive("wf-armed").isPresent());
+
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "security:cabin", "SECURITY_ARMED_CHANGED",
+            "INFO", Instant.now(), Map.of("armed", false, "location", "cabin")));
+
+        assertTrue(executionStore.findActive("wf-armed").isEmpty());
+    }
+
+    @Test
+    void repeatedArmedRepublishOnHaRestartDoesNotReFireAnActiveWorkflow() {
+        // handleArmedTopic() republishes on every HA restart, not just a
+        // real toggle (MqttBridgeService's own doc comment) -- confirms
+        // findActive()'s edge-detection guard protects this exactly like
+        // it already does for repeated water-leak telemetry.
+        ruleStore.save(notifyOnlyWorkflow("wf-armed-repeat", "trigger_security_armed", "AUTO_ON_CLEAR"));
+        CabinEvent armedEvent = new CabinEvent(UUID.randomUUID().toString(), "security:cabin",
+            "SECURITY_ARMED_CHANGED", "INFO", Instant.now(), Map.of("armed", true, "location", "cabin"));
+        service.evaluate(armedEvent);
+
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "security:cabin",
+            "SECURITY_ARMED_CHANGED", "INFO", Instant.now(), Map.of("armed", true, "location", "cabin")));
+
+        assertEquals(1, executionStore.recentFor("wf-armed-repeat", 10).size(),
+            "the redelivered 'still armed' message must not create a second execution");
+    }
+
+    @Test
+    void presenceArrivedAndDepartedFireAndAutoClearIndependentWorkflows() {
+        ruleStore.save(notifyOnlyWorkflow("wf-presence", "trigger_presence_arrived", "AUTO_ON_CLEAR"));
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "presence:cabin:nate", "PRESENCE_CHANGED",
+            "INFO", Instant.now(), Map.of("present", true, "personId", "nate", "location", "cabin")));
+        assertTrue(executionStore.findActive("wf-presence").isPresent());
+
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "presence:cabin:nate", "PRESENCE_CHANGED",
+            "INFO", Instant.now(), Map.of("present", false, "personId", "nate", "location", "cabin")));
+
+        assertTrue(executionStore.findActive("wf-presence").isEmpty());
+    }
+
+    @Test
+    void aTelemetryEventWithTwoTrueConditionsFiresBothMatchingWorkflowsNotJustTheFirst() {
+        // The real bug this pass's resolveTriggerDefinitionIds() (plural)
+        // fix closes: Zigbee2MqttAdapter.handleDeviceState() merges each
+        // new message onto the device's entire existing attribute map, so
+        // one TELEMETRY event can legitimately carry more than one
+        // already-true condition -- the old single-String-return version
+        // would have silently fired only whichever check came first.
+        ruleStore.save(notifyOnlyWorkflow("wf-multi-leak", "trigger_water_leak_detected", "AUTO_ON_CLEAR"));
+        ruleStore.save(notifyOnlyWorkflow("wf-multi-tamper", "trigger_tamper_detected", "AUTO_ON_CLEAR"));
+
+        service.evaluate(telemetry("z2m-leak_mech_room", Map.of("water_leak", true, "tamper", true)));
+
+        assertTrue(executionStore.findActive("wf-multi-leak").isPresent(), "the water-leak workflow must fire");
+        assertTrue(executionStore.findActive("wf-multi-tamper").isPresent(), "the tamper workflow must ALSO fire, not be silently skipped");
+        assertEquals(2, eventPublisher.published.size());
+    }
+
+    @Test
+    void haEntityStateChangedTriggerOnlyMatchesHaSourcedDevicesNotZigbeeOnes() {
+        // "ha-" prefix matches HomeAssistantDiscoveryService's own
+        // generatedId convention -- confirms this generic trigger can
+        // never accidentally match a z2m- device's ordinary telemetry,
+        // even when the payload shape is otherwise identical.
+        ruleStore.save(new WorkflowRule("wf-ha-generic", "Kidde generic", "cabin", "DEVICE_EVENT",
+            "trigger_ha_entity_state_changed", "ha-cabin-sensor-kidde_co", true, "MANUAL_ONLY", null,
+            Instant.now(), "test",
+            List.of(new WorkflowAction("wf-ha-generic-a1", "wf-ha-generic", 0, "notify_critical", null, Map.of(), null))));
+
+        service.evaluate(telemetry("z2m-leak_mech_room", Map.of("co_ppm", 12))); // same-shaped payload, wrong source
+        assertTrue(eventPublisher.published.isEmpty(), "a Zigbee device's telemetry must never match the HA-only generic trigger");
+
+        service.evaluate(telemetry("ha-cabin-sensor-kidde_co", Map.of("co_ppm", 12)));
+        assertEquals(1, eventPublisher.published.size());
+    }
 }

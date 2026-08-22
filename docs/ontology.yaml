@@ -3522,14 +3522,34 @@ elements:
       switch.loonie_mc_frigerton_partymode,
       switch.loonie_mc_frigerton_top_zone_supercool,
       switch.loonie_mc_frigerton_bottom_zone_superfrost.
+    delivery_mode: pull
     relationships:
       - target: platform_secret
         type: depends_on
         cardinality: "1:1" # SmartDevice account credentials, entered via HA's config flow UI, not stored in this repo
+      - target: trigger_liebherr_door_open
+        type: related_to
+        cardinality: "N:N"
     relates_to:
       ui_components: []
       elements: [platform_secret]
     notes: >
+      delivery_mode: pull -- added 2026-08-21, per the user's own
+      correction: this integration is pull-only (HA's own `iot_class:
+      cloud_polling` classification confirms it, not inferred). The
+      user's real-world knowledge is that the fridge ALSO sends a
+      genuine push door-open alert through a separate channel (Liebherr's
+      own app), distinct from this HA integration's 9 pollable entities
+      -- worth noting precisely: none of those 9 (2 setpoints, 1 icemaker
+      mode, 2 zone sensors, 4 switches, listed above) is a door-open
+      sensor at all, so that push alert is confirmed NOT to be
+      re-exposed through this `liebherr` HA integration in any form
+      today, pull or push. See trigger_liebherr_door_open's own notes for
+      the real, still-open gap this leaves (no bridge exists for a
+      channel HA doesn't even carry) rather than the more common "push
+      exists in HA but isn't wired yet" story trigger_kidde_co_alarm
+      documents.
+
       NOT YET REGISTERED, 2026-08-02 [SUPERSEDED, see below]. Requires
       the user's own SmartDevice account login through HA's config flow
       UI (Settings → Devices & Services → Add Integration → Liebherr) —
@@ -3615,6 +3635,7 @@ elements:
       general air-quality indicators, not oxygen saturation. No amount
       of further integration work will produce an O2 reading because the
       hardware doesn't have that sensor.
+    delivery_mode: both
     relationships:
       - target: platform_secret
         type: depends_on
@@ -3622,10 +3643,24 @@ elements:
       - target: smart_appliance_fridge_liebherr
         type: related_to
         cardinality: "N:N" # both required the same HA_TOKEN discovery-gap fix on the same day, see that entity's notes
+      - target: trigger_kidde_co_alarm
+        type: related_to
+        cardinality: "N:N"
     relates_to:
       ui_components: []
       elements: [platform_secret]
     notes: >
+      delivery_mode: both -- added 2026-08-21, per the user's own
+      correction that this isn't one-to-one: the 20 real entities above
+      include real sensor values (pull, e.g. co_ppm/temperature/humidity)
+      AND a real "binary sensor for CO alarm" the user confirms also
+      pushes a native app alert -- unlike smart_appliance_fridge_liebherr,
+      where the equivalent alert signal (door-open) has no HA entity at
+      all. The pull half is real today via
+      trigger_ha_entity_state_changed; the push half is
+      trigger_kidde_co_alarm, still a candidate -- see that entity's own
+      notes for exactly what's confirmed vs. still open.
+
       REAL INCIDENT preceding this fix, worth keeping so it isn't
       rediscovered as a mystery later: `sensor.kidde_air_quality_alarm_*`
       (3 entities: temperature, humidity, a CO binary_sensor) already
@@ -7572,6 +7607,7 @@ elements:
     ui_display_name: "Water leak detected"
     applies_to_device_type: [WATER_LEAK_SENSOR]
     applies_to_capability: ALARM
+    delivery_mode: push
     trigger_source: { event_type_pattern: "TELEMETRY", payload_field: water_leak }
     predicate: { op: is_true }
     rendering:
@@ -7620,6 +7656,7 @@ elements:
     ui_display_name: "Water leak cleared"
     applies_to_device_type: [WATER_LEAK_SENSOR]
     applies_to_capability: ALARM
+    delivery_mode: push
     trigger_source: { event_type_pattern: "TELEMETRY", payload_field: water_leak }
     predicate: { op: is_false }
     rendering:
@@ -7909,6 +7946,7 @@ elements:
     ui_display_name: "Camera detects something"
     applies_to_device_type: [CAMERA]
     applies_to_capability: STREAM
+    delivery_mode: push
     trigger_source: { event_type_pattern: "DETECTION_NEW", payload_field: label }
     predicate: { op: is_present }
     rendering:
@@ -8389,3 +8427,928 @@ elements:
     notes: >
       NOT INSTALLED -- see action_water_heater_switch_on's notes, which
       apply here identically.
+
+  # ─── Part E, 2026-08-21: real triggers from what devices actually ──────
+  # report. User asked why "Specifically" only ever offered water-leak/
+  # camera despite 13 real paired devices and cameras already reporting
+  # far more -- these entries are the answer, each payload field
+  # confirmed against a live-verified zigbee_* device entry elsewhere in
+  # this file (cited per entry below), matching
+  # WorkflowRuleService.FIELD_TRIGGERS exactly (schema version 0.1.0,
+  # lifecycle_status: used -- unlike Part C's candidates above, every one
+  # of these is real, wired, and covered by a real
+  # WorkflowRuleServiceTest case, not design-ahead documentation).
+  #
+  # New convention introduced here: delivery_mode (push | pull | both) --
+  # per the user's own correction mid-session: "make sure there's
+  # metadata for pulling vs push... this isn't one-to-one, it's multiple
+  # types of alerts and directional services." Every entry below is
+  # push (MQTT-delivered) except trigger_ha_entity_state_changed (pull,
+  # HA REST polling) -- see that entry's own notes for what pull-only
+  # actually costs (latency, and the hard ceiling that it can only ever
+  # see what HA itself already tracks).
+
+  - id: trigger_door_contact_opened
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS, WorkflowRuleServiceTest.doorContactOpenedAndClosedFireAndAutoClearIndependentWorkflows"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Door contact opened"
+    applies_to_device_type: [CONTACT_SENSOR]
+    applies_to_capability: ACCESS_CONTROL
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: contact }
+    predicate: { op: is_false }
+    rendering:
+      semantic: "A door contact sensor reports open"
+      systems: Trigger — Door Contact Opened
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['contact']==false"
+      compliance: (not shown)
+    definition: >
+      Fires when any CONTACT_SENSOR reports contact=false (open) --
+      contact:false = open is zigbee_door_front_contact's own documented
+      field convention, not a guess. Matches by device TYPE, same
+      trigger_water_leak_detected precedent; triggerDeviceId scopes a
+      workflow to one specific door.
+    relationships:
+      - target: zigbee_door_front_contact
+        type: consumed_by
+        cardinality: "N:1"
+      - target: zigbee_door_second_contact
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [zigbee_door_front_contact, zigbee_door_second_contact]
+    notes: >
+      contact:false is already one of AlertSeverityClassifier's WARN
+      conditions (event_severity) -- this trigger is the first thing
+      that lets a human actually build a workflow reacting to it, not
+      just see it logged.
+
+  - id: trigger_door_contact_closed
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Door contact closed"
+    applies_to_device_type: [CONTACT_SENSOR]
+    applies_to_capability: ACCESS_CONTROL
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: contact }
+    predicate: { op: is_true }
+    rendering:
+      semantic: "A door contact sensor reports closed"
+      systems: Trigger — Door Contact Closed
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['contact']==true"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_door_contact_opened -- see that
+      entity's own definition. A separate workflow can be built against
+      this id directly (e.g. "notify when the door closes again"), same
+      pattern trigger_water_leak_cleared already established.
+    relationships:
+      - target: trigger_door_contact_opened
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_door_contact_opened]
+    notes: >
+      Also what auto-clears an AUTO_ON_CLEAR workflow built against
+      trigger_door_contact_opened (WorkflowRuleService.handleTriggerCleared()).
+
+  - id: trigger_motion_detected
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS, WorkflowRuleServiceTest.motionDetectedAndClearedFireAndAutoClearIndependentWorkflows"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Motion detected"
+    applies_to_device_type: [MOTION_SENSOR]
+    applies_to_capability: PRESENCE
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: occupancy }
+    predicate: { op: is_true }
+    rendering:
+      semantic: "A PIR motion sensor reports occupancy"
+      systems: Trigger — Motion Detected
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['occupancy']==true"
+      compliance: (not shown)
+    definition: >
+      Fires when any MOTION_SENSOR reports occupancy=true -- the
+      Zigbee PIR sensor's own field (zigbee_motion_entry's documented
+      shape), distinct from trigger_camera_detection (Frigate's own
+      vision-based DETECTION_NEW) and trigger_blink_motion_detected
+      (Blink's PIR-style MOTION_ON) -- three independent motion signals
+      from three different sources, each its own trigger on purpose.
+    relationships:
+      - target: zigbee_motion_entry
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [zigbee_motion_entry]
+    notes: >
+      occupancy is informational (INFO) in AlertSeverityClassifier, not
+      one of its WARN/CRITICAL conditions (see zigbee_motion_entry's own
+      notes) -- this trigger doesn't change that, it just makes the raw
+      signal buildable-against.
+
+  - id: trigger_motion_cleared
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Motion cleared"
+    applies_to_device_type: [MOTION_SENSOR]
+    applies_to_capability: PRESENCE
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: occupancy }
+    predicate: { op: is_false }
+    rendering:
+      semantic: "A PIR motion sensor reports no occupancy"
+      systems: Trigger — Motion Cleared
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['occupancy']==false"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_motion_detected -- see that entity's
+      own definition.
+    relationships:
+      - target: trigger_motion_detected
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_motion_detected]
+    notes: >
+      SNZB-03PR2 sensors typically report occupancy=false on their own
+      built-in timeout, not necessarily "the room is truly empty" --
+      workflows built against this should account for that, same
+      honesty this project already applies elsewhere to sensor
+      approximations (see automation_alert_see_think_act's own HONEST
+      SCOPE note on presence-as-proxy).
+
+  - id: trigger_tamper_detected
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS, WorkflowRuleServiceTest.tamperDetectedAndClearedFireAndAutoClearIndependentWorkflows"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Tamper detected"
+    applies_to_device_type: []
+    applies_to_capability: ALARM
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: tamper }
+    predicate: { op: is_true }
+    rendering:
+      semantic: "A device reports its tamper switch tripped"
+      systems: Trigger — Tamper Detected
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['tamper']==true"
+      compliance: (not shown)
+    definition: >
+      Fires on tamper=true from any device reporting it -- not
+      device-TYPE-scoped like water-leak/contact/motion, since tamper is
+      a generic Zigbee exposes property several device types can carry
+      (zigbee_door_front_contact's own field list includes it). No
+      applies_to_device_type filter is applied on the creation form's
+      device-scoping picker for this reason.
+    relationships:
+      - target: zigbee_door_front_contact
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [zigbee_door_front_contact]
+    notes: >
+      tamper=true is already one of AlertSeverityClassifier's WARN
+      conditions (event_severity) -- same relationship
+      trigger_door_contact_opened has to contact:false.
+
+  - id: trigger_tamper_cleared
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Tamper cleared"
+    applies_to_device_type: []
+    applies_to_capability: ALARM
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: tamper }
+    predicate: { op: is_false }
+    rendering:
+      semantic: "A device reports its tamper switch reset"
+      systems: Trigger — Tamper Cleared
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['tamper']==false"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_tamper_detected -- see that entity's
+      own definition.
+    relationships:
+      - target: trigger_tamper_detected
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_tamper_detected]
+    notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_tamper_detected.
+
+  - id: trigger_battery_low_detected
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS, WorkflowRuleServiceTest.batteryLowDetectedAndClearedFireAndAutoClearIndependentWorkflows"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Battery low"
+    applies_to_device_type: []
+    applies_to_capability: TELEMETRY
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: battery_low }
+    predicate: { op: is_true }
+    rendering:
+      semantic: "A device reports its own battery is low"
+      systems: Trigger — Battery Low
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['battery_low']==true"
+      compliance: (not shown)
+    definition: >
+      Fires on battery_low=true from any battery-powered device
+      reporting it -- zigbee_leak_alarm_bathroom's own field list
+      confirms this is a real, live-verified field, not guessed. Not
+      device-TYPE-scoped, same reasoning as trigger_tamper_detected.
+    relationships:
+      - target: zigbee_leak_alarm_bathroom
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [zigbee_leak_alarm_bathroom]
+    notes: >
+      A maintenance-tier signal, not a safety one -- deliberately still
+      wired (the user asked for all of it, not just the safety-relevant
+      subset) rather than assumed uninteresting. Worth a real product
+      decision later on whether this should default to a lower severity
+      than water-leak/tamper's CRITICAL/WARN tiers when acted on with
+      notify_critical; not changed here, out of scope for this pass.
+
+  - id: trigger_battery_low_cleared
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Battery no longer low"
+    applies_to_device_type: []
+    applies_to_capability: TELEMETRY
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: battery_low }
+    predicate: { op: is_false }
+    rendering:
+      semantic: "A device reports its battery is no longer low"
+      systems: Trigger — Battery No Longer Low
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['battery_low']==false"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_battery_low_detected -- fires once the
+      battery is replaced and the device next reports in.
+    relationships:
+      - target: trigger_battery_low_detected
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_battery_low_detected]
+    notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_battery_low_detected.
+
+  - id: trigger_plug_turned_on
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS, WorkflowRuleServiceTest.plugTurnedOnAndOffFireAndAutoClearIndependentWorkflows"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Device turned on"
+    applies_to_device_type: [POWER_METER]
+    applies_to_capability: COMMAND
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: state }
+    predicate: { op: equals, value: "ON" }
+    rendering:
+      semantic: "A smart plug/switch reports its state as ON"
+      systems: Trigger — Device Turned On
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['state']=='ON'"
+      compliance: (not shown)
+    definition: >
+      Fires when a COMMAND-capable plug/switch (zigbee_heater_mech_room,
+      zigbee_smart_switch_breaker_box -- both documented reporting
+      state on/off) reports ON, whether that ON was caused by a person,
+      a workflow's own action, or CabinAutomations' separate freeze
+      logic. Not scoped to "caused by a workflow" -- any ON reading
+      matches, same principle every other field trigger here uses.
+    relationships:
+      - target: zigbee_heater_mech_room
+        type: consumed_by
+        cardinality: "N:1"
+      - target: zigbee_smart_switch_breaker_box
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [zigbee_heater_mech_room, zigbee_smart_switch_breaker_box]
+    notes: >
+      Also matches action_main_water_valve_open's own state=ON
+      confirmation telemetry, since the valve reports the same `state`
+      field -- a workflow scoped via triggerDeviceId to a specific plug
+      avoids any ambiguity; left unscoped is a real, if narrow, "notify
+      on ANY state=ON device" surface, not a bug.
+
+  - id: trigger_plug_turned_off
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FIELD_TRIGGERS"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Device turned off"
+    applies_to_device_type: [POWER_METER]
+    applies_to_capability: COMMAND
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: state }
+    predicate: { op: equals, value: "OFF" }
+    rendering:
+      semantic: "A smart plug/switch reports its state as OFF"
+      systems: Trigger — Device Turned Off
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['state']=='OFF'"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_plug_turned_on -- see that entity's
+      own definition.
+    relationships:
+      - target: trigger_plug_turned_on
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_plug_turned_on]
+    notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_plug_turned_on.
+
+  - id: trigger_freeze_risk_detected
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FREEZE_RISK_THRESHOLD_F, WorkflowRuleServiceTest.freezeRiskDetectedUsesAHysteresisBandNotASingleThreshold"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Freeze risk (below 32°F)"
+    applies_to_device_type: [TEMPERATURE_SENSOR]
+    applies_to_capability: TELEMETRY
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: temperature }
+    predicate: { op: less_than, value: 32.0 }
+    rendering:
+      semantic: "A temperature probe reports below freezing"
+      systems: Trigger — Freeze Risk Detected
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['temperature'] instanceof Number < 32.0"
+      compliance: (not shown)
+    definition: >
+      Fires when any TEMPERATURE_SENSOR (zigbee_temp_outside_lowest/
+      zigbee_temp_mech_room/zigbee_temp_kitchen, all documented reporting
+      `temperature`) drops below 32°F. Unlike the boolean field triggers
+      above, this is a numeric threshold, not a field-equality match --
+      handled as an explicit check in WorkflowRuleService.
+      resolveTriggerDefinitionIds(), not the declarative FIELD_TRIGGERS
+      table. This is a real, user-buildable WorkflowRuleService trigger,
+      separate from AutomationRuleService's own pre-existing, separate,
+      hardcoded 38°F freeze-risk rule (docs/ontology.yaml's
+      automation_alert_see_think_act) and from CabinAutomations'
+      separate leak_freeze_automations.yaml (a different repo entirely) --
+      three independent freeze-risk mechanisms that happen to exist for
+      historical reasons, not one unified system. Worth a future
+      reconciliation pass, not attempted here.
+    relationships:
+      - target: zigbee_temp_outside_lowest
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [zigbee_temp_outside_lowest]
+    notes: >
+      Uses a 4°F hysteresis band against trigger_freeze_risk_cleared's
+      36°F clear threshold, not a single 32.0°F boundary both directions
+      -- avoids rapid detected/cleared flapping right at freezing. See
+      WorkflowRuleService.FREEZE_RISK_THRESHOLD_F/FREEZE_RISK_CLEAR_THRESHOLD_F's
+      own code comment.
+
+  - id: trigger_freeze_risk_cleared
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.FREEZE_RISK_CLEAR_THRESHOLD_F"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Freeze risk cleared (36°F or above)"
+    applies_to_device_type: [TEMPERATURE_SENSOR]
+    applies_to_capability: TELEMETRY
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: temperature }
+    predicate: { op: greater_than_or_equal, value: 36.0 }
+    rendering:
+      semantic: "A temperature probe reports back at or above 36°F"
+      systems: Trigger — Freeze Risk Cleared
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['temperature'] instanceof Number >= 36.0"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_freeze_risk_detected -- see that
+      entity's own definition and notes for the hysteresis reasoning.
+    relationships:
+      - target: trigger_freeze_risk_detected
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_freeze_risk_detected]
+    notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_freeze_risk_detected.
+
+  - id: trigger_blink_motion_detected
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.resolveTriggerDefinitionIds() MOTION_ON case, WorkflowRuleServiceTest.blinkMotionDetectedAndClearedFireAndAutoClearIndependentWorkflows"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Camera motion detected (Blink)"
+    applies_to_device_type: [CAMERA]
+    applies_to_capability: STREAM
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "MOTION_ON" }
+    predicate: { op: is_present }
+    rendering:
+      semantic: "A Blink camera's own PIR motion sensor trips"
+      systems: Trigger — Blink Motion Detected
+      technical: "CabinEvent.eventType()=='MOTION_ON' (MqttBridgeService.handleCameraTopic())"
+      compliance: (not shown)
+    definition: >
+      Fires on Blink's own MOTION_ON, a distinct CabinEvent.eventType()
+      value (not a payload field, unlike the FIELD_TRIGGERS-table
+      triggers above) -- a different signal from Frigate's vision-based
+      trigger_camera_detection and Zigbee's PIR-based
+      trigger_motion_detected. AldrichFront (home) is the real Blink
+      camera on this instance today.
+    relationships:
+      - target: trigger_camera_detection
+        type: related_to
+        cardinality: "N:N"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      Given clear-signal treatment (paired with trigger_blink_motion_cleared)
+      rather than camera-detection's discrete no-clear shape, specifically
+      so a repeated MOTION_ON burst during one motion session is
+      suppressed by the same findActive() edge-detection guard
+      trigger_water_leak_detected already relies on, rather than firing
+      once per ping.
+
+  - id: trigger_blink_motion_cleared
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "WorkflowRuleService.resolveClearedTriggerDefinitionIds() MOTION_OFF case"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Camera motion cleared (Blink)"
+    applies_to_device_type: [CAMERA]
+    applies_to_capability: STREAM
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "MOTION_OFF" }
+    predicate: { op: is_present }
+    rendering:
+      semantic: "A Blink camera's own PIR motion sensor resets"
+      systems: Trigger — Blink Motion Cleared
+      technical: "CabinEvent.eventType()=='MOTION_OFF' (MqttBridgeService.handleCameraTopic())"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_blink_motion_detected -- see that
+      entity's own definition.
+    relationships:
+      - target: trigger_blink_motion_detected
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_blink_motion_detected]
+    notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_blink_motion_detected.
+
+  - id: trigger_security_armed
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "MqttBridgeService.handleArmedTopic(), WorkflowRuleServiceTest.securityArmedAndDisarmedFireAndAutoClearIndependentWorkflows"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Armed away"
+    applies_to_device_type: []
+    applies_to_capability: (not device-scoped -- see notes)
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "SECURITY_ARMED_CHANGED", payload_field: armed }
+    predicate: { op: is_true }
+    rendering:
+      semantic: "The armed-away state changes to armed"
+      systems: Trigger — Armed Away
+      technical: "CabinEvent.eventType()=='SECURITY_ARMED_CHANGED' AND payload['armed']==true"
+      compliance: (not shown)
+    definition: >
+      Fires when {location}/security/armed_away (real, HA-published, see
+      automation_cabin_security_publish_arm_state) reports ON. Before
+      2026-08-21 this only ever updated SecurityStateRegistry
+      (MqttBridgeService.handleArmedTopic()) -- never published a
+      CabinEvent, so WorkflowRuleService could never react to it. Now
+      does, additively (the existing registry update/toolbar SecurityBadge
+      are unchanged).
+    relationships:
+      - target: automation_cabin_security_publish_arm_state
+        type: derived_from
+        cardinality: "N:1"
+      - target: active_alert_condition
+        type: related_to
+        cardinality: "N:N"
+    relates_to:
+      ui_components: []
+      elements: [automation_cabin_security_publish_arm_state]
+    notes: >
+      This topic republishes on every HA restart, not just a real toggle
+      (see MqttBridgeService.handleArmedTopic()'s own doc comment) -- a
+      repeat "armed" message can't spuriously re-fire an already-active
+      workflow because findActive()'s edge-detection guard already
+      protects this exactly like it protects repeated water-leak
+      telemetry (see WorkflowRuleServiceTest.
+      repeatedArmedRepublishOnHaRestartDoesNotReFireAnActiveWorkflow).
+      sourceDeviceId is a synthetic "security:{location}" id, not a real
+      DeviceRegistry entry -- armed state isn't a device.
+
+  - id: trigger_security_disarmed
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "MqttBridgeService.handleArmedTopic()"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Disarmed"
+    applies_to_device_type: []
+    applies_to_capability: (not device-scoped -- see trigger_security_armed's notes)
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "SECURITY_ARMED_CHANGED", payload_field: armed }
+    predicate: { op: is_false }
+    rendering:
+      semantic: "The armed-away state changes to disarmed"
+      systems: Trigger — Disarmed
+      technical: "CabinEvent.eventType()=='SECURITY_ARMED_CHANGED' AND payload['armed']==false"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_security_armed -- see that entity's
+      own definition.
+    relationships:
+      - target: trigger_security_armed
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_security_armed]
+    notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_security_armed.
+
+  - id: trigger_presence_arrived
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "MqttBridgeService.handlePresenceTopic(), WorkflowRuleServiceTest.presenceArrivedAndDepartedFireAndAutoClearIndependentWorkflows"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Someone arrived"
+    applies_to_device_type: []
+    applies_to_capability: (not device-scoped -- see notes)
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "PRESENCE_CHANGED", payload_field: present }
+    predicate: { op: is_true }
+    rendering:
+      semantic: "A person's presence signal changes to home"
+      systems: Trigger — Presence Arrived
+      technical: "CabinEvent.eventType()=='PRESENCE_CHANGED' AND payload['present']==true"
+      compliance: (not shown)
+    definition: >
+      Fires when {location}/presence/{personId} reports "home". Before
+      2026-08-21 this only ever updated PresenceSignalRegistry
+      (MqttBridgeService.handlePresenceTopic()) -- never published a
+      CabinEvent. Now does, additively (the existing
+      presenceService.recomputeFromSignals() call and the toolbar
+      presence pin it feeds are unchanged).
+    relationships:
+      - target: active_presence_profile
+        type: related_to
+        cardinality: "N:N"
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      sourceDeviceId is a synthetic "presence:{location}:{personId}" id,
+      not a real DeviceRegistry entry -- presence signals aren't devices,
+      same reasoning as trigger_security_armed's sourceDeviceId. Payload
+      carries personId/location so a real notification can name who
+      arrived, not just "someone."
+
+  - id: trigger_presence_departed
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "MqttBridgeService.handlePresenceTopic()"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Someone departed"
+    applies_to_device_type: []
+    applies_to_capability: (not device-scoped -- see trigger_presence_arrived's notes)
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "PRESENCE_CHANGED", payload_field: present }
+    predicate: { op: is_false }
+    rendering:
+      semantic: "A person's presence signal changes to not_home"
+      systems: Trigger — Presence Departed
+      technical: "CabinEvent.eventType()=='PRESENCE_CHANGED' AND payload['present']==false"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_presence_arrived -- see that entity's
+      own definition. Per-person, not "everyone left" -- a household
+      with two people at one location produces one PRESENCE_CHANGED per
+      person, not an aggregate.
+    relationships:
+      - target: trigger_presence_arrived
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_presence_arrived]
+    notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_presence_arrived.
+
+  - id: trigger_ha_entity_state_changed
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "HomeAssistantDiscoveryService.publishIfChanged(), WorkflowRuleService.resolveTriggerDefinitionIds() ha- prefix case, WorkflowRuleServiceTest.haEntityStateChangedTriggerOnlyMatchesHaSourcedDevicesNotZigbeeOnes"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Home Assistant entity changed"
+    applies_to_device_type: []
+    applies_to_capability: (any -- deliberately generic, see notes)
+    delivery_mode: pull
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: "(any -- matches on sourceDeviceId's 'ha-' prefix, not a specific field)" }
+    predicate: { op: is_present }
+    rendering:
+      semantic: "Any Home Assistant-polled entity's state or attributes changed since the last poll"
+      systems: Trigger — HA Entity State Changed
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND sourceDeviceId starts with 'ha-' (HomeAssistantDiscoveryService's own generatedId convention)"
+      compliance: (not shown)
+    definition: >
+      The generic answer to Kidde CO/air-quality, the Liebherr fridge,
+      and every other HA-polled entity having had literally no event
+      pipeline before this: HomeAssistantDiscoveryService.discoverLocation()
+      already refreshes every HA entity's live state on a ~60s cycle
+      (cabin.homeassistant.discovery-interval-ms), but never diffed
+      against the previous poll or published anything -- see that
+      service's own publishIfChanged() doc. Deliberately unconditional on
+      payload content (unlike every other trigger above) -- real
+      device-scoping happens the same way trigger_camera_detection's own
+      notes already document: a workflow with a null triggerDeviceId
+      matches ANY ha-*-prefixed device (broad, real, but almost certainly
+      too noisy to be useful on its own); a real id scopes to one entity.
+      Discrete, no clear-signal pair -- each change is its own occurrence,
+      same shape as trigger_camera_detection, not the state+clear shape
+      the field triggers above use.
+    relationships:
+      - target: smart_appliance_co_air_quality_kidde
+        type: related_to
+        cardinality: "N:N"
+      - target: smart_appliance_fridge_liebherr
+        type: related_to
+        cardinality: "N:N"
+    relates_to:
+      ui_components: []
+      elements: [smart_appliance_co_air_quality_kidde, smart_appliance_fridge_liebherr]
+    notes: >
+      delivery_mode: pull, not push -- the one exception among this pass's
+      new triggers, and it matters: this can only ever see what HA itself
+      already polls, on this method's own ~60s cycle. It is not, and
+      cannot become, a true push channel -- a signal HA never tracks (a
+      manufacturer app's own native push notification with no
+      corresponding HA entity) stays invisible no matter how often this
+      polls. See smart_appliance_co_air_quality_kidde/
+      smart_appliance_fridge_liebherr's own new delivery_mode notes for
+      the real split this surfaced, and trigger_kidde_co_alarm/
+      trigger_liebherr_door_open below for the specific, still-candidate
+      named triggers this generic mechanism is a real, working (if
+      pull-latency-bound) stand-in for today. Also not verified against
+      live Kidde/Liebherr attribute payloads in this session -- if a
+      given integration's `attributes` includes something that
+      legitimately changes every poll (a raw timestamp, for instance),
+      this fires more often than a real "something changed" signal
+      should; confirm against a live instance before building anything
+      rate-sensitive against a specific entity.
+
+  # ─── E6: Kidde/Liebherr push alerts -- candidates, not wired ───────────
+  # Per the user's mid-session correction: Liebherr/Kidde each have a
+  # REAL push-capable alert channel (door-open, CO/air-quality alerts)
+  # separate from their ordinary pollable state, per the user's own
+  # domain knowledge of the real hardware. Nothing in this codebase
+  # bridges any HA-side push channel today (HomeAssistantAdapter/
+  # HomeAssistantDiscoveryService are pull-only) -- these two entities
+  # document the real, intended shape without claiming it's built.
+
+  - id: trigger_kidde_co_alarm
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Kidde CO alarm"
+    applies_to_device_type: [CO_ALARM]
+    applies_to_capability: ALARM
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "(undetermined -- see notes)" }
+    predicate: { op: is_true }
+    rendering:
+      semantic: "The Kidde CO alarm's own alert condition activates"
+      systems: Trigger — Kidde CO Alarm
+      technical: "(undetermined -- no push bridge exists yet, see notes)"
+      compliance: (not shown)
+    definition: >
+      Intended to fire on the Kidde HomeSafe integration's own CO-alarm
+      binary sensor (smart_appliance_co_air_quality_kidde documents "20
+      real entities... binary sensors for CO alarm, online/lost/
+      contact-lost, battery-low, and reset-flag") going active, via a
+      genuine push channel, not the ~60s pull cycle
+      trigger_ha_entity_state_changed is limited to.
+    relationships:
+      - target: smart_appliance_co_air_quality_kidde
+        type: derived_from
+        cardinality: "N:1"
+      - target: trigger_ha_entity_state_changed
+        type: related_to
+        cardinality: "N:N"
+    relates_to:
+      ui_components: []
+      elements: [smart_appliance_co_air_quality_kidde]
+    notes: >
+      NOT WIRED. Two real gaps, stated honestly rather than guessed
+      past: (1) the exact HA entity_id/attribute shape for the CO-alarm
+      binary_sensor specifically isn't confirmed against live source in
+      this session -- smart_appliance_co_air_quality_kidde's own
+      first_verified_live citation confirms the 20 entities exist, not
+      their individual entity_ids; (2) realizing the *push* half (not
+      just polling faster) needs a new HA automation on the live M920q
+      republishing onto MQTT, the same pattern
+      automation_cabin_security_publish_arm_state already proves out for
+      armed state -- that's the user's own follow-up action on real
+      hardware/HA config, not code buildable blind from here.
+      trigger_ha_entity_state_changed (this file) already gives a real,
+      working, pull-based path to build a Kidde-CO workflow today once
+      the exact entity_id is confirmed, at the cost of up to ~60s
+      latency and no true push guarantee.
+
+  - id: trigger_liebherr_door_open
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Liebherr fridge door open"
+    applies_to_device_type: [CONTACT_SENSOR]
+    applies_to_capability: ALARM
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "(undetermined -- see notes)" }
+    predicate: { op: is_true }
+    rendering:
+      semantic: "The Liebherr fridge's own door-open alert activates"
+      systems: Trigger — Liebherr Door Open
+      technical: "(undetermined -- no push bridge exists yet, see notes)"
+      compliance: (not shown)
+    definition: >
+      Intended to fire on the Liebherr fridge's own door-open alert,
+      via a genuine push channel (per the user's own domain knowledge:
+      "yes it can be polled (it's on and cooling) but there should be
+      push notifications from separate services on that same source too
+      for 'door alert'... when the door is open it definitely sends an
+      alert through the app") -- not the ~60s pull cycle
+      trigger_ha_entity_state_changed is limited to.
+    relationships:
+      - target: smart_appliance_fridge_liebherr
+        type: derived_from
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [smart_appliance_fridge_liebherr]
+    notes: >
+      NOT WIRED -- and a real notch worse than trigger_kidde_co_alarm's
+      gap, worth being precise about rather than reusing that entity's
+      wording unchanged: smart_appliance_fridge_liebherr's own
+      first_verified-live entity list (9 real entities: 2 setpoints, 1
+      icemaker mode, 2 zone sensors, 4 switches) has no door-open sensor
+      of any kind. This isn't "the entity_id needs confirming," it's
+      that the `liebherr` HA integration doesn't re-expose this signal
+      to HA at all, pull or push -- the door-open alert the user
+      describes reaches Liebherr's own app through a channel that never
+      touches HA, so trigger_ha_entity_state_changed's pull-based
+      generic mechanism has nothing to poll for this specific signal
+      even once wired. A real bridge for this one needs either (a) a
+      genuinely new integration path outside HA entirely (Liebherr's own
+      API/webhook, unresearched), or (b) confirming HA's `liebherr`
+      integration has since added a door-sensor entity in a newer
+      version than what was verified 2026-08-07 -- both real follow-up
+      research, not implementable from what's confirmed today.

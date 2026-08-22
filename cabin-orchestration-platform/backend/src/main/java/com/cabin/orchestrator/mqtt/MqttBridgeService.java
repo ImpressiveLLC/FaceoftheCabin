@@ -315,6 +315,19 @@ public class MqttBridgeService implements MqttCallback {
         boolean present = "home".equalsIgnoreCase(payload.trim());
         presenceSignalRegistry.record(location, personId, present);
         presenceService.recomputeFromSignals();
+        // Added 2026-08-21 -- this only ever updated PresenceSignalRegistry
+        // before, so WorkflowRuleService (which only reacts to real
+        // CabinEvents) had no way to see a presence change at all, real or
+        // otherwise. Additive only: the two calls above are untouched, so
+        // the toolbar presence pin/PresenceProfile derivation this feeds
+        // keeps working exactly as before this line existed.
+        // sourceDeviceId is a synthetic per-person id (not a real
+        // DeviceRegistry entry) -- presence signals aren't devices, but
+        // WorkflowRuleService.handleTriggerMatch()'s optional
+        // triggerDeviceId scoping still needs something stable to key on.
+        eventPublisher.publish(new CabinEvent(
+            UUID.randomUUID().toString(), "presence:" + location + ":" + personId, "PRESENCE_CHANGED",
+            "INFO", Instant.now(), Map.of("present", present, "personId", personId, "location", location)));
     }
 
     /**
@@ -330,6 +343,22 @@ public class MqttBridgeService implements MqttCallback {
     private void handleArmedTopic(String location, String payload) {
         boolean armed = "ON".equalsIgnoreCase(payload.trim());
         securityStateRegistry.record(location, armed);
+        // Added 2026-08-21 -- same reasoning as handlePresenceTopic()'s own
+        // new publish call: this only ever updated SecurityStateRegistry
+        // before, invisible to WorkflowRuleService. Additive only, the
+        // record() call above (and the toolbar SecurityBadge it feeds) is
+        // untouched. Real risk considered, not just assumed safe: this
+        // topic republishes on every HA restart, not just a real toggle
+        // (see this method's own doc comment) -- a repeat "armed" message
+        // with no real state change can't cause a spurious re-fire storm
+        // because trigger_security_armed's edge-detection (findActive() in
+        // WorkflowRuleService.handleTriggerMatch()) already suppresses a
+        // repeat detected-side match while a workflow's execution is still
+        // active, the same protection trigger_water_leak_detected already
+        // relies on for repeated telemetry.
+        eventPublisher.publish(new CabinEvent(
+            UUID.randomUUID().toString(), "security:" + location, "SECURITY_ARMED_CHANGED",
+            "INFO", Instant.now(), Map.of("armed", armed, "location", location)));
     }
 
     /**
