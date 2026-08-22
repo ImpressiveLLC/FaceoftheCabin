@@ -162,7 +162,14 @@ public class WorkflowRuleService {
         // description is dynamic (per-person), handled in
         // describeTriggeringEvent() rather than these static strings.
         new FieldTrigger("trigger_presence_arrived", "trigger_presence_departed", "PRESENCE_CHANGED",
-            "present", true, false, null, null)
+            "present", true, false, null, null),
+        // Added 2026-08-21 -- MqttBridgeService.handleKiddeCoAlarmTopic(),
+        // fed by the new cabin_security_publish_kidde_co_alarm HA
+        // automation (same allow-listed shell_command pattern as
+        // armed/presence). Was docs/ontology.yaml's trigger_kidde_co_alarm
+        // candidate until this shipped.
+        new FieldTrigger("trigger_kidde_co_alarm", "trigger_kidde_co_alarm_cleared", "KIDDE_CO_ALARM_CHANGED",
+            "alarm", true, false, "Kidde CO alarm active", "Kidde CO alarm cleared")
     );
 
     private static final Map<String, String> CLEARED_TRIGGER_IDS = buildClearedTriggerIds();

@@ -3658,8 +3658,9 @@ elements:
       where the equivalent alert signal (door-open) has no HA entity at
       all. The pull half is real today via
       trigger_ha_entity_state_changed; the push half is
-      trigger_kidde_co_alarm, still a candidate -- see that entity's own
-      notes for exactly what's confirmed vs. still open.
+      trigger_kidde_co_alarm, deployed 2026-08-21 -- see that entity's own
+      notes for exactly what's confirmed vs. still open (a live
+      end-to-end check after the HA restart that loads it).
 
       REAL INCIDENT preceding this fix, worth keeping so it isn't
       rediscovered as a mystery later: `sensor.kidde_air_quality_alarm_*`
@@ -9251,32 +9252,50 @@ elements:
     entity_type: owl:Class
     layer: backend
     primitive: false
-    schema_version: "0.1.0"
-    lifecycle_status: candidate
+    schema_version: "0.2.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "MqttBridgeService.handleKiddeCoAlarmTopic(), cabin_security_publish_kidde_co_alarm (HA automation), WorkflowRuleServiceTest.kiddeCoAlarmActiveAndClearedFireAndAutoClearIndependentWorkflows"
     data_class: conceptual
     data_type: owl:Class
-    ui_display_name: "Kidde CO alarm"
+    ui_display_name: "Kidde CO alarm active"
     applies_to_device_type: [CO_ALARM]
     applies_to_capability: ALARM
     delivery_mode: push
-    trigger_source: { event_type_pattern: "(undetermined -- see notes)" }
+    trigger_source: { event_type_pattern: "KIDDE_CO_ALARM_CHANGED", payload_field: alarm }
     predicate: { op: is_true }
     rendering:
       semantic: "The Kidde CO alarm's own alert condition activates"
       systems: Trigger — Kidde CO Alarm
-      technical: "(undetermined -- no push bridge exists yet, see notes)"
+      technical: "CabinEvent.eventType()=='KIDDE_CO_ALARM_CHANGED' AND payload['alarm']==true"
       compliance: (not shown)
     definition: >
-      Intended to fire on the Kidde HomeSafe integration's own CO-alarm
-      binary sensor (smart_appliance_co_air_quality_kidde documents "20
-      real entities... binary sensors for CO alarm, online/lost/
-      contact-lost, battery-low, and reset-flag") going active, via a
-      genuine push channel, not the ~60s pull cycle
-      trigger_ha_entity_state_changed is limited to.
+      Fires on the Kidde HomeSafe integration's real CO-alarm binary
+      sensor, entity_id
+      binary_sensor.living_room_kidde_co_temp_and_humidity_cabin_upstairs_co_alarm
+      -- confirmed directly against the M920q's own
+      .storage/core.entity_registry via SSH, not guessed, and distinct
+      from binary_sensor.kidde_air_quality_alarm_carbon_monoxide_alarm
+      (an older, separate, dead mqtt-platform entity --
+      smart_appliance_co_air_quality_kidde's own notes document why).
+      Real push channel, not the ~60s pull cycle
+      trigger_ha_entity_state_changed is limited to: a new HA automation
+      (cabin_security_publish_kidde_co_alarm,
+      infra/cabin-security/homeassistant/cabin_security.yaml) republishes
+      this entity's state to cabin/kidde/co_alarm through the same
+      allow-listed shell_command pattern
+      automation_cabin_security_publish_arm_state already proved out for
+      armed state, and MqttBridgeService.handleKiddeCoAlarmTopic()
+      consumes it into a CabinEvent, same shape as
+      trigger_security_armed/trigger_presence_arrived.
     relationships:
       - target: smart_appliance_co_air_quality_kidde
         type: derived_from
         cardinality: "N:1"
+      - target: automation_cabin_security_publish_arm_state
+        type: related_to
+        cardinality: "N:N" # same shell_command/allow-list pattern, not the same automation
       - target: trigger_ha_entity_state_changed
         type: related_to
         cardinality: "N:N"
@@ -9284,21 +9303,52 @@ elements:
       ui_components: []
       elements: [smart_appliance_co_air_quality_kidde]
     notes: >
-      NOT WIRED. Two real gaps, stated honestly rather than guessed
-      past: (1) the exact HA entity_id/attribute shape for the CO-alarm
-      binary_sensor specifically isn't confirmed against live source in
-      this session -- smart_appliance_co_air_quality_kidde's own
-      first_verified_live citation confirms the 20 entities exist, not
-      their individual entity_ids; (2) realizing the *push* half (not
-      just polling faster) needs a new HA automation on the live M920q
-      republishing onto MQTT, the same pattern
-      automation_cabin_security_publish_arm_state already proves out for
-      armed state -- that's the user's own follow-up action on real
-      hardware/HA config, not code buildable blind from here.
-      trigger_ha_entity_state_changed (this file) already gives a real,
-      working, pull-based path to build a Kidde-CO workflow today once
-      the exact entity_id is confirmed, at the cost of up to ~60s
-      latency and no true push guarantee.
+      Deployed live 2026-08-21: HA config (automation + shell_command
+      ALLOWED-dict entry) pushed to the M920q via SSH (backed up the
+      prior files first, HA's own check_config run clean before
+      restarting) and the matching cabin-backend code (MqttBridgeService
+      subscription/handler, WorkflowRuleService.FIELD_TRIGGERS entry,
+      JdbcWorkflowVocabularyStore seed row) committed the same session.
+      lifecycle_status: used reflects that the code on both sides is
+      real, tested, and deployed -- not yet independently confirmed by
+      watching a real CO-alarm state change flow end-to-end through
+      MQTT after the HA restart that loads the new automation (that
+      restart's own completion, and a live end-to-end check once it
+      lands, is the one still-open piece as of this note).
+
+  - id: trigger_kidde_co_alarm_cleared
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-21"
+      ref: "MqttBridgeService.handleKiddeCoAlarmTopic()"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Kidde CO alarm cleared"
+    applies_to_device_type: [CO_ALARM]
+    applies_to_capability: ALARM
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "KIDDE_CO_ALARM_CHANGED", payload_field: alarm }
+    predicate: { op: is_false }
+    rendering:
+      semantic: "The Kidde CO alarm's own alert condition clears"
+      systems: Trigger — Kidde CO Alarm Cleared
+      technical: "CabinEvent.eventType()=='KIDDE_CO_ALARM_CHANGED' AND payload['alarm']==false"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_kidde_co_alarm -- see that entity's own
+      definition and deployment notes.
+    relationships:
+      - target: trigger_kidde_co_alarm
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_kidde_co_alarm]
+    notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_kidde_co_alarm.
 
   - id: trigger_liebherr_door_open
     entity_type: owl:Class

@@ -73,7 +73,12 @@ public class JdbcWorkflowVocabularyStore {
         // E5's generic HA-entity trigger -- no clear-signal pair (discrete,
         // any change), always meant to be scoped via triggerDeviceId (see
         // its own docs/ontology.yaml entry).
-        new TriggerVocabularyEntry("trigger_ha_entity_state_changed", "Home Assistant entity changed", null, null, true)
+        new TriggerVocabularyEntry("trigger_ha_entity_state_changed", "Home Assistant entity changed", null, null, true),
+        // Added 2026-08-21 -- real push bridge deployed (new HA automation
+        // + MqttBridgeService.handleKiddeCoAlarmTopic()), was
+        // docs/ontology.yaml's trigger_kidde_co_alarm candidate until now.
+        new TriggerVocabularyEntry("trigger_kidde_co_alarm", "Kidde CO alarm active", "CO_ALARM", "ALARM", true),
+        new TriggerVocabularyEntry("trigger_kidde_co_alarm_cleared", "Kidde CO alarm cleared", "CO_ALARM", "ALARM", true)
     );
 
     private static final List<ActionVocabularyEntry> SUPPORTED_ACTIONS = List.of(

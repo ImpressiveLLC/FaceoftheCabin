@@ -769,6 +769,22 @@ class WorkflowRuleServiceTest {
     }
 
     @Test
+    void kiddeCoAlarmActiveAndClearedFireAndAutoClearIndependentWorkflows() {
+        // Real push bridge, deployed 2026-08-21: cabin_security_publish_kidde_co_alarm
+        // (HA automation) -> cabin/kidde/co_alarm (MQTT) ->
+        // MqttBridgeService.handleKiddeCoAlarmTopic() -> KIDDE_CO_ALARM_CHANGED.
+        ruleStore.save(notifyOnlyWorkflow("wf-kidde", "trigger_kidde_co_alarm", "AUTO_ON_CLEAR"));
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "kidde-co-alarm", "KIDDE_CO_ALARM_CHANGED",
+            "CRITICAL", Instant.now(), Map.of("alarm", true)));
+        assertTrue(executionStore.findActive("wf-kidde").isPresent());
+
+        service.evaluate(new CabinEvent(UUID.randomUUID().toString(), "kidde-co-alarm", "KIDDE_CO_ALARM_CHANGED",
+            "INFO", Instant.now(), Map.of("alarm", false)));
+
+        assertTrue(executionStore.findActive("wf-kidde").isEmpty());
+    }
+
+    @Test
     void haEntityStateChangedTriggerOnlyMatchesHaSourcedDevicesNotZigbeeOnes() {
         // "ha-" prefix matches HomeAssistantDiscoveryService's own
         // generatedId convention -- confirms this generic trigger can

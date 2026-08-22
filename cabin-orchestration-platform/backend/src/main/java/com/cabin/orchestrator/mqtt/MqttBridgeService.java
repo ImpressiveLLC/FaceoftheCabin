@@ -120,6 +120,15 @@ public class MqttBridgeService implements MqttCallback {
             // deployed), but nothing downstream (SecurityStateRegistry,
             // the /api/security endpoint) assumes cabin-only.
             client.subscribe("+/security/armed_away", 1);
+            // Added 2026-08-21 -- real push bridge for docs/ontology.yaml's
+            // trigger_kidde_co_alarm, published by a new HA automation
+            // (infra/cabin-security/homeassistant/cabin_security.yaml,
+            // cabin_security_publish_kidde_co_alarm) through the same
+            // allow-listed shell_command as armed_away/presence. Not
+            // wildcarded -- unlike those two, there's exactly one Kidde
+            // device on this instance today, not a per-location family of
+            // topics.
+            client.subscribe("cabin/kidde/co_alarm", 1);
             log.info("MQTT bridge connected to {}", brokerUrl);
         } catch (MqttException e) {
             log.error("MQTT connect failed: {}", e.getMessage());
@@ -152,6 +161,12 @@ public class MqttBridgeService implements MqttCallback {
             if (parts.length == 3 && "security".equals(parts[1]) && "armed_away".equals(parts[2])) {
                 // Plain text ("ON"/"OFF"), same reasoning as presence above.
                 handleArmedTopic(parts[0], payload);
+                return;
+            }
+
+            if ("cabin/kidde/co_alarm".equals(topic)) {
+                // Plain text ("ON"/"OFF"), same reasoning as armed_away above.
+                handleKiddeCoAlarmTopic(payload);
                 return;
             }
 
@@ -359,6 +374,28 @@ public class MqttBridgeService implements MqttCallback {
         eventPublisher.publish(new CabinEvent(
             UUID.randomUUID().toString(), "security:" + location, "SECURITY_ARMED_CHANGED",
             "INFO", Instant.now(), Map.of("armed", armed, "location", location)));
+    }
+
+    /**
+     * cabin/kidde/co_alarm -- plain text "ON"/"OFF", published by the new
+     * cabin_security_publish_kidde_co_alarm HA automation (added
+     * 2026-08-21, same allow-listed shell_command pattern as armed_away/
+     * presence above). Deliberately a dedicated eventType/synthetic
+     * sourceDeviceId, same shape as handleArmedTopic()/handlePresenceTopic(),
+     * not an attempt to line up with HomeAssistantDiscoveryService's
+     * generatedId convention for this same entity via the slower,
+     * pull-based trigger_ha_entity_state_changed path -- both can fire
+     * independently for the same real alarm without conflicting; this one
+     * is the fast, real push path docs/ontology.yaml's
+     * trigger_kidde_co_alarm was a candidate for until this shipped.
+     * severity is CRITICAL only when alarm=true -- an active CO alarm is
+     * never merely informational.
+     */
+    private void handleKiddeCoAlarmTopic(String payload) {
+        boolean alarm = "ON".equalsIgnoreCase(payload.trim());
+        eventPublisher.publish(new CabinEvent(
+            UUID.randomUUID().toString(), "kidde-co-alarm", "KIDDE_CO_ALARM_CHANGED",
+            alarm ? "CRITICAL" : "INFO", Instant.now(), Map.of("alarm", alarm)));
     }
 
     /**
