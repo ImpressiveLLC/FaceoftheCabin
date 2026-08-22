@@ -88,7 +88,13 @@ cabin-orchestration-platform/
 │       │                            devices, cameras/Frigate, direct events)
 │       ├── ontology/                OntologyController + OntologyLookupService
 │       │                            (resolves ontology.yaml ids to display names)
-│       └── techid/                  TechIdController — Opportunity Map backend
+│       ├── techid/                  TechIdController — Opportunity Map backend
+│       └── workflow/                WorkflowRuleService (See→Think→Act engine —
+│                                    trigger/clear matching, actions, executions),
+│                                    RulesController, JdbcWorkflowRuleStore,
+│                                    JdbcWorkflowVocabularyStore (DB-backed
+│                                    trigger/action catalog, reseeded from code
+│                                    on every boot, never user-editable)
 │   └── src/main/resources/
 │       └── application.yml          All env-var-driven config
 │   └── src/test/                    First tests added 2026-08-06 — see
@@ -369,6 +375,14 @@ cabin/device/{deviceId}/telemetry
 cabin/event/{severity}
 cabin/camera/{cameraId}/motion
 cabin/system/health
+cabin/kidde/co_alarm                 ← Kidde CO alarm push bridge (HA automation →
+                                        MQTT, added 2026-08-21; ON/OFF payload only,
+                                        validated against MqttPublish.py's ALLOWED
+                                        dict on the HA side before it ever reaches
+                                        this topic)
+{location}/presence/#                ← MqttBridgeService subscribes `+/presence/#`
+                                        (both `cabin/presence/*` and `home/presence/*`)
+{location}/security/armed_away       ← MqttBridgeService subscribes `+/security/armed_away`
 zigbee2mqtt/bridge/devices           ← Zigbee2MQTT device list
 zigbee2mqtt/bridge/state             ← bridge health heartbeat
 zigbee2mqtt/{friendly_name}          ← per-device state
@@ -416,6 +430,14 @@ forward from an earlier session's list)
 | POST/GET | `/api/tech-id/findings` | TechIdController — Opportunity Map |
 | PATCH | `/api/tech-id/findings/{id}` | TechIdController |
 | POST/GET | `/api/tech-id/findings/{id}/actions` | TechIdController — action audit log |
+| GET | `/api/rules/vocabulary/triggers` \| `/actions` | RulesController — DB-backed trigger/action catalog (added 2026-08-21, Part D), `supported:false` candidates merged in from `docs/ontology.yaml` at read time |
+| GET/POST | `/api/rules/workflows` | RulesController — workflow CRUD |
+| GET/DELETE | `/api/rules/workflows/{id}` | RulesController |
+| POST | `/api/rules/workflows/{id}/activate` \| `/deactivate` | RulesController |
+| POST | `/api/rules/workflows/{id}/fire` | RulesController — manual fire (real as of this session's Part A, was a stub before) |
+| GET | `/api/rules/workflows/{id}/executions` | RulesController — execution history |
+| GET | `/api/rules/executions/recent` | RulesController — unviewed executions |
+| POST | `/api/rules/executions/{id}/view` \| `/clear` | RulesController |
 | GET | `/actuator/health` | Spring Actuator — what `deploy-cabin-backend.yml`'s health-check gate polls |
 
 **Not yet built**: `/api/alerts/active` (the dashboard-badge fix from the
@@ -493,6 +515,25 @@ All items below are **complete and pushed to GitHub**:
   (2026-08-06) — see "CI/CD" below. `deploy-family-hub.yml` (below) already
   existed; this is the backend's equivalent, deliberately separate per that
   workflow's own comment about `cabin-backend` needing "considered rollout."
+- **See→Think→Act workflow engine, real triggers/actions/vocabulary**
+  (2026-08-21) — `WorkflowRuleService` matches real device events (leak,
+  door/motion/tamper/battery, plug on/off, freeze-risk, Blink motion,
+  armed/presence changes, a generic pull-based HA-entity-changed trigger,
+  and a real push bridge for Kidde's CO alarm) against user-created
+  workflows, with manual fire, execution history, and Active→Reset /
+  Recent→Undo all wired end-to-end (`RulesController`). The creation
+  form's trigger/action dropdowns are no longer hardcoded JS — they're
+  fetched from `JdbcWorkflowVocabularyStore` (DB-backed, reseeded from
+  code on boot, never user-editable) merged with `docs/ontology.yaml`
+  `lifecycle_status: candidate` entries shown disabled. See
+  `docs/ontology.yaml`'s new `delivery_mode: push|pull|both` field —
+  Kidde/Liebherr are each pollable (`pull`) for ordinary state but have a
+  separate push alert channel; only Kidde's push channel is bridged so
+  far (a real HA automation on the M920q → `cabin/kidde/co_alarm`).
+  Liebherr's door-open alert is confirmed to have no corresponding HA
+  entity at all (checked both the live HA UI and `entity_registry`
+  directly) — hard blocked until the integration itself exposes one, not
+  a code gap on this side.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds

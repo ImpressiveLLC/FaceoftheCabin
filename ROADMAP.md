@@ -567,11 +567,11 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
 
 ### Phase 5 — Platform UI
 
-- [ ] Build see/think/act UI shell in `cabin-orchestration-platform/ui` React frontend
+- [x] Build see/think/act UI shell in `cabin-orchestration-platform/ui` React frontend (2026-08-21 — `WorkflowRulesCard`/`WorkflowCreateForm`/`AutomationAlertCard`, vocabulary DB-backed via `JdbcWorkflowVocabularyStore`)
 - [ ] Implement entity search: full-text across ontology IDs, labels, tags, and `search_aliases`
 - [ ] Implement lineage trace view: upstream (`derived_from`) and downstream (`consumed_by`) per entity
 - [ ] Implement discovery panel: entities with `check_for_new: true`, schedule, `last_checked`, current flags
-- [ ] RulesEnginePanel reductive UI: Active→Reset, Recent→Undo, filterable by time — for non-technical users managing automations
+- [x] RulesEnginePanel reductive UI: Active→Reset, Recent→Undo, filterable by time — for non-technical users managing automations (2026-08-21 — `WorkflowExecutionHistory`/`RecentExecutionsList`, wired to `POST /api/rules/executions/{id}/view`\|`/clear`)
 
 ### Phase 6 — Camera Video Viewing
 

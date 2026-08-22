@@ -278,6 +278,91 @@ accumulate.*
   prototype (built instead)** — spare C4000LG router available as an
   additional collection point if a WiFi approach is pursued later. See
   `grafana/dashboards/22019-wifi-scan/README.md`.
+- **Device → one-to-many-services ontology hierarchy — scoped but not
+  started, deferred by explicit user choice 2026-08-21 ("finish current
+  work first").** User showed live HA screenshots of a Kidde CO/air-
+  quality unit surfacing as ~9 disconnected HA entities with no visible
+  tie back to "the Kidde unit," and asked that devices with multiple
+  services be modeled so a user can pick either the parent device or a
+  specific service, with the ontology/UI always showing the service's
+  lineage back to its parent. **Elaborated with concrete examples in a
+  later message the same session, worth preserving verbatim in intent:**
+  (1) Kidde — many entities registered today read as separate "devices"
+  when they're really one physical unit's several services; (2) the
+  Zigbee water-leak sensors are the clearest case needing both a
+  documented ontology shape AND real workflow/UI filtering — each
+  physical sensor has *two* independent services: a detector that
+  pushes a notification when water is present, and a built-in siren
+  that the system can command separately (e.g. "turn on siren" as an
+  *intrusion* workflow action, unrelated to leak detection) — both
+  services belong to the same parent device and must be independently
+  selectable as a trigger (leak) or an action target (siren) while
+  staying discoverable as "services of this device," not just loose
+  catalog entries; (3) a third, structurally different case already has
+  its own planning doc (`grafana/dashboards/22019-wifi-scan/README.md`):
+  a smart switch is the primary device, "WiFi repeater" is a secondary
+  built-in function of that same hardware, and "presence/zone detection
+  via signal-strength triangulation against nearby mesh WiFi devices" is
+  a *further derived* function computed from the repeater's own data —
+  i.e. this isn't always a flat device→service list, sometimes it's
+  device→function→derived-function. Real design work is needed across
+  `docs/ontology.yaml` (a parent/child or `belongs_to_device` relation
+  ontology entities don't have today), `DeviceRegistry` (today's
+  `haDeviceId` grouping is purely cosmetic, used only by Device
+  Manager's client-side visual card — not exposed to the workflow
+  engine or ontology at all), and the workflow creation form's
+  trigger/action/device pickers (need a "device, or one of its
+  services" affordance instead of one flat device list). Likely needs
+  its own Plan Mode session given the scope (ontology schema, backend
+  grouping semantics, and two frontend pickers all touched together).
+- **`vault_ha_token` still not reconciled with the live 2026-08-21 fix —
+  real drift risk, not yet closed.** A blank `HA_TOKEN` env var was
+  silently hiding all HA discovery on the M920q; fixed live that day by
+  setting the real token directly on the running container. `ansible/
+  group_vars/cabin/vars.yml` still resolves `ha_token` from
+  `vault_ha_token` in the encrypted `ansible/group_vars/cabin/vault.yml`
+  — that vault file's own last-modified timestamp (2026-08-19) predates
+  the fix, meaning the vault almost certainly still holds the old blank/
+  stale value. Never diffed by raw value (this project's own rule) so
+  not confirmed byte-for-byte, but the timeline alone is enough to flag:
+  running `ansible/playbooks/rotate-secrets.yml` or any fresh `env.j2`
+  render against this host today would silently reintroduce the blank-
+  token bug. Needs the real token entered into the vault (`ansible-vault
+  edit group_vars/cabin/vault.yml`) before any secrets-rotation or
+  redeploy-from-scratch playbook next touches this host.
+- **Kidde CO-alarm live push bridge deployed 2026-08-21, end-to-end
+  verification still pending.** New HA automation
+  (`cabin_security_publish_kidde_co_alarm`) + `cabin_security_mqtt_publish.py`
+  ALLOWED-dict entry were deployed to `/storage/services/homeassistant/
+  packages/` on the M920q; matching `cabin-backend` code
+  (`MqttBridgeService.handleKiddeCoAlarmTopic`, a new `FIELD_TRIGGERS`
+  entry, vocabulary rows, `docs/ontology.yaml` entities) is committed and
+  test-green (324/324). The `homeassistant` container restart needed to
+  load the new automation is still pending the user's own Tailscale SSH
+  step-up approval (an interactive `https://login.tailscale.com/a/...`
+  link, not something approvable from this session). Once restarted:
+  confirm HA loaded the automation without error and, ideally, confirm a
+  real CO-alarm state change round-trips through MQTT into a
+  `KIDDE_CO_ALARM_CHANGED` CabinEvent before calling this fully verified.
+- **`home_presence.yaml` found live on the M920q, not in git, root-owned
+  — reconciliation status unknown.** Discovered while deploying the
+  Kidde bridge (same `packages/` directory as the tracked
+  `cabin_security.yaml`/`cabin_security_presence.yaml`), modified the
+  same day, owned by `root` rather than `nate`. Deliberately not read,
+  touched, or committed this session — flagged to the peer session via
+  `SendMessage` instead. Their response, if any, wasn't seen before this
+  session's summary point; check for it before assuming this is
+  resolved.
+- **Local `mvn spring-boot:run` hang, Part D (2026-08-21), still
+  undiagnosed.** Against the already-running local Docker stack
+  (Postgres/Kafka reachable), the backend never bound port 8080 after
+  30+ minutes across two separate `java.exe` processes — looked hung,
+  not just slow. Killed rather than left running; root cause not
+  investigated further given strong automated test coverage as a
+  substitute. Blocks live-browser click-through verification of the
+  workflow-vocabulary UI (Part D) and the new triggers (Part E) — both
+  shipped on `mvn test`/`npx vitest run` green plus code review only,
+  not an actual browser session, until this is fixed.
 
 ---
 
