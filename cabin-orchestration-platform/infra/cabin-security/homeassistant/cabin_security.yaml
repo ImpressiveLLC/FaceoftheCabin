@@ -35,6 +35,27 @@ automation:
           topic: cabin/presence/nate
           payload: "{{ states('person.natecabin') }}"
 
+  # Added 2026-08-21 -- real push bridge for docs/ontology.yaml's
+  # trigger_kidde_co_alarm (cabin-orchestration-platform's Part E).
+  # entity_id confirmed live against the M920q's own
+  # .storage/core.entity_registry directly (platform kidde_homesafe) --
+  # NOT binary_sensor.kidde_air_quality_alarm_carbon_monoxide_alarm, an
+  # older, separate mqtt-platform entity fed by the orphaned retained
+  # message docs/ontology.yaml's smart_appliance_co_air_quality_kidde
+  # notes already document as dead (frozen since 2026-07-03, nothing
+  # publishes to it).
+  - id: cabin_security_publish_kidde_co_alarm
+    alias: Cabin Security - Publish Kidde CO Alarm
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.living_room_kidde_co_temp_and_humidity_cabin_upstairs_co_alarm
+    actions:
+      - action: shell_command.cabin_security_publish
+        data:
+          topic: cabin/kidde/co_alarm
+          payload: "{{ 'ON' if is_state('binary_sensor.living_room_kidde_co_temp_and_humidity_cabin_upstairs_co_alarm', 'on') else 'OFF' }}"
+
   - id: cabin_security_publish_state_at_startup
     alias: Cabin Security - Publish State At Startup
     mode: single
@@ -55,3 +76,15 @@ automation:
             data:
               topic: cabin/presence/nate
               payload: "{{ states('person.natecabin') }}"
+      # Same startup-republish treatment as armed/presence above -- a
+      # retained MQTT value survives HA restarts, but only if something
+      # re-asserts it; otherwise a stale reading from before the restart
+      # persists indefinitely.
+      - if:
+          - condition: template
+            value_template: "{{ states('binary_sensor.living_room_kidde_co_temp_and_humidity_cabin_upstairs_co_alarm') in ['on', 'off'] }}"
+        then:
+          - action: shell_command.cabin_security_publish
+            data:
+              topic: cabin/kidde/co_alarm
+              payload: "{{ 'ON' if is_state('binary_sensor.living_room_kidde_co_temp_and_humidity_cabin_upstairs_co_alarm', 'on') else 'OFF' }}"

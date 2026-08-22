@@ -1,6 +1,8 @@
 node_modules/
 test-results/
 playwright-report/
+__pycache__/
+*.pyc
 
 # Ansible Vault password — decrypts every secret in ansible/group_vars/.
 # Must live outside this repo (see ansible/README.md's Secrets section);
