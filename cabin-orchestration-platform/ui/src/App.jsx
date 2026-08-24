@@ -3409,6 +3409,19 @@ function LocationRulesSection({ locCfg }) {
   const isCabin = locCfg.id === "cabin";
   const hasOwnNodeRed = isCabin || (isLocationDeployed(locCfg) && !!locCfg.noderedUrl);
   const noderedUrl = hasOwnNodeRed ? locCfg.noderedUrl : LOCATIONS.cabin.noderedUrl;
+  // Lazy-mounted, 2026-08-24 -- Node-RED's own editor/admin API run with no
+  // auth configured on this instance (adminAuth/httpNodeAuth both unset,
+  // confirmed live) and it sends no framing-protection headers either, so
+  // an always-present iframe pointed at a private-LAN URL means every
+  // browser that opens this panel gets Chrome's Local Network Access
+  // prompt whether or not anyone actually wants the embed -- reported
+  // directly by a resident on a different network. Mounting src only on
+  // an explicit click means a browser that never opens this section never
+  // sees the prompt at all. This is containment, not a fix -- the real
+  // gap (no auth on Node-RED itself) is a separate, live-infra change
+  // that needs its own explicit go-ahead before touching a running
+  // instance; see this session's plan file, Item 2.
+  const [loadRequested, setLoadRequested] = useState(false);
   return (
     <div className="location-section rules-nodered">
       <div className="location-section-header">
@@ -3425,7 +3438,19 @@ function LocationRulesSection({ locCfg }) {
       <div className="tailscale-hint">
         <Lock size={11} /> Won't load off Tailscale — the flow editor is cabin-network-only.
       </div>
-      <iframe title={`Node-RED — ${locCfg.label}`} src={noderedUrl} className="embed-frame" />
+      {loadRequested ? (
+        <iframe title={`Node-RED — ${locCfg.label}`} src={noderedUrl} className="embed-frame" />
+      ) : (
+        <div className="nodered-lazy-placeholder">
+          <p className="config-desc">
+            Node-RED isn't loaded here yet. Your browser may ask permission to reach devices on this
+            network when you load it — that's expected for an embed like this.
+          </p>
+          <button className="btn-secondary" onClick={() => setLoadRequested(true)}>
+            Load Node-RED
+          </button>
+        </div>
+      )}
     </div>
   );
 }

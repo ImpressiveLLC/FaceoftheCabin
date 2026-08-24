@@ -387,6 +387,11 @@ body {
 .rules-layout { display: flex; gap: 16px; height: calc(100vh - 140px); }
 .rules-nodered { flex: 1; display: flex; flex-direction: column; }
 .rules-nodered .embed-frame { flex: 1; min-height: 0; }
+.nodered-lazy-placeholder {
+  flex: 1; min-height: 200px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; text-align: center;
+  border: 1px dashed #21262d; border-radius: 10px; padding: 20px;
+}
 .rules-sidebar { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
 /* Single active location: the one section fills the available space. */
 .rules-nodered-single { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
