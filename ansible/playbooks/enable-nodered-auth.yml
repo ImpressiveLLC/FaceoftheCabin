@@ -1,0 +1,33 @@
+---
+# Enables adminAuth/httpNodeAuth on the live Node-RED instance -- see
+# ansible/roles/nodered_auth/tasks/main.yml's own header for the full
+# "why" (zero-auth Node-RED found live 2026-08-24).
+#
+# Idempotent for first-time enablement only -- see that role's "known
+# limitation" comment before assuming a second run rotates the password.
+#
+# Usage:
+#   1. Add the real credentials to the vault first:
+#      cd ansible
+#      ansible-vault edit group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass
+#      # add:
+#      #   vault_nodered_admin_username: "..."
+#      #   vault_nodered_admin_password: "..."
+#   2. Run this playbook:
+#      ansible-playbook -i inventory.ini playbooks/enable-nodered-auth.yml \
+#        --limit cabin --vault-password-file ~/.ansible_vault_pass
+#
+# Run manually only -- deliberately NOT wired into any scheduled/CI
+# workflow (unlike rotate-secrets.yml), since this changes what
+# credentials the Node-RED editor requires and shouldn't happen without
+# a human choosing that moment.
+
+- name: Enable Node-RED authentication
+  hosts: cabin
+  become: false # docker exec / compose don't need root; the deploy user is in the docker group
+  vars:
+    nodered_admin_username: "{{ vault_nodered_admin_username | default('') }}"
+    nodered_admin_password: "{{ vault_nodered_admin_password | default('') }}"
+
+  roles:
+    - nodered_auth

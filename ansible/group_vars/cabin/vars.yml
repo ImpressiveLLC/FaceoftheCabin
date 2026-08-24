@@ -35,6 +35,16 @@ anthropic_api_key: "{{ vault_anthropic_api_key | default('') }}"
 # itself exists and has been reviewed.
 uptime_kuma_username: "{{ vault_uptime_kuma_username | default('') }}"
 uptime_kuma_password: "{{ vault_uptime_kuma_password | default('') }}"
+# Node-RED editor/admin auth -- found live 2026-08-24 that adminAuth and
+# httpNodeAuth were both unset (zero authentication, no framing-protection
+# headers either -- see docs/DEFINITION_OF_DONE.md's matching entry).
+# Same "empty is a valid, working state" pattern as tech_id_api_key above:
+# unset just leaves Node-RED exactly as insecure as it already was, this
+# doesn't make anything worse. Add `vault_nodered_admin_username` /
+# `vault_nodered_admin_password` to vault.yml and run
+# playbooks/enable-nodered-auth.yml when ready to close this gap.
+nodered_admin_username: "{{ vault_nodered_admin_username | default('') }}"
+nodered_admin_password: "{{ vault_nodered_admin_password | default('') }}"
 # ntfy.sh push-notification topic for CRITICAL workflow/automation alerts
 # (WorkflowRuleService's publishUnconfirmedAlert, AutomationRuleService's
 # triggerAlert). Optional — see application.yml's ntfyTopic default: blank

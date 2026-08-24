@@ -164,6 +164,8 @@ vault_cabin_alert_ntfy_topic: ""  # CRITICAL events persist, just no phone push
 vault_uptime_kuma_username: ""    # blocks the not-yet-built Kuma reconciler only
 vault_uptime_kuma_password: ""
 vault_cloudflare_tunnel_token: "" # backup/reference only — see vars.yml's comment
+vault_nodered_admin_username: ""  # Node-RED editor stays unauthenticated until set — see playbooks/enable-nodered-auth.yml
+vault_nodered_admin_password: ""
 ```
 
 That covers every credential this repo currently templates anywhere. If a

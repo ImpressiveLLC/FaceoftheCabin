@@ -351,6 +351,19 @@ Worth being explicit about, since this differs meaningfully by surface:
   including AI-assisted sessions working on this repo — compare by
   presence/hash. This project had a real, if brief, incident where a
   password appeared in a session transcript this way.
+- **Correction, 2026-08-24 — network isolation alone is not the boundary
+  it reads like above.** "Tailscale-only" describes where Node-RED is
+  *reachable from*, not what protects it once reached — live diagnostics
+  on the M920q found `adminAuth`/`httpNodeAuth` both unset, meaning any
+  device already on the Tailscale network (which, per this instance's
+  own setup, includes ordinary family devices, not just the operator's)
+  gets full, unauthenticated, editable access to Node-RED's real
+  automation flows. A new instance should enable both — see
+  `ansible/playbooks/enable-nodered-auth.yml` and its matching
+  `MAINTENANCE.md` entry — as a normal part of setup, not an optional
+  hardening step. Home Assistant, Frigate, Zigbee2MQTT, and Grafana were
+  not re-audited this same way this session; don't assume they're fine
+  just because they weren't the ones reported broken.
 
 ## 8. Tech ID Service — choosing a scanning tier
 

@@ -565,6 +565,72 @@ matters.
 
 ---
 
+## Node-RED editor/admin authentication (found unset 2026-08-24, fix runbook)
+
+**The problem**: live diagnostics on the M920q found `adminAuth` and
+`httpNodeAuth` both commented out in `/storage/services/nodered/settings.js`
+— Node-RED's editor and admin API run with **zero authentication**, and
+Node-RED sends no `Content-Security-Policy`/`X-Frame-Options` headers
+either. Anyone who can reach `cabin-hub:1880` (directly, or by clicking
+through the resident-facing app's Rules & Alerts embed and accepting
+Chrome's Local Network Access prompt — see `USER_GUIDE.md`'s matching
+FAQ entry) gets a fully unauthenticated, *editable* Node-RED admin panel.
+Confirmed zero `http in` nodes exist in the live flow (`flows.json`), so
+enabling `httpNodeAuth` alongside `adminAuth` carries no risk of breaking
+an existing unauthenticated webhook-style flow — both are safe to enable
+together.
+
+**The fix — known recovery pattern via Ansible, matching this project's
+existing secrets discipline** (`ansible/roles/nodered_auth/`,
+`ansible/playbooks/enable-nodered-auth.yml`):
+
+1. Choose credentials and add them to the vault:
+   ```bash
+   cd ansible
+   ansible-vault edit group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass
+   # add:
+   #   vault_nodered_admin_username: "..."
+   #   vault_nodered_admin_password: "..."
+   ```
+2. Run the playbook:
+   ```bash
+   ansible-playbook -i inventory.ini playbooks/enable-nodered-auth.yml \
+     --limit cabin --vault-password-file ~/.ansible_vault_pass
+   ```
+   This backs up `settings.js` (timestamped, never overwritten), computes
+   the bcrypt hash via Ansible's `password_hash` filter (needs `passlib`
+   on the control node), replaces the commented `adminAuth`/`httpNodeAuth`
+   blocks with real ones, restarts `nodered`, and fails loudly (via an
+   `assert`) if the editor's root URL doesn't come back requiring auth
+   (401/302) — it does not report success on a guess.
+3. Recovery if something goes wrong: the timestamped backup at
+   `/storage/services/nodered/settings.js.bak-<timestamp>` is the
+   original, unmodified file — copy it back over `settings.js` and
+   `docker restart nodered` to fully revert.
+
+**Known limitation, not an oversight**: the playbook is written for
+*first-time* enablement — it matches the commented-out stock example
+block specifically. If you later rotate the password, re-running the
+playbook won't find that pattern anymore (the block is already
+uncommented) and will silently no-op. Until real in-place rotation
+support is built, rotating this credential means: back up `settings.js`
+by hand, generate a new hash (`docker exec -i nodered node-red admin
+hash-pw`, piping the new password to it — see Node-RED's own
+[security docs](https://nodered.org/docs/security.html) for the exact
+command), edit the already-uncommented block's `username`/`password`
+fields directly, restart `nodered`, and update the vault to match so it
+stays the source of truth for the *current* live value.
+
+**Manual apply, if you're not running this through Ansible**: the same
+steps the playbook automates — back up `settings.js`, generate a bcrypt
+hash via `docker exec -i nodered node-red admin hash-pw` (reads the
+password from stdin), replace the two commented blocks with real
+uncommented ones using that hash, `docker restart nodered`, then verify
+`curl -I http://localhost:1880/` returns `401` (or a redirect to a login
+page), not `200`.
+
+---
+
 ## Grafana — Off-Tailscale Access via Cloudflare + Google OAuth
 
 **UPDATE 2026-08-08: the embedded panel's white-screen is NOT fixable

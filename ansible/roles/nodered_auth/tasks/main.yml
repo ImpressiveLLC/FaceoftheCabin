@@ -1,0 +1,98 @@
+---
+# Enables Node-RED's adminAuth/httpNodeAuth on the target host.
+#
+# Why this exists: found live 2026-08-24 that the M920q's Node-RED runs
+# with BOTH adminAuth and httpNodeAuth commented out in settings.js --
+# zero authentication on the editor/admin API, and no CSP/X-Frame-Options
+# headers either, so anything that can reach the editor's URL (including
+# an iframe embed elsewhere in this platform) gets full, editable access
+# to real home-automation flows. See docs/DEFINITION_OF_DONE.md's
+# matching punch-list entry and MAINTENANCE.md's Cameras section.
+#
+# Deliberately safe-by-default: if nodered_admin_password is unset, this
+# role does nothing (same "empty is a valid, working state" convention
+# group_vars/cabin/vars.yml already uses for tech_id_api_key/
+# anthropic_api_key/etc.) -- it does not fail, and it does not leave
+# Node-RED any less secure than it already was.
+#
+# Known limitation, not an oversight: this task is written for
+# first-time enablement (matching settings.js's real state as of
+# 2026-08-24) -- it replaces the *commented-out* stock example block. If
+# adminAuth has already been enabled by a previous run of this role and
+# the vault password is later rotated, this task will no longer match
+# (the block is no longer commented) and will silently no-op instead of
+# updating it. True in-place rotation support is a real follow-up, not
+# built here -- for now, rotating this credential means backing up
+# settings.js, hand-editing the already-uncommented block's
+# username/password fields, and restarting nodered (see MAINTENANCE.md).
+#
+# Requires `passlib` on the Ansible control node for the `password_hash`
+# filter (bcrypt). If that's not installed, this role will fail loudly
+# at the hash step rather than silently writing a bad hash.
+
+- name: Skip entirely if no Node-RED admin password is configured
+  ansible.builtin.meta: end_play
+  when: nodered_admin_password is not defined or nodered_admin_password | length == 0
+
+- name: Compute the bcrypt hash for adminAuth/httpNodeAuth
+  ansible.builtin.set_fact:
+    nodered_admin_hash: "{{ nodered_admin_password | password_hash('bcrypt', rounds=8) }}"
+  no_log: true
+
+- name: Back up settings.js before editing (timestamped, never overwritten)
+  ansible.builtin.copy:
+    src: /storage/services/nodered/settings.js
+    dest: "/storage/services/nodered/settings.js.bak-{{ ansible_date_time.iso8601_basic_short }}"
+    remote_src: true
+    mode: preserve
+
+- name: Enable adminAuth (replaces the commented stock example block)
+  ansible.builtin.replace:
+    path: /storage/services/nodered/settings.js
+    regexp: '    //adminAuth: \{\n(?:    //.*\n)*?    //\},'
+    replace: |-
+      adminAuth: {
+          type: "credentials",
+          users: [{
+              username: "{{ nodered_admin_username }}",
+              password: "{{ nodered_admin_hash }}",
+              permissions: "*"
+          }]
+      },
+  no_log: true
+  register: admin_auth_result
+
+- name: Enable httpNodeAuth (replaces the commented stock example line)
+  ansible.builtin.replace:
+    path: /storage/services/nodered/settings.js
+    regexp: '    //httpNodeAuth: \{user:"user",pass:"[^"]*"\},'
+    replace: '    httpNodeAuth: {user:"{{ nodered_admin_username }}",pass:"{{ nodered_admin_hash }}"},'
+  no_log: true
+  register: http_node_auth_result
+
+- name: Restart Node-RED to pick up the new settings
+  ansible.builtin.command:
+    cmd: docker restart nodered
+  when: admin_auth_result.changed or http_node_auth_result.changed
+
+- name: Wait for Node-RED to come back and require authentication
+  ansible.builtin.uri:
+    url: "http://localhost:1880/"
+    status_code: [401, 302, 200]
+  register: nodered_health
+  until: nodered_health.status is defined
+  retries: 12
+  delay: 5
+  when: admin_auth_result.changed or http_node_auth_result.changed
+
+- name: Confirm the editor now actually requires authentication -- fail loudly if not
+  ansible.builtin.assert:
+    that:
+      - nodered_health.status in [401, 302]
+    fail_msg: >
+      Node-RED restarted but its root URL returned {{ nodered_health.status }},
+      not the 401/302 an authenticated editor should return -- adminAuth may
+      not have taken effect. Check settings.js and the backup taken above
+      before assuming this is done.
+    success_msg: "Node-RED adminAuth is live and enforced."
+  when: admin_auth_result.changed or http_node_auth_result.changed

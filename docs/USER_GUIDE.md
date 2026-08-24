@@ -243,6 +243,17 @@ matching Home Assistant automation), not something fixable from inside
 the app. See `REPLICATION.md`'s Presence detection notes, or check with
 whoever manages the platform for this household.
 
+**"My browser asked to find devices on my local network / see devices on
+this network."** You'll only see this if you open **Rules & Alerts** —
+it embeds the automation-flow editor (Node-RED), which lives on the
+same local network as the rest of the hardware. It's expected there,
+not a sign anything's wrong, and it only asks when you actually open
+that panel — not just from signing in. If you don't work with
+automation flows directly, there's no need to open Rules & Alerts at
+all; everything else in the app works the same either way. If you do
+open it and it then asks you to log in, that's expected too as of
+2026-08-24 — see `MAINTENANCE.md` for what that login is and who has it.
+
 ---
 
 ## Who to ask
