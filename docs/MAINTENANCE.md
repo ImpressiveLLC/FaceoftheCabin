@@ -428,6 +428,81 @@ output was dumped without filtering and printed a live password into a
 session transcript — see the Secrets section's "never diff a secret by
 raw value" note; the same discipline applies here.)
 
+### AldrichFront push-notification bridge (built 2026-08-16, runbook added 2026-08-24)
+
+**The problem this exists for**: Blink's own clip/motion API is a
+confirmed dead end for `home_aldrich_front` specifically — live M920q
+diagnostics (2026-08-16) showed it identical to the working `driveway`
+camera on every attribute `blinkpy` exposes (subscription, sync-module
+arm state, `motion_enabled`, sync availability), yet only `driveway` has
+ever produced a clip through that API. Whatever differs lives entirely
+in Blink's own backend, invisible to any client API — **arming/disarming
+either camera does not change this** (confirmed by that same
+comparison; don't re-guess this in a future session). The one channel
+that reliably fires for real AldrichFront motion is the Blink phone
+app's own push notification, so a phone-side notification-listener
+automation (Tasker/MacroDroid on Android, a Shortcuts automation on iOS,
+or similar) calling this webhook is the actual fix — not more backend
+work, not arming.
+
+**Endpoint**: `POST /api/webhooks/blink-motion` on `cabin-backend`
+(port 8090 on the M920q; deliberately outside `/api/camera/**`'s
+Google-token gate, since an unattended phone automation has no user
+session to present).
+
+**Auth**: header `X-Blink-Motion-Api-Key: <secret>`. **The secret itself
+is never written here or anywhere in git** — it lives only as
+`BLINK_MOTION_WEBHOOK_API_KEY` in `cabin-backend`'s live container
+environment on the M920q (confirmed present 2026-08-24, checked by
+length only, never printed — same discipline as the Blink password
+above). To find or rotate it: `docker exec cabin-backend printenv
+BLINK_MOTION_WEBHOOK_API_KEY` on the M920q itself (never pipe this to a
+file, a commit, or a chat transcript); to rotate, set a new value in
+whatever this deployment's real env source is (see the Secrets section
+above) and restart `cabin-backend`.
+
+**Body**: `{"camera": "<key>"}` — the key must be one of
+`BlinkLiveviewService.blinkCameraMap()`'s configured left-hand names
+(the same `cabinName:blinkDeviceName` pairs `cabin.devices.cameras.
+blinkCameraMap` already defines for the liveview feature above — for
+AldrichFront specifically, whatever that map's real key is on this
+deployment; check `docker exec cabin-backend printenv
+CABIN_DEVICES_CAMERAS_BLINKCAMERAMAP` to confirm rather than assuming).
+
+**Manual test** (run once before trusting a phone automation to call
+this correctly):
+```bash
+curl -s -X POST http://cabin-hub:8090/api/webhooks/blink-motion \
+  -H "X-Blink-Motion-Api-Key: <the real secret, typed by hand, never saved to a file>" \
+  -H "Content-Type: application/json" \
+  -d '{"camera": "aldrichfront"}'
+```
+**Expected response**: `{"ok": true, "camera": "aldrichfront"}` — this
+starts a real Blink liveview session and relays it into the same
+`mediamtx` path Frigate reads from, exactly like the human-facing
+"Watch live" button above. The resulting activity then shows up in
+Camera Events the same way any Blink motion does today (a `MOTION_ON`/
+`MOTION_OFF` pair in the motion-only section, tap to try the recording).
+
+**Failure cases**:
+- `503` — `cabin.blinkMotionWebhook.apiKey` unset on this deployment
+  (webhook not configured at all).
+- `401` — missing or wrong `X-Blink-Motion-Api-Key`.
+- `400` — missing/blank `camera`, or a `camera` value not present in
+  `blinkCameraMap()`.
+- `502` — blinkbridge itself rejected or timed out on the liveview
+  start (transient Blink API issue, not this endpoint's fault).
+- A rapid duplicate call (e.g. a flaky notification firing twice) is a
+  harmless no-op — `BlinkLiveviewService.start()` extends an already-active
+  session rather than starting a second one, by design.
+
+**Known limitation, not yet built**: nothing today tracks whether the
+phone-side automation is actually still calling this on a live schedule
+— it can silently stop working after an OS or Blink app update with no
+visible signal anywhere in this app. A "last successful call" timestamp
+plus a stale-heartbeat indicator is a real, scoped follow-up (see this
+session's plan file, Item 3) — not built as of this entry.
+
 ---
 
 ## Overnight Camera Alerts (Node-RED)
