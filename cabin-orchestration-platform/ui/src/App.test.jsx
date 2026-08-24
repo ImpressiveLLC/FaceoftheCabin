@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -33,6 +33,38 @@ describe("isCameraEvent", () => {
   it("handles a missing/undefined eventType without throwing", () => {
     expect(isCameraEvent({})).toBe(false);
     expect(isCameraEvent({ eventType: undefined })).toBe(false);
+  });
+});
+
+// 2026-08-24: a missing clip read the same regardless of whether the
+// camera has a continuous feed (front_door, driveway) or a genuinely
+// intermittent one (home_aldrich_front) -- see CAMERA_FEED_CONTINUOUS's
+// own comment in App.jsx for the live diagnostics behind this split.
+describe("CameraEventClip — missing-clip wording reflects feed continuity", () => {
+  afterEach(cleanup);
+
+  function missingFetch() {
+    return vi.fn().mockResolvedValue({ ok: false, status: 404 });
+  }
+
+  it("uses confident wording for a continuous-feed camera (front_door)", async () => {
+    render(<CameraEventClip authedFetch={missingFetch()} clipUrl="http://x/clip" cameraName="front_door" />);
+    expect(await screen.findByText(/this camera usually has continuous footage/i)).toBeTruthy();
+  });
+
+  it("uses confident wording for driveway too", async () => {
+    render(<CameraEventClip authedFetch={missingFetch()} clipUrl="http://x/clip" cameraName="driveway" />);
+    expect(await screen.findByText(/this camera usually has continuous footage/i)).toBeTruthy();
+  });
+
+  it("uses the original hedged wording for an intermittent-feed camera (home_aldrich_front)", async () => {
+    render(<CameraEventClip authedFetch={missingFetch()} clipUrl="http://x/clip" cameraName="home_aldrich_front" />);
+    expect(await screen.findByText(/frigate only keeps recordings for a limited time/i)).toBeTruthy();
+  });
+
+  it("defaults to the hedged wording for an unrecognized camera name", async () => {
+    render(<CameraEventClip authedFetch={missingFetch()} clipUrl="http://x/clip" cameraName="some_future_camera" />);
+    expect(await screen.findByText(/frigate only keeps recordings for a limited time/i)).toBeTruthy();
   });
 });
 

@@ -308,23 +308,46 @@ function CameraEventThumbnail({ apiBase, authedFetch, frigateEventId, timestamp 
   );
 }
 
+// Temporary, hardcoded by camera key -- confirmed empirically 2026-08-24
+// (live M920q diagnostics): front_door and driveway both feed Frigate a
+// persistent stream (native RTSP for front_door when reachable; driveway's
+// blinkbridge relay loops a continuously-refreshed local clip via a
+// long-running ffmpeg process, confirmed via `docker exec blinkbridge ps
+// aux`), so a missing clip from either is genuinely unusual. AldrichFront's
+// blinkbridge relay only opens a transient liveview session per motion
+// event (see frigate.yml's own comment on home_aldrich_front), so a
+// missing clip from it is the expected common case, not a surprise.
+// Explicitly NOT ontology-driven yet and NOT health-aware (front_door
+// being physically offline right now doesn't flip this to false) -- see
+// this session's plan file, Item 1's amendment, for the tracked follow-up
+// to migrate this into real device metadata once Item 4's device graph
+// exists. Keyed by the same cameraId CameraEventClip already receives as
+// cameraName (== CabinEvent.sourceDeviceId == the Frigate camera key).
+const CAMERA_FEED_CONTINUOUS = { front_door: true, driveway: true, home_aldrich_front: false };
+
 // Takes a ready-made clipUrl rather than building one internally -- reused
 // by both the detection flow (keyed off Frigate's own frigateEventId) and
 // the motion-only flow below (keyed off cabin-backend's eventId, via
 // clipByTime -- see CameraMediaController.clipByTime's javadoc). frigateUrl
 // is only used to build the "Open in Frigate" fallback link on a genuine
 // miss, never fetched from directly.
-function CameraEventClip({ authedFetch, clipUrl, frigateUrl, cameraName }) {
+export function CameraEventClip({ authedFetch, clipUrl, frigateUrl, cameraName }) { // exported for src/App.test.jsx's clip-confidence wording test
   const { objectUrl, status } = useAuthedMediaUrl(clipUrl, authedFetch);
-  // "missing" (404) is Frigate simply no longer having this clip -- an
-  // everyday, expected outcome (clip retention is much shorter than how
-  // far back the event list itself now reaches), not something to word
-  // like a bug. Any other failure is worded differently on purpose, since
-  // that one IS worth a user reporting.
+  // "missing" (404) is Frigate simply no longer having this clip. For a
+  // camera with a genuinely intermittent feed (see CAMERA_FEED_CONTINUOUS
+  // above) that's an everyday, expected outcome -- not something to word
+  // like a bug. For a continuously-fed camera it's unusual enough to say
+  // so plainly, since Frigate's own recording is unconditional and a real
+  // miss there is more likely to be worth a person's attention. Any other
+  // failure is worded differently on purpose, since that one IS worth a
+  // user reporting regardless of feed type.
   if (status === "missing") {
+    const continuous = CAMERA_FEED_CONTINUOUS[cameraName] === true;
     return (
       <p className="config-desc">
-        Clip expired or unavailable — Frigate only keeps recordings for a limited time.
+        {continuous
+          ? "Clip not found — this camera usually has continuous footage, so this may be worth checking Frigate directly."
+          : "Clip expired or unavailable — Frigate only keeps recordings for a limited time."}
         {frigateUrl && (
           <> <a href={frigateUrl} target="_blank" rel="noreferrer">Open {cameraName ? `${cameraName} in` : ""} Frigate ↗</a> to check its own history directly.</>
         )}
