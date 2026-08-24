@@ -163,6 +163,99 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
+- **Live camera investigation, 2026-08-24 — three real findings, one
+  self-correction.** Triggered by the user reporting missing clips at
+  both locations.
+  1. **`front_door` (cabin, Reolink) is still physically off-network** —
+     `No route to host` on `192.168.2.200:554`, continuous watchdog
+     crash-loop. Same known issue as above, reconfirmed live, still not
+     fixable remotely.
+  2. **`home_aldrich_front`'s clip gap is NOT an arm-state issue —
+     correcting a wrong live-session claim.** Mid-session I told the user
+     arming the driveway Blink camera would likely help, based only on
+     seeing a diagnostic log line (`blink.py:155`) that logs `sync.arm`
+     alongside `motion_detected`. I hadn't checked what a real comparison
+     showed. One already exists: commit `96ccdb6` (2026-08-16) directly
+     compared AldrichFront against the working driveway camera via
+     blinkpy's own attributes and found them **identical** on
+     subscription, sync-module arm state, motion_enabled, and sync
+     availability — yet only driveway ever produces a clip. The
+     differentiator lives entirely in Blink's own backend, invisible to
+     any client API. Arming/disarming either camera is not expected to
+     change anything. Don't repeat the arm-state guess in a future
+     session without re-reading this.
+  3. **The real designed fix for AldrichFront already exists and is
+     server-configured, but likely not phone-side-activated.**
+     `POST /api/webhooks/blink-motion` (added same commit,
+     `BlinkMotionWebhookController.java`) lets a phone-side
+     notification-listener automation (Tasker/MacroDroid watching for
+     Blink's own push notification, which reliably fires even though the
+     clip API doesn't) trigger blinkbridge's proven-working manual
+     liveview start. `BLINK_MOTION_WEBHOOK_API_KEY` is confirmed set on
+     the live `cabin-backend` container (checked presence/length only,
+     never the value, per this project's own credential-diffing rule).
+     **Unknown and needs the user to confirm: whether a phone-side
+     automation calling this webhook was ever actually set up.** If not,
+     that's the actual next step — not arming, not more backend work.
+  4. **Camera Events' "if possible" framing on motion-only clips
+     (`ed1c60d`, 2026-08-18) is honestly hedged for intermittent-feed
+     cameras (AldrichFront) but overstates uncertainty for
+     continuous-feed ones (driveway, front_door-when-up)** — Frigate's
+     `record.enabled=true` is unconditional, so a camera with a
+     continuously-fed stream should almost always have a real clip; the
+     UI currently gives every camera the same "tap to try, might not be
+     there" treatment regardless. Small, well-scoped UX fix, not done
+     this session — flagged, not started.
+  5. **Presence detection re-confirmed working correctly, live** —
+     `/api/presence` correctly resolved `AT_HOME` within ~20 minutes of
+     the user's actual arrival home from the cabin, all signals
+     (`device_tracker.nates_s23`, `person.natecabin`,
+     `motion_entry_occupancy`) flipped `present:false` at cabin in sync.
+     Not re-verified for the return-to-away transition (dog walk) before
+     session's live-investigation thread ended — worth a quick spot
+     check next live session if it comes up again.
+- **Local-network-scan concern raised by the user re: a Family Hub
+  "grandpa" actor login, 2026-08-24 — hypothesis only, not confirmed.**
+  User reported the app seemed to ask to "check for devices local to
+  [that] machine" after a different-browser/location login, and worried
+  this could recur on every new browser/network (a public library, a
+  tech demo) and pollute Device Manager with irrelevant candidates.
+  Checked the code: there is no login-triggered or actor-triggered
+  device-candidate scan anywhere in the frontend — `DeviceDiscoveryOverlay`
+  only runs `discovery/run` when a person explicitly clicks "Re-check
+  device info" or the equivalent Add-flow button, and all continuous
+  device scanning (Zigbee2MQTT, HA polling) happens server-side against
+  the M920q's own LAN, not whatever network the browser is on, so it
+  can't be what was described. The one remaining candidate: `RulesPanel`
+  still embeds Node-RED directly via `<iframe src="http://cabin-hub:1880">`
+  (`App.jsx:3405`, a real private-LAN URL — Grafana's equivalent iframe
+  was already removed 2026-08-08 for related reasons). Modern Chrome's
+  "Local Network Access" permission prompt ("Allow this site to find
+  devices on your local network?") fires per-origin whenever a page tries
+  to fetch a private-IP URL, which would reproduce exactly the reported
+  behavior and would indeed re-trigger on every new browser/origin,
+  independent of who's logged in. **Not confirmed** — need the user to
+  say whether what they saw was literally a browser permission dialog
+  (supports this theory) or something inside the app's own UI (would mean
+  this theory is wrong and needs more digging). If confirmed, the fix is
+  likely lazy-loading the iframe only when RulesPanel is actually opened,
+  or proxying Node-RED same-origin instead of embedding its LAN URL
+  directly — not started.
+- **Local/offline AI for the guide-assistant and monthly Opportunities
+  web-lookup use cases — user raised as "consider," not requested to
+  build.** Two distinct ideas: (a) a fully offline, containerized
+  self-help/guide LLM per clone (cabin M920q, ilikethelights, a
+  "Bluefin machine" not otherwise documented in this repo), retrained on
+  the current ontology/docs/specs so users don't have to keep asking
+  Claude for basic guidance; (b) a low-volume (sub-dozen instances,
+  monthly cadence) web-search-capable LLM for the existing Opportunities
+  feature to research current best-practice patterns (SSO, tunneling,
+  etc.) without needing Claude for it. Perplexica (or a similar
+  self-hosted RAG tool) was suggested as a starting point. Purely
+  exploratory — no design or implementation started. Worth its own
+  focused discussion given it's genuinely two different problems (fully
+  offline retrieval-only vs. online search-augmented) with different
+  infra needs, not one feature.
 - **Codex-fork handoff (2026-08-08 → 2026-08-14) — reconciliation audit
   complete; surviving features still open.** Canonical `main` at
   `bba699e` was checked item-by-item and compared with the full fork-only
