@@ -2435,6 +2435,15 @@ export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStat
 export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction, onOpenDiscovery }) {
   const override = checkinStatusLabel(device.state, checkinStatus);
   const lifecycle = deviceLifecycleState(device);
+  // Resolved parent name, not just the raw id -- same "show it, don't
+  // make a human cross-reference an id by hand" reasoning as Category/
+  // Capabilities below. useApp() may return null in a standalone render
+  // (e.g. a test rendering this component with no provider) -- called
+  // unconditionally either way, per the Rules of Hooks; a missing
+  // devices list just means no name resolves, not a crash.
+  const parentDeviceId = device.attributes?.parentDeviceId;
+  const appDevices = useApp()?.devices || [];
+  const parentDevice = parentDeviceId ? appDevices.find(d => d.deviceId === parentDeviceId) : null;
   const [lifecycleResult, setLifecycleResult] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const decide = async (action) => {
@@ -2465,6 +2474,11 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
             <span className="capability-chips">
               {device.attributes.capabilities.map(c => <span key={c} className="capability-chip">{c}</span>)}
             </span>
+          </div>
+        )}
+        {parentDeviceId && (
+          <div className="dm-detail-row"><span>Belongs to</span>
+            <span>{parentDevice ? parentDevice.name : parentDeviceId}</span>
           </div>
         )}
         <div className="dm-detail-row"><span>Location</span><span>{device.location}</span></div>
@@ -2523,11 +2537,12 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       {Object.keys(device.attributes || {}).length > 0 && (
         <>
           <div className="dm-detail-section">Attributes</div>
-          {/* category/capabilities have their own structured rows above (real
-              ontology data, not free-form) -- shown there only, not duplicated
-              here as raw key/value text. */}
+          {/* category/capabilities/parentDeviceId have their own structured
+              rows above (real ontology data / resolved names, not
+              free-form) -- shown there only, not duplicated here as raw
+              key/value text. */}
           {Object.entries(device.attributes)
-            .filter(([k]) => k !== "category" && k !== "capabilities")
+            .filter(([k]) => k !== "category" && k !== "capabilities" && k !== "parentDeviceId")
             .map(([k, v]) => v != null && (
               <div key={k} className="attr-row">
                 <span className="attr-key">{k}</span>
@@ -2602,6 +2617,16 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
   // new 'room' field (DeviceLifecycleRecord.extraAttributes), not just in
   // memory -- see DeviceController's own comment.
   const [room, setRoom]       = useState(device.attributes?.room || "");
+  // Parent device (added 2026-08-25, Item 4a): the device-to-services
+  // hierarchy's MVP link -- e.g. tying a Kidde unit's separate HA-entity
+  // "devices" (CO alarm, air quality, ...) back to the one physical unit
+  // they actually belong to. Same extraAttributes mechanism as room, but
+  // real referential validation lives server-side (DeviceRegistry.
+  // validateParentDeviceId) since a dangling/cyclic reference is a real
+  // bug, not free text. useApp() gives the full device list to pick a
+  // parent from -- same context DmLockActions already reads from.
+  const allDevices = useApp()?.devices || [];
+  const [parentDeviceId, setParentDeviceId] = useState(device.attributes?.parentDeviceId || "");
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -2609,7 +2634,15 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
   const lifecycle = deviceLifecycleState(device);
   const originalEnabled = device.attributes?.enabled ?? (device.enabled !== false);
   const originalRoom = device.attributes?.room || "";
-  const changed = name.trim() !== device.name || enabled !== originalEnabled || room.trim() !== originalRoom;
+  const originalParentDeviceId = device.attributes?.parentDeviceId || "";
+  const changed = name.trim() !== device.name || enabled !== originalEnabled || room.trim() !== originalRoom
+    || parentDeviceId !== originalParentDeviceId;
+  // Same location, not itself -- matches validateParentDeviceId's own
+  // rules; filtering candidates here is a UX nicety, the real guard is
+  // still server-side.
+  const parentCandidates = (allDevices || [])
+    .filter(d => d.deviceId !== device.deviceId && d.location === device.location)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const save = async () => {
     setSaving(true);
@@ -2618,7 +2651,7 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
       const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, enabled, room: room.trim() })
+        body: JSON.stringify({ name, enabled, room: room.trim(), parentDeviceId })
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
@@ -2648,6 +2681,13 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
       <label>Room
         <input value={room} placeholder="e.g. Kitchen, Mechanical Room"
           onChange={e => { setRoom(e.target.value); setSaved(false); setSaveError(null); }}/>
+      </label>
+      <label>Parent device
+        <select value={parentDeviceId}
+          onChange={e => { setParentDeviceId(e.target.value); setSaved(false); setSaveError(null); }}>
+          <option value="">None — this is a standalone device</option>
+          {parentCandidates.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name}</option>)}
+        </select>
       </label>
       <label className="dm-toggle-row">
         <span>Enabled</span>

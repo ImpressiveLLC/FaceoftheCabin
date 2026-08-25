@@ -695,6 +695,48 @@ describe("DmDeviceDetail ontology metadata (category/capabilities)", () => {
   });
 });
 
+// 2026-08-25, Item 4a: parentDeviceId's resolved-name display -- same
+// "show the real thing, not a raw id" reasoning as category/capabilities
+// above.
+describe("DmDeviceDetail parent device (Item 4a)", () => {
+  afterEach(cleanup);
+
+  const child = { deviceId: "kidde-co", name: "CO Alarm", type: "CO_ALARM", state: "ONLINE", location: "cabin",
+    attributes: { deviceLifecycle: "ASSIGNED", parentDeviceId: "kidde-unit" } };
+
+  it("resolves and shows the parent device's real name via AppContext, not the raw id", () => {
+    render(
+      <AppContext.Provider value={{ devices: [{ deviceId: "kidde-unit", name: "Kidde CO/Air Quality Unit" }] }}>
+        <DmDeviceDetail device={child} onConfigure={() => {}} onLifecycleAction={vi.fn()} />
+      </AppContext.Provider>
+    );
+    expect(screen.getByText("Kidde CO/Air Quality Unit")).toBeTruthy();
+    expect(screen.queryByText("kidde-unit")).toBeNull();
+  });
+
+  it("falls back to the raw id if the parent isn't in the current device list", () => {
+    render(
+      <AppContext.Provider value={{ devices: [] }}>
+        <DmDeviceDetail device={child} onConfigure={() => {}} onLifecycleAction={vi.fn()} />
+      </AppContext.Provider>
+    );
+    expect(screen.getByText("kidde-unit")).toBeTruthy();
+  });
+
+  it("does not crash with no AppContext.Provider at all (matches every other DmDeviceDetail test's render style)", () => {
+    render(<DmDeviceDetail device={child} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByText("kidde-unit")).toBeTruthy();
+  });
+
+  it("shows no Belongs to row and no raw parentDeviceId in the Attributes dump when unset", () => {
+    const standalone = { deviceId: "driveway", name: "Driveway Cam", type: "CAMERA", state: "ONLINE", location: "cabin",
+      attributes: { deviceLifecycle: "ASSIGNED" } };
+    render(<DmDeviceDetail device={standalone} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.queryByText("Belongs to")).toBeNull();
+    expect(screen.queryByText("parentDeviceId")).toBeNull();
+  });
+});
+
 describe("Device candidate decision controls", () => {
   afterEach(cleanup);
 
@@ -779,7 +821,7 @@ describe("Device candidate configuration", () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     const [, options] = fetch.mock.calls[0];
-    expect(JSON.parse(options.body)).toEqual({ name: "Basement leak sensor", enabled: true, room: "" });
+    expect(JSON.parse(options.body)).toEqual({ name: "Basement leak sensor", enabled: true, room: "", parentDeviceId: "" });
   });
 
   it("prefills Room from the device's existing attribute and includes it unchanged when saving something else", async () => {
@@ -802,7 +844,7 @@ describe("Device candidate configuration", () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     const [, options] = fetch.mock.calls[0];
-    expect(JSON.parse(options.body)).toEqual({ name: "Party Mode Switch", enabled: false, room: "Kitchen" });
+    expect(JSON.parse(options.body)).toEqual({ name: "Party Mode Switch", enabled: false, room: "Kitchen", parentDeviceId: "" });
   });
 
   it("saving a room-only edit is enabled and sends the new room", async () => {
@@ -826,7 +868,76 @@ describe("Device candidate configuration", () => {
 
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     const [, options] = fetch.mock.calls[0];
-    expect(JSON.parse(options.body)).toEqual({ name: "Kidde CO Alarm", enabled: true, room: "Mechanical Room" });
+    expect(JSON.parse(options.body)).toEqual({ name: "Kidde CO Alarm", enabled: true, room: "Mechanical Room", parentDeviceId: "" });
+  });
+});
+
+// 2026-08-25, Item 4a: the Parent device picker itself. Server-side
+// validation (self/nonexistent/cross-location/cycle) is DeviceRegistryTest's
+// job -- this covers only what the picker offers and what it saves.
+describe("DmEditForm parent device picker (Item 4a)", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const child = {
+    deviceId: "kidde-co", name: "CO Alarm", type: "CO_ALARM", state: "ONLINE", location: "cabin",
+    attributes: { deviceLifecycle: "ASSIGNED", enabled: true, room: "" },
+  };
+  const devices = [
+    child,
+    { deviceId: "kidde-unit", name: "Kidde CO/Air Quality Unit", location: "cabin" },
+    { deviceId: "home-thermostat", name: "Home Thermostat", location: "home" },
+  ];
+
+  it("offers only same-location devices, excluding itself, as parent candidates", () => {
+    render(
+      <AppContext.Provider value={{ devices }}>
+        <DmEditForm device={child} onSaved={() => {}} />
+      </AppContext.Provider>
+    );
+    const select = screen.getByLabelText(/parent device/i);
+    const optionLabels = [...select.querySelectorAll("option")].map(o => o.textContent);
+    expect(optionLabels).toContain("Kidde CO/Air Quality Unit");
+    expect(optionLabels).not.toContain("Home Thermostat");
+    expect(optionLabels).not.toContain("CO Alarm");
+  });
+
+  it("saves the selected parent device id", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ changed: true, enabled: true, deviceLifecycle: "ASSIGNED" }),
+    }));
+    render(
+      <AppContext.Provider value={{ devices }}>
+        <DmEditForm device={child} onSaved={() => {}} />
+      </AppContext.Provider>
+    );
+
+    fireEvent.change(screen.getByLabelText(/parent device/i), { target: { value: "kidde-unit" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const [, options] = fetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ name: "CO Alarm", enabled: true, room: "", parentDeviceId: "kidde-unit" });
+  });
+
+  it("surfaces a server-side rejection (e.g. a cycle) as a real error, not a silent no-op", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ error: "Setting this parent would create a cycle" }),
+    }));
+    render(
+      <AppContext.Provider value={{ devices }}>
+        <DmEditForm device={child} onSaved={() => {}} />
+      </AppContext.Provider>
+    );
+
+    fireEvent.change(screen.getByLabelText(/parent device/i), { target: { value: "kidde-unit" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    expect(await screen.findByText(/would create a cycle/i)).toBeTruthy();
+  });
+
+  it("renders cleanly with no AppContext.Provider (matches this file's existing DmEditForm render style)", () => {
+    render(<DmEditForm device={child} onSaved={() => {}} />);
+    expect(screen.getByLabelText(/parent device/i)).toBeTruthy();
   });
 });
 

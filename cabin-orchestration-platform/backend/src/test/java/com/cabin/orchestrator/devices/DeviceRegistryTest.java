@@ -121,6 +121,92 @@ class DeviceRegistryTest {
         assertEquals("Entry", registry.get("candidate-room-2").attributes().get("room"));
     }
 
+    /**
+     * 2026-08-25: parentDeviceId (device→services hierarchy's MVP link,
+     * e.g. a Kidde unit's several HA entities pointing back at one
+     * physical device) rides the same extraAttributes slot as room, but
+     * unlike room it's a real referential invariant, not free text --
+     * see validateParentDeviceId's own comment for why the validation
+     * lives in DeviceRegistry rather than the frontend/controller.
+     */
+    @Test
+    void savingAValidParentDeviceIdIsVisibleOnTheLiveStatusImmediately() {
+        registry.registerConfiguredDevice(descriptor(
+            "kidde-unit", "Kidde CO/Air Quality Unit", DeviceType.CO_ALARM,
+            Set.of(DeviceCapability.TELEMETRY), "ha_rest", "device.kidde", true, "cabin"));
+        registry.registerConfiguredDevice(descriptor(
+            "kidde-co-alarm", "CO Alarm", DeviceType.CO_ALARM,
+            Set.of(DeviceCapability.ALARM), "ha_rest", "binary_sensor.kidde_co", true, "cabin"));
+
+        DeviceRegistry.ConfigurationSaveResult saved = registry.saveConfiguration(
+            "kidde-co-alarm", "CO Alarm", true, Map.of("parentDeviceId", "kidde-unit"));
+
+        assertTrue(saved.changed());
+        assertEquals("kidde-unit", registry.get("kidde-co-alarm").attributes().get("parentDeviceId"));
+    }
+
+    @Test
+    void clearingAParentDeviceIdWithABlankValueIsAlwaysValid() {
+        registry.registerConfiguredDevice(descriptor(
+            "parent-a", "Parent", DeviceType.CO_ALARM, Set.of(), "ha_rest", "x", true, "cabin"));
+        registry.registerConfiguredDevice(descriptor(
+            "child-a", "Child", DeviceType.CO_ALARM, Set.of(), "ha_rest", "y", true, "cabin"));
+        registry.saveConfiguration("child-a", "Child", true, Map.of("parentDeviceId", "parent-a"));
+
+        DeviceRegistry.ConfigurationSaveResult saved = registry.saveConfiguration(
+            "child-a", "Child", true, Map.of("parentDeviceId", ""));
+
+        assertTrue(saved.changed());
+        assertEquals("", registry.get("child-a").attributes().get("parentDeviceId"));
+    }
+
+    @Test
+    void aDeviceCannotBeSetAsItsOwnParent() {
+        registry.registerConfiguredDevice(descriptor(
+            "self-parent", "Self", DeviceType.CO_ALARM, Set.of(), "ha_rest", "x", true, "cabin"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () ->
+            registry.saveConfiguration("self-parent", "Self", true, Map.of("parentDeviceId", "self-parent")));
+        assertTrue(error.getMessage().contains("own parent"));
+    }
+
+    @Test
+    void aNonexistentParentDeviceIsRejected() {
+        registry.registerConfiguredDevice(descriptor(
+            "orphan", "Orphan", DeviceType.CO_ALARM, Set.of(), "ha_rest", "x", true, "cabin"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () ->
+            registry.saveConfiguration("orphan", "Orphan", true, Map.of("parentDeviceId", "does-not-exist")));
+        assertTrue(error.getMessage().contains("not found"));
+    }
+
+    @Test
+    void aParentAtADifferentLocationIsRejected() {
+        registry.registerConfiguredDevice(descriptor(
+            "home-parent", "Home Parent", DeviceType.CO_ALARM, Set.of(), "ha_rest", "x", true, "home"));
+        registry.registerConfiguredDevice(descriptor(
+            "cabin-child", "Cabin Child", DeviceType.CO_ALARM, Set.of(), "ha_rest", "y", true, "cabin"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () ->
+            registry.saveConfiguration("cabin-child", "Cabin Child", true, Map.of("parentDeviceId", "home-parent")));
+        assertTrue(error.getMessage().contains("same location"));
+    }
+
+    @Test
+    void settingAParentThatWouldCreateACycleIsRejected() {
+        registry.registerConfiguredDevice(descriptor(
+            "device-a", "A", DeviceType.CO_ALARM, Set.of(), "ha_rest", "a", true, "cabin"));
+        registry.registerConfiguredDevice(descriptor(
+            "device-b", "B", DeviceType.CO_ALARM, Set.of(), "ha_rest", "b", true, "cabin"));
+        // B's parent is A.
+        registry.saveConfiguration("device-b", "B", true, Map.of("parentDeviceId", "device-a"));
+
+        // Now trying to set A's parent to B would form a 2-node cycle (A -> B -> A).
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () ->
+            registry.saveConfiguration("device-a", "A", true, Map.of("parentDeviceId", "device-b")));
+        assertTrue(error.getMessage().contains("cycle"));
+    }
+
     @Test
     void reviewingOrSavingNoEffectiveChangeLeavesCandidateAndWritesNothing() {
         registry.registerCandidate(descriptor(

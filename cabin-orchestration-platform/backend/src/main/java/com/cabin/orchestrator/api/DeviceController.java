@@ -180,8 +180,20 @@ public class DeviceController {
                 // "no room" everywhere the UI checks it).
                 extraAttributes.put("room", room == null ? "" : String.valueOf(room).trim());
             }
-            DeviceRegistry.ConfigurationSaveResult result =
-                registry.saveConfiguration(deviceId, name, enabled, extraAttributes);
+            if (patch.containsKey("parentDeviceId")) {
+                // Same blank-clears-it convention as room above. Real
+                // validation (exists, same location, no self/cycle) lives
+                // in DeviceRegistry.saveConfiguration() -- an invalid
+                // value throws IllegalArgumentException, caught below.
+                Object parentDeviceId = patch.get("parentDeviceId");
+                extraAttributes.put("parentDeviceId", parentDeviceId == null ? "" : String.valueOf(parentDeviceId).trim());
+            }
+            DeviceRegistry.ConfigurationSaveResult result;
+            try {
+                result = registry.saveConfiguration(deviceId, name, enabled, extraAttributes);
+            } catch (IllegalArgumentException e) {
+                return Map.<String, Object>of("error", e.getMessage());
+            }
             healthMonitor.refreshAfterConfigurationChange(deviceId);
             return Map.<String, Object>of(
                 "updated", deviceId,

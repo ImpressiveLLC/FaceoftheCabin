@@ -304,6 +304,9 @@ public class DeviceRegistry {
             }
             String nextName = name == null ? existing.name() : name.trim();
             if (nextName.isBlank()) throw new IllegalArgumentException("Device name cannot be blank");
+            if (extraAttributes.containsKey("parentDeviceId")) {
+                validateParentDeviceId(deviceId, existing.location(), extraAttributes.get("parentDeviceId"));
+            }
             boolean changed = !Objects.equals(existing.name(), nextName) || existing.enabled() != enabled
                 || !extraAttributes.isEmpty();
             if (!changed) return new ConfigurationSaveResult(false, current, existing);
@@ -318,6 +321,42 @@ public class DeviceRegistry {
             lifecycleStore.save(record);
             applyPersistedRecord(record);
             return new ConfigurationSaveResult(true, target, updated);
+        }
+    }
+
+    /**
+     * Real invariants for the device→services hierarchy's MVP
+     * parentDeviceId link (2026-08-25): a blank value clears the parent
+     * and is always valid. A non-blank value must name a real, existing
+     * device, at the same location, that isn't this device itself and
+     * doesn't already lead back to this device through its own parent
+     * chain. Deliberately checked here rather than left to the frontend
+     * -- extraAttributes is otherwise opaque to this class, but a
+     * dangling or cyclic parent reference is a real data-integrity bug,
+     * not a cosmetic one.
+     */
+    private void validateParentDeviceId(String deviceId, String location, Object parentDeviceIdRaw) {
+        String parentDeviceId = parentDeviceIdRaw == null ? "" : String.valueOf(parentDeviceIdRaw).trim();
+        if (parentDeviceId.isEmpty()) return;
+        if (parentDeviceId.equals(deviceId)) {
+            throw new IllegalArgumentException("A device cannot be its own parent");
+        }
+        DeviceDescriptor parent = descriptors.get(parentDeviceId);
+        if (parent == null) {
+            throw new IllegalArgumentException("Parent device not found: " + parentDeviceId);
+        }
+        if (!Objects.equals(parent.location(), location)) {
+            throw new IllegalArgumentException("Parent device must be at the same location");
+        }
+        Set<String> visited = new HashSet<>();
+        String current = parentDeviceId;
+        while (current != null && visited.add(current)) {
+            if (current.equals(deviceId)) {
+                throw new IllegalArgumentException("Setting this parent would create a cycle");
+            }
+            DeviceStatus currentStatus = statuses.get(current);
+            Object next = currentStatus == null ? null : currentStatus.attributes().get("parentDeviceId");
+            current = next == null || String.valueOf(next).isBlank() ? null : String.valueOf(next).trim();
         }
     }
 
