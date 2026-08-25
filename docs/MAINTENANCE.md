@@ -193,6 +193,19 @@ network path to a Tailscale-only host. Full setup/recovery runbook:
   why each has a different retention story. To read an archived month:
   `zcat 2026-05.jsonl.gz | jq .` — one JSON object per line, same shape
   as `GET /api/events` returns.
+- **Viewing sensor history in the UI** — the Monitoring panel only ever
+  showed the *current* value per device, no history. `Grafana → Sensors →
+  Cabin Sensor Telemetry` (uid `cabin-sensor-telemetry`, provisioned from
+  `infra/grafana/provisioning/dashboards/sensors/cabin-telemetry.json`,
+  linked directly from the Monitoring panel) queries `cabin_event` live
+  for Zigbee temp/humidity/water-leak and Kidde CO/CO2/temperature/
+  humidity. The Kidde panels only populate once
+  `HomeAssistantDiscoveryService`'s sensor-domain value-capture fix
+  (2026-08-25 — see "Known Issues" below) is deployed and HA has polled
+  at least twice; queries were verified against live data before this
+  fix existed and correctly return zero rows rather than erroring. Only
+  covers the hot tier — once a month is archived, it drops out of these
+  panels (see the retention entry above).
 
 ---
 
@@ -1164,6 +1177,28 @@ disabled itself after a transient Blink cloud-API failure and never
 retried; `docker restart blinkbridge` recovered it immediately
 (`camera_fps` `0.0` → `5.1`). `front_door`'s `0.0` is the separate,
 already-documented off-network issue, not part of this incident.
+
+### HA sensor-domain entities never published their real reading, only connectivity (found and fixed 2026-08-25)
+
+Found while building the sensor telemetry Grafana dashboard and
+verifying its queries against live data: Kidde's indoor-temperature,
+co2-level, humidity, etc. entities had real, recent `cabin_event` rows
+(discovery was working), but every payload only ever contained metadata
+(`device_class`, `unit_of_measurement`, `friendly_name`) — never the
+actual number. Root cause: `HomeAssistantAdapter.mapHaState()` maps HA's
+raw state string into a small categorical set (`ONLINE`/`UNKNOWN`/
+`ALARM`) for `DeviceStatus.state` — correct for `binary_sensor` entities
+(on/off), but for `sensor`-domain entities HA's own convention is that
+the state *is* the reading (e.g. `"72.5"`), which falls through to
+`mapHaState()`'s `default -> "ONLINE"` and gets silently discarded.
+Fixed in `HomeAssistantDiscoveryService.discoverLocation()`: the raw
+`entity.state()` is now also captured into `attrs["value"]` for
+`sensor`-domain entities specifically, alongside (not replacing)
+`mapHaState()`'s own categorical `DeviceStatus.state` — device-health
+classification and the actual reading are different concerns. Kidde's
+dedicated CO-level entity has no `device_class` set at all on the live
+account (a HA-side gap, not something this fix invents) — the Grafana
+dashboard above matches it by `device_id` instead.
 
 ---
 

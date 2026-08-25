@@ -8,3 +8,11 @@ providers:
     updateIntervalSeconds: 30
     options:
       path: /etc/grafana/provisioning/dashboards/frigate
+  - name: Sensors
+    orgId: 1
+    folder: Sensors
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards/sensors

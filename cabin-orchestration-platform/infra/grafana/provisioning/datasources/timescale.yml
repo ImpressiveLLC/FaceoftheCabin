@@ -1,6 +1,7 @@
 apiVersion: 1
 datasources:
   - name: CabinDB
+    uid: cabindb
     type: postgres
     url: cabin-postgres:5432
     database: cabin

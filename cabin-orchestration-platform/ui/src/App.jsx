@@ -92,6 +92,13 @@ export function isLocationDeployed(loc) {
 const GRAFANA_DASHBOARD_UID = {
   cabin: "aezbolgn22qdce",
 };
+// 2026-08-25: sensor telemetry dashboard (temp/humidity/water-leak/CO) --
+// see infra/grafana/provisioning/dashboards/sensors/cabin-telemetry.json.
+// uid is set explicitly in that file rather than left to Grafana's
+// auto-generated one, same reasoning as GRAFANA_DASHBOARD_UID above.
+const GRAFANA_SENSOR_DASHBOARD_UID = {
+  cabin: "cabin-sensor-telemetry",
+};
 
 // ─── Panel definitions ─────────────────────────────────────────────────────
 // ─── Google Sign-In — cabin-ui's OWN standalone flow ───────────────────────
@@ -3097,6 +3104,13 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
           );
         })}
       </div>
+
+      {GRAFANA_SENSOR_DASHBOARD_UID[locCfg.id] && (
+        <a className="btn-secondary" href={`${locCfg.grafanaUrl}/grafana/d/${GRAFANA_SENSOR_DASHBOARD_UID[locCfg.id]}`}
+          target="_blank" rel="noreferrer">
+          View Sensor History (Temp / Humidity / CO) ↗
+        </a>
+      )}
 
       <CameraHealthPanel locCfg={locCfg} />
 
