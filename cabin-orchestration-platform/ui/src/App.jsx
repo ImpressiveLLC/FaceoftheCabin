@@ -1571,8 +1571,8 @@ const DM_VIEWS = [
   { id: "remove", label: "Remove", icon: Minus },
 ];
 
-function DeviceManagerPanel() {
-  const { devices, refreshDevices, activeLocation, workflows } = useApp();
+export function DeviceManagerPanel() {
+  const { devices, refreshDevices, activeLocation, workflows, setActivePanel } = useApp();
   const [view, setView]             = useState("see");
   const [selected, setSelected]     = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
@@ -1646,6 +1646,19 @@ function DeviceManagerPanel() {
     : managerDevices.filter(d => !d.location || d.location === activeLocation);
   const effectiveDeviceFilter = resolveDeviceManagerFilter(groupBy, deviceFilter);
 
+  // Hoisted up from DmSeeView (was local there) so See and Change render
+  // the exact same saved grouping/order -- Change is a read-only consumer
+  // (no reorderGroup/reorderDevice passed to it), See keeps the only
+  // drag UI. One computed source instead of two independently-ordered
+  // lists that could drift apart.
+  const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
+  const { groups, reorderGroup, reorderDevice } = useGroupedDraggableOrder(
+    `order.deviceGroups.${activeLocation}.${groupBy}`,
+    `order.devices.${activeLocation}.${groupBy}`,
+    `order.devices.${activeLocation}`,
+    locDevices, groupBy, isAlarm
+  );
+
   const refreshManagerDevices = useCallback(() => {
     refreshDevices();
     refreshReviewDevices();
@@ -1664,14 +1677,25 @@ function DeviceManagerPanel() {
     return body;
   }, [refreshManagerDevices]);
 
-  const handleViewChange = (v) => { setView(v); setSelected(null); setReorderMode(false); };
+  // 2026-08-25 (user report): switching L1 tabs used to always drop the
+  // selected device -- a person looking at a device in See had to
+  // remember it, find it again in Change, and only then could edit it.
+  // Only "Add" genuinely has no device context to carry; See/Change/
+  // Remove now keep whatever was selected (each view's own `devices.find`
+  // already degrades gracefully to "nothing selected" if that device
+  // isn't in the target view's filtered list).
+  const handleViewChange = (v) => {
+    setView(v);
+    if (v === "add") setSelected(null);
+    setReorderMode(false);
+  };
 
   return (
     <div className="panel-content">
       <div className="panel-header-bar">
         <h2>Device Manager</h2>
         <div className="header-actions">
-          {view === "see" && (
+          {(view === "see" || view === "change") && (
             <>
               <label className="dm-toolbar-select">Group
                 <select value={groupBy} onChange={e => setGroupBy(e.target.value)}>
@@ -1690,15 +1714,23 @@ function DeviceManagerPanel() {
                   <option value="previous">Review previously exposed</option>
                 </select>
               </label>
-              <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
-                title="Choose whether groups flow across the screen or stack downward">
-                {groupFlow === "horizontal" ? "Groups ↔" : "Groups ↕"}
+              <button className="btn-ghost" onClick={() => { setGroupBy("type"); setDeviceFilter("in_scope"); }}
+                title="Return Group and Show to their defaults">
+                Reset Filters
               </button>
-              <button
-                className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
-                onClick={() => setReorderMode(r => !r)}>
-                <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
-              </button>
+              {view === "see" && (
+                <>
+                  <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
+                    title="Choose whether groups flow across the screen or stack downward">
+                    {groupFlow === "horizontal" ? "Groups ↔" : "Groups ↕"}
+                  </button>
+                  <button
+                    className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
+                    onClick={() => setReorderMode(r => !r)}>
+                    <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
+                  </button>
+                </>
+              )}
             </>
           )}
           <button className="btn-ghost" onClick={refreshManagerDevices}><RefreshCw size={14}/> Refresh</button>
@@ -1725,15 +1757,19 @@ function DeviceManagerPanel() {
         </a>
       </div>
 
-      {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} devices={locDevices} selected={selected} onSelect={setSelected}
-        reorderMode={reorderMode} groupBy={groupBy} groupFlow={groupFlow}
+      {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} groups={groups} reorderGroup={reorderGroup} reorderDevice={reorderDevice}
+        selected={selected} onSelect={setSelected}
+        reorderMode={reorderMode} groupFlow={groupFlow}
         deviceFilter={effectiveDeviceFilter}
         onLifecycleAction={applyLifecycleAction}
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }}
+        onManageWorkflows={() => setActivePanel("RULES_ENGINE")}
         onRefresh={refreshManagerDevices} workflows={workflows} />}
-      {view === "change" && <DmChangeView devices={locDevices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)))} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
-        onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })} workflows={workflows} />}
+      {view === "change" && <DmChangeView groups={groups} deviceFilter={effectiveDeviceFilter} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
+        onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
+        onManageWorkflows={() => setActivePanel("RULES_ENGINE")}
+        workflows={workflows} />}
       {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
       {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
       {discoveryTarget && (
@@ -1955,8 +1991,7 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   return { groups, reorderGroup, reorderDevice };
 }
 
-function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows }) {
-  const { activeLocation } = useApp();
+function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, reorderMode, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows, onManageWorkflows }) {
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
   const [overItem, setOverItem] = useState(null);
@@ -1968,18 +2003,16 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
       .then(r => r.json()).then(setHealth).catch(() => {});
   }, []);
 
+  // Same predicate DeviceManagerPanel uses to drive the hoisted ordering
+  // hook -- only needed here for the drag UI's "alarm devices can't be
+  // dragged" guard, cheap enough to duplicate rather than thread as a prop.
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
-  const { groups, reorderGroup, reorderDevice } = useGroupedDraggableOrder(
-    `order.deviceGroups.${activeLocation}.${groupBy}`,
-    `order.devices.${activeLocation}.${groupBy}`,
-    `order.devices.${activeLocation}`,
-    devices, groupBy, isAlarm
-  );
 
   const visibleGroups = groups
     .map(([name, items]) => [name, filterDeviceManagerDevices(items, deviceFilter)])
     .filter(([, items]) => items.length > 0);
   const visibleDevices = visibleGroups.flatMap(([, items]) => items);
+  const totalDevices = groups.reduce((n, [, items]) => n + items.length, 0);
   const sel = selected ? visibleDevices.find(d => d.deviceId === selected) : null;
 
   const clearDrag = () => { setDragItem(null); setOverItem(null); };
@@ -2077,13 +2110,14 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
         ))}
         </div>
         {visibleDevices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/>
-          <p>{devices.length === 0 ? "No devices registered." : "No devices match this view."}</p></div>}
+          <p>{totalDevices === 0 ? "No devices registered." : "No devices match this view."}</p></div>}
       </div>
       {sel && (
         <div className="dm-detail">
           <DmDeviceDetail device={sel} checkinStatus={checkinDetails[sel.deviceId]?.status || checkinStatuses[sel.deviceId]}
             checkinDetail={checkinDetails[sel.deviceId]} onConfigure={() => onConfigure(sel.deviceId)}
-            onLifecycleAction={onLifecycleAction} onOpenDiscovery={onOpenDiscovery} />
+            onLifecycleAction={onLifecycleAction} onOpenDiscovery={onOpenDiscovery}
+            workflows={workflows} onManageWorkflows={onManageWorkflows} />
         </div>
       )}
     </div>
@@ -2091,17 +2125,36 @@ function DmSeeView({ devices, selected, onSelect, reorderMode, groupBy, groupFlo
 }
 
 // ── L2/L3: Change ──
-function DmChangeView({ devices, selected, onSelect, onRefresh, onOpenDiscovery, workflows }) {
-  const sel = selected ? devices.find(d => d.deviceId === selected) : null;
+// Deliberately reads the same `groups` (computed once in DeviceManagerPanel
+// via useGroupedDraggableOrder) that See renders -- no independent ordering,
+// no drag props passed here, so there's no way for a Reorder control to
+// appear in Change even by accident. A saved See-mode order/grouping just
+// shows up identically, with no separate state to keep in sync.
+function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onOpenDiscovery, workflows, onManageWorkflows }) {
+  const visibleGroups = groups
+    .map(([name, items]) => [name, filterDeviceManagerDevices(items, deviceFilter)])
+    .filter(([, items]) => items.length > 0);
+  const visibleDevices = visibleGroups.flatMap(([, items]) => items);
+  const totalDevices = groups.reduce((n, [, items]) => n + items.length, 0);
+  const sel = selected ? visibleDevices.find(d => d.deviceId === selected) : null;
   return (
     <div className="dm-layout">
       <div className="dm-list">
         <p className="dm-hint">Select a device to review its details or save an actual configuration change.</p>
-        {devices.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId} onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} workflows={workflows} />)}
+        {visibleGroups.map(([groupName, groupItems]) => (
+          <section className="dm-device-group" key={groupName}>
+            <header className="dm-device-group-header"><span>{groupName}</span><span>{groupItems.length}</span></header>
+            {groupItems.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
+              onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} workflows={workflows} />)}
+          </section>
+        ))}
+        {visibleDevices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/>
+          <p>{totalDevices === 0 ? "No devices registered." : "No devices match this view."}</p></div>}
       </div>
       {sel && (
         <div className="dm-detail">
-          <DmEditForm key={sel.deviceId} device={sel} onSaved={onRefresh} onOpenDiscovery={onOpenDiscovery} />
+          <DmEditForm key={sel.deviceId} device={sel} onSaved={onRefresh} onOpenDiscovery={onOpenDiscovery}
+            workflows={workflows} onManageWorkflows={onManageWorkflows} />
         </div>
       )}
     </div>
@@ -2462,7 +2515,7 @@ export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStat
   );
 }
 
-export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction, onOpenDiscovery }) {
+export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction, onOpenDiscovery, workflows, onManageWorkflows }) {
   const override = checkinStatusLabel(device.state, checkinStatus);
   const lifecycle = deviceLifecycleState(device);
   // Resolved parent name, not just the raw id -- same "show it, don't
@@ -2581,13 +2634,47 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
             ))}
         </>
       )}
+      <DmDeviceWorkflows device={device} workflows={workflows} onManage={onManageWorkflows} />
       {lifecycle === "ASSIGNED" && device.type === "LOCK" && <DmLockActions device={device}/>}
-      {lifecycle === "ASSIGNED" && <DmCapabilityActions device={device}/>}
+      {lifecycle === "ASSIGNED" && <DmCapabilityActions device={device} onConfigure={onConfigure}/>}
     </div>
   );
 }
 
-function DmCapabilityActions({ device }) {
+// Real per-device workflow membership -- read-only here on purpose.
+// Fire/Activate/Deactivate/Delete/History already exist, tested and
+// auth-gated, on WorkflowRow in RulesPanel; duplicating mutation controls
+// into Device Manager would mean two places that can change a workflow's
+// state, one of them untested here. "Manage in Rules & Alerts" is an
+// honest jump to where those actions already work, not a scrolled/focused
+// deep link -- building real cross-panel focus state wasn't in scope here.
+function DmDeviceWorkflows({ device, workflows, onManage }) {
+  const deviceWorkflows = workflowsForDevice(workflows, device.deviceId);
+  return (
+    <div className="dm-workflows-section">
+      <div className="dm-detail-section">Workflows ({deviceWorkflows.length})</div>
+      {deviceWorkflows.length === 0
+        ? <p className="config-hint">Not used by any workflow yet.</p>
+        : deviceWorkflows.map(w => (
+          <div key={w.workflowId} className="rule-row">
+            <span className={`rule-dot ${w.enabled ? "rule-defined" : "rule-inactive"}`}>●</span>
+            <div>
+              <div className="rule-name">{w.name}</div>
+              <div className="rule-detail">
+                {w.triggerDeviceId || w.triggerDefinitionId || "any trigger"} {" → "}
+                {(w.actions || []).length > 0 ? w.actions.map(a => a.targetDeviceId || a.actionDefinitionId).join(", ") : "no actions"}
+              </div>
+            </div>
+          </div>
+        ))}
+      {deviceWorkflows.length > 0 && onManage && (
+        <button className="btn-ghost" style={{ marginTop: 4 }} onClick={onManage}>Manage in Rules & Alerts</button>
+      )}
+    </div>
+  );
+}
+
+function DmCapabilityActions({ device, onConfigure }) {
   const [result, setResult] = useState(null);
   const capabilities = device.attributes?.capabilities || [];
   if (!capabilities.includes("COMMAND") || device.type === "LOCK") return null;
@@ -2598,7 +2685,12 @@ function DmCapabilityActions({ device }) {
     : domain === "cover"
       ? [["cover.open_cover", "Open"], ["cover.close_cover", "Close"]]
       : [];
-  if (!commands.length) return <p className="config-hint">This device accepts commands, but no safe one-tap action is mapped yet. Use Change to review its configuration.</p>;
+  if (!commands.length) return (
+    <>
+      <p className="config-hint">This device can receive commands, but this app only offers safe one-tap buttons for a small preset of actions (turn on/off, open/close) — this device's type isn't in that preset yet.</p>
+      {onConfigure && <button className="btn-ghost" onClick={onConfigure}>Review its configuration in Change</button>}
+    </>
+  );
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
   const send = async (command) => {
     setResult({ pending: true, text: "Sending…" });
@@ -2637,7 +2729,7 @@ function DmLockActions({ device }) {
   );
 }
 
-export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
+export function DmEditForm({ device, onSaved, onOpenDiscovery, workflows, onManageWorkflows }) {
   const [name, setName]       = useState(device.name);
   const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
   // Room (added 2026-08-18): the grouping dimension wired up on request --
@@ -2736,6 +2828,7 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
           {enabled ? <ToggleRight size={22} className="toggle-on"/> : <ToggleLeft size={22} className="toggle-off"/>}
         </button>
       </label>
+      <DmDeviceWorkflows device={device} workflows={workflows} onManage={onManageWorkflows} />
       <div className="modal-actions">
         {saved && <span className="save-ok"><CheckCircle size={13}/> Saved</span>}
         {saveError && <span className="action-result action-error">Not saved: {saveError}</span>}
@@ -4805,6 +4898,7 @@ function App() {
       activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
       securityStates,
       displayConfigs, refreshDisplayConfigs,
+      setActivePanel,
     }}>
       <div className="app-shell">
         <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />

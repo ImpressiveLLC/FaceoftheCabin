@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -693,6 +693,94 @@ describe("workflowsForDevice", () => {
   it("handles a missing/undefined workflows list without throwing", () => {
     expect(workflowsForDevice(undefined, "any-device")).toEqual([]);
     expect(workflowsForDevice(workflows, null)).toEqual([]);
+  });
+});
+
+// 2026-08-25 (user report): a device's workflow-badge count on its row had
+// no way to actually see WHICH workflows or drill into them -- neither
+// DmDeviceDetail (See) nor DmEditForm (Change) rendered anything using the
+// already-correct workflowsForDevice(). This is deliberately read-only
+// (Fire/Activate/Delete stay on WorkflowRow in RulesPanel, tested there) --
+// covers the empty state, real rows, and the "Manage in Rules & Alerts"
+// jump, in both places it's rendered.
+describe("DmDeviceWorkflows drill-down (See + Change)", () => {
+  afterEach(cleanup);
+
+  const device = { deviceId: "z2m-leak_mech_room", name: "Mech Room Leak", type: "WATER_LEAK_SENSOR",
+    state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED" } };
+  const activeWorkflow = { workflowId: "wf-leak", name: "Leak shutoff", location: "cabin", enabled: true,
+    triggerDeviceId: "z2m-leak_mech_room", actions: [{ targetDeviceId: "z2m-main_water_valve" }] };
+  const draftWorkflow = { workflowId: "wf-draft", name: "Draft rule", location: "cabin", enabled: false,
+    triggerDeviceId: "z2m-leak_mech_room", actions: [] };
+  const workflows = [activeWorkflow, draftWorkflow];
+
+  it("See mode (DmDeviceDetail): shows an honest empty state for a device in no workflow", () => {
+    render(<DmDeviceDetail device={device} workflows={[]} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByText("Workflows (0)")).toBeTruthy();
+    expect(screen.getByText("Not used by any workflow yet.")).toBeTruthy();
+  });
+
+  it("See mode (DmDeviceDetail): lists real workflow names and trigger→action summaries, active and draft both", () => {
+    render(<DmDeviceDetail device={device} workflows={workflows} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByText("Workflows (2)")).toBeTruthy();
+    expect(screen.getByText("Leak shutoff")).toBeTruthy();
+    expect(screen.getByText("Draft rule")).toBeTruthy();
+    expect(screen.getByText(/z2m-leak_mech_room.*z2m-main_water_valve/)).toBeTruthy();
+  });
+
+  it("See mode: 'Manage in Rules & Alerts' calls onManageWorkflows, only shown once there's something to manage", () => {
+    const onManageWorkflows = vi.fn();
+    const { rerender } = render(<DmDeviceDetail device={device} workflows={[]} onConfigure={() => {}}
+      onLifecycleAction={vi.fn()} onManageWorkflows={onManageWorkflows} />);
+    expect(screen.queryByRole("button", { name: /manage in rules/i })).toBeNull();
+
+    rerender(<DmDeviceDetail device={device} workflows={workflows} onConfigure={() => {}}
+      onLifecycleAction={vi.fn()} onManageWorkflows={onManageWorkflows} />);
+    fireEvent.click(screen.getByRole("button", { name: /manage in rules/i }));
+    expect(onManageWorkflows).toHaveBeenCalledOnce();
+  });
+
+  it("Change mode (DmEditForm): shows the same real workflow list", () => {
+    render(<DmEditForm device={device} onSaved={() => {}} workflows={workflows} />);
+    expect(screen.getByText("Workflows (2)")).toBeTruthy();
+    expect(screen.getByText("Leak shutoff")).toBeTruthy();
+  });
+
+  it("Change mode (DmEditForm): empty state when the device isn't in any workflow", () => {
+    render(<DmEditForm device={{ ...device, deviceId: "unrelated-device" }} onSaved={() => {}} workflows={workflows} />);
+    expect(screen.getByText("Not used by any workflow yet.")).toBeTruthy();
+  });
+});
+
+// 2026-08-25 (user report): "no safe one-tap action is mapped yet" gave no
+// explanation of what a one-tap action is, and its "Use Change to review
+// its configuration" instruction wasn't a link -- a dead end. Now honest
+// about what the preset actually covers, with a real button that reuses
+// the See→Change onConfigure path (so the same device stays selected,
+// per the DeviceManagerPanel fix below).
+describe("DmCapabilityActions — one-tap action hint", () => {
+  afterEach(cleanup);
+
+  const outOfPresetDevice = {
+    deviceId: "climate-1", name: "Thermostat", type: "THERMOSTAT", state: "ONLINE", location: "cabin",
+    attributes: { deviceLifecycle: "ASSIGNED", capabilities: ["COMMAND"], entityId: "climate.thermostat" },
+  };
+
+  it("explains the preset instead of unexplained 'one-tap action' jargon, and offers a real way into Change", () => {
+    const onConfigure = vi.fn();
+    render(<DmDeviceDetail device={outOfPresetDevice} onConfigure={onConfigure} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByText(/safe one-tap buttons for a small preset of actions/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /review its configuration in change/i }));
+    expect(onConfigure).toHaveBeenCalledOnce();
+  });
+
+  it("still offers real one-tap buttons for a whitelisted domain (switch/light/cover) -- unchanged", () => {
+    const switchDevice = { ...outOfPresetDevice, deviceId: "switch-1", type: "GOOGLE_HOME_DEVICE",
+      attributes: { ...outOfPresetDevice.attributes, entityId: "switch.porch" } };
+    render(<DmDeviceDetail device={switchDevice} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Turn on" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Turn off" })).toBeTruthy();
+    expect(screen.queryByText(/safe one-tap buttons for a small preset/i)).toBeNull();
   });
 });
 
@@ -1709,6 +1797,114 @@ describe("Device Manager grouped ordering", () => {
     expect(migrateLegacyDeviceOrder([], "workflow", ["motion", "lock"])).toBeNull();
     expect(migrateLegacyDeviceOrder(devices, "workflow", ["motion", "lock", "smoke"]))
       .toEqual({ Alerting: ["motion", "smoke"], Automations: ["lock"], HVAC: [] });
+  });
+});
+
+// 2026-08-25 (user report): switching from See to Change lost whatever
+// device you were looking at, Change showed devices in a different order
+// than a saved See-mode reorder, and Change had no Group/Show controls or
+// a way to snap back after narrowing them. All three fixed by hoisting
+// useGroupedDraggableOrder up to DeviceManagerPanel (so See and Change
+// read one shared computed order) and only clearing `selected` when
+// switching to Add.
+describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filters", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
+
+  function deviceManagerFetchMock() {
+    return vi.fn((url) => {
+      if (String(url).includes("checkin-status") || String(url).includes("checkin-details")) {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      if (String(url).includes("system/health")) {
+        return Promise.resolve({ ok: true, json: async () => ({ online: 0, offline: 0, alarm: 0 }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] }); // candidates / previously-exposed
+    });
+  }
+
+  function renderPanel({ devices, workflows = [] }) {
+    vi.stubGlobal("fetch", deviceManagerFetchMock());
+    return render(
+      <AppContext.Provider value={{ devices, workflows, activeLocation: "cabin", refreshDevices: vi.fn(), setActivePanel: vi.fn() }}>
+        <DeviceManagerPanel />
+      </AppContext.Provider>
+    );
+  }
+
+  const twoDevices = [
+    { deviceId: "d1", name: "Device One", type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED" } },
+    { deviceId: "d2", name: "Device Two", type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED" } },
+  ];
+
+  // Each test flushes the mount-time health/checkin-status fetches (inside
+  // act, via waitFor) before interacting -- otherwise those mocked
+  // promises resolve after the test body returns and React warns about an
+  // unwrapped act() update, even though nothing here asserts on them.
+  it("keeps the selected device when switching from See to Change (only Add clears it)", async () => {
+    renderPanel({ devices: twoDevices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("Device One"));
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    expect(screen.getByDisplayValue("Device One")).toBeTruthy();
+  });
+
+  it("clears the selection when switching to Add -- no device context makes sense there", async () => {
+    renderPanel({ devices: twoDevices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("Device One"));
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    // Returning to "see" remounts DmSeeView (its own key), which re-fires
+    // its mount-time health/checkin fetches -- flush those before the
+    // test ends so the resulting state update isn't unwrapped.
+    const callsBeforeReturn = fetch.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "See" }));
+    await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(callsBeforeReturn));
+    expect(screen.queryByText("d1")).toBeNull(); // dm-detail-id, only shown when selected
+  });
+
+  it("Change mode renders the exact same saved grouping/order as See, with no Reorder control", async () => {
+    localStorage.setItem("order.devices.cabin.type", JSON.stringify({ LOCK: ["m-lock", "z-lock", "a-lock"] }));
+    const devices = ["a-lock", "z-lock", "m-lock"].map(id => ({
+      deviceId: id, name: id, type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED" },
+    }));
+    const { container } = renderPanel({ devices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    const namesInSee = [...container.querySelectorAll(".dm-row-name")].map(el => el.textContent);
+    expect(namesInSee).toEqual(["m-lock", "z-lock", "a-lock"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    const namesInChange = [...container.querySelectorAll(".dm-row-name")].map(el => el.textContent);
+    expect(namesInChange).toEqual(["m-lock", "z-lock", "a-lock"]);
+    expect(screen.queryByText("Reorder")).toBeNull();
+  });
+
+  it("Change mode offers the same Group/Show controls as See", async () => {
+    renderPanel({ devices: twoDevices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    expect(screen.getByLabelText(/^group$/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^show$/i)).toBeTruthy();
+  });
+
+  it("Reset Filters snaps Group/Show back to defaults without deselecting the current device", async () => {
+    renderPanel({ devices: twoDevices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("Device One"));
+    // Changing Group remounts DmSeeView (keyed on groupBy) -- flush its
+    // re-fired mount-time fetches before continuing.
+    let callsBefore = fetch.mock.calls.length;
+    fireEvent.change(screen.getByLabelText(/^group$/i), { target: { value: "room" } });
+    await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(callsBefore));
+    fireEvent.change(screen.getByLabelText(/^show$/i), { target: { value: "candidates" } });
+    expect(screen.getByLabelText(/^show$/i).value).toBe("candidates");
+
+    callsBefore = fetch.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: /reset filters/i }));
+    await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(callsBefore));
+    expect(screen.getByLabelText(/^group$/i).value).toBe("type");
+    expect(screen.getByLabelText(/^show$/i).value).toBe("in_scope");
+    expect(screen.getByText("d1")).toBeTruthy(); // dm-detail-id -- still selected
   });
 });
 
