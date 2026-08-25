@@ -177,6 +177,22 @@ network path to a Tailscale-only host. Full setup/recovery runbook:
   bitrates could plausibly consume 80-160+ GB/day once it's back online.
   Re-measure real usage before extending retention, don't trust an
   estimate.
+- **`cabin_event` telemetry archival** (added 2026-08-25,
+  `TelemetryArchivalService`) — sensor-reading (`TELEMETRY`-typed) rows
+  older than `cabin.telemetryArchival.hotRetentionMonths` (default 3)
+  get exported monthly to `/storage/archives/cabin_event/{yyyy-MM}.jsonl.gz`
+  and deleted from the live table. Checked live before setting the
+  default: the whole table was 33MB for 36k rows after 19 days of real
+  traffic (~2,200 events/day) — a 3-month hot window is on the order of
+  a couple hundred MB, so there's real headroom before this needs
+  revisiting. Runs at 2am on the 1st of each month
+  (`cabin.telemetryArchival.cron`); disable entirely with
+  `TELEMETRY_ARCHIVAL_ENABLED=false`. Camera events, workflow/alert
+  history, and discrete state-change events (armed/presence/Kidde
+  alarm) are deliberately untouched — see the service's own javadoc for
+  why each has a different retention story. To read an archived month:
+  `zcat 2026-05.jsonl.gz | jq .` — one JSON object per line, same shape
+  as `GET /api/events` returns.
 
 ---
 

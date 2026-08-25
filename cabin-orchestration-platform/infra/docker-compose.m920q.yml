@@ -259,6 +259,14 @@ services:
       # UI) without baking docs/ into the image -- the build context is
       # ../backend only. See OntologyLookupService's javadoc.
       - ../../docs:/app/docs:ro
+      # Read-write -- TelemetryArchivalService's monthly export target.
+      # Deliberately /storage (the M920q's real, rotational HDD, already
+      # this deployment's convention for bulk/long-term data -- camera
+      # recordings, Node-RED data, HA config all already live there), not
+      # a Docker-managed volume, so the archive survives independently of
+      # this container/image and stays inspectable/backupable the same
+      # way as everything else under /storage.
+      - /storage/archives/cabin_event:/app/archives/cabin_event
     networks:
       - default         # project network: reaches cabin-postgres, cabin-kafka
       - cabin_default   # existing network: reaches mosquitto, nodered, z2m

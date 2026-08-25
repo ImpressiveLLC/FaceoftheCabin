@@ -110,6 +110,16 @@ cabin:
   # (docker-compose.m920q.yml) rather than being baked into the image.
   ontology:
     path: ${ONTOLOGY_PATH:/app/docs/ontology.yaml}
+  # Tiered telemetry retention (added 2026-08-25) -- see
+  # TelemetryArchivalService's own javadoc for the full "why". archiveDir
+  # must be a real read-write bind mount to /storage (the M920q's actual
+  # HDD, not the container's own ephemeral filesystem) -- see
+  # docker-compose.m920q.yml's matching volume entry.
+  telemetryArchival:
+    enabled: ${TELEMETRY_ARCHIVAL_ENABLED:true}
+    hotRetentionMonths: ${TELEMETRY_ARCHIVAL_HOT_MONTHS:3}
+    archiveDir: ${TELEMETRY_ARCHIVAL_DIR:/app/archives/cabin_event}
+    cron: ${TELEMETRY_ARCHIVAL_CRON:0 0 2 1 * *}
 
 management:
   endpoints:

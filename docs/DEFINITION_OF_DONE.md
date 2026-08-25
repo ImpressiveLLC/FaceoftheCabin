@@ -163,6 +163,20 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
+- **Monitoring panel can't group tiles, only reorder one flat list — real
+  gap, found 2026-08-25, not started.** User wants their temp/humidity
+  tiles visually grouped together, out of the general device-status
+  landing view (currently interleaved with unrelated device types, no
+  way to see just one cluster without scrolling the full list). Root
+  cause confirmed in code: `useDraggableOrder` (`App.jsx:4302`) has
+  exactly two buckets — alarm-pinned (`isAlarm`) and everything else —
+  no concept of a named section/group anywhere. Would need a real data
+  model (group assignments + per-group order, not just one flat
+  `savedOrder` array in localStorage) and UI for creating/naming groups,
+  plus probably a collapse/show-fewer affordance for the landing view
+  itself. Not scoped further this session — real feature, not a config
+  tweak.
+
 - **Live camera investigation, 2026-08-24 — three real findings, one
   self-correction.** Triggered by the user reporting missing clips at
   both locations.
