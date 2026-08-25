@@ -163,25 +163,6 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
-- **Node-RED runs with zero authentication on the live M920q — real
-  security gap, found 2026-08-24, not yet closed.** `docker exec
-  nodered cat /data/settings.js`: both `adminAuth` and `httpNodeAuth`
-  are commented out, and Node-RED sends no `Content-Security-Policy` or
-  `X-Frame-Options` headers at all. Anyone who can reach `cabin-hub:1880`
-  — directly, or by clicking through the resident-facing app's Rules &
-  Alerts embed — gets a fully unauthenticated, *editable* Node-RED
-  admin panel; real home-automation flows (including the ones this
-  platform explicitly defers automation logic to, per `CLAUDE.md`'s own
-  "never duplicate HA automation logic here" rule) sit behind no login
-  at all. The app-side symptom (an always-mounted iframe surfacing
-  Chrome's Local Network Access permission prompt) is contained —
-  `e72f4bc` lazy-loads it — but that only reduces incidental exposure,
-  it does not add authentication. **Enabling `adminAuth`/`httpNodeAuth`
-  is a live-infra change with real risk of breaking an existing
-  unauthenticated HTTP-in flow and needs the user's own explicit
-  go-ahead before it's touched** — flagged clearly, not done
-  autonomously this session. Next session: confirm whether this was
-  enabled, and if not, treat it as a real priority, not routine polish.
 - **Live camera investigation, 2026-08-24 — three real findings, one
   self-correction.** Triggered by the user reporting missing clips at
   both locations.

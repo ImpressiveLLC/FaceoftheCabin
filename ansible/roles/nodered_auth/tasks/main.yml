@@ -75,24 +75,42 @@
     cmd: docker restart nodered
   when: admin_auth_result.changed or http_node_auth_result.changed
 
-- name: Wait for Node-RED to come back and require authentication
-  ansible.builtin.uri:
-    url: "http://localhost:1880/"
-    status_code: [401, 302, 200]
-  register: nodered_health
-  until: nodered_health.status is defined
-  retries: 12
-  delay: 5
+- name: Wait for Node-RED's port to accept connections again
+  # A plain uri+until retry loop doesn't reliably retry on a hard
+  # "connection reset" right after restart (found live 2026-08-24 --
+  # the module can fail outright before the retry logic evaluates it,
+  # instead of treating it as just another bad-status attempt to retry).
+  # wait_for on the port is the correct tool for "a service just
+  # restarted, give it a moment to start listening again."
+  ansible.builtin.wait_for:
+    host: localhost
+    port: 1880
+    delay: 2
+    timeout: 60
   when: admin_auth_result.changed or http_node_auth_result.changed
 
-- name: Confirm the editor now actually requires authentication -- fail loudly if not
+- name: Check that the Admin API now actually requires authentication
+  # NOT the root "/" -- that's the static editor shell (index.html/JS
+  # bundle) and is served without auth by design, even with adminAuth
+  # enabled (confirmed live 2026-08-24: root returns 200 regardless).
+  # /flows is a real Admin API endpoint the editor's own JS calls to
+  # fetch real flow data immediately after loading -- THAT'S what
+  # adminAuth actually protects, and where a person would really hit the
+  # login wall.
+  ansible.builtin.uri:
+    url: "http://localhost:1880/flows"
+    status_code: [401, 200]
+  register: nodered_health
+  when: admin_auth_result.changed or http_node_auth_result.changed
+
+- name: Confirm the Admin API now actually requires authentication -- fail loudly if not
   ansible.builtin.assert:
     that:
-      - nodered_health.status in [401, 302]
+      - nodered_health.status == 401
     fail_msg: >
-      Node-RED restarted but its root URL returned {{ nodered_health.status }},
-      not the 401/302 an authenticated editor should return -- adminAuth may
+      Node-RED restarted but GET /flows returned {{ nodered_health.status }},
+      not the 401 an authenticated Admin API should return -- adminAuth may
       not have taken effect. Check settings.js and the backup taken above
       before assuming this is done.
-    success_msg: "Node-RED adminAuth is live and enforced."
+    success_msg: "Node-RED adminAuth is live and enforced -- /flows correctly requires login."
   when: admin_auth_result.changed or http_node_auth_result.changed

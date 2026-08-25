@@ -597,16 +597,34 @@ existing secrets discipline** (`ansible/roles/nodered_auth/`,
    ansible-playbook -i inventory.ini playbooks/enable-nodered-auth.yml \
      --limit cabin --vault-password-file ~/.ansible_vault_pass
    ```
+   **Running this directly on the M920q** (not from a separate control
+   machine)? Add `-c local -e ansible_become=false` — self-targeting via
+   its own Tailscale hostname hits the same hairpin-routing limitation
+   documented in this file's Secrets section above.
+
    This backs up `settings.js` (timestamped, never overwritten), computes
    the bcrypt hash via Ansible's `password_hash` filter (needs `passlib`
    on the control node), replaces the commented `adminAuth`/`httpNodeAuth`
-   blocks with real ones, restarts `nodered`, and fails loudly (via an
-   `assert`) if the editor's root URL doesn't come back requiring auth
-   (401/302) — it does not report success on a guess.
+   blocks with real ones, restarts `nodered`, waits for its port to come
+   back, and fails loudly (via an `assert`) if `GET /flows` doesn't come
+   back `401` — it does not report success on a guess.
 3. Recovery if something goes wrong: the timestamped backup at
    `/storage/services/nodered/settings.js.bak-<timestamp>` is the
    original, unmodified file — copy it back over `settings.js` and
    `docker restart nodered` to fully revert.
+
+**Verified live on the M920q, 2026-08-24** — real end-to-end run (via SSH,
+`-c local` workaround for the hairpin issue above): vault populated,
+playbook applied both blocks, restarted `nodered`, `GET /flows` returned
+`401`. One real gotcha worth recording precisely: `GET /` (the editor's
+root URL) correctly stays `200` even with `adminAuth` fully enabled —
+that's Node-RED's own by-design behavior (the static editor shell loads
+without auth; its own JS then hits `/flows`/`/nodes`/etc., which *do*
+require auth, and that's where a real user actually hits the login wall).
+Don't mistake a `200` at `/` for the fix not having worked — check
+`/flows` (or any other Admin API path) instead, exactly what the
+playbook's own assertion now checks after an earlier version of it
+wrongly checked `/`.
 
 **Known limitation, not an oversight**: the playbook is written for
 *first-time* enablement — it matches the commented-out stock example
@@ -626,8 +644,9 @@ steps the playbook automates — back up `settings.js`, generate a bcrypt
 hash via `docker exec -i nodered node-red admin hash-pw` (reads the
 password from stdin), replace the two commented blocks with real
 uncommented ones using that hash, `docker restart nodered`, then verify
-`curl -I http://localhost:1880/` returns `401` (or a redirect to a login
-page), not `200`.
+`curl -I http://localhost:1880/flows` returns `401` — **not** `curl
+http://localhost:1880/`, which stays `200` by design even when
+`adminAuth` is fully working (see the verified-live note above).
 
 ---
 
