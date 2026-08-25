@@ -100,6 +100,20 @@ public class HomeAssistantDiscoveryService {
             Map<String, Object> attrs = new LinkedHashMap<>(entity.attributes());
             attrs.put("entityId", entity.entityId());
             attrs.put("discoveredFrom", "Home Assistant");
+            // 2026-08-25: a sensor-domain entity's real reading IS HA's own
+            // state field (e.g. "72.5" for a temperature sensor, "415" for
+            // a CO2 sensor) -- HA's own convention, not a nested attribute
+            // the way Zigbee's temperature/humidity/etc. are. Confirmed
+            // live this was never captured anywhere: Kidde's indoor-
+            // temperature/co2-level/humidity/etc. entities only ever
+            // published metadata (device_class, unit_of_measurement,
+            // friendly_name), never the actual number. mapHaState() below
+            // stays a categorical device-HEALTH classifier (ONLINE/
+            // UNKNOWN/ALARM) for DeviceStatus.state -- a different concern
+            // from the reading itself, untouched here.
+            if ("sensor".equals(domain)) {
+                attrs.put("value", entity.state());
+            }
             String haDeviceId = deviceIds.get(entity.entityId());
             if (haDeviceId != null && !haDeviceId.isBlank()) {
                 attrs.put("haDeviceId", haDeviceId);

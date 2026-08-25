@@ -69,6 +69,40 @@ class HomeAssistantDiscoveryServiceTest {
             .anyMatch(id -> id.contains("icemaker"));
     }
 
+    // 2026-08-25: found live that a sensor-domain entity's real reading
+    // (HA's own state field -- "72.5" for a temperature sensor) was never
+    // captured anywhere. Confirmed against the real Kidde payload: only
+    // device_class/unit_of_measurement/friendly_name were ever published,
+    // never the number itself.
+    @Test
+    void aSensorDomainEntitysRawStateIsCapturedAsItsValue() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_indoor_temperature", "72.5",
+                Map.of("friendly_name", "Kidde Indoor Temperature", "device_class", "temperature"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        List<DeviceStatus> discovered = registry.byLocation("cabin");
+        assertThat(discovered).hasSize(1);
+        assertThat(discovered.get(0).attributes()).containsEntry("value", "72.5");
+    }
+
+    @Test
+    void aNonSensorDomainEntityDoesNotGetAValueAttribute() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "binary_sensor.kidde_co_alarm", "off", Map.of("friendly_name", "Kidde CO Alarm"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        List<DeviceStatus> discovered = registry.byLocation("cabin");
+        assertThat(discovered).hasSize(1);
+        assertThat(discovered.get(0).attributes()).doesNotContainKey("value");
+    }
+
     @Test
     void siblingEntitiesSharingAHaDeviceIdGetTheSameAttributeStamped() {
         when(adapter.discover("cabin")).thenReturn(List.of(
