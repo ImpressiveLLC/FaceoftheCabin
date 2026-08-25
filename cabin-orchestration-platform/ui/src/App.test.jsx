@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -65,6 +65,78 @@ describe("CameraEventClip — missing-clip wording reflects feed continuity", ()
   it("defaults to the hedged wording for an unrecognized camera name", async () => {
     render(<CameraEventClip authedFetch={missingFetch()} clipUrl="http://x/clip" cameraName="some_future_camera" />);
     expect(await screen.findByText(/frigate only keeps recordings for a limited time/i)).toBeTruthy();
+  });
+});
+
+// 2026-08-25: LocationMonitoringSection used to render KPI tiles in a
+// fixed per-type-bucket sequence (pressure, thermostats, temp sensors,
+// smoke, energy, locks, cameras) regardless of any saved reorder --
+// useDraggableOrder's persisted order was computed and stored by a
+// separate vertical-list-only reorder view, but nothing in the real grid
+// ever read it. kpiTileFor is the pure per-device-type mapping pulled out
+// so the grid could iterate in saved order instead.
+describe("kpiTileFor", () => {
+  it("maps a known device type to its tile shape", () => {
+    const pressure = { deviceId: "p1", type: "WATER_PRESSURE_SENSOR", state: "ONLINE", attributes: { psi: 52 } };
+    expect(kpiTileFor(pressure, "F")).toMatchObject({ label: "Water Pressure", value: "52 PSI", state: "ONLINE" });
+  });
+
+  it("combines temperature and humidity into one value", () => {
+    const sensor = { deviceId: "t1", name: "Kitchen", type: "TEMPERATURE_SENSOR", state: "ONLINE",
+      attributes: { temperature: 20, humidity: 45 } };
+    expect(kpiTileFor(sensor, "C").value).toBe("20°C · 45%");
+  });
+
+  it("returns null for a device type with no KPI tile -- unchanged from before this fix", () => {
+    expect(kpiTileFor({ deviceId: "x", type: "MOTION_SENSOR", state: "ONLINE" }, "F")).toBeNull();
+  });
+});
+
+describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)", () => {
+  afterEach(() => { cleanup(); localStorage.clear(); });
+
+  const tempA = { deviceId: "temp-a", name: "Temp A", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin", attributes: { temperature: 20 } };
+  const tempB = { deviceId: "temp-b", name: "Temp B", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin", attributes: { temperature: 22 } };
+  const lock  = { deviceId: "lock-a", name: "Lock A", type: "LOCK", state: "LOCKED", location: "cabin" };
+
+  it("renders tiles in the saved order, not the old fixed type-bucket order", () => {
+    // Saved order deliberately puts the lock before both temp sensors --
+    // the previous fixed-bucket rendering always showed every temp sensor
+    // before every lock, regardless of any saved preference.
+    localStorage.setItem("order.monitoring.cabin", JSON.stringify(["lock-a", "temp-b", "temp-a"]));
+    render(
+      <AppContext.Provider value={{ displayConfigs: {} }}>
+        <MnSeeView devices={[tempA, tempB, lock]} activeLocation="cabin" active={false} reorderMode={false} />
+      </AppContext.Provider>
+    );
+    const labels = screen.getAllByText(/^(Temp A|Temp B|Lock A)$/).map(el => el.textContent);
+    expect(labels).toEqual(["Lock A", "Temp B", "Temp A"]);
+  });
+
+  it("drags the real grid tile itself, not a separate list row, and persists the new order", () => {
+    render(
+      <AppContext.Provider value={{ displayConfigs: {} }}>
+        <MnSeeView devices={[tempA, tempB, lock]} activeLocation="cabin" active={false} reorderMode={true} />
+      </AppContext.Provider>
+    );
+    const tileA = screen.getByText("Temp A").closest(".kpi-tile");
+    const tileLock = screen.getByText("Lock A").closest(".kpi-tile");
+    expect(tileA.getAttribute("draggable")).toBe("true");
+
+    // jsdom's synthetic drag events need dataTransfer supplied explicitly
+    // -- a real browser always populates it, jsdom does not.
+    const dataTransfer = {};
+    fireEvent.dragStart(tileA, { dataTransfer });
+    fireEvent.dragOver(tileLock, { dataTransfer });
+    fireEvent.drop(tileLock, { dataTransfer });
+
+    // No saved order existed beforehand, so natural array order was
+    // [temp-a, temp-b, lock-a] (indices 0,1,2). Dragging temp-a (0) onto
+    // lock-a (2) splices it out and reinserts at index 2 -- standard
+    // move semantics, same as reorderIds elsewhere in this file -- which
+    // shifts temp-b to the front, not temp-a.
+    const saved = JSON.parse(localStorage.getItem("order.monitoring.cabin"));
+    expect(saved).toEqual(["temp-b", "lock-a", "temp-a"]);
   });
 });
 
@@ -822,6 +894,38 @@ describe("Device candidate configuration", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     const [, options] = fetch.mock.calls[0];
     expect(JSON.parse(options.body)).toEqual({ name: "Basement leak sensor", enabled: true, room: "", parentDeviceId: "" });
+  });
+
+  // 2026-08-25: a candidate reached via DmChangeView (which renders
+  // DmEditForm directly, unlike DmSeeView's DmDeviceDetail) used to have
+  // no discovery/lookup option at all -- the button was unconditionally
+  // hidden for CANDIDATE lifecycle. Fixed to stay visible, using mode
+  // "new" (the backend-correct path for a candidate) instead of "replace"
+  // (which DeviceRegistry.replaceConfiguration() itself rejects for a
+  // still-undecided candidate).
+  it("offers a lookup for a candidate device too, using mode=new not replace", () => {
+    const onOpenDiscovery = vi.fn();
+    const device = {
+      deviceId: "candidate-lookup", name: "Unknown sensor", type: "MOTION_SENSOR",
+      state: "UNKNOWN", location: "cabin", attributes: { deviceLifecycle: "CANDIDATE" },
+    };
+    render(<DmEditForm device={device} onSaved={() => {}} onOpenDiscovery={onOpenDiscovery} />);
+
+    const button = screen.getByRole("button", { name: /recognize this device/i });
+    fireEvent.click(button);
+    expect(onOpenDiscovery).toHaveBeenCalledWith(device, "new");
+  });
+
+  it("still offers Re-check device info (mode=replace) for an already-assigned device", () => {
+    const onOpenDiscovery = vi.fn();
+    const device = {
+      deviceId: "assigned-recheck", name: "Kitchen sensor", type: "TEMPERATURE_SENSOR",
+      state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED", enabled: true },
+    };
+    render(<DmEditForm device={device} onSaved={() => {}} onOpenDiscovery={onOpenDiscovery} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /re-check device info/i }));
+    expect(onOpenDiscovery).toHaveBeenCalledWith(device, "replace");
   });
 
   it("prefills Room from the device's existing attribute and includes it unchanged when saving something else", async () => {

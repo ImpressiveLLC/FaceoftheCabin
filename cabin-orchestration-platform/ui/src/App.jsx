@@ -2670,9 +2670,19 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery }) {
       <div className="dm-detail-name">{device.deviceId}</div>
       {lifecycle === "CANDIDATE" && <p className="config-desc">Reviewing or saving a corrected name leaves this device a candidate. Turning Enabled on and saving is an explicit decision to use it, and accepts and assigns it in one step.</p>}
       {lifecycle === "AVAILABLE" && <p className="config-desc">This accepted device is available but unassigned. Saving an actual change assigns it.</p>}
-      {lifecycle !== "CANDIDATE" && onOpenDiscovery && (
-        <button className="btn-secondary" onClick={() => onOpenDiscovery(device, "replace")}>
-          <Search size={13}/> Re-check device info
+      {/* 2026-08-25: this used to be hidden entirely for CANDIDATE devices
+          -- fine as long as a candidate was always reached via DmSeeView's
+          DmDeviceDetail (which has its own "Recognize this device" button),
+          but DmChangeView renders this form directly for a candidate too,
+          with no fallback -- a candidate opened that way had no lookup
+          option at all. mode="new" is the backend-correct path for a
+          candidate (DeviceRegistry.replaceConfiguration() itself rejects
+          CANDIDATE state; applyNew()'s ACCEPT+saveConfiguration is what
+          DmDeviceDetail's own button already uses for the same case). */}
+      {onOpenDiscovery && (
+        <button className="btn-secondary"
+          onClick={() => onOpenDiscovery(device, lifecycle === "CANDIDATE" ? "new" : "replace")}>
+          <Search size={13}/> {lifecycle === "CANDIDATE" ? "Recognize this device" : "Re-check device info"}
         </button>
       )}
       <label>Display Name
@@ -3010,18 +3020,57 @@ function CameraHealthPanel({ locCfg }) {
 }
 
 // Renders KPI tiles + Grafana + event log for a single location.
-function LocationMonitoringSection({ locCfg, devices, active }) {
+// Which device types get a KPI tile at all, and how each one's tile is
+// built -- pulled out of LocationMonitoringSection as a pure function
+// (2026-08-25) so the grid can iterate devices in the user's saved order
+// instead of a fixed per-type sequence, while every type's existing
+// icon/label/value logic stays byte-for-byte the same. Returns null for
+// any device type that never got a tile before (unchanged).
+export function kpiTileFor(device, tempUnit) { // exported for src/App.test.jsx's Monitoring reorder tests
+  switch (device.type) {
+    case "WATER_PRESSURE_SENSOR":
+      return { icon: Droplets, label: "Water Pressure", deviceId: device.deviceId,
+        value: device.attributes?.psi != null ? `${device.attributes.psi} PSI` : "—", state: device.state };
+    case "THERMOSTAT":
+      return { icon: Thermometer, label: device.name, deviceId: device.deviceId,
+        value: fmtTemp(device.attributes?.current_temperature, tempUnit), state: device.state };
+    case "TEMPERATURE_SENSOR": {
+      const temp = device.attributes?.temperature;
+      const hum  = device.attributes?.humidity;
+      const val  = [fmtTemp(temp, tempUnit), hum != null && `${hum}%`].filter(Boolean).join(" · ") || "—";
+      return { icon: Thermometer, label: device.name, deviceId: device.deviceId, value: val, state: device.state };
+    }
+    case "SMOKE_ALARM":
+      return { icon: ShieldAlert, label: device.name || "Smoke/CO Alarm", deviceId: device.deviceId,
+        value: device.state || "UNKNOWN", state: device.state === "ALARM" ? "ALARM" : device.state };
+    case "POWER_METER":
+      return { icon: Zap, label: "Energy", deviceId: device.deviceId,
+        value: device.attributes?.state_w != null ? `${device.attributes.state_w} W` : "—", state: device.state };
+    case "LOCK":
+      return { icon: Lock, label: device.name, deviceId: device.deviceId, value: device.state, state: device.state };
+    case "CAMERA":
+      return { icon: Camera, label: device.name, deviceId: device.deviceId, value: device.state, state: device.state };
+    default:
+      return null;
+  }
+}
+
+// 2026-08-25: devices is now the full, user-ordered list (from
+// useDraggableOrder in MnSeeView), not raw API order -- filtering it here
+// preserves that order within this location's subset, which is what
+// makes "reorder" actually affect the real grid instead of only a
+// separate list nothing else reads. reorderMode/dragIdx/overIdx/onDrag*
+// are undefined outside reorder mode, same as KpiTile's own defaults.
+function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragIdx, overIdx, pinnedCount,
+    onDragStart, onDragOver, onDrop, onDragEnd }) {
   const liveMessages = useMqttTelemetry(active, locCfg.wsBase);
   const [tempUnit, toggleTempUnit] = useTempUnit();
 
-  const locDevices  = devices.filter(d => !d.location || d.location === locCfg.id);
-  const pressure    = locDevices.find(d => d.type === "WATER_PRESSURE_SENSOR");
-  const thermostats = locDevices.filter(d => d.type === "THERMOSTAT");
-  const tempSensors = locDevices.filter(d => d.type === "TEMPERATURE_SENSOR");
-  const smoke       = locDevices.find(d => d.type === "SMOKE_ALARM");
-  const locks       = locDevices.filter(d => d.type === "LOCK");
-  const cameras     = locDevices.filter(d => d.type === "CAMERA");
-  const energy      = locDevices.find(d => d.type === "POWER_METER");
+  const kpiEntries = devices
+    .map((d, globalIdx) => ({ d, globalIdx }))
+    .filter(({ d }) => !d.location || d.location === locCfg.id)
+    .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit) }))
+    .filter(({ tile }) => tile !== null);
 
   return (
     <div className="location-section">
@@ -3032,47 +3081,21 @@ function LocationMonitoringSection({ locCfg, devices, active }) {
         </button>
       </div>
 
-      <div className="kpi-grid">
-        {pressure && (
-          <KpiTile icon={Droplets} label="Water Pressure" deviceId={pressure.deviceId}
-            value={pressure.attributes?.psi != null ? `${pressure.attributes.psi} PSI` : "—"}
-            state={pressure.state} />
-        )}
-        {thermostats.map(t => (
-          <KpiTile key={t.deviceId} icon={Thermometer} label={t.name} deviceId={t.deviceId}
-            value={fmtTemp(t.attributes?.current_temperature, tempUnit)}
-            state={t.state} />
-        ))}
-        {tempSensors.map(s => {
-          const temp = s.attributes?.temperature;
-          const hum  = s.attributes?.humidity;
-          const val  = [
-            fmtTemp(temp, tempUnit),
-            hum  != null && `${hum}%`,
-          ].filter(Boolean).join(" · ") || "—";
+      <div className={`kpi-grid ${reorderMode ? "reorder-mode" : ""}`}>
+        {kpiEntries.map(({ globalIdx, tile }) => {
+          const isPinned = pinnedCount != null && globalIdx < pinnedCount;
           return (
-            <KpiTile key={s.deviceId} icon={Thermometer} label={s.name} deviceId={s.deviceId}
-              value={val} state={s.state} />
+            <KpiTile key={tile.deviceId} {...tile}
+              reorderMode={reorderMode}
+              isPinned={isPinned}
+              isOver={reorderMode && overIdx === globalIdx && dragIdx !== globalIdx}
+              onDragStart={reorderMode && !isPinned ? onDragStart?.(globalIdx) : undefined}
+              onDragOver={reorderMode ? onDragOver?.(globalIdx) : undefined}
+              onDrop={reorderMode ? onDrop?.(globalIdx) : undefined}
+              onDragEnd={reorderMode ? onDragEnd : undefined}
+            />
           );
         })}
-        {smoke && (
-          <KpiTile icon={ShieldAlert} label={smoke.name || "Smoke/CO Alarm"} deviceId={smoke.deviceId}
-            value={smoke.state || "UNKNOWN"}
-            state={smoke.state === "ALARM" ? "ALARM" : smoke.state} />
-        )}
-        {energy && (
-          <KpiTile icon={Zap} label="Energy" deviceId={energy.deviceId}
-            value={energy.attributes?.state_w != null ? `${energy.attributes.state_w} W` : "—"}
-            state={energy.state} />
-        )}
-        {locks.map(l => (
-          <KpiTile key={l.deviceId} icon={Lock} label={l.name} deviceId={l.deviceId}
-            value={l.state} state={l.state} />
-        ))}
-        {cameras.map(c => (
-          <KpiTile key={c.deviceId} icon={Camera} label={c.name} deviceId={c.deviceId}
-            value={c.state} state={c.state} />
-        ))}
       </div>
 
       <CameraHealthPanel locCfg={locCfg} />
@@ -3151,41 +3174,16 @@ function MonitoringPanel({ active }) {
   );
 }
 
-function KpiListItem({ device, idx, dragIdx, overIdx, reorderMode, isPinned,
-    onDragStart, onDragOver, onDrop, onDragEnd, checkinStatus }) {
-  const { displayConfigs } = useApp();
-  const cfg = displayConfigs?.[device.deviceId];
-  const Icon = deviceIcon(device.type);
-  const effectiveLabel = cfg?.displayName || device.name;
-  const override        = !cfg?.stateLabelMap?.[device.state] ? checkinStatusLabel(device.state, checkinStatus) : null;
-  const stCls          = severityClass(cfg?.severityOverride) || (override ? override.cls : stateColor(device.state));
-  const badgeLabel     = cfg?.stateLabelMap?.[device.state] || (override ? override.text : device.state) || "UNKNOWN";
-  const isOver         = reorderMode && overIdx === idx && dragIdx !== idx;
-
-  return (
-    <div
-      className={`kpi-list-item reorder-card ${isOver ? "drag-over-card" : ""}`}
-      draggable={reorderMode && !isPinned}
-      onDragStart={reorderMode && !isPinned ? onDragStart : undefined}
-      onDragOver={reorderMode ? onDragOver : undefined}
-      onDrop={reorderMode ? onDrop : undefined}
-      onDragEnd={reorderMode ? onDragEnd : undefined}
-    >
-      {reorderMode && (isPinned
-        ? <Lock size={13} className="auto-pin-icon" title="Auto-pinned: alarm active"/>
-        : <GripVertical size={13} className="drag-handle"/>)}
-      <Icon size={15} style={{ flexShrink: 0, opacity: 0.65 }}/>
-      <span className="kpi-list-label">{effectiveLabel}</span>
-      <span className="kpi-list-type">{device.type?.toLowerCase().replace(/_/g, " ")}</span>
-      <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
-    </div>
-  );
-}
-
-function MnSeeView({ devices, activeLocation, active, reorderMode }) {
+// 2026-08-25: reordering now happens directly on the real grid tiles
+// (LocationMonitoringSection/KpiTile) instead of a separate vertical
+// list -- the list rendered a different layout than what you actually
+// see day to day, so dragging in it couldn't show you real left-right
+// grid position. This view always renders the same location-split grid;
+// reorderMode only toggles whether drag handlers are attached, matching
+// how KpiTile/LocationMonitoringSection already gate on it.
+export function MnSeeView({ devices, activeLocation, active, reorderMode }) { // exported for src/App.test.jsx's Monitoring reorder tests
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
-  const checkinStatuses = useCheckinStatuses(LOCATIONS.cabin.apiBase);
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
   const locDevices = activeLocation === "both"
@@ -3205,33 +3203,20 @@ function MnSeeView({ devices, activeLocation, active, reorderMode }) {
   };
   const onDragEnd = () => { setDragIdx(null); setOverIdx(null); };
 
-  if (reorderMode) {
-    return (
-      <div className="kpi-list reorder-mode">
-        {ordered.map((d, idx) => (
-          <KpiListItem key={d.deviceId} device={d} idx={idx}
-            dragIdx={dragIdx} overIdx={overIdx}
-            reorderMode={reorderMode} isPinned={idx < pinnedCount}
-            onDragStart={onDragStart(idx)} onDragOver={onDragOver(idx)}
-            onDrop={onDrop(idx)} onDragEnd={onDragEnd}
-            checkinStatus={checkinStatuses[d.deviceId]}
-          />
-        ))}
-        {ordered.length === 0 && (
-          <div className="empty-state"><Activity size={36} opacity={0.3}/><p>No devices for this location.</p></div>
-        )}
-      </div>
-    );
-  }
-
   const locs = activeLocation === "both"
     ? [LOCATIONS.cabin, LOCATIONS.home]
     : [LOCATIONS[activeLocation] || LOCATIONS.cabin];
   return (
     <div className={activeLocation === "both" ? "monitoring-split" : ""}>
       {locs.map(loc => (
-        <LocationMonitoringSection key={loc.id} locCfg={loc} devices={devices} active={active} />
+        <LocationMonitoringSection key={loc.id} locCfg={loc} devices={ordered} active={active}
+          reorderMode={reorderMode} dragIdx={dragIdx} overIdx={overIdx} pinnedCount={pinnedCount}
+          onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}
+        />
       ))}
+      {reorderMode && ordered.length === 0 && (
+        <div className="empty-state"><Activity size={36} opacity={0.3}/><p>No devices for this location.</p></div>
+      )}
     </div>
   );
 }
@@ -3415,7 +3400,13 @@ function severityClass(override) {
   return { OK: "state-ok", WARN: "state-warn", ALERT: "state-alarm" }[override] || null;
 }
 
-function KpiTile({ icon: Icon, label, value, state, deviceId }) {
+// reorderMode/isPinned/isOver/onDrag* (added 2026-08-25) let a tile be
+// dragged directly in the real grid -- same drag-and-drop shape
+// MnSeeView already built for the old separate list view, just wired
+// onto the actual tile instead. All undefined/false outside reorder
+// mode, so normal (non-reorder) rendering is untouched.
+function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPinned, isOver,
+    onDragStart, onDragOver, onDrop, onDragEnd }) {
   const { displayConfigs } = useApp();
   const cfg = deviceId ? displayConfigs?.[deviceId] : null;
 
@@ -3425,7 +3416,17 @@ function KpiTile({ icon: Icon, label, value, state, deviceId }) {
   const badgeLabel     = cfg?.stateLabelMap?.[state] || state || "UNKNOWN";
 
   return (
-    <div className={`kpi-tile kpi-${stCls}`}>
+    <div
+      className={`kpi-tile kpi-${stCls} ${reorderMode ? "reorder-card" : ""} ${isOver ? "drag-over-card" : ""}`}
+      draggable={reorderMode && !isPinned}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+    >
+      {reorderMode && (isPinned
+        ? <Lock size={13} className="auto-pin-icon" title="Auto-pinned: alarm active"/>
+        : <GripVertical size={13} className="drag-handle"/>)}
       <Icon size={22} />
       <div className="kpi-label">{effectiveLabel}</div>
       <div className="kpi-value">{effectiveValue}</div>
