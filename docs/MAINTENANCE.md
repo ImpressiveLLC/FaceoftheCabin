@@ -194,33 +194,43 @@ network path to a Tailscale-only host. Full setup/recovery runbook:
   `zcat 2026-05.jsonl.gz | jq .` — one JSON object per line, same shape
   as `GET /api/events` returns.
 - **Viewing sensor history in the UI** — the Monitoring panel only ever
-  showed the *current* value per device, no history. `Grafana → Sensors →
-  Cabin Sensor Telemetry` (uid `cabin-sensor-telemetry`, provisioned from
-  `infra/grafana/provisioning/dashboards/sensors/cabin-telemetry.json`,
-  linked directly from the Monitoring panel) queries `cabin_event` live
-  for Zigbee temp/humidity/water-leak and Kidde CO/CO2/temperature/
-  humidity. The Kidde panels only populate once
-  `HomeAssistantDiscoveryService`'s sensor-domain value-capture fix
-  (2026-08-25 — see "Known Issues" below) is deployed and HA has polled
-  at least twice; queries were verified against live data before this
-  fix existed and correctly return zero rows rather than erroring. Only
-  covers the hot tier — once a month is archived, it drops out of these
-  panels (see the retention entry above).
-  **Datasource UID caveat (found 2026-08-25, see "Known Issues" below):**
-  each panel's `datasource.uid` is hardcoded to this instance's real,
-  already-provisioned `CabinDB` datasource UID (`P1274E9D34A851028` on
-  the primary M920q) — not the human-readable `cabindb`. Do not add an
-  explicit `uid:` to `datasources/timescale.yml` on an instance where
-  `CabinDB` already exists (Grafana auto-generates a UID on first
-  creation and reconciling an existing by-name datasource against a
-  *different* explicit `uid:` breaks provisioning — see Known Issues).
-  On a genuinely fresh instance (per `docs/REPLICATION.md`, first-ever
-  boot, `CabinDB` datasource does not yet exist), it's safe to add
-  `uid: cabindb` to `timescale.yml` *before* first provisioning and use
-  `cabindb` as the literal string in the dashboard JSON instead — but on
-  a clone of an *existing* instance's Grafana volume, look up the real
-  UID first (`GET /api/datasources/name/CabinDB` with admin auth) and
-  use that.
+  showed the *current* value per device, no history. **2026-08-25: moved
+  in-app**, replacing the earlier Grafana link-out entirely. A "Sensor
+  History" section now renders directly under each location's KPI grid
+  (`SensorHistoryPanel`, App.jsx), with a sensor/field/range picker, a
+  day-bucketed min/avg/max table, a trend line, and a "Download CSV"
+  export — built specifically so a person can get a timestamped,
+  presentable, exportable record (e.g. for an insurance claim) without
+  logging into a separate tool. Backed by a new endpoint,
+  `GET /api/events/telemetry-history?deviceId=&field=&days=`
+  (`CabinEventService.dailyAggregates()`), which computes real
+  `date_trunc('day', ...)` aggregates server-side rather than shipping
+  raw rows — `/api/events`' own 200-row cap can't cover weeks of data at
+  this sensor network's ~10-15min sample interval. Currently scoped to
+  `TEMPERATURE_SENSOR`-type devices' `temperature`/`humidity` fields
+  (Zigbee kitchen/mech-room/outside sensors); Kidde's CO/CO2 history and
+  water-leak event history aren't wired into this picker yet — same
+  underlying endpoint would serve them, just needs the picker widened.
+  Only covers the hot tier — once a month is archived, it drops out
+  (see the retention entry above).
+
+  **Why Grafana was dropped for this, not just fixed again (2026-08-25):**
+  three real incidents in one evening — a datasource-provisioning crash-
+  loop, a stale-panel-uid "no data" bug, and then a login wall blocking
+  exactly the "screenshot this for the claim" use case — made clear
+  Grafana wasn't the right fit for *this* need specifically: a document a
+  person can pull up and export without debugging a separate service or
+  logging in. The Grafana dashboard files themselves
+  (`infra/grafana/provisioning/dashboards/sensors/cabin-telemetry.json`,
+  uid `cabin-sensor-telemetry`) are untouched and still real/working —
+  just no longer linked from the app. **Datasource UID caveat**, still
+  relevant if anyone edits that dashboard directly: its panels'
+  `datasource.uid` is hardcoded to this instance's real, already-
+  provisioned `CabinDB` UID (`P1274E9D34A851028` on the primary M920q),
+  not the human-readable `cabindb` — never add an explicit `uid:` to
+  `datasources/timescale.yml` for a datasource that may already exist
+  under an auto-generated UID (see "Adding an explicit datasource uid…"
+  below).
 
 ---
 

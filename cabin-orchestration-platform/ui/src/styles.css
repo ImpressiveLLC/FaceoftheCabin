@@ -426,6 +426,56 @@ body {
 .rule-detail { font-size: 11px; color: #8b949e; }
 .rule-source { margin-top: 2px; font-size: 9px; color: #6e7681; text-transform: uppercase; letter-spacing: .03em; }
 
+/* ─── Sensor History (in-app, replaces the Grafana link-out) ───────────── */
+.sensor-history-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+.sensor-history-header {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+.sensor-history-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.sensor-history-chart {
+  width: 100%;
+  height: 100px;
+  display: block;
+  margin-bottom: 8px;
+}
+.sensor-history-table-wrap {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.sensor-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.sensor-history-table th, .sensor-history-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.sensor-history-table th {
+  color: var(--text-dim);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  background: var(--bg-secondary);
+}
+
 /* ─── Event Log ─────────────────────────────────────────────────────────── */
 .event-log {
   background: #0d1117;

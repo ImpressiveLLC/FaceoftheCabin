@@ -92,14 +92,6 @@ export function isLocationDeployed(loc) {
 const GRAFANA_DASHBOARD_UID = {
   cabin: "aezbolgn22qdce",
 };
-// 2026-08-25: sensor telemetry dashboard (temp/humidity/water-leak/CO) --
-// see infra/grafana/provisioning/dashboards/sensors/cabin-telemetry.json.
-// uid is set explicitly in that file rather than left to Grafana's
-// auto-generated one, same reasoning as GRAFANA_DASHBOARD_UID above.
-const GRAFANA_SENSOR_DASHBOARD_UID = {
-  cabin: "cabin-sensor-telemetry",
-};
-
 // ─── Panel definitions ─────────────────────────────────────────────────────
 // ─── Google Sign-In — cabin-ui's OWN standalone flow ───────────────────────
 // Deliberately separate from Family Hub's sign-in (a different app, a
@@ -3178,6 +3170,129 @@ export function kpiTileFor(device, tempUnit) { // exported for src/App.test.jsx'
   }
 }
 
+// 2026-08-25: real in-app historical trend view, replacing the Grafana
+// link-out entirely -- Grafana proved unreliable/unfit for this specific
+// need (see docs/MAINTENANCE.md Known Issues: a datasource-uid crash-
+// loop, then a stale-panel-uid "no data" bug, then a login wall) for
+// what turned out to actually be evidence for an active insurance claim
+// -- a timestamped humidity/temperature trend a person can read and
+// export without logging into a separate tool, not a live dashboard.
+// Backed by GET /api/events/telemetry-history (day-bucketed min/avg/max,
+// CabinEventService.dailyAggregates()) -- not raw event replay, which
+// caps at 200 rows and can't cover weeks at this sensor network's
+// ~10-15min sample interval.
+export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
+  const sensors = devices.filter(d => d.type === "TEMPERATURE_SENSOR");
+  const [deviceId, setDeviceId] = useState(sensors[0]?.deviceId || "");
+  const [field, setField] = useState("humidity");
+  const [days, setDays] = useState(30);
+  const [points, setPoints] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!deviceId) return;
+    setLoading(true);
+    fetch(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(deviceId)}&field=${field}&days=${days}`)
+      .then(r => r.json())
+      .then(data => setPoints(Array.isArray(data) ? data : []))
+      .catch(() => setPoints([]))
+      .finally(() => setLoading(false));
+  }, [apiBase, deviceId, field, days]);
+
+  if (sensors.length === 0) return null;
+
+  const unit = field === "temperature" ? `°${tempUnit}` : "%";
+  // Backend always stores/returns Celsius -- convert for display only,
+  // same on-the-fly conversion fmtTemp() already does for current values.
+  const toDisplay = (v) => v == null ? null : (field === "temperature" && tempUnit === "F" ? v * 9 / 5 + 32 : v);
+  const plotted = points.filter(p => p.avg != null);
+  const displayValues = plotted.map(p => toDisplay(p.avg));
+  const chartMin = displayValues.length ? Math.min(...displayValues) : 0;
+  const chartMax = displayValues.length ? Math.max(...displayValues) : 1;
+  const range = chartMax - chartMin || 1;
+  const chartW = 560, chartH = 100, pad = 8;
+  const pathD = plotted.map((p, i) => {
+    const x = plotted.length > 1 ? pad + (i / (plotted.length - 1)) * (chartW - pad * 2) : chartW / 2;
+    const y = chartH - pad - ((toDisplay(p.avg) - chartMin) / range) * (chartH - pad * 2);
+    return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+
+  const downloadCsv = () => {
+    const header = "date,avg,min,max,samples\n";
+    const rows = points.map(p => [
+      new Date(p.day).toLocaleDateString(),
+      p.avg != null ? toDisplay(p.avg).toFixed(2) : "",
+      p.min != null ? toDisplay(p.min).toFixed(2) : "",
+      p.max != null ? toDisplay(p.max).toFixed(2) : "",
+      p.sampleCount,
+    ].join(",")).join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${deviceId}-${field}-${days}d.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="sensor-history-panel">
+      <div className="sensor-history-header">Sensor History</div>
+      <div className="sensor-history-controls">
+        <label className="dm-toolbar-select">Sensor
+          <select value={deviceId} onChange={e => setDeviceId(e.target.value)}>
+            {sensors.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name}</option>)}
+          </select>
+        </label>
+        <label className="dm-toolbar-select">Field
+          <select value={field} onChange={e => setField(e.target.value)}>
+            <option value="humidity">Humidity</option>
+            <option value="temperature">Temperature</option>
+          </select>
+        </label>
+        <label className="dm-toolbar-select">Range
+          <select value={days} onChange={e => setDays(Number(e.target.value))}>
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+            <option value={90}>90 days</option>
+          </select>
+        </label>
+        <button className="btn-ghost" onClick={downloadCsv} disabled={points.length === 0}>Download CSV</button>
+      </div>
+      {loading && <p className="config-hint">Loading…</p>}
+      {!loading && points.length === 0 && (
+        <p className="config-hint">No {field} history for this sensor in the last {days} days.</p>
+      )}
+      {!loading && points.length > 0 && (
+        <>
+          {plotted.length > 1 && (
+            <svg viewBox={`0 0 ${chartW} ${chartH}`} className="sensor-history-chart">
+              <path d={pathD} fill="none" stroke="var(--accent, #58a6ff)" strokeWidth="2"/>
+            </svg>
+          )}
+          <div className="sensor-history-table-wrap">
+            <table className="sensor-history-table">
+              <thead><tr><th>Date</th><th>Avg</th><th>Min</th><th>Max</th><th>Samples</th></tr></thead>
+              <tbody>
+                {[...points].reverse().map(p => (
+                  <tr key={p.day}>
+                    <td>{new Date(p.day).toLocaleDateString()}</td>
+                    <td>{p.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit}` : "—"}</td>
+                    <td>{p.min != null ? `${toDisplay(p.min).toFixed(1)}${unit}` : "—"}</td>
+                    <td>{p.max != null ? `${toDisplay(p.max).toFixed(1)}${unit}` : "—"}</td>
+                    <td>{p.sampleCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // 2026-08-25: devices is now the full, user-ordered list (from
 // useDraggableOrder in MnSeeView), not raw API order -- filtering it here
 // preserves that order within this location's subset, which is what
@@ -3221,12 +3336,8 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
         })}
       </div>
 
-      {GRAFANA_SENSOR_DASHBOARD_UID[locCfg.id] && (
-        <a className="btn-secondary" href={`${locCfg.grafanaUrl}/grafana/d/${GRAFANA_SENSOR_DASHBOARD_UID[locCfg.id]}`}
-          target="_blank" rel="noreferrer">
-          View Sensor History (Temp / Humidity / CO) ↗
-        </a>
-      )}
+      <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
+        apiBase={locCfg.apiBase} tempUnit={tempUnit} />
 
       <CameraHealthPanel locCfg={locCfg} />
 

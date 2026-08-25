@@ -128,6 +128,56 @@ public class CabinEventService {
             .stream().map(this::fromRow).toList();
     }
 
+    /**
+     * Day-bucketed min/avg/max for one numeric TELEMETRY payload field on
+     * one device, over the last N days -- built for a real historical
+     * trend view (Monitoring panel's "History" section), not raw event
+     * replay: recent()'s 200-row cap can't cover weeks of ~10-15min-
+     * interval readings, and a chart wants day buckets, not thousands of
+     * raw points. jsonb_exists(payload, ?) is used instead of the
+     * `payload ? ?` operator -- the bare `?` operator collides with
+     * JDBC's own placeholder syntax, a well-known Postgres+JDBC gotcha;
+     * the function form sidesteps it entirely. The numeric-format regex
+     * guards against a payload field that's sometimes non-numeric (mirrors
+     * the same guard the Grafana dashboard panels already use for Kidde's
+     * fields, cabin-telemetry.json).
+     */
+    public List<TelemetryDailyPoint> dailyAggregates(String deviceId, String payloadField, int days) {
+        int cappedDays = Math.min(Math.max(days, 1), 366);
+        Instant since = Instant.now().minus(java.time.Duration.ofDays(cappedDays));
+        String sql = """
+            SELECT date_trunc('day', time) AS day,
+                   AVG((payload->>?)::numeric) AS avg_val,
+                   MIN((payload->>?)::numeric) AS min_val,
+                   MAX((payload->>?)::numeric) AS max_val,
+                   COUNT(*) AS sample_count
+            FROM cabin_event
+            WHERE device_id = ?
+              AND jsonb_exists(payload, ?)
+              AND payload->>? ~ '^-?[0-9]+\\.?[0-9]*$'
+              AND time >= ?
+            GROUP BY 1 ORDER BY 1
+            """;
+        return jdbc.queryForList(sql,
+                payloadField, payloadField, payloadField, deviceId, payloadField, payloadField,
+                java.sql.Timestamp.from(since))
+            .stream().map(this::toDailyPoint).toList();
+    }
+
+    private TelemetryDailyPoint toDailyPoint(Map<String, Object> row) {
+        Object dayVal = row.get("day");
+        Instant day = dayVal instanceof java.sql.Timestamp t ? t.toInstant() : Instant.now();
+        Number avg = (Number) row.get("avg_val");
+        Number min = (Number) row.get("min_val");
+        Number max = (Number) row.get("max_val");
+        Number count = (Number) row.get("sample_count");
+        return new TelemetryDailyPoint(day,
+            avg == null ? null : avg.doubleValue(),
+            min == null ? null : min.doubleValue(),
+            max == null ? null : max.doubleValue(),
+            count == null ? 0 : count.longValue());
+    }
+
     private CabinEvent fromRow(Map<String, Object> row) {
         Object timeVal = row.get("time");
         Instant ts = timeVal instanceof java.sql.Timestamp t ? t.toInstant() : Instant.now();

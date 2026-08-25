@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -92,6 +92,80 @@ describe("kpiTileFor", () => {
   });
 });
 
+// 2026-08-25: replaces the Grafana "View Sensor History" link-out, which
+// proved unreliable/unfit for its actual purpose (documented humidity/temp
+// evidence for an active insurance claim -- see docs/MAINTENANCE.md Known
+// Issues). Backed by the new GET /api/events/telemetry-history endpoint
+// (CabinEventService.dailyAggregates()).
+describe("SensorHistoryPanel", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const sensors = [
+    { deviceId: "z2m-humid_mech", name: "Mech Room", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin" },
+    { deviceId: "z2m-humid_kitchen", name: "Kitchen", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin" },
+  ];
+  const points = [
+    { day: "2026-08-24T00:00:00Z", avg: 70, min: 65, max: 75, sampleCount: 12 },
+    { day: "2026-08-25T00:00:00Z", avg: 75.2, min: 70, max: 80, sampleCount: 8 },
+  ];
+
+  it("renders nothing when the location has no temperature/humidity sensors", () => {
+    const { container } = render(<SensorHistoryPanel devices={[]} apiBase="http://cabin" tempUnit="F" />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("defaults to the first sensor and fetches humidity history for it", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("deviceId=z2m-humid_mech");
+    expect(url).toContain("field=humidity");
+    expect(url).toContain("days=30");
+  });
+
+  it("renders real day rows from the response, most recent first", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => points }));
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+
+    const rows = await screen.findAllByRole("row");
+    // header row + 2 data rows, most recent (8/25) first
+    expect(rows).toHaveLength(3);
+    expect(within(rows[1]).getByText("75.2%")).toBeTruthy();
+    expect(within(rows[2]).getByText("70.0%")).toBeTruthy();
+  });
+
+  it("converts Celsius to Fahrenheit for display when the field is temperature and unit is F", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => [{ day: "2026-08-25T00:00:00Z", avg: 20, min: 18, max: 22, sampleCount: 5 }],
+    }));
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+    fireEvent.change(screen.getByLabelText(/^field$/i), { target: { value: "temperature" } });
+
+    expect(await screen.findByText("68.0°F")).toBeTruthy(); // 20C -> 68F
+  });
+
+  it("shows an honest empty state instead of a blank table when there's no history yet", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+
+    expect(await screen.findByText(/no humidity history for this sensor/i)).toBeTruthy();
+  });
+
+  it("re-fetches with the new range when Range is changed", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    fireEvent.change(screen.getByLabelText(/^range$/i), { target: { value: "90" } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toContain("days=90");
+  });
+});
+
 describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)", () => {
   afterEach(() => { cleanup(); localStorage.clear(); });
 
@@ -104,23 +178,27 @@ describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)",
     // the previous fixed-bucket rendering always showed every temp sensor
     // before every lock, regardless of any saved preference.
     localStorage.setItem("order.monitoring.cabin", JSON.stringify(["lock-a", "temp-b", "temp-a"]));
-    render(
+    const { container } = render(
       <AppContext.Provider value={{ displayConfigs: {} }}>
         <MnSeeView devices={[tempA, tempB, lock]} activeLocation="cabin" active={false} reorderMode={false} />
       </AppContext.Provider>
     );
-    const labels = screen.getAllByText(/^(Temp A|Temp B|Lock A)$/).map(el => el.textContent);
+    // Scoped to .kpi-grid -- SensorHistoryPanel's own sensor picker also
+    // renders these device names (as <option> text), unrelated to tile order.
+    const kpiGrid = container.querySelector(".kpi-grid");
+    const labels = within(kpiGrid).getAllByText(/^(Temp A|Temp B|Lock A)$/).map(el => el.textContent);
     expect(labels).toEqual(["Lock A", "Temp B", "Temp A"]);
   });
 
   it("drags the real grid tile itself, not a separate list row, and persists the new order", () => {
-    render(
+    const { container } = render(
       <AppContext.Provider value={{ displayConfigs: {} }}>
         <MnSeeView devices={[tempA, tempB, lock]} activeLocation="cabin" active={false} reorderMode={true} />
       </AppContext.Provider>
     );
-    const tileA = screen.getByText("Temp A").closest(".kpi-tile");
-    const tileLock = screen.getByText("Lock A").closest(".kpi-tile");
+    const kpiGrid = container.querySelector(".kpi-grid");
+    const tileA = within(kpiGrid).getByText("Temp A").closest(".kpi-tile");
+    const tileLock = within(kpiGrid).getByText("Lock A").closest(".kpi-tile");
     expect(tileA.getAttribute("draggable")).toBe("true");
 
     // jsdom's synthetic drag events need dataTransfer supplied explicitly

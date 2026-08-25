@@ -3,6 +3,7 @@ package com.cabin.orchestrator.api;
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
+import com.cabin.orchestrator.events.TelemetryDailyPoint;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
@@ -81,6 +82,23 @@ public class EventController {
                 .toList();
         }
         return eventService.recent(camera, cappedLimit, cappedOffset, since, prefixes);
+    }
+
+    /**
+     * GET /api/events/telemetry-history?deviceId=z2m-temp_mech_room&field=humidity&days=30
+     * Day-bucketed min/avg/max for one numeric TELEMETRY payload field on
+     * one device -- built for a real historical trend view (Monitoring
+     * panel's "History" section), not raw event replay: this controller's
+     * own recentEvents() caps at 200 rows, which can't cover weeks of
+     * ~10-15min-interval readings. Unauthenticated, same precedent as
+     * every other GET here.
+     */
+    @GetMapping("/telemetry-history")
+    public List<TelemetryDailyPoint> telemetryHistory(
+            @RequestParam(name = "deviceId") String deviceId,
+            @RequestParam(name = "field") String field,
+            @RequestParam(name = "days", required = false, defaultValue = "30") int days) {
+        return eventService.dailyAggregates(deviceId, field, days);
     }
 
     private Duration parseWindow(String window) {

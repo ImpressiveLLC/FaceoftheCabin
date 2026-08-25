@@ -160,4 +160,82 @@ class CabinEventServiceTest {
         assertThat(matching).hasSize(1);
         assertThat(matching.get(0).severity()).isEqualTo("INFO");
     }
+
+    // 2026-08-25: dailyAggregates() -- built for a real historical trend
+    // view (weeks of temp/humidity, insurance-claim-grade evidence), which
+    // recent()'s 200-row cap can't serve at a ~10-15min sample interval.
+    private void saveTelemetry(String id, String device, Instant ts, Map<String, Object> payload) {
+        service.save(new CabinEvent(id, device, "TELEMETRY", "INFO", ts, payload));
+    }
+
+    @Test
+    void averagesMultipleSameDayReadingsIntoOneBucket() {
+        Instant today = Instant.now();
+        saveTelemetry("t-1", "z2m-humid_mech", today.minusSeconds(3600), Map.of("humidity", 70));
+        saveTelemetry("t-2", "z2m-humid_mech", today.minusSeconds(1800), Map.of("humidity", 80));
+
+        List<TelemetryDailyPoint> points = service.dailyAggregates("z2m-humid_mech", "humidity", 7);
+
+        assertThat(points).hasSize(1);
+        assertThat(points.get(0).avg()).isEqualTo(75.0);
+        assertThat(points.get(0).min()).isEqualTo(70.0);
+        assertThat(points.get(0).max()).isEqualTo(80.0);
+        assertThat(points.get(0).sampleCount()).isEqualTo(2);
+    }
+
+    @Test
+    void splitsReadingsFromDifferentDaysIntoSeparateBuckets() {
+        Instant now = Instant.now();
+        saveTelemetry("t-1", "z2m-humid_mech", now.minus(java.time.Duration.ofDays(2)), Map.of("humidity", 60));
+        saveTelemetry("t-2", "z2m-humid_mech", now, Map.of("humidity", 90));
+
+        List<TelemetryDailyPoint> points = service.dailyAggregates("z2m-humid_mech", "humidity", 7);
+
+        assertThat(points).hasSize(2);
+        assertThat(points).extracting(TelemetryDailyPoint::avg).containsExactlyInAnyOrder(60.0, 90.0);
+    }
+
+    @Test
+    void ignoresReadingsOutsideTheRequestedWindow() {
+        Instant now = Instant.now();
+        saveTelemetry("old", "z2m-humid_mech", now.minus(java.time.Duration.ofDays(40)), Map.of("humidity", 10));
+        saveTelemetry("recent", "z2m-humid_mech", now, Map.of("humidity", 90));
+
+        List<TelemetryDailyPoint> points = service.dailyAggregates("z2m-humid_mech", "humidity", 30);
+
+        assertThat(points).hasSize(1);
+        assertThat(points.get(0).avg()).isEqualTo(90.0);
+    }
+
+    @Test
+    void isScopedToOneDeviceAndOneField() {
+        Instant now = Instant.now();
+        saveTelemetry("this-device", "z2m-humid_mech", now, Map.of("humidity", 70, "temperature", 18));
+        saveTelemetry("other-device", "z2m-humid_kitchen", now, Map.of("humidity", 40));
+
+        List<TelemetryDailyPoint> humidity = service.dailyAggregates("z2m-humid_mech", "humidity", 7);
+        List<TelemetryDailyPoint> temperature = service.dailyAggregates("z2m-humid_mech", "temperature", 7);
+
+        assertThat(humidity).singleElement().satisfies(p -> assertThat(p.avg()).isEqualTo(70.0));
+        assertThat(temperature).singleElement().satisfies(p -> assertThat(p.avg()).isEqualTo(18.0));
+    }
+
+    @Test
+    void skipsNonNumericValuesInsteadOfFailingTheWholeQuery() {
+        Instant now = Instant.now();
+        saveTelemetry("bad", "z2m-humid_mech", now, Map.of("humidity", "unavailable"));
+        saveTelemetry("good", "z2m-humid_mech", now, Map.of("humidity", 55));
+
+        List<TelemetryDailyPoint> points = service.dailyAggregates("z2m-humid_mech", "humidity", 7);
+
+        assertThat(points).hasSize(1);
+        assertThat(points.get(0).avg()).isEqualTo(55.0);
+        assertThat(points.get(0).sampleCount()).isEqualTo(1);
+    }
+
+    @Test
+    void returnsNoBucketsForADeviceWithNoMatchingReadings() {
+        List<TelemetryDailyPoint> points = service.dailyAggregates("nonexistent-device", "humidity", 7);
+        assertThat(points).isEmpty();
+    }
 }

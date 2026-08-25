@@ -104,4 +104,21 @@ class EventControllerTest {
         assertEquals(1, homeEvents.size(),
             "an event from a device never seen by this registry must not silently count toward any location");
     }
+
+    // 2026-08-25: /telemetry-history -- wiring only, dailyAggregates()'s
+    // own aggregation logic is covered in CabinEventServiceTest.
+    @Test
+    void telemetryHistoryDelegatesToDailyAggregates() {
+        CabinEventService rawEventService = new CabinEventService(
+            new JdbcTemplate(new SimpleDriverDataSource(
+                new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+        rawEventService.save(new CabinEvent("evt-humidity", "z2m-humid_mech", "TELEMETRY",
+            "INFO", Instant.now(), Map.of("humidity", 75)));
+
+        List<com.cabin.orchestrator.events.TelemetryDailyPoint> points =
+            controller.telemetryHistory("z2m-humid_mech", "humidity", 30);
+
+        assertEquals(1, points.size());
+        assertEquals(75.0, points.get(0).avg());
+    }
 }
