@@ -112,5 +112,42 @@
       not the 401 an authenticated Admin API should return -- adminAuth may
       not have taken effect. Check settings.js and the backup taken above
       before assuming this is done.
-    success_msg: "Node-RED adminAuth is live and enforced -- /flows correctly requires login."
+    success_msg: "Node-RED adminAuth is enforced -- /flows correctly requires login (step 1 of 2)."
+  when: admin_auth_result.changed or http_node_auth_result.changed
+
+# 2026-08-24: a 401 above only proves auth is *required* -- it says
+# nothing about whether the specific username/password just configured
+# can actually log in. First pass at this role stopped at the 401 check
+# and called it done; the real gap (does this credential work) only got
+# caught because the user pushed back on treating a passing check as
+# equivalent to a verified claim. Closing that gap here so a future
+# rotation gets the same guarantee automatically, not just this run.
+- name: Attempt to actually log in with the configured credentials
+  ansible.builtin.uri:
+    url: "http://localhost:1880/auth/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      client_id: node-red-admin
+      grant_type: password
+      scope: "*"
+      username: "{{ nodered_admin_username }}"
+      password: "{{ nodered_admin_password }}"
+    status_code: [200, 401, 403]
+  register: nodered_login
+  no_log: true
+  when: admin_auth_result.changed or http_node_auth_result.changed
+
+- name: Confirm the configured credentials actually authenticate -- fail loudly if not
+  ansible.builtin.assert:
+    that:
+      - nodered_login.status == 200
+      - nodered_login.json.access_token is defined
+    fail_msg: >
+      /auth/token did not return a working access_token for the username/
+      password just configured (HTTP {{ nodered_login.status }}) -- auth is
+      required (step 1 passed) but these specific credentials don't work.
+      Check the bcrypt hash Ansible computed against what's actually in
+      settings.js before assuming this is done.
+    success_msg: "Node-RED adminAuth is enforced AND the configured credentials really log in (step 2 of 2)."
   when: admin_auth_result.changed or http_node_auth_result.changed
