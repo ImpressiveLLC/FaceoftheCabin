@@ -1580,7 +1580,10 @@ function DeviceManagerPanel() {
   const [groupFlow, setGroupFlow] = useState(() => localStorage.getItem("devices.groupFlow") || "horizontal");
   const [deviceFilter, setDeviceFilter] = useState(() => {
     const saved = localStorage.getItem("devices.filter") || "in_scope";
-    return saved === "configured" ? "in_scope" : saved;
+    // "configured" was renamed to "in_scope"; "all" was folded into
+    // "in_scope"'s own default meaning (2026-08-25) and is no longer a
+    // separate selectable option -- both migrate the same way.
+    return (saved === "configured" || saved === "all") ? "in_scope" : saved;
   });
   const [candidateDevices, setCandidateDevices] = useState([]);
   const [previouslyExposed, setPreviouslyExposed] = useState([]);
@@ -1682,10 +1685,9 @@ function DeviceManagerPanel() {
                 <select value={effectiveDeviceFilter} onChange={e => setDeviceFilter(e.target.value)}
                   disabled={groupBy === "candidate"}
                   title={groupBy === "candidate" ? "Candidate grouping always shows both setup states" : undefined}>
-                  <option value="in_scope">In scope</option>
+                  <option value="in_scope">All In-Scope + Candidates</option>
                   <option value="candidates">Candidates</option>
                   <option value="previous">Review previously exposed</option>
-                  <option value="all">In scope + candidates</option>
                 </select>
               </label>
               <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
@@ -1809,17 +1811,38 @@ export function workflowsForDevice(workflows, deviceId) {
     w.triggerDeviceId === deviceId || (w.actions || []).some(a => a.targetDeviceId === deviceId));
 }
 
+// 2026-08-25: "in_scope" (the default) used to mean AVAILABLE/ASSIGNED
+// only, excluding undecided candidates -- but every OTHER option here
+// narrows the view, so a default that silently hides candidates isn't
+// actually "what you should see by default." Merged the old separate
+// "all" filter (in-scope + candidates, excluding only deferred/ignored)
+// into this same default fallthrough -- "all" is no longer a distinct
+// code path, any unrecognized/legacy filter value (including a
+// localStorage value saved as "all" before this change) now resolves
+// here too, so resolveDeviceManagerFilter's own forced "all" override
+// for Lifecycle grouping still works unchanged.
 export function filterDeviceManagerDevices(devices, filter = "in_scope") {
-  if (filter === "all") {
-    return devices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
-  }
   if (filter === "candidates") {
     return devices.filter(d => deviceLifecycleState(d) === "CANDIDATE");
   }
   if (filter === "previous") {
     return devices.filter(d => ["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
   }
-  return devices.filter(d => ["AVAILABLE", "ASSIGNED"].includes(deviceLifecycleState(d)));
+  return devices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
+}
+
+// 2026-08-25: the toolbar's device count used raw devices.length -- every
+// HA sub-entity/service counted as its own "device" (Kidde's ~9-18
+// entities, Liebherr's 9, each a separate row), producing a number like
+// 157 with no way to tell how many *physical* things that actually
+// represents. "Parent" here means "not itself a child of another device"
+// (parentDeviceId unset) -- a standalone device with no children counted
+// under it still counts as one. Devices with no parent relationships set
+// at all (the common case until someone uses the Parent device picker)
+// will show the same count either way -- that's correct, not a bug in
+// this function; the count only shrinks once real relationships exist.
+export function countParentDevices(devices) {
+  return devices.filter(d => !d.attributes?.parentDeviceId).length;
 }
 
 export function resolveDeviceManagerFilter(groupBy, savedFilter = "in_scope") {
@@ -4661,6 +4684,11 @@ function App() {
     return PANELS.some(p => p.id === requested) ? requested : "MONITORING";
   });
   const [activeLocation, setActiveLocation] = useState("cabin");
+  // 2026-08-25: toolbar device-count toggle -- see countParentDevices'
+  // own comment for why "157 devices" alone was misleading (every HA
+  // sub-entity/service counted as its own device).
+  const [deviceCountMode, setDeviceCountMode] = useState(() => localStorage.getItem("deviceCountMode") || "devices");
+  useEffect(() => localStorage.setItem("deviceCountMode", deviceCountMode), [deviceCountMode]);
   const [devices,        setDevices]        = useState([]);
   const [workflows,      setWorkflows]      = useState([]);
   const [config,         setConfig]         = useState({});
@@ -4805,7 +4833,22 @@ function App() {
                   <AlertTriangle size={12}/> API offline
                 </a>
               )}
-              <span className="device-count">{devices.length} devices</span>
+              <div className="device-count-toggle">
+                <button
+                  className={`dc-btn ${deviceCountMode === "devices" ? "dc-active" : ""}`}
+                  onClick={() => setDeviceCountMode("devices")}
+                  title="Parent devices -- not itself a child of another device"
+                >
+                  {countParentDevices(devices)} devices
+                </button>
+                <button
+                  className={`dc-btn ${deviceCountMode === "services" ? "dc-active" : ""}`}
+                  onClick={() => setDeviceCountMode("services")}
+                  title="Every discovered device/service, including each entity of a multi-service device"
+                >
+                  {devices.length} device services
+                </button>
+              </div>
             </div>
           </div>
           <div className="panel-area">

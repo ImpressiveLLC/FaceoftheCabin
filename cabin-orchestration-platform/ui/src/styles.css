@@ -1492,6 +1492,33 @@ select option { background: var(--bg-secondary); color: var(--text); }
   border-color: var(--accent) !important;
 }
 
+/* ─── Toolbar device-count toggle (2026-08-25) ─────────────────────────── */
+.device-count-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--control-surface);
+  border: 2px solid var(--control-border);
+  border-radius: 8px;
+  padding: 3px;
+}
+.dc-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  padding: 3px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.dc-btn:hover { background: var(--control-surface-hover); color: var(--text); }
+.dc-active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--control-surface)) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
 .dm-l1-nav { border-bottom-color: var(--border); }
 .dm-l1-btn {
   background: var(--control-surface);

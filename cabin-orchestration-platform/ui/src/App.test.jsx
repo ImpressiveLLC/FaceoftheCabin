@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -705,19 +705,28 @@ describe("Device Manager lifecycle visibility", () => {
   const legacyConfigured = { deviceId: "legacy", attributes: {} };
   const devices = [assigned, available, candidate, deferred, ignored, legacyConfigured];
 
-  it("shows only available/assigned devices in the default in-scope view", () => {
-    expect(filterDeviceManagerDevices(devices).map(d => d.deviceId)).toEqual(["assigned", "available", "legacy"]);
+  // 2026-08-25: the default used to exclude candidates -- but every OTHER
+  // option in this dropdown narrows the view, so a default that silently
+  // hid undecided candidates wasn't actually "everything you should see
+  // by default." Merged the old separate "all" filter into this same
+  // default (relabeled "All In-Scope + Candidates" in the dropdown).
+  it("shows in-scope devices AND candidates in the default view -- deferred/ignored still excluded", () => {
+    expect(filterDeviceManagerDevices(devices).map(d => d.deviceId))
+      .toEqual(["assigned", "available", "candidate", "legacy"]);
   });
 
   it("shows candidates only when Candidates is explicitly selected", () => {
     expect(filterDeviceManagerDevices(devices, "candidates").map(d => d.deviceId)).toEqual(["candidate"]);
   });
 
-  it("keeps cached devices out of All until Previously exposed is explicitly selected", () => {
-    expect(filterDeviceManagerDevices(devices, "all").map(d => d.deviceId))
-      .toEqual(["assigned", "available", "candidate", "legacy"]);
+  it("keeps cached devices out of the default view until Previously exposed is explicitly selected", () => {
     expect(filterDeviceManagerDevices(devices, "previous").map(d => d.deviceId))
       .toEqual(["deferred", "ignored"]);
+  });
+
+  it("the legacy 'all' filter value (no longer a selectable option) still resolves to the same default set", () => {
+    expect(filterDeviceManagerDevices(devices, "all").map(d => d.deviceId))
+      .toEqual(["assigned", "available", "candidate", "legacy"]);
   });
 
   it("always reconciles Lifecycle grouping to All active/review devices", () => {
@@ -730,6 +739,36 @@ describe("Device Manager lifecycle visibility", () => {
     expect(deviceLifecycleState({ attributes: { candidate: true } })).toBe("CANDIDATE");
     expect(deviceLifecycleState({ attributes: { candidate: true, deviceLifecycle: "available" } })).toBe("AVAILABLE");
     expect(deviceLifecycleState({ attributes: {} })).toBe("ASSIGNED");
+  });
+});
+
+// 2026-08-25: the toolbar's "157 devices" counted every HA sub-entity as
+// its own device (Kidde's ~9-18 entities, Liebherr's 9, etc.) with no way
+// to tell how many physical things that represents. countParentDevices
+// is the "parent devices only" half of the new toggle.
+describe("countParentDevices", () => {
+  it("counts every device when none has a parent set (today's real-world starting state)", () => {
+    const devices = [
+      { deviceId: "a", attributes: {} },
+      { deviceId: "b", attributes: {} },
+      { deviceId: "c", attributes: {} },
+    ];
+    expect(countParentDevices(devices)).toBe(3);
+  });
+
+  it("excludes devices that have a parentDeviceId set -- they're a service of something else", () => {
+    const devices = [
+      { deviceId: "kidde-unit", attributes: {} },
+      { deviceId: "kidde-co-alarm", attributes: { parentDeviceId: "kidde-unit" } },
+      { deviceId: "kidde-humidity", attributes: { parentDeviceId: "kidde-unit" } },
+      { deviceId: "standalone-lock", attributes: {} },
+    ];
+    expect(countParentDevices(devices)).toBe(2); // kidde-unit + standalone-lock
+  });
+
+  it("treats a blank parentDeviceId (cleared, not unset) the same as no parent", () => {
+    const devices = [{ deviceId: "a", attributes: { parentDeviceId: "" } }];
+    expect(countParentDevices(devices)).toBe(1);
   });
 });
 
