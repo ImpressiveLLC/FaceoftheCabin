@@ -206,6 +206,21 @@ network path to a Tailscale-only host. Full setup/recovery runbook:
   fix existed and correctly return zero rows rather than erroring. Only
   covers the hot tier — once a month is archived, it drops out of these
   panels (see the retention entry above).
+  **Datasource UID caveat (found 2026-08-25, see "Known Issues" below):**
+  each panel's `datasource.uid` is hardcoded to this instance's real,
+  already-provisioned `CabinDB` datasource UID (`P1274E9D34A851028` on
+  the primary M920q) — not the human-readable `cabindb`. Do not add an
+  explicit `uid:` to `datasources/timescale.yml` on an instance where
+  `CabinDB` already exists (Grafana auto-generates a UID on first
+  creation and reconciling an existing by-name datasource against a
+  *different* explicit `uid:` breaks provisioning — see Known Issues).
+  On a genuinely fresh instance (per `docs/REPLICATION.md`, first-ever
+  boot, `CabinDB` datasource does not yet exist), it's safe to add
+  `uid: cabindb` to `timescale.yml` *before* first provisioning and use
+  `cabindb` as the literal string in the dashboard JSON instead — but on
+  a clone of an *existing* instance's Grafana volume, look up the real
+  UID first (`GET /api/datasources/name/CabinDB` with admin auth) and
+  use that.
 
 ---
 
@@ -936,6 +951,46 @@ they want Grafana reachable from anywhere? They chose the latter.
 `GRAFANA_EXTERNAL_HOST`'s meaning and default changed accordingly (now
 a public hostname, not the Tailscale IP) — see the new "Grafana — Off-
 Tailscale Access" section below for the real fix that followed this one.
+
+### Adding an explicit datasource `uid:` to an already-provisioned datasource crash-looped Grafana (found and fixed 2026-08-25)
+
+Shipping the new Sensors dashboard (`aad940d`), an explicit `uid: cabindb`
+was added to `datasources/timescale.yml`'s `CabinDB` entry so the
+dashboard JSON could reference it by a stable, human-readable string
+instead of depending on Grafana's auto-generated UID. Reasonable in
+isolation, wrong for this repo: the `CabinDB` datasource already existed
+on the live M920q (provisioned by *name* originally, no `uid:` field,
+so Grafana had long since auto-generated its own — `P1274E9D34A851028`).
+New dashboard *files* hot-reload on their provider's own
+`updateIntervalSeconds` with no restart, so `docker restart cabin-grafana`
+was run to pick up the brand-new `Sensors` dashboard *provider* (a new
+provider block in `dashboards.yml`, which does need a restart to be
+discovered at all — unlike a new file under an existing provider). That
+restart crash-looped Grafana: `level=error msg="Failed to provision data
+sources" error="Datasource provisioning error: data source not found"`
+— Grafana tried to reconcile the by-name `CabinDB` record against the
+newly-added explicit `uid: cabindb`, found no existing datasource under
+that UID, and failed instead of silently renaming the existing one.
+**Fixed** by removing `uid: cabindb` from `timescale.yml` (leaving the
+datasource's real, pre-existing auto-generated UID alone) and updating
+the dashboard JSON's 12 panel/target `datasource.uid` references to the
+real UID (`P1274E9D34A851028`) instead of the aspirational `cabindb`
+string — confirmed via `docker exec cabin-grafana curl -u admin:$PW
+http://localhost:3000/api/datasources` that this is the datasource's
+actual, permanent UID on this instance. **Lesson**: never add an explicit
+`uid:` to a datasource-provisioning entry for a datasource that may
+already exist under an auto-generated UID — look the real UID up first
+(`GET /api/datasources/name/<name>`) and either use that real value or
+only set an explicit `uid:` on a genuinely first-ever boot, before
+Grafana has created the record at all (see the caveat note under
+"Viewing sensor history in the UI" above). Separately confirmed a second,
+independent gotcha while diagnosing this: a *new dashboard provider*
+(new folder/provider block in `dashboards.yml`) needs a Grafana restart
+to be discovered; a new *dashboard file* under an *existing* provider's
+folder does not, it hot-reloads on `updateIntervalSeconds` — don't
+restart Grafana reflexively for "dashboard not found," since (as this
+incident shows) an unnecessary restart can itself cause an outage if
+anything else in provisioning has silently drifted.
 
 ### CORS preflight requests were silently rejected (found 2026-08-03)
 

@@ -8,14 +8,14 @@
   "links": [],
   "panels": [
     {
-      "datasource": { "type": "postgres", "uid": "cabindb" },
+      "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
       "description": "Zigbee temperature sensors (kitchen, mech room, outside).",
       "fieldConfig": { "defaults": { "unit": "fahrenheit" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "id": 1,
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "cabindb" },
+          "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
           "format": "time_series",
           "rawSql": "SELECT time AS \"time\", device_id AS metric, (payload->>'temperature')::numeric AS value FROM cabin_event WHERE event_type = 'TELEMETRY' AND payload ? 'temperature' AND $__timeFilter(time) ORDER BY time",
           "refId": "A"
@@ -25,14 +25,14 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "postgres", "uid": "cabindb" },
+      "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
       "description": "Zigbee humidity sensors.",
       "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "id": 2,
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "cabindb" },
+          "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
           "format": "time_series",
           "rawSql": "SELECT time AS \"time\", device_id AS metric, (payload->>'humidity')::numeric AS value FROM cabin_event WHERE event_type = 'TELEMETRY' AND payload ? 'humidity' AND $__timeFilter(time) ORDER BY time",
           "refId": "A"
@@ -42,13 +42,13 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "postgres", "uid": "cabindb" },
+      "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
       "description": "true = leak detected. Real, not a fixed threshold guess.",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
       "id": 3,
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "cabindb" },
+          "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
           "format": "time_series",
           "rawSql": "SELECT time AS \"time\", device_id AS metric, CASE WHEN payload->>'water_leak' = 'true' THEN 1 ELSE 0 END AS value FROM cabin_event WHERE event_type = 'TELEMETRY' AND payload ? 'water_leak' AND $__timeFilter(time) ORDER BY time",
           "refId": "A"
@@ -58,14 +58,14 @@
       "type": "state-timeline"
     },
     {
-      "datasource": { "type": "postgres", "uid": "cabindb" },
+      "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
       "description": "Kidde CO/air-quality unit, indoor temperature. Populates once the sensor-domain value-capture fix (2026-08-25) is deployed and HA has polled at least twice.",
       "fieldConfig": { "defaults": { "unit": "fahrenheit" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
       "id": 4,
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "cabindb" },
+          "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
           "format": "time_series",
           "rawSql": "SELECT time AS \"time\", payload->>'friendly_name' AS metric, (payload->>'value')::numeric AS value FROM cabin_event WHERE event_type = 'TELEMETRY' AND device_id ILIKE '%kidde%' AND payload->>'device_class' = 'temperature' AND payload->>'value' ~ '^-?[0-9]+\\.?[0-9]*$' AND $__timeFilter(time) ORDER BY time",
           "refId": "A"
@@ -75,14 +75,14 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "postgres", "uid": "cabindb" },
+      "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
       "description": "Kidde CO/air-quality unit, humidity. Populates once the sensor-domain value-capture fix (2026-08-25) is deployed and HA has polled at least twice.",
       "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
       "id": 5,
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "cabindb" },
+          "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
           "format": "time_series",
           "rawSql": "SELECT time AS \"time\", payload->>'friendly_name' AS metric, (payload->>'value')::numeric AS value FROM cabin_event WHERE event_type = 'TELEMETRY' AND device_id ILIKE '%kidde%' AND payload->>'device_class' = 'humidity' AND payload->>'value' ~ '^-?[0-9]+\\.?[0-9]*$' AND $__timeFilter(time) ORDER BY time",
           "refId": "A"
@@ -92,14 +92,14 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "postgres", "uid": "cabindb" },
+      "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
       "description": "Kidde CO2 sensor (ppm). Populates once the sensor-domain value-capture fix (2026-08-25) is deployed and HA has polled at least twice. Kidde's dedicated CO-level entity has no device_class set on the live account (a HA-side gap, not something faked here) -- included by device_id match instead.",
       "fieldConfig": { "defaults": { "unit": "ppm" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
       "id": 6,
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "cabindb" },
+          "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
           "format": "time_series",
           "rawSql": "SELECT time AS \"time\", payload->>'friendly_name' AS metric, (payload->>'value')::numeric AS value FROM cabin_event WHERE event_type = 'TELEMETRY' AND device_id ILIKE '%kidde%' AND (payload->>'device_class' = 'carbon_dioxide' OR device_id ILIKE '%co-level%') AND payload->>'value' ~ '^-?[0-9]+\\.?[0-9]*$' AND $__timeFilter(time) ORDER BY time",
           "refId": "A"
