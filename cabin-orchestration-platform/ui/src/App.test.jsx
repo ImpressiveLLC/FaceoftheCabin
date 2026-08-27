@@ -164,6 +164,63 @@ describe("SensorHistoryPanel", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls[1][0]).toContain("days=90");
   });
+
+  // 2026-08-27: closes the gap docs/MAINTENANCE.md flagged -- "Kidde's CO/CO2
+  // history... aren't wired into this picker yet". Kidde's HA-discovered
+  // entities are CO2_SENSOR/AIR_QUALITY_SENSOR/CO_SENSOR (not
+  // TEMPERATURE_SENSOR), each its own separate device (one physical reading
+  // per HA entity, unlike the Zigbee sensor's combined temp+humidity).
+  const kiddeSensors = [
+    { deviceId: "ha-cabin-sensor-kidde-co2", name: "Kidde CO2 Level", type: "CO2_SENSOR", state: "ONLINE", location: "cabin" },
+    { deviceId: "ha-cabin-sensor-kidde-aqi", name: "Kidde Air Quality Index", type: "AIR_QUALITY_SENSOR", state: "ONLINE", location: "cabin" },
+    { deviceId: "ha-cabin-sensor-kidde-co", name: "Kidde CO Level", type: "CO_SENSOR", state: "ONLINE", location: "cabin" },
+  ];
+
+  it("includes Kidde-style CO2/air-quality/CO devices in the Sensor picker, not just temperature sensors", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SensorHistoryPanel devices={[...sensors, ...kiddeSensors]} apiBase="http://cabin" tempUnit="F" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    const sensorSelect = screen.getByLabelText(/^sensor$/i);
+    expect(within(sensorSelect).getByText("Kidde CO2 Level")).toBeTruthy();
+    expect(within(sensorSelect).getByText("Kidde Air Quality Index")).toBeTruthy();
+    expect(within(sensorSelect).getByText("Kidde CO Level")).toBeTruthy();
+  });
+
+  it("defaults the Field picker to a CO2 device's only real field, not the Zigbee temperature/humidity options", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SensorHistoryPanel devices={kiddeSensors} apiBase="http://cabin" tempUnit="F" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(fetchMock.mock.calls[0][0]).toContain("deviceId=ha-cabin-sensor-kidde-co2");
+    expect(fetchMock.mock.calls[0][0]).toContain("field=co2");
+    const fieldSelect = screen.getByLabelText(/^field$/i);
+    expect(within(fieldSelect).queryByText("Temperature")).toBeNull();
+    expect(within(fieldSelect).queryByText("Humidity")).toBeNull();
+  });
+
+  it("switches to the new device's own field (and re-fetches it) when a different sensor is selected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SensorHistoryPanel devices={[...sensors, ...kiddeSensors]} apiBase="http://cabin" tempUnit="F" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce()); // baseline: z2m-humid_mech / humidity
+
+    fireEvent.change(screen.getByLabelText(/^sensor$/i), { target: { value: "ha-cabin-sensor-kidde-co" } });
+
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)[0]).toContain("field=co"));
+    expect(fetchMock.mock.calls.at(-1)[0]).toContain("deviceId=ha-cabin-sensor-kidde-co");
+  });
+
+  it("renders a Kidde CO2 reading with a ppm unit, not the Zigbee %/°F units", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => [{ day: "2026-08-25T00:00:00Z", avg: 620, min: 590, max: 650, sampleCount: 40 }],
+    }));
+    render(<SensorHistoryPanel devices={kiddeSensors} apiBase="http://cabin" tempUnit="F" />);
+
+    expect(await screen.findByText("620.0 ppm")).toBeTruthy();
+  });
 });
 
 describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)", () => {

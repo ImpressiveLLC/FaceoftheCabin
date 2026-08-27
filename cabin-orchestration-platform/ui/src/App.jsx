@@ -27,7 +27,8 @@ import {
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
-  Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell
+  Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
+  Wind
 } from "lucide-react";
 import "./styles.css";
 
@@ -1161,7 +1162,7 @@ function deviceIcon(type) {
     THERMOSTAT: Thermometer, SMOKE_ALARM: ShieldAlert, CO_ALARM: ShieldAlert,
     LOCK: Lock, MOTION_SENSOR: Activity, HOME_ASSISTANT_ENTITY: Wifi,
     DISHWASHER: Cpu, WASHING_MACHINE: Cpu, DRYER: Cpu, POWER_METER: Zap,
-    DASHBOARD: Home,
+    DASHBOARD: Home, CO2_SENSOR: Wind, AIR_QUALITY_SENSOR: Wind, CO_SENSOR: Wind,
   };
   return map[type] || Circle;
 }
@@ -1790,6 +1791,7 @@ export const WORKFLOW_BY_TYPE = {
   SMOKE_ALARM: "Alerting", CO_ALARM: "Alerting", WATER_LEAK_SENSOR: "Alerting",
   MOTION_SENSOR: "Alerting", CONTACT_SENSOR: "Alerting", CAMERA: "Alerting",
   THERMOSTAT: "HVAC", TEMPERATURE_SENSOR: "HVAC", HUMIDITY_SENSOR: "HVAC",
+  CO2_SENSOR: "HVAC", AIR_QUALITY_SENSOR: "HVAC", CO_SENSOR: "HVAC",
   LOCK: "Automations", HOME_ASSISTANT_ENTITY: "Automations", GOOGLE_HOME_DEVICE: "Automations",
 };
 
@@ -3181,13 +3183,54 @@ export function kpiTileFor(device, tempUnit) { // exported for src/App.test.jsx'
 // CabinEventService.dailyAggregates()) -- not raw event replay, which
 // caps at 200 rows and can't cover weeks at this sensor network's
 // ~10-15min sample interval.
+// Reusable "3rd-party/non-native sensor onboarding" pattern, frontend half
+// (see HomeAssistantDiscoveryService.semanticFieldFor()'s javadoc for the
+// backend half, and the cabin-3rd-party-device-onboarding skill for the
+// full pattern write-up). Each option's `types` list is which DeviceType(s)
+// can actually produce that payload field -- added 2026-08-27 when Kidde's
+// CO2/air-quality/CO entities turned out to be excluded by this panel's old
+// `d.type === "TEMPERATURE_SENSOR"`-only filter (docs/MAINTENANCE.md's own
+// note: "same underlying endpoint would serve them, just needs the picker
+// widened"). Onboarding a future non-native sensor type (a new HACS
+// integration, a different vendor) should mean adding one entry here plus
+// one DeviceType/semanticFieldFor() case backend-side -- nothing else in
+// this component should need to change.
+// Order matters: it's also the default-selection order for whichever
+// device is selected (fieldOptions[0]) -- "humidity" stays before
+// "temperature" specifically to preserve this panel's pre-existing default
+// (a Zigbee TEMPERATURE_SENSOR device defaulted to showing humidity first).
+const SENSOR_FIELD_OPTIONS = [
+  { value: "humidity", label: "Humidity", types: ["TEMPERATURE_SENSOR", "HUMIDITY_SENSOR"] },
+  { value: "temperature", label: "Temperature", types: ["TEMPERATURE_SENSOR"] },
+  { value: "co2", label: "CO₂", types: ["CO2_SENSOR"] },
+  { value: "airQualityIndex", label: "Air Quality Index", types: ["AIR_QUALITY_SENSOR"] },
+  { value: "co", label: "CO", types: ["CO_SENSOR"] },
+];
+const SENSOR_HISTORY_TYPES = [...new Set(SENSOR_FIELD_OPTIONS.flatMap(o => o.types))];
+const SENSOR_FIELD_UNITS = { temperature: "°", humidity: "%", co2: " ppm", co: " ppm", airQualityIndex: "" };
+
 export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
-  const sensors = devices.filter(d => d.type === "TEMPERATURE_SENSOR");
+  const sensors = devices.filter(d => SENSOR_HISTORY_TYPES.includes(d.type));
   const [deviceId, setDeviceId] = useState(sensors[0]?.deviceId || "");
-  const [field, setField] = useState("humidity");
+  const selectedDevice = sensors.find(d => d.deviceId === deviceId);
+  const fieldOptions = selectedDevice
+    ? SENSOR_FIELD_OPTIONS.filter(o => o.types.includes(selectedDevice.type))
+    : SENSOR_FIELD_OPTIONS;
+  const [field, setField] = useState(fieldOptions[0]?.value || "temperature");
   const [days, setDays] = useState(30);
   const [points, setPoints] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Keep `field` valid whenever the selected device's type changes (e.g.
+  // switching from a Temperature/Humidity Zigbee sensor to a Kidde CO2
+  // sensor) -- otherwise the picker would silently keep an old field
+  // selection this device can never report, instead of one it actually has.
+  useEffect(() => {
+    if (!fieldOptions.some(o => o.value === field)) {
+      setField(fieldOptions[0]?.value || "temperature");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDevice?.type]);
 
   useEffect(() => {
     if (!deviceId) return;
@@ -3201,7 +3244,7 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
 
   if (sensors.length === 0) return null;
 
-  const unit = field === "temperature" ? `°${tempUnit}` : "%";
+  const unit = field === "temperature" ? `°${tempUnit}` : (SENSOR_FIELD_UNITS[field] ?? "");
   // Backend always stores/returns Celsius -- convert for display only,
   // same on-the-fly conversion fmtTemp() already does for current values.
   const toDisplay = (v) => v == null ? null : (field === "temperature" && tempUnit === "F" ? v * 9 / 5 + 32 : v);
@@ -3246,8 +3289,7 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
         </label>
         <label className="dm-toolbar-select">Field
           <select value={field} onChange={e => setField(e.target.value)}>
-            <option value="humidity">Humidity</option>
-            <option value="temperature">Temperature</option>
+            {fieldOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </label>
         <label className="dm-toolbar-select">Range

@@ -20,6 +20,13 @@ public enum DeviceType {
     THERMOSTAT(DeviceCategory.CLIMATE),
     TEMPERATURE_SENSOR(DeviceCategory.CLIMATE),
     HUMIDITY_SENSOR(DeviceCategory.CLIMATE),
+    // Added 2026-08-27 for Kidde's HA-discovered air-quality entities (see
+    // HomeAssistantDiscoveryService.inferType()) -- continuous ambient
+    // readings, same category as temperature/humidity, distinct from
+    // CO_ALARM (a binary safety trigger, not a chartable numeric level).
+    CO2_SENSOR(DeviceCategory.CLIMATE),
+    AIR_QUALITY_SENSOR(DeviceCategory.CLIMATE),
+    CO_SENSOR(DeviceCategory.CLIMATE),
     // Utilities
     WATER_PRESSURE_SENSOR(DeviceCategory.UTILITIES),
     POWER_METER(DeviceCategory.UTILITIES),

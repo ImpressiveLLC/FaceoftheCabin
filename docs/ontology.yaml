@@ -3694,6 +3694,41 @@ elements:
       `REPLICATION.md` §6's "third-party cloud device via HACS" pattern
       for the generalized version of these same steps.
 
+      CHARTING GAP CLOSED 2026-08-27: the 20 entities' numeric readings
+      were captured into `cabin_event` rows from 2026-08-25 onward
+      (payload key `value`, see trigger_ha_entity_state_changed's own
+      notes), but three things still stopped a user from actually
+      viewing Kidde's CO2/air-quality/CO history the way the Zigbee
+      temp/humidity sensors' history already worked: (1) every one of
+      these entities inferred as generic `HOME_ASSISTANT_ENTITY` --
+      HomeAssistantDiscoveryService.inferType() had no device_class
+      mapping for `carbon_dioxide`/`volatile_organic_compounds`/`aqi`,
+      and the CO-ppm entity specifically has NO device_class set at all
+      on this live account (a vendor-side gap, not this app's), (2) the
+      captured reading only ever lived under the generic `value` key,
+      never the semantically-named field (`temperature`/`humidity`/...)
+      every downstream consumer (WorkflowRuleService, dailyAggregates(),
+      SensorHistoryPanel) actually reads, and (3) the frontend's Sensor
+      History picker hard-filtered to `type === "TEMPERATURE_SENSOR"`
+      only. Fixed: three new DeviceTypes (CO2_SENSOR, AIR_QUALITY_SENSOR,
+      CO_SENSOR, all DeviceCategory.CLIMATE) plus a unit_of_measurement
+      ("ppm") fallback for the device_class-less entity; a new
+      semanticFieldFor(DeviceType) normalizes each HA-discovered sensor's
+      raw state into the same semantic key a native Zigbee device would
+      use (co2/airQualityIndex/co); the picker's device filter and field
+      options are now data-driven off DeviceType instead of one hardcoded
+      type/two hardcoded fields. Generalized into the
+      cabin-3rd-party-device-onboarding skill so the next non-native
+      integration (Liebherr's own numeric readings, once its account is
+      linked -- see smart_appliance_fridge_liebherr) follows the same
+      three-step shape instead of rediscovering it. Kidde's CO-ppm entity
+      (distinct from the CO-alarm binary_sensor `trigger_kidde_co_alarm`
+      already covers) and its "particulate" reading map to this device's
+      real hardware, confirmed above: no PM2.5/particulate sensor exists
+      on this model, only CO/CO2/TVOC/air-quality-index/temp/humidity --
+      the CO2 and air-quality-index entities are the closest real
+      equivalents to what a user would mean by "particulate/air quality."
+
   - id: smart_appliance_dishwasher_bosch
     entity_type: owl:Class
     layer: integration

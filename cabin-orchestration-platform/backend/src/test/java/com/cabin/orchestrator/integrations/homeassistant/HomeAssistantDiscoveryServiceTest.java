@@ -2,6 +2,7 @@ package com.cabin.orchestrator.integrations.homeassistant;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
+import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceService;
@@ -195,5 +196,118 @@ class HomeAssistantDiscoveryServiceTest {
         CabinEvent event = eventPublisher.published.get(0);
         assertThat(event.eventType()).isEqualTo("TELEMETRY");
         assertThat(event.payload()).containsEntry("co_ppm", 12).containsEntry("haState", "ONLINE");
+    }
+
+    // 2026-08-27: closing the charting gap docs/MAINTENANCE.md flagged --
+    // Kidde's CO2/air-quality entities inferred as generic
+    // HOME_ASSISTANT_ENTITY (no device_class mapping existed) and their
+    // reading was never normalized into the semantic key
+    // CabinEventService.dailyAggregates()/SensorHistoryPanel actually query.
+
+    @Test
+    void carbonDioxideDeviceClassInfersCo2SensorType() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_co2_level", "620",
+                Map.of("friendly_name", "Kidde CO2 Level", "device_class", "carbon_dioxide"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        assertThat(registry.byLocation("cabin")).extracting(DeviceStatus::type).containsExactly(DeviceType.CO2_SENSOR);
+    }
+
+    @Test
+    void airQualityDeviceClassesInferAirQualitySensorType() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_tvoc", "310",
+                Map.of("friendly_name", "Kidde TVOC", "device_class", "volatile_organic_compounds")),
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_air_quality_index", "42",
+                Map.of("friendly_name", "Kidde Air Quality Index", "device_class", "aqi"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        assertThat(registry.byLocation("cabin")).extracting(DeviceStatus::type)
+            .containsExactlyInAnyOrder(DeviceType.AIR_QUALITY_SENSOR, DeviceType.AIR_QUALITY_SENSOR);
+    }
+
+    // Confirmed live (docs/MAINTENANCE.md): Kidde's own CO-level entity has
+    // NO device_class set at all on the real account -- a vendor gap, not
+    // something this app's discovery invents. unit_of_measurement is the
+    // only remaining signal, and is deliberately generic (not keyed to
+    // "kidde") so a future non-native integration with the same gap is
+    // covered too.
+    @Test
+    void ppmUnitWithNoDeviceClassInfersCoSensorTypeAsAVendorGapFallback() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_co_level", "3",
+                Map.of("friendly_name", "Kidde CO Level", "unit_of_measurement", "ppm"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        assertThat(registry.byLocation("cabin")).extracting(DeviceStatus::type).containsExactly(DeviceType.CO_SENSOR);
+    }
+
+    @Test
+    void aTemperatureSensorsReadingIsAlsoStoredUnderItsSemanticFieldName() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_indoor_temperature", "72.5",
+                Map.of("friendly_name", "Kidde Indoor Temperature", "device_class", "temperature"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        Map<String, Object> attrs = registry.byLocation("cabin").get(0).attributes();
+        assertThat(attrs).containsEntry("value", "72.5").containsEntry("temperature", 72.5);
+    }
+
+    @Test
+    void aCo2SensorsReadingIsAlsoStoredUnderItsSemanticFieldName() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_co2_level", "620",
+                Map.of("friendly_name", "Kidde CO2 Level", "device_class", "carbon_dioxide"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        Map<String, Object> attrs = registry.byLocation("cabin").get(0).attributes();
+        assertThat(attrs).containsEntry("value", "620").containsEntry("co2", 620.0);
+    }
+
+    // A brief cloud-poll gap ("unavailable"/"unknown") must not pollute the
+    // semantic field with a non-numeric value -- the next poll cycle
+    // retries rather than this discovery cycle failing or storing garbage.
+    @Test
+    void aNonNumericStateIsNotStoredUnderTheSemanticField() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_co2_level", "unavailable",
+                Map.of("friendly_name", "Kidde CO2 Level", "device_class", "carbon_dioxide"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        Map<String, Object> attrs = registry.byLocation("cabin").get(0).attributes();
+        assertThat(attrs).containsEntry("value", "unavailable").doesNotContainKey("co2");
+    }
+
+    @Test
+    void aLockDomainEntityDoesNotGetASemanticFieldStamped() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "lock.front_door", "locked", Map.of("friendly_name", "Front Door"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        Map<String, Object> attrs = registry.byLocation("cabin").get(0).attributes();
+        assertThat(attrs).doesNotContainKeys("temperature", "humidity", "co2", "co", "airQualityIndex");
     }
 }

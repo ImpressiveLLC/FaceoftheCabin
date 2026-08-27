@@ -113,6 +113,21 @@ public class HomeAssistantDiscoveryService {
             // from the reading itself, untouched here.
             if ("sensor".equals(domain)) {
                 attrs.put("value", entity.state());
+                // See semanticFieldFor()'s own doc: makes this reading
+                // chartable/trigger-able exactly like a native Zigbee
+                // device's payload, with no downstream special-casing.
+                // Silently skipped (not stored as a string/NaN) when the
+                // state genuinely isn't numeric yet -- e.g. HA reports
+                // "unavailable" during a brief cloud-poll gap -- so a
+                // stray non-numeric value never lands in a numeric column.
+                String semanticField = semanticFieldFor(type);
+                if (semanticField != null) {
+                    try {
+                        attrs.put(semanticField, Double.parseDouble(entity.state()));
+                    } catch (NumberFormatException ignored) {
+                        // not a number right now -- next poll cycle retries
+                    }
+                }
             }
             String haDeviceId = deviceIds.get(entity.entityId());
             if (haDeviceId != null && !haDeviceId.isBlank()) {
@@ -196,6 +211,14 @@ public class HomeAssistantDiscoveryService {
         if ("climate".equals(domain)) return DeviceType.THERMOSTAT;
         if ("camera".equals(domain)) return DeviceType.CAMERA;
         if (deviceClass.contains("smoke")) return DeviceType.SMOKE_ALARM;
+        // "carbon_monoxide"/"co" here is the BINARY alarm device_class (HA's
+        // own convention for a binary_sensor's true/false trip state) -- the
+        // numeric CO ppm *level* is a separate sensor entity, handled by the
+        // unit_of_measurement fallback below since (found live, 2026-08-21,
+        // see docs/MAINTENANCE.md) Kidde's own integration doesn't set any
+        // device_class at all on that specific entity -- a vendor gap, not
+        // something to assume is universal, but common enough with
+        // HACS-distributed integrations to guard for generically.
         if (deviceClass.contains("carbon_monoxide") || deviceClass.equals("co")) return DeviceType.CO_ALARM;
         if (deviceClass.contains("moisture")) return DeviceType.WATER_LEAK_SENSOR;
         if (deviceClass.contains("motion") || deviceClass.contains("occupancy")) return DeviceType.MOTION_SENSOR;
@@ -203,7 +226,52 @@ public class HomeAssistantDiscoveryService {
         if (deviceClass.contains("temperature")) return DeviceType.TEMPERATURE_SENSOR;
         if (deviceClass.contains("humidity")) return DeviceType.HUMIDITY_SENSOR;
         if (deviceClass.contains("power") || deviceClass.contains("energy")) return DeviceType.POWER_METER;
+        // Added 2026-08-27 for Kidde's HA-discovered air-quality entities
+        // (indoor CO2/TVOC/air-quality-index) -- see
+        // docs/ontology.yaml's smart_appliance_co_air_quality_kidde.
+        if (deviceClass.contains("carbon_dioxide")) return DeviceType.CO2_SENSOR;
+        if (deviceClass.contains("volatile_organic_compounds") || deviceClass.equals("aqi")) {
+            return DeviceType.AIR_QUALITY_SENSOR;
+        }
+        // Fallback for a `sensor`-domain entity with NO device_class at all
+        // (the Kidde CO-level entity, confirmed live) -- unit_of_measurement
+        // is the only remaining signal HA's own convention guarantees. This
+        // is deliberately generic (unit-based, not "if entity_id contains
+        // kidde") so it also covers a future non-native integration with the
+        // same vendor-side gap, not just this one device.
+        if ("sensor".equals(domain)) {
+            String unit = String.valueOf(attrs.getOrDefault("unit_of_measurement", "")).toLowerCase(Locale.ROOT);
+            if ("ppm".equals(unit)) return DeviceType.CO_SENSOR;
+        }
         return DeviceType.HOME_ASSISTANT_ENTITY;
+    }
+
+    /**
+     * Reusable "3rd-party/non-native sensor onboarding" pattern (see
+     * docs/ontology.yaml's smart_appliance_co_air_quality_kidde and the
+     * cabin-3rd-party-device-onboarding skill): a native Zigbee2MQTT
+     * device's payload already carries semantically-named fields
+     * ("temperature", "humidity", ...) that WorkflowRuleService,
+     * CabinEventService.dailyAggregates(), and the frontend's
+     * SensorHistoryPanel all key off of directly. An HA-discovered entity's
+     * only guaranteed reading is its raw `state` string (captured as
+     * `value` in discoverLocation()) -- normalizing it into the SAME
+     * semantic key here, keyed off the already-inferred DeviceType, means
+     * every one of those downstream consumers treats a Kidde/Liebherr/etc.
+     * reading exactly like a native one, with zero special-casing per
+     * integration. Returns null for a type with no chartable numeric
+     * reading (locks, cameras, ...), which callers must handle by skipping
+     * the normalization rather than writing a null-valued field.
+     */
+    private String semanticFieldFor(DeviceType type) {
+        return switch (type) {
+            case TEMPERATURE_SENSOR -> "temperature";
+            case HUMIDITY_SENSOR -> "humidity";
+            case CO2_SENSOR -> "co2";
+            case AIR_QUALITY_SENSOR -> "airQualityIndex";
+            case CO_SENSOR -> "co";
+            default -> null;
+        };
     }
 
     private Set<DeviceCapability> inferCapabilities(String domain, DeviceType type) {
