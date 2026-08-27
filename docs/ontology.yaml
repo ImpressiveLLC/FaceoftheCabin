@@ -1382,7 +1382,7 @@ elements:
       range:
         min: 0
         max: 100
-      description: percent relative humidity (%RH); >75% sustained is mold risk
+      description: percent relative humidity (%RH); 60% or above is mold risk (EPA threshold)
     ui_display_name: "Humidity"
     rendering:
       semantic: Humidity (e.g. "Comfortable — 45%")
@@ -1398,13 +1398,17 @@ elements:
         cardinality: "N:1"
     normal_range:
       dry: "< 30"
-      comfortable: "30–60"
-      humid: "60–75"
-      mold_risk: "> 75"
+      comfortable: "30–59"
+      mold_risk: ">= 60"
     notes: >
-      Mold risk threshold (>75% sustained) is a compliance-class alert.
-      A leak sensor showing >90% humidity sustained for >30 minutes should
-      trigger a water event alert regardless of contact sensor state.
+      Mold risk threshold is 60% RH or above (EPA guidance for sustained
+      indoor humidity), not the >75% figure this entity previously
+      documented -- corrected 2026-08-27 to match
+      trigger_mold_risk_detected/trigger_mold_risk_cleared's own
+      60%/58% hysteresis band (see those entities). A leak sensor showing
+      >90% humidity sustained for >30 minutes should still trigger a
+      water event alert regardless of contact sensor state -- that check
+      is independent of the mold-risk trigger.
 
   - id: contact_state
     entity_type: owl:DatatypeProperty
@@ -9072,6 +9076,99 @@ elements:
       ui_components: []
       elements: [trigger_freeze_risk_detected]
     notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_freeze_risk_detected.
+
+  - id: trigger_mold_risk_detected
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-27"
+      ref: "WorkflowRuleService.MOLD_RISK_HUMIDITY_THRESHOLD, WorkflowRuleServiceTest.moldRiskDetectedUsesAHysteresisBandNotASingleThreshold"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Mold risk (60% humidity or above)"
+    applies_to_device_type: null
+    applies_to_capability: TELEMETRY
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: humidity }
+    predicate: { op: greater_than_or_equal, value: 60.0 }
+    rendering:
+      semantic: "A humidity reading reports at or above 60% (EPA mold-risk threshold)"
+      systems: Trigger — Mold Risk Detected
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['humidity'] instanceof Number >= 60.0"
+      compliance: (not shown)
+    definition: >
+      Fires when any device reporting a `humidity` field (both
+      HUMIDITY_SENSOR, e.g. Kidde's dedicated humidity entity, and
+      TEMPERATURE_SENSOR combo sensors that also report humidity, e.g.
+      zigbee_temp_mech_room) reaches or exceeds 60% relative humidity --
+      the EPA-cited sustained-indoor-humidity mold-risk figure the user
+      gave explicitly, superseding this repo's older ">75%" note (see
+      humidity_percent's own corrected notes). Like freeze-risk, this is
+      a numeric threshold handled as an explicit check in
+      WorkflowRuleService.resolveTriggerDefinitionIds(), not the
+      declarative FIELD_TRIGGERS table. applies_to_device_type is
+      deliberately null (unlike freeze-risk's single
+      TEMPERATURE_SENSOR) because humidity spans two device types and
+      the workflow-creation form's device-scoping filter only matches
+      one exact type string -- null keeps every humidity-reporting
+      device selectable regardless of which type it is.
+    relationships:
+      - target: humidity_percent
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [humidity_percent]
+    notes: >
+      Uses a 2-point hysteresis band against trigger_mold_risk_cleared's
+      58% clear threshold, not a single 60.0% boundary both directions --
+      avoids rapid detected/cleared flapping right at the threshold. See
+      WorkflowRuleService.MOLD_RISK_HUMIDITY_THRESHOLD/MOLD_RISK_HUMIDITY_CLEAR_THRESHOLD's
+      own code comment. As of first_used date, the "force the mechanical-room
+      outlet on continuously until cleared" behavior a user-built workflow
+      against this trigger might want is NOT yet supported by the engine --
+      execution fires once per newly-detected state (edge-triggered), it
+      does not repeatedly re-assert the action while the trigger remains
+      active. A one-shot "turn on if not already on" workflow is fully
+      supported today; continuous re-assertion would need new engine work.
+
+  - id: trigger_mold_risk_cleared
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-27"
+      ref: "WorkflowRuleService.MOLD_RISK_HUMIDITY_CLEAR_THRESHOLD"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Mold risk cleared (below 58% humidity)"
+    applies_to_device_type: null
+    applies_to_capability: TELEMETRY
+    delivery_mode: push
+    trigger_source: { event_type_pattern: "TELEMETRY", payload_field: humidity }
+    predicate: { op: less_than, value: 58.0 }
+    rendering:
+      semantic: "A humidity reading drops back below 58%"
+      systems: Trigger — Mold Risk Cleared
+      technical: "CabinEvent.eventType()=='TELEMETRY' AND payload['humidity'] instanceof Number < 58.0"
+      compliance: (not shown)
+    definition: >
+      The cleared side of trigger_mold_risk_detected -- see that entity's
+      own definition and notes for the hysteresis reasoning and the
+      applies_to_device_type=null rationale.
+    relationships:
+      - target: trigger_mold_risk_detected
+        type: complements
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [trigger_mold_risk_detected]
+    notes: Auto-clears an AUTO_ON_CLEAR workflow built against trigger_mold_risk_detected.
 
   - id: trigger_blink_motion_detected
     entity_type: owl:Class

@@ -188,6 +188,7 @@ public class WorkflowRuleService {
             .collect(Collectors.toMap(FieldTrigger::detectedId, FieldTrigger::clearedId, (a, b) -> a, LinkedHashMap::new));
         ids.put("trigger_blink_motion_detected", "trigger_blink_motion_cleared");
         ids.put("trigger_freeze_risk_detected", "trigger_freeze_risk_cleared");
+        ids.put("trigger_mold_risk_detected", "trigger_mold_risk_cleared");
         return Map.copyOf(ids);
     }
 
@@ -198,6 +199,24 @@ public class WorkflowRuleService {
     // (it has no clear-signal concept to flap).
     private static final double FREEZE_RISK_THRESHOLD_F = 32.0;
     private static final double FREEZE_RISK_CLEAR_THRESHOLD_F = 36.0;
+
+    // Mold risk, mirroring freeze-risk's own shape exactly (E2-style numeric
+    // threshold, not a FIELD_TRIGGERS equality match) -- 60% is the user's
+    // own explicitly-cited EPA mold-risk threshold, not the older, looser
+    // ">75% sustained" note docs/ontology.yaml's humidity_percent entity had
+    // carried since an earlier session; that entity's own note was updated
+    // to match in the same commit as this. A 2-point hysteresis band (clear
+    // at <58%, not <60%) avoids rapid detected/cleared flapping right at
+    // the boundary, same reasoning as freeze-risk's 4°F band -- kept
+    // narrower here since humidity naturally drifts more slowly than a
+    // freeze event, so a tight band is less likely to flap in practice.
+    // Applies to ANY device whose payload carries a `humidity` field --
+    // both native Zigbee sensors and HA-discovered ones normalize into
+    // this same key (HomeAssistantDiscoveryService.semanticFieldFor()),
+    // so this one check covers Kidde and every Sonoff sensor uniformly
+    // with no per-device wiring.
+    private static final double MOLD_RISK_HUMIDITY_THRESHOLD = 60.0;
+    private static final double MOLD_RISK_HUMIDITY_CLEAR_THRESHOLD = 58.0;
 
     public void evaluate(CabinEvent event) {
         // This class's own WORKFLOW_ACTION output loops back through this
@@ -254,6 +273,11 @@ public class WorkflowRuleService {
                 && event.payload().get("temperature") instanceof Number n && n.doubleValue() < FREEZE_RISK_THRESHOLD_F) {
             ids.add("trigger_freeze_risk_detected");
         }
+        // Mold risk -- see MOLD_RISK_HUMIDITY_THRESHOLD's own comment.
+        if ("TELEMETRY".equals(event.eventType())
+                && event.payload().get("humidity") instanceof Number h && h.doubleValue() >= MOLD_RISK_HUMIDITY_THRESHOLD) {
+            ids.add("trigger_mold_risk_detected");
+        }
         // E5 -- generic, deliberately unconditional on payload content
         // (any HA entity, any change) unlike every other trigger above.
         // Real device-scoping happens the same way trigger_camera_detection's
@@ -288,6 +312,10 @@ public class WorkflowRuleService {
         if ("TELEMETRY".equals(event.eventType())
                 && event.payload().get("temperature") instanceof Number n && n.doubleValue() >= FREEZE_RISK_CLEAR_THRESHOLD_F) {
             ids.add("trigger_freeze_risk_detected");
+        }
+        if ("TELEMETRY".equals(event.eventType())
+                && event.payload().get("humidity") instanceof Number h && h.doubleValue() < MOLD_RISK_HUMIDITY_CLEAR_THRESHOLD) {
+            ids.add("trigger_mold_risk_detected");
         }
         return ids;
     }
@@ -609,6 +637,10 @@ public class WorkflowRuleService {
         if ("TELEMETRY".equals(event.eventType()) && event.payload().get("temperature") instanceof Number n) {
             if (n.doubleValue() < FREEZE_RISK_THRESHOLD_F) return "Freeze risk: temperature dropped to " + n + "°F";
             if (n.doubleValue() >= FREEZE_RISK_CLEAR_THRESHOLD_F) return "Freeze risk cleared: temperature back up to " + n + "°F";
+        }
+        if ("TELEMETRY".equals(event.eventType()) && event.payload().get("humidity") instanceof Number h) {
+            if (h.doubleValue() >= MOLD_RISK_HUMIDITY_THRESHOLD) return "Mold risk: humidity at " + h + "%";
+            if (h.doubleValue() < MOLD_RISK_HUMIDITY_CLEAR_THRESHOLD) return "Mold risk cleared: humidity back down to " + h + "%";
         }
         // PRESENCE_CHANGED's description is dynamic (per-person), not a
         // static FIELD_TRIGGERS string -- see that row's own comment.

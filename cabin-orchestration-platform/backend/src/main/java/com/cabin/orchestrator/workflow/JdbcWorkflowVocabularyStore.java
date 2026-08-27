@@ -62,6 +62,15 @@ public class JdbcWorkflowVocabularyStore {
         new TriggerVocabularyEntry("trigger_plug_turned_off", "Device turned off", "POWER_METER", "COMMAND", true),
         new TriggerVocabularyEntry("trigger_freeze_risk_detected", "Freeze risk (below 32°F)", "TEMPERATURE_SENSOR", "TELEMETRY", true),
         new TriggerVocabularyEntry("trigger_freeze_risk_cleared", "Freeze risk cleared (36°F or above)", "TEMPERATURE_SENSOR", "TELEMETRY", true),
+        // appliesToDeviceType is deliberately null (any), unlike freeze-risk's
+        // single TEMPERATURE_SENSOR -- humidity is reported by BOTH
+        // TEMPERATURE_SENSOR (Zigbee combo sensors) and HUMIDITY_SENSOR
+        // (Kidde's dedicated entity), and DmSeeView/the create-workflow
+        // form's triggerScopedDevices only ever matches one exact type
+        // string -- null keeps every humidity-reporting device selectable
+        // for scoping, regardless of which of the two types it is.
+        new TriggerVocabularyEntry("trigger_mold_risk_detected", "Mold risk (60% humidity or above)", null, "TELEMETRY", true),
+        new TriggerVocabularyEntry("trigger_mold_risk_cleared", "Mold risk cleared (below 58% humidity)", null, "TELEMETRY", true),
         new TriggerVocabularyEntry("trigger_blink_motion_detected", "Camera motion detected (Blink)", "CAMERA", "STREAM", true),
         new TriggerVocabularyEntry("trigger_blink_motion_cleared", "Camera motion cleared (Blink)", "CAMERA", "STREAM", true),
         // Armed/presence are location- and person-scoped, not device-scoped

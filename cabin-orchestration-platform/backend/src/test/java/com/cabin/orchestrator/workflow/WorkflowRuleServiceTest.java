@@ -693,6 +693,34 @@ class WorkflowRuleServiceTest {
         assertTrue(executionStore.findActive("wf-freeze").isEmpty());
     }
 
+    // 2026-08-27, user-requested (insurance/mold-risk monitoring): mirrors
+    // freeze-risk's own hysteresis test exactly, just inverted (high
+    // humidity is the risk here, not low temperature).
+    @Test
+    void moldRiskDetectedUsesAHysteresisBandNotASingleThreshold() {
+        ruleStore.save(notifyOnlyWorkflow("wf-mold", "trigger_mold_risk_detected", "AUTO_ON_CLEAR"));
+        service.evaluate(telemetry("ha-cabin-sensor-living-room-kidde-co-temp-and-humidity-cabin-upstairs-humidity", Map.of("humidity", 61.0)));
+        assertTrue(executionStore.findActive("wf-mold").isPresent());
+
+        service.evaluate(telemetry("ha-cabin-sensor-living-room-kidde-co-temp-and-humidity-cabin-upstairs-humidity", Map.of("humidity", 59.0)));
+        assertTrue(executionStore.findActive("wf-mold").isPresent(),
+            "59% is below the 60% detect threshold but above the 58% clear threshold -- must not flap clear here");
+
+        service.evaluate(telemetry("ha-cabin-sensor-living-room-kidde-co-temp-and-humidity-cabin-upstairs-humidity", Map.of("humidity", 57.0)));
+        assertTrue(executionStore.findActive("wf-mold").isEmpty());
+    }
+
+    // A native Zigbee combo sensor reports temperature and humidity as two
+    // fields on the SAME device, unlike Kidde's separate humidity entity --
+    // confirms the trigger fires off the humidity field regardless of
+    // which other fields happen to be present alongside it.
+    @Test
+    void moldRiskDetectedFiresForAZigbeeComboSensorsHumidityFieldToo() {
+        ruleStore.save(notifyOnlyWorkflow("wf-mold-z2m", "trigger_mold_risk_detected", "AUTO_ON_CLEAR"));
+        service.evaluate(telemetry("z2m-temp_mech_room", Map.of("temperature", 63.7, "humidity", 75.6)));
+        assertTrue(executionStore.findActive("wf-mold-z2m").isPresent());
+    }
+
     @Test
     void blinkMotionDetectedAndClearedFireAndAutoClearIndependentWorkflows() {
         ruleStore.save(notifyOnlyWorkflow("wf-blink", "trigger_blink_motion_detected", "AUTO_ON_CLEAR"));
