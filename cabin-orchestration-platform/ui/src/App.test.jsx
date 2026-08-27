@@ -1984,6 +1984,25 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     expect(screen.getByDisplayValue("Device One")).toBeTruthy();
   });
 
+  // 2026-08-27 (user report): the selection itself carried over correctly
+  // (test above), but neither See nor Change ever scrolled the still-
+  // selected row into view on remount -- a person switching tabs had to
+  // manually re-find it in any list of real length, making the carry-over
+  // easy to miss even though it was technically working.
+  it("scrolls the selected row into view when it's still selected after switching tabs", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderPanel({ devices: twoDevices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("Device One"));
+    scrollIntoView.mockClear(); // only care about the switch below, not the initial click
+
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    delete Element.prototype.scrollIntoView;
+  });
+
   it("clears the selection when switching to Add -- no device context makes sense there", async () => {
     renderPanel({ devices: twoDevices });
     await waitFor(() => expect(fetch).toHaveBeenCalled());

@@ -16,7 +16,7 @@
  * Env vars VITE_CABIN_* and VITE_HOME_* override defaults for local dev.
  */
 
-import React, { useEffect, useState, useRef, useCallback, useMemo, createContext, useContext } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo, createContext, useContext, forwardRef } from "react";
 import { createRoot } from "react-dom/client";
 import { ThemeProvider, ThemeSwitcher, useTheme } from "./ThemeProvider.jsx";
 import {
@@ -1985,6 +1985,26 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   return { groups, reorderGroup, reorderDevice };
 }
 
+// See/Change (2026-08-27, user report): the shared `selected` state already
+// carries a selection across a See<->Change tab switch, but each view fully
+// unmounts/remounts on switch (conditional rendering, not a hidden pane) --
+// so nothing ever scrolled the still-selected row into view, leaving a
+// person to manually scroll and hunt for it in any list of real length even
+// though the "right" device was, in fact, still selected the whole time.
+// Ref goes on the currently-selected row only (see call sites below);
+// re-fires on mount AND whenever `selected` itself changes (e.g. picking a
+// different device while already on this tab).
+function useScrollSelectedIntoView(selected) {
+  const ref = useRef(null);
+  useEffect(() => {
+    // jsdom (this project's test environment) doesn't implement
+    // scrollIntoView at all -- optional-call, not just optional-chained on
+    // ref.current, so tests exercising this component don't need a mock.
+    ref.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [selected]);
+  return ref;
+}
+
 function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, reorderMode, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows, onManageWorkflows }) {
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
@@ -2008,6 +2028,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
   const visibleDevices = visibleGroups.flatMap(([, items]) => items);
   const totalDevices = groups.reduce((n, [, items]) => n + items.length, 0);
   const sel = selected ? visibleDevices.find(d => d.deviceId === selected) : null;
+  const selectedRowRef = useScrollSelectedIntoView(selected);
 
   const clearDrag = () => { setDragItem(null); setOverItem(null); };
   const onGroupDragStart = (groupName) => (e) => {
@@ -2087,6 +2108,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
             >
               <DmDeviceRow device={d}
                 selected={selected === d.deviceId}
+                ref={selected === d.deviceId ? selectedRowRef : undefined}
                 checkinStatus={checkinDetails[d.deviceId]?.status || checkinStatuses[d.deviceId]}
                 onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)}
                 onToggled={onRefresh}
@@ -2131,6 +2153,7 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onO
   const visibleDevices = visibleGroups.flatMap(([, items]) => items);
   const totalDevices = groups.reduce((n, [, items]) => n + items.length, 0);
   const sel = selected ? visibleDevices.find(d => d.deviceId === selected) : null;
+  const selectedRowRef = useScrollSelectedIntoView(selected);
   return (
     <div className="dm-layout">
       <div className="dm-list">
@@ -2139,6 +2162,7 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onO
           <section className="dm-device-group" key={groupName}>
             <header className="dm-device-group-header"><span>{groupName}</span><span>{groupItems.length}</span></header>
             {groupItems.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
+              ref={selected === d.deviceId ? selectedRowRef : undefined}
               onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} workflows={workflows} />)}
           </section>
         ))}
@@ -2475,7 +2499,16 @@ function DmRowEnableToggle({ device, onToggled }) {
   );
 }
 
-export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStatus, onToggled, workflows }) {
+// forwardRef (2026-08-27, user report): switching L1 tabs (See<->Change)
+// unmounts and remounts whichever view isn't active, so a selection that
+// correctly carries over via the shared `selected` state (2026-08-25 fix)
+// still requires scrolling to physically find the row again in a list of
+// any real length -- "sticky" only in the sense of "the right device is
+// still selected," not "you can see that it is." The ref lets the parent
+// view scroll the actually-selected row into view on mount/selection
+// change instead of leaving that entirely to the user each time.
+export const DmDeviceRow = forwardRef(function DmDeviceRow(
+    { device, selected, onClick, dragHandle, checkinStatus, onToggled, workflows }, ref) {
   const Icon = deviceIcon(device.type);
   const isZ2m = device.deviceId.startsWith("z2m-");
   const override = checkinStatusLabel(device.state, checkinStatus);
@@ -2484,7 +2517,7 @@ export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStat
   // MnChangeView) -- same opt-in shape as onToggled/DmRowEnableToggle above.
   const deviceWorkflows = workflows ? workflowsForDevice(workflows, device.deviceId) : [];
   return (
-    <div className={`dm-device-row ${selected ? "dm-row-selected" : ""}`} onClick={onClick}>
+    <div ref={ref} className={`dm-device-row ${selected ? "dm-row-selected" : ""}`} onClick={onClick}>
       {dragHandle}
       <Icon size={16} className="dm-row-icon"/>
       <div className="dm-row-info">
@@ -2507,7 +2540,7 @@ export function DmDeviceRow({ device, selected, onClick, dragHandle, checkinStat
       {onToggled && <DmRowEnableToggle device={device} onToggled={onToggled} />}
     </div>
   );
-}
+});
 
 export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction, onOpenDiscovery, workflows, onManageWorkflows }) {
   const override = checkinStatusLabel(device.state, checkinStatus);
