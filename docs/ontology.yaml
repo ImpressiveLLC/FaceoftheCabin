@@ -3751,7 +3751,36 @@ elements:
         All 17 of Kidde's real HA sub-entities given
         parentDeviceId=<the CO-alarm entity's deviceId> via
         PATCH /api/devices/{id}/config, confirmed live via
-        GET /api/devices?location=cabin.
+        GET /api/devices?location=cabin. Extended the same day to every
+        other multi-entity HA-discovered device on the cabin instance
+        (grouped by the entities' own real haDeviceId attribute -- Home
+        Assistant's own device registry, not a name-guessing heuristic):
+        Starlink (21 children), the mech-room heater and breaker-box
+        smart switch (12 each), the Liebherr fridge (8, both zones),
+        the mech-room and kitchen Sonoff temp/humidity sensors (6 each),
+        three leak alarms (4-5 each), HA's own Sun/Backup/Zigbee2MQTT-
+        bridge helper groupings, both Zigbee door contacts, the motion
+        sensor, the outside-temp sensor, the C4000LG router, and Nate's
+        phone -- 114 entities in one pass, verified live: the Type-
+        grouped HOME_ASSISTANT_ENTITY bucket the "Parent devices only"
+        filter now has to show dropped from 128 to 15 (the anchors
+        themselves, e.g. "heater_mech_room", plus a handful of
+        genuinely standalone entities, e.g. "Nate Phone On WiFi", that
+        don't share a haDeviceId with anything). Deliberately excluded:
+        the 3 dead orphaned `kidde_air_quality_alarm_*` entities
+        (already flagged elsewhere as should-be-disabled, not worth a
+        parent relationship) and cross-linking a family's HA-duplicate
+        anchor to its OWN separate native Zigbee2MQTT entity (e.g.
+        `smart_switch_breaker_box` and the native
+        `z2m-smart_switch_breaker_box` both still show as their own
+        top-level "parent" today -- Zigbee2mqttAdapter's own discovery
+        path never populates haDeviceId, so there's no shared signal to
+        group them by short of name-matching, judged too error-prone to
+        automate in this pass). Anchor choice within each family was a
+        judgment call where no single "main" entity was obvious (e.g.
+        Starlink, Sun) -- picked for stability, not fixed by any
+        external authority; changing an anchor later just means
+        re-pointing that family's children, not a schema change.
     data_class: conceptual
     data_type: owl:Class
     ui_display_name: "Device belongs to (parent device)"
