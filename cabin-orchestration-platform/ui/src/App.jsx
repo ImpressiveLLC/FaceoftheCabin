@@ -3320,16 +3320,40 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
   // Defaults to every matching device selected -- "select all the devices
   // that log humidity as a group" is the action the user described wanting
   // most -- while toggleDevice below still lets any one be clicked back out.
-  // Starts empty and is populated by the effect below (including on first
-  // mount) rather than also lazy-initializing from fieldDevices here --
-  // doing both raced two different array references into the fetch
-  // effect's dependency on the very first render and double-fetched
-  // everything once, harmlessly but wastefully.
+  //
+  // `devices` arrives from a parent fetch that starts empty and populates
+  // moments later, same as everywhere else in this app -- this component's
+  // very first render therefore sees availableFields=[] and locks `field`'s
+  // lazy useState default to the plain "temperature" string fallback above
+  // before any real field list exists to pick a better one from. This
+  // effect corrects that the first time real data arrives (readyRef),
+  // committing to the true first-choice field (Humidity) instead of
+  // leaving `field` stuck on whatever the pre-data fallback happened to be
+  // -- and, separately, keeps `selectedIds` in sync whenever `field`
+  // actually changes (lastAppliedField), whether that's this initial
+  // correction or a later manual switch via the dropdown. Deliberately
+  // does NOT reset selectedIds on every incidental availableFields identity
+  // change (e.g. a routine devices poll, or an unrelated new device/field
+  // appearing) -- lastAppliedField only lets it fire once per real field
+  // value, so a background refresh never wipes a manually customized
+  // selection out from under the person using it.
   const [selectedIds, setSelectedIds] = useState([]);
+  const readyRef = useRef(false);
+  const lastAppliedField = useRef(null);
   useEffect(() => {
-    setSelectedIds(sensors.filter(d => (d.attributes?.reportsFields || []).includes(field)).map(d => d.deviceId));
+    if (availableFields.length === 0) return; // devices haven't loaded yet
+    let resolvedField = field;
+    if (!readyRef.current) {
+      resolvedField = availableFields[0].value;
+      readyRef.current = true;
+    }
+    if (resolvedField !== field) { setField(resolvedField); return; }
+    if (lastAppliedField.current !== resolvedField) {
+      setSelectedIds(sensors.filter(d => (d.attributes?.reportsFields || []).includes(resolvedField)).map(d => d.deviceId));
+      lastAppliedField.current = resolvedField;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [field]);
+  }, [field, availableFields.map(o => o.value).join(",")]);
 
   const [days, setDays] = useState(30);
   const [seriesByDevice, setSeriesByDevice] = useState({});

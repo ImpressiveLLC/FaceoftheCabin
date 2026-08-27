@@ -147,6 +147,29 @@ describe("SensorHistoryPanel", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  // Found live 2026-08-27: `devices` arrives from a parent fetch that
+  // starts empty and populates moments later (same as everywhere else in
+  // this app), not synchronously like every other test fixture above
+  // assumes. The very first render locked `field`'s lazy useState default
+  // to the plain "temperature" fallback (since availableFields was still
+  // empty), and the old reset effect -- keyed only on `field` -- never
+  // fired again once real data arrived because `field` itself never
+  // changed, leaving the panel stuck showing Temperature with an empty,
+  // unrecoverable selection until a person happened to touch the Field
+  // dropdown themselves. Reproduces that exact prop sequence.
+  it("recovers to Humidity with every device selected once devices load in after an initial empty render", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
+    vi.stubGlobal("fetch", fetchMock);
+    const { rerender } = render(<SensorHistoryPanel devices={[]} apiBase="http://cabin" tempUnit="F" />);
+
+    rerender(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText(/^field$/i).value).toBe("humidity");
+    expect(screen.getByRole("button", { name: "Mech Room" }).className).toContain("selected");
+    expect(screen.getByRole("button", { name: "Kitchen" }).className).toContain("selected");
+  });
+
   // 2026-08-27: this is "step one" of the user's own request -- picking a
   // field defaults to every device that reports it selected as a group
   // ("select all the devices that log humidity"), not just the first one.
