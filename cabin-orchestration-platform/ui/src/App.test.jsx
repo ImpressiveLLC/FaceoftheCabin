@@ -127,35 +127,43 @@ describe("kpiTileFor", () => {
 describe("SensorHistoryPanel", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+  // reportsFields (DeviceType.telemetryFields(), see docs/ontology.yaml's
+  // device_reports_fields) is what actually drives membership now, not
+  // `type` alone -- these fixtures mirror what the real API now returns
+  // (confirmed live against z2m-temp_kitchen after the 2026-08-27 fix).
   const sensors = [
-    { deviceId: "z2m-humid_mech", name: "Mech Room", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin" },
-    { deviceId: "z2m-humid_kitchen", name: "Kitchen", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin" },
+    { deviceId: "z2m-humid_mech", name: "Mech Room", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin",
+      attributes: { reportsFields: ["humidity", "temperature"] } },
+    { deviceId: "z2m-humid_kitchen", name: "Kitchen", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin",
+      attributes: { reportsFields: ["humidity", "temperature"] } },
   ];
   const points = [
     { day: "2026-08-24T00:00:00Z", avg: 70, min: 65, max: 75, sampleCount: 12 },
     { day: "2026-08-25T00:00:00Z", avg: 75.2, min: 70, max: 80, sampleCount: 8 },
   ];
 
-  it("renders nothing when the location has no temperature/humidity sensors", () => {
+  it("renders nothing when the location has no sensors that report any chartable field", () => {
     const { container } = render(<SensorHistoryPanel devices={[]} apiBase="http://cabin" tempUnit="F" />);
     expect(container.firstChild).toBeNull();
   });
 
-  it("defaults to the first sensor and fetches humidity history for it", async () => {
+  // 2026-08-27: this is "step one" of the user's own request -- picking a
+  // field defaults to every device that reports it selected as a group
+  // ("select all the devices that log humidity"), not just the first one.
+  it("defaults to selecting every humidity-reporting device and fetches each one's history", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
     vi.stubGlobal("fetch", fetchMock);
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    const url = fetchMock.mock.calls[0][0];
-    expect(url).toContain("deviceId=z2m-humid_mech");
-    expect(url).toContain("field=humidity");
-    expect(url).toContain("days=30");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const urls = fetchMock.mock.calls.map(c => c[0]);
+    expect(urls.some(u => u.includes("deviceId=z2m-humid_mech") && u.includes("field=humidity") && u.includes("days=30"))).toBe(true);
+    expect(urls.some(u => u.includes("deviceId=z2m-humid_kitchen") && u.includes("field=humidity") && u.includes("days=30"))).toBe(true);
   });
 
   it("renders real day rows from the response, most recent first", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => points }));
-    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
 
     const rows = await screen.findAllByRole("row");
     // header row + 2 data rows, most recent (8/25) first
@@ -168,7 +176,7 @@ describe("SensorHistoryPanel", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true, json: async () => [{ day: "2026-08-25T00:00:00Z", avg: 20, min: 18, max: 22, sampleCount: 5 }],
     }));
-    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
     fireEvent.change(screen.getByLabelText(/^field$/i), { target: { value: "temperature" } });
 
     expect(await screen.findByText("68.0°F")).toBeTruthy(); // 20C -> 68F
@@ -176,20 +184,63 @@ describe("SensorHistoryPanel", () => {
 
   it("shows an honest empty state instead of a blank table when there's no history yet", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
-    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
 
-    expect(await screen.findByText(/no humidity history for this sensor/i)).toBeTruthy();
+    expect(await screen.findByText(/no humidity history for the selected devices/i)).toBeTruthy();
   });
 
   it("re-fetches with the new range when Range is changed", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
     vi.stubGlobal("fetch", fetchMock);
-    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
 
     fireEvent.change(screen.getByLabelText(/^range$/i), { target: { value: "90" } });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls[1][0]).toContain("days=90");
+  });
+
+  // "step two": a real multi-select toggle -- click a device chip to
+  // select/highlight it, click again to un-highlight, "Select all"/"Clear"
+  // for the group action, all scoped to the currently chosen field.
+  it("lets a device be toggled out of the selection, and re-fetches with only the remaining devices", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "Kitchen" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const lastUrl = fetchMock.mock.calls.at(-1)[0];
+    expect(lastUrl).toContain("deviceId=z2m-humid_mech");
+    expect(screen.getByRole("button", { name: "Mech Room" }).className).toContain("selected");
+    expect(screen.getByRole("button", { name: "Kitchen" }).className).not.toContain("selected");
+  });
+
+  it("Select all restores every matching device after some were toggled off, Clear removes them all", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => points }));
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+    await screen.findByRole("button", { name: "Mech Room" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(await screen.findByText(/select at least one device/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+    expect(screen.getByRole("button", { name: "Mech Room" }).className).toContain("selected");
+    expect(screen.getByRole("button", { name: "Kitchen" }).className).toContain("selected");
+  });
+
+  it("renders a legend and one table column per selected device when more than one is selected", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => points }));
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+
+    const headerRow = (await screen.findAllByRole("row"))[0];
+    expect(within(headerRow).getByText("Mech Room")).toBeTruthy();
+    expect(within(headerRow).getByText("Kitchen")).toBeTruthy();
+    const legend = document.querySelector(".sensor-history-legend");
+    expect(within(legend).getByText("Mech Room")).toBeTruthy();
+    expect(within(legend).getByText("Kitchen")).toBeTruthy();
   });
 
   // 2026-08-27: closes the gap docs/MAINTENANCE.md flagged -- "Kidde's CO/CO2
@@ -198,21 +249,22 @@ describe("SensorHistoryPanel", () => {
   // TEMPERATURE_SENSOR), each its own separate device (one physical reading
   // per HA entity, unlike the Zigbee sensor's combined temp+humidity).
   const kiddeSensors = [
-    { deviceId: "ha-cabin-sensor-kidde-co2", name: "Kidde CO2 Level", type: "CO2_SENSOR", state: "ONLINE", location: "cabin" },
-    { deviceId: "ha-cabin-sensor-kidde-aqi", name: "Kidde Air Quality Index", type: "AIR_QUALITY_SENSOR", state: "ONLINE", location: "cabin" },
-    { deviceId: "ha-cabin-sensor-kidde-co", name: "Kidde CO Level", type: "CO_SENSOR", state: "ONLINE", location: "cabin" },
+    { deviceId: "ha-cabin-sensor-kidde-co2", name: "Kidde CO2 Level", type: "CO2_SENSOR", state: "ONLINE", location: "cabin",
+      attributes: { reportsFields: ["co2"] } },
+    { deviceId: "ha-cabin-sensor-kidde-aqi", name: "Kidde Air Quality Index", type: "AIR_QUALITY_SENSOR", state: "ONLINE", location: "cabin",
+      attributes: { reportsFields: ["airQualityIndex"] } },
+    { deviceId: "ha-cabin-sensor-kidde-co", name: "Kidde CO Level", type: "CO_SENSOR", state: "ONLINE", location: "cabin",
+      attributes: { reportsFields: ["co"] } },
   ];
 
-  it("includes Kidde-style CO2/air-quality/CO devices in the Sensor picker, not just temperature sensors", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
-    vi.stubGlobal("fetch", fetchMock);
+  it("offers CO2/air-quality/CO as Field options, not just temperature/humidity, when Kidde devices are present", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
     render(<SensorHistoryPanel devices={[...sensors, ...kiddeSensors]} apiBase="http://cabin" tempUnit="F" />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
 
-    const sensorSelect = screen.getByLabelText(/^sensor$/i);
-    expect(within(sensorSelect).getByText("Kidde CO2 Level")).toBeTruthy();
-    expect(within(sensorSelect).getByText("Kidde Air Quality Index")).toBeTruthy();
-    expect(within(sensorSelect).getByText("Kidde CO Level")).toBeTruthy();
+    const fieldSelect = screen.getByLabelText(/^field$/i);
+    expect(within(fieldSelect).getByText("CO₂")).toBeTruthy();
+    expect(within(fieldSelect).getByText("Air Quality Index")).toBeTruthy();
+    expect(within(fieldSelect).getByText("CO")).toBeTruthy();
   });
 
   it("defaults the Field picker to a CO2 device's only real field, not the Zigbee temperature/humidity options", async () => {
@@ -228,16 +280,18 @@ describe("SensorHistoryPanel", () => {
     expect(within(fieldSelect).queryByText("Humidity")).toBeNull();
   });
 
-  it("switches to the new device's own field (and re-fetches it) when a different sensor is selected", async () => {
+  it("switching field re-scopes the selection and fetches only devices that report the new field", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
     vi.stubGlobal("fetch", fetchMock);
     render(<SensorHistoryPanel devices={[...sensors, ...kiddeSensors]} apiBase="http://cabin" tempUnit="F" />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce()); // baseline: z2m-humid_mech / humidity
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2)); // baseline: both humidity-reporting Zigbee sensors
+    fetchMock.mockClear();
 
-    fireEvent.change(screen.getByLabelText(/^sensor$/i), { target: { value: "ha-cabin-sensor-kidde-co" } });
+    fireEvent.change(screen.getByLabelText(/^field$/i), { target: { value: "co" } });
 
-    await waitFor(() => expect(fetchMock.mock.calls.at(-1)[0]).toContain("field=co"));
-    expect(fetchMock.mock.calls.at(-1)[0]).toContain("deviceId=ha-cabin-sensor-kidde-co");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0][0]).toContain("deviceId=ha-cabin-sensor-kidde-co");
+    expect(fetchMock.mock.calls[0][0]).toContain("field=co");
   });
 
   it("renders a Kidde CO2 reading with a ppm unit, not the Zigbee %/°F units", async () => {
@@ -247,6 +301,27 @@ describe("SensorHistoryPanel", () => {
     render(<SensorHistoryPanel devices={kiddeSensors} apiBase="http://cabin" tempUnit="F" />);
 
     expect(await screen.findByText("620.0 ppm")).toBeTruthy();
+  });
+
+  it("downloads a CSV with one column per selected device", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => points }));
+    const createObjectURL = vi.fn().mockReturnValue("blob:mock");
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+    await screen.findAllByText("75.2%");
+
+    fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    const blob = createObjectURL.mock.calls[0][0];
+    // jsdom's Blob has no working .text()/Response interop -- FileReader is
+    // the one Blob-reading API jsdom actually implements faithfully.
+    const text = await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsText(blob);
+    });
+    expect(text.split("\n")[0]).toBe("date,Mech Room,Kitchen");
   });
 });
 

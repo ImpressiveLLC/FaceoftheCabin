@@ -3285,79 +3285,127 @@ const SENSOR_FIELD_OPTIONS = [
   { value: "airQualityIndex", label: "Air Quality Index", types: ["AIR_QUALITY_SENSOR"] },
   { value: "co", label: "CO", types: ["CO_SENSOR"] },
 ];
-const SENSOR_HISTORY_TYPES = [...new Set(SENSOR_FIELD_OPTIONS.flatMap(o => o.types))];
 const SENSOR_FIELD_UNITS = { temperature: "°", humidity: "%", co2: " ppm", co: " ppm", airQualityIndex: "" };
 // Human labels for DeviceStatus.attributes.reportsFields (DeviceType.telemetryFields()
 // backend-side) -- reuses this same picker's own labels so "Reports: Humidity" in
 // Device Manager's device detail and "Humidity" in the Sensor History field picker
 // never say the same field two different ways.
 const SENSOR_FIELD_LABELS = Object.fromEntries(SENSOR_FIELD_OPTIONS.map(o => [o.value, o.label]));
+// Cycled by selection order for the multi-device chart/legend below --
+// picked for contrast against this panel's dark background, not tied to
+// any device's own identity (a device can move between colors across
+// re-selections; the legend is what ties color back to name each render).
+const SENSOR_HISTORY_COLORS = ["#58a6ff", "#3fb950", "#f0883e", "#f85149", "#a371f7", "#39c5cf", "#d29922", "#ec6cb9"];
 
+// 2026-08-27: redesigned from a single-device/single-field picker into a
+// field-first, multi-device chart -- the user's own two-step request: (1)
+// pick a field (e.g. Humidity) and see every device that actually reports
+// it, driven off DeviceType.telemetryFields()'s real reportsFields fact
+// (docs/ontology.yaml's device_reports_fields) instead of a hardcoded
+// device-type list -- a device is offered here because it *reports this
+// field*, whether that's its only job (HUMIDITY_SENSOR) or one of two
+// (a Zigbee combo TEMPERATURE_SENSOR); (2) a real multi-select toggle
+// (click a device to include/exclude it, "Select all"/"Clear" for the
+// group action) so several devices' history charts and downloads
+// together -- this is what makes "show me every humidity reading in one
+// place" (the insurance-inspection use case this panel exists for) a
+// single view instead of switching one device at a time.
 export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
-  const sensors = devices.filter(d => SENSOR_HISTORY_TYPES.includes(d.type));
-  const [deviceId, setDeviceId] = useState(sensors[0]?.deviceId || "");
-  const selectedDevice = sensors.find(d => d.deviceId === deviceId);
-  const fieldOptions = selectedDevice
-    ? SENSOR_FIELD_OPTIONS.filter(o => o.types.includes(selectedDevice.type))
-    : SENSOR_FIELD_OPTIONS;
-  const [field, setField] = useState(fieldOptions[0]?.value || "temperature");
+  const sensors = devices.filter(d => (d.attributes?.reportsFields || []).length > 0);
+  const availableFields = SENSOR_FIELD_OPTIONS.filter(o =>
+    sensors.some(d => (d.attributes?.reportsFields || []).includes(o.value)));
+  const [field, setField] = useState(availableFields[0]?.value || "temperature");
+  const fieldDevices = sensors.filter(d => (d.attributes?.reportsFields || []).includes(field));
+
+  // Defaults to every matching device selected -- "select all the devices
+  // that log humidity as a group" is the action the user described wanting
+  // most -- while toggleDevice below still lets any one be clicked back out.
+  // Starts empty and is populated by the effect below (including on first
+  // mount) rather than also lazy-initializing from fieldDevices here --
+  // doing both raced two different array references into the fetch
+  // effect's dependency on the very first render and double-fetched
+  // everything once, harmlessly but wastefully.
+  const [selectedIds, setSelectedIds] = useState([]);
+  useEffect(() => {
+    setSelectedIds(sensors.filter(d => (d.attributes?.reportsFields || []).includes(field)).map(d => d.deviceId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [field]);
+
   const [days, setDays] = useState(30);
-  const [points, setPoints] = useState([]);
+  const [seriesByDevice, setSeriesByDevice] = useState({});
   const [loading, setLoading] = useState(false);
 
-  // Keep `field` valid whenever the selected device's type changes (e.g.
-  // switching from a Temperature/Humidity Zigbee sensor to a Kidde CO2
-  // sensor) -- otherwise the picker would silently keep an old field
-  // selection this device can never report, instead of one it actually has.
   useEffect(() => {
-    if (!fieldOptions.some(o => o.value === field)) {
-      setField(fieldOptions[0]?.value || "temperature");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDevice?.type]);
-
-  useEffect(() => {
-    if (!deviceId) return;
+    if (selectedIds.length === 0) { setSeriesByDevice({}); return; }
+    let cancelled = false;
     setLoading(true);
-    fetch(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(deviceId)}&field=${field}&days=${days}`)
-      .then(r => r.json())
-      .then(data => setPoints(Array.isArray(data) ? data : []))
-      .catch(() => setPoints([]))
-      .finally(() => setLoading(false));
-  }, [apiBase, deviceId, field, days]);
+    Promise.all(selectedIds.map(id =>
+      fetch(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(id)}&field=${field}&days=${days}`)
+        .then(r => r.json())
+        .then(data => [id, Array.isArray(data) ? data : []])
+        .catch(() => [id, []])
+    )).then(entries => { if (!cancelled) setSeriesByDevice(Object.fromEntries(entries)); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+    // `field` deliberately omitted -- a field change always cascades through
+    // the reset effect above into a `selectedIds` update in the very next
+    // render, and this effect's own closure already sees the new `field` by
+    // then. Listing `field` here too would fire this effect an extra time
+    // on the render where `field` has already changed but `selectedIds`
+    // hasn't caught up yet, fetching the new field for the OLD (wrong)
+    // set of devices before the correct fetch right behind it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase, days, selectedIds]);
 
   if (sensors.length === 0) return null;
+
+  const toggleDevice = (deviceId) => setSelectedIds(ids =>
+    ids.includes(deviceId) ? ids.filter(id => id !== deviceId) : [...ids, deviceId]);
+  const selectAll = () => setSelectedIds(fieldDevices.map(d => d.deviceId));
+  const selectNone = () => setSelectedIds([]);
+  const nameFor = (deviceId) => devices.find(d => d.deviceId === deviceId)?.name || deviceId;
 
   const unit = field === "temperature" ? `°${tempUnit}` : (SENSOR_FIELD_UNITS[field] ?? "");
   // Backend always stores/returns Celsius -- convert for display only,
   // same on-the-fly conversion fmtTemp() already does for current values.
   const toDisplay = (v) => v == null ? null : (field === "temperature" && tempUnit === "F" ? v * 9 / 5 + 32 : v);
-  const plotted = points.filter(p => p.avg != null);
-  const displayValues = plotted.map(p => toDisplay(p.avg));
-  const chartMin = displayValues.length ? Math.min(...displayValues) : 0;
-  const chartMax = displayValues.length ? Math.max(...displayValues) : 1;
+
+  // Shared date axis and value scale across every selected device, so
+  // multiple lines/columns line up and compare on one chart/table instead
+  // of each device silently keeping its own independent scale.
+  const allDates = [...new Set(selectedIds.flatMap(id => (seriesByDevice[id] || []).map(p => p.day)))].sort();
+  const allDisplayValues = selectedIds.flatMap(id =>
+    (seriesByDevice[id] || []).filter(p => p.avg != null).map(p => toDisplay(p.avg)));
+  const chartMin = allDisplayValues.length ? Math.min(...allDisplayValues) : 0;
+  const chartMax = allDisplayValues.length ? Math.max(...allDisplayValues) : 1;
   const range = chartMax - chartMin || 1;
-  const chartW = 560, chartH = 100, pad = 8;
-  const pathD = plotted.map((p, i) => {
-    const x = plotted.length > 1 ? pad + (i / (plotted.length - 1)) * (chartW - pad * 2) : chartW / 2;
-    const y = chartH - pad - ((toDisplay(p.avg) - chartMin) / range) * (chartH - pad * 2);
-    return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
+  const chartW = 560, chartH = 120, pad = 8;
+  const toX = (i) => allDates.length > 1 ? pad + (i / (allDates.length - 1)) * (chartW - pad * 2) : chartW / 2;
+  const toY = (v) => chartH - pad - ((v - chartMin) / range) * (chartH - pad * 2);
+  const devicePaths = selectedIds.map((deviceId, idx) => {
+    const pts = (seriesByDevice[deviceId] || []).filter(p => p.avg != null);
+    const d = pts.map((p, i) => {
+      const x = toX(allDates.indexOf(p.day));
+      const y = toY(toDisplay(p.avg));
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+    return { deviceId, name: nameFor(deviceId), color: SENSOR_HISTORY_COLORS[idx % SENSOR_HISTORY_COLORS.length], d, hasPoints: pts.length > 0 };
+  });
 
   const downloadCsv = () => {
-    const header = "date,avg,min,max,samples\n";
-    const rows = points.map(p => [
-      new Date(p.day).toLocaleDateString(),
-      p.avg != null ? toDisplay(p.avg).toFixed(2) : "",
-      p.min != null ? toDisplay(p.min).toFixed(2) : "",
-      p.max != null ? toDisplay(p.max).toFixed(2) : "",
-      p.sampleCount,
-    ].join(",")).join("\n");
+    const header = ["date", ...selectedIds.map(nameFor)].join(",") + "\n";
+    const rows = allDates.map(day => {
+      const cells = selectedIds.map(id => {
+        const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
+        return p?.avg != null ? toDisplay(p.avg).toFixed(2) : "";
+      });
+      return [new Date(day).toLocaleDateString(), ...cells].join(",");
+    }).join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${deviceId}-${field}-${days}d.csv`;
+    a.download = `${field}-${days}d-${selectedIds.length}-devices.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -3366,14 +3414,9 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
     <div className="sensor-history-panel">
       <div className="sensor-history-header">Sensor History</div>
       <div className="sensor-history-controls">
-        <label className="dm-toolbar-select">Sensor
-          <select value={deviceId} onChange={e => setDeviceId(e.target.value)}>
-            {sensors.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name}</option>)}
-          </select>
-        </label>
         <label className="dm-toolbar-select">Field
           <select value={field} onChange={e => setField(e.target.value)}>
-            {fieldOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {availableFields.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </label>
         <label className="dm-toolbar-select">Range
@@ -3384,30 +3427,56 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
             <option value={90}>90 days</option>
           </select>
         </label>
-        <button className="btn-ghost" onClick={downloadCsv} disabled={points.length === 0}>Download CSV</button>
+        <button className="btn-ghost" onClick={downloadCsv} disabled={selectedIds.length === 0 || allDates.length === 0}>Download CSV</button>
+      </div>
+      <div className="sensor-history-device-picker">
+        <button className="btn-ghost" onClick={selectAll} disabled={selectedIds.length === fieldDevices.length}>Select all</button>
+        <button className="btn-ghost" onClick={selectNone} disabled={selectedIds.length === 0}>Clear</button>
+        {fieldDevices.map(d => (
+          <button key={d.deviceId} type="button"
+            className={`sensor-history-device-chip${selectedIds.includes(d.deviceId) ? " selected" : ""}`}
+            onClick={() => toggleDevice(d.deviceId)}>
+            {d.name}
+          </button>
+        ))}
       </div>
       {loading && <p className="config-hint">Loading…</p>}
-      {!loading && points.length === 0 && (
-        <p className="config-hint">No {field} history for this sensor in the last {days} days.</p>
+      {!loading && selectedIds.length === 0 && (
+        <p className="config-hint">Select at least one device above to chart {SENSOR_FIELD_LABELS[field] || field}.</p>
       )}
-      {!loading && points.length > 0 && (
+      {!loading && selectedIds.length > 0 && allDates.length === 0 && (
+        <p className="config-hint">No {field} history for the selected devices in the last {days} days.</p>
+      )}
+      {!loading && allDates.length > 0 && (
         <>
-          {plotted.length > 1 && (
+          {allDates.length > 1 && (
             <svg viewBox={`0 0 ${chartW} ${chartH}`} className="sensor-history-chart">
-              <path d={pathD} fill="none" stroke="var(--accent, #58a6ff)" strokeWidth="2"/>
+              {devicePaths.filter(p => p.hasPoints).map(p => (
+                <path key={p.deviceId} d={p.d} fill="none" stroke={p.color} strokeWidth="2"/>
+              ))}
             </svg>
+          )}
+          {selectedIds.length > 1 && (
+            <div className="sensor-history-legend">
+              {devicePaths.map(p => (
+                <span key={p.deviceId} className="sensor-history-legend-item">
+                  <span className="sensor-history-legend-swatch" style={{ background: p.color }} />
+                  {p.name}
+                </span>
+              ))}
+            </div>
           )}
           <div className="sensor-history-table-wrap">
             <table className="sensor-history-table">
-              <thead><tr><th>Date</th><th>Avg</th><th>Min</th><th>Max</th><th>Samples</th></tr></thead>
+              <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}</tr></thead>
               <tbody>
-                {[...points].reverse().map(p => (
-                  <tr key={p.day}>
-                    <td>{new Date(p.day).toLocaleDateString()}</td>
-                    <td>{p.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit}` : "—"}</td>
-                    <td>{p.min != null ? `${toDisplay(p.min).toFixed(1)}${unit}` : "—"}</td>
-                    <td>{p.max != null ? `${toDisplay(p.max).toFixed(1)}${unit}` : "—"}</td>
-                    <td>{p.sampleCount}</td>
+                {[...allDates].reverse().map(day => (
+                  <tr key={day}>
+                    <td>{new Date(day).toLocaleDateString()}</td>
+                    {selectedIds.map(id => {
+                      const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
+                      return <td key={id}>{p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit}` : "—"}</td>;
+                    })}
                   </tr>
                 ))}
               </tbody>

@@ -475,6 +475,24 @@ body {
   top: 0;
   background: var(--bg-secondary);
 }
+/* Multi-select device toggle chips (added 2026-08-27) -- same pill shape as
+   .capability-chip, "selected" adds the accent border/fill .dm-row-selected
+   already uses elsewhere so a highlighted chip reads consistently with a
+   selected row in Device Manager. */
+.sensor-history-device-picker { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.sensor-history-device-chip {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sensor-history-device-chip.selected { border-color: #1f6feb; background: #131a24; color: var(--text); }
+.sensor-history-legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; font-size: 11px; color: var(--text-dim); }
+.sensor-history-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.sensor-history-legend-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 
 /* ─── Event Log ─────────────────────────────────────────────────────────── */
 .event-log {
