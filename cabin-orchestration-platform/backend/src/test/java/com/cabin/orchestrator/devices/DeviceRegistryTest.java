@@ -498,6 +498,31 @@ class DeviceRegistryTest {
     }
 
     @Test
+    void getAttachesReportsFieldsDerivedFromDeviceTypeNotJustCategoryAndCapabilities() {
+        // A Zigbee combo sensor is ONE entity typed TEMPERATURE_SENSOR that
+        // also reports humidity -- reportsFields (added 2026-08-27) is what
+        // lets Device Manager's device detail and a workflow's device-scoping
+        // picker both see that, instead of only ever knowing about
+        // "temperature" from the type name alone.
+        registry.registerCandidate(descriptor(
+            "temp-1", "Kitchen", DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/temp_kitchen", false, "cabin"),
+            Map.of());
+
+        assertEquals(List.of("humidity", "temperature"), registry.get("temp-1").attributes().get("reportsFields"));
+    }
+
+    @Test
+    void getAttachesAnEmptyReportsFieldsListForATypeThatReportsNoChartableField() {
+        registry.registerCandidate(descriptor(
+            "lock-1", "Front Door", DeviceType.LOCK,
+            Set.of(DeviceCapability.COMMAND), "zwave", "lock/front_door", false, "cabin"),
+            Map.of());
+
+        assertEquals(List.of(), registry.get("lock-1").attributes().get("reportsFields"));
+    }
+
+    @Test
     void categoryReflectsTheDeviceTypeEvenWithNoDescriptorLookupNeeded() {
         registry.registerCandidate(descriptor(
             "thermo-1", "Living Room", DeviceType.THERMOSTAT,

@@ -43,51 +43,54 @@ public class JdbcWorkflowVocabularyStore {
     // else in this class) so the dropdown label and the eventual
     // notification's "see" text never disagree.
     private static final List<TriggerVocabularyEntry> SUPPORTED_TRIGGERS = List.of(
-        new TriggerVocabularyEntry("trigger_water_leak_detected", "Water leak detected", "WATER_LEAK_SENSOR", "ALARM", true),
-        new TriggerVocabularyEntry("trigger_water_leak_cleared", "Water leak cleared", "WATER_LEAK_SENSOR", "ALARM", true),
-        new TriggerVocabularyEntry("trigger_camera_detection", "Camera detects motion", "CAMERA", "STREAM", true),
-        new TriggerVocabularyEntry("trigger_door_contact_opened", "Door contact opened", "CONTACT_SENSOR", "ACCESS_CONTROL", true),
-        new TriggerVocabularyEntry("trigger_door_contact_closed", "Door contact closed", "CONTACT_SENSOR", "ACCESS_CONTROL", true),
-        new TriggerVocabularyEntry("trigger_motion_detected", "Motion detected", "MOTION_SENSOR", "PRESENCE", true),
-        new TriggerVocabularyEntry("trigger_motion_cleared", "Motion cleared", "MOTION_SENSOR", "PRESENCE", true),
+        new TriggerVocabularyEntry("trigger_water_leak_detected", "Water leak detected", "WATER_LEAK_SENSOR", "ALARM", true, null),
+        new TriggerVocabularyEntry("trigger_water_leak_cleared", "Water leak cleared", "WATER_LEAK_SENSOR", "ALARM", true, null),
+        new TriggerVocabularyEntry("trigger_camera_detection", "Camera detects motion", "CAMERA", "STREAM", true, null),
+        new TriggerVocabularyEntry("trigger_door_contact_opened", "Door contact opened", "CONTACT_SENSOR", "ACCESS_CONTROL", true, null),
+        new TriggerVocabularyEntry("trigger_door_contact_closed", "Door contact closed", "CONTACT_SENSOR", "ACCESS_CONTROL", true, null),
+        new TriggerVocabularyEntry("trigger_motion_detected", "Motion detected", "MOTION_SENSOR", "PRESENCE", true, null),
+        new TriggerVocabularyEntry("trigger_motion_cleared", "Motion cleared", "MOTION_SENSOR", "PRESENCE", true, null),
         // Tamper/battery-low apply to any device reporting that field, not
         // one device type -- appliesToDeviceType stays null deliberately
         // (the creation form falls back to showing every visible device
         // when it's null, same as before device-type filtering existed).
-        new TriggerVocabularyEntry("trigger_tamper_detected", "Tamper detected", null, "ALARM", true),
-        new TriggerVocabularyEntry("trigger_tamper_cleared", "Tamper cleared", null, "ALARM", true),
-        new TriggerVocabularyEntry("trigger_battery_low_detected", "Battery low", null, null, true),
-        new TriggerVocabularyEntry("trigger_battery_low_cleared", "Battery no longer low", null, null, true),
-        new TriggerVocabularyEntry("trigger_plug_turned_on", "Device turned on", "POWER_METER", "COMMAND", true),
-        new TriggerVocabularyEntry("trigger_plug_turned_off", "Device turned off", "POWER_METER", "COMMAND", true),
-        new TriggerVocabularyEntry("trigger_freeze_risk_detected", "Freeze risk (below 32°F)", "TEMPERATURE_SENSOR", "TELEMETRY", true),
-        new TriggerVocabularyEntry("trigger_freeze_risk_cleared", "Freeze risk cleared (36°F or above)", "TEMPERATURE_SENSOR", "TELEMETRY", true),
-        // appliesToDeviceType is deliberately null (any), unlike freeze-risk's
-        // single TEMPERATURE_SENSOR -- humidity is reported by BOTH
-        // TEMPERATURE_SENSOR (Zigbee combo sensors) and HUMIDITY_SENSOR
-        // (Kidde's dedicated entity), and DmSeeView/the create-workflow
-        // form's triggerScopedDevices only ever matches one exact type
-        // string -- null keeps every humidity-reporting device selectable
-        // for scoping, regardless of which of the two types it is.
-        new TriggerVocabularyEntry("trigger_mold_risk_detected", "Mold risk (60% humidity or above)", null, "TELEMETRY", true),
-        new TriggerVocabularyEntry("trigger_mold_risk_cleared", "Mold risk cleared (below 58% humidity)", null, "TELEMETRY", true),
-        new TriggerVocabularyEntry("trigger_blink_motion_detected", "Camera motion detected (Blink)", "CAMERA", "STREAM", true),
-        new TriggerVocabularyEntry("trigger_blink_motion_cleared", "Camera motion cleared (Blink)", "CAMERA", "STREAM", true),
+        new TriggerVocabularyEntry("trigger_tamper_detected", "Tamper detected", null, "ALARM", true, null),
+        new TriggerVocabularyEntry("trigger_tamper_cleared", "Tamper cleared", null, "ALARM", true, null),
+        new TriggerVocabularyEntry("trigger_battery_low_detected", "Battery low", null, null, true, null),
+        new TriggerVocabularyEntry("trigger_battery_low_cleared", "Battery no longer low", null, null, true, null),
+        new TriggerVocabularyEntry("trigger_plug_turned_on", "Device turned on", "POWER_METER", "COMMAND", true, null),
+        new TriggerVocabularyEntry("trigger_plug_turned_off", "Device turned off", "POWER_METER", "COMMAND", true, null),
+        new TriggerVocabularyEntry("trigger_freeze_risk_detected", "Freeze risk (below 32°F)", "TEMPERATURE_SENSOR", "TELEMETRY", true, "temperature"),
+        new TriggerVocabularyEntry("trigger_freeze_risk_cleared", "Freeze risk cleared (36°F or above)", "TEMPERATURE_SENSOR", "TELEMETRY", true, "temperature"),
+        // appliesToDeviceType stays null (any) since humidity is reported by
+        // BOTH TEMPERATURE_SENSOR (Zigbee combo sensors) and HUMIDITY_SENSOR
+        // (Kidde's dedicated entity) and that field only ever matches one
+        // exact type string -- appliesToField="humidity" is what actually
+        // scopes the device picker now (see DeviceType.telemetryFields(),
+        // TriggerVocabularyEntry's own doc), checked against each device's
+        // attrs.reportsFields instead. Before this existed, null here meant
+        // "show every device of every type," not just humidity-reporting
+        // ones -- a real gap the user found while trying to build this
+        // workflow (docs/ontology.yaml's own note on this).
+        new TriggerVocabularyEntry("trigger_mold_risk_detected", "Mold risk (60% humidity or above)", null, "TELEMETRY", true, "humidity"),
+        new TriggerVocabularyEntry("trigger_mold_risk_cleared", "Mold risk cleared (below 58% humidity)", null, "TELEMETRY", true, "humidity"),
+        new TriggerVocabularyEntry("trigger_blink_motion_detected", "Camera motion detected (Blink)", "CAMERA", "STREAM", true, null),
+        new TriggerVocabularyEntry("trigger_blink_motion_cleared", "Camera motion cleared (Blink)", "CAMERA", "STREAM", true, null),
         // Armed/presence are location- and person-scoped, not device-scoped
         // -- appliesToDeviceType stays null, same reasoning as tamper/battery.
-        new TriggerVocabularyEntry("trigger_security_armed", "Armed away", null, null, true),
-        new TriggerVocabularyEntry("trigger_security_disarmed", "Disarmed", null, null, true),
-        new TriggerVocabularyEntry("trigger_presence_arrived", "Someone arrived", null, null, true),
-        new TriggerVocabularyEntry("trigger_presence_departed", "Someone departed", null, null, true),
+        new TriggerVocabularyEntry("trigger_security_armed", "Armed away", null, null, true, null),
+        new TriggerVocabularyEntry("trigger_security_disarmed", "Disarmed", null, null, true, null),
+        new TriggerVocabularyEntry("trigger_presence_arrived", "Someone arrived", null, null, true, null),
+        new TriggerVocabularyEntry("trigger_presence_departed", "Someone departed", null, null, true, null),
         // E5's generic HA-entity trigger -- no clear-signal pair (discrete,
         // any change), always meant to be scoped via triggerDeviceId (see
         // its own docs/ontology.yaml entry).
-        new TriggerVocabularyEntry("trigger_ha_entity_state_changed", "Home Assistant entity changed", null, null, true),
+        new TriggerVocabularyEntry("trigger_ha_entity_state_changed", "Home Assistant entity changed", null, null, true, null),
         // Added 2026-08-21 -- real push bridge deployed (new HA automation
         // + MqttBridgeService.handleKiddeCoAlarmTopic()), was
         // docs/ontology.yaml's trigger_kidde_co_alarm candidate until now.
-        new TriggerVocabularyEntry("trigger_kidde_co_alarm", "Kidde CO alarm active", "CO_ALARM", "ALARM", true),
-        new TriggerVocabularyEntry("trigger_kidde_co_alarm_cleared", "Kidde CO alarm cleared", "CO_ALARM", "ALARM", true)
+        new TriggerVocabularyEntry("trigger_kidde_co_alarm", "Kidde CO alarm active", "CO_ALARM", "ALARM", true, null),
+        new TriggerVocabularyEntry("trigger_kidde_co_alarm_cleared", "Kidde CO alarm cleared", "CO_ALARM", "ALARM", true, null)
     );
 
     private static final List<ActionVocabularyEntry> SUPPORTED_ACTIONS = List.of(
@@ -113,6 +116,11 @@ public class JdbcWorkflowVocabularyStore {
               applies_to_capability   TEXT,
               supported               BOOLEAN NOT NULL DEFAULT true
             )""");
+        // 2026-08-27: added alongside DeviceType.telemetryFields() -- an
+        // existing deployment's table predates this column, so it can't be
+        // in the CREATE TABLE IF NOT EXISTS above; ADD COLUMN IF NOT EXISTS
+        // is the idempotent equivalent for a table that may already exist.
+        jdbc.execute("ALTER TABLE trigger_vocabulary ADD COLUMN IF NOT EXISTS applies_to_field TEXT");
         jdbc.execute("""
             CREATE TABLE IF NOT EXISTS action_vocabulary (
               id                    TEXT PRIMARY KEY,
@@ -130,12 +138,13 @@ public class JdbcWorkflowVocabularyStore {
     private void reseed() {
         for (TriggerVocabularyEntry t : SUPPORTED_TRIGGERS) {
             jdbc.update("""
-                INSERT INTO trigger_vocabulary (id, label, applies_to_device_type, applies_to_capability, supported)
-                VALUES (?, ?, ?, ?, true)
+                INSERT INTO trigger_vocabulary (id, label, applies_to_device_type, applies_to_capability, supported, applies_to_field)
+                VALUES (?, ?, ?, ?, true, ?)
                 ON CONFLICT (id) DO UPDATE SET
                   label = EXCLUDED.label, applies_to_device_type = EXCLUDED.applies_to_device_type,
-                  applies_to_capability = EXCLUDED.applies_to_capability, supported = true
-                """, t.id(), t.label(), t.appliesToDeviceType(), t.appliesToCapability());
+                  applies_to_capability = EXCLUDED.applies_to_capability, supported = true,
+                  applies_to_field = EXCLUDED.applies_to_field
+                """, t.id(), t.label(), t.appliesToDeviceType(), t.appliesToCapability(), t.appliesToField());
         }
         for (ActionVocabularyEntry a : SUPPORTED_ACTIONS) {
             jdbc.update("""
@@ -150,10 +159,11 @@ public class JdbcWorkflowVocabularyStore {
     }
 
     public List<TriggerVocabularyEntry> loadSupportedTriggers() {
-        return jdbc.query("SELECT id, label, applies_to_device_type, applies_to_capability, supported FROM trigger_vocabulary WHERE supported ORDER BY id",
+        return jdbc.query("SELECT id, label, applies_to_device_type, applies_to_capability, supported, applies_to_field FROM trigger_vocabulary WHERE supported ORDER BY id",
             (rs, i) -> new TriggerVocabularyEntry(
                 rs.getString("id"), rs.getString("label"),
-                rs.getString("applies_to_device_type"), rs.getString("applies_to_capability"), true));
+                rs.getString("applies_to_device_type"), rs.getString("applies_to_capability"), true,
+                rs.getString("applies_to_field")));
     }
 
     public List<ActionVocabularyEntry> loadSupportedActions() {

@@ -280,7 +280,14 @@ class RulesControllerTest {
         assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_camera_detection") && "CAMERA".equals(t.appliesToDeviceType())));
         assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_door_contact_opened") && "CONTACT_SENSOR".equals(t.appliesToDeviceType())));
         assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_ha_entity_state_changed")));
-        assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_mold_risk_detected") && t.appliesToDeviceType() == null));
+        // appliesToField (not appliesToDeviceType) is what actually scopes this
+        // trigger's device picker now -- see TriggerVocabularyEntry's own doc
+        // and App.jsx's triggerScopedDevices for why a single device-type
+        // string can't express "reported by either of two types."
+        assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_mold_risk_detected")
+            && t.appliesToDeviceType() == null && "humidity".equals(t.appliesToField())));
+        assertTrue(triggers.stream().anyMatch(t -> t.id().equals("trigger_freeze_risk_detected")
+            && "TEMPERATURE_SENSOR".equals(t.appliesToDeviceType()) && "temperature".equals(t.appliesToField())));
     }
 
     @Test

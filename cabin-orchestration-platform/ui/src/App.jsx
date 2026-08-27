@@ -2602,6 +2602,13 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
             </span>
           </div>
         )}
+        {device.attributes?.reportsFields?.length > 0 && (
+          <div className="dm-detail-row"><span>Reports</span>
+            <span className="capability-chips">
+              {device.attributes.reportsFields.map(f => <span key={f} className="capability-chip">{SENSOR_FIELD_LABELS[f] || f}</span>)}
+            </span>
+          </div>
+        )}
         {parentDeviceId && (
           <div className="dm-detail-row"><span>Belongs to</span>
             <span>{parentDevice ? parentDevice.name : parentDeviceId}</span>
@@ -3280,6 +3287,11 @@ const SENSOR_FIELD_OPTIONS = [
 ];
 const SENSOR_HISTORY_TYPES = [...new Set(SENSOR_FIELD_OPTIONS.flatMap(o => o.types))];
 const SENSOR_FIELD_UNITS = { temperature: "°", humidity: "%", co2: " ppm", co: " ppm", airQualityIndex: "" };
+// Human labels for DeviceStatus.attributes.reportsFields (DeviceType.telemetryFields()
+// backend-side) -- reuses this same picker's own labels so "Reports: Humidity" in
+// Device Manager's device detail and "Humidity" in the Sensor History field picker
+// never say the same field two different ways.
+const SENSOR_FIELD_LABELS = Object.fromEntries(SENSOR_FIELD_OPTIONS.map(o => [o.value, o.label]));
 
 export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
   const sensors = devices.filter(d => SENSOR_HISTORY_TYPES.includes(d.type));
@@ -4174,7 +4186,20 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
   // WorkflowRuleService itself still matches by event payload, not device
   // type. Falls back to every visible device when the vocabulary doesn't
   // say (or a device's own type is missing), same as before this change.
-  const triggerScopedDevices = selectedTrigger?.appliesToDeviceType
+  //
+  // appliesToField (added 2026-08-27, see TriggerVocabularyEntry's own doc)
+  // takes priority when present: a trigger keyed off a payload field that
+  // spans more than one DeviceType (trigger_mold_risk_detected's "humidity",
+  // reported by both TEMPERATURE_SENSOR and HUMIDITY_SENSOR) can't be
+  // expressed as a single appliesToDeviceType -- before this existed, a null
+  // appliesToDeviceType meant "show every device of every type," which is
+  // exactly the gap the user hit trying to scope a mold-risk workflow to
+  // just their humidity-reporting devices. DeviceRegistry.withOntologyMetadata()
+  // derives attrs.reportsFields straight off DeviceType.telemetryFields(),
+  // so this can never disagree with what a device's type actually reports.
+  const triggerScopedDevices = selectedTrigger?.appliesToField
+    ? devices.filter(d => (d.attributes?.reportsFields || []).includes(selectedTrigger.appliesToField))
+    : selectedTrigger?.appliesToDeviceType
     ? devices.filter(d => !d.type || d.type === selectedTrigger.appliesToDeviceType)
     : devices;
 

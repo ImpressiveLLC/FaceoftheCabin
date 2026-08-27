@@ -3733,6 +3733,63 @@ elements:
       the CO2 and air-quality-index entities are the closest real
       equivalents to what a user would mean by "particulate/air quality."
 
+  # ─── Device → reported telemetry fields ────────────────────────────────
+  # Real gap this closes: a Zigbee combo sensor (e.g. z2m-temp_kitchen)
+  # types as TEMPERATURE_SENSOR alone, but the one physical device also
+  # reports humidity on the same entity -- nothing in the ontology, the
+  # backend, or the UI said so anywhere a person could actually see it.
+  # The fact quietly existed as an unlabeled implementation detail of
+  # App.jsx's SENSOR_FIELD_OPTIONS (it already let a TEMPERATURE_SENSOR
+  # report humidity in the Sensor History picker), but Device Manager's
+  # own device-detail view showed only the abstract DeviceCapability chips
+  # (COMMAND/POWER_MONITOR/TELEMETRY), never the actual field list, and
+  # trigger_mold_risk_detected's device-scoping picker (appliesToDeviceType
+  # null, since humidity spans two types) fell back to showing every
+  # device of every type -- the user hit this directly trying to scope a
+  # mold-risk workflow to just their humidity-reporting devices.
+  - id: device_reports_fields
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-27"
+      ref: "DeviceType.telemetryFields(), DeviceRegistry.withOntologyMetadata(), TriggerVocabularyEntry.appliesToField"
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Reports"
+    definition: >
+      DeviceType.telemetryFields() is now the one canonical, backend-side
+      answer to "which CabinEvent payload fields can a device of this type
+      report" -- mirrors App.jsx's SENSOR_FIELD_OPTIONS types arrays
+      exactly (kept in sync by hand, same discipline this project already
+      applies elsewhere). DeviceRegistry.withOntologyMetadata() serializes
+      it onto every DeviceStatus as attrs.reportsFields the same way it
+      already derives attrs.category from the type -- computed fresh on
+      every read, so it can never go stale the way a cached copy could.
+      Consumed by two real UI gaps this closed: (1) DmDeviceDetail now
+      renders a "Reports" row (chips, same styling as Capabilities) so a
+      TEMPERATURE_SENSOR device visibly shows "Humidity, Temperature"
+      instead of requiring a person to already know that; (2) a new
+      nullable appliesToField on TriggerVocabularyEntry lets a trigger
+      keyed off a field spanning more than one DeviceType (humidity) scope
+      its workflow-creation device picker by checking reportsFields
+      instead of falling back to "every device, any type" -- see
+      trigger_mold_risk_detected's own notes for the before/after.
+    relates_to:
+      ui_components: ["DmDeviceDetail", "WorkflowRulesCard (device-scoping picker)"]
+      elements: [trigger_mold_risk_detected, trigger_freeze_risk_detected, humidity_percent, temperature_celsius]
+    notes: >
+      A type not covered by DeviceType.telemetryFields()'s switch reports no
+      chartable numeric field (returns an empty set) -- this is a static,
+      per-type fact, not derived from a device's actual observed traffic;
+      a device that never actually reports one of its type's fields (a
+      dead sensor, a vendor-side gap) still lists it here. That's a
+      different, already-covered question (see the enabled/lifecycle gate
+      LocationMonitoringSection's Monitoring grid applies, and
+      docs/MAINTENANCE.md's Known Issues for specific dead-entity cases).
+
   # ─── Device → service hierarchy ───────────────────────────────────────
   # Real gap this closes: a single physical multi-service device (Kidde's
   # one CO/air-quality unit, Liebherr's one fridge) discovers as N
@@ -9090,6 +9147,7 @@ elements:
     data_type: owl:Class
     ui_display_name: "Mold risk (60% humidity or above)"
     applies_to_device_type: null
+    applies_to_field: humidity
     applies_to_capability: TELEMETRY
     delivery_mode: push
     trigger_source: { event_type_pattern: "TELEMETRY", payload_field: humidity }
@@ -9111,17 +9169,22 @@ elements:
       WorkflowRuleService.resolveTriggerDefinitionIds(), not the
       declarative FIELD_TRIGGERS table. applies_to_device_type is
       deliberately null (unlike freeze-risk's single
-      TEMPERATURE_SENSOR) because humidity spans two device types and
-      the workflow-creation form's device-scoping filter only matches
-      one exact type string -- null keeps every humidity-reporting
-      device selectable regardless of which type it is.
+      TEMPERATURE_SENSOR) because humidity spans two device types and a
+      single type string can't express "either of these." Originally
+      (2026-08-27, first cut) this meant the workflow-creation form's
+      device-scoping picker fell back to showing every device of every
+      type -- a real bug the user found while trying to build this exact
+      workflow. Fixed the same day by adding applies_to_field=humidity
+      (see device_reports_fields), which the picker now checks against
+      each device's DeviceType.telemetryFields()-derived reportsFields
+      list instead -- correctly scoped to just humidity-reporting devices.
     relationships:
       - target: humidity_percent
         type: consumed_by
         cardinality: "N:1"
     relates_to:
       ui_components: []
-      elements: [humidity_percent]
+      elements: [humidity_percent, device_reports_fields]
     notes: >
       Uses a 2-point hysteresis band against trigger_mold_risk_cleared's
       58% clear threshold, not a single 60.0% boundary both directions --

@@ -1136,6 +1136,34 @@ describe("DmDeviceDetail parent device (Item 4a)", () => {
   });
 });
 
+// 2026-08-27: reportsFields (DeviceType.telemetryFields(), serialized by
+// DeviceRegistry.withOntologyMetadata()) closes the gap the user hit --
+// a Zigbee combo sensor types as TEMPERATURE_SENSOR alone with no visible
+// sign it also reports humidity, so a person browsing Device Manager had
+// to already know that to make sense of it. Same "show the real thing,
+// don't make a human infer it" reasoning as Capabilities/Belongs to.
+describe("DmDeviceDetail reports fields", () => {
+  afterEach(cleanup);
+
+  it("shows a Reports row with human labels for a combo sensor's reportsFields", () => {
+    const combo = { deviceId: "z2m-temp_kitchen", name: "Kitchen", type: "TEMPERATURE_SENSOR",
+      state: "ONLINE", location: "cabin",
+      attributes: { deviceLifecycle: "ASSIGNED", reportsFields: ["humidity", "temperature"] } };
+    render(<DmDeviceDetail device={combo} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByText("Reports")).toBeTruthy();
+    expect(screen.getByText("Humidity")).toBeTruthy();
+    expect(screen.getByText("Temperature")).toBeTruthy();
+  });
+
+  it("shows no Reports row when reportsFields is empty", () => {
+    const camera = { deviceId: "driveway-2", name: "Driveway Cam", type: "CAMERA",
+      state: "ONLINE", location: "cabin",
+      attributes: { deviceLifecycle: "ASSIGNED", reportsFields: [] } };
+    render(<DmDeviceDetail device={camera} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.queryByText("Reports")).toBeNull();
+  });
+});
+
 describe("Device candidate decision controls", () => {
   afterEach(cleanup);
 
@@ -1622,6 +1650,35 @@ describe("WorkflowRulesCard", () => {
 
     expect(screen.getByLabelText("On this device (optional)")).toBeTruthy();
     expect(screen.getByText("Mech room leak sensor")).toBeTruthy();
+    expect(screen.queryByText("Driveway camera")).toBeNull();
+  });
+
+  // 2026-08-27: trigger_mold_risk_detected's appliesToDeviceType is null
+  // because humidity is reported by both TEMPERATURE_SENSOR and
+  // HUMIDITY_SENSOR -- before appliesToField existed, null meant "show
+  // every device of every type" here, not just humidity-reporting ones
+  // (the exact gap the user hit trying to scope this workflow). Confirms
+  // appliesToField takes priority and filters by reportsFields instead.
+  it("scopes the device-scoping picker by reportsFields when the trigger sets appliesToField, not by device type", async () => {
+    vi.stubGlobal("fetch", vocabularyFetch({
+      triggers: [
+        { id: "trigger_mold_risk_detected", label: "Mold risk (60% humidity or above)",
+          appliesToDeviceType: null, appliesToField: "humidity", supported: true },
+      ],
+    }));
+    render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[
+      { deviceId: "z2m-temp_kitchen", name: "Kitchen temp/humidity", type: "TEMPERATURE_SENSOR",
+        attributes: { reportsFields: ["humidity", "temperature"] } },
+      { deviceId: "ha-kidde-humidity", name: "Kidde humidity", type: "HUMIDITY_SENSOR",
+        attributes: { reportsFields: ["humidity"] } },
+      { deviceId: "z2m-driveway-cam", name: "Driveway camera", type: "CAMERA",
+        attributes: { reportsFields: [] } },
+    ]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+    await screen.findByLabelText("Specifically");
+
+    expect(screen.getByText("Kitchen temp/humidity")).toBeTruthy();
+    expect(screen.getByText("Kidde humidity")).toBeTruthy();
     expect(screen.queryByText("Driveway camera")).toBeNull();
   });
 

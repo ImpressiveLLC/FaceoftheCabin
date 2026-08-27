@@ -83,7 +83,7 @@ public class OntologyLookupService {
             out.add(new TriggerVocabularyEntry(
                 id, Objects.toString(el.get("ui_display_name"), humanize(id)),
                 firstOf(el.get("applies_to_device_type")), Objects.toString(el.get("applies_to_capability"), null),
-                false));
+                false, null));
         }
         return out;
     }

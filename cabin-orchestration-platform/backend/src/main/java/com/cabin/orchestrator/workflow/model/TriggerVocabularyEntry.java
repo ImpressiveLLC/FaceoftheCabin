@@ -14,5 +14,14 @@ public record TriggerVocabularyEntry(
     String label,
     String appliesToDeviceType,  // nullable -- informs the device-scoping picker, not enforced by the engine
     String appliesToCapability,  // nullable
-    boolean supported
+    boolean supported,
+    // nullable, added 2026-08-27 alongside DeviceType.telemetryFields() --
+    // for a trigger keyed off a payload field that spans more than one
+    // DeviceType (e.g. trigger_mold_risk_detected's "humidity", reported by
+    // both TEMPERATURE_SENSOR and HUMIDITY_SENSOR), appliesToDeviceType
+    // alone can only express one type or "any type at all" (null). Setting
+    // this instead tells the frontend's device-scoping picker to filter by
+    // DeviceStatus.attributes.reportsFields containing this value, not by
+    // device type -- see App.jsx's triggerScopedDevices.
+    String appliesToField
 ) {}
