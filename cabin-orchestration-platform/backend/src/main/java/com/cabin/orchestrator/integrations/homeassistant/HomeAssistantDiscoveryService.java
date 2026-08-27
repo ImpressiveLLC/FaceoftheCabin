@@ -123,7 +123,25 @@ public class HomeAssistantDiscoveryService {
                 String semanticField = semanticFieldFor(type);
                 if (semanticField != null) {
                     try {
-                        attrs.put(semanticField, Double.parseDouble(entity.state()));
+                        double reading = Double.parseDouble(entity.state());
+                        // "temperature" is the one semantic field this app's
+                        // existing convention (native Zigbee2MQTT payloads,
+                        // always Celsius) assumes a fixed unit for -- HA
+                        // itself has no such guarantee: this cabin's HA
+                        // instance reports temperature sensors in the
+                        // instance's configured unit system, confirmed
+                        // live as °F for Kidde/this Zigbee-via-HA duplicate
+                        // path. Storing an already-Fahrenheit reading
+                        // unconverted under "temperature" made the
+                        // frontend's Celsius->display-unit conversion
+                        // apply a SECOND time (65.12°F rendered as
+                        // 149.2°F) -- found live, from real device tiles,
+                        // immediately after this normalization shipped.
+                        if ("temperature".equals(semanticField)
+                                && isFahrenheit(attrs.get("unit_of_measurement"))) {
+                            reading = (reading - 32) * 5 / 9;
+                        }
+                        attrs.put(semanticField, reading);
                     } catch (NumberFormatException ignored) {
                         // not a number right now -- next poll cycle retries
                     }
@@ -263,6 +281,11 @@ public class HomeAssistantDiscoveryService {
      * reading (locks, cameras, ...), which callers must handle by skipping
      * the normalization rather than writing a null-valued field.
      */
+    private boolean isFahrenheit(Object unitOfMeasurement) {
+        String unit = String.valueOf(unitOfMeasurement).trim();
+        return "°F".equals(unit) || "F".equalsIgnoreCase(unit);
+    }
+
     private String semanticFieldFor(DeviceType type) {
         return switch (type) {
             case TEMPERATURE_SENSOR -> "temperature";

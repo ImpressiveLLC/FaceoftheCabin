@@ -267,6 +267,43 @@ class HomeAssistantDiscoveryServiceTest {
         assertThat(attrs).containsEntry("value", "72.5").containsEntry("temperature", 72.5);
     }
 
+    // Found live, 2026-08-27, from real device tiles reading 149-162°F for
+    // an actual ~65-72°F cabin: this HA instance reports temperature
+    // sensors in °F (confirmed via unit_of_measurement), but the app-wide
+    // convention (native Zigbee2MQTT payloads) assumes "temperature" is
+    // always Celsius. Storing the raw °F number unconverted meant the
+    // frontend's Celsius->display-unit conversion applied a second time.
+    @Test
+    void aFahrenheitTemperatureReadingIsConvertedToCelsiusBeforeStorage() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.mech_room_temp_and_humidity_temperature", "65.12",
+                Map.of("friendly_name", "Mech Room Temperature", "device_class", "temperature",
+                    "unit_of_measurement", "°F"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        Map<String, Object> attrs = registry.byLocation("cabin").get(0).attributes();
+        assertThat(attrs).containsEntry("value", "65.12");
+        assertThat((Double) attrs.get("temperature")).isCloseTo(18.4, org.assertj.core.data.Offset.offset(0.01));
+    }
+
+    @Test
+    void aCelsiusTemperatureReadingIsStoredAsIsNotConverted() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_indoor_temperature", "22.3",
+                Map.of("friendly_name", "Kidde Indoor Temperature", "device_class", "temperature",
+                    "unit_of_measurement", "°C"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        Map<String, Object> attrs = registry.byLocation("cabin").get(0).attributes();
+        assertThat(attrs).containsEntry("temperature", 22.3);
+    }
+
     @Test
     void aCo2SensorsReadingIsAlsoStoredUnderItsSemanticFieldName() {
         when(adapter.discover("cabin")).thenReturn(List.of(
