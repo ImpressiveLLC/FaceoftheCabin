@@ -3331,11 +3331,14 @@ const SENSOR_HISTORY_KNOWN_FIELDS = new Set(SENSOR_FIELD_OPTIONS.map(o => o.valu
 export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
   const [reportedFields, setReportedFields] = useState({});
   useEffect(() => {
+    if (devices.length === 0) return; // nothing to look up yet
+    let cancelled = false;
     fetch(`${apiBase}/api/events/reported-fields`)
       .then(r => r.json())
-      .then(data => setReportedFields(data && typeof data === "object" ? data : {}))
-      .catch(() => setReportedFields({}));
-  }, [apiBase]);
+      .then(data => { if (!cancelled) setReportedFields(data && typeof data === "object" ? data : {}); })
+      .catch(() => { if (!cancelled) setReportedFields({}); });
+    return () => { cancelled = true; };
+  }, [apiBase, devices.length]);
   const realFieldsFor = (device) =>
     (reportedFields[device.deviceId] || []).filter(f => SENSOR_HISTORY_KNOWN_FIELDS.has(f));
 
@@ -3343,45 +3346,59 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
   const availableFields = SENSOR_FIELD_OPTIONS.filter(o =>
     sensors.some(d => realFieldsFor(d).includes(o.value)));
   const [field, setField] = useState(availableFields[0]?.value || "temperature");
-  const fieldDevices = sensors.filter(d => realFieldsFor(d).includes(field));
-
-  // Defaults to every matching device selected -- "select all the devices
-  // that log humidity as a group" is the action the user described wanting
-  // most -- while toggleDevice below still lets any one be clicked back out.
-  //
-  // `devices` arrives from a parent fetch that starts empty and populates
-  // moments later, same as everywhere else in this app -- this component's
-  // very first render therefore sees availableFields=[] and locks `field`'s
-  // lazy useState default to the plain "temperature" string fallback above
-  // before any real field list exists to pick a better one from. This
-  // effect corrects that the first time real data arrives (readyRef),
-  // committing to the true first-choice field (Humidity) instead of
-  // leaving `field` stuck on whatever the pre-data fallback happened to be
-  // -- and, separately, keeps `selectedIds` in sync whenever `field`
-  // actually changes (lastAppliedField), whether that's this initial
-  // correction or a later manual switch via the dropdown. Deliberately
-  // does NOT reset selectedIds on every incidental availableFields identity
-  // change (e.g. a routine devices poll, or an unrelated new device/field
-  // appearing) -- lastAppliedField only lets it fire once per real field
-  // value, so a background refresh never wipes a manually customized
-  // selection out from under the person using it.
   const [selectedIds, setSelectedIds] = useState([]);
   const readyRef = useRef(false);
   const lastAppliedField = useRef(null);
+
+  // One-time correction, done directly during render (not in a useEffect)
+  // the moment real data first becomes available -- committing the true
+  // first-choice field (Humidity) and its full device selection together,
+  // atomically, instead of leaving `field` stuck on the plain "temperature"
+  // fallback its lazy useState default above locks in before any real
+  // field list exists to pick a better one from (`devices` arrives from a
+  // parent fetch that starts empty and populates moments later, same as
+  // everywhere else in this app).
+  //
+  // A useEffect-based version of this correction raced a user's own
+  // immediate field change: testing-library's findByLabelText resolves
+  // the instant the <select> first appears in the DOM, and a test doing
+  // fireEvent.change right after that can run before React gets around to
+  // flushing the still-pending effect from that same commit -- so the
+  // user's manual choice would land first, and the (only-then-run) effect
+  // would overwrite it right back to the default. Confirmed as a real,
+  // reproducible (not just occasionally flaky) failure, not a hypothetical.
+  // Setting state directly in the render body like this is React's own
+  // documented pattern for "adjust state the instant a computed value
+  // first becomes available" (see "You Might Not Need an Effect") --
+  // safe here because readyRef guards it to fire exactly once: React
+  // discards this in-between render and immediately re-renders with the
+  // corrected state before anything commits/paints, so there is no
+  // intermediate frame where the wrong field's device set is visible,
+  // and no window for a real effect-flush race to land in at all.
+  if (!readyRef.current && availableFields.length > 0) {
+    readyRef.current = true;
+    const firstField = availableFields[0].value;
+    lastAppliedField.current = firstField;
+    if (field !== firstField) setField(firstField);
+    setSelectedIds(sensors.filter(d => realFieldsFor(d).includes(firstField)).map(d => d.deviceId));
+  }
+  const fieldDevices = sensors.filter(d => realFieldsFor(d).includes(field));
+
+  // Keeps `selectedIds` in sync whenever `field` actually changes after
+  // the initial correction above -- i.e. a manual switch via the
+  // dropdown -- resetting to every device that reports the new field
+  // ("select all" as the default, same reasoning as the initial
+  // correction). lastAppliedField's guard means this never redundantly
+  // re-fires for a field the render-phase block (or a previous run of
+  // this same effect) already applied, so a routine devices poll or an
+  // unrelated new device/field appearing never wipes a manually
+  // customized selection out from under the person using it.
   useEffect(() => {
-    if (availableFields.length === 0) return; // devices haven't loaded yet
-    let resolvedField = field;
-    if (!readyRef.current) {
-      resolvedField = availableFields[0].value;
-      readyRef.current = true;
-    }
-    if (resolvedField !== field) { setField(resolvedField); return; }
-    if (lastAppliedField.current !== resolvedField) {
-      setSelectedIds(sensors.filter(d => realFieldsFor(d).includes(resolvedField)).map(d => d.deviceId));
-      lastAppliedField.current = resolvedField;
-    }
+    if (lastAppliedField.current === field) return;
+    lastAppliedField.current = field;
+    setSelectedIds(sensors.filter(d => realFieldsFor(d).includes(field)).map(d => d.deviceId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [field, availableFields.map(o => o.value).join(",")]);
+  }, [field]);
 
   const [days, setDays] = useState(30);
   const [seriesByDevice, setSeriesByDevice] = useState({});
