@@ -3206,7 +3206,30 @@ export function kpiTileFor(device, tempUnit) { // exported for src/App.test.jsx'
       const val  = [fmtTemp(temp, tempUnit), hum != null && `${hum}%`].filter(Boolean).join(" · ") || "—";
       return { icon: Thermometer, label: device.name, deviceId: device.deviceId, value: val, state: device.state };
     }
+    // 2026-08-27: these four types didn't exist yet when this switch was
+    // written, and fell through to the default (no tile at all) once
+    // added for charting -- found live via a real user report: Kidde's
+    // humidity/CO2/air-quality readings appeared correctly in Sensor
+    // History but never got a Monitoring tile, and its CO alarm (a real
+    // safety device) had no tile either. HUMIDITY_SENSOR is its own case
+    // (not folded into TEMPERATURE_SENSOR's combined tile) because,
+    // unlike the native Zigbee combo sensor, a 3rd-party integration's
+    // humidity is usually its own separate device/entity with no
+    // sibling `temperature` attribute to pair it with.
+    case "HUMIDITY_SENSOR":
+      return { icon: Droplets, label: device.name, deviceId: device.deviceId,
+        value: device.attributes?.humidity != null ? `${device.attributes.humidity}%` : "—", state: device.state };
+    case "CO2_SENSOR":
+      return { icon: Wind, label: device.name, deviceId: device.deviceId,
+        value: device.attributes?.co2 != null ? `${device.attributes.co2} ppm` : "—", state: device.state };
+    case "AIR_QUALITY_SENSOR":
+      return { icon: Wind, label: device.name, deviceId: device.deviceId,
+        value: device.attributes?.airQualityIndex != null ? `${device.attributes.airQualityIndex}` : "—", state: device.state };
+    case "CO_SENSOR":
+      return { icon: Wind, label: device.name, deviceId: device.deviceId,
+        value: device.attributes?.co != null ? `${device.attributes.co} ppm` : "—", state: device.state };
     case "SMOKE_ALARM":
+    case "CO_ALARM":
       return { icon: ShieldAlert, label: device.name || "Smoke/CO Alarm", deviceId: device.deviceId,
         value: device.state || "UNKNOWN", state: device.state === "ALARM" ? "ALARM" : device.state };
     case "POWER_METER":
@@ -3395,9 +3418,23 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
   const liveMessages = useMqttTelemetry(active, locCfg.wsBase);
   const [tempUnit, toggleTempUnit] = useTempUnit();
 
+  // 2026-08-27 (user report, insurance-inspection-critical): this filter
+  // never checked enabled/lifecycle, so a device that's disabled -- or an
+  // unreviewed candidate that just happens to match a monitored type --
+  // got a live-looking tile the same as anything actually in use. Found
+  // via a real, dead orphaned Kidde entity (a 6-day-stale retained MQTT
+  // reading frozen at 72.5F, see docs/MAINTENANCE.md's own incident
+  // note) rendering as a normal Monitoring tile indistinguishable from
+  // the real, live one right next to it -- exactly the kind of thing
+  // that undermines credibility if someone unfamiliar with which
+  // entities are real is looking at this dashboard. `enabled` defaults
+  // to true when absent (native Zigbee devices don't always set it
+  // explicitly) so this only ever narrows the view, never hides
+  // something that isn't actually disabled.
   const kpiEntries = devices
     .map((d, globalIdx) => ({ d, globalIdx }))
     .filter(({ d }) => !d.location || d.location === locCfg.id)
+    .filter(({ d }) => d.attributes?.enabled !== false)
     .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit) }))
     .filter(({ tile }) => tile !== null);
 

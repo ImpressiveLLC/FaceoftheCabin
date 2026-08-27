@@ -90,6 +90,33 @@ describe("kpiTileFor", () => {
   it("returns null for a device type with no KPI tile -- unchanged from before this fix", () => {
     expect(kpiTileFor({ deviceId: "x", type: "MOTION_SENSOR", state: "ONLINE" }, "F")).toBeNull();
   });
+
+  // 2026-08-27 (user report): these four types were added for Sensor
+  // History charting but fell through kpiTileFor's default (no tile at
+  // all) -- Kidde's humidity/CO2/air-quality never showed in Monitoring
+  // even though the same reading correctly charted in Sensor History.
+  it("gives a humidity-only device its own tile, not folded into a temperature tile", () => {
+    const device = { deviceId: "h1", name: "Kidde Humidity", type: "HUMIDITY_SENSOR", state: "ONLINE",
+      attributes: { humidity: 57 } };
+    expect(kpiTileFor(device, "F")).toMatchObject({ label: "Kidde Humidity", value: "57%", state: "ONLINE" });
+  });
+
+  it("maps a CO2 sensor to a ppm-labeled tile", () => {
+    const device = { deviceId: "c1", name: "Kidde CO2", type: "CO2_SENSOR", state: "ONLINE",
+      attributes: { co2: 633 } };
+    expect(kpiTileFor(device, "F").value).toBe("633 ppm");
+  });
+
+  it("maps an air quality sensor to its index value", () => {
+    const device = { deviceId: "a1", name: "Kidde AQI", type: "AIR_QUALITY_SENSOR", state: "ONLINE",
+      attributes: { airQualityIndex: 58.3 } };
+    expect(kpiTileFor(device, "F").value).toBe("58.3");
+  });
+
+  it("maps a CO_ALARM device the same way as SMOKE_ALARM", () => {
+    const device = { deviceId: "co-alarm", name: "Kidde CO Alarm", type: "CO_ALARM", state: "ALARM" };
+    expect(kpiTileFor(device, "F")).toMatchObject({ value: "ALARM", state: "ALARM" });
+  });
 });
 
 // 2026-08-25: replaces the Grafana "View Sensor History" link-out, which
@@ -229,6 +256,26 @@ describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)",
   const tempA = { deviceId: "temp-a", name: "Temp A", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin", attributes: { temperature: 20 } };
   const tempB = { deviceId: "temp-b", name: "Temp B", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin", attributes: { temperature: 22 } };
   const lock  = { deviceId: "lock-a", name: "Lock A", type: "LOCK", state: "LOCKED", location: "cabin" };
+
+  // 2026-08-27 (user report, insurance-inspection-critical): a real, dead
+  // orphaned entity (a 6-day-stale retained MQTT reading, unrelated to
+  // this test's data) rendered as a normal-looking Monitoring tile
+  // because this filter never checked `enabled` -- only `kpiTileFor`'s
+  // type mapping gated what showed. A disabled device (or an unreviewed
+  // candidate, which defaults to enabled:false) must not get a tile
+  // indistinguishable from a real, in-use one.
+  it("excludes a disabled device from the Monitoring grid entirely", () => {
+    const disabled = { deviceId: "temp-c", name: "Temp C", type: "TEMPERATURE_SENSOR", state: "ONLINE",
+      location: "cabin", attributes: { temperature: 99, enabled: false } };
+    const { container } = render(
+      <AppContext.Provider value={{ displayConfigs: {} }}>
+        <MnSeeView devices={[tempA, disabled]} activeLocation="cabin" active={false} reorderMode={false} />
+      </AppContext.Provider>
+    );
+    const kpiGrid = container.querySelector(".kpi-grid");
+    expect(within(kpiGrid).queryByText("Temp C")).toBeNull();
+    expect(within(kpiGrid).getByText("Temp A")).toBeTruthy();
+  });
 
   it("renders tiles in the saved order, not the old fixed type-bucket order", () => {
     // Saved order deliberately puts the lock before both temp sensors --
