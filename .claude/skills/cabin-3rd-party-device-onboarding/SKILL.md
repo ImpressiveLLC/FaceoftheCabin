@@ -247,9 +247,25 @@ Also don't assume every vendor integration is a live push channel: some
 report state only when polled/woken, which can look identical to "device
 offline" if you're not expecting the latency. Confirm the delivery
 mode (continuous push vs. pull-on-request) explicitly for a new vendor
-rather than assuming it matches the last one you onboarded -- this
-stack has at least one device (a smart fridge) still under live
-investigation for exactly this question.
+rather than assuming it matches the last one you onboarded.
+
+**Don't guess at "why is this cloud device stale" -- read the actual HA
+container logs first.** This stack's own Liebherr fridge integration
+looked exactly like a "reports only when woken" device from the app
+side (all 9 entities `unavailable`), and it was tempting to assume that
+was just this vendor's normal pull-on-request behavior. `docker logs
+homeassistant | grep -i <vendor>` told a completely different, much more
+concrete story: two-plus days of intermittent DNS/connection timeouts to
+the vendor's own cloud host, escalating into a definitive
+`Authentication failed`, after which every entity for that device went
+`unavailable` and stayed there -- a broken cloud session needing the
+user's own re-login through HA's config flow, not a latency quirk. The
+entities' own `last_changed`/`last_updated` timestamps (via
+`GET /api/states/<entity_id>`) pinpoint exactly when they stopped
+updating; cross-referencing that against the container log's timestamps
+around the same moment is what actually distinguishes "this vendor is
+just slow/pull-based" from "this integration is broken and needs
+attention" -- don't report one when you mean the other.
 
 ## Quick checklist
 
