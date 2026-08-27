@@ -391,7 +391,13 @@ describe("SensorHistoryPanel", () => {
     expect(await screen.findByText("620.0 ppm (n=40)")).toBeTruthy();
   });
 
-  it("downloads a CSV with one column per selected device", async () => {
+  // 2026-08-27: the user asked for the reading count to be its own real
+  // column "for pivot type reporting on export" -- a wide table with a
+  // repeated avg column per device (the on-screen table's own shape)
+  // isn't actually pivotable in Excel/Sheets without unpivoting by hand
+  // first. Long/tidy format (one row per date+device) is what a
+  // PivotTable expects as-is.
+  it("downloads a CSV in long/tidy format with count as its own column, not folded into the average", async () => {
     vi.stubGlobal("fetch", reportedFieldsFetch(sensors));
     const createObjectURL = vi.fn().mockReturnValue("blob:mock");
     vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
@@ -409,7 +415,26 @@ describe("SensorHistoryPanel", () => {
       reader.onload = () => resolve(reader.result);
       reader.readAsText(blob);
     });
-    expect(text.split("\n")[0]).toBe("date,Mech Room,Kitchen");
+    const lines = text.split("\n");
+    // Built from the same Date().toLocaleDateString() the app itself
+    // uses, not a hardcoded string -- that format is locale/timezone
+    // dependent, and hardcoding it here previously broke on any runner
+    // whose local timezone shifts a UTC-midnight timestamp to the
+    // previous calendar day.
+    const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString();
+    const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString();
+    expect(lines[0]).toBe("date,device,avg,count");
+    expect(lines).toContain(`${day1},"Mech Room",70.00,12`);
+    expect(lines).toContain(`${day2},"Kitchen",75.20,8`);
+  });
+
+  // The user reported not knowing what "(n=…)" meant at all until asking --
+  // it must be explained on screen, not just present.
+  it("explains what the (n=…) count means on screen", async () => {
+    vi.stubGlobal("fetch", reportedFieldsFetch(sensors));
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+
+    expect(await screen.findByText(/how many individual readings were averaged/i)).toBeTruthy();
   });
 });
 

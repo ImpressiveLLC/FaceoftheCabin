@@ -3468,16 +3468,27 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
     return { deviceId, name: nameFor(deviceId), color: SENSOR_HISTORY_COLORS[idx % SENSOR_HISTORY_COLORS.length], d, hasPoints: pts.length > 0 };
   });
 
+  // 2026-08-27: long/tidy format (one row per date+device), not the wide
+  // one-column-per-device layout the on-screen table uses -- the user
+  // specifically asked for the reading count to be its own real column
+  // "for pivot type reporting," and a wide table with a repeated avg
+  // column per device isn't actually pivotable in Excel/Sheets without
+  // unpivoting it by hand first. This is the shape a PivotTable expects
+  // as-is: drag "device" to rows/columns, "avg"/"count" to values. Only
+  // emits a row for a date+device pair that actually has data, same
+  // "don't fabricate a value that isn't real" reasoning as the on-screen
+  // table's "—" cells -- a pivot built on this can trust every row.
   const downloadCsv = () => {
-    const header = ["date", ...selectedIds.map(nameFor)].join(",") + "\n";
-    const rows = allDates.map(day => {
-      const cells = selectedIds.map(id => {
+    const header = "date,device,avg,count\n";
+    const rows = [];
+    for (const day of allDates) {
+      for (const id of selectedIds) {
         const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
-        return p?.avg != null ? toDisplay(p.avg).toFixed(2) : "";
-      });
-      return [new Date(day).toLocaleDateString(), ...cells].join(",");
-    }).join("\n");
-    const blob = new Blob([header + rows], { type: "text/csv" });
+        if (p?.avg == null) continue;
+        rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount].join(","));
+      }
+    }
+    const blob = new Blob([header + rows.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -3542,6 +3553,9 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
               ))}
             </div>
           )}
+          <p className="config-hint sensor-history-count-note">
+            Each value is that day's average; (n=…) is how many individual readings were averaged into it — the CSV export has the count as its own column.
+          </p>
           <div className="sensor-history-table-wrap">
             <table className="sensor-history-table">
               <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}</tr></thead>
