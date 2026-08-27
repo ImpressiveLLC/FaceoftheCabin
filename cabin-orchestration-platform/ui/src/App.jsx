@@ -3297,25 +3297,53 @@ const SENSOR_FIELD_LABELS = Object.fromEntries(SENSOR_FIELD_OPTIONS.map(o => [o.
 // re-selections; the legend is what ties color back to name each render).
 const SENSOR_HISTORY_COLORS = ["#58a6ff", "#3fb950", "#f0883e", "#f85149", "#a371f7", "#39c5cf", "#d29922", "#ec6cb9"];
 
+const SENSOR_HISTORY_KNOWN_FIELDS = new Set(SENSOR_FIELD_OPTIONS.map(o => o.value));
+
 // 2026-08-27: redesigned from a single-device/single-field picker into a
 // field-first, multi-device chart -- the user's own two-step request: (1)
 // pick a field (e.g. Humidity) and see every device that actually reports
-// it, driven off DeviceType.telemetryFields()'s real reportsFields fact
-// (docs/ontology.yaml's device_reports_fields) instead of a hardcoded
-// device-type list -- a device is offered here because it *reports this
-// field*, whether that's its only job (HUMIDITY_SENSOR) or one of two
-// (a Zigbee combo TEMPERATURE_SENSOR); (2) a real multi-select toggle
-// (click a device to include/exclude it, "Select all"/"Clear" for the
-// group action) so several devices' history charts and downloads
-// together -- this is what makes "show me every humidity reading in one
-// place" (the insurance-inspection use case this panel exists for) a
-// single view instead of switching one device at a time.
+// it; (2) a real multi-select toggle (click a device to include/exclude
+// it, "Select all"/"Clear" for the group action) so several devices'
+// history charts and downloads together -- this is what makes "show me
+// every humidity reading in one place" (the insurance-inspection use case
+// this panel exists for) a single view instead of switching one device
+// at a time.
+//
+// Found the same day: gating step (1) on DeviceType.telemetryFields()'s
+// static per-type reportsFields (docs/ontology.yaml's device_reports_fields)
+// was too blunt -- it assumes every TEMPERATURE_SENSOR reports humidity
+// too (true for the Sonoff SNZB-02WD combo units this rule was written
+// around), but z2m-temp_outside_lowest (model SNZB-02LD, also typed
+// TEMPERATURE_SENSOR) has never once logged a humidity reading, confirmed
+// against its real 90-day history. A type-level guess can't tell those
+// apart; only observed data can. This panel now gates on
+// GET /api/events/reported-fields (CabinEventService.reportedFieldsByDevice(),
+// literally "which fields has this specific device ever actually logged")
+// instead, intersected with SENSOR_HISTORY_KNOWN_FIELDS so an incidental
+// numeric key this app doesn't chart (battery, linkquality, a calibration
+// offset) never becomes a bogus Field option. Also now excludes disabled
+// devices -- previously missing here unlike the Monitoring grid's own
+// `enabled` filter, which is why every disabled native/HA-duplicate pair
+// (temp_kitchen vs. its disabled "temp_kitchen Humidity"/"temp_kitchen
+// Temperature" HA duplicates, the disabled Loonie Mc Frigerton fridge
+// zone/setpoint entities, a disabled dead Kidde entity) cluttered the
+// picker with extra columns that could never have real data.
 export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
-  const sensors = devices.filter(d => (d.attributes?.reportsFields || []).length > 0);
+  const [reportedFields, setReportedFields] = useState({});
+  useEffect(() => {
+    fetch(`${apiBase}/api/events/reported-fields`)
+      .then(r => r.json())
+      .then(data => setReportedFields(data && typeof data === "object" ? data : {}))
+      .catch(() => setReportedFields({}));
+  }, [apiBase]);
+  const realFieldsFor = (device) =>
+    (reportedFields[device.deviceId] || []).filter(f => SENSOR_HISTORY_KNOWN_FIELDS.has(f));
+
+  const sensors = devices.filter(d => d.attributes?.enabled !== false && realFieldsFor(d).length > 0);
   const availableFields = SENSOR_FIELD_OPTIONS.filter(o =>
-    sensors.some(d => (d.attributes?.reportsFields || []).includes(o.value)));
+    sensors.some(d => realFieldsFor(d).includes(o.value)));
   const [field, setField] = useState(availableFields[0]?.value || "temperature");
-  const fieldDevices = sensors.filter(d => (d.attributes?.reportsFields || []).includes(field));
+  const fieldDevices = sensors.filter(d => realFieldsFor(d).includes(field));
 
   // Defaults to every matching device selected -- "select all the devices
   // that log humidity as a group" is the action the user described wanting
@@ -3349,7 +3377,7 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
     }
     if (resolvedField !== field) { setField(resolvedField); return; }
     if (lastAppliedField.current !== resolvedField) {
-      setSelectedIds(sensors.filter(d => (d.attributes?.reportsFields || []).includes(resolvedField)).map(d => d.deviceId));
+      setSelectedIds(sensors.filter(d => realFieldsFor(d).includes(resolvedField)).map(d => d.deviceId));
       lastAppliedField.current = resolvedField;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3360,7 +3388,14 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (selectedIds.length === 0) { setSeriesByDevice({}); return; }
+    // Found via test 2026-08-27: clicking Clear while a previous fetch is
+    // still in-flight left `loading` stuck true forever -- that in-flight
+    // run's own cleanup correctly marks itself cancelled (so it can't
+    // clobber seriesByDevice with a stale response), but its `.finally()`
+    // then also skips setLoading(false) because of that same flag, and
+    // this early-return branch never touched loading at all. Must reset
+    // it explicitly here, not just the series.
+    if (selectedIds.length === 0) { setSeriesByDevice({}); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
     Promise.all(selectedIds.map(id =>

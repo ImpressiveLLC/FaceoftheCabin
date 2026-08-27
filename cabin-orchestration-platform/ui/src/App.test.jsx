@@ -127,24 +127,77 @@ describe("kpiTileFor", () => {
 describe("SensorHistoryPanel", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-  // reportsFields (DeviceType.telemetryFields(), see docs/ontology.yaml's
-  // device_reports_fields) is what actually drives membership now, not
-  // `type` alone -- these fixtures mirror what the real API now returns
-  // (confirmed live against z2m-temp_kitchen after the 2026-08-27 fix).
+  // "reportsFields" here is the empirical, observed-data fact this panel
+  // now actually gates on (GET /api/events/reported-fields,
+  // CabinEventService.reportedFieldsByDevice()) -- not
+  // DeviceType.telemetryFields()'s static per-type guess, which turned out
+  // wrong for a real device (z2m-temp_outside_lowest, model SNZB-02LD, has
+  // never once logged humidity despite being typed the same as combo
+  // sensors that do). Fixtures below double as both the "attributes" a
+  // device carries AND the source for the mocked /reported-fields response
+  // via reportedFieldsFetch(), so a test that wants "this device has never
+  // logged humidity" states that once, not in two disagreeing places.
   const sensors = [
     { deviceId: "z2m-humid_mech", name: "Mech Room", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin",
-      attributes: { reportsFields: ["humidity", "temperature"] } },
+      attributes: { enabled: true, reportsFields: ["humidity", "temperature"] } },
     { deviceId: "z2m-humid_kitchen", name: "Kitchen", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin",
-      attributes: { reportsFields: ["humidity", "temperature"] } },
+      attributes: { enabled: true, reportsFields: ["humidity", "temperature"] } },
   ];
   const points = [
     { day: "2026-08-24T00:00:00Z", avg: 70, min: 65, max: 75, sampleCount: 12 },
     { day: "2026-08-25T00:00:00Z", avg: 75.2, min: 70, max: 80, sampleCount: 8 },
   ];
 
+  // Builds a fetch mock that answers /reported-fields from the given
+  // devices' own attributes.reportsFields (so it can never silently
+  // disagree with the fixture), and everything else (telemetry-history)
+  // from telemetryFn(url) -- defaulting to a constant response for tests
+  // that don't care which device/field a particular call was for.
+  function reportedFieldsFetch(deviceList, telemetryFn = () => points) {
+    const fieldsMap = Object.fromEntries(deviceList.map(d => [d.deviceId, d.attributes.reportsFields]));
+    return vi.fn((url) => {
+      if (url.includes("/reported-fields")) {
+        return Promise.resolve({ ok: true, json: async () => fieldsMap });
+      }
+      return Promise.resolve({ ok: true, json: async () => telemetryFn(url) });
+    });
+  }
+
   it("renders nothing when the location has no sensors that report any chartable field", () => {
     const { container } = render(<SensorHistoryPanel devices={[]} apiBase="http://cabin" tempUnit="F" />);
     expect(container.firstChild).toBeNull();
+  });
+
+  // 2026-08-27: the primary fix the user reported -- a device typed the
+  // same as a real combo sensor but that has never actually logged a
+  // given field (or is disabled) must not be offered as an option for it.
+  // enabled:false here mirrors what production actually looked like: every
+  // HA-duplicate/dead entity cluttering the picker (temp_kitchen's own
+  // "Temperature"/"Humidity" HA duplicates, the Liebherr "Loonie Mc
+  // Frigerton" zone/setpoint entities, a dead Kidde entity) was disabled.
+  it("excludes a device that has never actually logged the selected field, and a disabled device, even if their type/attributes claim it", async () => {
+    const outsideNeverHumidity = { deviceId: "z2m-outside", name: "Outside", type: "TEMPERATURE_SENSOR",
+      state: "ONLINE", location: "cabin", attributes: { enabled: true, reportsFields: ["humidity", "temperature"] } };
+    const disabledDuplicate = { deviceId: "ha-kitchen-humidity-dup", name: "Kitchen Humidity (HA duplicate)",
+      type: "HUMIDITY_SENSOR", state: "ONLINE", location: "cabin", attributes: { enabled: false, reportsFields: ["humidity"] } };
+    const allDevices = [...sensors, outsideNeverHumidity, disabledDuplicate];
+    // The empirical response is the ground truth here: "Outside" never has
+    // a humidity entry at all, unlike its attributes.reportsFields claim --
+    // this is the exact z2m-temp_outside_lowest shape confirmed live.
+    const fieldsMap = {
+      "z2m-humid_mech": ["humidity", "temperature"],
+      "z2m-humid_kitchen": ["humidity", "temperature"],
+      "z2m-outside": ["temperature"],
+      "ha-kitchen-humidity-dup": ["humidity"],
+    };
+    vi.stubGlobal("fetch", vi.fn((url) => url.includes("/reported-fields")
+      ? Promise.resolve({ ok: true, json: async () => fieldsMap })
+      : Promise.resolve({ ok: true, json: async () => points })));
+    render(<SensorHistoryPanel devices={allDevices} apiBase="http://cabin" tempUnit="F" />);
+
+    await screen.findByRole("button", { name: "Mech Room" });
+    expect(screen.queryByRole("button", { name: "Outside" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Kitchen Humidity (HA duplicate)" })).toBeNull();
   });
 
   // Found live 2026-08-27: `devices` arrives from a parent fetch that
@@ -158,13 +211,13 @@ describe("SensorHistoryPanel", () => {
   // unrecoverable selection until a person happened to touch the Field
   // dropdown themselves. Reproduces that exact prop sequence.
   it("recovers to Humidity with every device selected once devices load in after an initial empty render", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
+    const fetchMock = reportedFieldsFetch(sensors);
     vi.stubGlobal("fetch", fetchMock);
     const { rerender } = render(<SensorHistoryPanel devices={[]} apiBase="http://cabin" tempUnit="F" />);
 
     rerender(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(2));
     expect(screen.getByLabelText(/^field$/i).value).toBe("humidity");
     expect(screen.getByRole("button", { name: "Mech Room" }).className).toContain("selected");
     expect(screen.getByRole("button", { name: "Kitchen" }).className).toContain("selected");
@@ -174,18 +227,18 @@ describe("SensorHistoryPanel", () => {
   // field defaults to every device that reports it selected as a group
   // ("select all the devices that log humidity"), not just the first one.
   it("defaults to selecting every humidity-reporting device and fetches each one's history", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
+    const fetchMock = reportedFieldsFetch(sensors);
     vi.stubGlobal("fetch", fetchMock);
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(2));
     const urls = fetchMock.mock.calls.map(c => c[0]);
     expect(urls.some(u => u.includes("deviceId=z2m-humid_mech") && u.includes("field=humidity") && u.includes("days=30"))).toBe(true);
     expect(urls.some(u => u.includes("deviceId=z2m-humid_kitchen") && u.includes("field=humidity") && u.includes("days=30"))).toBe(true);
   });
 
   it("renders real day rows from the response, most recent first", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => points }));
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]]));
     render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
 
     const rows = await screen.findAllByRole("row");
@@ -196,45 +249,44 @@ describe("SensorHistoryPanel", () => {
   });
 
   it("converts Celsius to Fahrenheit for display when the field is temperature and unit is F", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true, json: async () => [{ day: "2026-08-25T00:00:00Z", avg: 20, min: 18, max: 22, sampleCount: 5 }],
-    }));
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]],
+      () => [{ day: "2026-08-25T00:00:00Z", avg: 20, min: 18, max: 22, sampleCount: 5 }]));
     render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
-    fireEvent.change(screen.getByLabelText(/^field$/i), { target: { value: "temperature" } });
+    fireEvent.change(await screen.findByLabelText(/^field$/i), { target: { value: "temperature" } });
 
     expect(await screen.findByText("68.0°F")).toBeTruthy(); // 20C -> 68F
   });
 
   it("shows an honest empty state instead of a blank table when there's no history yet", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]], () => []));
     render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
 
     expect(await screen.findByText(/no humidity history for the selected devices/i)).toBeTruthy();
   });
 
   it("re-fetches with the new range when Range is changed", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
+    const fetchMock = reportedFieldsFetch([sensors[0]]);
     vi.stubGlobal("fetch", fetchMock);
     render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(1));
 
     fireEvent.change(screen.getByLabelText(/^range$/i), { target: { value: "90" } });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(fetchMock.mock.calls[1][0]).toContain("days=90");
+    await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(2));
+    expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history")).at(-1)[0]).toContain("days=90");
   });
 
   // "step two": a real multi-select toggle -- click a device chip to
   // select/highlight it, click again to un-highlight, "Select all"/"Clear"
   // for the group action, all scoped to the currently chosen field.
   it("lets a device be toggled out of the selection, and re-fetches with only the remaining devices", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => points });
+    const fetchMock = reportedFieldsFetch(sensors);
     vi.stubGlobal("fetch", fetchMock);
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(2));
 
     fireEvent.click(screen.getByRole("button", { name: "Kitchen" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(3));
     const lastUrl = fetchMock.mock.calls.at(-1)[0];
     expect(lastUrl).toContain("deviceId=z2m-humid_mech");
     expect(screen.getByRole("button", { name: "Mech Room" }).className).toContain("selected");
@@ -242,7 +294,7 @@ describe("SensorHistoryPanel", () => {
   });
 
   it("Select all restores every matching device after some were toggled off, Clear removes them all", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => points }));
+    vi.stubGlobal("fetch", reportedFieldsFetch(sensors));
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
     await screen.findByRole("button", { name: "Mech Room" });
 
@@ -255,7 +307,7 @@ describe("SensorHistoryPanel", () => {
   });
 
   it("renders a legend and one table column per selected device when more than one is selected", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => points }));
+    vi.stubGlobal("fetch", reportedFieldsFetch(sensors));
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
 
     const headerRow = (await screen.findAllByRole("row"))[0];
@@ -273,61 +325,62 @@ describe("SensorHistoryPanel", () => {
   // per HA entity, unlike the Zigbee sensor's combined temp+humidity).
   const kiddeSensors = [
     { deviceId: "ha-cabin-sensor-kidde-co2", name: "Kidde CO2 Level", type: "CO2_SENSOR", state: "ONLINE", location: "cabin",
-      attributes: { reportsFields: ["co2"] } },
+      attributes: { enabled: true, reportsFields: ["co2"] } },
     { deviceId: "ha-cabin-sensor-kidde-aqi", name: "Kidde Air Quality Index", type: "AIR_QUALITY_SENSOR", state: "ONLINE", location: "cabin",
-      attributes: { reportsFields: ["airQualityIndex"] } },
+      attributes: { enabled: true, reportsFields: ["airQualityIndex"] } },
     { deviceId: "ha-cabin-sensor-kidde-co", name: "Kidde CO Level", type: "CO_SENSOR", state: "ONLINE", location: "cabin",
-      attributes: { reportsFields: ["co"] } },
+      attributes: { enabled: true, reportsFields: ["co"] } },
   ];
 
   it("offers CO2/air-quality/CO as Field options, not just temperature/humidity, when Kidde devices are present", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    vi.stubGlobal("fetch", reportedFieldsFetch([...sensors, ...kiddeSensors], () => []));
     render(<SensorHistoryPanel devices={[...sensors, ...kiddeSensors]} apiBase="http://cabin" tempUnit="F" />);
 
-    const fieldSelect = screen.getByLabelText(/^field$/i);
+    const fieldSelect = await screen.findByLabelText(/^field$/i);
     expect(within(fieldSelect).getByText("CO₂")).toBeTruthy();
     expect(within(fieldSelect).getByText("Air Quality Index")).toBeTruthy();
     expect(within(fieldSelect).getByText("CO")).toBeTruthy();
   });
 
   it("defaults the Field picker to a CO2 device's only real field, not the Zigbee temperature/humidity options", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    const fetchMock = reportedFieldsFetch(kiddeSensors, () => []);
     vi.stubGlobal("fetch", fetchMock);
     render(<SensorHistoryPanel devices={kiddeSensors} apiBase="http://cabin" tempUnit="F" />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    expect(fetchMock.mock.calls[0][0]).toContain("deviceId=ha-cabin-sensor-kidde-co2");
-    expect(fetchMock.mock.calls[0][0]).toContain("field=co2");
+    await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(1));
+    expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))[0][0]).toContain("deviceId=ha-cabin-sensor-kidde-co2");
+    expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))[0][0]).toContain("field=co2");
     const fieldSelect = screen.getByLabelText(/^field$/i);
     expect(within(fieldSelect).queryByText("Temperature")).toBeNull();
     expect(within(fieldSelect).queryByText("Humidity")).toBeNull();
   });
 
   it("switching field re-scopes the selection and fetches only devices that report the new field", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    const fetchMock = reportedFieldsFetch([...sensors, ...kiddeSensors], () => []);
     vi.stubGlobal("fetch", fetchMock);
     render(<SensorHistoryPanel devices={[...sensors, ...kiddeSensors]} apiBase="http://cabin" tempUnit="F" />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2)); // baseline: both humidity-reporting Zigbee sensors
+    // baseline: both humidity-reporting Zigbee sensors
+    await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(2));
     fetchMock.mockClear();
 
     fireEvent.change(screen.getByLabelText(/^field$/i), { target: { value: "co" } });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock.mock.calls[0][0]).toContain("deviceId=ha-cabin-sensor-kidde-co");
-    expect(fetchMock.mock.calls[0][0]).toContain("field=co");
+    await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(1));
+    const call = fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))[0][0];
+    expect(call).toContain("deviceId=ha-cabin-sensor-kidde-co");
+    expect(call).toContain("field=co");
   });
 
   it("renders a Kidde CO2 reading with a ppm unit, not the Zigbee %/°F units", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true, json: async () => [{ day: "2026-08-25T00:00:00Z", avg: 620, min: 590, max: 650, sampleCount: 40 }],
-    }));
+    vi.stubGlobal("fetch", reportedFieldsFetch(kiddeSensors,
+      () => [{ day: "2026-08-25T00:00:00Z", avg: 620, min: 590, max: 650, sampleCount: 40 }]));
     render(<SensorHistoryPanel devices={kiddeSensors} apiBase="http://cabin" tempUnit="F" />);
 
     expect(await screen.findByText("620.0 ppm")).toBeTruthy();
   });
 
   it("downloads a CSV with one column per selected device", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => points }));
+    vi.stubGlobal("fetch", reportedFieldsFetch(sensors));
     const createObjectURL = vi.fn().mockReturnValue("blob:mock");
     vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);

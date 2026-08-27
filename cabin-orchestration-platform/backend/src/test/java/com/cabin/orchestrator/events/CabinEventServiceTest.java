@@ -238,4 +238,38 @@ class CabinEventServiceTest {
         List<TelemetryDailyPoint> points = service.dailyAggregates("nonexistent-device", "humidity", 7);
         assertThat(points).isEmpty();
     }
+
+    // 2026-08-27: reportedFieldsByDevice() -- the real, observed-data
+    // ground truth for the field/device picker, replacing
+    // DeviceType.telemetryFields()'s static per-type guess (see its own
+    // and this method's doc for the z2m-temp_outside_lowest case that
+    // exposed the guess as wrong).
+    @Test
+    void reportedFieldsByDeviceReturnsExactlyTheFieldsEachDeviceHasActuallyLogged() {
+        Instant now = Instant.now();
+        saveTelemetry("combo-1", "z2m-humid_mech", now, Map.of("humidity", 70, "temperature", 18));
+        saveTelemetry("temp-only-1", "z2m-temp_outside_lowest", now, Map.of("temperature", 12));
+
+        Map<String, List<String>> result = service.reportedFieldsByDevice();
+
+        assertThat(result.get("z2m-humid_mech")).containsExactlyInAnyOrder("humidity", "temperature");
+        assertThat(result.get("z2m-temp_outside_lowest")).containsExactly("temperature");
+    }
+
+    @Test
+    void reportedFieldsByDeviceOmitsNonNumericAndNonTelemetryEntries() {
+        Instant now = Instant.now();
+        saveTelemetry("bad-value", "z2m-humid_mech", now, Map.of("humidity", "unavailable"));
+        service.save(new CabinEvent("state-change", "z2m-humid_mech", "STATE_CHANGE", "INFO", now, Map.of("humidity", 70)));
+
+        Map<String, List<String>> result = service.reportedFieldsByDevice();
+
+        assertThat(result.get("z2m-humid_mech")).isNull();
+    }
+
+    @Test
+    void reportedFieldsByDeviceHasNoEntryForADeviceThatHasNeverLoggedAnything() {
+        Map<String, List<String>> result = service.reportedFieldsByDevice();
+        assertThat(result).doesNotContainKey("z2m-never-reported-anything");
+    }
 }

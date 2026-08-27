@@ -164,6 +164,41 @@ public class CabinEventService {
             .stream().map(this::toDailyPoint).toList();
     }
 
+    /**
+     * The real, per-device ground truth for "which numeric telemetry
+     * fields has this device ever actually logged" -- added 2026-08-27
+     * after DeviceType.telemetryFields()'s static per-type guess turned
+     * out too blunt: it assumes every TEMPERATURE_SENSOR reports humidity
+     * too (true for the Sonoff SNZB-02WD combo units this rule was
+     * written around), but z2m-temp_outside_lowest (model SNZB-02LD, also
+     * typed TEMPERATURE_SENSOR) has never once logged a humidity reading
+     * in its full history -- confirmed via this exact query returning zero
+     * rows for it. A type-level assumption can't tell those two apart;
+     * only observed data can. Feeds SensorHistoryPanel's field/device
+     * picker (App.jsx) so a device only ever appears as an option for a
+     * field it has actually reported, not one its type happens to be
+     * associated with elsewhere. Same numeric-format guard as
+     * dailyAggregates() -- a payload field that's sometimes non-numeric
+     * (or a stray non-telemetry key) must not count as "reports this
+     * field."
+     */
+    public Map<String, List<String>> reportedFieldsByDevice() {
+        String sql = """
+            SELECT device_id, key AS field
+            FROM cabin_event, jsonb_object_keys(payload) AS key
+            WHERE event_type = 'TELEMETRY'
+              AND device_id IS NOT NULL
+              AND payload ->> key ~ '^-?[0-9]+\\.?[0-9]*$'
+            GROUP BY device_id, key
+            """;
+        Map<String, List<String>> result = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : jdbc.queryForList(sql)) {
+            result.computeIfAbsent((String) row.get("device_id"), k -> new java.util.ArrayList<>())
+                .add((String) row.get("field"));
+        }
+        return result;
+    }
+
     private TelemetryDailyPoint toDailyPoint(Map<String, Object> row) {
         Object dayVal = row.get("day");
         Instant day = dayVal instanceof java.sql.Timestamp t ? t.toInstant() : Instant.now();

@@ -121,4 +121,19 @@ class EventControllerTest {
         assertEquals(1, points.size());
         assertEquals(75.0, points.get(0).avg());
     }
+
+    // 2026-08-27: /reported-fields -- wiring only, reportedFieldsByDevice()'s
+    // own query logic is covered in CabinEventServiceTest.
+    @Test
+    void reportedFieldsDelegatesToReportedFieldsByDevice() {
+        CabinEventService rawEventService = new CabinEventService(
+            new JdbcTemplate(new SimpleDriverDataSource(
+                new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+        rawEventService.save(new CabinEvent("evt-combo", "z2m-humid_mech", "TELEMETRY",
+            "INFO", Instant.now(), Map.of("humidity", 75, "temperature", 20)));
+
+        java.util.Map<String, List<String>> result = controller.reportedFields();
+
+        assertEquals(java.util.Set.of("humidity", "temperature"), java.util.Set.copyOf(result.get("z2m-humid_mech")));
+    }
 }

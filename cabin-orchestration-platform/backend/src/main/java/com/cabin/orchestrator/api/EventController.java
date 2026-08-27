@@ -101,6 +101,17 @@ public class EventController {
         return eventService.dailyAggregates(deviceId, field, days);
     }
 
+    /**
+     * GET /api/events/reported-fields -> { "z2m-temp_kitchen": ["humidity","temperature"], ... }
+     * See CabinEventService.reportedFieldsByDevice()'s own doc for why
+     * this exists (a real, observed-data alternative to
+     * DeviceType.telemetryFields()'s static per-type guess).
+     */
+    @GetMapping("/reported-fields")
+    public java.util.Map<String, List<String>> reportedFields() {
+        return eventService.reportedFieldsByDevice();
+    }
+
     private Duration parseWindow(String window) {
         try {
             char unit = window.charAt(window.length() - 1);
