@@ -3551,7 +3551,12 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
                     <td>{new Date(day).toLocaleDateString()}</td>
                     {selectedIds.map(id => {
                       const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
-                      return <td key={id}>{p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit}` : "—"}</td>;
+                      // Sample count matters for credibility, not just decoration --
+                      // the user flagged that a wide multi-device table with only an
+                      // average per cell hides whether a reading came from dozens of
+                      // samples or one stray point, which is exactly the kind of
+                      // question an insurance inspector would ask.
+                      return <td key={id}>{p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—"}</td>;
                     })}
                   </tr>
                 ))}

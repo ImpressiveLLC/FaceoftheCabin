@@ -244,8 +244,20 @@ describe("SensorHistoryPanel", () => {
     const rows = await screen.findAllByRole("row");
     // header row + 2 data rows, most recent (8/25) first
     expect(rows).toHaveLength(3);
-    expect(within(rows[1]).getByText("75.2%")).toBeTruthy();
-    expect(within(rows[2]).getByText("70.0%")).toBeTruthy();
+    expect(within(rows[1]).getByText("75.2% (n=8)")).toBeTruthy();
+    expect(within(rows[2]).getByText("70.0% (n=12)")).toBeTruthy();
+  });
+
+  // 2026-08-27: the user flagged that a wide multi-device table with only
+  // an average per cell hides whether a reading came from dozens of real
+  // samples or one stray point -- exactly the kind of question an
+  // insurance inspector would ask. Sample count is now part of the cell.
+  it("shows the sample count alongside each average, not just the bare value", async () => {
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]]));
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
+
+    expect(await screen.findByText("75.2% (n=8)")).toBeTruthy();
+    expect(screen.getByText("70.0% (n=12)")).toBeTruthy();
   });
 
   it("converts Celsius to Fahrenheit for display when the field is temperature and unit is F", async () => {
@@ -254,7 +266,7 @@ describe("SensorHistoryPanel", () => {
     render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
     fireEvent.change(await screen.findByLabelText(/^field$/i), { target: { value: "temperature" } });
 
-    expect(await screen.findByText("68.0°F")).toBeTruthy(); // 20C -> 68F
+    expect(await screen.findByText("68.0°F (n=5)")).toBeTruthy(); // 20C -> 68F
   });
 
   it("shows an honest empty state instead of a blank table when there's no history yet", async () => {
@@ -376,7 +388,7 @@ describe("SensorHistoryPanel", () => {
       () => [{ day: "2026-08-25T00:00:00Z", avg: 620, min: 590, max: 650, sampleCount: 40 }]));
     render(<SensorHistoryPanel devices={kiddeSensors} apiBase="http://cabin" tempUnit="F" />);
 
-    expect(await screen.findByText("620.0 ppm")).toBeTruthy();
+    expect(await screen.findByText("620.0 ppm (n=40)")).toBeTruthy();
   });
 
   it("downloads a CSV with one column per selected device", async () => {
@@ -384,7 +396,7 @@ describe("SensorHistoryPanel", () => {
     const createObjectURL = vi.fn().mockReturnValue("blob:mock");
     vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
-    await screen.findAllByText("75.2%");
+    await screen.findAllByText("75.2% (n=8)");
 
     fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
 
