@@ -1703,6 +1703,7 @@ export function DeviceManagerPanel() {
                   disabled={groupBy === "candidate"}
                   title={groupBy === "candidate" ? "Candidate grouping always shows both setup states" : undefined}>
                   <option value="in_scope">All In-Scope + Candidates</option>
+                  <option value="parents_only">Parent devices only</option>
                   <option value="candidates">Candidates</option>
                   <option value="previous">Review previously exposed</option>
                 </select>
@@ -1857,6 +1858,21 @@ export function filterDeviceManagerDevices(devices, filter = "in_scope") {
   }
   if (filter === "previous") {
     return devices.filter(d => ["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
+  }
+  // 2026-08-27 (user report): grouping by Type (or anything else) had no
+  // way to fold a multi-service device's own entities under it -- a
+  // single vendor unit with 18 HA sub-entities (Kidde) showed as 18
+  // unrelated rows in whatever group each entity's own type happened to
+  // land in, and a Home Assistant instance with many such devices makes
+  // the "everything else" bucket (HOME_ASSISTANT_ENTITY) balloon to the
+  // point that reaching whatever comes after it means scrolling past
+  // a hundred-plus mostly-diagnostic rows. This doesn't merge/nest
+  // anything -- it's the same parentDeviceId relationship the "Belongs
+  // to" detail line and the toolbar's device-count toggle already read
+  // (see countParentDevices) -- just reused here as a real list filter,
+  // the same way "Candidates"/"Review previously exposed" already are.
+  if (filter === "parents_only") {
+    return devices.filter(d => !d.attributes?.parentDeviceId && !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
   }
   return devices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
 }

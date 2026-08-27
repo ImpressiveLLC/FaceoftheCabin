@@ -3729,6 +3729,86 @@ elements:
       the CO2 and air-quality-index entities are the closest real
       equivalents to what a user would mean by "particulate/air quality."
 
+  # ─── Device → service hierarchy ───────────────────────────────────────
+  # Real gap this closes: a single physical multi-service device (Kidde's
+  # one CO/air-quality unit, Liebherr's one fridge) discovers as N
+  # unrelated HA entities with no ontology-level tie back to "the one
+  # physical thing they're all part of." Deferred by explicit user choice
+  # 2026-08-21 ("finish current work first") pending a Plan Mode session
+  # for the full scope; this entity documents what was actually already
+  # built by 2026-08-25 (parentDeviceId, cb332b9) plus what closed the
+  # remaining "I don't see this set up" gap on 2026-08-27 -- applying it
+  # to real live data and giving Device Manager a real filter for it.
+  - id: device_service_hierarchy
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    first_verified_live:
+      date: "2026-08-27"
+      ref: >
+        All 17 of Kidde's real HA sub-entities given
+        parentDeviceId=<the CO-alarm entity's deviceId> via
+        PATCH /api/devices/{id}/config, confirmed live via
+        GET /api/devices?location=cabin.
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Device belongs to (parent device)"
+    applies_to_device_type: []
+    source: >
+      DeviceRegistry's own `parentDeviceId` device attribute (backend,
+      cb332b9 "Item 4a: parentDeviceId device-hierarchy link, with real
+      validation") -- a plain string attribute, not a separate join
+      table, validated server-side against cycles and cross-location
+      mismatches (DeviceRegistry.validateParentDeviceId()).
+    rendering:
+      semantic: "This device/service is one part of a larger physical unit"
+      systems: Device Manager -- DmEditForm's "Parent device" picker (set/clear it), DmDeviceDetail's "Belongs to" row (see it), the toolbar's device-count toggle (countParentDevices -- "X devices" vs "X device services"), and the Show filter's "Parent devices only" option (filterDeviceManagerDevices, added 2026-08-27)
+      technical: "device.attributes.parentDeviceId — a deviceId string, or absent/blank for a standalone device. belongs_to_device is the relationship type name for this in another entity's `relationships:` list (see smart_appliance_co_air_quality_kidde's own definition, which already narrates this in prose for its 17 real sub-entities)."
+      compliance: (not shown)
+    definition: >
+      Formalizes what was, until 2026-08-27, only cosmetic: entities'
+      `haDeviceId` attribute (HomeAssistantDiscoveryService, from HA's own
+      device registry) groups sibling entities into one expandable card
+      client-side, but was never itself a persisted, user-editable, or
+      queryable relationship -- a person couldn't set it, correct it, or
+      filter by it. `parentDeviceId` is the real, separate mechanism: an
+      explicit, user-set (via the Parent device picker) or
+      programmatically-set (via POST .../config with parentDeviceId, the
+      same PATCH endpoint used for name/enabled/room) attribute,
+      validated against self-reference and cycles, that Device Manager,
+      the device-count toggle, and now the Show filter all read. It does
+      NOT yet reach the workflow engine's trigger/action device pickers
+      (those still list every entity flat) -- that remains the larger,
+      not-yet-scoped piece of the original 2026-08-21 ask.
+    relationships:
+      - target: smart_appliance_co_air_quality_kidde
+        type: related_to
+        cardinality: "1:N" # first real-world application: 17 Kidde entities -> 1 parent (the CO alarm)
+      - target: smart_appliance_fridge_liebherr
+        type: related_to
+        cardinality: "1:N" # not yet applied -- Liebherr's own 9 entities have no parentDeviceId set as of 2026-08-27
+    relates_to:
+      ui_components: [DmEditForm, DmDeviceDetail, DeviceManagerPanel]
+      elements: [smart_appliance_co_air_quality_kidde, smart_appliance_fridge_liebherr]
+    notes: >
+      Still open, named explicitly rather than silently dropped: (1)
+      Liebherr's 9 entities don't have parentDeviceId set yet -- same
+      mechanical fix as Kidde's, blocked only on Liebherr's own broken
+      cloud auth session being resolved first (see
+      trigger_liebherr_door_open's neighboring notes); (2) the workflow
+      creation form's device pickers still show one flat list, not
+      "device, or one of its services" -- the cabin-3rd-party-device-
+      onboarding skill and this entity's own definition both flag it as
+      the same still-unscoped gap the user originally asked about
+      2026-08-21; (3) Device Manager's grouped list (Group: Type/Source/
+      etc.) still doesn't visually nest children under their parent row
+      -- "Parent devices only" hides children entirely rather than
+      collapsing them into an expandable parent row, a real but smaller
+      UX gap than the one it replaces (a 100+-row single group with no
+      way to shrink it at all).
+
   - id: smart_appliance_dishwasher_bosch
     entity_type: owl:Class
     layer: integration

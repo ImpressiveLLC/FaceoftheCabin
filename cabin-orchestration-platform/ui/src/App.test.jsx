@@ -952,6 +952,24 @@ describe("Device Manager lifecycle visibility", () => {
       .toEqual(["assigned", "available", "candidate", "legacy"]);
   });
 
+  // 2026-08-27 (user report): grouping by Type produced one enormous
+  // catch-all group (every un-typed HA sub-entity/service, 100+ rows on
+  // the real cabin instance) dwarfing every other group -- reusing the
+  // same parentDeviceId relationship the toolbar's device-count toggle
+  // already reads (countParentDevices) as a real list filter so a person
+  // can actually collapse down to just the physical devices.
+  it("shows only devices without a parentDeviceId when 'Parent devices only' is selected", () => {
+    const child = { deviceId: "child", attributes: { deviceLifecycle: "ASSIGNED", parentDeviceId: "assigned" } };
+    const withChild = [...devices, child];
+    expect(filterDeviceManagerDevices(withChild, "parents_only").map(d => d.deviceId))
+      .toEqual(["assigned", "available", "candidate", "legacy"]);
+  });
+
+  it("'Parent devices only' still excludes deferred/ignored devices, same as the default view", () => {
+    expect(filterDeviceManagerDevices(devices, "parents_only").map(d => d.deviceId))
+      .toEqual(["assigned", "available", "candidate", "legacy"]);
+  });
+
   it("always reconciles Lifecycle grouping to All active/review devices", () => {
     expect(resolveDeviceManagerFilter("candidate", "in_scope")).toBe("all");
     expect(resolveDeviceManagerFilter("candidate", "candidates")).toBe("all");
