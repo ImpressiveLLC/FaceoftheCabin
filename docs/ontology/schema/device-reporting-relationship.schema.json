@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cabin.unicornpingpong.com/schema/device-reporting-relationship.schema.json",
+  "title": "DeviceReportingRelationship",
+  "description": "D7 (docs/ontology/DECISIONS.md), Option B: a device's primitive name (e.g. temp_mech_room) is its short identity -- primary measurement + location -- not an exhaustive list of what it reports. This schema is the explicit, separate fact Option B introduces: one row per measurement type a device actually reports, distinct from the device's own name/identity. Sprint 1 stub -- formalizes a relationship that already exists at runtime (CabinEventService.reportedFieldsByDevice(), shipped 2026-08-27) but is not yet a persisted, queryable entity; see DECISIONS.md's D7 status note for the production bug that motivated replacing a static per-type guess with this kind of explicit, provenanced fact.",
+  "type": "object",
+  "required": ["device_entity_id", "measurement_type", "semantic_field", "confirmation_source"],
+  "properties": {
+    "device_entity_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "D1: the device's snake_case entity_id -- the canonical identity this relationship attaches to. Not a foreign key in this stub yet; Sprint 1's repository class is what gives this real referential integrity against the `device` table."
+    },
+    "measurement_type": {
+      "type": "string",
+      "enum": ["temperature", "humidity", "co2", "air_quality_index", "co", "pressure", "power", "battery"],
+      "description": "The physical quantity this relationship describes. Deliberately closed today, not open -- extend only when a real new measurement type is onboarded (matching cabin-3rd-party-device-onboarding's own discipline), not speculatively."
+    },
+    "semantic_field": {
+      "type": "string",
+      "description": "The normalized CabinEvent payload key this measurement type is stored under -- must match WorkflowRuleService's own field vocabulary (temperature/humidity/co2/co/airQualityIndex) exactly, so this schema and the running engine can never silently disagree about what a field is called. Deliberately a free string, not an enum mirroring measurement_type 1:1 -- the two are usually the same word but aren't guaranteed to be (air_quality_index -> airQualityIndex casing difference already exists)."
+    },
+    "confirmation_source": {
+      "type": "string",
+      "enum": ["vendor_spec", "empirical_observation", "type_inferred", "manual_override"],
+      "description": "D4's provenance mixin, applied to this Definition-layer fact. 'empirical_observation' is what CabinEventService.reportedFieldsByDevice() already provides in production today -- confirmed by real logged data, not a guess. 'type_inferred' is the older, sometimes-wrong DeviceType.telemetryFields() static guess this relationship replaces as the actual source of truth (kept as a valid value so a not-yet-observed device can still get a provisional answer). 'vendor_spec' and 'manual_override' are the two additional sources a separate, not-yet-built proposal describes (multiple competing user-selectable device definitions with provenance) -- not wired to any UI yet, but the schema already has room for them so that work doesn't need a breaking schema change later."
+    },
+    "confirmed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Axiom: time is primary on every fact. When this relationship was last confirmed true, not just when the row was first created -- lets a stale empirical_observation (a device that's gone quiet) be told apart from a fresh one."
+    },
+    "location": {
+      "$ref": "./location.schema.json",
+      "description": "D6: Location is first-class from day one; defaults to cabin if omitted. Present here because a reporting relationship, not just the device itself, is meaningfully scoped to where the device physically is."
+    }
+  },
+  "additionalProperties": false
+}

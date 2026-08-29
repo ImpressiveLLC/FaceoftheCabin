@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cabin.unicornpingpong.com/schema/location.schema.json",
+  "title": "Location",
+  "description": "D6 (docs/ontology/DECISIONS.md): Location is a first-class entity in the schema from day one, not a bare string attribute on a device -- defaults to 'cabin' when omitted, since that's every device's implicit home before Home comes fully online. Deliberately minimal: this is a Sprint 1 stub so device-reporting-relationship.schema.json has a real $ref target, not a full migration of the existing DeviceStatus.location string attribute (that migration is out of scope for Sprint 1 -- see DECISIONS.md's D6 status note).",
+  "type": "object",
+  "required": ["location_id"],
+  "properties": {
+    "location_id": {
+      "type": "string",
+      "enum": ["cabin", "home"],
+      "default": "cabin",
+      "description": "The two locations this platform currently spans. Not an open enum yet -- extend when a third location is actually onboarded, not speculatively."
+    },
+    "area": {
+      "type": ["string", "null"],
+      "description": "Sub-location dimension per the axioms ('Location... and Area are first-class dimensions') -- e.g. mech_room, kitchen. Currently only exists informally baked into device names (temp_mech_room); not a queryable field anywhere yet. Nullable because most devices don't have one assigned today."
+    }
+  },
+  "additionalProperties": false
+}
