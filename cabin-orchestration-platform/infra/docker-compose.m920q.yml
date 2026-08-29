@@ -299,6 +299,13 @@ services:
       # Optional -- unset keeps discovery in local-catalog-only mode (see
       # .env.m920q.example). Never logged, never returned in API responses.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Optional, added 2026-08-29 -- required only for an "identity-linked"
+      # API key (Anthropic's newer per-member key type on an Individual Org
+      # plan), which the API otherwise rejects with a 400 on every request.
+      # A workspace-owned key on a paid team org may not need this at all --
+      # see anthropic_lookup.py's own comment for the real error message
+      # that motivated this.
+      ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status==200 else 1)"]
       interval: 30s
