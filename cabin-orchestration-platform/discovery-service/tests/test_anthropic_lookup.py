@@ -120,6 +120,35 @@ def test_invalid_suggested_type_is_dropped_not_passed_through(monkeypatch):
     assert matches[0].suggestedCapabilities == []
 
 
+def test_workspace_id_env_var_is_sent_as_a_header_when_set(monkeypatch):
+    # 2026-08-29: an identity-linked API key needs this header on every
+    # request or Anthropic rejects it with a 400 -- confirmed against the
+    # real error message ("anthropic-workspace-id is required when
+    # authenticating with an identity-linked API key...") the very key
+    # this was built for actually returned.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_abc123")
+    with patch("app.anthropic_lookup.anthropic.Anthropic") as mock_client_cls:
+        mock_client_cls.return_value.messages.create.return_value = SimpleNamespace(content=[])
+        run_discovery(DiscoverRequest(vendor="SONOFF", model="SNZB-04P"))
+
+    mock_client_cls.assert_called_once_with(
+        api_key="test-key", default_headers={"anthropic-workspace-id": "wrkspc_abc123"})
+
+
+def test_no_workspace_id_env_var_omits_the_header_entirely(monkeypatch):
+    # An older-style, workspace-scoped key doesn't need (and per the SDK's
+    # own header-merging, shouldn't be sent) this header at all -- must
+    # stay opt-in, not become a hard requirement for every deployment.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("ANTHROPIC_WORKSPACE_ID", raising=False)
+    with patch("app.anthropic_lookup.anthropic.Anthropic") as mock_client_cls:
+        mock_client_cls.return_value.messages.create.return_value = SimpleNamespace(content=[])
+        run_discovery(DiscoverRequest(vendor="SONOFF", model="SNZB-04P"))
+
+    mock_client_cls.assert_called_once_with(api_key="test-key")
+
+
 def test_api_exception_falls_back_gracefully(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     with patch("app.anthropic_lookup.anthropic.Anthropic") as mock_client_cls:

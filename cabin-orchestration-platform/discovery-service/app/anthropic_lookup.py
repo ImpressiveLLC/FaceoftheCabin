@@ -94,7 +94,17 @@ def run_discovery(request: DiscoverRequest) -> list[Match]:
             request, reason="No vendor, model, or description was reported by discovery -- nothing to search for.")]
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
+        # Found 2026-08-29: a newly-created key came back "identity-linked"
+        # (Anthropic's newer per-member key type, as opposed to the older
+        # workspace-scoped kind) -- the API rejects every request from one
+        # of these with a 400 unless an anthropic-workspace-id header names
+        # which workspace the request acts in. An older-style key doesn't
+        # need this at all, so it stays optional: only sent if set.
+        client_kwargs = {"api_key": api_key}
+        workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
+        if workspace_id:
+            client_kwargs["default_headers"] = {"anthropic-workspace-id": workspace_id}
+        client = anthropic.Anthropic(**client_kwargs)
         user_prompt = _build_user_prompt(request)
         response = client.messages.create(
             model=MODEL,
