@@ -45,18 +45,24 @@ verifiable until something is actually running.
 
 ## Sprint 1 — Postgres device repo class + D7 entity schema properties
 
-**Status: IN PROGRESS (started 2026-08-30).** Scope expanded the same day
-per direct user instruction, folding in KB Generator v1 and the generic
-D4 provenance mixin alongside the original two issues — see DECISIONS.md's
-2026-08-30 verification note for what that instruction was and wasn't
-based on.
+**Status: #30/#31/#33 SHIPPED (2026-08-30); #32 not started.** Scope
+expanded the same day per direct user instruction, folding in KB Generator
+v1 and the generic D4 provenance mixin alongside the original two issues —
+see DECISIONS.md's 2026-08-30 verification note for what that instruction
+was and wasn't based on.
 
-| # | Issue | Covers |
-|---|---|---|
-| 1 | [#30 — Postgres-backed DeviceRepository for the D1/D6/D7 entity schema](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/30) | Base repository class; real columns instead of the `device` table's catch-all `config` JSONB; D6 Location-as-entity stub |
-| 2 | [#31 — Persist D7 reporting relationships with provenance](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/31) | The D7-specific migration: persists what `CabinEventService.reportedFieldsByDevice()` and `vendor_spec.py` already compute live today, with `confirmation_source` provenance; also closes the known `DmDeviceDetail`/mold-risk-trigger inconsistency |
-| 3 | [#32 — KB Generator v1](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/32) | First KnowledgeNode source, feeding the Tiny Helpdesk deployed 2026-08-30; D5 `auto_generated` tagging is a hard requirement, not a nice-to-have |
-| 4 | [#33 — Generic Provenance mixin](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/33) | D4's `created_by/modified_by/version` audit columns on Device/Rule — additive to, not a replacement for, #31's `confirmation_source` |
+| # | Issue | Covers | Status |
+|---|---|---|---|
+| 1 | [#30 — Postgres-backed DeviceRepository for the D1/D6/D7 entity schema](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/30) | Base repository class; real columns (`manufacturer`, `model`, `area`, `paired_at`) instead of the `device` table's catch-all `config` JSONB | **Shipped.** Deployed to M920q; live data confirms real devices already populated (e.g. `z2m-temp_kitchen` → SONOFF/SNZB-02WD) |
+| 2 | [#31 — Persist D7 reporting relationships with provenance](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/31) | New `device_reporting_relationship` table; both `vendor_spec` (Zigbee2MqttAdapter) and `empirical_observation` (`CabinEventService.reportedFieldsByDevice()`) now persist through one priority-respecting repository | **Shipped.** Deployed; the whole Zigbee fleet has real rows (verified live) |
+| 3 | [#32 — KB Generator v1](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/32) | First KnowledgeNode source, feeding the Tiny Helpdesk deployed 2026-08-30; D5 `auto_generated` tagging is a hard requirement, not a nice-to-have | **Not started.** Larger, more open-ended than the others (new KnowledgeNode table, HA REST API client, safety-critical exclusion logic) — deliberately not started in the same push as #30/#31/#33 |
+| 4 | [#33 — Generic Provenance mixin](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/33) | D4's `created_by/modified_by/version` audit columns on `device` — additive to, not a replacement for, #31's `confirmation_source` | **Shipped** (same migration as #30 — both landed together since they share the same additive `ALTER TABLE`) |
+
+**Not yet reconciled, tracked but not fixed this session:** `DmDeviceDetail`'s
+"Reports" row and the mold-risk trigger's device-scoping picker still read
+`DeviceType.telemetryFields()` (the older static guess), not the new
+`device_reporting_relationship` table this issue just built. Closing that
+is real follow-up work, not assumed done by #31 landing.
 
 "Observation tables" (the two-layer `device_state`/`observations` model)
 is **not** a new issue — it's already built, just under different names
