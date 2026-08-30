@@ -7,6 +7,20 @@ document; this is the committed, repo-local copy so Sprint work can
 reference and link against stable section anchors (`#d1-identity` etc.)
 instead of an external doc this repo has no direct read access to.
 
+**Verification note (2026-08-30):** a Cowork peer session reported writing
+a "D9" decision plus five locked-in policy answers (KB content, cost
+tolerance, auto-run vs. click-triggered enrichment, search-engine privacy,
+per-clone vs. shared enrichment) to a project file
+(`cabin-ontology-decisions.md`) this repo has no read access to. The one
+artifact link provided alongside that report was read in full and contains
+none of that — it stops at D6, matching the Divergence Resolutions below.
+Treat "D9" and the five answers as **unconfirmed** until the actual text
+reaches this repo (pasted directly, or a readable link). Sprint 1 work
+below proceeds on the parts that don't depend on those answers, using this
+artifact's own already-stated KB Generator v0.1/v1 source list (HA REST
+API + Zigbee2MQTT, then the smrekar-platform device table) as the working
+default for KB Generator scope absent a confirmed alternative.
+
 ## WSJF Formula
 
 ```
@@ -138,8 +152,17 @@ first-class, queryable entity with its own provenance (D4) — it's
 recomputed live from `cabin_event` on every request, not stored. Sprint 1's
 job is exactly that: give this relationship real columns and a real
 repository, with `confirmation_source` distinguishing `empirical_observation`
-(what exists today) from `vendor_spec`/`manual_override` (not yet wired to
-any UI — see the device-definition-architecture note below).
+(what exists today) from `vendor_spec`/`manual_override`.
+
+**Update 2026-08-30:** `vendor_spec` is no longer a stub — `Zigbee2MqttAdapter.
+extractVendorReportedFields()` parses Z2M's real `exposes[]` and
+`cabin-discovery`'s `vendor_spec.py` provider returns it as a confirmed,
+zero-network-call match (`suggestedReportedFieldsSource: "vendor_spec"`),
+verified live against a real device. Still not persisted anywhere — this
+remains a request-time computation on both the empirical and vendor_spec
+paths. Sprint 1's device_reporting_relationship table (issue #31) is what
+turns both into a stored, queryable fact instead of two different live
+computations.
 
 **Related, not yet reconciled:** a separate proposal (multiple competing,
 user-selectable device definitions with provenance — e.g. a community-sourced

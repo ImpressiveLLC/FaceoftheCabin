@@ -45,12 +45,24 @@ verifiable until something is actually running.
 
 ## Sprint 1 — Postgres device repo class + D7 entity schema properties
 
-**Status: ISSUES OPEN, NOT STARTED.**
+**Status: IN PROGRESS (started 2026-08-30).** Scope expanded the same day
+per direct user instruction, folding in KB Generator v1 and the generic
+D4 provenance mixin alongside the original two issues — see DECISIONS.md's
+2026-08-30 verification note for what that instruction was and wasn't
+based on.
 
 | # | Issue | Covers |
 |---|---|---|
 | 1 | [#30 — Postgres-backed DeviceRepository for the D1/D6/D7 entity schema](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/30) | Base repository class; real columns instead of the `device` table's catch-all `config` JSONB; D6 Location-as-entity stub |
-| 2 | [#31 — Persist D7 reporting relationships with provenance](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/31) | The D7-specific migration: persists what `CabinEventService.reportedFieldsByDevice()` already computes live today, with `confirmation_source` provenance; also closes the known `DmDeviceDetail`/mold-risk-trigger inconsistency |
+| 2 | [#31 — Persist D7 reporting relationships with provenance](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/31) | The D7-specific migration: persists what `CabinEventService.reportedFieldsByDevice()` and `vendor_spec.py` already compute live today, with `confirmation_source` provenance; also closes the known `DmDeviceDetail`/mold-risk-trigger inconsistency |
+| 3 | [#32 — KB Generator v1](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/32) | First KnowledgeNode source, feeding the Tiny Helpdesk deployed 2026-08-30; D5 `auto_generated` tagging is a hard requirement, not a nice-to-have |
+| 4 | [#33 — Generic Provenance mixin](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/33) | D4's `created_by/modified_by/version` audit columns on Device/Rule — additive to, not a replacement for, #31's `confirmation_source` |
+
+"Observation tables" (the two-layer `device_state`/`observations` model)
+is **not** a new issue — it's already built, just under different names
+(see D2's own Status note below): `DeviceRegistry`'s in-memory state is
+`device_state`, `cabin_event` is `observations`. #30 formalizes the
+`device` side of this; the observation side needs no new schema work.
 
 **JSON Schema stubs (this sprint's task 3), already committed:**
 - `docs/ontology/schema/device-reporting-relationship.schema.json` — D7
