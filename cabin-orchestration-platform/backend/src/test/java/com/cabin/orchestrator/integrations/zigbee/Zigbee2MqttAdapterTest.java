@@ -130,4 +130,61 @@ class Zigbee2MqttAdapterTest {
 
         assertFalse(registry.get("z2m-motion_entry").attributes().containsKey("expectedCheckinMinutes"));
     }
+
+    // D7 (docs/ontology/DECISIONS.md), Option B -- extractVendorReportedFields().
+    // Fixture is the REAL exposes[] confirmed live against z2m-temp_kitchen
+    // (SNZB-02WD) 2026-08-29, not a simplified guess: a naive "every numeric
+    // expose" mapping would have wrongly included temperature_calibration/
+    // humidity_calibration (category "config" -- a writable setting, not a
+    // reported measurement) and voltage/linkquality (real diagnostic values,
+    // but not environmental measurement types this schema models).
+    @Test
+    void vendorReportedFieldsExcludesConfigAndDiagnosticExposesKeepingOnlyRealMeasurements() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"temp_kitchen","type":"EndDevice","definition":{
+              "model":"SNZB-02WD","vendor":"SONOFF","description":"Waterproof temperature and humidity sensor",
+              "exposes":[
+                {"type":"numeric","name":"battery","property":"battery","category":"diagnostic"},
+                {"type":"numeric","name":"voltage","property":"voltage","category":"diagnostic"},
+                {"type":"numeric","name":"temperature","property":"temperature"},
+                {"type":"numeric","name":"humidity","property":"humidity"},
+                {"type":"enum","name":"temperature_units","property":"temperature_units","category":"config"},
+                {"type":"numeric","name":"temperature_calibration","property":"temperature_calibration","category":"config"},
+                {"type":"numeric","name":"humidity_calibration","property":"humidity_calibration","category":"config"},
+                {"type":"numeric","name":"linkquality","property":"linkquality","category":"diagnostic"}
+              ]}}]
+            """);
+
+        @SuppressWarnings("unchecked")
+        List<String> fields = (List<String>) registry.get("z2m-temp_kitchen").attributes().get("vendorReportedFields");
+        // Order follows the exposes[] array itself (battery appears before
+        // temperature/humidity in the real fixture) -- this asserts the
+        // filtering, not a re-sort the method doesn't claim to do.
+        assertEquals(List.of("battery", "temperature", "humidity"), fields);
+    }
+
+    @Test
+    void vendorReportedFieldsIsAbsentEntirelyWhenExposesHasNoRealMeasurements() throws Exception {
+        registerDevice("motion_entry"); // fixture's own exposes:[] is empty
+
+        assertFalse(registry.get("z2m-motion_entry").attributes().containsKey("vendorReportedFields"),
+            "omitted entirely, not an empty list -- see the field's own comment on why that distinction matters");
+    }
+
+    @Test
+    void vendorReportedFieldsRecursesIntoCompositeFeatures() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"leak_spare","type":"EndDevice","definition":{
+              "model":"WL2","vendor":"THIRDREALITY","description":"leak sensor","exposes":[
+                {"type":"composite","name":"leak_group","features":[
+                  {"type":"numeric","name":"temperature","property":"temperature"},
+                  {"type":"binary","name":"water_leak","property":"water_leak"}
+                ]}
+              ]}}]
+            """);
+
+        @SuppressWarnings("unchecked")
+        List<String> fields = (List<String>) registry.get("z2m-leak_spare").attributes().get("vendorReportedFields");
+        assertEquals(List.of("temperature"), fields);
+    }
 }

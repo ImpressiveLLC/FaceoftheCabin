@@ -31,3 +31,19 @@ def test_discover_returns_matches_from_run_discovery():
     assert len(body["matches"]) == 1
     assert body["matches"][0]["summary"] == "A test device"
     mock_run.assert_called_once()
+
+
+def test_discover_short_circuits_on_vendor_spec_without_calling_run_discovery():
+    # D7's whole point: a device Z2M already told us about shouldn't wait
+    # behind the same 25s budget the Anthropic-backed path needs.
+    with patch("app.main.run_discovery") as mock_run:
+        response = client.post("/discover", json={
+            "vendor": "SONOFF", "model": "SNZB-02WD",
+            "discoveryAttributes": {"vendorReportedFields": ["temperature", "humidity"]},
+        })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["matches"]) == 1
+    assert body["matches"][0]["suggestedReportedFieldsSource"] == "vendor_spec"
+    mock_run.assert_not_called()

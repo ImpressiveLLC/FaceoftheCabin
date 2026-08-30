@@ -72,7 +72,7 @@ public class DiscoveryServiceClient {
                 + "a vendor, model, or description to identify it from."
             : (vendor + " " + model + (description.isBlank() ? "" : " -- " + description)).trim();
         DeviceDiscoveryResult.Match match = new DeviceDiscoveryResult.Match(
-            summary, "low", descriptor.name(), descriptor.type(), descriptor.capabilities(),
+            summary, "low", descriptor.name(), descriptor.type(), descriptor.capabilities(), List.of(), null,
             new DeviceDiscoveryResult.InstallGuide("linkonly",
                 "The discovery service didn't respond, so this reflects only what " + descriptor.protocolAdapter()
                     + " discovery already reported -- nothing external was looked up."),

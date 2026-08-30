@@ -24,6 +24,20 @@ public record DeviceDiscoveryResult(
         String suggestedName,
         DeviceType suggestedType,
         Set<DeviceCapability> suggestedCapabilities,
+        // D7 (docs/ontology/DECISIONS.md): specific measurement-type names
+        // this device reports (e.g. "temperature", "humidity"), distinct
+        // from suggestedCapabilities' broader DeviceCapability buckets --
+        // added 2026-08-29 alongside the LocalCatalogProvider path in
+        // cabin-discovery, which populates this from Z2M's own exposes[]
+        // when available. Empty for a match that doesn't have this data,
+        // e.g. the Anthropic-backed path, which doesn't populate it yet.
+        List<String> suggestedReportedFields,
+        // D4's provenance mixin, applied to suggestedReportedFields
+        // specifically -- "vendor_spec" for the LocalCatalogProvider (Z2M's
+        // own exposes[]), null for a match that doesn't carry this kind of
+        // claim at all (not every Match makes a reporting-relationship
+        // claim, so this isn't defaulted to a value implying one).
+        String suggestedReportedFieldsSource,
         InstallGuide installGuide,
         List<Source> sources
     ) {}

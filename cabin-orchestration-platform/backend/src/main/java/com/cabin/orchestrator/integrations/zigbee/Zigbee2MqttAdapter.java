@@ -153,6 +153,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 JsonNode definition = device.path("definition");
                 Set<DeviceCapability> caps = inferCapabilities(definition);
                 DeviceType type = inferType(definition, caps);
+                List<String> vendorReportedFields = extractVendorReportedFields(definition);
 
                 DeviceDescriptor desc = new DeviceDescriptor(
                     deviceId,
@@ -168,6 +169,17 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 discovery.put("discoveredFrom", "Zigbee2MQTT bridge/devices");
                 discovery.put("model", definition.path("model").asText(""));
                 discovery.put("vendor", definition.path("vendor").asText(""));
+                // D7 (docs/ontology/DECISIONS.md): forwarded wholesale to
+                // cabin-discovery via DiscoveryServiceClient's discoveryAttributes
+                // passthrough -- its LocalCatalogProvider uses this for a free,
+                // vendor-confirmed match with zero network call, before ever
+                // trying a paid/AI lookup. Omitted entirely (not an empty list)
+                // when there's nothing real to report, so the Python side's
+                // simple truthiness check can't mistake "we checked and found
+                // nothing" for "we never checked."
+                if (!vendorReportedFields.isEmpty()) {
+                    discovery.put("vendorReportedFields", vendorReportedFields);
+                }
                 String powerSource = device.path("power_source").asText(
                     definition.path("power_source").asText("unknown"));
                 discovery.put("powerSource", powerSource);
@@ -310,6 +322,46 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 caps.add(DeviceCapability.TELEMETRY);
                 if (writable) caps.add(DeviceCapability.COMMAND);
             }
+        }
+    }
+
+    // D7 (docs/ontology/DECISIONS.md), Option B: the real reporting-
+    // relationship names docs/ontology/schema/device-reporting-relationship.schema.json
+    // recognizes -- deliberately closed, matching that schema's own enum,
+    // not every numeric key Z2M happens to expose. Confirmed live against
+    // z2m-temp_kitchen's real exposes[] (2026-08-29) that a naive "every
+    // numeric expose" mapping would have wrongly included temperature_calibration/
+    // humidity_calibration (category: "config", i.e. a writable setting, not
+    // a reported measurement) and voltage/linkquality (real diagnostic
+    // values, but not environmental measurement types this schema models) --
+    // filtering on both category and this closed name set is why the
+    // exclusion holds even for a device whose exposes happen to use the
+    // same "numeric" type for a setting as for a real reading.
+    private static final Set<String> D7_MEASUREMENT_TYPES = Set.of(
+        "temperature", "humidity", "co2", "air_quality_index", "co", "pressure", "power", "battery");
+
+    private List<String> extractVendorReportedFields(JsonNode definition) {
+        List<String> fields = new ArrayList<>();
+        JsonNode exposes = definition.path("exposes");
+        if (exposes.isArray()) {
+            for (JsonNode expose : exposes) collectVendorReportedFields(expose, fields);
+        }
+        return fields;
+    }
+
+    private void collectVendorReportedFields(JsonNode expose, List<String> fields) {
+        String type = expose.path("type").asText("");
+        if ("composite".equals(type)) {
+            JsonNode features = expose.path("features");
+            if (features.isArray()) {
+                for (JsonNode sub : features) collectVendorReportedFields(sub, fields);
+            }
+            return;
+        }
+        String category = expose.path("category").asText("");
+        String name = expose.path("name").asText("");
+        if ("numeric".equals(type) && !"config".equals(category) && D7_MEASUREMENT_TYPES.contains(name)) {
+            fields.add(name);
         }
     }
 
