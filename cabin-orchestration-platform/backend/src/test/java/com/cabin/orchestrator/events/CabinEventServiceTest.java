@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.events;
 
+import com.cabin.orchestrator.devices.JdbcDeviceReportingRelationshipRepository;
+import com.cabin.orchestrator.devices.model.ConfirmationSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,12 +31,17 @@ class CabinEventServiceTest {
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     private CabinEventService service;
+    private JdbcTemplate jdbc;
 
     @BeforeEach
     void setUp() {
-        JdbcTemplate jdbc = new JdbcTemplate(new SimpleDriverDataSource(
+        jdbc = new JdbcTemplate(new SimpleDriverDataSource(
             new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
         jdbc.execute("DROP TABLE IF EXISTS cabin_event");
+        // Reset between tests same as cabin_event above -- several tests below
+        // reuse device ids like "z2m-humid_mech" and would otherwise see a
+        // previous test's leftover reporting-relationship rows.
+        jdbc.execute("DROP TABLE IF EXISTS device_reporting_relationship");
         service = new CabinEventService(jdbc); // constructor does CREATE TABLE IF NOT EXISTS
 
         // Seed a realistic mix: camera events (DETECTION_*/MOTION_*) interleaved
@@ -271,5 +278,37 @@ class CabinEventServiceTest {
     void reportedFieldsByDeviceHasNoEntryForADeviceThatHasNeverLoggedAnything() {
         Map<String, List<String>> result = service.reportedFieldsByDevice();
         assertThat(result).doesNotContainKey("z2m-never-reported-anything");
+    }
+
+    // Issue #31: reportedFieldsByDevice() also reconciles each recognized
+    // field into a real, queryable device_reporting_relationship row --
+    // the shared `service` field above uses the no-op convenience
+    // constructor (see CabinEventService's own comment on why), so this
+    // needs its own instance wired to a real repository to observe it.
+    @Test
+    void reportedFieldsByDevicePersistsRecognizedFieldsAsEmpiricalObservation() {
+        JdbcDeviceReportingRelationshipRepository reportingRepository = new JdbcDeviceReportingRelationshipRepository(jdbc);
+        CabinEventService serviceWithPersistence = new CabinEventService(jdbc, reportingRepository);
+        saveTelemetry("combo-persist-1", "z2m-humid_persist", Instant.now(), Map.of("humidity", 70, "temperature", 18));
+
+        serviceWithPersistence.reportedFieldsByDevice();
+
+        var saved = reportingRepository.findByDevice("z2m-humid_persist");
+        assertThat(saved).hasSize(2);
+        assertThat(saved).allMatch(r -> r.confirmationSource() == ConfirmationSource.EMPIRICAL_OBSERVATION);
+    }
+
+    @Test
+    void reportedFieldsByDeviceNeverDowngradesAnAlreadyVendorSpecConfirmedField() {
+        JdbcDeviceReportingRelationshipRepository reportingRepository = new JdbcDeviceReportingRelationshipRepository(jdbc);
+        reportingRepository.upsert(new com.cabin.orchestrator.devices.model.DeviceReportingRelationship(
+            "z2m-humid_confirmed", "humidity", "humidity", ConfirmationSource.VENDOR_SPEC, Instant.now()));
+        CabinEventService serviceWithPersistence = new CabinEventService(jdbc, reportingRepository);
+        saveTelemetry("combo-persist-2", "z2m-humid_confirmed", Instant.now(), Map.of("humidity", 70));
+
+        serviceWithPersistence.reportedFieldsByDevice();
+
+        var found = reportingRepository.findByDevice("z2m-humid_confirmed").get(0);
+        assertThat(found.confirmationSource()).isEqualTo(ConfirmationSource.VENDOR_SPEC);
     }
 }

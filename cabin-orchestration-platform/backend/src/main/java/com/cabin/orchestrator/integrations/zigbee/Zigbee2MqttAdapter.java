@@ -1,6 +1,7 @@
 package com.cabin.orchestrator.integrations.zigbee;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.DeviceReportingRelationshipRepository;
 import com.cabin.orchestrator.devices.model.*;
 import com.cabin.orchestrator.events.AlertSeverityClassifier;
 import com.cabin.orchestrator.events.CabinEvent;
@@ -13,6 +14,7 @@ import jakarta.annotation.PreDestroy;
 import org.eclipse.paho.client.mqttv3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -53,6 +55,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     private final DeviceRegistry registry;
     private final EventPublisher eventPublisher;
     private final SignalQualityRegistry signalQualityRegistry;
+    private final DeviceReportingRelationshipRepository reportingRelationshipRepository;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     // Tracks friendly names seen via bridge/devices so we know which topics are Z2M devices
@@ -60,11 +63,24 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     // Tracks whether bridge is online
     private volatile String bridgeState = "offline";
 
+    @Autowired
     public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher,
-                               SignalQualityRegistry signalQualityRegistry) {
+                               SignalQualityRegistry signalQualityRegistry,
+                               DeviceReportingRelationshipRepository reportingRelationshipRepository) {
         this.registry = registry;
         this.eventPublisher = eventPublisher;
         this.signalQualityRegistry = signalQualityRegistry;
+        this.reportingRelationshipRepository = reportingRelationshipRepository;
+    }
+
+    /** Convenience constructor for isolated unit tests that don't care about D7 persistence. */
+    public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher,
+                               SignalQualityRegistry signalQualityRegistry) {
+        this(registry, eventPublisher, signalQualityRegistry, new DeviceReportingRelationshipRepository() {
+            @Override public void upsert(DeviceReportingRelationship relationship) { }
+            @Override public List<DeviceReportingRelationship> findByDevice(String deviceId) { return List.of(); }
+            @Override public Map<String, List<DeviceReportingRelationship>> loadAll() { return Map.of(); }
+        });
     }
 
     @PostConstruct
@@ -194,6 +210,17 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 boolean firstSeen = registry.registerCandidate(desc, discovery);
                 if (firstSeen) log.info("Z2M discovered new device: {} ({})", friendlyName, type);
                 else log.debug("Z2M refreshed device: {} ({})", friendlyName, type);
+                // D7 persistence (issue #31): vendor_spec is the highest-trust
+                // ConfirmationSource short of a manual override, so this never
+                // needs to check what's already there -- upsert()'s own
+                // priority rule handles that. measurement_type == semanticField
+                // here because D7_MEASUREMENT_TYPES is already the exact
+                // vocabulary this schema's measurement_type enum uses.
+                Instant confirmedNow = Instant.now();
+                for (String field : vendorReportedFields) {
+                    reportingRelationshipRepository.upsert(new DeviceReportingRelationship(
+                        deviceId, field, field, ConfirmationSource.VENDOR_SPEC, confirmedNow));
+                }
             }
         } catch (Exception e) {
             log.warn("Failed to parse Z2M device list: {}", e.getMessage());

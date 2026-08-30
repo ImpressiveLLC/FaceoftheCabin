@@ -1,8 +1,11 @@
 package com.cabin.orchestrator.integrations.zigbee;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.DeviceReportingRelationshipRepository;
+import com.cabin.orchestrator.devices.model.ConfirmationSource;
 import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
+import com.cabin.orchestrator.devices.model.DeviceReportingRelationship;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.signalquality.SignalQualityRegistry;
@@ -10,6 +13,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -186,5 +190,39 @@ class Zigbee2MqttAdapterTest {
         @SuppressWarnings("unchecked")
         List<String> fields = (List<String>) registry.get("z2m-leak_spare").attributes().get("vendorReportedFields");
         assertEquals(List.of("temperature"), fields);
+    }
+
+    @Test
+    void vendorReportedFieldsArePersistedAsVendorSpecReportingRelationships() throws Exception {
+        RecordingReportingRelationshipRepository reportingRepository = new RecordingReportingRelationshipRepository();
+        Zigbee2MqttAdapter adapterWithPersistence = new Zigbee2MqttAdapter(
+            registry, new EventPublisher(), signalQualityRegistry, reportingRepository);
+
+        adapterWithPersistence.messageArrived("zigbee2mqtt/bridge/devices", new MqttMessage("""
+            [{"friendly_name":"temp_kitchen","type":"EndDevice","definition":{
+              "model":"SNZB-02WD","vendor":"SONOFF","description":"Waterproof temperature and humidity sensor",
+              "exposes":[
+                {"type":"numeric","name":"temperature","property":"temperature"},
+                {"type":"numeric","name":"humidity","property":"humidity"}
+              ]}}]
+            """.getBytes()));
+
+        List<DeviceReportingRelationship> saved = reportingRepository.findByDevice("z2m-temp_kitchen");
+        assertEquals(2, saved.size());
+        assertTrue(saved.stream().allMatch(r -> r.confirmationSource() == ConfirmationSource.VENDOR_SPEC));
+        assertTrue(saved.stream().map(DeviceReportingRelationship::semanticField).toList()
+            .containsAll(List.of("temperature", "humidity")));
+    }
+
+    private static final class RecordingReportingRelationshipRepository implements DeviceReportingRelationshipRepository {
+        private final Map<String, DeviceReportingRelationship> saved = new LinkedHashMap<>();
+
+        @Override public void upsert(DeviceReportingRelationship relationship) {
+            saved.put(relationship.deviceId() + "|" + relationship.semanticField(), relationship);
+        }
+        @Override public List<DeviceReportingRelationship> findByDevice(String deviceId) {
+            return saved.values().stream().filter(r -> r.deviceId().equals(deviceId)).toList();
+        }
+        @Override public Map<String, List<DeviceReportingRelationship>> loadAll() { return Map.of(); }
     }
 }

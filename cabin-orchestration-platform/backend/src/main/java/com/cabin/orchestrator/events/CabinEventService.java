@@ -1,7 +1,12 @@
 package com.cabin.orchestrator.events;
 
+import com.cabin.orchestrator.devices.DeviceReportingRelationshipRepository;
+import com.cabin.orchestrator.devices.model.ConfirmationSource;
+import com.cabin.orchestrator.devices.model.D7MeasurementTypes;
+import com.cabin.orchestrator.devices.model.DeviceReportingRelationship;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -20,10 +25,13 @@ import java.util.Map;
 public class CabinEventService {
 
     private final JdbcTemplate jdbc;
+    private final DeviceReportingRelationshipRepository reportingRelationshipRepository;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
-    public CabinEventService(JdbcTemplate jdbc) {
+    @Autowired
+    public CabinEventService(JdbcTemplate jdbc, DeviceReportingRelationshipRepository reportingRelationshipRepository) {
         this.jdbc = jdbc;
+        this.reportingRelationshipRepository = reportingRelationshipRepository;
         jdbc.execute("""
             CREATE TABLE IF NOT EXISTS cabin_event (
               event_id   TEXT PRIMARY KEY,
@@ -34,6 +42,15 @@ public class CabinEventService {
               payload    JSONB
             )""");
         jdbc.execute("CREATE INDEX IF NOT EXISTS cabin_event_time_idx ON cabin_event (\"time\" DESC)");
+    }
+
+    /** Convenience constructor for isolated unit tests that don't care about D7 persistence. */
+    public CabinEventService(JdbcTemplate jdbc) {
+        this(jdbc, new DeviceReportingRelationshipRepository() {
+            @Override public void upsert(DeviceReportingRelationship relationship) { }
+            @Override public List<DeviceReportingRelationship> findByDevice(String deviceId) { return List.of(); }
+            @Override public Map<String, List<DeviceReportingRelationship>> loadAll() { return Map.of(); }
+        });
     }
 
     public void save(CabinEvent event) {
@@ -192,9 +209,18 @@ public class CabinEventService {
             GROUP BY device_id, key
             """;
         Map<String, List<String>> result = new java.util.LinkedHashMap<>();
+        Instant confirmedNow = Instant.now();
         for (Map<String, Object> row : jdbc.queryForList(sql)) {
-            result.computeIfAbsent((String) row.get("device_id"), k -> new java.util.ArrayList<>())
-                .add((String) row.get("field"));
+            String deviceId = (String) row.get("device_id");
+            String field = (String) row.get("field");
+            result.computeIfAbsent(deviceId, k -> new java.util.ArrayList<>()).add(field);
+            // D7 persistence (issue #31): a field this query already proves is
+            // being reported gets a real, queryable row -- upsert()'s own
+            // priority rule means this can never downgrade an already
+            // vendor_spec- or manually-confirmed fact for the same field.
+            D7MeasurementTypes.toMeasurementType(field).ifPresent(measurementType ->
+                reportingRelationshipRepository.upsert(new DeviceReportingRelationship(
+                    deviceId, field, measurementType, ConfirmationSource.EMPIRICAL_OBSERVATION, confirmedNow)));
         }
         return result;
     }
