@@ -8,23 +8,40 @@ this file should never drift more than a sprint behind reality (see
 
 **Scope:** Tiny Helpdesk (Ollama + Open WebUI + KB Generator).
 
-**Status: NOT STARTED.** Verified live on the M920q 2026-08-29 — no
-container matching Ollama, Open WebUI, or a KB Generator exists yet
-(`docker ps -a` came back empty for all three). Matches what was already
-known going in: the user flagged this session that Tiny Helpdesk "still
-need[s] to finish setup."
+**Status: PARTIALLY DEPLOYED (2026-08-30).** Ollama + Open WebUI added to
+`docker-compose.m920q.yml` and brought up on the M920q (`ollama`,
+`open-webui` containers, network-internal only for Ollama — see that
+file's own comments for the port/auth reasoning). KB Generator is
+**not** part of this deploy: no implementation exists anywhere in this
+repo or elsewhere (confirmed via SSH 2026-08-29, and re-confirmed no
+change since). It's real engineering work — parsing `zigbee-herdsman-
+converters` data, generating KnowledgeNode entries — not a container to
+stand up, so it doesn't fit "deploy only." Tracked separately, not
+invented as fake Sprint-0 scope; see the KB Generator issue below.
 
-No GitHub issues opened yet for Sprint 0 — deliberately not invented ahead
-of an actual deployment plan. Open them once the deploy approach (which
-Ollama model, which KB source material, Open WebUI auth model) is decided,
-not before.
+Deploy-approach decisions made this session, closing out the reason
+issues weren't opened earlier:
+- **Model:** `llama3.2:3b` (3B, default q4_K_M quant). Benchmarked live
+  on this hardware (i7-8700T, no GPU) before committing: ~14 tok/s
+  generation / ~49 tok/s prompt-eval once warm, first-load ~3s. Fine for
+  occasional lookups, not real-time chat — that's this hardware's
+  ceiling, not a config choice worth re-litigating without different
+  hardware.
+- **Open WebUI auth:** `WEBUI_AUTH=true` (its own default — first
+  account created becomes admin). Reachable by anyone on the tailnet,
+  same boundary as every other admin surface in that compose file.
+- **KB source material:** still open — nobody has said yet what content
+  the KB Generator should actually turn into KnowledgeNodes beyond the
+  `zigbee-herdsman-converters` capability data the D7 vendor_spec work
+  already parses. Needs the user's input before that issue can be scoped
+  precisely.
 
-**Watch for once deployed:** D5 (`KnowledgeNode.source = auto_generated |
-manually_curated`) applies directly to whatever the KB Generator produces.
-Confirm it actually tags output that way, and that anything touching a
-safety-critical automation (freeze risk, mold risk, water shutoff) is
-excluded from auto-generated content per that decision — not verifiable
-until something is actually running.
+**Watch for once the KB Generator exists:** D5 (`KnowledgeNode.source =
+auto_generated | manually_curated`) applies directly to whatever it
+produces. Confirm it actually tags output that way, and that anything
+touching a safety-critical automation (freeze risk, mold risk, water
+shutoff) is excluded from auto-generated content per that decision — not
+verifiable until something is actually running.
 
 ## Sprint 1 — Postgres device repo class + D7 entity schema properties
 

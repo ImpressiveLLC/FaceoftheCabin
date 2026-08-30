@@ -395,6 +395,61 @@ services:
     depends_on:
       - cabin-backend
 
+  # ── Tiny Helpdesk: Ollama (local LLM runtime) ────────────────────────
+  # Sprint 0 (docs/ontology/SPRINT-STATUS.md). No host port published --
+  # Ollama has no built-in auth, so the only exposed surface is Open WebUI
+  # below; everything else on cabin_default reaches it at
+  # http://ollama:11434.
+  # Model: llama3.2:3b (3B, default q4_K_M quantization) -- benchmarked
+  # live on this hardware 2026-08-30 (i7-8700T, no GPU acceleration): once
+  # warm, ~14 tok/s generation and ~49 tok/s prompt eval; a short answer
+  # lands in 3-4s. Usable for occasional KB lookups, not real-time chat
+  # speed -- that ceiling is this hardware, not a config choice.
+  # Not auto-pulled by this compose file: after first deploy, run
+  # `docker exec ollama ollama pull llama3.2:3b` once. The model then
+  # persists in ollama_data across restarts/redeploys (only a fresh
+  # volume loses it).
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Tiny Helpdesk: Open WebUI (chat UI in front of Ollama) ───────────
+  # First account created becomes admin (Open WebUI's own default
+  # behavior) -- WEBUI_AUTH stays on since this is reachable by anyone on
+  # the tailnet, same boundary as every other admin surface in this file
+  # (Node-RED, Frigate, Home Assistant, Z2M): Tailscale-only, not behind
+  # Cloudflare Tunnel.
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_AUTH: "true"
+    volumes:
+      - openwebui_data:/app/backend/data
+    ports:
+      - "8081:8080"
+    networks:
+      - default
+    depends_on:
+      - ollama
+
+volumes:
+  ollama_data:
+  openwebui_data:
+
 networks:
   cabin_default:
     external: true
