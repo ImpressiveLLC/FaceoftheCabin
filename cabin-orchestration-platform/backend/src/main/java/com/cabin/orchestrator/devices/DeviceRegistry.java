@@ -24,6 +24,7 @@ public class DeviceRegistry {
     private final Map<String, DeviceLifecycleState> lifecycleStates = new ConcurrentHashMap<>();
     private final Set<String> configurationAsserted = ConcurrentHashMap.newKeySet();
     private final DeviceLifecycleStore lifecycleStore;
+    private final DeviceRepository deviceRepository;
     // Device configuration arrives on HTTP threads while discovery arrives on
     // MQTT callback and scheduler threads. Both descriptor and status must be
     // decided and written under the same per-device lock; two independent
@@ -31,11 +32,18 @@ public class DeviceRegistry {
     private final Map<String, Object> deviceLocks = new ConcurrentHashMap<>();
 
     @Autowired
-    public DeviceRegistry(List<ProtocolAdapter> adapterList, DeviceLifecycleStore lifecycleStore) {
+    public DeviceRegistry(List<ProtocolAdapter> adapterList, DeviceLifecycleStore lifecycleStore,
+                           DeviceRepository deviceRepository) {
         this.lifecycleStore = lifecycleStore;
+        this.deviceRepository = deviceRepository;
         adapterList.forEach(a -> adapters.put(a.adapterType(), a));
         seedDefaults();
         restorePersistedDevices();
+    }
+
+    /** Convenience constructor for isolated unit tests that do care about lifecycle persistence. */
+    public DeviceRegistry(List<ProtocolAdapter> adapterList, DeviceLifecycleStore lifecycleStore) {
+        this(adapterList, lifecycleStore, noOpDeviceRepository());
     }
 
     /** Convenience constructor for isolated unit tests. */
@@ -45,6 +53,21 @@ public class DeviceRegistry {
             @Override public void save(DeviceLifecycleRecord record) { }
             @Override public void delete(String deviceId) { }
         });
+    }
+
+    /** Empty-string values ("" -- an adapter's own JSON default for an absent field) count as absent, not a real fact worth persisting. */
+    private static String stringAttr(Map<String, Object> attrs, String key) {
+        Object value = attrs.get(key);
+        if (!(value instanceof String s) || s.isBlank()) return null;
+        return s;
+    }
+
+    private static DeviceRepository noOpDeviceRepository() {
+        return new DeviceRepository() {
+            @Override public void upsert(String deviceId, DeviceMetadata metadata) { }
+            @Override public Optional<DeviceMetadata> find(String deviceId) { return Optional.empty(); }
+            @Override public Map<String, DeviceMetadata> loadAll() { return Map.of(); }
+        };
     }
 
     private void seedDefaults() {
@@ -214,6 +237,20 @@ public class DeviceRegistry {
                 return new DeviceStatus(id, merged.type(), merged.name(), existing == null ? "UNKNOWN" : existing.state(),
                     existing == null ? Instant.now() : existing.lastSeen(), attrs, merged.location());
             });
+            // A no-op for a still-undecided candidate with no `device` row
+            // yet (see the comment above on why passive discovery doesn't
+            // persist) -- upsert() only updates an existing row. Manufacturer/
+            // model ride whatever key each adapter already populates
+            // ("vendor"/"model" for Zigbee2MqttAdapter); other adapters that
+            // don't populate them just leave metadata unchanged, not nulled.
+            if (discoveryAttributes != null) {
+                String manufacturer = stringAttr(discoveryAttributes, "vendor");
+                String model = stringAttr(discoveryAttributes, "model");
+                if (manufacturer != null || model != null) {
+                    deviceRepository.upsert(desc.deviceId(), new DeviceMetadata(
+                        manufacturer, model, null, Instant.now(), null, null, "system", null, 0));
+                }
+            }
             return firstSeen;
         }
     }

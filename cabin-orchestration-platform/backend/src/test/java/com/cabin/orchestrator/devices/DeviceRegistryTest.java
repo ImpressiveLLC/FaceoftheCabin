@@ -5,6 +5,7 @@ import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceLifecycleAction;
 import com.cabin.orchestrator.devices.model.DeviceLifecycleState;
+import com.cabin.orchestrator.devices.model.DeviceMetadata;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,6 +56,35 @@ class DeviceRegistryTest {
         assertEquals(DeviceLifecycleState.CANDIDATE.name(), status.attributes().get("deviceLifecycle"));
         assertEquals(true, status.attributes().get("candidate"));
         assertTrue(store.records.isEmpty(), "passive discovery is not a person-authored persistence event");
+    }
+
+    @Test
+    void registerCandidateUpsertsManufacturerAndModelWhenDiscoveryProvidesThem() {
+        RecordingDeviceRepository deviceRepository = new RecordingDeviceRepository();
+        DeviceRegistry withMetadata = new DeviceRegistry(List.of(), store, deviceRepository);
+
+        withMetadata.registerCandidate(descriptor(
+            "z2m-temp_kitchen", "Kitchen temp", DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/temp_kitchen", false, "cabin"),
+            Map.of("vendor", "SONOFF", "model", "SNZB-02WD"));
+
+        var metadata = deviceRepository.find("z2m-temp_kitchen").orElseThrow();
+        assertEquals("SONOFF", metadata.manufacturer());
+        assertEquals("SNZB-02WD", metadata.model());
+    }
+
+    @Test
+    void registerCandidateDoesNotUpsertWhenDiscoveryHasNeitherVendorNorModel() {
+        RecordingDeviceRepository deviceRepository = new RecordingDeviceRepository();
+        DeviceRegistry withMetadata = new DeviceRegistry(List.of(), store, deviceRepository);
+
+        withMetadata.registerCandidate(descriptor(
+            "ha-generic", "Generic entity", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(DeviceCapability.TELEMETRY), "ha_rest", "sensor.generic", false, "cabin"),
+            Map.of("discoveredFrom", "Home Assistant"));
+
+        assertTrue(deviceRepository.find("ha-generic").isEmpty(),
+            "an adapter that never populates vendor/model must not overwrite metadata with nulls");
     }
 
     @Test
@@ -565,6 +595,18 @@ class DeviceRegistryTest {
                                         Set<DeviceCapability> capabilities, String adapter,
                                         String connection, boolean enabled, String location) {
         return new DeviceDescriptor(id, name, type, capabilities, adapter, connection, enabled, location);
+    }
+
+    private static final class RecordingDeviceRepository implements DeviceRepository {
+        private final Map<String, DeviceMetadata> saved = new LinkedHashMap<>();
+
+        @Override public void upsert(String deviceId, DeviceMetadata metadata) {
+            saved.put(deviceId, metadata);
+        }
+        @Override public Optional<DeviceMetadata> find(String deviceId) {
+            return Optional.ofNullable(saved.get(deviceId));
+        }
+        @Override public Map<String, DeviceMetadata> loadAll() { return Map.copyOf(saved); }
     }
 
     private static final class RecordingStore implements DeviceLifecycleStore {
