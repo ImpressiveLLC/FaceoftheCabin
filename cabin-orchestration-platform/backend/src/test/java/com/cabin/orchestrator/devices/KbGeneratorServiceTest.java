@@ -112,6 +112,19 @@ class KbGeneratorServiceTest {
     }
 
     @Test
+    void regenerateForNeverOverwritesAManuallyCuratedDescription() {
+        confirm("z2m-curated_device", "Curated device", DeviceType.TEMPERATURE_SENSOR, "cabin");
+        knowledgeNodeRepository.upsert(new KnowledgeNode("z2m-curated_device", KnowledgeChunkType.DESCRIPTION,
+            "A person's own hand-written description.", KnowledgeSource.MANUALLY_CURATED, Instant.now()));
+
+        generator.regenerateFor("z2m-curated_device");
+
+        KnowledgeNode found = knowledgeNodeRepository.find("z2m-curated_device", KnowledgeChunkType.DESCRIPTION).orElseThrow();
+        assertEquals("A person's own hand-written description.", found.content());
+        assertEquals(KnowledgeSource.MANUALLY_CURATED, found.source());
+    }
+
+    @Test
     void regenerateForIsIdempotentNotAccumulating() {
         confirm("z2m-repeat", "Repeat device", DeviceType.TEMPERATURE_SENSOR, "cabin");
 

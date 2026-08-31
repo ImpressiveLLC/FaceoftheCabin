@@ -2,9 +2,12 @@ package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.devices.KbGeneratorService;
 import com.cabin.orchestrator.devices.KnowledgeNodeRepository;
+import com.cabin.orchestrator.devices.model.KnowledgeChunkType;
 import com.cabin.orchestrator.devices.model.KnowledgeNode;
+import com.cabin.orchestrator.devices.model.KnowledgeSource;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -44,5 +47,24 @@ public class KnowledgeNodeController {
     @GetMapping("/nodes/{entityRef}")
     public List<KnowledgeNode> nodesFor(@PathVariable String entityRef) {
         return repository.findByEntityRef(entityRef);
+    }
+
+    /**
+     * POST /api/kb/curate -- the one path that writes MANUALLY_CURATED
+     * content (D5, docs/ontology/DECISIONS.md). Source is always forced to
+     * MANUALLY_CURATED regardless of what's in the request body -- this
+     * endpoint is a person's deliberate action, so there's no legitimate
+     * reason to accept AUTO_GENERATED through it; KbGeneratorService never
+     * overwrites a node this endpoint has written for the same
+     * entityRef+chunkType (see its own comment).
+     */
+    @PostMapping("/curate")
+    public KnowledgeNode curate(@RequestBody Map<String, String> body) {
+        String entityRef = body.get("entityRef");
+        KnowledgeChunkType chunkType = KnowledgeChunkType.valueOf(body.get("chunkType").toUpperCase());
+        String content = body.get("content");
+        KnowledgeNode node = new KnowledgeNode(entityRef, chunkType, content, KnowledgeSource.MANUALLY_CURATED, Instant.now());
+        repository.upsert(node);
+        return node;
     }
 }

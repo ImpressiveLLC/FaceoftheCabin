@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -32,7 +33,10 @@ import java.util.stream.Collectors;
  * content for anything, so a freeze-risk/mold-risk/water-shutoff procedure
  * can never accidentally end up auto_generated through this path. Every
  * node this writes is tagged AUTO_GENERATED; nothing here ever writes
- * MANUALLY_CURATED.
+ * MANUALLY_CURATED (that's KnowledgeNodeController's /curate endpoint --
+ * a person's own explicit action, not this service's).
+ * regenerateFor() also never overwrites a chunk already MANUALLY_CURATED
+ * for the same device -- see that method's own comment.
  */
 @Service
 public class KbGeneratorService {
@@ -74,21 +78,32 @@ public class KbGeneratorService {
         return written;
     }
 
-    /** Regenerates one device's KnowledgeNodes. A device with no metadata/reporting data yet still gets a description chunk. */
+    /**
+     * Regenerates one device's KnowledgeNodes. A device with no metadata/
+     * reporting data yet still gets a description chunk. Never overwrites a
+     * chunk a person has already MANUALLY_CURATED for this exact
+     * entityRef+chunkType (e.g. a hand-corrected device description) --
+     * the same "don't silently downgrade a stronger claim" rule
+     * ConfirmationSource already applies to D7 facts, applied here to D5.
+     */
     public int regenerateFor(String deviceId) {
         DeviceStatus status = registry.get(deviceId);
         if (status == null) return 0;
 
+        Map<KnowledgeChunkType, KnowledgeNode> existing = knowledgeNodeRepository.findByEntityRef(deviceId).stream()
+            .collect(Collectors.toMap(KnowledgeNode::chunkType, node -> node));
         Instant now = Instant.now();
         int written = 0;
 
-        knowledgeNodeRepository.upsert(new KnowledgeNode(
-            deviceId, KnowledgeChunkType.DESCRIPTION, buildDescription(status),
-            KnowledgeSource.AUTO_GENERATED, now));
-        written++;
+        if (!isManuallyCurated(existing, KnowledgeChunkType.DESCRIPTION)) {
+            knowledgeNodeRepository.upsert(new KnowledgeNode(
+                deviceId, KnowledgeChunkType.DESCRIPTION, buildDescription(status),
+                KnowledgeSource.AUTO_GENERATED, now));
+            written++;
+        }
 
         String relationship = buildRelationship(deviceId, status);
-        if (relationship != null) {
+        if (relationship != null && !isManuallyCurated(existing, KnowledgeChunkType.RELATIONSHIP)) {
             knowledgeNodeRepository.upsert(new KnowledgeNode(
                 deviceId, KnowledgeChunkType.RELATIONSHIP, relationship,
                 KnowledgeSource.AUTO_GENERATED, now));
@@ -96,6 +111,11 @@ public class KbGeneratorService {
         }
 
         return written;
+    }
+
+    private static boolean isManuallyCurated(Map<KnowledgeChunkType, KnowledgeNode> existing, KnowledgeChunkType chunkType) {
+        KnowledgeNode node = existing.get(chunkType);
+        return node != null && node.source() == KnowledgeSource.MANUALLY_CURATED;
     }
 
     private String buildDescription(DeviceStatus status) {
