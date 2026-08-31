@@ -95,14 +95,15 @@ provenance preserves as a fallback, not deletes).
 
 ## Sprint 2 — JSON-LD identity, Tiny Helpdesk chat endpoint, curated content
 
-**GATE STATUS (per the roadmap's own text): NOT CLEARED.** The roadmap's
-stated gate is "Tiny Helpdesk v1 production-ready for family use." Every
-backend piece is shipped and verified live (table below), but two items
-the roadmap explicitly lists under Sprint 2 are genuinely not done —
-this isn't scope creep to add now, it's work this sprint already
-committed to that got deferred without the plan being corrected at the
-time. Flagged 2026-08-30 on direct user question ("did we diverge") —
-see the two open rows.
+**GATE STATUS: ESSENTIALLY CLEARED (2026-08-30), one item deliberately
+still open.** The roadmap's stated gate is "Tiny Helpdesk v1
+production-ready for family use." Real drift was caught here on direct
+user question ("did we diverge") — the native panel and the full
+safety-curation set were both left undone while the doc read as if the
+sprint was basically finished. Sequencing was then explicitly decided by
+the user: native panel now, remaining curation later. The panel is now
+shipped; only the curation gap remains, tracked honestly below rather
+than assumed closed.
 
 | Item | Covers | Status |
 |---|---|---|
@@ -110,8 +111,15 @@ see the two open rows.
 | KB Generator daily refresh | `KbGeneratorService` 3am cron, matching `TelemetryArchivalService`'s off-peak convention | **Shipped** |
 | Tiny Helpdesk chat endpoint | `POST /api/helpdesk/ask` — word-overlap retrieval over `KnowledgeNodeRepository` (not embeddings; ~80 nodes doesn't justify that yet) + Ollama generation + source citations (`source` field visible per the roadmap's own requirement) | **Shipped**, verified live end-to-end |
 | Manually-curated content mechanism (D5) | `POST /api/kb/curate` — the one path that writes `MANUALLY_CURATED`, source always forced; `KbGeneratorService` now never overwrites a curated chunk for the same entityRef+chunkType | **Shipped** |
-| **Safety-critical curated content** — roadmap names three by name: leak response, valve reset, freeze procedure | Freeze-risk response (freeze treated as leak → `main_water_valve` shuts off main inlet upstream of pressure tank + mech-room lines) — user-supplied 2026-08-30, curated onto `z2m-main_water_valve`, verified via the live chat endpoint | **1 of 3 OPEN.** Freeze/leak-trigger done (freeze is explicitly treated as a leak event, so this one procedure may cover both of those names — needs user confirmation, not assumed). **Valve reset (how to manually restore water after a shutoff) is not curated at all** — need the user's real procedure, not fabricated |
-| **Open WebUI → native panel** — roadmap's own stated Sprint 2 item | Family-facing chat UI; Open WebUI is real but generic/admin-facing, not the "family use" surface the gate names | **Not started** — real frontend work, deliberately not folded into the backend-focused pass this session did |
+| **Open WebUI → native panel** — roadmap's own stated Sprint 2 item | New "Ask" nav tab (`HelpdeskPanel`, `cabin-ui/src/App.jsx`) — real chat UI, source-provenance badges ("✓ Verified" / "Auto-generated") satisfying D5's visibility requirement in the actual family-facing surface, not just the JSON response | **Shipped 2026-08-30.** Full test suite green (223 tests), production build clean, verified in a real browser (submit, bubble rendering, error/fallback paths). Deployed live — confirmed via `cabin-ui` container health and a live HTTP 200 |
+| **Safety-critical curated content** — roadmap names three by name: leak response, valve reset, freeze procedure | Freeze-risk response (freeze treated as leak → `main_water_valve` shuts off main inlet upstream of pressure tank + mech-room lines) — user-supplied 2026-08-30, curated onto `z2m-main_water_valve`, verified via the live chat endpoint | **1 of 3, deliberately deferred.** User chose "native panel now, curation later" — not forgotten, explicitly sequenced. **Valve reset (how to manually restore water after a shutoff) and leak-response beyond the freeze overlap are still open** — need the user's real procedure text, not fabricated, before this row can close |
+
+**Operational note, unrelated to this sprint's own work:** the
+`deploy-family-hub.yml` build has now hit the same transient Docker Hub
+registry timeout twice this session (`node:20-alpine` metadata fetch
+timing out) — both times unrelated to the code being deployed, both
+resolved by a plain re-run. Worth a look if it becomes frequent enough
+to matter, not urgent today.
 
 **Until both open rows close, Sprint 3 has not actually started per this
 plan** — see `DECISIONS.md`'s roadmap cross-reference for what Sprint 3
