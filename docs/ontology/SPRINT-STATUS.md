@@ -95,7 +95,14 @@ provenance preserves as a fallback, not deletes).
 
 ## Sprint 2 — JSON-LD identity, Tiny Helpdesk chat endpoint, curated content
 
-**Status: CORE PIECES SHIPPED (2026-08-30); native chat panel not started.**
+**GATE STATUS (per the roadmap's own text): NOT CLEARED.** The roadmap's
+stated gate is "Tiny Helpdesk v1 production-ready for family use." Every
+backend piece is shipped and verified live (table below), but two items
+the roadmap explicitly lists under Sprint 2 are genuinely not done —
+this isn't scope creep to add now, it's work this sprint already
+committed to that got deferred without the plan being corrected at the
+time. Flagged 2026-08-30 on direct user question ("did we diverge") —
+see the two open rows.
 
 | Item | Covers | Status |
 |---|---|---|
@@ -103,8 +110,14 @@ provenance preserves as a fallback, not deletes).
 | KB Generator daily refresh | `KbGeneratorService` 3am cron, matching `TelemetryArchivalService`'s off-peak convention | **Shipped** |
 | Tiny Helpdesk chat endpoint | `POST /api/helpdesk/ask` — word-overlap retrieval over `KnowledgeNodeRepository` (not embeddings; ~80 nodes doesn't justify that yet) + Ollama generation + source citations (`source` field visible per the roadmap's own requirement) | **Shipped**, verified live end-to-end |
 | Manually-curated content mechanism (D5) | `POST /api/kb/curate` — the one path that writes `MANUALLY_CURATED`, source always forced; `KbGeneratorService` now never overwrites a curated chunk for the same entityRef+chunkType | **Shipped** |
-| Real safety-critical content | Freeze-risk response (freeze treated as leak → `main_water_valve` shuts off main inlet upstream of pressure tank + mech-room lines) — user-supplied, curated onto `z2m-main_water_valve`, verified via the live chat endpoint | **One procedure curated.** Leak-response and other safety procedures the roadmap names are still open — need the user's real procedure text the same way, not fabricated |
-| Open WebUI → native panel | Roadmap's own stated Sprint 2 item | **Not started** — real frontend work, deliberately not folded into this backend-focused pass |
+| **Safety-critical curated content** — roadmap names three by name: leak response, valve reset, freeze procedure | Freeze-risk response (freeze treated as leak → `main_water_valve` shuts off main inlet upstream of pressure tank + mech-room lines) — user-supplied 2026-08-30, curated onto `z2m-main_water_valve`, verified via the live chat endpoint | **1 of 3 OPEN.** Freeze/leak-trigger done (freeze is explicitly treated as a leak event, so this one procedure may cover both of those names — needs user confirmation, not assumed). **Valve reset (how to manually restore water after a shutoff) is not curated at all** — need the user's real procedure, not fabricated |
+| **Open WebUI → native panel** — roadmap's own stated Sprint 2 item | Family-facing chat UI; Open WebUI is real but generic/admin-facing, not the "family use" surface the gate names | **Not started** — real frontend work, deliberately not folded into the backend-focused pass this session did |
+
+**Until both open rows close, Sprint 3 has not actually started per this
+plan** — see `DECISIONS.md`'s roadmap cross-reference for what Sprint 3
+(Vaultwarden + Actor model) actually is, and confirm sequencing with the
+user before beginning it, rather than starting a third open sprint on
+top of two unclosed gates.
 
 ## Cross-references
 
