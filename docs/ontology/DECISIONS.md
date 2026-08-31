@@ -57,11 +57,15 @@ what was agreed.
 
 snake_case `entity_id` IS the local URI stem → `cabin:{entity_id}` in JSON-LD.
 
-**Status:** the `entity_id` convention is already inviolable in the running
-system (every native Zigbee/HA device id is snake_case). The `cabin:{id}`
-JSON-LD stem itself does not exist anywhere yet — no JSON-LD context has
-been authored. Sprint 1 does not include this; tracked as a Sprint 2
-candidate in `SPRINT-STATUS.md`.
+**Status:** real as of Sprint 2 (2026-08-30). `entity_id` has been
+inviolable in the running system all along; the `cabin:{id}` JSON-LD stem
+is now a real, dereferenceable identity too — `GET /api/devices/{id}/jsonld`
+serves it, `GET /api/context/cabin-context.jsonld` serves the SSN/SOSA
+`@context` it references (`src/main/resources/context/cabin-context.jsonld`
+is the one real copy; no duplicate lives in `docs/`, to avoid drift).
+`JsonLdService` draws from the same DeviceRegistry/DeviceRepository/
+DeviceReportingRelationshipRepository data KB Generator v1 already uses —
+no new data source needed.
 
 ### D2. Observation
 

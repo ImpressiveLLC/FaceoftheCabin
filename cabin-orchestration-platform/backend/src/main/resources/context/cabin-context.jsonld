@@ -1,0 +1,25 @@
+{
+  "@context": {
+    "cabin": "https://cabin.unicornpingpong.com/entity/",
+    "sosa": "http://www.w3.org/ns/sosa/",
+    "schema": "https://schema.org/",
+
+    "id": "@id",
+    "type": "@type",
+
+    "Device": "sosa:Sensor",
+    "Actuator": "sosa:Actuator",
+    "Observation": "sosa:Observation",
+
+    "name": "schema:name",
+    "manufacturer": "schema:manufacturer",
+    "model": "schema:model",
+    "location": "schema:location",
+    "area": "schema:containedInPlace",
+    "reportsField": {
+      "@id": "sosa:observedProperty",
+      "@container": "@set"
+    },
+    "hasDescription": "schema:description"
+  }
+}

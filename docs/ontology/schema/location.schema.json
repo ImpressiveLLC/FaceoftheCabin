@@ -14,7 +14,7 @@
     },
     "area": {
       "type": ["string", "null"],
-      "description": "Sub-location dimension per the axioms ('Location... and Area are first-class dimensions') -- e.g. mech_room, kitchen. Currently only exists informally baked into device names (temp_mech_room); not a queryable field anywhere yet. Nullable because most devices don't have one assigned today."
+      "description": "Sub-location dimension per the axioms ('Location... and Area are first-class dimensions') -- e.g. mech_room, kitchen. A real, queryable `area` column on `device` as of issue #30 (2026-08-30) -- still nullable because most devices don't have one assigned yet (nothing backfills it from the device name today; it's populated only going forward, per adapter/manual assertion)."
     }
   },
   "additionalProperties": false

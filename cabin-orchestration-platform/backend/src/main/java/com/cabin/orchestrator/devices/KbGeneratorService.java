@@ -7,6 +7,9 @@ import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.devices.model.KnowledgeChunkType;
 import com.cabin.orchestrator.devices.model.KnowledgeNode;
 import com.cabin.orchestrator.devices.model.KnowledgeSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -34,6 +37,8 @@ import java.util.stream.Collectors;
 @Service
 public class KbGeneratorService {
 
+    private static final Logger log = LoggerFactory.getLogger(KbGeneratorService.class);
+
     private final DeviceRegistry registry;
     private final DeviceRepository deviceRepository;
     private final DeviceReportingRelationshipRepository reportingRelationshipRepository;
@@ -46,6 +51,18 @@ public class KbGeneratorService {
         this.deviceRepository = deviceRepository;
         this.reportingRelationshipRepository = reportingRelationshipRepository;
         this.knowledgeNodeRepository = knowledgeNodeRepository;
+    }
+
+    /**
+     * Sprint 2 (docs/ontology/SPRINT-STATUS.md): keeps auto-generated
+     * content from going stale as devices are renamed, re-paired, or newly
+     * confirmed reporting relationships land -- 3am, matching
+     * TelemetryArchivalService's off-peak-hour convention.
+     */
+    @Scheduled(cron = "${cabin.kbGenerator.cron:0 0 3 * * *}")
+    public void scheduledRegenerateAll() {
+        int written = regenerateAll();
+        log.info("KB Generator scheduled refresh: {} chunks written", written);
     }
 
     /** Regenerates every in-scope device's KnowledgeNodes. Returns how many chunks were written. */
