@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind
+  Wind, MessageCircle
 } from "lucide-react";
 import "./styles.css";
 
@@ -1055,6 +1055,129 @@ function OpportunityMapPanel({ auth }) {
   );
 }
 
+// ─── Tiny Helpdesk panel (Sprint 2) ─────────────────────────────────────────
+// Native replacement for the Open WebUI interim UI (Sprint 0) -- this is
+// the actual family-facing surface the roadmap's "production-ready for
+// family use" gate names. Talks to POST /api/helpdesk/ask, which does its
+// own retrieval + Ollama generation server-side; this panel is display
+// only. D5 (docs/ontology/DECISIONS.md) requires each answer's source
+// provenance be visible, not just used internally -- the badge under each
+// answer shows "Verified" (manually_curated) vs "Auto-generated" per
+// source, exactly the distinction that decision exists to preserve.
+export function HelpdeskPanel() { // exported for src/App.test.jsx
+  const { locationCfg } = useApp();
+  const [messages, setMessages] = useState([]);
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [error, setError] = useState(null);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    // Optional chaining on the call itself, not just bottomRef.current --
+    // jsdom (this repo's test environment) doesn't implement
+    // scrollIntoView at all, so the element existing isn't enough.
+    bottomRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+  }, [messages, asking]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const q = question.trim();
+    if (!q || asking) return;
+    setMessages(m => [...m, { role: "user", text: q }]);
+    setQuestion("");
+    setAsking(true);
+    setError(null);
+    try {
+      const res = await fetch(`${locationCfg.apiBase}/api/helpdesk/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setMessages(m => [...m, {
+        role: "assistant",
+        text: data.answer,
+        sources: data.sources || [],
+        answeredByModel: data.answeredByModel,
+      }]);
+    } catch (err) {
+      setError(err.message || "Couldn't reach the Tiny Helpdesk.");
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  return (
+    <div className="panel-content helpdesk-panel">
+      <div className="panel-header-bar">
+        <h2><MessageCircle size={18}/> Tiny Helpdesk</h2>
+      </div>
+      <p className="helpdesk-intro">
+        Ask about any device in the cabin — where it is, what it reports, or what happens
+        during an alert.
+      </p>
+
+      <div className="helpdesk-log">
+        {messages.length === 0 && (
+          <div className="helpdesk-empty">
+            No questions yet — try "What does the kitchen temperature sensor report?"
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={`helpdesk-message helpdesk-${m.role}`}>
+            <div className="helpdesk-bubble">
+              {m.text}
+              {m.role === "assistant" && m.answeredByModel === false && (
+                <div className="helpdesk-fallback-note">
+                  The assistant wasn't reachable — showing the raw facts found instead.
+                </div>
+              )}
+              {m.role === "assistant" && m.sources?.length > 0 && (
+                <div className="helpdesk-sources">
+                  {m.sources.map((s, si) => (
+                    <span
+                      key={si}
+                      className={`helpdesk-source-badge helpdesk-source-${(s.source || "").toLowerCase()}`}
+                      title={s.content}
+                    >
+                      {s.source === "MANUALLY_CURATED" ? "✓ Verified" : "Auto-generated"} · {s.entityRef}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {asking && (
+          <div className="helpdesk-message helpdesk-assistant">
+            <div className="helpdesk-bubble helpdesk-thinking">Thinking…</div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {error && <p className="add-place-error">{error}</p>}
+
+      <form className="helpdesk-input-row" onSubmit={submit}>
+        <input
+          className="helpdesk-input"
+          value={question}
+          onChange={e => setQuestion(e.target.value)}
+          placeholder="Ask a question…"
+          disabled={asking}
+        />
+        <button type="submit" className="btn-primary" disabled={asking || !question.trim()}>
+          <Send size={14}/> {asking ? "Asking…" : "Ask"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 const PANELS = [
   { id: "FAMILY_HUB",     label: "My Places",       icon: Home },
   { id: "FAMILY_CONFIG",  label: "Config",   icon: Settings },
@@ -1063,6 +1186,7 @@ const PANELS = [
   { id: "RULES_ENGINE",   label: "Rules & Alerts",  icon: Zap },
   { id: "CAMERA_EVENTS",  label: "Camera Events",   icon: Camera },
   { id: "OPPORTUNITY_MAP", label: "Opportunities",  icon: Lightbulb },
+  { id: "HELPDESK",       label: "Ask",              icon: MessageCircle },
 ];
 
 // ─── Context ───────────────────────────────────────────────────────────────
@@ -5381,6 +5505,7 @@ function App() {
             {activePanel === "RULES_ENGINE"   && <RulesPanel auth={cameraAuth} />}
             {activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
             {activePanel === "OPPORTUNITY_MAP" && <OpportunityMapPanel auth={cameraAuth} />}
+            {activePanel === "HELPDESK"       && <HelpdeskPanel />}
           </div>
         </main>
       </div>

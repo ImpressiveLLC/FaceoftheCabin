@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -2795,5 +2795,111 @@ describe("cameraHealthLabel", () => {
   it("reports unknown rather than down when fps data is simply absent", () => {
     expect(cameraHealthLabel(null)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
     expect(cameraHealthLabel(undefined)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
+  });
+});
+
+// Sprint 2's native replacement for the Open WebUI interim UI -- talks to
+// POST /api/helpdesk/ask, which does its own retrieval + Ollama generation
+// server-side, so this panel is display-only. D5 (docs/ontology/DECISIONS.md)
+// requires each answer's source provenance be visible, not just used
+// internally -- covered below.
+describe("HelpdeskPanel", () => {
+  afterEach(() => cleanup());
+
+  function renderPanel() {
+    return render(
+      <AppContext.Provider value={{ locationCfg: { apiBase: "http://cabin-hub:8090" } }}>
+        <HelpdeskPanel />
+      </AppContext.Provider>
+    );
+  }
+
+  it("shows the empty state before any question is asked", () => {
+    renderPanel();
+    expect(screen.getByText(/No questions yet/)).toBeTruthy();
+  });
+
+  it("submits the question, renders the answer, and shows a Verified badge for a manually_curated source", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        question: "What happens during a freeze?",
+        answer: "The main water valve shuts off automatically.",
+        sources: [{
+          entityRef: "z2m-main_water_valve", chunkType: "TROUBLESHOOTING",
+          content: "freeze detail", source: "MANUALLY_CURATED", generatedAt: "2026-08-30T00:00:00Z",
+        }],
+        answeredByModel: true,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPanel();
+
+    fireEvent.change(screen.getByPlaceholderText("Ask a question…"), { target: { value: "What happens during a freeze?" } });
+    fireEvent.click(screen.getByRole("button", { name: /Ask/ }));
+
+    expect(fetchMock).toHaveBeenCalledWith("http://cabin-hub:8090/api/helpdesk/ask", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ question: "What happens during a freeze?" }),
+    }));
+    expect(await screen.findByText("The main water valve shuts off automatically.")).toBeTruthy();
+    expect(await screen.findByText(/✓ Verified/)).toBeTruthy();
+    expect(screen.getByText(/z2m-main_water_valve/)).toBeTruthy();
+  });
+
+  it("shows Auto-generated (not Verified) for an auto_generated source", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        answer: "It's a SONOFF temperature sensor.",
+        sources: [{ entityRef: "z2m-temp_kitchen", chunkType: "DESCRIPTION", content: "x", source: "AUTO_GENERATED" }],
+        answeredByModel: true,
+      }),
+    }));
+    renderPanel();
+
+    fireEvent.change(screen.getByPlaceholderText("Ask a question…"), { target: { value: "What is the kitchen sensor?" } });
+    fireEvent.click(screen.getByRole("button", { name: /Ask/ }));
+
+    expect(await screen.findByText(/Auto-generated/)).toBeTruthy();
+    expect(screen.queryByText(/✓ Verified/)).toBeNull();
+  });
+
+  it("shows the fallback note when Ollama wasn't reachable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        answer: "raw retrieved facts",
+        sources: [{ entityRef: "z2m-temp_kitchen", chunkType: "DESCRIPTION", content: "x", source: "AUTO_GENERATED" }],
+        answeredByModel: false,
+      }),
+    }));
+    renderPanel();
+
+    fireEvent.change(screen.getByPlaceholderText("Ask a question…"), { target: { value: "anything" } });
+    fireEvent.click(screen.getByRole("button", { name: /Ask/ }));
+
+    expect(await screen.findByText(/wasn't reachable/)).toBeTruthy();
+  });
+
+  it("shows an error message when the request fails, without crashing", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => "server error" }));
+    renderPanel();
+
+    fireEvent.change(screen.getByPlaceholderText("Ask a question…"), { target: { value: "anything" } });
+    fireEvent.click(screen.getByRole("button", { name: /Ask/ }));
+
+    expect(await screen.findByText("server error")).toBeTruthy();
+  });
+
+  it("does not submit an empty or whitespace-only question", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    renderPanel();
+
+    fireEvent.change(screen.getByPlaceholderText("Ask a question…"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: /Ask/ }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

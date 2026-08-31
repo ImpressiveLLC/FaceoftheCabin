@@ -1772,3 +1772,86 @@ select option { background: var(--bg-secondary); color: var(--text); }
 [data-theme="asteroidcity"] .nav-logo {
   filter: drop-shadow(0 2px 4px var(--logo-shadow));
 }
+
+/* ─── Tiny Helpdesk panel ─────────────────────────────────────────────── */
+.helpdesk-intro {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 4px 0 16px;
+}
+.helpdesk-log {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: 4px 2px 12px;
+  margin-bottom: 12px;
+}
+.helpdesk-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: 16px 0;
+}
+.helpdesk-message { display: flex; }
+.helpdesk-user { justify-content: flex-end; }
+.helpdesk-assistant { justify-content: flex-start; }
+.helpdesk-bubble {
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.helpdesk-user .helpdesk-bubble {
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.helpdesk-assistant .helpdesk-bubble {
+  background: var(--bg-secondary);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+.helpdesk-thinking { color: var(--text-muted); font-style: italic; }
+.helpdesk-fallback-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--warning);
+}
+.helpdesk-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.helpdesk-source-badge {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 100px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  cursor: help;
+}
+.helpdesk-source-manually_curated {
+  color: var(--success);
+  border-color: var(--success);
+}
+.helpdesk-input-row {
+  display: flex;
+  gap: 8px;
+}
+.helpdesk-input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text);
+  font-size: 14px;
+}
+.helpdesk-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
