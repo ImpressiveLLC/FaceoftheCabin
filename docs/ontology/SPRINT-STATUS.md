@@ -85,12 +85,26 @@ entity), `DeviceType.telemetryFields()` (the older static guess `type_inferred`
 provenance preserves as a fallback, not deletes).
 
 **Not in Sprint 1, tracked as later candidates:**
-- D1's `cabin:{entity_id}` JSON-LD context (no JSON-LD anywhere yet)
+- D1's `cabin:{entity_id}` JSON-LD context — done in Sprint 2 instead, see below
 - D3's full JSON Schema migration of `docs/ontology.yaml` (Sprint 1 adds one
   narrowly-scoped schema, not a wholesale format migration)
-- D4's provenance mixin generalized beyond D7 specifically
+- D4's provenance mixin generalized beyond D7 specifically — done in
+  Sprint 2 (the `/api/kb/curate` write path also gets D5's provenance)
 - Migrating the existing `location` string attribute everywhere it's used
   today, once #30 gives it a real schema to migrate *to*
+
+## Sprint 2 — JSON-LD identity, Tiny Helpdesk chat endpoint, curated content
+
+**Status: CORE PIECES SHIPPED (2026-08-30); native chat panel not started.**
+
+| Item | Covers | Status |
+|---|---|---|
+| D1 JSON-LD identity | `GET /api/devices/{id}/jsonld` + `GET /api/context/cabin-context.jsonld` (SSN/SOSA vocabulary); draws from the same #30/#31 data KB Generator uses | **Shipped**, verified live |
+| KB Generator daily refresh | `KbGeneratorService` 3am cron, matching `TelemetryArchivalService`'s off-peak convention | **Shipped** |
+| Tiny Helpdesk chat endpoint | `POST /api/helpdesk/ask` — word-overlap retrieval over `KnowledgeNodeRepository` (not embeddings; ~80 nodes doesn't justify that yet) + Ollama generation + source citations (`source` field visible per the roadmap's own requirement) | **Shipped**, verified live end-to-end |
+| Manually-curated content mechanism (D5) | `POST /api/kb/curate` — the one path that writes `MANUALLY_CURATED`, source always forced; `KbGeneratorService` now never overwrites a curated chunk for the same entityRef+chunkType | **Shipped** |
+| Real safety-critical content | Freeze-risk response (freeze treated as leak → `main_water_valve` shuts off main inlet upstream of pressure tank + mech-room lines) — user-supplied, curated onto `z2m-main_water_valve`, verified via the live chat endpoint | **One procedure curated.** Leak-response and other safety procedures the roadmap names are still open — need the user's real procedure text the same way, not fabricated |
+| Open WebUI → native panel | Roadmap's own stated Sprint 2 item | **Not started** — real frontend work, deliberately not folded into this backend-focused pass |
 
 ## Cross-references
 
