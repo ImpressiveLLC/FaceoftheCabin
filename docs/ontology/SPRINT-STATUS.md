@@ -30,22 +30,25 @@ issues weren't opened earlier:
 - **Open WebUI auth:** `WEBUI_AUTH=true` (its own default — first
   account created becomes admin). Reachable by anyone on the tailnet,
   same boundary as every other admin surface in that compose file.
-- **KB source material:** still open — nobody has said yet what content
-  the KB Generator should actually turn into KnowledgeNodes beyond the
-  `zigbee-herdsman-converters` capability data the D7 vendor_spec work
-  already parses. Needs the user's input before that issue can be scoped
-  precisely.
+- **KB source material:** resolved by KB Generator v1 (#32, shipped
+  2026-08-30) drawing entirely from data already assembled in-process —
+  DeviceRegistry (every protocol adapter, uniformly), plus this sprint's
+  own DeviceRepository/DeviceReportingRelationshipRepository (#30/#31).
+  No separate HA REST API client was needed; DeviceRegistry already
+  aggregates HA-sourced devices the same as Zigbee ones.
 
-**Watch for once the KB Generator exists:** D5 (`KnowledgeNode.source =
-auto_generated | manually_curated`) applies directly to whatever it
-produces. Confirm it actually tags output that way, and that anything
-touching a safety-critical automation (freeze risk, mold risk, water
-shutoff) is excluded from auto-generated content per that decision — not
-verifiable until something is actually running.
+**KB Generator v1 confirmed live (2026-08-30):** D5's
+`source = auto_generated` tagging verified on real generated content
+(`GET /api/kb/nodes/z2m-temp_kitchen` on the M920q). The safety-critical
+exclusion is enforced by scope, not a runtime check — v1 only ever
+writes `DESCRIPTION`/`RELATIONSHIP` chunks, never
+`TROUBLESHOOTING`/`SETUP`/`CREDENTIAL_POINTER`, so a freeze-risk/
+mold-risk/water-shutoff procedure can't end up auto_generated through
+this path regardless of which device it's about.
 
 ## Sprint 1 — Postgres device repo class + D7 entity schema properties
 
-**Status: #30/#31/#33 SHIPPED (2026-08-30); #32 not started.** Scope
+**Status: ALL FOUR ISSUES SHIPPED (2026-08-30).** Scope
 expanded the same day per direct user instruction, folding in KB Generator
 v1 and the generic D4 provenance mixin alongside the original two issues —
 see DECISIONS.md's 2026-08-30 verification note for what that instruction
@@ -55,7 +58,7 @@ was and wasn't based on.
 |---|---|---|---|
 | 1 | [#30 — Postgres-backed DeviceRepository for the D1/D6/D7 entity schema](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/30) | Base repository class; real columns (`manufacturer`, `model`, `area`, `paired_at`) instead of the `device` table's catch-all `config` JSONB | **Shipped.** Deployed to M920q; live data confirms real devices already populated (e.g. `z2m-temp_kitchen` → SONOFF/SNZB-02WD) |
 | 2 | [#31 — Persist D7 reporting relationships with provenance](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/31) | New `device_reporting_relationship` table; both `vendor_spec` (Zigbee2MqttAdapter) and `empirical_observation` (`CabinEventService.reportedFieldsByDevice()`) now persist through one priority-respecting repository | **Shipped.** Deployed; the whole Zigbee fleet has real rows (verified live) |
-| 3 | [#32 — KB Generator v1](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/32) | First KnowledgeNode source, feeding the Tiny Helpdesk deployed 2026-08-30; D5 `auto_generated` tagging is a hard requirement, not a nice-to-have | **Not started.** Larger, more open-ended than the others (new KnowledgeNode table, HA REST API client, safety-critical exclusion logic) — deliberately not started in the same push as #30/#31/#33 |
+| 3 | [#32 — KB Generator v1](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/32) | First KnowledgeNode source, feeding the Tiny Helpdesk deployed 2026-08-30; D5 `auto_generated` tagging is a hard requirement, not a nice-to-have | **Shipped.** `knowledge_node` table + `KbGeneratorService`, no new external API client needed; deployed and verified live — 79 chunks generated across the whole fleet |
 | 4 | [#33 — Generic Provenance mixin](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/33) | D4's `created_by/modified_by/version` audit columns on `device` — additive to, not a replacement for, #31's `confirmation_source` | **Shipped** (same migration as #30 — both landed together since they share the same additive `ALTER TABLE`) |
 
 **Not yet reconciled, tracked but not fixed this session:** `DmDeviceDetail`'s
