@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -2700,6 +2700,109 @@ describe("FamilyConfigPanel", () => {
   it("defaults remote access to Tailscale when config hasn't loaded yet", () => {
     renderPanel({ config: {} });
     expect(screen.getByText("Tailscale")).toBeTruthy();
+  });
+});
+
+// Tier 1 guest share links -- see the plan's "Guest Access Model" section.
+// GuestAccessCard isn't itself exported (it's a plain internal sub-
+// component of FamilyConfigPanel, same as ConfigCard) -- tested through
+// its parent, matching how this file already tests several other
+// internal-only sub-components.
+describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
+  afterEach(cleanup);
+
+  function mockAuth() {
+    return { authedFetch: vi.fn() };
+  }
+
+  function renderPanel(auth) {
+    return render(
+      <AppContext.Provider value={{ config: {}, locationCfg: { haUrl: "http://cabin-hub:8123" } }}>
+        <FamilyConfigPanel auth={auth} />
+      </AppContext.Provider>
+    );
+  }
+
+  it("lists existing share links returned by the API", async () => {
+    const auth = mockAuth();
+    auth.authedFetch.mockResolvedValue({ ok: true, json: async () => [
+      { id: "tok-1", label: "Insurance Claim", scope: ["dashboard", "device_states"], expiresAt: null, revokedAt: null },
+    ] });
+
+    renderPanel(auth);
+
+    expect(await screen.findByText("Insurance Claim")).toBeTruthy();
+    expect(screen.getByText(/dashboard, device_states/)).toBeTruthy();
+  });
+
+  it("creates a new link with only the checked scopes and shows the full URL exactly once", async () => {
+    const auth = mockAuth();
+    auth.authedFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "tok-2", token: "secret-xyz", label: "Contractor", scope: ["device_states"] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: "tok-2", label: "Contractor", scope: ["device_states"], revokedAt: null }] });
+
+    renderPanel(auth);
+    await waitFor(() => expect(auth.authedFetch).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByPlaceholderText(/Label, e.g\./), { target: { value: "Contractor" } });
+    // All three start checked -- uncheck the two not wanted, leaving only device_states.
+    fireEvent.click(screen.getByLabelText("Dashboard"));
+    fireEvent.click(screen.getByLabelText("Alerts"));
+    fireEvent.click(screen.getByText("Create link"));
+
+    expect(await screen.findByText(/view\/secret-xyz/)).toBeTruthy();
+    const createBody = JSON.parse(auth.authedFetch.mock.calls[1][1].body);
+    expect(createBody.scope).toEqual(["device_states"]);
+  });
+
+  it("revokes a link and the list reflects it without a page reload", async () => {
+    const auth = mockAuth();
+    auth.authedFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: "tok-3", label: "Old Contractor", scope: ["dashboard"], revokedAt: null }] })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: "tok-3", label: "Old Contractor", scope: ["dashboard"], revokedAt: "2026-09-01T00:00:00Z" }] });
+
+    renderPanel(auth);
+    await screen.findByText("Old Contractor");
+    fireEvent.click(screen.getByText("Revoke"));
+
+    expect(await screen.findByText("Revoked")).toBeTruthy();
+    expect(auth.authedFetch.mock.calls[1][0]).toContain("/api/access-tokens/tok-3");
+    expect(auth.authedFetch.mock.calls[1][1].method).toBe("DELETE");
+  });
+});
+
+// The public /view/{token} view -- deliberately uses the global fetch, not
+// authedFetch, since a guest by definition has no Google session; the
+// token itself (appended as ?t=) is the credential, validated server-side
+// by GoogleAuthInterceptor's guest-token path.
+describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
+  afterEach(cleanup);
+
+  it("shows devices and active alerts, with the token appended to every request", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [
+        { deviceId: "z2m-main_water_valve", name: "main_water_valve", state: "ONLINE", location: "cabin", lastSeen: "2026-09-01T12:00:00Z" },
+      ] })
+      .mockResolvedValueOnce({ ok: true, json: async () => [
+        { id: "a1", severity: "CRITICAL", message: "Water leak detected", timestamp: "2026-09-01T11:00:00Z" },
+      ] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GuestDashboard token="secret-abc" />);
+
+    expect(await screen.findByText("main_water_valve")).toBeTruthy();
+    expect(screen.getByText(/Water leak detected/)).toBeTruthy();
+    fetchMock.mock.calls.forEach(call => expect(call[0]).toContain("t=secret-abc"));
+  });
+
+  it("shows a not-valid message when the token is rejected", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+
+    render(<GuestDashboard token="bad-token" />);
+
+    expect(await screen.findByText(/isn't valid, has expired, or has been revoked/)).toBeTruthy();
   });
 });
 

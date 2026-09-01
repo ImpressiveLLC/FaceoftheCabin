@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle
+  Wind, MessageCircle, Link2
 } from "lucide-react";
 import "./styles.css";
 
@@ -1617,8 +1617,129 @@ export function FamilyConfigPanel({ auth }) {
           <p className="config-desc">{config?.platformName || "Orchestration Platform"}</p>
           <p className="config-hint">{config?.platform || "Not configured — set CABIN_INSTANCE_PLATFORM"}</p>
         </ConfigCard>
+        <ConfigCard title="Guest Access" icon={Link2}>
+          <GuestAccessCard auth={auth} />
+        </ConfigCard>
       </div>
     </div>
+  );
+}
+
+// Tier 1 guest share links -- see the plan's "Guest Access Model" section
+// and CabinAccessTokenService's own doc. Built for the concrete case of an
+// insurance adjuster and their remediation team (no Google account)
+// needing read-only current-conditions visibility for an active claim.
+// The full link (with its bearer secret) is shown here exactly once, right
+// after creation -- GET /api/access-tokens deliberately never returns the
+// secret back out, matching how a real invite link should behave.
+const GUEST_SCOPE_OPTIONS = [
+  ["dashboard", "Dashboard"],
+  ["device_states", "Device states"],
+  ["alerts_read", "Alerts"],
+];
+
+function GuestAccessCard({ auth }) {
+  const [tokens, setTokens] = useState([]);
+  const [label, setLabel] = useState("");
+  const [scope, setScope] = useState({ dashboard: true, device_states: true, alerts_read: true });
+  const [expiresInDays, setExpiresInDays] = useState("30");
+  const [creating, setCreating] = useState(false);
+  const [newLink, setNewLink] = useState(null);
+  const [error, setError] = useState(null);
+  const doFetch = auth?.authedFetch || fetch;
+  const apiBase = LOCATIONS.cabin.apiBase;
+
+  const refresh = useCallback(() => {
+    doFetch(`${apiBase}/api/access-tokens`)
+      .then(r => r.json())
+      .then(setTokens)
+      .catch(() => {});
+  }, [doFetch, apiBase]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const create = async () => {
+    if (!label.trim()) return;
+    setCreating(true);
+    setError(null);
+    setNewLink(null);
+    const selectedScope = Object.entries(scope).filter(([, v]) => v).map(([k]) => k);
+    try {
+      const response = await doFetch(`${apiBase}/api/access-tokens`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: label.trim(),
+          scope: selectedScope,
+          expiresInDays: expiresInDays.trim() ? Number(expiresInDays) : null,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+      setNewLink(`${window.location.origin}/view/${body.token}`);
+      setLabel("");
+      refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const revoke = async (id) => {
+    await doFetch(`${apiBase}/api/access-tokens/${id}`, { method: "DELETE" });
+    refresh();
+  };
+
+  return (
+    <>
+      <p className="config-desc">Read-only links for people without a Google account — an insurance adjuster, a contractor.</p>
+      <div className="guest-access-form">
+        <input value={label} placeholder="Label, e.g. Insurance Claim Sep 2026"
+          onChange={e => setLabel(e.target.value)} />
+        <div className="guest-access-scope">
+          {GUEST_SCOPE_OPTIONS.map(([key, text]) => (
+            <label key={key}>
+              <input type="checkbox" checked={scope[key]}
+                onChange={() => setScope(s => ({ ...s, [key]: !s[key] }))} /> {text}
+            </label>
+          ))}
+        </div>
+        <label className="guest-access-expiry">
+          Expires in <input type="number" min="1" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} /> days (blank = never)
+        </label>
+        <button className="btn-primary" onClick={create} disabled={creating || !label.trim()}>
+          {creating ? "Creating…" : "Create link"}
+        </button>
+        {error && <p className="action-result action-error">Not created: {error}</p>}
+      </div>
+
+      {newLink && (
+        <div className="guest-access-new-link">
+          <strong>Link created — copy it now, it won't be shown again:</strong>
+          <code>{newLink}</code>
+          <button className="btn-ghost" onClick={() => navigator.clipboard?.writeText(newLink)}>Copy</button>
+        </div>
+      )}
+
+      <div className="guest-access-list">
+        {tokens.length === 0 && <p className="config-hint">No share links yet.</p>}
+        {tokens.map(t => (
+          <div key={t.id} className={`guest-access-row ${t.revokedAt ? "guest-access-revoked" : ""}`}>
+            <div>
+              <strong>{t.label}</strong>
+              <span className="config-hint">
+                {t.scope.join(", ")}
+                {t.expiresAt ? ` · expires ${new Date(t.expiresAt).toLocaleDateString()}` : " · no expiry"}
+              </span>
+            </div>
+            {t.revokedAt
+              ? <span className="config-hint">Revoked</span>
+              : <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>}
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -5554,15 +5675,90 @@ function App() {
   );
 }
 
+// ─── Guest view (Tier 1 share links) ──────────────────────────────────────
+// Renders instead of the normal signed-in App() when the URL is
+// /view/{token} -- see CabinAccessTokenService's own doc and the plan's
+// "Guest Access Model" section. No Google sign-in, no nav rail, no config
+// -- a deliberately narrow, read-only summary for someone without a Google
+// account (e.g. an insurance adjuster) who was handed this exact link.
+// Every fetch appends ?t={token}; GoogleAuthInterceptor's guest-token path
+// enforces read-only + scope server-side regardless of what this
+// component asks for -- this UI is not the security boundary, the backend
+// check is. cabin's own nginx.conf already SPA-falls-back every path to
+// index.html, so no server-side routing change was needed for this URL to
+// reach React at all.
+export function GuestDashboard({ token }) { // exported for src/App.test.jsx
+  const [devices, setDevices] = useState(null);
+  const [alerts, setAlerts] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const apiBase = LOCATIONS.cabin.apiBase;
+    const withToken = (url) => `${url}${url.includes("?") ? "&" : "?"}t=${encodeURIComponent(token)}`;
+
+    Promise.all([
+      fetch(withToken(`${apiBase}/api/devices`)).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
+      fetch(withToken(`${apiBase}/api/alerts/active`)).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
+    ]).then(([deviceList, alertList]) => {
+      setDevices(deviceList);
+      setAlerts(alertList);
+    }).catch(err => setError(err.message));
+  }, [token]);
+
+  if (error) {
+    return (
+      <div className="guest-view">
+        <h1>Cabin Conditions</h1>
+        <p>This link isn't valid, has expired, or has been revoked. Contact the cabin owner for a new one.</p>
+      </div>
+    );
+  }
+
+  if (!devices) {
+    return <div className="guest-view"><h1>Cabin Conditions</h1><p className="config-hint">Loading…</p></div>;
+  }
+
+  return (
+    <div className="guest-view">
+      <h1>Cabin Conditions</h1>
+      <p className="config-hint">Read-only view — current device status and active alerts.</p>
+
+      {alerts && alerts.length > 0 && (
+        <section className="guest-section">
+          <h2>Active Alerts</h2>
+          {alerts.map(a => (
+            <div key={a.id} className="guest-alert-row">
+              <strong>{a.severity}</strong> — {a.message || a.eventType}
+              <span className="config-hint">{new Date(a.timestamp || a.occurredAt).toLocaleString()}</span>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <section className="guest-section">
+        <h2>Devices</h2>
+        {devices.map(d => (
+          <div key={d.deviceId} className="guest-device-row">
+            <span>{d.name}</span>
+            <span className={`state-badge ${stateColor(d.state)}`}>{d.state}</span>
+            <span className="config-hint">{d.location} · last seen {d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "—"}</span>
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
 // Guarded so this module can be imported for its exported pure functions
 // (isCameraEvent, mergeHubLocations) from a unit test without a real
 // index.html/#root present -- see src/App.test.jsx. Always truthy in the
 // actual app (index.html always has <div id="root">).
 const rootEl = document.getElementById("root");
 if (rootEl) {
+  const guestMatch = window.location.pathname.match(/^\/view\/([^/]+)/);
   createRoot(rootEl).render(
     <ThemeProvider>
-      <App />
+      {guestMatch ? <GuestDashboard token={guestMatch[1]} /> : <App />}
     </ThemeProvider>
   );
 }

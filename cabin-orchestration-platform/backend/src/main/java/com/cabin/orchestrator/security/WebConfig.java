@@ -40,6 +40,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * gain a second, non-Google auth path once that lands, not a rollback of
  * this gate.
  *
+ * /api/access-tokens — added 2026-09-01, admin-only management (create/
+ * list/revoke) of Tier 1 guest share links. See GoogleAuthInterceptor's
+ * own guest-token path (SCOPE_PATH_PREFIXES) for the other half of this:
+ * a valid, unexpired, unrevoked share link is a genuine alternative
+ * credential on /api/devices and /api/alerts (GET only, scope-limited),
+ * checked before the Google-token requirement -- but creating/listing/
+ * revoking links itself is never reachable with a guest token, only a
+ * real signed-in admin.
+ *
  * dashboard config stays open, matching how it already worked before this
  * interceptor existed — that decision is unchanged.
  *
@@ -68,6 +77,6 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(authInterceptor)
             .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**",
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
-                "/api/events/**", "/api/alerts/**", "/api/devices/**");
+                "/api/events/**", "/api/alerts/**", "/api/devices/**", "/api/access-tokens/**");
     }
 }

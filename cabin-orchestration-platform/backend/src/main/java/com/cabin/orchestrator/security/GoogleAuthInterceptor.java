@@ -8,7 +8,9 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * cabin-backend (api.unicornpingpong.com) is public now, same as family-hub
@@ -32,6 +34,11 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
     private String expectedClientId;
 
     private final RestTemplate http = new RestTemplate();
+    private final CabinAccessTokenService accessTokens;
+
+    public GoogleAuthInterceptor(CabinAccessTokenService accessTokens) {
+        this.accessTokens = accessTokens;
+    }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -78,6 +85,18 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         boolean isRulesRead = path.startsWith(contextPath + "/api/rules/") && "GET".equalsIgnoreCase(request.getMethod());
         if (isRulesRead) {
             return true;
+        }
+        // Tier 1 guest share links -- see CabinAccessTokenService's own doc
+        // and the plan's "Guest Access Model" section. Checked before the
+        // Google-token requirement below so a share link is a genuine
+        // alternative credential (e.g. for an insurance adjuster with no
+        // Google account), not something that falls through to "missing
+        // bearer token." A guest token is always read-only and scope-
+        // limited regardless of what a caller asks for -- see
+        // handleGuestToken()/SCOPE_PATH_PREFIXES.
+        String guestToken = extractGuestToken(request);
+        if (guestToken != null) {
+            return handleGuestToken(guestToken, request, response);
         }
         String token = extractToken(request);
         if (token == null) {
@@ -126,5 +145,61 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
             return queryToken;
         }
         return null;
+    }
+
+    /** Request attribute key holding the guest link's id, set only after a successful check below -- lets a handler tell a share-link caller apart from a signed-in one if it ever needs to. */
+    public static final String REQUEST_ATTR_GUEST_TOKEN_ID = "cabin.auth.guestTokenId";
+
+    // Only the three routes the Guest Access Model plan names as safe for
+    // an unauthenticated-by-Google party: current-conditions dashboard,
+    // device state summary, recent alerts log. Nothing under /api/admin,
+    // /api/rules (writes), /api/access-tokens itself, or any other write
+    // path -- a scope string with no entry here simply grants nothing.
+    // No trailing slash -- matched below against both the bare collection
+    // endpoint (e.g. "/api/devices" itself) and any sub-path
+    // ("/api/devices/{id}/..."). A naive "/api/devices/" prefix excludes
+    // the collection endpoint itself, since it has no trailing slash.
+    private static final Map<String, String> SCOPE_PATH_PREFIXES = Map.of(
+        "dashboard", "/api/dashboard",
+        "device_states", "/api/devices",
+        "alerts_read", "/api/alerts"
+    );
+
+    private String extractGuestToken(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("CabinToken ") && header.length() > 11) {
+            return header.substring(11);
+        }
+        String param = request.getParameter("t");
+        return (param == null || param.isBlank()) ? null : param;
+    }
+
+    private boolean handleGuestToken(String rawToken, HttpServletRequest request, HttpServletResponse response) throws IOException {
+        var tokenOpt = accessTokens.validate(rawToken);
+        if (tokenOpt.isEmpty()) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "This access link is invalid, expired, or has been revoked");
+            return false;
+        }
+        // A guest link is never a write credential, full stop -- checked
+        // before scope so a POST/PATCH/DELETE can't slip through even if
+        // its path happens to also match a granted read prefix.
+        if (!"GET".equalsIgnoreCase(request.getMethod())) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "This access link is read-only");
+            return false;
+        }
+        CabinAccessToken accessToken = tokenOpt.get();
+        String path = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        boolean covered = accessToken.scope().stream()
+            .map(SCOPE_PATH_PREFIXES::get)
+            .filter(Objects::nonNull)
+            .map(prefix -> contextPath + prefix)
+            .anyMatch(base -> path.equals(base) || path.startsWith(base + "/"));
+        if (!covered) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "This access link doesn't cover that page");
+            return false;
+        }
+        request.setAttribute(REQUEST_ATTR_GUEST_TOKEN_ID, accessToken.id());
+        return true;
     }
 }
