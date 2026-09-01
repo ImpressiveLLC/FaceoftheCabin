@@ -85,6 +85,49 @@ class Zigbee2MqttAdapterTest {
             "a message with no linkquality field must not create a bogus reading");
     }
 
+    // 2026-09-01: found via a real production incident -- a cabin-backend
+    // redeploy resubscribed this adapter to zigbee2mqtt/#, Mosquitto replayed
+    // main_water_valve's old retained state (silent since 2026-08-21), and
+    // this handler stamped it with Instant.now() same as a live message,
+    // making a physically dead device briefly show "back online" for one
+    // health-check cycle before going stale again. See messageArrived's own
+    // comment.
+    @Test
+    void aRetainedReplayPreservesThePriorLastSeenInsteadOfResettingTheStalenessClock() throws Exception {
+        registerDevice("motion_entry");
+
+        deliver("zigbee2mqtt/motion_entry", "{\"linkquality\": 160}");
+        var lastSeenAfterLiveMessage = registry.get("z2m-motion_entry").lastSeen();
+
+        Thread.sleep(20);
+        MqttMessage retainedReplay = new MqttMessage("{\"linkquality\": 100}".getBytes());
+        retainedReplay.setRetained(true);
+        adapter.messageArrived("zigbee2mqtt/motion_entry", retainedReplay);
+
+        assertEquals(lastSeenAfterLiveMessage, registry.get("z2m-motion_entry").lastSeen(),
+            "a retained replay is the broker handing back its last cached value on resubscribe, " +
+            "not proof the device said anything just now -- it must not reset lastSeen");
+        // The replay's own payload is still applied to attributes/state --
+        // only the staleness clock is protected, not the cached values.
+        assertEquals(100, signalQualityRegistry.assess("z2m-motion_entry").orElseThrow().current());
+    }
+
+    @Test
+    void aLiveMessageAfterARetainedReplayStillAdvancesLastSeenNormally() throws Exception {
+        registerDevice("motion_entry");
+
+        MqttMessage retainedReplay = new MqttMessage("{\"linkquality\": 100}".getBytes());
+        retainedReplay.setRetained(true);
+        adapter.messageArrived("zigbee2mqtt/motion_entry", retainedReplay);
+        var lastSeenAfterReplay = registry.get("z2m-motion_entry").lastSeen();
+
+        Thread.sleep(20);
+        deliver("zigbee2mqtt/motion_entry", "{\"linkquality\": 160}");
+
+        assertTrue(registry.get("z2m-motion_entry").lastSeen().isAfter(lastSeenAfterReplay),
+            "a genuinely live message (not retained) must still advance lastSeen normally");
+    }
+
     @Test
     void anUnregisteredDevicesStateMessageIsIgnoredEntirely() throws Exception {
         // No registerDevice() call -- messageArrived's own routing requires

@@ -105,6 +105,17 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     public void messageArrived(String topic, MqttMessage message) {
         try {
             String payload = new String(message.getPayload());
+            // isRetained() is true only when the broker is replaying its last-known
+            // value because we just (re)subscribed -- e.g. after a cabin-backend
+            // restart -- not when a device genuinely publishes something new while
+            // we're already listening. Found 2026-09-01: a backend redeploy
+            // resubscribed this adapter to zigbee2mqtt/#, Mosquitto replayed
+            // main_water_valve's old retained availability/state, and this handler
+            // stamped it with Instant.now() same as a live message -- making a
+            // physically-dead valve (silent since 2026-08-21) briefly show a fresh
+            // lastSeen and "back online" for exactly one health-check cycle before
+            // going stale again. See handleAvailability/handleDeviceState below.
+            boolean retained = message.isRetained();
             if (topic.equals(Z2M_PREFIX + "bridge/devices")) {
                 handleBridgeDeviceList(payload);
             } else if (topic.equals(Z2M_PREFIX + "bridge/state")) {
@@ -114,9 +125,9 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 if (friendlyName.endsWith("/availability")) {
                     // Z2M availability is the authoritative online/offline signal — use it directly
                     String name = friendlyName.substring(0, friendlyName.lastIndexOf("/availability"));
-                    if (knownFriendlyNames.contains(name)) handleAvailability(name, payload);
+                    if (knownFriendlyNames.contains(name)) handleAvailability(name, payload, retained);
                 } else if (!friendlyName.startsWith("bridge/") && knownFriendlyNames.contains(friendlyName)) {
-                    handleDeviceState(friendlyName, payload);
+                    handleDeviceState(friendlyName, payload, retained);
                 }
             }
         } catch (Exception e) {
@@ -134,7 +145,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         }
     }
 
-    private void handleAvailability(String friendlyName, String payload) {
+    private void handleAvailability(String friendlyName, String payload, boolean retained) {
         String deviceId = DEVICE_ID_PREFIX + friendlyName.replace(" ", "_");
         try {
             JsonNode node = mapper.readTree(payload);
@@ -142,11 +153,15 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             DeviceStatus existing = registry.get(deviceId);
             if (existing == null) return;
             String newState = "online".equalsIgnoreCase(avail) ? "ONLINE" : "OFFLINE";
+            // A retained replay only proves what the broker last cached, not that
+            // the device said anything just now -- keep the prior lastSeen so a
+            // reconnect/resubscribe can't reset the staleness clock on its own.
+            Instant lastSeen = retained ? existing.lastSeen() : Instant.now();
             // Only update state, preserve existing attributes
             registry.update(new DeviceStatus(
                 deviceId, existing.type(), existing.name(), newState,
-                Instant.now(), existing.attributes(), existing.location()));
-            log.debug("Z2M availability: {} -> {}", friendlyName, newState);
+                lastSeen, existing.attributes(), existing.location()));
+            log.debug("Z2M availability: {} -> {}{}", friendlyName, newState, retained ? " (retained replay)" : "");
         } catch (Exception e) {
             log.warn("Failed to parse Z2M availability for {}: {}", friendlyName, e.getMessage());
         }
@@ -232,7 +247,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
      * with property names matching the 'property' fields from definition.exposes.
      * Unknown properties are stored in attributes as-is.
      */
-    private void handleDeviceState(String friendlyName, String payload) {
+    private void handleDeviceState(String friendlyName, String payload, boolean retained) {
         String deviceId = DEVICE_ID_PREFIX + friendlyName.replace(" ", "_");
         try {
             JsonNode node = mapper.readTree(payload);
@@ -254,9 +269,16 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             }
 
             String state = deriveState(attrs, existing.type());
+            // See messageArrived's own comment: a retained replay is Mosquitto
+            // handing back its last cached value on (re)subscribe, not a fresh
+            // report -- preserve the prior lastSeen instead of resetting the
+            // staleness clock, and skip the cabin_event write below since
+            // nothing actually happened just now.
+            Instant lastSeen = retained ? existing.lastSeen() : Instant.now();
             registry.update(new DeviceStatus(
                 deviceId, existing.type(), existing.name(), state,
-                Instant.now(), attrs, existing.location()));
+                lastSeen, attrs, existing.location()));
+            if (retained) return;
 
             // Same publish MqttBridgeService.handleDeviceMessage() does for
             // non-Zigbee devices — this adapter was updating DeviceRegistry
