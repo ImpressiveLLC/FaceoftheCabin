@@ -647,46 +647,40 @@ describe("CameraEventsPanel — time range window", () => {
   }
 
   it("fetches the default 24h window on first load", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
-    vi.stubGlobal("fetch", fetchMock);
+    const auth = mockAuth();
+    renderPanel(auth);
 
-    renderPanel();
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls[0][0]).toContain("window=24h");
+    await waitFor(() => expect(auth.authedFetch).toHaveBeenCalled());
+    expect(auth.authedFetch.mock.calls[0][0]).toContain("window=24h");
     expect(await screen.findByText(/No camera activity in last 24 hours/)).toBeTruthy();
   });
 
   it("refetches with the newly selected window and updates the empty-state message", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderPanel();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const auth = mockAuth();
+    renderPanel(auth);
+    await waitFor(() => expect(auth.authedFetch).toHaveBeenCalled());
 
     fireEvent.change(screen.getByLabelText("Camera events time range"), { target: { value: "240h" } });
 
     await waitFor(() => {
-      const urls = fetchMock.mock.calls.map(c => c[0]);
+      const urls = auth.authedFetch.mock.calls.map(c => c[0]);
       expect(urls.some(u => u.includes("window=240h"))).toBe(true);
     });
     expect(await screen.findByText(/No camera activity in last 10 days/)).toBeTruthy();
   });
 
   it("persists the selected window to localStorage and restores it on next mount", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
-
-    renderPanel();
+    const auth = mockAuth();
+    renderPanel(auth);
     fireEvent.change(screen.getByLabelText("Camera events time range"), { target: { value: "72h" } });
     await waitFor(() => expect(localStorage.getItem("cameraEvents.window")).toBe("72h"));
     cleanup();
 
-    const fetchMock2 = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
-    vi.stubGlobal("fetch", fetchMock2);
-    renderPanel();
+    const auth2 = mockAuth();
+    renderPanel(auth2);
 
-    await waitFor(() => expect(fetchMock2).toHaveBeenCalled());
-    expect(fetchMock2.mock.calls[0][0]).toContain("window=72h");
+    await waitFor(() => expect(auth2.authedFetch).toHaveBeenCalled());
+    expect(auth2.authedFetch.mock.calls[0][0]).toContain("window=72h");
   });
 });
 
@@ -708,17 +702,16 @@ describe("CameraEventsPanel — undeployed location falls back to cabin, filtere
   }
 
   it("queries cabin's apiBase with a location filter when Home isn't deployed", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
-    vi.stubGlobal("fetch", fetchMock);
+    const auth = mockAuth();
 
     render(
       <AppContext.Provider value={{ locationCfg: { id: "home", apiBase: "http://home-hub:8080" } }}>
-        <CameraEventsPanel auth={mockAuth()} />
+        <CameraEventsPanel auth={auth} />
       </AppContext.Provider>
     );
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const url = fetchMock.mock.calls[0][0];
+    await waitFor(() => expect(auth.authedFetch).toHaveBeenCalled());
+    const url = auth.authedFetch.mock.calls[0][0];
     expect(url.startsWith("http://cabin-hub:8090/api/events?")).toBe(true);
     expect(url).toContain("location=home");
   });
@@ -730,33 +723,31 @@ describe("CameraEventsPanel — undeployed location falls back to cabin, filtere
   // cabin_event table (it has no independently deployed backend of its
   // own yet), so viewing "Cabin" was silently showing Home's camera too.
   it("queries cabin's apiBase WITH a location=cabin filter, since cabin's backend can also hold another location's events", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
-    vi.stubGlobal("fetch", fetchMock);
+    const auth = mockAuth();
 
     render(
       <AppContext.Provider value={{ locationCfg: { id: "cabin", apiBase: "http://cabin-hub:8090" } }}>
-        <CameraEventsPanel auth={mockAuth()} />
+        <CameraEventsPanel auth={auth} />
       </AppContext.Provider>
     );
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const url = fetchMock.mock.calls[0][0];
+    await waitFor(() => expect(auth.authedFetch).toHaveBeenCalled());
+    const url = auth.authedFetch.mock.calls[0][0];
     expect(url.startsWith("http://cabin-hub:8090/api/events?")).toBe(true);
     expect(url).toContain("location=cabin");
   });
 
   it("applies no location filter when viewing 'both' (locationCfg is null)", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
-    vi.stubGlobal("fetch", fetchMock);
+    const auth = mockAuth();
 
     render(
       <AppContext.Provider value={{ locationCfg: null }}>
-        <CameraEventsPanel auth={mockAuth()} />
+        <CameraEventsPanel auth={auth} />
       </AppContext.Provider>
     );
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const url = fetchMock.mock.calls[0][0];
+    await waitFor(() => expect(auth.authedFetch).toHaveBeenCalled());
+    const url = auth.authedFetch.mock.calls[0][0];
     expect(url).not.toContain("location=");
   });
 });

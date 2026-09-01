@@ -612,7 +612,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   // events to begin with).
   const refresh = useCallback(() => {
     setLoading(true);
-    fetch(buildCameraEventsUrl(apiBase, 0, window_, eventsLocationFilter))
+    auth.authedFetch(buildCameraEventsUrl(apiBase, 0, window_, eventsLocationFilter))
       .then(r => r.json())
       .then(list => {
         setEvents(list);
@@ -620,7 +620,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
       })
       .catch(() => { setEvents([]); setHasMore(false); })
       .finally(() => setLoading(false));
-  }, [apiBase, window_, eventsLocationFilter]);
+  }, [apiBase, window_, eventsLocationFilter, auth]);
 
   useEffect(() => localStorage.setItem("cameraEvents.window", window_), [window_]);
 
@@ -630,7 +630,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   // for the initial load and the periodic poll).
   const loadMore = useCallback(() => {
     setLoadingMore(true);
-    fetch(buildCameraEventsUrl(apiBase, events.length, window_, eventsLocationFilter))
+    auth.authedFetch(buildCameraEventsUrl(apiBase, events.length, window_, eventsLocationFilter))
       .then(r => r.json())
       .then(list => {
         setEvents(prev => [...prev, ...list]);
@@ -638,7 +638,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
       })
       .catch(() => setHasMore(false))
       .finally(() => setLoadingMore(false));
-  }, [apiBase, events.length, window_, eventsLocationFilter]);
+  }, [apiBase, events.length, window_, eventsLocationFilter, auth]);
 
   // Real, current camera names from Frigate's own config — NOT derived
   // from event history. That was the original approach and broke the
@@ -3452,17 +3452,21 @@ const SENSOR_HISTORY_KNOWN_FIELDS = new Set(SENSOR_FIELD_OPTIONS.map(o => o.valu
 // Temperature" HA duplicates, the disabled Loonie Mc Frigerton fridge
 // zone/setpoint entities, a disabled dead Kidde entity) cluttered the
 // picker with extra columns that could never have real data.
-export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
+// authedFetch defaults to plain fetch so every existing direct-render test
+// (none of which pass one) keeps working unchanged -- production callers
+// (MonitoringPanel) pass the real auth.authedFetch, required since
+// /api/events/** now requires a Google token (WebConfig.java, 2026-09-01).
+export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = fetch }) {
   const [reportedFields, setReportedFields] = useState({});
   useEffect(() => {
     if (devices.length === 0) return; // nothing to look up yet
     let cancelled = false;
-    fetch(`${apiBase}/api/events/reported-fields`)
+    authedFetch(`${apiBase}/api/events/reported-fields`)
       .then(r => r.json())
       .then(data => { if (!cancelled) setReportedFields(data && typeof data === "object" ? data : {}); })
       .catch(() => { if (!cancelled) setReportedFields({}); });
     return () => { cancelled = true; };
-  }, [apiBase, devices.length]);
+  }, [apiBase, devices.length, authedFetch]);
   const realFieldsFor = (device) =>
     (reportedFields[device.deviceId] || []).filter(f => SENSOR_HISTORY_KNOWN_FIELDS.has(f));
 
@@ -3540,7 +3544,7 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
     let cancelled = false;
     setLoading(true);
     Promise.all(selectedIds.map(id =>
-      fetch(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(id)}&field=${field}&days=${days}`)
+      authedFetch(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(id)}&field=${field}&days=${days}`)
         .then(r => r.json())
         .then(data => [id, Array.isArray(data) ? data : []])
         .catch(() => [id, []])
@@ -3555,7 +3559,7 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
     // hasn't caught up yet, fetching the new field for the OLD (wrong)
     // set of devices before the correct fetch right behind it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, days, selectedIds]);
+  }, [apiBase, days, selectedIds, authedFetch]);
 
   if (sensors.length === 0) return null;
 
@@ -3714,7 +3718,7 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit }) {
 // separate list nothing else reads. reorderMode/dragIdx/overIdx/onDrag*
 // are undefined outside reorder mode, same as KpiTile's own defaults.
 function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragIdx, overIdx, pinnedCount,
-    onDragStart, onDragOver, onDrop, onDragEnd }) {
+    onDragStart, onDragOver, onDrop, onDragEnd, auth }) {
   const liveMessages = useMqttTelemetry(active, locCfg.wsBase);
   const [tempUnit, toggleTempUnit] = useTempUnit();
 
@@ -3765,7 +3769,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       </div>
 
       <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
-        apiBase={locCfg.apiBase} tempUnit={tempUnit} />
+        apiBase={locCfg.apiBase} tempUnit={tempUnit} authedFetch={auth?.authedFetch} />
 
       <CameraHealthPanel locCfg={locCfg} />
 
@@ -3792,7 +3796,7 @@ const MN_VIEWS = [
   { id: "remove", label: "Remove", icon: Minus },
 ];
 
-function MonitoringPanel({ active }) {
+function MonitoringPanel({ active, auth }) {
   const { devices, activeLocation, activeProfile } = useApp();
   const [view, setView]               = useState("see");
   const [selected, setSelected]       = useState(null);
@@ -3835,7 +3839,7 @@ function MonitoringPanel({ active }) {
         </span>
       </div>
 
-      {view === "see"    && <MnSeeView devices={devices} activeLocation={activeLocation} active={active} reorderMode={reorderMode} />}
+      {view === "see"    && <MnSeeView devices={devices} activeLocation={activeLocation} active={active} reorderMode={reorderMode} auth={auth} />}
       {view === "change" && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} />}
       {view === "add"    && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} />}
       {view === "remove" && <MnRemoveView />}
@@ -3850,7 +3854,7 @@ function MonitoringPanel({ active }) {
 // grid position. This view always renders the same location-split grid;
 // reorderMode only toggles whether drag handlers are attached, matching
 // how KpiTile/LocationMonitoringSection already gate on it.
-export function MnSeeView({ devices, activeLocation, active, reorderMode }) { // exported for src/App.test.jsx's Monitoring reorder tests
+export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }) { // exported for src/App.test.jsx's Monitoring reorder tests
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
 
@@ -3881,6 +3885,7 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode }) { //
         <LocationMonitoringSection key={loc.id} locCfg={loc} devices={ordered} active={active}
           reorderMode={reorderMode} dragIdx={dragIdx} overIdx={overIdx} pinnedCount={pinnedCount}
           onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}
+          auth={auth}
         />
       ))}
       {reorderMode && ordered.length === 0 && (
@@ -4179,7 +4184,7 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
         <h2>Rules &amp; Alerts</h2>
       </div>
       <ActiveConditionsCard />
-      <AutomationAlertCard />
+      <AutomationAlertCard auth={auth} />
       <div className="rules-layout">
         <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
           {locs.map(loc => <LocationRulesSection key={loc.id} locCfg={loc} />)}
@@ -4188,7 +4193,7 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
           <KafkaStatus location={activeLocation} />
           <WorkflowRulesCard workflows={workflows} auth={auth} devices={devices} activeLocation={activeLocation}
             defaultLocation={activeLocation !== "both" ? activeLocation : "cabin"} onChanged={refreshWorkflows} />
-          <BuiltinRules location={activeLocation} />
+          <BuiltinRules location={activeLocation} auth={auth} />
         </div>
       </div>
     </div>
@@ -4268,8 +4273,13 @@ export function automationAlertSteps(alert) {
 
 const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED";
 
-function AutomationAlertCard() {
+// authedFetch falls back to plain fetch when no auth prop is passed, so
+// this component's own existing tests (rendered without one) keep
+// working unchanged -- required in production since /api/events now
+// needs a Google token (WebConfig.java, 2026-09-01).
+function AutomationAlertCard({ auth }) {
   const { activeLocation } = useApp();
+  const doFetch = auth?.authedFetch || fetch;
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -4283,11 +4293,11 @@ function AutomationAlertCard() {
     const loc = activeLocation === "both" ? "both" : (LOCATIONS[activeLocation] ? activeLocation : "cabin");
     const attempts = [];
     if (loc === "cabin" || loc === "both") {
-      attempts.push(fetch(`${LOCATIONS.cabin.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=5&window=24h`)
+      attempts.push(doFetch(`${LOCATIONS.cabin.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=5&window=24h`)
         .then(r => r.ok ? r.json() : []).catch(() => []));
     }
     if (loc === "home" || loc === "both") {
-      attempts.push(fetch(`${LOCATIONS.home.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=5&window=24h`)
+      attempts.push(doFetch(`${LOCATIONS.home.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=5&window=24h`)
         .then(r => r.ok ? r.json() : []).catch(() => []));
     }
     Promise.all(attempts)
@@ -4298,7 +4308,8 @@ function AutomationAlertCard() {
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [activeLocation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLocation, auth]);
 
   if (loading) return null;
   if (alerts.length === 0) {
@@ -4883,13 +4894,17 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
   );
 }
 
-function BuiltinRules({ location }) {
+// authedFetch falls back to plain fetch when no auth prop is passed (same
+// reasoning as AutomationAlertCard above) -- required in production since
+// /api/alerts now needs a Google token (WebConfig.java, 2026-09-01).
+function BuiltinRules({ location, auth }) {
   const loc = location === "both" ? LOCATIONS.cabin : (LOCATIONS[location] || LOCATIONS.cabin);
+  const doFetch = auth?.authedFetch || fetch;
   const [rules, setRules] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${loc.apiBase}/api/alerts/rules`)
+    doFetch(`${loc.apiBase}/api/alerts/rules`)
       .then(response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -4899,7 +4914,8 @@ function BuiltinRules({ location }) {
       })
       .catch(() => { if (!cancelled) setRules(null); });
     return () => { cancelled = true; };
-  }, [loc.apiBase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loc.apiBase, auth]);
 
   return (
     <div className="sidebar-card">
@@ -4936,7 +4952,15 @@ export function deriveNavAlertLevels(alerts = []) {
   return Object.fromEntries(ALERT_PANELS.map(panelId => [panelId, level]));
 }
 
-function useNavAlerts() {
+// authedFetch defaults to plain fetch (pre-sign-in / no auth wired) --
+// required in production since /api/alerts now needs a Google token
+// (WebConfig.java, 2026-09-01). Unlike the [] this effect used to close
+// over permanently, authedFetch is now a real dependency: it must
+// re-establish the poll the moment a user signs in (its identity changes
+// with accessToken, see useGoogleAuth's own authedFetch), or the nav
+// badges would stay stuck on "unauthenticated, no alerts visible" even
+// after sign-in until a full page reload.
+function useNavAlerts(authedFetch = fetch) {
   const [feed, setFeed] = useState({ alerts: [], locations: [], unavailableLocations: [], generatedAt: null });
 
   useEffect(() => {
@@ -4944,7 +4968,7 @@ function useNavAlerts() {
       const targets = Object.values(LOCATIONS)
         .filter(loc => loc.id === "cabin" || isLocationDeployed(loc));
       const results = await Promise.allSettled(targets.map(async loc => {
-        const response = await fetch(`${loc.apiBase}/api/alerts/active`);
+        const response = await authedFetch(`${loc.apiBase}/api/alerts/active`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const snapshot = await response.json();
         return {
@@ -4967,7 +4991,7 @@ function useNavAlerts() {
     check();
     const t = setInterval(check, 30_000);
     return () => clearInterval(t);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authedFetch]);
 
   return {
     levels: deriveNavAlertLevels(feed.alerts),
@@ -5339,18 +5363,23 @@ function App() {
   const [config,         setConfig]         = useState({});
   const [connected,      setConnected]      = useState(false);
   const [apiError,       setApiError]       = useState(null); // { message, at } | null -- see refreshDevices
+  // Moved ahead of useNavAlerts (2026-09-01) -- that hook now needs
+  // cameraAuth.authedFetch, since /api/alerts/active requires a Google
+  // token as of this same change. Purely a reordering of two independent
+  // hook calls, safe under React's rules (neither's presence/count is
+  // conditional).
+  const cameraAuth = useGoogleAuth();
   const {
     levels: alertLevels,
     alerts: activeAlerts,
     locations: activeAlertLocations,
     unavailableLocations: activeAlertUnavailableLocations,
     generatedAt: activeAlertsGeneratedAt,
-  } = useNavAlerts();
+  } = useNavAlerts(cameraAuth.authedFetch);
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence();
   const securityStates = useSecurityState();
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile);
-  const cameraAuth = useGoogleAuth();
 
   // locationCfg is null when "both" — individual components handle that case.
   const locationCfg = activeLocation !== "both" ? LOCATIONS[activeLocation] : null;
@@ -5501,7 +5530,7 @@ function App() {
             {activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
             {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel />}
-            {activePanel === "MONITORING"     && <MonitoringPanel active={true} />}
+            {activePanel === "MONITORING"     && <MonitoringPanel active={true} auth={cameraAuth} />}
             {activePanel === "RULES_ENGINE"   && <RulesPanel auth={cameraAuth} />}
             {activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
             {activePanel === "OPPORTUNITY_MAP" && <OpportunityMapPanel auth={cameraAuth} />}

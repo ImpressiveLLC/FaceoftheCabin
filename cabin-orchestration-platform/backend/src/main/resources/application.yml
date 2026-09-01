@@ -128,4 +128,14 @@ management:
         include: health,info,metrics
   endpoint:
     health:
-      show-details: always
+      # Was "always" -- confirmed live 2026-09-01 that this leaked DB type,
+      # disk size, and the app's container path to anonymous public
+      # internet callers. "when-authorized" isn't reliable here: this app
+      # has no Spring Security Principal (auth is GoogleAuthInterceptor,
+      # a plain HandlerInterceptor -- it never populates
+      # request.getUserPrincipal()), so Boot's own authorization check for
+      # that mode would never actually recognize an authenticated caller.
+      # Nothing in this codebase reads the detailed payload -- the
+      # frontend's own "API offline" badge only checks reachability, not
+      # detail content -- so "never" costs nothing real.
+      show-details: never

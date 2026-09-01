@@ -6,12 +6,28 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * Only /api/notes, /api/chores, /api/profiles, /api/camera, /api/schedule,
+ * /api/notes, /api/chores, /api/profiles, /api/camera, /api/schedule,
  * /api/rules (writes only — see GoogleAuthInterceptor's GET carve-out, added
- * 2026-08-14), and (PATCH only, see GoogleAuthInterceptor) /api/tech-id/findings
- * require a Google token —
- * every other endpoint (device status, dashboard config, events) stays open,
- * matching how it already worked before this interceptor existed.
+ * 2026-08-14), (PATCH only, see GoogleAuthInterceptor) /api/tech-id/findings,
+ * and — added 2026-09-01 — /api/events and /api/alerts (every method,
+ * including GET, no carve-out) require a Google token.
+ *
+ * The events/alerts addition closes a real, confirmed-live exposure: a
+ * security audit found both returning full unauthenticated responses
+ * (real-time device telemetry, active security alerts, and — for
+ * main_water_valve specifically — public confirmation that the safety-
+ * critical water shutoff was currently offline) to the open internet.
+ * Unlike /api/rules's read side, there's no "read can't fire a physical
+ * action so it's safe public" argument here — the data itself (occupancy-
+ * adjacent telemetry, live alarm/alert state) is the thing worth
+ * protecting, not just write access. cabin-ui's own fetch calls to these
+ * endpoints never sent a token before this change (confirmed by direct
+ * grep) — see App.jsx's authedFetch threading, added in the same change,
+ * for the frontend half of this fix.
+ *
+ * device status (/api/devices) and dashboard config stay open, matching
+ * how they already worked before this interceptor existed — that
+ * decision is unchanged.
  *
  * cabin.security.googleAuth.enabled defaults to true (secure by default —
  * absence of the property changes nothing). The only reason it exists is
@@ -37,6 +53,7 @@ public class WebConfig implements WebMvcConfigurer {
         if (!googleAuthEnabled) return;
         registry.addInterceptor(authInterceptor)
             .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**",
-                "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**");
+                "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
+                "/api/events/**", "/api/alerts/**");
     }
 }
