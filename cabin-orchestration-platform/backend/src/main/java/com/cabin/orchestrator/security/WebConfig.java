@@ -25,9 +25,23 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * grep) — see App.jsx's authedFetch threading, added in the same change,
  * for the frontend half of this fix.
  *
- * device status (/api/devices) and dashboard config stay open, matching
- * how they already worked before this interceptor existed — that
- * decision is unchanged.
+ * /api/devices — added 2026-09-01, same day as events/alerts above.
+ * Previously left open deliberately (room names, vendor/model, and
+ * capabilities aren't safety-sensitive the way an active alert is), but a
+ * live check confirmed it discloses a full physical device inventory
+ * (room "Mech Room", vendor "Tuya", model "TS0001", etc.) to anonymous
+ * internet callers — the same "reveals the physical layout of an
+ * unoccupied cabin" category of concern as events/alerts, just one notch
+ * less urgent. Gated the same way, no partial/sanitized-projection carve-
+ * out — see App.jsx's authedFetch threading for the ~20 call sites this
+ * touched. A guest-access model (share links, then passwordless managed
+ * users) is planned separately for parties without a Google account
+ * (e.g. an insurance adjuster) — see the plan doc; this endpoint will
+ * gain a second, non-Google auth path once that lands, not a rollback of
+ * this gate.
+ *
+ * dashboard config stays open, matching how it already worked before this
+ * interceptor existed — that decision is unchanged.
  *
  * cabin.security.googleAuth.enabled defaults to true (secure by default —
  * absence of the property changes nothing). The only reason it exists is
@@ -54,6 +68,6 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(authInterceptor)
             .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**",
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
-                "/api/events/**", "/api/alerts/**");
+                "/api/events/**", "/api/alerts/**", "/api/devices/**");
     }
 }

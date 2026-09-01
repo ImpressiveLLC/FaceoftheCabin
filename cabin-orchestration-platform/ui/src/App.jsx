@@ -1254,29 +1254,29 @@ export function checkinStatusLabel(state, checkinStatus) {
   }
 }
 
-function useCheckinStatuses(apiBase) {
+function useCheckinStatuses(apiBase, authedFetch = fetch) {
   const [statuses, setStatuses] = useState({});
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBase}/api/devices/checkin-status`)
+    authedFetch(`${apiBase}/api/devices/checkin-status`)
       .then(r => r.json())
       .then(data => { if (!cancelled) setStatuses(data || {}); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [apiBase]);
+  }, [apiBase, authedFetch]);
   return statuses;
 }
 
-function useCheckinDetails(apiBase) {
+function useCheckinDetails(apiBase, authedFetch = fetch) {
   const [details, setDetails] = useState({});
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBase}/api/devices/checkin-details`)
+    authedFetch(`${apiBase}/api/devices/checkin-details`)
       .then(r => r.json())
       .then(data => { if (!cancelled) setDetails(data || {}); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [apiBase]);
+  }, [apiBase, authedFetch]);
   return details;
 }
 
@@ -1688,8 +1688,9 @@ const DM_VIEWS = [
   { id: "remove", label: "Remove", icon: Minus },
 ];
 
-export function DeviceManagerPanel() {
+export function DeviceManagerPanel({ auth }) {
   const { devices, refreshDevices, activeLocation, workflows, setActivePanel } = useApp();
+  const doFetch = auth?.authedFetch || fetch;
   const [view, setView]             = useState("see");
   const [selected, setSelected]     = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
@@ -1720,11 +1721,11 @@ export function DeviceManagerPanel() {
 
   const fetchDeviceReviewList = useCallback(async (path) => {
     const results = await Promise.allSettled(reviewLocations.map(location =>
-      fetch(`${location.apiBase}/api/devices/${path}`)
+      doFetch(`${location.apiBase}/api/devices/${path}`)
         .then(response => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); })
     ));
     return results.filter(result => result.status === "fulfilled").flatMap(result => result.value);
-  }, [reviewLocations]);
+  }, [reviewLocations, doFetch]);
 
   const refreshReviewDevices = useCallback(async () => {
     setCandidateDevices(await fetchDeviceReviewList("candidates"));
@@ -1783,7 +1784,7 @@ export function DeviceManagerPanel() {
 
   const applyLifecycleAction = useCallback(async (device, action) => {
     const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
-    const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/lifecycle`, {
+    const response = await doFetch(`${apiBase}/api/devices/${device.deviceId}/lifecycle`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
@@ -1792,7 +1793,7 @@ export function DeviceManagerPanel() {
     if (!response.ok || body.error) throw new Error(body.message || body.error || `HTTP ${response.status}`);
     refreshManagerDevices();
     return body;
-  }, [refreshManagerDevices]);
+  }, [refreshManagerDevices, doFetch]);
 
   // 2026-08-25 (user report): switching L1 tabs used to always drop the
   // selected device -- a person looking at a device in See had to
@@ -1883,19 +1884,20 @@ export function DeviceManagerPanel() {
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }}
         onManageWorkflows={() => setActivePanel("RULES_ENGINE")}
-        onRefresh={refreshManagerDevices} workflows={workflows} />}
+        onRefresh={refreshManagerDevices} workflows={workflows} auth={auth} />}
       {view === "change" && <DmChangeView groups={groups} deviceFilter={effectiveDeviceFilter} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
         onManageWorkflows={() => setActivePanel("RULES_ENGINE")}
-        workflows={workflows} />}
-      {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} />}
-      {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} />}
+        workflows={workflows} auth={auth} />}
+      {view === "add"    && <DmAddView    onDone={() => { refreshDevices(); setView("see"); }} auth={auth} />}
+      {view === "remove" && <DmRemoveView devices={locDevices} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices} auth={auth} />}
       {discoveryTarget && (
         <DeviceDiscoveryOverlay
           device={discoveryTarget.device}
           mode={discoveryTarget.mode}
           onClose={() => setDiscoveryTarget(null)}
           onApplied={() => { refreshManagerDevices(); setDiscoveryTarget(null); }}
+          auth={auth}
         />
       )}
     </div>
@@ -2145,12 +2147,12 @@ function useScrollSelectedIntoView(selected) {
   return ref;
 }
 
-function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, reorderMode, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows, onManageWorkflows }) {
+function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, reorderMode, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows, onManageWorkflows, auth }) {
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
   const [overItem, setOverItem] = useState(null);
-  const checkinStatuses = useCheckinStatuses(LOCATIONS.cabin.apiBase);
-  const checkinDetails = useCheckinDetails(LOCATIONS.cabin.apiBase);
+  const checkinStatuses = useCheckinStatuses(LOCATIONS.cabin.apiBase, auth?.authedFetch);
+  const checkinDetails = useCheckinDetails(LOCATIONS.cabin.apiBase, auth?.authedFetch);
 
   useEffect(() => {
     fetch(`${LOCATIONS.cabin.apiBase}/api/system/health`)
@@ -2252,6 +2254,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
                 checkinStatus={checkinDetails[d.deviceId]?.status || checkinStatuses[d.deviceId]}
                 onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)}
                 onToggled={onRefresh}
+                auth={auth}
                 workflows={workflows}
                 dragHandle={reorderMode
                   ? (isPinned
@@ -2273,7 +2276,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
           <DmDeviceDetail device={sel} checkinStatus={checkinDetails[sel.deviceId]?.status || checkinStatuses[sel.deviceId]}
             checkinDetail={checkinDetails[sel.deviceId]} onConfigure={() => onConfigure(sel.deviceId)}
             onLifecycleAction={onLifecycleAction} onOpenDiscovery={onOpenDiscovery}
-            workflows={workflows} onManageWorkflows={onManageWorkflows} />
+            workflows={workflows} onManageWorkflows={onManageWorkflows} auth={auth} />
         </div>
       )}
     </div>
@@ -2286,7 +2289,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
 // no drag props passed here, so there's no way for a Reorder control to
 // appear in Change even by accident. A saved See-mode order/grouping just
 // shows up identically, with no separate state to keep in sync.
-function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onOpenDiscovery, workflows, onManageWorkflows }) {
+function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onOpenDiscovery, workflows, onManageWorkflows, auth }) {
   const visibleGroups = groups
     .map(([name, items]) => [name, filterDeviceManagerDevices(items, deviceFilter)])
     .filter(([, items]) => items.length > 0);
@@ -2312,7 +2315,7 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onO
       {sel && (
         <div className="dm-detail">
           <DmEditForm key={sel.deviceId} device={sel} onSaved={onRefresh} onOpenDiscovery={onOpenDiscovery}
-            workflows={workflows} onManageWorkflows={onManageWorkflows} />
+            workflows={workflows} onManageWorkflows={onManageWorkflows} auth={auth} />
         </div>
       )}
     </div>
@@ -2320,7 +2323,7 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onO
 }
 
 // ── L2/L3: Add ──
-function DmAddView({ onDone }) {
+function DmAddView({ onDone, auth }) {
   const [mode, setMode] = useState(null); // null | "zigbee" | "manual"
   return (
     <div className="dm-add-root">
@@ -2341,14 +2344,15 @@ function DmAddView({ onDone }) {
           </div>
         </div>
       )}
-      {mode === "zigbee" && <ZigbeePairingFlow onBack={() => setMode(null)} onDone={onDone} />}
-      {mode === "manual" && <ManualAddForm onBack={() => setMode(null)} onDone={onDone} />}
+      {mode === "zigbee" && <ZigbeePairingFlow onBack={() => setMode(null)} onDone={onDone} auth={auth} />}
+      {mode === "manual" && <ManualAddForm onBack={() => setMode(null)} onDone={onDone} auth={auth} />}
     </div>
   );
 }
 
 // ── Zigbee pairing flow ──
-function ZigbeePairingFlow({ onBack, onDone }) {
+function ZigbeePairingFlow({ onBack, onDone, auth }) {
+  const doFetch = auth?.authedFetch || fetch;
   const PAIR_DURATION = 254; // seconds (~4m14s)
   const [phase, setPhase]         = useState("idle"); // idle | pairing | found | done
   const [secondsLeft, setSeconds] = useState(PAIR_DURATION);
@@ -2360,11 +2364,11 @@ function ZigbeePairingFlow({ onBack, onDone }) {
 
   const startPairing = async () => {
     // Snapshot current device IDs before opening window
-    const snap = await fetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
+    const snap = await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
       .then(r => r.json()).catch(() => []);
     prevIds.current = new Set(snap.map(d => d.deviceId));
 
-    await fetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
+    await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enable: true, duration: PAIR_DURATION })
@@ -2382,7 +2386,7 @@ function ZigbeePairingFlow({ onBack, onDone }) {
 
     // Poll for new devices every 3s
     pollRef.current = setInterval(async () => {
-      const all = await fetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
+      const all = await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
         .then(r => r.json()).catch(() => []);
       const found = all.filter(d => !prevIds.current.has(d.deviceId));
       if (found.length > 0) setNewDevices(found);
@@ -2392,7 +2396,7 @@ function ZigbeePairingFlow({ onBack, onDone }) {
   const stopPairing = async () => {
     clearInterval(timerRef.current);
     clearInterval(pollRef.current);
-    await fetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
+    await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enable: false, duration: 0 })
@@ -2477,8 +2481,9 @@ function ZigbeePairingFlow({ onBack, onDone }) {
 }
 
 // ── Manual add form ──
-function ManualAddForm({ onBack, onDone }) {
+function ManualAddForm({ onBack, onDone, auth }) {
   const { locationCfg } = useApp();
+  const doFetch = auth?.authedFetch || fetch;
   const [form, setForm] = useState({
     deviceId: "", name: "", type: "HOME_ASSISTANT_ENTITY",
     protocolAdapter: "ha_rest", connectionString: "", enabled: true,
@@ -2490,7 +2495,7 @@ function ManualAddForm({ onBack, onDone }) {
   const submit = async () => {
     if (!form.deviceId || !form.name) return;
     setSaving(true);
-    await fetch(`${apiBase}/api/devices`, {
+    await doFetch(`${apiBase}/api/devices`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, capabilities: [] })
@@ -2541,14 +2546,15 @@ function ManualAddForm({ onBack, onDone }) {
 }
 
 // ── L2/L3: Remove ──
-function DmRemoveView({ devices, selected, onSelect, onRefresh }) {
+function DmRemoveView({ devices, selected, onSelect, onRefresh, auth }) {
   const [confirming, setConfirming] = useState(false);
   const sel = selected ? devices.find(d => d.deviceId === selected) : null;
+  const doFetch = auth?.authedFetch || fetch;
 
   const doRemove = async () => {
     if (!sel) return;
     const apiBase = LOCATIONS[sel.location]?.apiBase || LOCATIONS.cabin.apiBase;
-    await fetch(`${apiBase}/api/devices/${sel.deviceId}`, { method: "DELETE" });
+    await doFetch(`${apiBase}/api/devices/${sel.deviceId}`, { method: "DELETE" });
     onSelect(null);
     setConfirming(false);
     onRefresh();
@@ -2598,19 +2604,20 @@ function DmRemoveView({ devices, selected, onSelect, onRefresh }) {
 // MnChangeView (display-config overrides, an unrelated "Change" concept)
 // don't pass it, so the toggle simply doesn't render there, matching their
 // existing behavior unchanged.
-function DmRowEnableToggle({ device, onToggled }) {
+function DmRowEnableToggle({ device, onToggled, auth }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const enabled = device.attributes?.enabled ?? (device.enabled !== false);
   const lifecycle = deviceLifecycleState(device);
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+  const doFetch = auth?.authedFetch || fetch;
 
   const toggle = async (e) => {
     e.stopPropagation(); // don't also trigger the row's own onClick (select)
     setSaving(true);
     setError(null);
     try {
-      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
+      const response = await doFetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: !enabled })
@@ -2648,7 +2655,7 @@ function DmRowEnableToggle({ device, onToggled }) {
 // view scroll the actually-selected row into view on mount/selection
 // change instead of leaving that entirely to the user each time.
 export const DmDeviceRow = forwardRef(function DmDeviceRow(
-    { device, selected, onClick, dragHandle, checkinStatus, onToggled, workflows }, ref) {
+    { device, selected, onClick, dragHandle, checkinStatus, onToggled, workflows, auth }, ref) {
   const Icon = deviceIcon(device.type);
   const isZ2m = device.deviceId.startsWith("z2m-");
   const override = checkinStatusLabel(device.state, checkinStatus);
@@ -2677,12 +2684,12 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
-      {onToggled && <DmRowEnableToggle device={device} onToggled={onToggled} />}
+      {onToggled && <DmRowEnableToggle device={device} onToggled={onToggled} auth={auth} />}
     </div>
   );
 });
 
-export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction, onOpenDiscovery, workflows, onManageWorkflows }) {
+export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigure, onLifecycleAction, onOpenDiscovery, workflows, onManageWorkflows, auth }) {
   const override = checkinStatusLabel(device.state, checkinStatus);
   const lifecycle = deviceLifecycleState(device);
   // Resolved parent name, not just the raw id -- same "show it, don't
@@ -2809,8 +2816,8 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
         </>
       )}
       <DmDeviceWorkflows device={device} workflows={workflows} onManage={onManageWorkflows} />
-      {lifecycle === "ASSIGNED" && device.type === "LOCK" && <DmLockActions device={device}/>}
-      {lifecycle === "ASSIGNED" && <DmCapabilityActions device={device} onConfigure={onConfigure}/>}
+      {lifecycle === "ASSIGNED" && device.type === "LOCK" && <DmLockActions device={device} auth={auth}/>}
+      {lifecycle === "ASSIGNED" && <DmCapabilityActions device={device} onConfigure={onConfigure} auth={auth}/>}
     </div>
   );
 }
@@ -2848,8 +2855,9 @@ function DmDeviceWorkflows({ device, workflows, onManage }) {
   );
 }
 
-function DmCapabilityActions({ device, onConfigure }) {
+function DmCapabilityActions({ device, onConfigure, auth }) {
   const [result, setResult] = useState(null);
+  const doFetch = auth?.authedFetch || fetch;
   const capabilities = device.attributes?.capabilities || [];
   if (!capabilities.includes("COMMAND") || device.type === "LOCK") return null;
   const entityId = device.attributes?.entityId || "";
@@ -2869,7 +2877,7 @@ function DmCapabilityActions({ device, onConfigure }) {
   const send = async (command) => {
     setResult({ pending: true, text: "Sending…" });
     try {
-      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/command`, {
+      const response = await doFetch(`${apiBase}/api/devices/${device.deviceId}/command`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command })
       });
       const body = await response.json();
@@ -2885,11 +2893,12 @@ function DmCapabilityActions({ device, onConfigure }) {
     {result && <p className={result.ok ? "action-result action-ok" : "action-result action-error"}>{result.text}</p>}</>;
 }
 
-function DmLockActions({ device }) {
+function DmLockActions({ device, auth }) {
   const { refreshDevices } = useApp();
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+  const doFetch = auth?.authedFetch || fetch;
   const cmd = async (command) => {
-    await fetch(`${apiBase}/api/devices/${device.deviceId}/command`, {
+    await doFetch(`${apiBase}/api/devices/${device.deviceId}/command`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ command })
     });
@@ -2903,7 +2912,7 @@ function DmLockActions({ device }) {
   );
 }
 
-export function DmEditForm({ device, onSaved, onOpenDiscovery, workflows, onManageWorkflows }) {
+export function DmEditForm({ device, onSaved, onOpenDiscovery, workflows, onManageWorkflows, auth }) {
   const [name, setName]       = useState(device.name);
   const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
   // Room (added 2026-08-18): the grouping dimension wired up on request --
@@ -2940,11 +2949,12 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery, workflows, onMana
     .filter(d => d.deviceId !== device.deviceId && d.location === device.location)
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const doFetch = auth?.authedFetch || fetch;
   const save = async () => {
     setSaving(true);
     setSaveError(null);
     try {
-      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
+      const response = await doFetch(`${apiBase}/api/devices/${device.deviceId}/config`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, enabled, room: room.trim(), parentDeviceId })
@@ -3031,8 +3041,9 @@ class DiscoveryRunError extends Error {}
 // Import/Replace after reviewing sources. First real full-screen overlay in
 // this file; repurposes the .modal-overlay/.modal CSS that existed but had
 // no consumer.
-export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
+export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied, auth }) {
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
+  const doFetch = auth?.authedFetch || fetch;
   const [status, setStatus] = useState("loading"); // loading | ok | error
   const [errorMessage, setErrorMessage] = useState(null);
   const [result, setResult] = useState(null);
@@ -3055,7 +3066,7 @@ export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
     setApplyError(null);
 
     const poll = () => {
-      fetch(`${apiBase}/api/devices/${device.deviceId}/discovery/latest`)
+      doFetch(`${apiBase}/api/devices/${device.deviceId}/discovery/latest`)
         .then(r => r.json())
         .then(body => {
           if (cancelled || body.pending) return;
@@ -3073,7 +3084,7 @@ export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
         .catch(() => { /* transient error while polling -- keep retrying until the bounded timeout below */ });
     };
 
-    fetch(`${apiBase}/api/devices/${device.deviceId}/discovery/run`, { method: "POST" })
+    doFetch(`${apiBase}/api/devices/${device.deviceId}/discovery/run`, { method: "POST" })
       .then(async response => {
         const body = await response.json().catch(() => ({}));
         if (body.error) throw new DiscoveryRunError(body.error);
@@ -3121,7 +3132,7 @@ export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied }) {
       if (selectedFields.capabilities && (match.suggestedCapabilities || []).length) fields.capabilities = match.suggestedCapabilities;
       if (mode === "new") fields.enabled = !!selectedFields.enabled;
 
-      const response = await fetch(`${apiBase}/api/devices/${device.deviceId}/discovery/apply`, {
+      const response = await doFetch(`${apiBase}/api/devices/${device.deviceId}/discovery/apply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runId: result.runId, mode, fields }),
@@ -3840,9 +3851,9 @@ function MonitoringPanel({ active, auth }) {
       </div>
 
       {view === "see"    && <MnSeeView devices={devices} activeLocation={activeLocation} active={active} reorderMode={reorderMode} auth={auth} />}
-      {view === "change" && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} />}
-      {view === "add"    && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} />}
-      {view === "remove" && <MnRemoveView />}
+      {view === "change" && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} auth={auth} />}
+      {view === "add"    && <MnChangeView devices={devices} selected={selected} onSelect={setSelected} auth={auth} />}
+      {view === "remove" && <MnRemoveView auth={auth} />}
     </div>
   );
 }
@@ -3895,7 +3906,7 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }
   );
 }
 
-function MnChangeView({ devices, selected, onSelect }) {
+function MnChangeView({ devices, selected, onSelect, auth }) {
   const { activeProfile, refreshDisplayConfigs } = useApp();
   const sel = selected ? devices.find(d => d.deviceId === selected) : null;
 
@@ -3916,22 +3927,23 @@ function MnChangeView({ devices, selected, onSelect }) {
       </div>
       {sel && (
         <div className="dm-detail">
-          <DisplayConfigForm device={sel} profile={activeProfile} onSaved={refreshDisplayConfigs} />
+          <DisplayConfigForm device={sel} profile={activeProfile} onSaved={refreshDisplayConfigs} authedFetch={auth?.authedFetch} />
         </div>
       )}
     </div>
   );
 }
 
-function MnRemoveView() {
+function MnRemoveView({ auth }) {
   const { activeProfile, displayConfigs, refreshDisplayConfigs, devices } = useApp();
   const [removing, setRemoving] = useState(null);
   const configured = Object.values(displayConfigs);
+  const doFetch = auth?.authedFetch || fetch;
 
   const doRemove = async (cfg) => {
     setRemoving(cfg.deviceId);
     const apiBase = cfg.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
-    await fetch(`${apiBase}/api/devices/${cfg.deviceId}/display-config?profile=${activeProfile}`,
+    await doFetch(`${apiBase}/api/devices/${cfg.deviceId}/display-config?profile=${activeProfile}`,
       { method: "DELETE" }).catch(() => {});
     setRemoving(null);
     refreshDisplayConfigs();
@@ -3973,7 +3985,7 @@ function MnRemoveView() {
   );
 }
 
-function DisplayConfigForm({ device, profile, onSaved }) {
+function DisplayConfigForm({ device, profile, onSaved, authedFetch = fetch }) {
   const { displayConfigs } = useApp();
   const existing = displayConfigs?.[device.deviceId];
 
@@ -3997,7 +4009,7 @@ function DisplayConfigForm({ device, profile, onSaved }) {
   const save = async () => {
     setSaving(true);
     const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
-    await fetch(`${apiBase}/api/devices/${device.deviceId}/display-config?profile=${profile}`, {
+    await authedFetch(`${apiBase}/api/devices/${device.deviceId}/display-config?profile=${profile}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ displayName, stateLabelMap: labelMap, severityOverride }),
@@ -5192,12 +5204,12 @@ function useSecurityState() {
 }
 
 // ─── Display configs (bulk, for active profile) ────────────────────────────
-function useDisplayConfigs(profile) {
+function useDisplayConfigs(profile, authedFetch = fetch) {
   const [configs, setConfigs] = useState({}); // deviceId → DeviceDisplayConfig
 
   const refetch = useCallback(() => {
     if (!profile) return;
-    fetch(`${LOCATIONS.cabin.apiBase}/api/devices/display-config?profile=${profile}`)
+    authedFetch(`${LOCATIONS.cabin.apiBase}/api/devices/display-config?profile=${profile}`)
       .then(r => r.json())
       .then(list => {
         const map = {};
@@ -5205,7 +5217,7 @@ function useDisplayConfigs(profile) {
         setConfigs(map);
       })
       .catch(() => {});
-  }, [profile]);
+  }, [profile, authedFetch]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
@@ -5379,7 +5391,7 @@ function App() {
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence();
   const securityStates = useSecurityState();
-  const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile);
+  const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile, cameraAuth.authedFetch);
 
   // locationCfg is null when "both" — individual components handle that case.
   const locationCfg = activeLocation !== "both" ? LOCATIONS[activeLocation] : null;
@@ -5407,13 +5419,13 @@ function App() {
     const attempts = [];
     if (activeLocation === "cabin" || activeLocation === "both") {
       attempts.push({ loc: LOCATIONS.cabin, promise:
-        fetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
+        cameraAuth.authedFetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
           .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       });
     }
     if (activeLocation === "home" || activeLocation === "both") {
       attempts.push({ loc: LOCATIONS.home, promise:
-        fetch(`${LOCATIONS.home.apiBase}/api/devices`)
+        cameraAuth.authedFetch(`${LOCATIONS.home.apiBase}/api/devices`)
           .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       });
     }
@@ -5431,7 +5443,7 @@ function App() {
         ? { message: `${relevantFailure.loc.label}: ${relevantFailure.result.reason?.message || "unreachable"}`, at: new Date() }
         : null);
     });
-  }, [activeLocation]);
+  }, [activeLocation, cameraAuth.authedFetch]);
 
   useEffect(() => {
     refreshDevices();
@@ -5529,7 +5541,7 @@ function App() {
           <div className="panel-area">
             {activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
             {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
-            {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel />}
+            {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel auth={cameraAuth} />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} auth={cameraAuth} />}
             {activePanel === "RULES_ENGINE"   && <RulesPanel auth={cameraAuth} />}
             {activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
