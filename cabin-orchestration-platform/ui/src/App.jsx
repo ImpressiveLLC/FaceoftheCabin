@@ -1636,12 +1636,13 @@ const GUEST_SCOPE_OPTIONS = [
   ["dashboard", "Dashboard"],
   ["device_states", "Device states"],
   ["alerts_read", "Alerts"],
+  ["observations_read", "Historical readings"],
 ];
 
 function GuestAccessCard({ auth }) {
   const [tokens, setTokens] = useState([]);
   const [label, setLabel] = useState("");
-  const [scope, setScope] = useState({ dashboard: true, device_states: true, alerts_read: true });
+  const [scope, setScope] = useState({ dashboard: true, device_states: true, alerts_read: true, observations_read: true });
   const [expiresInDays, setExpiresInDays] = useState("30");
   const [creating, setCreating] = useState(false);
   const [newLink, setNewLink] = useState(null);

@@ -2746,9 +2746,10 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
     await waitFor(() => expect(auth.authedFetch).toHaveBeenCalledTimes(1));
 
     fireEvent.change(screen.getByPlaceholderText(/Label, e.g\./), { target: { value: "Contractor" } });
-    // All three start checked -- uncheck the two not wanted, leaving only device_states.
+    // All four start checked -- uncheck the three not wanted, leaving only device_states.
     fireEvent.click(screen.getByLabelText("Dashboard"));
     fireEvent.click(screen.getByLabelText("Alerts"));
+    fireEvent.click(screen.getByLabelText("Historical readings"));
     fireEvent.click(screen.getByText("Create link"));
 
     expect(await screen.findByText(/view\/secret-xyz/)).toBeTruthy();

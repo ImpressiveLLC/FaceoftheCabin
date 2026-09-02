@@ -150,11 +150,12 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
     /** Request attribute key holding the guest link's id, set only after a successful check below -- lets a handler tell a share-link caller apart from a signed-in one if it ever needs to. */
     public static final String REQUEST_ATTR_GUEST_TOKEN_ID = "cabin.auth.guestTokenId";
 
-    // Only the three routes the Guest Access Model plan names as safe for
-    // an unauthenticated-by-Google party: current-conditions dashboard,
-    // device state summary, recent alerts log. Nothing under /api/admin,
-    // /api/rules (writes), /api/access-tokens itself, or any other write
-    // path -- a scope string with no entry here simply grants nothing.
+    // Only the four routes D12 (Guest Access & Non-Google Auth) names as
+    // safe for an unauthenticated-by-Google party: current-conditions
+    // dashboard, device state summary, recent alerts log, historical
+    // sensor readings. Nothing under /api/admin, /api/rules (writes),
+    // /api/access-tokens itself, or any other write path -- a scope
+    // string with no entry here simply grants nothing.
     // No trailing slash -- matched below against both the bare collection
     // endpoint (e.g. "/api/devices" itself) and any sub-path
     // ("/api/devices/{id}/..."). A naive "/api/devices/" prefix excludes
@@ -162,7 +163,8 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
     private static final Map<String, String> SCOPE_PATH_PREFIXES = Map.of(
         "dashboard", "/api/dashboard",
         "device_states", "/api/devices",
-        "alerts_read", "/api/alerts"
+        "alerts_read", "/api/alerts",
+        "observations_read", "/api/events/telemetry-history"
     );
 
     private String extractGuestToken(HttpServletRequest request) {

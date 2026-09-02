@@ -68,6 +68,22 @@ class GoogleAuthInterceptorTest {
         assertTrue(interceptor.preHandle(request, response, new Object()));
     }
 
+    // D12's fourth scope, added 2026-09-01 once the target endpoint was confirmed.
+    @Test
+    void aGuestTokenScopedToObservationsReadReachesTelemetryHistoryButNotOtherEventRoutes() throws Exception {
+        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("observations_read"), null, "nate@example.com");
+        MockHttpServletRequest allowed = new MockHttpServletRequest("GET", "/api/events/telemetry-history");
+        allowed.setParameter("t", token.token());
+        assertTrue(interceptor.preHandle(allowed, new MockHttpServletResponse(), new Object()));
+
+        MockHttpServletRequest otherEvents = new MockHttpServletRequest("GET", "/api/events");
+        otherEvents.setParameter("t", token.token());
+        MockHttpServletResponse otherEventsResponse = new MockHttpServletResponse();
+        assertFalse(interceptor.preHandle(otherEvents, otherEventsResponse, new Object()),
+            "observations_read must not grant the broader /api/events, only telemetry-history");
+        assertEquals(403, otherEventsResponse.getStatus());
+    }
+
     @Test
     void aGuestTokenNotScopedForThePathIsRejected() throws Exception {
         CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("alerts_read"), null, "nate@example.com");
