@@ -4935,11 +4935,22 @@ function WorkflowExecutionHistory({ workflow, apiBase, auth, onCleared }) {
   );
 }
 
-function WorkflowRow({ workflow, auth, onChanged }) {
+// Part C (2026-09-02): health is an additive field from GET .../workflows
+// (RulesController.listWorkflows(), see WorkflowHealth's own doc) --
+// BROKEN means at least one action's target device is missing, reassigned
+// away, or lost the capability the action needs, so the workflow would not
+// actually run correctly as saved; DEGRADED means every action is
+// structurally fine but a target device just hasn't checked in recently.
+// Only BROKEN gets a fix-it picker -- there's nothing to "replace" for a
+// device that's simply offline right now.
+function WorkflowRow({ workflow, auth, devices = [], onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [retargetingActionId, setRetargetingActionId] = useState(null);
+  const [pendingTarget, setPendingTarget] = useState("");
   const apiBase = LOCATIONS[workflow.location]?.apiBase || LOCATIONS.cabin.apiBase;
+  const { actions: actionVocabulary } = useWorkflowVocabulary(apiBase);
 
   const act = async (path, method) => {
     setBusy(true);
@@ -4955,11 +4966,51 @@ function WorkflowRow({ workflow, auth, onChanged }) {
     }
   };
 
+  const retarget = async (actionId, targetDeviceId) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await auth.authedFetch(`${apiBase}/api/rules/workflows/${workflow.workflowId}/actions/${actionId}/retarget`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetDeviceId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`);
+      setRetargetingActionId(null);
+      setPendingTarget("");
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const health = workflow.health;
+  const isBroken = health?.status === "BROKEN";
+  const isDegraded = health?.status === "DEGRADED";
+  const brokenActions = isBroken ? (health.actions || []).filter(a => !a.deviceExists || !a.hasCapability || !a.activeUseAllowed) : [];
+
   return (
     <div className="rule-row">
       <span className={`rule-dot ${workflow.enabled ? "rule-defined" : "rule-inactive"}`}>●</span>
       <div>
-        <div className="rule-name">{workflow.name}</div>
+        <div className="rule-name">
+          {workflow.name}
+          {isBroken && (
+            <span className="config-hint" style={{ color: "var(--danger, #e05555)", marginLeft: 6 }}
+              title="A target device is missing, reassigned, or lacks a capability this workflow needs -- it will not run correctly as saved">
+              ⚠ Broken
+            </span>
+          )}
+          {isDegraded && (
+            <span className="config-hint" style={{ color: "var(--warn, #cc8b00)", marginLeft: 6 }}
+              title="Every target device is correctly configured, but at least one hasn't checked in recently">
+              ⚠ Degraded
+            </span>
+          )}
+        </div>
         <div className="rule-detail">
           {workflow.triggerDeviceId || workflow.triggerDefinitionId || "any trigger"}
           {" → "}
@@ -4968,6 +5019,42 @@ function WorkflowRow({ workflow, auth, onChanged }) {
             : "no actions"}
         </div>
         <div className="rule-source">{workflow.location} · {workflow.enabled ? "active" : "draft"}</div>
+        {isBroken && auth?.signedIn && brokenActions.map(a => {
+          const vocab = actionVocabulary.find(v => v.id === a.actionDefinitionId);
+          const capableDevices = vocab?.requiresCapability
+            ? devices.filter(d => (d.attributes?.capabilities || []).includes(vocab.requiresCapability))
+            : devices;
+          const editing = retargetingActionId === a.actionId;
+          const reason = !a.deviceExists ? "target device no longer exists"
+            : !a.hasCapability ? "target device lacks the required capability"
+            : "target device is not assigned/active";
+          return (
+            <div key={a.actionId} className="workflow-action-row">
+              <span className="config-hint">{a.actionDefinitionId}: {reason}</span>
+              {editing ? (
+                <>
+                  <select value={pendingTarget} onChange={e => setPendingTarget(e.target.value)}>
+                    <option value="">Choose a replacement…</option>
+                    {capableDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
+                  </select>
+                  <button type="button" className="btn-primary" disabled={!pendingTarget || busy}
+                    onClick={() => retarget(a.actionId, pendingTarget)}>
+                    Save
+                  </button>
+                  <button type="button" className="btn-ghost"
+                    onClick={() => { setRetargetingActionId(null); setPendingTarget(""); }}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="btn-secondary" disabled={busy}
+                  onClick={() => { setRetargetingActionId(a.actionId); setPendingTarget(""); }}>
+                  Choose replacement device
+                </button>
+              )}
+            </div>
+          );
+        })}
         {auth?.signedIn && (
           <div className="workflow-row-actions">
             {workflow.triggerKind === "MANUAL" && workflow.enabled && (
@@ -5068,7 +5155,7 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
       <p className="config-hint">Real, persisted trigger → action rules (separate from the rules below and from Node-RED).</p>
       <RecentExecutionsList workflows={workflows} activeLocation={activeLocation} auth={auth} />
       {workflows.length === 0 && <p className="config-hint">No workflows configured yet.</p>}
-      {workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} onChanged={onChanged} />)}
+      {workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} devices={devices} onChanged={onChanged} />)}
       {!creating && (
         auth?.signedIn
           ? <button type="button" className="btn-secondary" onClick={() => setCreating(true)}>+ New Workflow</button>

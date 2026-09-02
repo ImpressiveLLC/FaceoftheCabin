@@ -2142,6 +2142,111 @@ describe("WorkflowRulesCard", () => {
       expect(screen.queryByText("Recent")).toBeNull();
     });
   });
+
+  // Phase 3 (Part C, 2026-09-02) -- health is an additive field on each
+  // workflow from GET .../workflows (RulesController.listWorkflows()).
+  // WorkflowRow fetches its own action vocabulary (same useWorkflowVocabulary
+  // hook WorkflowCreateForm uses) to know a broken action's requiresCapability
+  // for the fix-it picker's device filter.
+  describe("workflow health badges and retarget (Part C)", () => {
+    function healthFetch(actionsVocab = []) {
+      return vi.fn((url) => {
+        if (url.includes("/vocabulary/actions")) return Promise.resolve({ ok: true, json: async () => actionsVocab });
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+    }
+    const brokenMainValveAction = {
+      actionId: "wf-1-a0", actionDefinitionId: "action_main_water_valve_off", targetDeviceId: "z2m-main_water_valve",
+      deviceExists: false, hasCapability: false, activeUseAllowed: false, online: false,
+    };
+    const mainValveVocab = { id: "action_main_water_valve_off", label: "Shut off the main water valve",
+      needsTarget: true, requiresCapability: "COMMAND", targetDeviceId: "z2m-main_water_valve", privileged: false, supported: true };
+
+    it("shows a Broken badge and a capability-filtered fix-it picker for a structurally unhealthy action", async () => {
+      vi.stubGlobal("fetch", healthFetch([mainValveVocab]));
+      render(<WorkflowRulesCard auth={mockAuth()} devices={[
+        { deviceId: "z2m-backup_valve", name: "Backup valve", attributes: { capabilities: ["COMMAND"] } },
+        { deviceId: "z2m-sensor", name: "Some sensor", attributes: { capabilities: ["TELEMETRY"] } },
+      ]} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true,
+          actions: [{ actionId: "wf-1-a0", actionDefinitionId: "action_main_water_valve_off", targetDeviceId: "z2m-main_water_valve" }],
+          health: { status: "BROKEN", actions: [brokenMainValveAction] } },
+      ]} />);
+
+      expect(await screen.findByText("⚠ Broken")).toBeTruthy();
+      expect(screen.getByText(/target device no longer exists/)).toBeTruthy();
+
+      fireEvent.click(screen.getByText("Choose replacement device"));
+      expect(screen.getByText("Backup valve")).toBeTruthy();
+      expect(screen.queryByText("Some sensor")).toBeNull();
+    });
+
+    it("shows a Degraded badge with no fix-it picker when only reachability is the issue", async () => {
+      vi.stubGlobal("fetch", healthFetch());
+      render(<WorkflowRulesCard auth={mockAuth()} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true, actions: [],
+          health: { status: "DEGRADED", actions: [
+            { actionId: "wf-1-a0", actionDefinitionId: "action_main_water_valve_off", targetDeviceId: "z2m-main_water_valve",
+              deviceExists: true, hasCapability: true, activeUseAllowed: true, online: false },
+          ] } },
+      ]} />);
+
+      expect(await screen.findByText("⚠ Degraded")).toBeTruthy();
+      expect(screen.queryByText("Choose replacement device")).toBeNull();
+    });
+
+    it("shows no badge for a HEALTHY workflow", async () => {
+      vi.stubGlobal("fetch", healthFetch());
+      render(<WorkflowRulesCard auth={mockAuth()} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true, actions: [],
+          health: { status: "HEALTHY", actions: [] } },
+      ]} />);
+
+      await screen.findByText("Leak shutoff");
+      expect(screen.queryByText("⚠ Broken")).toBeNull();
+      expect(screen.queryByText("⚠ Degraded")).toBeNull();
+    });
+
+    it("choosing a replacement and saving calls the retarget endpoint with the new device, then refreshes", async () => {
+      const auth = mockAuth();
+      const onChanged = vi.fn();
+      vi.stubGlobal("fetch", healthFetch([mainValveVocab]));
+      render(<WorkflowRulesCard auth={auth} onChanged={onChanged} devices={[
+        { deviceId: "z2m-backup_valve", name: "Backup valve", attributes: { capabilities: ["COMMAND"] } },
+      ]} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true,
+          actions: [{ actionId: "wf-1-a0", actionDefinitionId: "action_main_water_valve_off", targetDeviceId: "z2m-main_water_valve" }],
+          health: { status: "BROKEN", actions: [brokenMainValveAction] } },
+      ]} />);
+      await screen.findByText("⚠ Broken");
+
+      fireEvent.click(screen.getByText("Choose replacement device"));
+      fireEvent.change(screen.getByDisplayValue("Choose a replacement…"), { target: { value: "z2m-backup_valve" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(auth.authedFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/rules/workflows/wf-1/actions/wf-1-a0/retarget"),
+        expect.objectContaining({ method: "POST" })));
+      const [, options] = auth.authedFetch.mock.calls[0];
+      expect(JSON.parse(options.body)).toEqual({ targetDeviceId: "z2m-backup_valve" });
+      await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    });
+
+    it("Save stays disabled until a replacement device is actually chosen", async () => {
+      vi.stubGlobal("fetch", healthFetch([mainValveVocab]));
+      render(<WorkflowRulesCard auth={mockAuth()} devices={[
+        { deviceId: "z2m-backup_valve", name: "Backup valve", attributes: { capabilities: ["COMMAND"] } },
+      ]} workflows={[
+        { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true,
+          actions: [{ actionId: "wf-1-a0", actionDefinitionId: "action_main_water_valve_off", targetDeviceId: "z2m-main_water_valve" }],
+          health: { status: "BROKEN", actions: [brokenMainValveAction] } },
+      ]} />);
+      await screen.findByText("⚠ Broken");
+      fireEvent.click(screen.getByText("Choose replacement device"));
+
+      expect(screen.getByRole("button", { name: "Save" }).disabled).toBe(true);
+    });
+  });
 });
 
 describe("CameraNotifyToggle", () => {

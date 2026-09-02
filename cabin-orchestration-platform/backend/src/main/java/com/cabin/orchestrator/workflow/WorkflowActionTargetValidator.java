@@ -1,10 +1,12 @@
 package com.cabin.orchestrator.workflow;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.model.CheckinStatus;
 import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.workflow.model.ActionVocabularyEntry;
 import com.cabin.orchestrator.workflow.model.WorkflowAction;
+import com.cabin.orchestrator.workflow.model.WorkflowActionHealthEntry;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -40,8 +42,7 @@ public class WorkflowActionTargetValidator {
 
     /** Null if every action's target is valid; otherwise a human-readable reason for the first violation found. */
     public String validate(List<WorkflowAction> actions) {
-        Map<String, ActionVocabularyEntry> vocabularyById = vocabularyStore.loadSupportedActions().stream()
-            .collect(Collectors.toMap(ActionVocabularyEntry::id, a -> a));
+        Map<String, ActionVocabularyEntry> vocabularyById = vocabularyById();
         for (WorkflowAction action : actions) {
             ActionVocabularyEntry vocab = vocabularyById.get(action.actionDefinitionId());
             // Unsupported/candidate action ids and non-target actions (log/notify)
@@ -73,5 +74,52 @@ public class WorkflowActionTargetValidator {
             }
         }
         return null;
+    }
+
+    /**
+     * Same three structural checks as validate() (device exists, has the
+     * required capability, allowsActiveUse()), evaluated per action instead
+     * of stopping at the first violation, plus a live checkinStatuses
+     * cross-reference -- see WorkflowHealth's own doc for how these combine
+     * into a rule-level status. checkinStatuses is caller-supplied (from
+     * DeviceHealthMonitor.getCheckinStatuses()) rather than injected here,
+     * so this class stays free of that dependency; a device missing from
+     * the map (never classified yet) defaults to ON_SCHEDULE rather than
+     * flagging a false DEGRADED.
+     */
+    public List<WorkflowActionHealthEntry> health(List<WorkflowAction> actions, Map<String, CheckinStatus> checkinStatuses) {
+        Map<String, ActionVocabularyEntry> vocabularyById = vocabularyById();
+        return actions.stream().map(action -> {
+            ActionVocabularyEntry vocab = vocabularyById.get(action.actionDefinitionId());
+            if (vocab == null || !vocab.needsTarget()) {
+                return new WorkflowActionHealthEntry(
+                    action.actionId(), action.actionDefinitionId(), null, true, true, true, true);
+            }
+            String targetDeviceId = action.targetDeviceId();
+            Optional<DeviceDescriptor> descriptor = (targetDeviceId == null || targetDeviceId.isBlank())
+                ? Optional.empty() : registry.descriptor(targetDeviceId);
+            boolean deviceExists = descriptor.isPresent();
+            boolean hasCapability = deviceExists
+                && (vocab.requiresCapability() == null || hasRequiredCapability(descriptor.get(), vocab.requiresCapability()));
+            boolean activeUseAllowed = deviceExists && registry.lifecycleState(targetDeviceId).allowsActiveUse();
+            boolean online = deviceExists
+                && checkinStatuses.getOrDefault(targetDeviceId, CheckinStatus.ON_SCHEDULE) != CheckinStatus.MISSED;
+            return new WorkflowActionHealthEntry(
+                action.actionId(), action.actionDefinitionId(), targetDeviceId,
+                deviceExists, hasCapability, activeUseAllowed, online);
+        }).toList();
+    }
+
+    private boolean hasRequiredCapability(DeviceDescriptor descriptor, String requiredCapabilityName) {
+        try {
+            return descriptor.capabilities().contains(DeviceCapability.valueOf(requiredCapabilityName));
+        } catch (IllegalArgumentException unknownCapability) {
+            return false;
+        }
+    }
+
+    private Map<String, ActionVocabularyEntry> vocabularyById() {
+        return vocabularyStore.loadSupportedActions().stream()
+            .collect(Collectors.toMap(ActionVocabularyEntry::id, a -> a));
     }
 }

@@ -1,11 +1,14 @@
 package com.cabin.orchestrator.workflow;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.model.CheckinStatus;
 import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceLifecycleAction;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.workflow.model.WorkflowAction;
+import com.cabin.orchestrator.workflow.model.WorkflowActionHealthEntry;
+import com.cabin.orchestrator.workflow.model.WorkflowHealth;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -160,5 +163,125 @@ class WorkflowActionTargetValidatorTest {
     @Test
     void anEmptyActionListPasses() {
         assertNull(validator.validate(List.of()));
+    }
+
+    // Phase 3 (Part C) -- health(), added 2026-09-02.
+
+    @Test
+    void healthReturnsAVacuouslyHealthyEntryForATargetlessAction() {
+        List<WorkflowActionHealthEntry> health = validator.health(
+            List.of(action("notify_critical", null)), Map.of());
+
+        WorkflowActionHealthEntry entry = health.get(0);
+        assertNull(entry.targetDeviceId());
+        assertTrue(entry.deviceExists());
+        assertTrue(entry.hasCapability());
+        assertTrue(entry.activeUseAllowed());
+        assertTrue(entry.online());
+        assertTrue(entry.healthy());
+        assertEquals("HEALTHY", WorkflowHealth.of(health).status());
+    }
+
+    @Test
+    void healthReportsEveryFieldTrueForAValidOnlineAssignedDevice() {
+        registerAssignedDevice("z2m-main_water_valve", Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY));
+
+        List<WorkflowActionHealthEntry> health = validator.health(
+            List.of(action("action_main_water_valve_off", "z2m-main_water_valve")),
+            Map.of("z2m-main_water_valve", CheckinStatus.ON_SCHEDULE));
+
+        WorkflowActionHealthEntry entry = health.get(0);
+        assertTrue(entry.deviceExists());
+        assertTrue(entry.hasCapability());
+        assertTrue(entry.activeUseAllowed());
+        assertTrue(entry.online());
+        assertEquals("HEALTHY", WorkflowHealth.of(health).status());
+    }
+
+    @Test
+    void healthReportsEverythingFalseForANonexistentTargetDevice() {
+        List<WorkflowActionHealthEntry> health = validator.health(
+            List.of(action("action_main_water_valve_off", "z2m-does_not_exist")), Map.of());
+
+        WorkflowActionHealthEntry entry = health.get(0);
+        assertFalse(entry.deviceExists());
+        assertFalse(entry.hasCapability());
+        assertFalse(entry.activeUseAllowed());
+        assertFalse(entry.online());
+        assertFalse(entry.healthy());
+        assertEquals("BROKEN", WorkflowHealth.of(health).status());
+    }
+
+    @Test
+    void healthReportsHasCapabilityFalseButOtherFieldsTrueWhenDeviceLacksTheCapability() {
+        registerAssignedDevice("z2m-sensor_only", Set.of(DeviceCapability.TELEMETRY));
+
+        List<WorkflowActionHealthEntry> health = validator.health(
+            List.of(action("action_main_water_valve_off", "z2m-sensor_only")),
+            Map.of("z2m-sensor_only", CheckinStatus.ON_SCHEDULE));
+
+        WorkflowActionHealthEntry entry = health.get(0);
+        assertTrue(entry.deviceExists());
+        assertFalse(entry.hasCapability());
+        assertTrue(entry.activeUseAllowed());
+        assertFalse(entry.healthy());
+        assertEquals("BROKEN", WorkflowHealth.of(health).status());
+    }
+
+    @Test
+    void healthReportsActiveUseAllowedFalseForACandidateNotYetAssigned() {
+        deviceRegistry.registerCandidate(new DeviceDescriptor(
+            "z2m-not_assigned_yet", "Test Device", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY),
+            "mqtt", "zigbee2mqtt/z2m-not_assigned_yet", true, "cabin"), Map.of());
+
+        List<WorkflowActionHealthEntry> health = validator.health(
+            List.of(action("action_main_water_valve_off", "z2m-not_assigned_yet")), Map.of());
+
+        WorkflowActionHealthEntry entry = health.get(0);
+        assertTrue(entry.deviceExists());
+        assertFalse(entry.activeUseAllowed());
+        assertFalse(entry.healthy());
+    }
+
+    @Test
+    void healthReportsOnlineFalseWhenCheckinStatusIsMissedButStaysStructurallyHealthy() {
+        registerAssignedDevice("z2m-main_water_valve", Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY));
+
+        List<WorkflowActionHealthEntry> health = validator.health(
+            List.of(action("action_main_water_valve_off", "z2m-main_water_valve")),
+            Map.of("z2m-main_water_valve", CheckinStatus.MISSED));
+
+        WorkflowActionHealthEntry entry = health.get(0);
+        assertTrue(entry.healthy(), "MISSED is a live-reachability signal, not a structural validation failure");
+        assertFalse(entry.online());
+        assertEquals("DEGRADED", WorkflowHealth.of(health).status(),
+            "structurally fine but unreachable should warn, not report BROKEN");
+    }
+
+    @Test
+    void healthDefaultsOnlineTrueWhenTheDeviceIsMissingFromCheckinStatuses() {
+        // Never classified yet (e.g. DeviceHealthMonitor's first cycle
+        // hasn't run) -- must not read as a false DEGRADED.
+        registerAssignedDevice("z2m-main_water_valve", Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY));
+
+        List<WorkflowActionHealthEntry> health = validator.health(
+            List.of(action("action_main_water_valve_off", "z2m-main_water_valve")), Map.of());
+
+        assertTrue(health.get(0).online());
+    }
+
+    @Test
+    void healthEvaluatesEveryActionRatherThanStoppingAtTheFirstUnhealthyOne() {
+        registerAssignedDevice("z2m-main_water_valve", Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY));
+
+        List<WorkflowActionHealthEntry> health = validator.health(List.of(
+            action("action_main_water_valve_off", "z2m-does_not_exist"),
+            action("action_main_water_valve_open", "z2m-main_water_valve")), Map.of());
+
+        assertEquals(2, health.size());
+        assertFalse(health.get(0).healthy());
+        assertTrue(health.get(1).healthy());
+        assertEquals("BROKEN", WorkflowHealth.of(health).status());
     }
 }

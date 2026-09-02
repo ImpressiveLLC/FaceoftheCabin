@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.devices.DeviceHealthMonitor;
+import com.cabin.orchestrator.devices.model.CheckinStatus;
 import com.cabin.orchestrator.ontology.OntologyLookupService;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
 import com.cabin.orchestrator.workflow.JdbcWorkflowExecutionStore;
@@ -11,7 +13,9 @@ import com.cabin.orchestrator.workflow.model.ActionVocabularyEntry;
 import com.cabin.orchestrator.workflow.model.TriggerVocabularyEntry;
 import com.cabin.orchestrator.workflow.model.WorkflowAction;
 import com.cabin.orchestrator.workflow.model.WorkflowExecution;
+import com.cabin.orchestrator.workflow.model.WorkflowHealth;
 import com.cabin.orchestrator.workflow.model.WorkflowRule;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
@@ -72,16 +76,19 @@ public class RulesController {
     private final JdbcWorkflowVocabularyStore vocabularyStore;
     private final OntologyLookupService ontologyLookupService;
     private final WorkflowActionTargetValidator targetValidator;
+    private final DeviceHealthMonitor healthMonitor;
 
     public RulesController(JdbcWorkflowRuleStore ruleStore, JdbcWorkflowExecutionStore executionStore,
                             WorkflowRuleService workflowRuleService, JdbcWorkflowVocabularyStore vocabularyStore,
-                            OntologyLookupService ontologyLookupService, WorkflowActionTargetValidator targetValidator) {
+                            OntologyLookupService ontologyLookupService, WorkflowActionTargetValidator targetValidator,
+                            DeviceHealthMonitor healthMonitor) {
         this.ruleStore = ruleStore;
         this.executionStore = executionStore;
         this.workflowRuleService = workflowRuleService;
         this.vocabularyStore = vocabularyStore;
         this.ontologyLookupService = ontologyLookupService;
         this.targetValidator = targetValidator;
+        this.healthMonitor = healthMonitor;
     }
 
     /** Supported (seeded, DB-owned) triggers plus candidate ones merged live from docs/ontology.yaml -- see class doc. */
@@ -104,10 +111,21 @@ public class RulesController {
         return all;
     }
 
+    /**
+     * health is additive -- @JsonUnwrapped keeps every WorkflowRule field a
+     * flat sibling in the same JSON object, so existing consumers reading
+     * e.g. workflow.workflowId/workflow.actions see no shape change at all.
+     * See WorkflowHealth's own doc for BROKEN/DEGRADED/HEALTHY.
+     */
     @GetMapping("/workflows")
-    public List<WorkflowRule> listWorkflows() {
-        return ruleStore.loadAll();
+    public List<WorkflowRuleView> listWorkflows() {
+        Map<String, CheckinStatus> checkinStatuses = healthMonitor.getCheckinStatuses();
+        return ruleStore.loadAll().stream()
+            .map(rule -> new WorkflowRuleView(rule, WorkflowHealth.of(targetValidator.health(rule.actions(), checkinStatuses))))
+            .toList();
     }
+
+    public record WorkflowRuleView(@JsonUnwrapped WorkflowRule rule, WorkflowHealth health) {}
 
     @PostMapping("/workflows")
     public Map<String, Object> createWorkflow(@RequestBody WorkflowRule rule, HttpServletRequest request) {
@@ -229,6 +247,50 @@ public class RulesController {
         }
         WorkflowExecution execution = workflowRuleService.fireManual(rule, actorEmail(request));
         return Map.of("executionId", execution.executionId(), "fired", true);
+    }
+
+    /**
+     * The supervised, validated replacement for editing Postgres directly to
+     * fix a workflow whose target device is gone/reassigned -- closes a real
+     * gap (there was previously no way to edit an existing workflow's action
+     * target at all). Deliberately allowed even for an instance-locked
+     * action (e.g. the main valve) -- an admin choosing a genuine
+     * replacement device here is exactly the coached alternative
+     * WorkflowCreateForm's own "Change target device" override exists for,
+     * not a way around that lock's purpose.
+     */
+    @PostMapping("/workflows/{id}/actions/{actionId}/retarget")
+    public Map<String, Object> retargetAction(@PathVariable String id, @PathVariable String actionId,
+                                               @RequestBody Map<String, String> body) {
+        Optional<WorkflowRule> existing = ruleStore.findById(id);
+        if (existing.isEmpty()) return Map.of("error", "not found");
+        WorkflowRule rule = existing.get();
+        String newTargetDeviceId = body.get("targetDeviceId");
+
+        boolean actionFound = false;
+        List<WorkflowAction> updatedActions = new ArrayList<>();
+        for (WorkflowAction action : rule.actions()) {
+            if (action.actionId().equals(actionId)) {
+                actionFound = true;
+                updatedActions.add(new WorkflowAction(
+                    action.actionId(), action.workflowId(), action.stepOrder(), action.actionDefinitionId(),
+                    newTargetDeviceId, action.actionConfig(), action.cooldownSeconds()));
+            } else {
+                updatedActions.add(action);
+            }
+        }
+        if (!actionFound) return Map.of("error", "Action " + actionId + " not found on workflow " + id);
+
+        WorkflowRule updated = new WorkflowRule(
+            rule.workflowId(), rule.name(), rule.location(), rule.triggerKind(),
+            rule.triggerDefinitionId(), rule.triggerDeviceId(), rule.enabled(), rule.resetMode(),
+            rule.parentWorkflowId(), rule.createdAt(), rule.createdBy(), updatedActions);
+
+        String violation = validateActionTargets(updated);
+        if (violation != null) return Map.of("error", violation);
+
+        ruleStore.save(updated);
+        return Map.of("workflowId", id, "actionId", actionId, "targetDeviceId", newTargetDeviceId);
     }
 
     /** Real targetDeviceId validation -- see WorkflowActionTargetValidator's own doc. */

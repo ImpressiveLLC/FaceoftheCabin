@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.devices.DeviceHealthMonitor;
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
@@ -54,6 +55,7 @@ class RulesControllerTest {
     private JdbcWorkflowRuleStore ruleStore;
     private JdbcWorkflowExecutionStore executionStore;
     private JdbcWorkflowVocabularyStore vocabularyStore;
+    private DeviceRegistry deviceRegistry;
 
     @BeforeEach
     void setUp() {
@@ -66,7 +68,7 @@ class RulesControllerTest {
         // No real ProtocolAdapter needed -- this file's manual-fire tests
         // only use notify_critical/log_event actions, neither of which
         // touches DeviceRegistry.sendCommand().
-        DeviceRegistry deviceRegistry = new DeviceRegistry(List.of());
+        deviceRegistry = new DeviceRegistry(List.of());
         // Needed since WorkflowActionTargetValidator started enforcing real
         // targetDeviceId validation -- every fixture workflow below that
         // targets the main valve now needs it to actually exist and be
@@ -92,7 +94,12 @@ class RulesControllerTest {
         // real repo-relative path.
         OntologyLookupService ontologyLookupService = new OntologyLookupService();
         WorkflowActionTargetValidator targetValidator = new WorkflowActionTargetValidator(deviceRegistry, vocabularyStore);
-        controller = new RulesController(ruleStore, executionStore, workflowRuleService, vocabularyStore, ontologyLookupService, targetValidator);
+        // z2mAdapter is only dereferenced from checkHealth()'s tryActiveRecovery()
+        // path, which this no-Spring-context test never triggers (no @Scheduled
+        // cycle runs outside a real Spring context) -- null is safe here.
+        DeviceHealthMonitor healthMonitor = new DeviceHealthMonitor(deviceRegistry, null);
+        controller = new RulesController(ruleStore, executionStore, workflowRuleService, vocabularyStore,
+            ontologyLookupService, targetValidator, healthMonitor);
     }
 
     private MockHttpServletRequest authedRequest(String email) {
@@ -332,5 +339,133 @@ class RulesControllerTest {
         // Real candidate-merging is covered by OntologyLookupServiceTest.
         assertEquals(26, controller.triggerVocabulary().size());
         assertEquals(4, controller.actionVocabulary().size());
+    }
+
+    /** Mirrors setUp()'s own main_water_valve registration, for a second device. */
+    private void registerAssignedDevice(String deviceId, String name, Set<DeviceCapability> capabilities) {
+        deviceRegistry.registerCandidate(new DeviceDescriptor(
+            deviceId, name, DeviceType.HOME_ASSISTANT_ENTITY, capabilities,
+            "mqtt", "zigbee2mqtt/" + deviceId, true, "cabin"), Map.of());
+        deviceRegistry.applyLifecycleAction(deviceId, DeviceLifecycleAction.ACCEPT);
+        deviceRegistry.saveConfiguration(deviceId, name, true);
+    }
+
+    // Phase 3 (Part C) -- workflow health, added 2026-09-02.
+    @Test
+    void listWorkflowsAttachesHealthyStatusAsAFlatSiblingOfTheWorkflowFields() throws Exception {
+        controller.createWorkflow(
+            deviceEventWorkflow("wf-health-good", "action_main_water_valve_off"), authedRequest("nate@example.com"));
+
+        List<RulesController.WorkflowRuleView> views = controller.listWorkflows();
+        RulesController.WorkflowRuleView view = views.stream()
+            .filter(v -> v.rule().workflowId().equals("wf-health-good")).findFirst().orElseThrow();
+        assertEquals("HEALTHY", view.health().status());
+
+        // @JsonUnwrapped must make workflowId and health flat siblings in the
+        // same JSON object, not health nested under a "rule" wrapper key --
+        // this is the "no shape change for existing consumers" guarantee.
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        com.fasterxml.jackson.databind.JsonNode json = mapper.readTree(mapper.writeValueAsString(view));
+        assertEquals("wf-health-good", json.get("workflowId").asText());
+        assertEquals("HEALTHY", json.get("health").get("status").asText());
+        assertFalse(json.has("rule"), "WorkflowRule's fields must be unwrapped, not nested under a 'rule' key");
+    }
+
+    @Test
+    void listWorkflowsMarksAWorkflowBrokenWhenItsTargetDeviceIsNoLongerAssigned() {
+        controller.createWorkflow(
+            deviceEventWorkflow("wf-health-broken", "action_main_water_valve_off"), authedRequest("nate@example.com"));
+        // Same real path an admin removing/ignoring a device goes through --
+        // the workflow row itself is untouched, only the device's lifecycle changed.
+        deviceRegistry.applyLifecycleAction("z2m-main_water_valve", DeviceLifecycleAction.IGNORE);
+
+        RulesController.WorkflowRuleView view = controller.listWorkflows().stream()
+            .filter(v -> v.rule().workflowId().equals("wf-health-broken")).findFirst().orElseThrow();
+
+        assertEquals("BROKEN", view.health().status());
+        assertFalse(view.health().actions().get(0).activeUseAllowed());
+    }
+
+    @Test
+    void retargetActionUpdatesToANewValidTargetDeviceAndPersistsIt() {
+        registerAssignedDevice("z2m-backup_valve", "Backup Valve", Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY));
+        controller.createWorkflow(
+            deviceEventWorkflow("wf-retarget-good", "action_main_water_valve_off"), authedRequest("nate@example.com"));
+
+        Map<String, Object> result = controller.retargetAction(
+            "wf-retarget-good", "wf-retarget-good-a0", Map.of("targetDeviceId", "z2m-backup_valve"));
+
+        assertFalse(result.containsKey("error"));
+        WorkflowRule updated = ruleStore.findById("wf-retarget-good").orElseThrow();
+        assertEquals("z2m-backup_valve", updated.actions().get(0).targetDeviceId());
+    }
+
+    @Test
+    void retargetActionRejectsANonexistentReplacementDeviceAndLeavesTheWorkflowUnchanged() {
+        controller.createWorkflow(
+            deviceEventWorkflow("wf-retarget-bad", "action_main_water_valve_off"), authedRequest("nate@example.com"));
+
+        Map<String, Object> result = controller.retargetAction(
+            "wf-retarget-bad", "wf-retarget-bad-a0", Map.of("targetDeviceId", "z2m-does_not_exist"));
+
+        assertTrue(result.containsKey("error"));
+        WorkflowRule unchanged = ruleStore.findById("wf-retarget-bad").orElseThrow();
+        assertEquals("z2m-main_water_valve", unchanged.actions().get(0).targetDeviceId(),
+            "a rejected retarget must not persist the invalid replacement");
+    }
+
+    @Test
+    void retargetActionRejectsAReplacementLackingTheRequiredCapability() {
+        registerAssignedDevice("z2m-sensor_only", "Sensor Only", Set.of(DeviceCapability.TELEMETRY));
+        controller.createWorkflow(
+            deviceEventWorkflow("wf-retarget-nocap", "action_main_water_valve_off"), authedRequest("nate@example.com"));
+
+        Map<String, Object> result = controller.retargetAction(
+            "wf-retarget-nocap", "wf-retarget-nocap-a0", Map.of("targetDeviceId", "z2m-sensor_only"));
+
+        assertTrue(result.containsKey("error"));
+        assertTrue(((String) result.get("error")).contains("COMMAND"));
+    }
+
+    @Test
+    void retargetActionReturnsNotFoundForAnUnknownWorkflow() {
+        Map<String, Object> result = controller.retargetAction(
+            "wf-does-not-exist", "some-action", Map.of("targetDeviceId", "z2m-main_water_valve"));
+
+        assertEquals("not found", result.get("error"));
+    }
+
+    @Test
+    void retargetActionReturnsAnErrorForAnUnknownActionId() {
+        controller.createWorkflow(
+            deviceEventWorkflow("wf-retarget-badaction", "action_main_water_valve_off"), authedRequest("nate@example.com"));
+
+        Map<String, Object> result = controller.retargetAction(
+            "wf-retarget-badaction", "no-such-action-id", Map.of("targetDeviceId", "z2m-main_water_valve"));
+
+        assertTrue(result.containsKey("error"));
+    }
+
+    @Test
+    void retargetActionIsAllowedEvenForTheInstanceLockedReopenAction() {
+        // Deliberate: WorkflowCreateForm's UI lock and validateReopenGuard()
+        // both exist to prevent MISTARGETING/misuse at creation time -- this
+        // endpoint is the supervised, already-validated alternative to
+        // editing Postgres directly when a genuine replacement is needed,
+        // and retargetAction() never calls validateReopenGuard() (that guard
+        // is about which TRIGGER kind an action may attach to, unrelated to
+        // which device a targetDeviceId points at).
+        registerAssignedDevice("z2m-backup_valve", "Backup Valve", Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY));
+        WorkflowRule manualReopen = new WorkflowRule("wf-reopen-retarget", "Reopen valve", "cabin", "MANUAL",
+            null, null, true, "MANUAL_ONLY", null, Instant.now(), "test",
+            List.of(new WorkflowAction("wf-reopen-retarget-a0", "wf-reopen-retarget", 0,
+                "action_main_water_valve_open", "z2m-main_water_valve", Map.of(), null)));
+        ruleStore.save(manualReopen);
+
+        Map<String, Object> result = controller.retargetAction(
+            "wf-reopen-retarget", "wf-reopen-retarget-a0", Map.of("targetDeviceId", "z2m-backup_valve"));
+
+        assertFalse(result.containsKey("error"));
+        assertEquals("z2m-backup_valve", ruleStore.findById("wf-reopen-retarget").orElseThrow().actions().get(0).targetDeviceId());
     }
 }
