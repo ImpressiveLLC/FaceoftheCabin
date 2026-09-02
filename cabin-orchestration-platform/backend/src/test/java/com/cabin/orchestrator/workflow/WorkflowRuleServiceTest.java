@@ -83,9 +83,24 @@ class WorkflowRuleServiceTest {
         eventPublisher = new RecordingEventPublisher();
         service = new WorkflowRuleService(ruleStore, executionStore, deviceRegistry,
             new CommandCatalogService(deviceRegistry), eventPublisher);
-        // Fast by default for every test; confirmation-specific tests override further.
-        ReflectionTestUtils.setField(service, "confirmationInitialDelayMillis", 50L);
-        ReflectionTestUtils.setField(service, "confirmationFinalDelayMillis", 150L);
+        // Deliberately far longer than any single test method could ever run,
+        // even under full-suite CPU contention -- every OTHER test in this
+        // file fires commands against z2m-main_water_valve without ever
+        // confirming the device's reported state, so the real scheduler
+        // would (eventually) publish its own UNCONFIRMED alert for every one
+        // of them. A short default (previously 50ms/150ms, sized for the two
+        // confirmation-specific tests below) let that background alert leak
+        // into unrelated tests' eventPublisher.published assertions whenever
+        // the JVM was slow enough to blow past 150ms before those assertions
+        // ran -- a flake seen twice under full-suite load (2026-09-02:
+        // commandGoesUnconfirmedAndPublishesACriticalAlertWhenTheDeviceNeverMatches,
+        // aRepeatedTrueReadingWhileAlreadyActiveDoesNotReFire). The two tests
+        // that actually exercise confirmation timing call
+        // checkConfirmation() directly and synchronously instead of relying
+        // on this real scheduler at all, so they don't need (and don't get)
+        // a short delay anymore.
+        ReflectionTestUtils.setField(service, "confirmationInitialDelayMillis", 3_600_000L);
+        ReflectionTestUtils.setField(service, "confirmationFinalDelayMillis", 7_200_000L);
     }
 
     /** Mirrors DeviceDiscoveryController.applyNew()'s exact CANDIDATE -> ACCEPT -> saveConfiguration flow -- allowsActiveUse() is only true once ASSIGNED. */
@@ -313,7 +328,7 @@ class WorkflowRuleServiceTest {
     // ── Hardening: command confirmation states (added 2026-08-14) ──
 
     @Test
-    void commandBecomesConfirmedOnceTheDeviceReportsTheExpectedState() throws InterruptedException {
+    void commandBecomesConfirmedOnceTheDeviceReportsTheExpectedState() {
         ruleStore.save(compoundLeakWorkflow("wf-confirm"));
 
         service.evaluate(leakEvent("z2m-leak_mech_room"));
@@ -324,13 +339,20 @@ class WorkflowRuleServiceTest {
             "Main Water Valve", "OFFLINE", Instant.now(), Map.of("state", "OFF"), "cabin"));
 
         String executionId = executionStore.recentFor("wf-confirm", 1).get(0).executionId();
-        String status = awaitCommandStatus(executionId, "wf-confirm-a2", 2000);
+        // checkConfirmation() is package-private specifically so tests can
+        // call it directly and synchronously instead of waiting on the real
+        // scheduler (see its own doc comment) -- this removes any
+        // dependency on wall-clock timing at all, rather than racing a real
+        // background thread under full-suite CPU contention (setUp()'s
+        // confirmationInitialDelayMillis/confirmationFinalDelayMillis are
+        // now deliberately far too long for any test to wait out for real).
+        service.checkConfirmation(executionId, "wf-confirm-a2", "z2m-main_water_valve", "OFF", true);
 
-        assertEquals("CONFIRMED", status);
+        assertEquals("CONFIRMED", commandStatusOf(executionId, "wf-confirm-a2"));
     }
 
     @Test
-    void commandGoesUnconfirmedAndPublishesACriticalAlertWhenTheDeviceNeverMatches() throws InterruptedException {
+    void commandGoesUnconfirmedAndPublishesACriticalAlertWhenTheDeviceNeverMatches() {
         ruleStore.save(compoundLeakWorkflow("wf-unconfirmed"));
 
         service.evaluate(leakEvent("z2m-leak_mech_room"));
@@ -339,32 +361,20 @@ class WorkflowRuleServiceTest {
         // any other cause) silently reverting the command.
 
         String executionId = executionStore.recentFor("wf-unconfirmed", 1).get(0).executionId();
-        String status = awaitCommandStatus(executionId, "wf-unconfirmed-a2", 2000);
+        service.checkConfirmation(executionId, "wf-unconfirmed-a2", "z2m-main_water_valve", "OFF", true);
 
-        assertEquals("UNCONFIRMED", status);
+        assertEquals("UNCONFIRMED", commandStatusOf(executionId, "wf-unconfirmed-a2"));
         boolean sawUnconfirmedAlert = eventPublisher.published.stream()
             .anyMatch(e -> "WORKFLOW_UNCONFIRMED".equals(e.eventType()) && "CRITICAL".equals(e.severity()));
         assertTrue(sawUnconfirmedAlert, "an UNCONFIRMED command must raise its own CRITICAL alert, not fail silently");
     }
 
-    /** Polls executionStore the same way EventPipelineIntegrationTest's awaitEvent()/awaitAutomationAlert() do -- confirmation runs on a background scheduler, not synchronously inside evaluate(). */
-    private String awaitCommandStatus(String executionId, String actionId, long timeoutMillis) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + timeoutMillis;
-        while (System.currentTimeMillis() < deadline) {
-            Optional<WorkflowExecution> exec = executionStore.findById(executionId);
-            if (exec.isPresent()) {
-                for (Map<String, Object> result : exec.get().actionResults()) {
-                    if (actionId.equals(result.get("actionId"))) {
-                        String status = (String) result.get("commandStatus");
-                        if ("CONFIRMED".equals(status) || "UNCONFIRMED".equals(status)) {
-                            return status;
-                        }
-                    }
-                }
-            }
-            Thread.sleep(20);
-        }
-        return "TIMED_OUT_WAITING";
+    private String commandStatusOf(String executionId, String actionId) {
+        return executionStore.findById(executionId).stream()
+            .flatMap(exec -> exec.actionResults().stream())
+            .filter(result -> actionId.equals(result.get("actionId")))
+            .map(result -> (String) result.get("commandStatus"))
+            .findFirst().orElse(null);
     }
 
     // ── Camera detection trigger + generalized notification text (added 2026-08-18) ──
