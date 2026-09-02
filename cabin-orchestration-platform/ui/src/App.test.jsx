@@ -1845,6 +1845,72 @@ describe("WorkflowRulesCard", () => {
     expect(screen.queryByText("Choose a device…")).toBeNull();
   });
 
+  // Part B (2026-09-02): WorkflowActionTargetValidator now rejects a
+  // capability mismatch server-side -- this filter just stops a person
+  // from picking a device that would be rejected on save. Devices are
+  // given an unrelated `type` here so they're excluded from the trigger's
+  // own device-scoping picker above, keeping each device name unique to
+  // one <select> in the DOM for these assertions.
+  it("filters the free device-target picker by the action's requiresCapability", async () => {
+    vi.stubGlobal("fetch", vocabularyFetch({
+      actions: [
+        { id: "action_command_capable_only", label: "Command a capable device",
+          needsTarget: true, requiresCapability: "COMMAND", privileged: false, supported: true },
+      ],
+    }));
+    render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[
+      { deviceId: "z2m-command-capable", name: "Command capable", type: "SMART_PLUG", attributes: { capabilities: ["COMMAND"] } },
+      { deviceId: "z2m-telemetry-only", name: "Telemetry only", type: "SMART_PLUG", attributes: { capabilities: ["TELEMETRY"] } },
+    ]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+    await screen.findByLabelText("Specifically");
+
+    expect(screen.getByText("Command capable")).toBeTruthy();
+    expect(screen.queryByText("Telemetry only")).toBeNull();
+  });
+
+  it("lets a person override an instance-locked action's device via 'Change target device', and submits that override", async () => {
+    const auth = mockAuth();
+    vi.stubGlobal("fetch", vocabularyFetch());
+    render(<WorkflowRulesCard workflows={[]} auth={auth} devices={[
+      { deviceId: "z2m-main_water_valve", name: "Main water valve", attributes: { capabilities: ["COMMAND"] } },
+      { deviceId: "z2m-backup_valve", name: "Backup valve", attributes: { capabilities: ["COMMAND"] } },
+    ]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+    await screen.findByLabelText("Specifically");
+
+    fireEvent.click(screen.getByText("Change target device"));
+    // Seeded with the original default, not blank, so a person who doesn't
+    // touch the picker still submits a valid target.
+    expect(screen.getByDisplayValue("Main water valve")).toBeTruthy();
+    expect(screen.queryByText(/^→ Main water valve/)).toBeNull();
+
+    fireEvent.change(screen.getByDisplayValue("Main water valve"), { target: { value: "z2m-backup_valve" } });
+    fireEvent.change(screen.getByPlaceholderText(/leak shutoff/i), { target: { value: "Backup valve test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    await waitFor(() => expect(auth.authedFetch).toHaveBeenCalled());
+    const body = JSON.parse(auth.authedFetch.mock.calls[0][1].body);
+    expect(body.actions[0].targetDeviceId).toBe("z2m-backup_valve");
+  });
+
+  it("'Use default' reverts an overridden action back to its locked device", async () => {
+    vi.stubGlobal("fetch", vocabularyFetch());
+    render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[
+      { deviceId: "z2m-main_water_valve", name: "Main water valve", attributes: { capabilities: ["COMMAND"] } },
+    ]} />);
+    fireEvent.click(screen.getByText("+ New Workflow"));
+    await screen.findByLabelText("Specifically");
+    fireEvent.click(screen.getByText("Change target device"));
+    expect(screen.getByDisplayValue("Main water valve")).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/Use default/));
+
+    const locked = document.querySelector(".workflow-action-locked-device");
+    expect(locked?.textContent).toContain("Main water valve");
+    expect(screen.queryByText("Choose a device…")).toBeNull();
+  });
+
   it("scopes the device-scoping picker to the selected trigger's own device type", async () => {
     vi.stubGlobal("fetch", vocabularyFetch());
     render(<WorkflowRulesCard workflows={[]} auth={mockAuth()} devices={[
@@ -2256,6 +2322,45 @@ describe("Device Manager grouped ordering", () => {
     expect(reorderIds(["a", "b", "c"], "c", "a")).toEqual(["c", "a", "b"]);
     expect(reorderIds(["a", "b"], "missing", "a")).toEqual(["a", "b"]);
     expect(reorderIds(["a", "b"], "a", "a")).toEqual(["a", "b"]);
+  });
+
+  // Part D of the device-lifecycle plan -- the north star from the original
+  // investigation: "ignore must mean... bump it below all other statuses of
+  // devices on sorted lists of all devices." isIgnored is the symmetric
+  // counterpart to isAlarm's pin-to-top.
+  describe("IGNORED devices sort to the bottom (Part D)", () => {
+    const isIgnored = d => d.attributes?.deviceLifecycle === "IGNORED";
+    const devicesWithIgnored = [
+      { deviceId: "old_sensor", type: "MOTION_SENSOR", state: "ONLINE", attributes: { deviceLifecycle: "IGNORED" } },
+      { deviceId: "lock", type: "LOCK", state: "ONLINE", attributes: {} },
+      { deviceId: "motion", type: "MOTION_SENSOR", state: "ONLINE", attributes: {} },
+    ];
+
+    it("moves an ignored device below its non-ignored group peers regardless of saved order", () => {
+      const grouped = buildOrderedDeviceGroups(
+        devicesWithIgnored, "type", [], { MOTION_SENSOR: ["old_sensor", "motion"] }, undefined, isIgnored,
+      );
+      expect(grouped.find(([name]) => name === "MOTION_SENSOR")[1].map(d => d.deviceId))
+        .toEqual(["motion", "old_sensor"]);
+    });
+
+    it("ignored-sort runs after (and wins over) the alarm pin for a device that is somehow both", () => {
+      const both = [
+        { deviceId: "stale_alarm", type: "SMOKE_ALARM", state: "ALARM", attributes: { deviceLifecycle: "IGNORED" } },
+        { deviceId: "active_alarm", type: "SMOKE_ALARM", state: "ALARM", attributes: {} },
+        { deviceId: "quiet", type: "SMOKE_ALARM", state: "ONLINE", attributes: {} },
+      ];
+      const isAlarmLocal = d => d.state === "ALARM";
+      const grouped = buildOrderedDeviceGroups(both, "type", [], {}, isAlarmLocal, isIgnored);
+      expect(grouped.find(([name]) => name === "SMOKE_ALARM")[1].map(d => d.deviceId))
+        .toEqual(["active_alarm", "quiet", "stale_alarm"]);
+    });
+
+    it("omitting isIgnored entirely leaves existing ordering behavior unchanged", () => {
+      const grouped = buildOrderedDeviceGroups(devicesWithIgnored, "type", [], {}, undefined);
+      expect(grouped.find(([name]) => name === "MOTION_SENSOR")[1].map(d => d.deviceId))
+        .toEqual(["old_sensor", "motion"]);
+    });
   });
 
   it("waits for device loading before migrating the legacy flat order", () => {

@@ -5,6 +5,7 @@ import com.cabin.orchestrator.security.GoogleAuthInterceptor;
 import com.cabin.orchestrator.workflow.JdbcWorkflowExecutionStore;
 import com.cabin.orchestrator.workflow.JdbcWorkflowRuleStore;
 import com.cabin.orchestrator.workflow.JdbcWorkflowVocabularyStore;
+import com.cabin.orchestrator.workflow.WorkflowActionTargetValidator;
 import com.cabin.orchestrator.workflow.WorkflowRuleService;
 import com.cabin.orchestrator.workflow.model.ActionVocabularyEntry;
 import com.cabin.orchestrator.workflow.model.TriggerVocabularyEntry;
@@ -70,15 +71,17 @@ public class RulesController {
     private final WorkflowRuleService workflowRuleService;
     private final JdbcWorkflowVocabularyStore vocabularyStore;
     private final OntologyLookupService ontologyLookupService;
+    private final WorkflowActionTargetValidator targetValidator;
 
     public RulesController(JdbcWorkflowRuleStore ruleStore, JdbcWorkflowExecutionStore executionStore,
                             WorkflowRuleService workflowRuleService, JdbcWorkflowVocabularyStore vocabularyStore,
-                            OntologyLookupService ontologyLookupService) {
+                            OntologyLookupService ontologyLookupService, WorkflowActionTargetValidator targetValidator) {
         this.ruleStore = ruleStore;
         this.executionStore = executionStore;
         this.workflowRuleService = workflowRuleService;
         this.vocabularyStore = vocabularyStore;
         this.ontologyLookupService = ontologyLookupService;
+        this.targetValidator = targetValidator;
     }
 
     /** Supported (seeded, DB-owned) triggers plus candidate ones merged live from docs/ontology.yaml -- see class doc. */
@@ -110,6 +113,8 @@ public class RulesController {
     public Map<String, Object> createWorkflow(@RequestBody WorkflowRule rule, HttpServletRequest request) {
         String violation = validateReopenGuard(rule);
         if (violation != null) return Map.of("error", violation);
+        violation = validateActionTargets(rule);
+        if (violation != null) return Map.of("error", violation);
 
         String actor = actorEmail(request);
         WorkflowRule draft = new WorkflowRule(
@@ -128,6 +133,8 @@ public class RulesController {
         if (existing.isEmpty()) return Map.of("error", "not found");
         WorkflowRule rule = existing.get();
         String violation = validateReopenGuard(rule);
+        if (violation != null) return Map.of("error", violation);
+        violation = validateActionTargets(rule);
         if (violation != null) return Map.of("error", violation);
         ruleStore.save(new WorkflowRule(
             rule.workflowId(), rule.name(), rule.location(), rule.triggerKind(),
@@ -222,6 +229,11 @@ public class RulesController {
         }
         WorkflowExecution execution = workflowRuleService.fireManual(rule, actorEmail(request));
         return Map.of("executionId", execution.executionId(), "fired", true);
+    }
+
+    /** Real targetDeviceId validation -- see WorkflowActionTargetValidator's own doc. */
+    private String validateActionTargets(WorkflowRule rule) {
+        return targetValidator.validate(rule.actions());
     }
 
     private String validateReopenGuard(WorkflowRule rule) {

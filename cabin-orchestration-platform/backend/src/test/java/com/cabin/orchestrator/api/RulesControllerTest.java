@@ -1,6 +1,10 @@
 package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.model.DeviceCapability;
+import com.cabin.orchestrator.devices.model.DeviceDescriptor;
+import com.cabin.orchestrator.devices.model.DeviceLifecycleAction;
+import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.ontology.OntologyLookupService;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
@@ -8,6 +12,7 @@ import com.cabin.orchestrator.workflow.CommandCatalogService;
 import com.cabin.orchestrator.workflow.JdbcWorkflowExecutionStore;
 import com.cabin.orchestrator.workflow.JdbcWorkflowRuleStore;
 import com.cabin.orchestrator.workflow.JdbcWorkflowVocabularyStore;
+import com.cabin.orchestrator.workflow.WorkflowActionTargetValidator;
 import com.cabin.orchestrator.workflow.WorkflowRuleService;
 import com.cabin.orchestrator.workflow.model.ActionVocabularyEntry;
 import com.cabin.orchestrator.workflow.model.TriggerVocabularyEntry;
@@ -27,6 +32,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -61,6 +67,18 @@ class RulesControllerTest {
         // only use notify_critical/log_event actions, neither of which
         // touches DeviceRegistry.sendCommand().
         DeviceRegistry deviceRegistry = new DeviceRegistry(List.of());
+        // Needed since WorkflowActionTargetValidator started enforcing real
+        // targetDeviceId validation -- every fixture workflow below that
+        // targets the main valve now needs it to actually exist and be
+        // ASSIGNED, matching DeviceDiscoveryController.applyNew()'s real
+        // CANDIDATE -> ACCEPT -> saveConfiguration flow (same helper
+        // WorkflowRuleServiceTest already uses for the same reason).
+        deviceRegistry.registerCandidate(new DeviceDescriptor(
+            "z2m-main_water_valve", "Main Water Valve", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY),
+            "mqtt", "zigbee2mqtt/main_water_valve", true, "cabin"), Map.of());
+        deviceRegistry.applyLifecycleAction("z2m-main_water_valve", DeviceLifecycleAction.ACCEPT);
+        deviceRegistry.saveConfiguration("z2m-main_water_valve", "Main Water Valve", true);
         WorkflowRuleService workflowRuleService = new WorkflowRuleService(ruleStore, executionStore,
             deviceRegistry, new CommandCatalogService(deviceRegistry), new EventPublisher());
         vocabularyStore = new JdbcWorkflowVocabularyStore(jdbc);
@@ -73,7 +91,8 @@ class RulesControllerTest {
         // file, rather than coupling this test to docs/ontology.yaml's
         // real repo-relative path.
         OntologyLookupService ontologyLookupService = new OntologyLookupService();
-        controller = new RulesController(ruleStore, executionStore, workflowRuleService, vocabularyStore, ontologyLookupService);
+        WorkflowActionTargetValidator targetValidator = new WorkflowActionTargetValidator(deviceRegistry, vocabularyStore);
+        controller = new RulesController(ruleStore, executionStore, workflowRuleService, vocabularyStore, ontologyLookupService, targetValidator);
     }
 
     private MockHttpServletRequest authedRequest(String email) {

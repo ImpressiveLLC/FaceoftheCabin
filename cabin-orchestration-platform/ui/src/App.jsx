@@ -1892,11 +1892,17 @@ export function DeviceManagerPanel({ auth }) {
   // drag UI. One computed source instead of two independently-ordered
   // lists that could drift apart.
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
+  // Ignored devices sort below every other status, full stop -- the north
+  // star from the original device-lifecycle investigation ("ignore must
+  // mean... bump it below all other statuses of devices on sorted lists of
+  // all devices"). See buildOrderedDeviceGroups's own comment for why this
+  // pass runs after the alarm pin, not before.
+  const isIgnored = useCallback((d) => deviceLifecycleState(d) === "IGNORED", []);
   const { groups, reorderGroup, reorderDevice } = useGroupedDraggableOrder(
     `order.deviceGroups.${activeLocation}.${groupBy}`,
     `order.devices.${activeLocation}.${groupBy}`,
     `order.devices.${activeLocation}`,
-    locDevices, groupBy, isAlarm
+    locDevices, groupBy, isAlarm, isIgnored
   );
 
   const refreshManagerDevices = useCallback(() => {
@@ -2163,7 +2169,7 @@ export function reorderIds(ids, fromId, toId) {
   return next;
 }
 
-export function buildOrderedDeviceGroups(devices, groupBy, savedGroupOrder = [], savedDeviceOrders = {}, isAlarm) {
+export function buildOrderedDeviceGroups(devices, groupBy, savedGroupOrder = [], savedDeviceOrders = {}, isAlarm, isIgnored) {
   const rawGroups = groupDevices(devices, groupBy);
   const groupMap = new Map(rawGroups);
   const rawNames = rawGroups.map(([name]) => name);
@@ -2181,6 +2187,12 @@ export function buildOrderedDeviceGroups(devices, groupBy, savedGroupOrder = [],
       ...items.filter(item => !savedIds.includes(item.deviceId)),
     ];
     if (isAlarm) ordered = [...ordered.filter(isAlarm), ...ordered.filter(item => !isAlarm(item))];
+    // Runs AFTER the alarm pin, deliberately -- this pass is the final,
+    // authoritative one, so an ignored device sorts to the bottom even in
+    // the edge case where it also matches isAlarm (a stale ALARM-state
+    // reading cached before it was ignored). Ignored-below-everything is
+    // an absolute floor, not something alarm state should ever override.
+    if (isIgnored) ordered = [...ordered.filter(item => !isIgnored(item)), ...ordered.filter(isIgnored)];
     return [name, ordered];
   });
 }
@@ -2197,7 +2209,7 @@ export function migrateLegacyDeviceOrder(devices, groupBy, legacyOrder) {
   }));
 }
 
-function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStorageKey, devices, groupBy, isAlarm) {
+function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStorageKey, devices, groupBy, isAlarm, isIgnored) {
   const [savedGroupOrder, setSavedGroupOrder] = useState(() => {
     const saved = readStoredJson(groupStorageKey, []);
     return Array.isArray(saved) ? saved : [];
@@ -2228,8 +2240,8 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   }, [savedDeviceOrders, devices, groupBy, legacyStorageKey]);
 
   const groups = useMemo(() => buildOrderedDeviceGroups(
-    devices, groupBy, savedGroupOrder, savedDeviceOrders || {}, isAlarm
-  ), [devices, groupBy, savedGroupOrder, savedDeviceOrders, isAlarm]);
+    devices, groupBy, savedGroupOrder, savedDeviceOrders || {}, isAlarm, isIgnored
+  ), [devices, groupBy, savedGroupOrder, savedDeviceOrders, isAlarm, isIgnored]);
 
   const reorderGroup = useCallback((fromName, toName) => {
     setSavedGroupOrder(reorderIds(groups.map(([name]) => name), fromName, toName));
@@ -2239,12 +2251,12 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
     const items = groups.find(([name]) => name === groupName)?.[1] || [];
     const from = items.find(item => item.deviceId === fromId);
     const to = items.find(item => item.deviceId === toId);
-    if (!from || !to || (isAlarm && (isAlarm(from) || isAlarm(to)))) return;
+    if (!from || !to || (isAlarm && (isAlarm(from) || isAlarm(to))) || (isIgnored && (isIgnored(from) || isIgnored(to)))) return;
     setSavedDeviceOrders(current => ({
       ...(current || {}),
       [groupName]: reorderIds(items.map(item => item.deviceId), fromId, toId),
     }));
-  }, [groups, isAlarm]);
+  }, [groups, isAlarm, isIgnored]);
 
   return { groups, reorderGroup, reorderDevice };
 }
@@ -2357,7 +2369,8 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
               <span>{groupItems.length}</span>
             </header>
             {groupItems.map((d) => {
-          const isPinned = isAlarm(d);
+          const ignored = deviceLifecycleState(d) === "IGNORED";
+          const isPinned = isAlarm(d) || ignored;
           const isOver = reorderMode && overItem?.kind === "device"
             && overItem.groupName === groupName && overItem.deviceId === d.deviceId
             && dragItem?.deviceId !== d.deviceId;
@@ -2380,7 +2393,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
                 workflows={workflows}
                 dragHandle={reorderMode
                   ? (isPinned
-                    ? <Lock size={12} className="auto-pin-icon" title="Auto-pinned: alarm active"/>
+                    ? <Lock size={12} className="auto-pin-icon" title={ignored ? "Auto-pinned: ignored devices always sort last" : "Auto-pinned: alarm active"}/>
                     : <GripVertical size={12} className="drag-handle"/>)
                   : null}
               />
@@ -4589,6 +4602,11 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
   const [triggerDeviceId, setTriggerDeviceId] = useState("");
   const [resetMode, setResetMode] = useState("AUTO_ON_CLEAR");
   const [actionRows, setActionRows] = useState(null); // null until vocabulary loads
+  // Row keys where a person has explicitly chosen to override an
+  // instance-locked action's default device (see lockedDeviceLabel below) --
+  // deliberately opt-in per row rather than removing the lock outright, so
+  // the mistargeting protection it exists for still applies by default.
+  const [overriddenTargetKeys, setOverriddenTargetKeys] = useState(() => new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const availableActions = actionsFor(actions, triggerKind);
@@ -4661,7 +4679,9 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
               // device -- the row's own free-picker value is for a
               // type-generic action only and is ignored otherwise, closing
               // the mistargeting risk a free picker had for this case.
-              targetDeviceId: def?.targetDeviceId || (def?.needsTarget ? (r.targetDeviceId || null) : null),
+              targetDeviceId: (def?.targetDeviceId && !overriddenTargetKeys.has(r.key))
+                ? def.targetDeviceId
+                : (def?.needsTarget ? (r.targetDeviceId || null) : null),
               cooldownSeconds: r.cooldownSeconds === "" ? null : Number(r.cooldownSeconds),
             };
           }),
@@ -4756,6 +4776,15 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
           const lockedDeviceLabel = def?.targetDeviceId
             ? (devices.find(d => d.deviceId === def.targetDeviceId)?.name || def.targetDeviceId)
             : null;
+          const isOverridden = overriddenTargetKeys.has(row.key);
+          // Mirrors WorkflowActionTargetValidator's own requiresCapability
+          // check server-side (Part B) -- filtering here just means a
+          // person can't even pick a device that would be rejected on save,
+          // same relationship triggerScopedDevices already has to the
+          // trigger-side picker above.
+          const capableDevices = def?.requiresCapability
+            ? devices.filter(d => (d.attributes?.capabilities || []).includes(def.requiresCapability))
+            : devices;
           return (
             <div key={row.key} className="workflow-action-row">
               <select value={row.actionDefinitionId} onChange={e => updateAction(row.key, { actionDefinitionId: e.target.value })}>
@@ -4765,15 +4794,41 @@ function WorkflowCreateForm({ auth, devices, defaultLocation, onCreated, onCance
                   </option>
                 ))}
               </select>
-              {lockedDeviceLabel ? (
+              {lockedDeviceLabel && !isOverridden ? (
                 <span className="config-hint workflow-action-locked-device" title="This action always targets this specific device">
                   → {lockedDeviceLabel}
+                  <button
+                    type="button" className="btn-ghost" style={{ marginLeft: 6 }}
+                    title="Point this action at a different device instead of its default — use with care, this is normally locked to prevent mistargeting"
+                    onClick={() => {
+                      setOverriddenTargetKeys(prev => new Set(prev).add(row.key));
+                      updateAction(row.key, { targetDeviceId: row.targetDeviceId || def.targetDeviceId });
+                    }}
+                  >
+                    Change target device
+                  </button>
                 </span>
               ) : def?.needsTarget && (
-                <select value={row.targetDeviceId} onChange={e => updateAction(row.key, { targetDeviceId: e.target.value })}>
-                  <option value="">Choose a device…</option>
-                  {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
-                </select>
+                <>
+                  <select value={row.targetDeviceId} onChange={e => updateAction(row.key, { targetDeviceId: e.target.value })}>
+                    <option value="">Choose a device…</option>
+                    {capableDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.name || d.deviceId}</option>)}
+                  </select>
+                  {lockedDeviceLabel && (
+                    <button
+                      type="button" className="btn-ghost"
+                      onClick={() => {
+                        setOverriddenTargetKeys(prev => { const next = new Set(prev); next.delete(row.key); return next; });
+                        updateAction(row.key, { targetDeviceId: "" });
+                      }}
+                    >
+                      Use default ({lockedDeviceLabel})
+                    </button>
+                  )}
+                  {capableDevices.length === 0 && (
+                    <span className="config-hint">No registered devices have the required capability yet.</span>
+                  )}
+                </>
               )}
               <input
                 type="number" min="0" placeholder="No limit" value={row.cooldownSeconds}
