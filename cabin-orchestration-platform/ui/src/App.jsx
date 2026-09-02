@@ -2782,6 +2782,7 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
   const isZ2m = device.deviceId.startsWith("z2m-");
   const override = checkinStatusLabel(device.state, checkinStatus);
   const lifecycle = deviceLifecycleState(device);
+  const lifecycleLabels = useApp()?.lifecycleLabels || LIFECYCLE_LABELS;
   // workflows is undefined for callers that don't fetch it (DmRemoveView,
   // MnChangeView) -- same opt-in shape as onToggled/DmRowEnableToggle above.
   const deviceWorkflows = workflows ? workflowsForDevice(workflows, device.deviceId) : [];
@@ -2795,7 +2796,7 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
       </div>
       {lifecycle !== "ASSIGNED" && (
         <span className={`candidate-badge lifecycle-${lifecycle.toLowerCase()}`}>
-          {LIFECYCLE_LABELS[lifecycle] || lifecycle}
+          {lifecycleLabels[lifecycle] || lifecycle}
         </span>
       )}
       {deviceWorkflows.length > 0 && (
@@ -5346,6 +5347,29 @@ function useDisplayConfigs(profile, authedFetch = fetch) {
   return { configs, refetch };
 }
 
+// The one-stop, queryable source of truth for device lifecycle state labels
+// -- GET /api/devices/meta/lifecycle, added alongside JdbcDeviceLifecycleVocabularyStore
+// (backend). Falls back to LIFECYCLE_LABELS (the previous hardcoded copy)
+// until the fetch resolves or if it fails, so nothing regresses offline --
+// this hook is additive, not a hard dependency.
+function useLifecycleStateLabels(apiBase, authedFetch) {
+  const [labels, setLabels] = useState(LIFECYCLE_LABELS);
+  useEffect(() => {
+    let cancelled = false;
+    authedFetch(`${apiBase}/api/devices/meta/lifecycle`)
+      .then(r => r.ok ? r.json() : null)
+      .then(body => {
+        if (cancelled || !Array.isArray(body?.states)) return;
+        const map = {};
+        body.states.forEach(s => { map[s.id] = s.label; });
+        setLabels(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [apiBase, authedFetch]);
+  return labels;
+}
+
 // ─── Presence toggle (toolbar widget) ─────────────────────────────────────
 const PROFILE_LABELS = {
   AT_HOME: "At Home", AT_CABIN: "At Cabin", AWAY: "Away", BOTH_OCCUPIED: "Both Occupied",
@@ -5514,6 +5538,7 @@ function App() {
   const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence();
   const securityStates = useSecurityState();
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile, cameraAuth.authedFetch);
+  const lifecycleLabels = useLifecycleStateLabels(LOCATIONS.cabin.apiBase, cameraAuth.authedFetch);
 
   // locationCfg is null when "both" — individual components handle that case.
   const locationCfg = activeLocation !== "both" ? LOCATIONS[activeLocation] : null;
@@ -5613,6 +5638,7 @@ function App() {
       activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
       securityStates,
       displayConfigs, refreshDisplayConfigs,
+      lifecycleLabels,
       setActivePanel,
     }}>
       <div className="app-shell">

@@ -1666,6 +1666,35 @@ describe("DmDeviceRow workflow badge", () => {
   });
 });
 
+// The lifecycle badge's label source -- GET /api/devices/meta/lifecycle,
+// fetched once in App() and threaded via AppContext (see
+// useLifecycleStateLabels). No Provider at all must still work (existing
+// tests above render DmDeviceRow bare); a Provider with real fetched
+// labels must actually override the hardcoded LIFECYCLE_LABELS fallback.
+describe("DmDeviceRow lifecycle badge label source", () => {
+  afterEach(cleanup);
+
+  const candidateDevice = {
+    deviceId: "z2m-new_sensor", name: "New sensor", type: "MOTION_SENSOR",
+    state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "CANDIDATE" },
+  };
+
+  it("falls back to the hardcoded label when rendered with no AppContext at all", () => {
+    render(<DmDeviceRow device={candidateDevice} onClick={() => {}} />);
+    expect(screen.getByText("Candidates")).toBeTruthy();
+  });
+
+  it("uses the fetched label from AppContext when one is provided, not the hardcoded default", () => {
+    render(
+      <AppContext.Provider value={{ lifecycleLabels: { CANDIDATE: "Newly found" } }}>
+        <DmDeviceRow device={candidateDevice} onClick={() => {}} />
+      </AppContext.Provider>
+    );
+    expect(screen.getByText("Newly found")).toBeTruthy();
+    expect(screen.queryByText("Candidates")).toBeNull();
+  });
+});
+
 describe("WorkflowRulesCard", () => {
   // 2026-08-21: WorkflowRulesCard now renders RecentExecutionsList, which
   // fetches GET .../api/rules/executions/recent on mount (see App.jsx) --

@@ -2,6 +2,7 @@ package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.devices.DeviceHealthMonitor;
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.JdbcDeviceLifecycleVocabularyStore;
 import com.cabin.orchestrator.devices.display.DeviceDisplayConfig;
 import com.cabin.orchestrator.devices.display.DeviceDisplayConfigService;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
@@ -26,15 +27,18 @@ public class DeviceController {
     private final Zigbee2MqttAdapter z2mAdapter;
     private final DeviceHealthMonitor healthMonitor;
     private final DeviceDisplayConfigService displayConfigService;
+    private final JdbcDeviceLifecycleVocabularyStore lifecycleVocabulary;
 
     public DeviceController(DeviceRegistry registry,
                              Zigbee2MqttAdapter z2mAdapter,
                              DeviceHealthMonitor healthMonitor,
-                             DeviceDisplayConfigService displayConfigService) {
+                             DeviceDisplayConfigService displayConfigService,
+                             JdbcDeviceLifecycleVocabularyStore lifecycleVocabulary) {
         this.registry = registry;
         this.z2mAdapter = z2mAdapter;
         this.healthMonitor = healthMonitor;
         this.displayConfigService = displayConfigService;
+        this.lifecycleVocabulary = lifecycleVocabulary;
     }
 
     /** List devices worth showing on monitoring surfaces (everything except deferred/ignored). */
@@ -121,6 +125,15 @@ public class DeviceController {
             "types", DeviceType.values(),
             "capabilities", DeviceCapability.values(),
             "adapters", List.of("mqtt", "ha_rest", "rtsp", "http_poll", "google_sdm")
+        );
+    }
+
+    /** The one-stop, queryable source of truth for valid device lifecycle states/actions -- see JdbcDeviceLifecycleVocabularyStore's own doc. */
+    @GetMapping("/meta/lifecycle")
+    public Map<String, Object> lifecycleMeta() {
+        return Map.of(
+            "states", lifecycleVocabulary.loadStates(),
+            "actions", lifecycleVocabulary.loadActions()
         );
     }
 
