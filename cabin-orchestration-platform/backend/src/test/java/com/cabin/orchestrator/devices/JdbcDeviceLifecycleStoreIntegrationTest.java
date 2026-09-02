@@ -12,6 +12,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 
@@ -108,5 +109,52 @@ class JdbcDeviceLifecycleStoreIntegrationTest {
 
         restarted.delete("persisted-device");
         assertFalse(first.loadAll().containsKey("persisted-device"));
+    }
+
+    /**
+     * Part D (2026-09-02): loadAll() must return the device table's real
+     * updated_at column, not just whatever Instant.now() the in-memory
+     * DeviceLifecycleRecord happened to be constructed with -- that's what
+     * lets an "ignored since"/"deferred since" marker survive a restart
+     * instead of resetting to "now" every time the backend restarts.
+     */
+    @Test
+    void loadAllReturnsTheRealPersistedUpdatedAtTimestamp() {
+        JdbcTemplate jdbc = new JdbcTemplate(new SimpleDriverDataSource(
+            new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        JdbcDeviceLifecycleStore store = new JdbcDeviceLifecycleStore(jdbc, mapper);
+        DeviceDescriptor descriptor = new DeviceDescriptor(
+            "old-motion-sensor", "Old Motion Sensor", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/old_motion", false, "cabin");
+
+        Instant before = Instant.now().minusSeconds(5);
+        store.save(new DeviceLifecycleRecord(descriptor, DeviceLifecycleState.IGNORED, true));
+
+        DeviceLifecycleRecord restored = store.loadAll().get("old-motion-sensor");
+        assertNotNull(restored.updatedAt());
+        assertTrue(restored.updatedAt().isAfter(before),
+            "updatedAt should reflect the real DB write, not a stale or missing value");
+    }
+
+    @Test
+    void aLaterSaveAdvancesUpdatedAt() throws InterruptedException {
+        JdbcTemplate jdbc = new JdbcTemplate(new SimpleDriverDataSource(
+            new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        JdbcDeviceLifecycleStore store = new JdbcDeviceLifecycleStore(jdbc, mapper);
+        DeviceDescriptor descriptor = new DeviceDescriptor(
+            "re-ignored-sensor", "Re-ignored Sensor", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/re_ignored", false, "cabin");
+
+        store.save(new DeviceLifecycleRecord(descriptor, DeviceLifecycleState.DEFERRED, true));
+        Instant firstUpdatedAt = store.loadAll().get("re-ignored-sensor").updatedAt();
+
+        Thread.sleep(50);
+        store.save(new DeviceLifecycleRecord(descriptor, DeviceLifecycleState.IGNORED, true));
+        Instant secondUpdatedAt = store.loadAll().get("re-ignored-sensor").updatedAt();
+
+        assertTrue(secondUpdatedAt.isAfter(firstUpdatedAt),
+            "a later lifecycle change should advance the 'since' timestamp, not keep the original one");
     }
 }

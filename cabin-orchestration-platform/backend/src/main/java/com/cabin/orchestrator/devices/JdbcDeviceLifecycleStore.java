@@ -62,7 +62,7 @@ public class JdbcDeviceLifecycleStore implements DeviceLifecycleStore {
     public Map<String, DeviceLifecycleRecord> loadAll() {
         Map<String, DeviceLifecycleRecord> records = new LinkedHashMap<>();
         jdbc.query("""
-            SELECT device_id, name, type, capabilities, protocol, config::text AS config
+            SELECT device_id, name, type, capabilities, protocol, config::text AS config, updated_at
             FROM device
             WHERE config ? 'lifecycleState'
             """, rs -> {
@@ -88,7 +88,7 @@ public class JdbcDeviceLifecycleStore implements DeviceLifecycleStore {
                     });
                     records.put(deviceId, new DeviceLifecycleRecord(
                         descriptor, lifecycle, config.path("configurationAsserted").asBoolean(false),
-                        extraAttributes));
+                        extraAttributes, rs.getTimestamp("updated_at").toInstant()));
                 } catch (Exception parsingFailure) {
                     // A malformed or future-version row must not prevent every
                     // other persisted device from being restored.

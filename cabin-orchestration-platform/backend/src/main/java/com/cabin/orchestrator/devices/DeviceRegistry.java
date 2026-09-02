@@ -166,7 +166,7 @@ public class DeviceRegistry {
                 if (record.configurationAsserted()) configurationAsserted.add(deviceId);
                 else configurationAsserted.remove(deviceId);
                 statuses.put(deviceId, statusWithLifecycle(
-                    descriptor, statuses.get(deviceId), record.lifecycleState(), record.extraAttributes()));
+                    descriptor, statuses.get(deviceId), record.lifecycleState(), record.extraAttributes(), record.updatedAt()));
             }
         });
     }
@@ -491,7 +491,7 @@ public class DeviceRegistry {
         if (record.configurationAsserted()) configurationAsserted.add(descriptor.deviceId());
         else configurationAsserted.remove(descriptor.deviceId());
         statuses.put(descriptor.deviceId(), statusWithLifecycle(
-            descriptor, statuses.get(descriptor.deviceId()), record.lifecycleState(), record.extraAttributes()));
+            descriptor, statuses.get(descriptor.deviceId()), record.lifecycleState(), record.extraAttributes(), record.updatedAt()));
     }
 
     public Optional<DeviceDescriptor> descriptorByConnection(String adapter, String connection, String location) {
@@ -650,7 +650,7 @@ public class DeviceRegistry {
     private DeviceStatus statusWithLifecycle(DeviceDescriptor descriptor,
                                              DeviceStatus existing,
                                              DeviceLifecycleState lifecycle) {
-        return statusWithLifecycle(descriptor, existing, lifecycle, Map.of());
+        return statusWithLifecycle(descriptor, existing, lifecycle, Map.of(), null);
     }
 
     /**
@@ -660,17 +660,26 @@ public class DeviceRegistry {
      * restorePersistedDevices() (so a set room survives a restart) and
      * applyPersistedRecord() (so it's visible immediately on save, not
      * just after the next restart).
+     *
+     * lifecycleUpdatedAt (Part D, 2026-09-02) is set directly rather than
+     * folded into extraAttributes -- see DeviceLifecycleRecord's own doc
+     * for why it can't safely ride that channel. A null value (candidate/
+     * never-persisted devices) simply omits the attribute rather than
+     * writing a misleading "now."
      */
     private DeviceStatus statusWithLifecycle(DeviceDescriptor descriptor,
                                              DeviceStatus existing,
                                              DeviceLifecycleState lifecycle,
-                                             Map<String, Object> extraAttributes) {
+                                             Map<String, Object> extraAttributes,
+                                             Instant lifecycleUpdatedAt) {
         Map<String, Object> attrs = new LinkedHashMap<>(existing == null ? Map.of() : existing.attributes());
         if (lifecycle != DeviceLifecycleState.CANDIDATE) attrs.remove("discoverySuggested");
         putLifecycleAttributes(attrs, lifecycle, descriptor.enabled());
         attrs.put("source", descriptor.protocolAdapter());
         attrs.put("capabilities", descriptor.capabilities().stream().map(Enum::name).sorted().toList());
         attrs.putAll(extraAttributes);
+        if (lifecycleUpdatedAt != null) attrs.put("lifecycleUpdatedAt", lifecycleUpdatedAt.toString());
+        else attrs.remove("lifecycleUpdatedAt");
         return new DeviceStatus(
             descriptor.deviceId(), descriptor.type(), descriptor.name(),
             existing == null ? "UNKNOWN" : existing.state(),

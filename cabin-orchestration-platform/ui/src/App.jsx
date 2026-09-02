@@ -2927,6 +2927,11 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       {["DEFERRED", "IGNORED"].includes(lifecycle) && (
         <div className="dm-candidate-card"><strong>Previously exposed device</strong>
           <span>Only cached identification is shown here. The app does not actively poll or command this device.</span>
+          {device.attributes?.lifecycleUpdatedAt && (
+            <span className="config-hint">
+              {lifecycle === "IGNORED" ? "Ignored" : "Deferred"} since {new Date(device.attributes.lifecycleUpdatedAt).toLocaleString()}
+            </span>
+          )}
           <div className="device-actions">
             <button className="btn-primary" onClick={() => decide("ACCEPT")} disabled={pendingAction}>Use this device</button>
             <button className="btn-secondary" onClick={() => decide("REVIEW")} disabled={pendingAction}>Return to candidates</button>
@@ -2940,9 +2945,10 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
           {/* category/capabilities/parentDeviceId have their own structured
               rows above (real ontology data / resolved names, not
               free-form) -- shown there only, not duplicated here as raw
-              key/value text. */}
+              key/value text. lifecycleUpdatedAt is shown, formatted, in the
+              "Previously exposed device" card above instead. */}
           {Object.entries(device.attributes)
-            .filter(([k]) => k !== "category" && k !== "capabilities" && k !== "parentDeviceId")
+            .filter(([k]) => !["category", "capabilities", "parentDeviceId", "lifecycleUpdatedAt"].includes(k))
             .map(([k, v]) => v != null && (
               <div key={k} className="attr-row">
                 <span className="attr-key">{k}</span>

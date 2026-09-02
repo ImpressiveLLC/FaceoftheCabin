@@ -1343,6 +1343,48 @@ describe("DmDeviceDetail reports fields", () => {
   });
 });
 
+// Part D (2026-09-02): the "Previously exposed" review view had no "since
+// when" marker on a DEFERRED/IGNORED device -- lifecycleUpdatedAt (backed
+// by the device table's own updated_at column, see DeviceLifecycleRecord's
+// doc) closes that gap.
+describe("DmDeviceDetail previously-exposed 'since' timestamp (Part D)", () => {
+  afterEach(cleanup);
+
+  it("shows 'Ignored since' with the device's lifecycleUpdatedAt for an IGNORED device", () => {
+    const device = { deviceId: "old-sensor", name: "Old sensor", type: "MOTION_SENSOR", state: "UNKNOWN", location: "cabin",
+      attributes: { deviceLifecycle: "IGNORED", lifecycleUpdatedAt: "2026-08-20T12:00:00Z" } };
+    render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+
+    expect(screen.getByText(/^Ignored since /)).toBeTruthy();
+  });
+
+  it("shows 'Deferred since', not 'Ignored since', for a DEFERRED device", () => {
+    const device = { deviceId: "old-sensor", name: "Old sensor", type: "MOTION_SENSOR", state: "UNKNOWN", location: "cabin",
+      attributes: { deviceLifecycle: "DEFERRED", lifecycleUpdatedAt: "2026-08-20T12:00:00Z" } };
+    render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+
+    expect(screen.getByText(/^Deferred since /)).toBeTruthy();
+    expect(screen.queryByText(/^Ignored since /)).toBeNull();
+  });
+
+  it("omits the since line gracefully when lifecycleUpdatedAt is missing", () => {
+    const device = { deviceId: "old-sensor", name: "Old sensor", type: "MOTION_SENSOR", state: "UNKNOWN", location: "cabin",
+      attributes: { deviceLifecycle: "IGNORED" } };
+    render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+
+    expect(screen.getByText("Previously exposed device")).toBeTruthy();
+    expect(screen.queryByText(/since /)).toBeNull();
+  });
+
+  it("does not duplicate lifecycleUpdatedAt as a raw attribute row", () => {
+    const device = { deviceId: "old-sensor", name: "Old sensor", type: "MOTION_SENSOR", state: "UNKNOWN", location: "cabin",
+      attributes: { deviceLifecycle: "IGNORED", lifecycleUpdatedAt: "2026-08-20T12:00:00Z" } };
+    render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+
+    expect(screen.queryByText("lifecycleUpdatedAt")).toBeNull();
+  });
+});
+
 describe("Device candidate decision controls", () => {
   afterEach(cleanup);
 
