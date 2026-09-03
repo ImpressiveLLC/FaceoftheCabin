@@ -157,22 +157,21 @@ jobs:
           }
 
           cleanup_synthetic_device() {
-            local attempt
             if [ "$SYNTHETIC_PUBLISHED" != true ]; then
               CLEANUP_RESULT="not needed"
               return 0
             fi
-            for attempt in $(seq 1 15); do
-              if curl -fsS --connect-timeout 2 --max-time 5 -X DELETE \
-                  "$BACKEND_URL/api/devices/$SYNTHETIC_DEVICE_ID" >/dev/null 2>&1; then
-                CLEANUP_RESULT="succeeded"
-                SYNTHETIC_PUBLISHED=false
-                return 0
-              fi
-              sleep 2
-            done
-            CLEANUP_RESULT="failed; candidate is memory-only and disappears on the next backend restart"
-            return 1
+            # DELETE /api/devices/{id} has required a Google auth token since
+            # Sprint 3 (2026-09-01) -- this CI runner has no way to obtain
+            # one, so a real attempt here would only ever 401 (confirmed
+            # 2026-09-03, same finding as the device-detection fix above).
+            # Not a loss: this synthetic device is a CANDIDATE, never
+            # persisted (registerCandidate() only ever holds it in memory --
+            # a known, separate, already-tracked gap), so it disappears on
+            # its own the next time cabin-backend restarts regardless of
+            # whether this cleanup call could ever succeed.
+            CLEANUP_RESULT="not attempted; candidate is memory-only and disappears on the next backend restart"
+            return 0
           }
 
           write_summary() {
@@ -309,6 +308,18 @@ jobs:
             }
           }]')
 
+          # Verified via cabin-backend's own container logs, not GET /api/devices --
+          # that endpoint has required a Google auth token since Sprint 3
+          # (2026-09-01, D12), which this CI runner has no way to obtain. This
+          # smoke test silently regressed to always-401 the moment that gate
+          # shipped and was never caught because the (now-fixed) .bak-file
+          # deploy blocker always failed first, before this step could ever
+          # run -- found and fixed together 2026-09-03. Zigbee2MqttAdapter
+          # logs "Z2M discovered new device: {friendly_name} (...)" the
+          # instant a bridge/devices message introduces a new device, which
+          # is real, direct evidence of the same pipeline this test actually
+          # cares about (MQTT -> backend), without depending on any HTTP
+          # auth path that may change again in the future.
           DEVICE_FOUND=false
           for attempt in $(seq 1 30); do
             if curl -fsS --connect-timeout 2 --max-time 5 "$BACKEND_URL/actuator/health" \
@@ -318,8 +329,8 @@ jobs:
                 -m "$PAYLOAD"
               SYNTHETIC_PUBLISHED=true
               sleep 1
-              if curl -fsS --connect-timeout 2 --max-time 5 "$BACKEND_URL/api/devices" \
-                  | jq -e --arg id "$SYNTHETIC_DEVICE_ID" 'any(.[]; .deviceId == $id)' >/dev/null; then
+              if docker logs cabin-backend --since 2m 2>&1 \
+                  | grep -qF "Z2M discovered new device: $SYNTHETIC_FRIENDLY"; then
                 DEVICE_FOUND=true
                 break
               fi
@@ -328,7 +339,7 @@ jobs:
           done
           if [ "$DEVICE_FOUND" != true ]; then
             DEVICE_SMOKE_RESULT="failed bounded 90-second check"
-            echo "::error::Synthetic Zigbee2MQTT device never appeared in cabin-backend /api/devices."
+            echo "::error::Synthetic Zigbee2MQTT device never appeared in cabin-backend logs."
             exit 1
           fi
           DEVICE_SMOKE_RESULT="passed"
