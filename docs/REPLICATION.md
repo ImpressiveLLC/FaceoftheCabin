@@ -88,6 +88,16 @@ whoever forks the repo — not bugs, just template points:
   cheap VPS, if you don't mind moving off "self-hosted for free") works.
 - A **mesh VPN** for private/admin access (SSH, Grafana, Home Assistant) —
   this instance uses Tailscale (free tier, generous device limits).
+- A **transactional email provider**, only if you plan to use Tier 2
+  "Managed Users" (passwordless magic-link login for a trusted household
+  member or recurring collaborator without a Google account — see
+  `ManagedUserService`'s own doc). This instance uses Resend
+  (resend.com) — free tier, one API key, works immediately against its own
+  shared test sender with no domain verification needed. Set
+  `RESEND_API_KEY` and `CABIN_FRONTEND_ORIGIN` (where a clicked magic link
+  should land) in `infra/.env`. Skip this entirely if you're not using
+  Tier 2 — Tier 1 guest share links and normal Google sign-in need nothing
+  here.
 - **Home/cabin GPS coordinates** (latitude/longitude), for every physical
   location where you want zone-based presence detection (see §1's
   Presence detection bullet) — **required input, not optional, if you want
@@ -579,3 +589,41 @@ The repository's no-new-Python constraint also remains in force. The POC's
 temporary client environment is evidence, not checked-in product code. A
 seeder implementation needs its own review rather than silently introducing a
 Python maintenance surface through this documentation change.
+
+## 11. Recommended workflows
+
+Nothing in this section is hardcoded engine behavior — every item below is a
+normal, user-editable `WorkflowRule` you create yourself through the Rules &
+Alerts panel (or leave uncreated, or delete, or reconfigure however you
+like). These are recommended starting points for a new instance with a
+main-water-shutoff-capable actuator, not something the app enforces or ships
+pre-created.
+
+### Freeze-risk shutoff (only if you have a main water valve actuator)
+
+If your instance can command a main water shutoff valve (this instance's
+`main_water_valve`), consider a second workflow alongside your water-leak
+one, triggered by "Freeze risk detected" instead of "Water leak detected,"
+with the same two actions (notify, then shut off the valve) — but with reset
+mode set to **"Stays fired until someone clears it manually"** (`MANUAL_ONLY`),
+not the leak workflow's `AUTO_ON_CLEAR`.
+
+**Why the reset mode differs:** a water leak clearing (the sensor stops
+reporting wet) is a reasonable signal that the immediate cause resolved —
+auto-clearing that execution's bookkeeping is safe. A freeze-risk reading
+clearing (temperature rises back above the threshold) is *not* an equivalent
+signal that pipes are safe — a pipe may have already burst before the
+temperature recovered, or may re-freeze later the same night. Auto-clearing
+a freeze-triggered execution risks a person never learning it fired at all if
+they don't happen to check right after. `MANUAL_ONLY` forces an explicit
+human look before the alert goes away.
+
+Note either way: this workflow reset mode only affects the *execution
+record's* bookkeeping (whether it shows as "active" until someone taps
+Clear) — it never controls whether the valve itself reopens. Reopening a
+shut-off main valve is always its own separate, human-only `MANUAL`-trigger
+workflow (e.g. this instance's "Reopen valve"), on both the leak and freeze
+paths alike. If a workflow of this shape doesn't already exist and is
+activated on your instance, freeze risk does **not** currently trigger
+anything automatically — check the Rules & Alerts panel rather than
+assuming.
