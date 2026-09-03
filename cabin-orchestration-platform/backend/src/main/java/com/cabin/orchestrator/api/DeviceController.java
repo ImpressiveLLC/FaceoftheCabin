@@ -101,11 +101,24 @@ public class DeviceController {
         return registry.registerConfiguredDevice(descriptor);
     }
 
-    /** Remove device */
+    /**
+     * "Remove" is deliberately non-destructive -- confirmed 2026-09-02 this
+     * had been doing a real DELETE FROM device (DeviceRegistry.remove(),
+     * now deleted), against the user's actual original intent: mute the
+     * device, keep it out of every panel, but retain its data. Same
+     * IGNORE lifecycle action the previously-exposed review screen already
+     * uses (see DeviceLifecycleAction's own doc) -- fully reversible from
+     * the "Previously exposed" view (Use this device / Return to
+     * candidates), unlike the real delete this replaced.
+     */
     @DeleteMapping("/{deviceId}")
-    public Map<String, String> removeDevice(@PathVariable String deviceId) {
-        registry.remove(deviceId);
-        return Map.of("removed", deviceId);
+    public Map<String, Object> removeDevice(@PathVariable String deviceId) {
+        DeviceRegistry.LifecycleChangeResult result = registry.applyLifecycleAction(deviceId, DeviceLifecycleAction.IGNORE);
+        healthMonitor.refreshAfterConfigurationChange(deviceId);
+        return Map.of(
+            "deviceId", deviceId,
+            "changed", result.changed(),
+            "deviceLifecycle", result.lifecycleState());
     }
 
     /** Send a command to a device */

@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -1382,6 +1382,49 @@ describe("DmDeviceDetail previously-exposed 'since' timestamp (Part D)", () => {
     render(<DmDeviceDetail device={device} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
 
     expect(screen.queryByText("lifecycleUpdatedAt")).toBeNull();
+  });
+});
+
+// Confirmed 2026-09-02: "Remove" calls the same non-destructive IGNORE
+// lifecycle action the previously-exposed review screen uses -- it used to
+// be a real DELETE FROM device (see DeviceController.removeDevice()'s own
+// comment). These pin the corrected copy so a future edit can't silently
+// reintroduce "cannot be undone"/"disappear" language that's no longer true.
+describe("DmRemoveView (non-destructive Remove, 2026-09-02)", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const device = { deviceId: "z2m-old-sensor", name: "Old Sensor", location: "cabin" };
+
+  it("the pre-confirm panel says data is retained, not that this is destructive", () => {
+    render(<DmRemoveView devices={[device]} selected="z2m-old-sensor" onSelect={() => {}} onRefresh={() => {}} />);
+
+    expect(screen.getByText(/keeps its data/i)).toBeTruthy();
+    expect(screen.getByText(/previously exposed/i)).toBeTruthy();
+    expect(screen.queryByText(/cannot be undone/i)).toBeNull();
+  });
+
+  it("the confirmation step also says it's reversible, not that it disappears permanently", () => {
+    render(<DmRemoveView devices={[device]} selected="z2m-old-sensor" onSelect={() => {}} onRefresh={() => {}} />);
+
+    fireEvent.click(screen.getByText("Remove this device"));
+
+    expect(screen.getByText(/nothing is deleted/i)).toBeTruthy();
+    expect(screen.getByText(/restore it later/i)).toBeTruthy();
+    expect(screen.queryByText(/cannot be undone/i)).toBeNull();
+  });
+
+  it("confirming still calls DELETE on the device endpoint (server-side now does IGNORE, not a real delete)", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    const onRefresh = vi.fn();
+    render(<DmRemoveView devices={[device]} selected="z2m-old-sensor" onSelect={() => {}} onRefresh={onRefresh}
+      auth={{ authedFetch }} />);
+    fireEvent.click(screen.getByText("Remove this device"));
+
+    fireEvent.click(screen.getByText("Confirm remove"));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/devices/z2m-old-sensor"), expect.objectContaining({ method: "DELETE" })));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
   });
 });
 

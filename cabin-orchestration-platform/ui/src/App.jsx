@@ -2681,7 +2681,14 @@ function ManualAddForm({ onBack, onDone, auth }) {
 }
 
 // ── L2/L3: Remove ──
-function DmRemoveView({ devices, selected, onSelect, onRefresh, auth }) {
+// Confirmed 2026-09-02: "Remove" is deliberately non-destructive, matching
+// the user's own original intent (mute the device, keep its data, just get
+// it out of the way) -- it calls the same IGNORE lifecycle action the
+// previously-exposed review screen already uses, not a real delete. Copy
+// below was corrected to stop claiming an irreversible action; the old
+// "cannot be undone" wording described a real DELETE FROM device this
+// endpoint used to do (see DeviceController.removeDevice()'s own comment).
+export function DmRemoveView({ devices, selected, onSelect, onRefresh, auth }) {
   const [confirming, setConfirming] = useState(false);
   const sel = selected ? devices.find(d => d.deviceId === selected) : null;
   const doFetch = auth?.authedFetch || fetch;
@@ -2707,7 +2714,7 @@ function DmRemoveView({ devices, selected, onSelect, onRefresh, auth }) {
             <div className="dm-remove-panel">
               <div className="dm-remove-device-name">{sel.name}</div>
               <div className="dm-remove-device-id">{sel.deviceId} · {sel.location}</div>
-              <p className="dm-hint">This removes the device from the registry. It does not affect Home Assistant or Zigbee2MQTT pairing.</p>
+              <p className="dm-hint">This takes the device out of Device Manager and Monitoring, but keeps its data — find it again under Device Manager's "Previously exposed" review to bring it back. It does not affect Home Assistant or Zigbee2MQTT pairing.</p>
               <button className="btn-danger dm-remove-confirm-btn" onClick={() => setConfirming(true)}>
                 <Trash2 size={14}/> Remove this device
               </button>
@@ -2716,7 +2723,7 @@ function DmRemoveView({ devices, selected, onSelect, onRefresh, auth }) {
             <div className="dm-remove-panel">
               <AlertTriangle size={32} className="remove-warn-icon"/>
               <strong>Remove "{sel.name}"?</strong>
-              <p className="dm-hint">This cannot be undone from the UI. The device will disappear from all panels.</p>
+              <p className="dm-hint">It disappears from every panel, but nothing is deleted — you can find and restore it later from Device Manager's "Previously exposed" review.</p>
               <div className="pairing-choices">
                 <button className="btn-ghost" onClick={() => setConfirming(false)}>Cancel</button>
                 <button className="btn-danger" onClick={doRemove}><Trash2 size={13}/> Confirm remove</button>

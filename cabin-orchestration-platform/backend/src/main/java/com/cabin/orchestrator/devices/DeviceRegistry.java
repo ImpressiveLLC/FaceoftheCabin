@@ -544,16 +544,6 @@ public class DeviceRegistry {
         }
     }
 
-    public void remove(String deviceId) {
-        synchronized (lockFor(deviceId)) {
-            lifecycleStore.delete(deviceId);
-            statuses.remove(deviceId);
-            descriptors.remove(deviceId);
-            lifecycleStates.remove(deviceId);
-            configurationAsserted.remove(deviceId);
-        }
-    }
-
     public List<DeviceStatus> all() {
         return statuses.values().stream().toList();
     }
