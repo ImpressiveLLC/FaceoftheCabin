@@ -169,6 +169,7 @@ vault_nodered_admin_password: ""
 vault_resend_api_key: ""          # Tier 2 managed-user magic-link invites fail loudly until set
 vault_blink_motion_webhook_api_key: "" # phone motion-notification webhook 503s until set -- if this instance already has a real value live in .env (check before assuming blank), use that value here, don't invent one
 vault_anthropic_workspace_id: ""  # only needed for an identity-linked Anthropic key type -- see vars.yml's own comment
+vault_vaultwarden_admin_token: "" # Vaultwarden's own /admin config page stays disabled until set -- generate with `openssl rand -base64 48`, don't invent one by hand
 ```
 
 That covers every credential this repo currently templates anywhere. If a

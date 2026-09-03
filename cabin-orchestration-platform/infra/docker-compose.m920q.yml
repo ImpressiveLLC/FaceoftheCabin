@@ -454,9 +454,45 @@ services:
     depends_on:
       - ollama
 
+  # ── Vaultwarden: self-hosted credential vault (WSJF #8) ──────────────
+  # Bitwarden-compatible vault for admin-only credential storage -- Tiny
+  # Helpdesk's CREDENTIAL_POINTER KnowledgeNodes point AT a vault entry
+  # name here, never at a real secret value (see CredentialPointerSeeder's
+  # own comment). Tailscale-only: no Cloudflare Tunnel route configured
+  # for this host/port, same boundary already used for Node-RED/Frigate/
+  # HA/Z2M admin surfaces and Tiny Helpdesk's own Open WebUI above --
+  # reachable at http://100.77.44.113:8222 over the tailnet, not from the
+  # open internet. The backend does NOT talk to this yet -- no API wiring
+  # this sprint, deliberately (see WSJF #8's own scope note); this just
+  # gets the container running with a persistent volume and an admin
+  # token so an operator can start creating real entries through
+  # Vaultwarden's own web vault UI.
+  #
+  # Real image is `vaultwarden/server` -- corrected here from an earlier
+  # `vaultwardencom/server` suggestion, which isn't a real Docker Hub image.
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    environment:
+      # Required to reach Vaultwarden's own /admin config page at all --
+      # empty disables that page outright (a safer default than a
+      # guessable token, but then nobody can use the admin page either).
+      # Set a real value in the vault before this is useful -- see
+      # ansible/README.md's credential checklist.
+      ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN:-}
+      SIGNUPS_ALLOWED: "false"
+    volumes:
+      - vaultwarden_data:/data
+    ports:
+      - "8222:80"
+    networks:
+      - default
+
 volumes:
   ollama_data:
   openwebui_data:
+  vaultwarden_data:
 
 networks:
   cabin_default:

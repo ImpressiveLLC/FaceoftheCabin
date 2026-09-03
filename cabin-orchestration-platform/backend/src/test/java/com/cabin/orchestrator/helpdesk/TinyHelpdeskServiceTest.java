@@ -4,6 +4,7 @@ import com.cabin.orchestrator.devices.KnowledgeNodeRepository;
 import com.cabin.orchestrator.devices.model.KnowledgeChunkType;
 import com.cabin.orchestrator.devices.model.KnowledgeNode;
 import com.cabin.orchestrator.devices.model.KnowledgeSource;
+import com.cabin.orchestrator.security.HouseholdRole;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -78,6 +79,49 @@ class TinyHelpdeskServiceTest {
         TinyHelpdeskAnswer answer = service.ask("Where IS the LEAK sensor?");
 
         assertEquals(1, answer.sources().size());
+    }
+
+    @Test
+    void anAdministratorAskingAboutACredentialGetsTheRealVaultEntryName() {
+        addNode("Blink Cloud Account", KnowledgeChunkType.CREDENTIAL_POINTER, "vault_blink_username, vault_blink_password");
+        ollamaClient.nextResponse = Optional.empty(); // fallback path -- exercises raw content directly, no model paraphrase to hide behind
+
+        TinyHelpdeskAnswer answer = service.ask("How do I access the Blink account?", HouseholdRole.ADMINISTRATOR);
+
+        assertTrue(answer.answer().contains("vault_blink_username"), "an administrator must see the real vault entry name");
+        assertTrue(ollamaClient.lastPrompt.contains("vault_blink_username"), "and it must reach the model prompt too, not just the fallback");
+    }
+
+    @Test
+    void aNonAdministratorAskingAboutACredentialNeverSeesTheVaultEntryName() {
+        addNode("Blink Cloud Account", KnowledgeChunkType.CREDENTIAL_POINTER, "vault_blink_username, vault_blink_password");
+        ollamaClient.nextResponse = Optional.empty();
+
+        TinyHelpdeskAnswer answer = service.ask("How do I access the Blink account?", HouseholdRole.ADULT_HOUSEHOLD_MEMBER);
+
+        assertFalse(answer.answer().contains("vault_"), "no vault entry name may leak into a non-administrator's answer");
+        assertTrue(answer.answer().contains("Contact an administrator"));
+        assertFalse(ollamaClient.lastPrompt.contains("vault_"), "nor into the model prompt -- the model must never see it either");
+    }
+
+    @Test
+    void aQuestionWithNoRoleAtAllIsTreatedAsNonAdministrator() {
+        addNode("Resend", KnowledgeChunkType.CREDENTIAL_POINTER, "vault_resend_api_key");
+        ollamaClient.nextResponse = Optional.empty();
+
+        TinyHelpdeskAnswer answer = service.ask("How do I access Resend?", null);
+
+        assertFalse(answer.answer().contains("vault_"));
+    }
+
+    @Test
+    void theOneArgAskOverloadStillWorksExactlyAsBeforeForNonCredentialContent() {
+        addNode("z2m-temp_kitchen", KnowledgeChunkType.DESCRIPTION, "temp_kitchen is a SONOFF sensor.");
+        ollamaClient.nextResponse = Optional.of("It's a SONOFF sensor.");
+
+        TinyHelpdeskAnswer answer = service.ask("What sensor is in the kitchen?");
+
+        assertEquals("It's a SONOFF sensor.", answer.answer());
     }
 
     private static final class FakeKnowledgeNodeRepository implements KnowledgeNodeRepository {

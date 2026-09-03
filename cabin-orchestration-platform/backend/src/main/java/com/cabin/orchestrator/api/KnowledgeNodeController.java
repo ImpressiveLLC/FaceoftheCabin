@@ -2,9 +2,13 @@ package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.devices.KbGeneratorService;
 import com.cabin.orchestrator.devices.KnowledgeNodeRepository;
+import com.cabin.orchestrator.devices.model.CredentialPointerRedactor;
 import com.cabin.orchestrator.devices.model.KnowledgeChunkType;
 import com.cabin.orchestrator.devices.model.KnowledgeNode;
 import com.cabin.orchestrator.devices.model.KnowledgeSource;
+import com.cabin.orchestrator.security.GoogleAuthInterceptor;
+import com.cabin.orchestrator.security.HouseholdRole;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -37,16 +41,31 @@ public class KnowledgeNodeController {
         return Map.of("chunksWritten", generator.regenerateFor(deviceId));
     }
 
-    /** GET /api/kb/nodes -- every KnowledgeNode, for the Tiny Helpdesk (or anything else) to consume. */
+    /**
+     * GET /api/kb/nodes -- every KnowledgeNode, for the Tiny Helpdesk (or
+     * anything else) to consume. This route stays open per WebConfig's
+     * GET carve-out (unauthenticated callers included) -- WSJF #8's
+     * CREDENTIAL_POINTER redaction is applied here too, not just in the
+     * Tiny Helpdesk answer path, since this is the exact same data and
+     * leaving this listing unfiltered would make that gate a one-line
+     * bypass. An unauthenticated caller has no HouseholdRole attribute at
+     * all (null), which redacts exactly like any non-administrator.
+     */
     @GetMapping("/nodes")
-    public List<KnowledgeNode> nodes() {
-        return repository.loadAll();
+    public List<KnowledgeNode> nodes(HttpServletRequest request) {
+        HouseholdRole role = roleOf(request);
+        return repository.loadAll().stream().map(node -> CredentialPointerRedactor.redact(node, role)).toList();
     }
 
-    /** GET /api/kb/nodes/{entityRef} -- one device's KnowledgeNodes. */
+    /** GET /api/kb/nodes/{entityRef} -- one device's KnowledgeNodes. Same redaction as nodes() above. */
     @GetMapping("/nodes/{entityRef}")
-    public List<KnowledgeNode> nodesFor(@PathVariable String entityRef) {
-        return repository.findByEntityRef(entityRef);
+    public List<KnowledgeNode> nodesFor(@PathVariable String entityRef, HttpServletRequest request) {
+        HouseholdRole role = roleOf(request);
+        return repository.findByEntityRef(entityRef).stream().map(node -> CredentialPointerRedactor.redact(node, role)).toList();
+    }
+
+    private static HouseholdRole roleOf(HttpServletRequest request) {
+        return (HouseholdRole) request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE);
     }
 
     /**

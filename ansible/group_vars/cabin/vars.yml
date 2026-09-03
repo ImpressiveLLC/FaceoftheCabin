@@ -79,6 +79,13 @@ resend_api_key: "{{ vault_resend_api_key | default('') }}"
 # live in .env (see docs/MAINTENANCE.md before rotating it) so this can
 # never silently regress on a future re-template again.
 blink_motion_webhook_api_key: "{{ vault_blink_motion_webhook_api_key | default('') }}"
+# Vaultwarden's own /admin config-page token (WSJF #8) -- optional, empty
+# by default (the admin page just stays disabled until set, same "empty
+# is a valid, working state" pattern as tech_id_api_key above). Add
+# `vault_vaultwarden_admin_token` to vault.yml when ready to actually use
+# Vaultwarden's admin page -- generate a real random token
+# (`openssl rand -base64 48`), don't invent a weak one by hand.
+vaultwarden_admin_token: "{{ vault_vaultwarden_admin_token | default('') }}"
 
 # Production-stack credentials — the pre-existing, separately-managed
 # mosquitto/HA/Frigate/blinkbridge/cloudflared/etc. stack, brought under

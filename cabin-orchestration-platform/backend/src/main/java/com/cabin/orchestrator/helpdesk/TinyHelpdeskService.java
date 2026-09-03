@@ -1,7 +1,9 @@
 package com.cabin.orchestrator.helpdesk;
 
 import com.cabin.orchestrator.devices.KnowledgeNodeRepository;
+import com.cabin.orchestrator.devices.model.CredentialPointerRedactor;
 import com.cabin.orchestrator.devices.model.KnowledgeNode;
+import com.cabin.orchestrator.security.HouseholdRole;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
@@ -43,7 +45,23 @@ public class TinyHelpdeskService {
     }
 
     public TinyHelpdeskAnswer ask(String question) {
-        List<KnowledgeNode> relevant = retrieveRelevant(question);
+        return ask(question, null);
+    }
+
+    /**
+     * WSJF #8 -- role gates any CREDENTIAL_POINTER content among the
+     * retrieved facts before it reaches the prompt, the Ollama-unreachable
+     * fallback, or the citations returned to the caller (CredentialPointerRedactor
+     * runs on every retrieved node up front, so all three downstream paths
+     * see the already-redacted content -- there's no separate place a raw
+     * vault entry name could leak through). A null role (no authenticated
+     * caller resolved one) is treated exactly like any non-administrator --
+     * fails closed, never open.
+     */
+    public TinyHelpdeskAnswer ask(String question, HouseholdRole role) {
+        List<KnowledgeNode> relevant = retrieveRelevant(question).stream()
+            .map(node -> CredentialPointerRedactor.redact(node, role))
+            .toList();
         if (relevant.isEmpty()) {
             return new TinyHelpdeskAnswer(question,
                 "I don't have any information about that yet.", List.of(), false);

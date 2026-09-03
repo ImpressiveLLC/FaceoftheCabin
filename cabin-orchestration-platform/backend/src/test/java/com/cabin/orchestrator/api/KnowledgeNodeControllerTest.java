@@ -14,9 +14,12 @@ import com.cabin.orchestrator.devices.model.DeviceReportingRelationship;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.devices.model.KnowledgeNode;
 import com.cabin.orchestrator.devices.model.KnowledgeSource;
+import com.cabin.orchestrator.security.GoogleAuthInterceptor;
+import com.cabin.orchestrator.security.HouseholdRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -53,6 +56,12 @@ class KnowledgeNodeControllerTest {
         return new KnowledgeNodeController(generator, knowledgeNodeRepository);
     }
 
+    private static MockHttpServletRequest requestWithRole(HouseholdRole role) {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/kb/nodes");
+        if (role != null) request.setAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE, role);
+        return request;
+    }
+
     @Test
     void regenerateWritesKnowledgeNodesForEveryInScopeDevice() {
         DeviceRegistry registry = new DeviceRegistry(List.of());
@@ -65,7 +74,7 @@ class KnowledgeNodeControllerTest {
         Map<String, Integer> result = controller.regenerate();
 
         assertTrue(result.get("chunksWritten") >= 1);
-        assertFalse(controller.nodesFor("z2m-controller_test").isEmpty());
+        assertFalse(controller.nodesFor("z2m-controller_test", requestWithRole(null)).isEmpty());
     }
 
     @Test
@@ -80,7 +89,7 @@ class KnowledgeNodeControllerTest {
 
         assertEquals(KnowledgeSource.MANUALLY_CURATED, result.source(),
             "the endpoint must force this regardless of what the request body claims");
-        assertEquals(1, controller.nodesFor("procedure-water-shutoff").size());
+        assertEquals(1, controller.nodesFor("procedure-water-shutoff", requestWithRole(null)).size());
     }
 
     @Test
@@ -96,7 +105,7 @@ class KnowledgeNodeControllerTest {
 
         controller.regenerate();
 
-        KnowledgeNode found = controller.nodesFor("z2m-curated_controller_test").stream()
+        KnowledgeNode found = controller.nodesFor("z2m-curated_controller_test", requestWithRole(null)).stream()
             .filter(n -> n.chunkType().name().equals("DESCRIPTION")).findFirst().orElseThrow();
         assertEquals(KnowledgeSource.MANUALLY_CURATED, found.source());
         assertEquals("Hand-written, more accurate than the auto-generated version.", found.content());
@@ -113,6 +122,36 @@ class KnowledgeNodeControllerTest {
 
         controller.regenerateOne("z2m-single_target");
 
-        assertFalse(controller.nodesFor("z2m-single_target").isEmpty());
+        assertFalse(controller.nodesFor("z2m-single_target", requestWithRole(null)).isEmpty());
+    }
+
+    @Test
+    void nodesRedactsCredentialPointerContentForANonAdministratorCaller() {
+        KnowledgeNodeController controller = newController(new DeviceRegistry(List.of()));
+        controller.curate(Map.of("entityRef", "Resend", "chunkType", "credential_pointer",
+            "content", "vault_resend_api_key"));
+
+        List<KnowledgeNode> asAdmin = controller.nodes(requestWithRole(HouseholdRole.ADMINISTRATOR));
+        List<KnowledgeNode> asNonAdmin = controller.nodes(requestWithRole(HouseholdRole.ADULT_HOUSEHOLD_MEMBER));
+        List<KnowledgeNode> asAnonymous = controller.nodes(requestWithRole(null));
+
+        KnowledgeNode adminView = asAdmin.stream().filter(n -> n.entityRef().equals("Resend")).findFirst().orElseThrow();
+        KnowledgeNode nonAdminView = asNonAdmin.stream().filter(n -> n.entityRef().equals("Resend")).findFirst().orElseThrow();
+        KnowledgeNode anonymousView = asAnonymous.stream().filter(n -> n.entityRef().equals("Resend")).findFirst().orElseThrow();
+
+        assertTrue(adminView.content().contains("vault_resend_api_key"), "an administrator sees the real vault entry name");
+        assertFalse(nonAdminView.content().contains("vault_"), "a non-administrator must never see it, even via the raw listing endpoint");
+        assertFalse(anonymousView.content().contains("vault_"), "an unauthenticated caller (this route stays open per WebConfig) must fail closed too");
+    }
+
+    @Test
+    void nodesForAlsoRedactsCredentialPointerContentForANonAdministratorCaller() {
+        KnowledgeNodeController controller = newController(new DeviceRegistry(List.of()));
+        controller.curate(Map.of("entityRef", "Blink Cloud Account", "chunkType", "credential_pointer",
+            "content", "vault_blink_username, vault_blink_password"));
+
+        KnowledgeNode nonAdminView = controller.nodesFor("Blink Cloud Account", requestWithRole(HouseholdRole.ADULT_HOUSEHOLD_MEMBER)).get(0);
+
+        assertEquals("Contact an administrator for this credential.", nonAdminView.content());
     }
 }

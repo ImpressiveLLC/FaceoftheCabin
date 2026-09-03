@@ -71,6 +71,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * caller authenticated at all" — see CrossDomainController and
  * GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE.
  *
+ * /api/helpdesk — added 2026-09-03 (WSJF #8). Was previously ungated
+ * entirely; required now so REQUEST_ATTR_HOUSEHOLD_ROLE actually gets
+ * resolved for a real signed-in caller at all — without this, a Tiny
+ * Helpdesk question could never distinguish an administrator from anyone
+ * else, making the CREDENTIAL_POINTER role gate in TinyHelpdeskService
+ * unreachable rather than merely permissive. Any authenticated caller
+ * (Google token, managed session, or Tier 1 guest token) may ask a
+ * question — the household-role-specific redaction happens inside the
+ * answer itself, not at this gate.
+ *
+
  * dashboard config stays open, matching how it already worked before this
  * interceptor existed — that decision is unchanged.
  *
@@ -100,6 +111,6 @@ public class WebConfig implements WebMvcConfigurer {
             .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**",
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
                 "/api/events/**", "/api/alerts/**", "/api/devices/**", "/api/access-tokens/**",
-                "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**");
+                "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**");
     }
 }

@@ -2,6 +2,9 @@ package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.helpdesk.TinyHelpdeskAnswer;
 import com.cabin.orchestrator.helpdesk.TinyHelpdeskService;
+import com.cabin.orchestrator.security.GoogleAuthInterceptor;
+import com.cabin.orchestrator.security.HouseholdRole;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -18,10 +21,18 @@ public class TinyHelpdeskController {
         this.service = service;
     }
 
-    /** POST /api/helpdesk/ask {"question": "..."} */
+    /**
+     * POST /api/helpdesk/ask {"question": "..."} -- role comes from the
+     * same GoogleAuthInterceptor-set request attribute CrossDomainController
+     * reads (WSJF #8: never re-derived, always the one server-derived
+     * source). Gating this route in WebConfig is what makes the attribute
+     * non-null for a real signed-in caller at all -- see that class's own
+     * comment.
+     */
     @PostMapping("/ask")
-    public TinyHelpdeskAnswer ask(@RequestBody Map<String, String> body) {
+    public TinyHelpdeskAnswer ask(@RequestBody Map<String, String> body, HttpServletRequest request) {
         String question = body.getOrDefault("question", "");
-        return service.ask(question);
+        HouseholdRole role = (HouseholdRole) request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE);
+        return service.ask(question, role);
     }
 }
