@@ -49,6 +49,22 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * revoking links itself is never reachable with a guest token, only a
  * real signed-in admin.
  *
+ * /api/managed-users — added 2026-09-02, Sprint 4 (Tier 2 managed users).
+ * Same pattern as access-tokens above: admin CRUD (list/create/deactivate/
+ * reactivate/invite) requires a real Google token. The one exception is
+ * .../magic/{token}/consume, which GoogleAuthInterceptor itself exempts
+ * via an exact-prefix carve-out (a managed user has no Google account by
+ * definition, so the endpoint that establishes their session can't
+ * require one) -- see that class's own comment. A valid managed-user
+ * session (Authorization: ManagedSession {token}) is a genuine alternative
+ * credential everywhere else this interceptor gates, read-only for VIEWER
+ * and full read/write for HOUSEHOLD_MEMBER.
+ *
+ * /api/kb — added 2026-09-02, found while correcting a stale KnowledgeNode:
+ * POST .../curate (writes MANUALLY_CURATED content) and .../regenerate had
+ * no gate at all, reachable from the open internet. GET .../nodes stays
+ * open, same GET-only carve-out pattern as /api/rules/** above.
+ *
  * dashboard config stays open, matching how it already worked before this
  * interceptor existed — that decision is unchanged.
  *
@@ -77,6 +93,7 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(authInterceptor)
             .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**",
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
-                "/api/events/**", "/api/alerts/**", "/api/devices/**", "/api/access-tokens/**");
+                "/api/events/**", "/api/alerts/**", "/api/devices/**", "/api/access-tokens/**",
+                "/api/managed-users/**", "/api/kb/**");
     }
 }

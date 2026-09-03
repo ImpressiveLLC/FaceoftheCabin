@@ -35,9 +35,11 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
 
     private final RestTemplate http = new RestTemplate();
     private final CabinAccessTokenService accessTokens;
+    private final ManagedUserService managedUsers;
 
-    public GoogleAuthInterceptor(CabinAccessTokenService accessTokens) {
+    public GoogleAuthInterceptor(CabinAccessTokenService accessTokens, ManagedUserService managedUsers) {
         this.accessTokens = accessTokens;
+        this.managedUsers = managedUsers;
     }
 
     @Override
@@ -85,6 +87,43 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         boolean isRulesRead = path.startsWith(contextPath + "/api/rules/") && "GET".equalsIgnoreCase(request.getMethod());
         if (isRulesRead) {
             return true;
+        }
+        // /api/kb/** reads (GET .../nodes, .../nodes/{entityRef}) stay open,
+        // same reasoning as /api/rules/** above. Found 2026-09-02 while
+        // correcting a stale KnowledgeNode: .../regenerate and .../curate
+        // are real writes (curate especially -- the one path that persists
+        // MANUALLY_CURATED troubleshooting content) that had no gate at all
+        // before this, in the same "unauthenticated write reachable from
+        // the open internet" category as the 2026-09-01 events/alerts fix.
+        boolean isKbRead = path.startsWith(contextPath + "/api/kb/") && "GET".equalsIgnoreCase(request.getMethod());
+        if (isKbRead) {
+            return true;
+        }
+        // Tier 2 managed-user magic-link consumption -- a managed user has
+        // no Google account by definition, so the one endpoint that
+        // exchanges their clicked email link for a real session can never
+        // itself require one. Same exact-prefix carve-out technique as the
+        // tech-id findings collection above. Every OTHER /api/managed-users
+        // endpoint (list/create/deactivate/invite) stays behind the normal
+        // Google gate via WebConfig's path pattern.
+        boolean isMagicLinkConsume = path.startsWith(contextPath + "/api/managed-users/magic/")
+            && "POST".equalsIgnoreCase(request.getMethod());
+        if (isMagicLinkConsume) {
+            return true;
+        }
+        // Tier 2 managed-user sessions -- see ManagedUserService's own doc.
+        // Checked before the Tier 1 guest-token check below: unlike a guest
+        // link (anonymous, scope-limited to 4 fixed read paths), a managed
+        // user gets the same broad read access a Google account gets, with
+        // writes allowed only for HOUSEHOLD_MEMBER (VIEWER stays read-only,
+        // same blanket rule guest tokens use). Sets REQUEST_ATTR_EMAIL to
+        // the managed user's own email -- the SAME attribute Google auth
+        // sets -- so every downstream consumer (createdBy, actor
+        // attribution) sees one consistent principal shape regardless of
+        // which of the three auth paths actually authenticated the request.
+        String managedSessionToken = extractManagedSessionToken(request);
+        if (managedSessionToken != null) {
+            return handleManagedSession(managedSessionToken, request, response);
         }
         // Tier 1 guest share links -- see CabinAccessTokenService's own doc
         // and the plan's "Guest Access Model" section. Checked before the
@@ -202,6 +241,45 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
             return false;
         }
         request.setAttribute(REQUEST_ATTR_GUEST_TOKEN_ID, accessToken.id());
+        return true;
+    }
+
+    /** Request attribute key holding the managed user's own id, set only after a successful check below. */
+    public static final String REQUEST_ATTR_MANAGED_USER_ID = "cabin.auth.managedUserId";
+
+    private String extractManagedSessionToken(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("ManagedSession ") && header.length() > 15) {
+            return header.substring(15);
+        }
+        return null;
+    }
+
+    private boolean handleManagedSession(String rawToken, HttpServletRequest request, HttpServletResponse response) throws IOException {
+        var userOpt = managedUsers.validateSession(rawToken);
+        if (userOpt.isEmpty()) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "This session is invalid, expired, revoked, or the account is no longer active");
+            return false;
+        }
+        // Account/access management stays strictly admin-only regardless of
+        // role -- a HOUSEHOLD_MEMBER gets "same trust as a fridge note" for
+        // OPERATING the cabin (chores, notes, workflows, camera), not for
+        // managing who else has access. Checked before the write/GET gate
+        // below so a VIEWER can't reach these as a GET either (e.g. listing
+        // every other managed user's email).
+        String path = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (path.startsWith(contextPath + "/api/managed-users") || path.startsWith(contextPath + "/api/access-tokens")) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Managing access/accounts requires a real admin sign-in");
+            return false;
+        }
+        ManagedUser user = userOpt.get();
+        if (!user.role().allowsWrite() && !"GET".equalsIgnoreCase(request.getMethod())) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "This account is read-only");
+            return false;
+        }
+        request.setAttribute(REQUEST_ATTR_EMAIL, user.email());
+        request.setAttribute(REQUEST_ATTR_MANAGED_USER_ID, user.id());
         return true;
     }
 }

@@ -220,6 +220,14 @@ services:
       # host, never committed. See that controller's javadoc for why it
       # exists: Blink's own clip/motion API never fires for this account.
       BLINK_MOTION_WEBHOOK_API_KEY: ${BLINK_MOTION_WEBHOOK_API_KEY:-}
+      # Sprint 4 (Tier 2 managed users) -- Resend API key for magic-link
+      # invite emails (ResendEmailSender). Optional, empty by default;
+      # inviting a managed user fails loudly until an operator sets this.
+      # Real value lives only in infra/.env on this host, never committed.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # Where a managed user's magic link points -- must match cabin-ui's
+      # real public origin for this instance.
+      CABIN_FRONTEND_ORIGIN: ${CABIN_FRONTEND_ORIGIN:-https://cabin.unicornpingpong.com}
       # cabin-discovery's internal container hostname/port -- DiscoveryServiceClient's
       # own @Value default already matches this, set explicitly here for the
       # same reason MQTT_URL/KAFKA_BOOTSTRAP are: one obvious place to override.

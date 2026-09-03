@@ -30,12 +30,62 @@ import static org.junit.jupiter.api.Assertions.*;
 class GoogleAuthInterceptorTest {
 
     private CabinAccessTokenService accessTokens;
+    private ManagedUserService managedUsers;
     private GoogleAuthInterceptor interceptor;
+    private final List<String> sentMagicLinkUrls = new java.util.ArrayList<>();
 
     @BeforeEach
     void setUp() {
         accessTokens = new CabinAccessTokenService(new InMemoryAccessTokenStore());
-        interceptor = new GoogleAuthInterceptor(accessTokens);
+        sentMagicLinkUrls.clear();
+        managedUsers = new ManagedUserService(new InMemoryManagedUserStore(), new InMemoryMagicLinkTokenStore(),
+            new InMemoryManagedUserSessionStore(), (to, name, url) -> sentMagicLinkUrls.add(url));
+        // @Value's default expression is only resolved by Spring's own
+        // injection -- outside a container (this test constructs the
+        // service directly), the field stays null unless set explicitly,
+        // same convention already used for expectedClientId below.
+        ReflectionTestUtils.setField(managedUsers, "frontendOrigin", "http://localhost:5173");
+        interceptor = new GoogleAuthInterceptor(accessTokens, managedUsers);
+    }
+
+    /** Real end-to-end create -> invite -> click -> consume, same path a real managed user goes through, returning the resulting session's bearer token. */
+    private String issueManagedSessionToken(ManagedUserRole role) {
+        ManagedUser user = managedUsers.create("member@example.com", "Household Member", role, "nate@example.com");
+        managedUsers.invite(user.id());
+        String url = sentMagicLinkUrls.get(sentMagicLinkUrls.size() - 1);
+        String magicToken = url.substring(url.lastIndexOf('/') + 1);
+        return managedUsers.consumeMagicLink(magicToken).orElseThrow().token();
+    }
+
+    /** Minimal in-memory fakes -- no database needed for this unit test, mirroring InMemoryAccessTokenStore above. */
+    private static final class InMemoryManagedUserStore implements ManagedUserStore {
+        private final Map<String, ManagedUser> byId = new HashMap<>();
+        @Override public List<ManagedUser> loadAll() { return List.copyOf(byId.values()); }
+        @Override public Optional<ManagedUser> findById(String id) { return Optional.ofNullable(byId.get(id)); }
+        @Override public Optional<ManagedUser> findByEmail(String email) {
+            return byId.values().stream().filter(u -> u.email().equalsIgnoreCase(email)).findFirst();
+        }
+        @Override public void save(ManagedUser user) { byId.put(user.id(), user); }
+    }
+
+    private static final class InMemoryMagicLinkTokenStore implements MagicLinkTokenStore {
+        private final Map<String, MagicLinkToken> byToken = new HashMap<>();
+        @Override public void save(MagicLinkToken token) { byToken.put(token.token(), token); }
+        @Override public Optional<MagicLinkToken> findByToken(String token) { return Optional.ofNullable(byToken.get(token)); }
+        @Override public void markConsumed(String token, Instant consumedAt) {
+            byToken.computeIfPresent(token, (t, existing) -> new MagicLinkToken(
+                existing.token(), existing.managedUserId(), existing.expiresAt(), consumedAt, existing.createdAt()));
+        }
+    }
+
+    private static final class InMemoryManagedUserSessionStore implements ManagedUserSessionStore {
+        private final Map<String, ManagedUserSession> byToken = new HashMap<>();
+        @Override public void save(ManagedUserSession session) { byToken.put(session.token(), session); }
+        @Override public Optional<ManagedUserSession> findByToken(String token) { return Optional.ofNullable(byToken.get(token)); }
+        @Override public void revoke(String token, Instant revokedAt) {
+            byToken.computeIfPresent(token, (t, existing) -> new ManagedUserSession(
+                existing.token(), existing.managedUserId(), existing.expiresAt(), revokedAt, existing.createdAt()));
+        }
     }
 
     /** Minimal in-memory fake -- no database needed for this unit test. */
@@ -232,5 +282,157 @@ class GoogleAuthInterceptorTest {
         boolean allowed = interceptor.preHandle(request, response, new Object());
 
         assertFalse(allowed, "/api/rulesengine/... must not be treated as an /api/rules/... read");
+    }
+
+    // ── Tier 2 managed users (Sprint 4, added 2026-09-02) ──
+
+    @Test
+    void aValidHouseholdMemberSessionCanReadAndWrite() throws Exception {
+        String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        MockHttpServletRequest getReq = new MockHttpServletRequest("GET", "/api/devices");
+        getReq.addHeader("Authorization", "ManagedSession " + sessionToken);
+        assertTrue(interceptor.preHandle(getReq, new MockHttpServletResponse(), new Object()));
+
+        MockHttpServletRequest patchReq = new MockHttpServletRequest("PATCH", "/api/notes/1");
+        patchReq.addHeader("Authorization", "ManagedSession " + sessionToken);
+        assertTrue(interceptor.preHandle(patchReq, new MockHttpServletResponse(), new Object()),
+            "HOUSEHOLD_MEMBER has the same write trust as a signed-in Google account");
+    }
+
+    @Test
+    void aValidViewerSessionCanReadButNotWrite() throws Exception {
+        String sessionToken = issueManagedSessionToken(ManagedUserRole.VIEWER);
+        MockHttpServletRequest getReq = new MockHttpServletRequest("GET", "/api/devices");
+        getReq.addHeader("Authorization", "ManagedSession " + sessionToken);
+        assertTrue(interceptor.preHandle(getReq, new MockHttpServletResponse(), new Object()));
+
+        MockHttpServletRequest patchReq = new MockHttpServletRequest("PATCH", "/api/notes/1");
+        patchReq.addHeader("Authorization", "ManagedSession " + sessionToken);
+        MockHttpServletResponse patchResponse = new MockHttpServletResponse();
+        assertFalse(interceptor.preHandle(patchReq, patchResponse, new Object()));
+        assertEquals(403, patchResponse.getStatus());
+    }
+
+    @Test
+    void aValidManagedSessionSetsTheSameEmailAttributeAGoogleTokenWould() throws Exception {
+        String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "ManagedSession " + sessionToken);
+
+        assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
+
+        assertEquals("member@example.com", request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_EMAIL),
+            "downstream createdBy/actor-attribution code must see one consistent principal shape regardless of auth path");
+    }
+
+    @Test
+    void anUnknownManagedSessionTokenIsRejected() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "ManagedSession not-a-real-session");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    void aRevokedManagedSessionIsRejected() throws Exception {
+        String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        managedUsers.revokeSession(sessionToken);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "ManagedSession " + sessionToken);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    void aDeactivatedManagedUsersExistingSessionStopsWorkingImmediately() throws Exception {
+        ManagedUser user = managedUsers.create("member@example.com", "Household Member", ManagedUserRole.HOUSEHOLD_MEMBER, "nate@example.com");
+        managedUsers.invite(user.id());
+        String url = sentMagicLinkUrls.get(0);
+        String sessionToken = managedUsers.consumeMagicLink(url.substring(url.lastIndexOf('/') + 1)).orElseThrow().token();
+        managedUsers.setActive(user.id(), false);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "ManagedSession " + sessionToken);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()),
+            "deactivating a managed user must invalidate their existing session immediately, not just block future invites");
+    }
+
+    @Test
+    void aManagedSessionCanNeverReachManagedUserOrAccessTokenAdministration() throws Exception {
+        String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+
+        MockHttpServletRequest managedUsersReq = new MockHttpServletRequest("GET", "/api/managed-users");
+        managedUsersReq.addHeader("Authorization", "ManagedSession " + sessionToken);
+        MockHttpServletResponse managedUsersResponse = new MockHttpServletResponse();
+        assertFalse(interceptor.preHandle(managedUsersReq, managedUsersResponse, new Object()));
+        assertEquals(403, managedUsersResponse.getStatus());
+
+        MockHttpServletRequest accessTokensReq = new MockHttpServletRequest("GET", "/api/access-tokens");
+        accessTokensReq.addHeader("Authorization", "ManagedSession " + sessionToken);
+        MockHttpServletResponse accessTokensResponse = new MockHttpServletResponse();
+        assertFalse(interceptor.preHandle(accessTokensReq, accessTokensResponse, new Object()));
+        assertEquals(403, accessTokensResponse.getStatus());
+    }
+
+    @Test
+    void magicLinkConsumptionIsExemptFromTheGoogleTokenRequirement() throws Exception {
+        // The one endpoint a managed user (no Google account) must reach
+        // with no credential at all -- see GoogleAuthInterceptor's own
+        // carve-out comment.
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/managed-users/magic/some-token/consume");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertTrue(interceptor.preHandle(request, response, new Object()));
+    }
+
+    @Test
+    void everyOtherManagedUsersEndpointStillRequiresARealGoogleToken() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/managed-users");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    // ── /api/kb GET-open, writes-gated (found 2026-09-02) ──
+
+    @Test
+    void getOnKbNodesPassesThroughWithoutAToken() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/kb/nodes");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertTrue(interceptor.preHandle(request, response, new Object()));
+    }
+
+    @Test
+    void getOnKbNodesForOneEntityPassesThroughWithoutAToken() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/kb/nodes/z2m-main_water_valve");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertTrue(interceptor.preHandle(request, response, new Object()));
+    }
+
+    @Test
+    void postOnKbCurateIsRejectedWithoutAToken() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/kb/curate");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    void postOnKbRegenerateIsRejectedWithoutAToken() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/kb/regenerate");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
     }
 }

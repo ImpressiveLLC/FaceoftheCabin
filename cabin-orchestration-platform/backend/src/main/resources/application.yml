@@ -38,6 +38,21 @@ cabin:
     calendarId: ${GOOGLE_CALENDAR_ID:primary}
     oauthClientId: ${GOOGLE_CLIENT_ID:}
     oauthClientSecret: ${GOOGLE_CLIENT_SECRET:}
+  # Sprint 4 (Tier 2 managed users) -- see ResendEmailSender/ManagedUserService's own javadoc.
+  email:
+    # Resend (https://resend.com) API key for magic-link invite emails.
+    # Unset by default; inviting a managed user fails loudly (not
+    # silently) until an operator sets this. Free-tier key from the
+    # Resend dashboard -- this app's volume is a handful of invites ever.
+    resendApiKey: ${RESEND_API_KEY:}
+    # Defaults to Resend's own shared testing sender, which works with zero
+    # setup (no domain verification needed) -- swap for a verified sender
+    # on your own domain once configured in the Resend dashboard.
+    from: ${CABIN_EMAIL_FROM:Cabin <onboarding@resend.dev>}
+  frontend:
+    # Where a managed user's magic link points after the token itself.
+    # Must match wherever cabin-ui is actually served from for this instance.
+    origin: ${CABIN_FRONTEND_ORIGIN:http://localhost:5173}
   devices:
     waterPressure:
       lowPsiAlert: 30
