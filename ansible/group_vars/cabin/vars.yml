@@ -62,6 +62,17 @@ cabin_alert_ntfy_topic: "{{ vault_cabin_alert_ntfy_topic | default('') }}"
 # vault.yml when ready to actually use Tier 2 managed users; Tier 1 guest
 # links and normal Google sign-in need nothing here.
 resend_api_key: "{{ vault_resend_api_key | default('') }}"
+# Shared secret for POST /api/webhooks/blink-motion (BlinkMotionWebhookController)
+# -- optional per its own graceful-degradation design (503 until set), but
+# THIS INSTANCE already has a real, live, in-use value that was set directly
+# in .env at some point and never wired into this template at all -- found
+# 2026-09-03 when a routine re-template of .env (for the unrelated Resend
+# key) silently dropped it, breaking the phone-side motion-notification
+# webhook until caught and restored from an old .env backup. Add
+# `vault_blink_motion_webhook_api_key` to vault.yml with the value already
+# live in .env (see docs/MAINTENANCE.md before rotating it) so this can
+# never silently regress on a future re-template again.
+blink_motion_webhook_api_key: "{{ vault_blink_motion_webhook_api_key | default('') }}"
 
 # Production-stack credentials — the pre-existing, separately-managed
 # mosquitto/HA/Frigate/blinkbridge/cloudflared/etc. stack, brought under
