@@ -54,6 +54,14 @@ nodered_admin_password: "{{ vault_nodered_admin_password | default('') }}"
 # name itself as a shared secret (anyone who knows it can publish/subscribe
 # unless the topic is protected on ntfy's side).
 cabin_alert_ntfy_topic: "{{ vault_cabin_alert_ntfy_topic | default('') }}"
+# Resend (resend.com) API key for Sprint 4's Tier 2 managed-user
+# passwordless magic-link invite emails (ManagedUserService/
+# ResendEmailSender). Optional, empty by default -- an unset key is a
+# valid, working state (inviting a managed user fails loudly with a
+# clear error rather than silently). Add `vault_resend_api_key` to
+# vault.yml when ready to actually use Tier 2 managed users; Tier 1 guest
+# links and normal Google sign-in need nothing here.
+resend_api_key: "{{ vault_resend_api_key | default('') }}"
 
 # Production-stack credentials — the pre-existing, separately-managed
 # mosquitto/HA/Frigate/blinkbridge/cloudflared/etc. stack, brought under
@@ -85,6 +93,9 @@ cloudflare_tunnel_token: "{{ vault_cloudflare_tunnel_token | default('') }}"
 # infra/.env has one generation source instead of being partly-managed.
 family_hub_url: "https://hub.unicornpingpong.com"
 cabin_api_url: "https://api.unicornpingpong.com"
+# Where a Tier 2 managed user's magic link points after the token itself --
+# must match cabin-ui's real public origin, confirmed against docs/USER_GUIDE.md.
+cabin_frontend_origin: "https://cabin.unicornpingpong.com"
 # Not a secret (Web application Client IDs are visible client-side by
 # design — see .env.m920q.example) — real value confirmed 2026-08-02 via
 # the live family-hub container's baked host-config.js, since the .env
