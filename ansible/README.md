@@ -166,6 +166,9 @@ vault_uptime_kuma_password: ""
 vault_cloudflare_tunnel_token: "" # backup/reference only — see vars.yml's comment
 vault_nodered_admin_username: ""  # Node-RED editor stays unauthenticated until set — see playbooks/enable-nodered-auth.yml
 vault_nodered_admin_password: ""
+vault_resend_api_key: ""          # Tier 2 managed-user magic-link invites fail loudly until set
+vault_blink_motion_webhook_api_key: "" # phone motion-notification webhook 503s until set -- if this instance already has a real value live in .env (check before assuming blank), use that value here, don't invent one
+vault_anthropic_workspace_id: ""  # only needed for an identity-linked Anthropic key type -- see vars.yml's own comment
 ```
 
 That covers every credential this repo currently templates anywhere. If a

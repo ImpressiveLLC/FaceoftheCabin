@@ -22,6 +22,12 @@ tech_id_api_key: "{{ vault_tech_id_api_key | default('') }}"
 # reported), no external calls, no device metadata leaves the host.
 # Add `vault_anthropic_api_key` to vault.yml to enable the real lookup.
 anthropic_api_key: "{{ vault_anthropic_api_key | default('') }}"
+# Optional, paired with anthropic_api_key above -- only required for an
+# "identity-linked" API key (Anthropic's per-member key type on an
+# Individual Org plan), which otherwise gets rejected with a 400 on every
+# request. A workspace-owned key on a paid team org may not need this at
+# all -- see docker-compose.m920q.yml's own comment on this var.
+anthropic_workspace_id: "{{ vault_anthropic_workspace_id | default('') }}"
 # Optional — Uptime Kuma admin login, for the not-yet-built config-as-code
 # reconciler (see docs/REPLICATION.md Sec 10's Kuma decision record and
 # MAINTENANCE.md). Same "empty is a valid, working state" pattern as the
