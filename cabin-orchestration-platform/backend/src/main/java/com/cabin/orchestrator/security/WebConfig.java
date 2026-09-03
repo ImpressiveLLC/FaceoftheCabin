@@ -81,7 +81,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * question — the household-role-specific redaction happens inside the
  * answer itself, not at this gate.
  *
-
+ * /api/platform-import — added 2026-09-03 (WSJF #9). GET .../records is
+ * ADMINISTRATOR/ADULT_HOUSEHOLD_MEMBER (read-only, no live platform call);
+ * everything else (proposals, confirm) is ADMINISTRATOR only, same
+ * per-route pattern as /api/cross-domain above — see PlatformImportController.
+ *
  * dashboard config stays open, matching how it already worked before this
  * interceptor existed — that decision is unchanged.
  *
@@ -111,6 +115,7 @@ public class WebConfig implements WebMvcConfigurer {
             .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**",
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
                 "/api/events/**", "/api/alerts/**", "/api/devices/**", "/api/access-tokens/**",
-                "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**");
+                "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
+                "/api/platform-import/**");
     }
 }
