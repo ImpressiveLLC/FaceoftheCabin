@@ -326,6 +326,34 @@ class GoogleAuthInterceptorTest {
     }
 
     @Test
+    void aManagedSessionEmailMatchingAdminEmailsResolvesToAdministratorRole() throws Exception {
+        // D11 authorization-model hard gate (WSJF #6) -- role derivation must
+        // work identically regardless of which auth path produced the email,
+        // matching aValidManagedSessionSetsTheSameEmailAttributeAGoogleTokenWould
+        // above proving the email attribute itself is path-independent.
+        ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "member@example.com, someone-else@example.com");
+        String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "ManagedSession " + sessionToken);
+
+        assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
+
+        assertEquals(HouseholdRole.ADMINISTRATOR, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
+    }
+
+    @Test
+    void aManagedSessionEmailNotInAdminEmailsResolvesToAdultHouseholdMemberRole() throws Exception {
+        ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "someone-else@example.com");
+        String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "ManagedSession " + sessionToken);
+
+        assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
+
+        assertEquals(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
+    }
+
+    @Test
     void anUnknownManagedSessionTokenIsRejected() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
         request.addHeader("Authorization", "ManagedSession not-a-real-session");

@@ -38,6 +38,14 @@ cabin:
     calendarId: ${GOOGLE_CALENDAR_ID:primary}
     oauthClientId: ${GOOGLE_CLIENT_ID:}
     oauthClientSecret: ${GOOGLE_CLIENT_SECRET:}
+  admin:
+    # D11 authorization-model hard gate (WSJF #6) -- GoogleAuthInterceptor's
+    # role derivation. Same ADMIN_EMAILS value already templated for the
+    # frontend (ansible/roles/secrets/templates/env.j2), now also read
+    # server-side. Comma-separated Google account emails; blank means no
+    # account resolves to ADMINISTRATOR (every authenticated principal
+    # still resolves to ADULT_HOUSEHOLD_MEMBER, matching existing behavior).
+    emails: ${ADMIN_EMAILS:}
   # Sprint 4 (Tier 2 managed users) -- see ResendEmailSender/ManagedUserService's own javadoc.
   email:
     # Resend (https://resend.com) API key for magic-link invite emails.

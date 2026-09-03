@@ -33,6 +33,16 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
     @Value("${cabin.google.oauthClientId:}")
     private String expectedClientId;
 
+    // D11's authorization-model hard gate (WSJF #6) -- comma-separated
+    // Google account emails treated as ADMINISTRATOR; every other
+    // authenticated principal (Google or managed-session) is
+    // ADULT_HOUSEHOLD_MEMBER, matching this app's existing "any signed-in
+    // account is a trusted adult" behavior exactly, just now given a name
+    // a per-route check can reason about. Same source ADMIN_EMAILS already
+    // feeds the frontend -- see application.yml's cabin.admin.emails.
+    @Value("${cabin.admin.emails:}")
+    private String adminEmailsRaw;
+
     private final RestTemplate http = new RestTemplate();
     private final CabinAccessTokenService accessTokens;
     private final ManagedUserService managedUsers;
@@ -157,7 +167,9 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
             // Stashed for controllers that need "who did this" (e.g.
             // TechIdController's action log) without a second network
             // round-trip to Google -- see REQUEST_ATTR_EMAIL's own javadoc.
-            request.setAttribute(REQUEST_ATTR_EMAIL, info.get("email"));
+            String email = (String) info.get("email");
+            request.setAttribute(REQUEST_ATTR_EMAIL, email);
+            request.setAttribute(REQUEST_ATTR_HOUSEHOLD_ROLE, resolveHouseholdRole(email));
             return true;
         } catch (RestClientException e) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token validation failed");
@@ -280,6 +292,22 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         }
         request.setAttribute(REQUEST_ATTR_EMAIL, user.email());
         request.setAttribute(REQUEST_ATTR_MANAGED_USER_ID, user.id());
+        request.setAttribute(REQUEST_ATTR_HOUSEHOLD_ROLE, resolveHouseholdRole(user.email()));
         return true;
+    }
+
+    /** Request attribute key holding the server-derived HouseholdRole -- see that enum's own doc. Not set for Tier 1 guest tokens (a genuinely different, orthogonal concept: scoped external access, not a household role). */
+    public static final String REQUEST_ATTR_HOUSEHOLD_ROLE = "cabin.auth.householdRole";
+
+    private HouseholdRole resolveHouseholdRole(String email) {
+        return isAdminEmail(email) ? HouseholdRole.ADMINISTRATOR : HouseholdRole.ADULT_HOUSEHOLD_MEMBER;
+    }
+
+    private boolean isAdminEmail(String email) {
+        if (email == null || adminEmailsRaw == null || adminEmailsRaw.isBlank()) return false;
+        for (String candidate : adminEmailsRaw.split(",")) {
+            if (candidate.trim().equalsIgnoreCase(email.trim())) return true;
+        }
+        return false;
     }
 }

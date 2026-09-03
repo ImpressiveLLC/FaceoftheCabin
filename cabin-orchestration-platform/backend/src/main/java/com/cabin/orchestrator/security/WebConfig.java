@@ -65,6 +65,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * no gate at all, reachable from the open internet. GET .../nodes stays
  * open, same GET-only carve-out pattern as /api/rules/** above.
  *
+ * /api/cross-domain — added 2026-09-03, D11's authorization-model hard gate
+ * (WSJF #6). Google-gated same as everything else here, but this is the
+ * first route with an ADDITIONAL per-route role check on top of "is this
+ * caller authenticated at all" — see CrossDomainController and
+ * GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE.
+ *
  * dashboard config stays open, matching how it already worked before this
  * interceptor existed — that decision is unchanged.
  *
@@ -94,6 +100,6 @@ public class WebConfig implements WebMvcConfigurer {
             .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**",
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
                 "/api/events/**", "/api/alerts/**", "/api/devices/**", "/api/access-tokens/**",
-                "/api/managed-users/**", "/api/kb/**");
+                "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**");
     }
 }
