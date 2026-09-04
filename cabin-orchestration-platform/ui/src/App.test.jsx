@@ -3447,6 +3447,43 @@ describe("HelpdeskPanel", () => {
     expect(screen.getByText(/No questions yet/)).toBeTruthy();
   });
 
+  // Found 2026-09-04 (direct user report): every question 401'd since
+  // /api/helpdesk/** was gated (WSJF #8, 2026-09-03) because this panel
+  // used a plain fetch() with no Authorization header at all -- not a
+  // regression from this session's CabinSession work, just never wired.
+  it("asks through auth.authedFetch when an auth prop is provided, not the global fetch", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ answer: "Answered via authedFetch.", sources: [] }),
+    });
+    const globalFetch = vi.fn();
+    vi.stubGlobal("fetch", globalFetch);
+    render(
+      <AppContext.Provider value={{ locationCfg: { apiBase: "http://cabin-hub:8090" } }}>
+        <HelpdeskPanel auth={{ signedIn: true, authedFetch }} />
+      </AppContext.Provider>
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Ask a question…"), { target: { value: "Is the CO sensor online?" } });
+    fireEvent.click(screen.getByRole("button", { name: /Ask/ }));
+
+    expect(await screen.findByText("Answered via authedFetch.")).toBeTruthy();
+    expect(authedFetch).toHaveBeenCalledWith("http://cabin-hub:8090/api/helpdesk/ask", expect.objectContaining({ method: "POST" }));
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it("shows a sign-in prompt instead of the chat UI when auth is provided but not signed in", () => {
+    render(
+      <AppContext.Provider value={{ locationCfg: { apiBase: "http://cabin-hub:8090" } }}>
+        <HelpdeskPanel auth={{ signedIn: false, signIn: () => {} }} />
+      </AppContext.Provider>
+    );
+
+    expect(screen.getByText(/Sign in to ask Tiny Helpdesk a question/)).toBeTruthy();
+    expect(screen.getByText("Sign in with Google")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Ask a question…")).toBeFalsy();
+  });
+
   it("submits the question, renders the answer, and shows a Verified badge for a manually_curated source", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

@@ -343,10 +343,22 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    // Query param exists for the same reason extractToken()'s does: an
+    // <img src="...">-based live camera stream can't set a custom
+    // Authorization header. Found 2026-09-04 (direct user report, live
+    // regression): the camera live view was still built from the raw
+    // ~1-hour Google access token specifically, so once that expired while
+    // a CabinSession kept the rest of the app working fine, the stream
+    // broke (a stale/empty access_token query param renders as a blank/
+    // green frame) even though nothing else looked signed-out.
     private String extractCabinSessionToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("CabinSession ") && header.length() > 13) {
             return header.substring(13);
+        }
+        String queryToken = request.getParameter("cabin_session");
+        if (queryToken != null && !queryToken.isBlank()) {
+            return queryToken;
         }
         return null;
     }

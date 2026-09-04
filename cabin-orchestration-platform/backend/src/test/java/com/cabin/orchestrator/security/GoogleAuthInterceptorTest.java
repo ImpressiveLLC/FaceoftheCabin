@@ -534,6 +534,15 @@ class GoogleAuthInterceptorTest {
     }
 
     @Test
+    void aValidCabinSessionViaTheQueryParamAlsoWorksForImgSrcBasedCameraStreams() throws Exception {
+        CabinSession session = cabinSessions.issue("nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/camera/driveway/live");
+        request.setParameter("cabin_session", session.token());
+
+        assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
+    }
+
+    @Test
     void aSuccessfulCabinSessionValidationSlidesTheThirtyDayWindowForward() throws Exception {
         CabinSessionStore rawStore = new InMemoryCabinSessionStore();
         CabinSessionService slidingSessions = new CabinSessionService(rawStore);

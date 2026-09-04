@@ -317,7 +317,7 @@ function useGoogleAuth() {
   // same latent bug (excessive re-fetching), just less visible since
   // repeating a GET is cheaper than repeatedly restarting a live session.
   return useMemo(() => ({
-    accessToken, userEmail, signedIn: !!accessToken || !!cabinSessionToken, sessionExpired,
+    accessToken, cabinSessionToken, userEmail, signedIn: !!accessToken || !!cabinSessionToken, sessionExpired,
     signIn, signOut, authedFetch, configured: !!clientId,
   }), [accessToken, cabinSessionToken, userEmail, sessionExpired, signIn, signOut, authedFetch, clientId]);
 }
@@ -467,10 +467,19 @@ export function CameraEventClip({ authedFetch, clipUrl, frigateUrl, cameraName }
 // "success" is treated as a failure, not a success), onError catches a
 // hard failure, and a bounded timeout catches a request that never
 // resolves either way.
-function CameraLiveView({ apiBase, accessToken, cameraName }) {
+function CameraLiveView({ apiBase, accessToken, cabinSessionToken, cameraName }) {
   const [status, setStatus] = useState("loading"); // loading | ok | error
   const timeoutRef = useRef(null);
-  const src = `${apiBase}/api/camera/${cameraName}/live?access_token=${encodeURIComponent(accessToken)}`;
+  // Found 2026-09-04 (direct user report): this was hardcoded to the raw
+  // ~1-hour Google token, so once that expired -- while a CabinSession
+  // kept everything else in the app signed in fine -- the stream broke
+  // silently (stale/empty access_token renders as a blank/green frame).
+  // Prefer CabinSession the same way authedFetch does; <img src> can't set
+  // a custom Authorization header, so it has to travel as a query param
+  // (?cabin_session=), same technique access_token already used.
+  const src = cabinSessionToken
+    ? `${apiBase}/api/camera/${cameraName}/live?cabin_session=${encodeURIComponent(cabinSessionToken)}`
+    : `${apiBase}/api/camera/${cameraName}/live?access_token=${encodeURIComponent(accessToken)}`;
 
   useEffect(() => {
     setStatus("loading");
@@ -637,6 +646,31 @@ export function CameraNotifyToggle({ cameraName, apiBase, authedFetch, workflows
   );
 }
 
+// 2026-09-04 -- extracted from CameraEventsPanel's own pre-existing inline
+// gate (the one place this pattern already existed) so every panel behind
+// a still-gated endpoint can show the same clear "sign in to continue"
+// prompt instead of a raw error/broken state. Direct user report: Tiny
+// Helpdesk showed a raw 401 JSON body as its error message because nothing
+// gated it at all; a not-yet-signed-in camera live view silently rendered
+// a blank/green frame instead of explaining why. Once signed in here,
+// CabinSession keeps that recognition for a rolling 30 days on this
+// device (see CabinSession's own doc) -- this prompt should be rare after
+// the first sign-in, not something asked for repeatedly.
+function SignInGate({ auth, title, message }) {
+  return (
+    <div className="panel-content">
+      {title && <div className="panel-header-bar"><h2>{title}</h2></div>}
+      {auth?.sessionExpired ? (
+        <p className="config-desc camera-live-error">Session expired — sign in again.</p>
+      ) : (
+        <p className="config-desc">{message}</p>
+      )}
+      <button className="btn-primary" onClick={auth?.signIn}>Sign in with Google</button>
+      <p className="auth-gate-hint">You'll stay signed in on this device for 30 days.</p>
+    </div>
+  );
+}
+
 export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's time-range window test
   const { locationCfg, workflows, refreshWorkflows } = useApp();
   // 2026-08-15: a location can have real devices (e.g. Home's AldrichFront,
@@ -782,17 +816,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   }
 
   if (!auth.signedIn) {
-    return (
-      <div className="panel-content">
-        <div className="panel-header-bar"><h2>Camera Events</h2></div>
-        {auth.sessionExpired ? (
-          <p className="config-desc camera-live-error">Session expired — sign in again.</p>
-        ) : (
-          <p className="config-desc">Sign in to view camera activity.</p>
-        )}
-        <button className="btn-primary" onClick={auth.signIn}>Sign in with Google</button>
-      </div>
-    );
+    return <SignInGate auth={auth} title="Camera Events" message="Sign in to view camera activity." />;
   }
 
   return (
@@ -832,7 +856,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
             ))}
           </div>
           {liveCamera && (
-            <CameraLiveView apiBase={apiBase} accessToken={auth.accessToken} cameraName={liveCamera} />
+            <CameraLiveView apiBase={apiBase} accessToken={auth.accessToken} cabinSessionToken={auth.cabinSessionToken} cameraName={liveCamera} />
           )}
         </div>
       )}
@@ -1154,8 +1178,20 @@ function OpportunityMapPanel({ auth }) {
 // provenance be visible, not just used internally -- the badge under each
 // answer shows "Verified" (manually_curated) vs "Auto-generated" per
 // source, exactly the distinction that decision exists to preserve.
-export function HelpdeskPanel() { // exported for src/App.test.jsx
+// Found 2026-09-04 (direct user report -- 401 on every question): this
+// panel has used a plain fetch() with no Authorization header at all since
+// /api/helpdesk/** was gated for WSJF #8 (2026-09-03) -- not something
+// today's CabinSession work introduced, just never actually wired to send
+// auth in the first place. Every question through this UI has 401'd since
+// that gate shipped, for anyone.
+export function HelpdeskPanel({ auth }) { // exported for src/App.test.jsx
   const { locationCfg } = useApp();
+  // auth is only ever omitted by a test exercising the plain-fetch fallback
+  // directly -- the real call site always provides it, so an absent auth
+  // means "no gating configured here," not "definitely signed out."
+  if (auth && !auth.signedIn) {
+    return <SignInGate auth={auth} title="Ask" message="Sign in to ask Tiny Helpdesk a question." />;
+  }
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
@@ -1178,7 +1214,8 @@ export function HelpdeskPanel() { // exported for src/App.test.jsx
     setAsking(true);
     setError(null);
     try {
-      const res = await fetch(`${locationCfg.apiBase}/api/helpdesk/ask`, {
+      const doFetch = auth?.authedFetch || fetch;
+      const res = await doFetch(`${locationCfg.apiBase}/api/helpdesk/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: q }),
@@ -6076,7 +6113,7 @@ function App() {
             {activePanel === "RULES_ENGINE"   && <RulesPanel auth={cameraAuth} />}
             {activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
             {activePanel === "OPPORTUNITY_MAP" && <OpportunityMapPanel auth={cameraAuth} />}
-            {activePanel === "HELPDESK"       && <HelpdeskPanel />}
+            {activePanel === "HELPDESK"       && <HelpdeskPanel auth={cameraAuth} />}
           </div>
         </main>
       </div>
