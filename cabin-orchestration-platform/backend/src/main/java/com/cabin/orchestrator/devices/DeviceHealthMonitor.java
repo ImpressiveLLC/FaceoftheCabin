@@ -3,9 +3,12 @@ package com.cabin.orchestrator.devices;
 import com.cabin.orchestrator.devices.model.CheckinStatus;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
+import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.integrations.zigbee.Zigbee2MqttAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -56,6 +59,7 @@ public class DeviceHealthMonitor {
 
     private final DeviceRegistry registry;
     private final Zigbee2MqttAdapter z2mAdapter;
+    private final DeviceEventLookup eventLookup;
 
     private static final Duration STALE_ZIGBEE  = Duration.ofMinutes(10);
     private static final Duration STALE_ZIGBEE_BATTERY = Duration.ofHours(26);
@@ -66,9 +70,23 @@ public class DeviceHealthMonitor {
     /** How many multiples of the stale threshold a device gets in the LATE grace tier before MISSED. */
     private static final int MISSED_MULTIPLIER = 3;
 
-    public DeviceHealthMonitor(DeviceRegistry registry, Zigbee2MqttAdapter z2mAdapter) {
+    // WSJF bug #2: telemetry arrival is sufficient evidence of liveness on
+    // its own, independent of whatever adapter-specific mechanism normally
+    // refreshes DeviceStatus.lastSeen (Z2M availability, HA polling, ...).
+    // Suggested default per the bug report; overridable per-deployment.
+    @Value("${cabin.deviceHealth.telemetryLivenessWindowMinutes:30}")
+    private long telemetryLivenessWindowMinutes;
+
+    @Autowired
+    public DeviceHealthMonitor(DeviceRegistry registry, Zigbee2MqttAdapter z2mAdapter, DeviceEventLookup eventLookup) {
         this.registry = registry;
         this.z2mAdapter = z2mAdapter;
+        this.eventLookup = eventLookup;
+    }
+
+    /** Convenience constructor for isolated unit tests that don't exercise the telemetry-liveness cross-check (bug #2) -- defaults it to "never recent", i.e. the pre-fix behavior. */
+    public DeviceHealthMonitor(DeviceRegistry registry, Zigbee2MqttAdapter z2mAdapter) {
+        this(registry, z2mAdapter, (deviceId, eventTypePrefix, since) -> false);
     }
 
     /** Runs every 60 seconds. Checks all registered devices for staleness. */
@@ -85,6 +103,30 @@ public class DeviceHealthMonitor {
                 continue;
             }
 
+            // D13 (Service-Level Data Lineage) -- a "reporting_mode: event_driven"
+            // service entity is exempt from time-based staleness entirely, not
+            // just given a longer grace window: Kidde's CO sensor (electrochemical,
+            // not the continuous MOX temp/humidity sensors on the same physical
+            // unit) only emits a new reading on a real state change (Clear ->
+            // Warning -> Alarm) -- Kidde's own cloud API strips continuous CO
+            // telemetry, so days of silence at Clear is the expected, healthy
+            // state, never evidence of failure. The non-negotiable rule this
+            // implements: "A device's online/offline status MUST be inferred
+            // from its continuous-mode service entities only." No reporting_mode
+            // property exists in the schema yet (a larger ontology change than
+            // this bug-fix scope) -- CO_SENSOR is the one type known to need
+            // this today; extend this set if another event_driven type is
+            // onboarded later, don't wait for the full property to exist first.
+            if (isEventDriven(status.type())) {
+                checkinStatuses.put(id, CheckinStatus.ON_SCHEDULE);
+                recoverIfNeeded(id, "event-driven service -- resting silence is healthy, not evidence of failure");
+                if ("OFFLINE".equals(status.state())) {
+                    registry.update(new DeviceStatus(id, status.type(), status.name(), "ONLINE",
+                        status.lastSeen(), status.attributes(), status.location()));
+                }
+                continue;
+            }
+
             Duration staleThreshold = staleThresholdFor(id, status);
             Duration sinceLastSeen = Duration.between(status.lastSeen(), now);
 
@@ -97,6 +139,16 @@ public class DeviceHealthMonitor {
             if (tryActiveRecovery(id, descriptor, now)) {
                 checkinStatuses.put(id, CheckinStatus.ON_SCHEDULE);
                 recoverIfNeeded(id, "active check confirmed it's actually reachable");
+                continue;
+            }
+
+            if (hasRecentTelemetry(id, now)) {
+                checkinStatuses.put(id, CheckinStatus.ON_SCHEDULE);
+                recoverIfNeeded(id, "recent telemetry confirms it's alive");
+                if ("OFFLINE".equals(status.state())) {
+                    registry.update(new DeviceStatus(id, status.type(), status.name(), "ONLINE",
+                        now, status.attributes(), status.location()));
+                }
                 continue;
             }
 
@@ -188,6 +240,16 @@ public class DeviceHealthMonitor {
             lastKnownState.remove(id);
             reconnectAttempts.remove(id);
         }
+    }
+
+    /** WSJF bug #2: true if a TELEMETRY-type cabin_event exists for this device within the configured liveness window, regardless of what DeviceStatus.lastSeen itself says. */
+    private boolean hasRecentTelemetry(String deviceId, Instant now) {
+        return eventLookup.hasRecentEvent(deviceId, "TELEMETRY", now.minus(Duration.ofMinutes(telemetryLivenessWindowMinutes)));
+    }
+
+    /** D13: true for a device type whose service entity only reports on a state change, never continuously. */
+    private static boolean isEventDriven(DeviceType type) {
+        return type == DeviceType.CO_SENSOR;
     }
 
     private void clearTracking(String deviceId) {
@@ -302,9 +364,11 @@ public class DeviceHealthMonitor {
                     case ASSIGNED -> "Assigned but disabled; enable it to start health monitoring.";
                     case DEFERRED, IGNORED -> "Previously exposed devices are not actively monitored.";
                 };
-                case ON_SCHEDULE -> battery
-                    ? "Battery device is within its expected reporting window; it may sleep between reports."
-                    : "Device checked in within its expected reporting window.";
+                case ON_SCHEDULE -> isEventDriven(status.type())
+                    ? "Event-driven service; resting silence between state changes is expected and healthy, not a sign of failure."
+                    : battery
+                        ? "Battery device is within its expected reporting window; it may sleep between reports."
+                        : "Device checked in within its expected reporting window.";
                 case LATE -> "Expected report has not arrived yet; this does not prove the device is offline.";
                 case MISSED -> "No report arrived during the full grace window and the device is treated as not responding.";
             };

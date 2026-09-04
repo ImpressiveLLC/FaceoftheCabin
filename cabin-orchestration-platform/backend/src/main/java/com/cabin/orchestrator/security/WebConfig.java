@@ -116,6 +116,6 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
                 "/api/events/**", "/api/alerts/**", "/api/devices/**", "/api/access-tokens/**",
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
-                "/api/platform-import/**");
+                "/api/platform-import/**", "/api/system/platform-info");
     }
 }

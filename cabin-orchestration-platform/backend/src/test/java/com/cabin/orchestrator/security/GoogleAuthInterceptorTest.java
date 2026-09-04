@@ -130,8 +130,21 @@ class GoogleAuthInterceptorTest {
         otherEvents.setParameter("t", token.token());
         MockHttpServletResponse otherEventsResponse = new MockHttpServletResponse();
         assertFalse(interceptor.preHandle(otherEvents, otherEventsResponse, new Object()),
-            "observations_read must not grant the broader /api/events, only telemetry-history");
+            "observations_read must not grant the broader /api/events, only telemetry-history and reported-fields");
         assertEquals(403, otherEventsResponse.getStatus());
+    }
+
+    // Bug #1 fix: observations_read alone (no device_states) has no way to
+    // discover which deviceId/field combos exist without this -- see
+    // SCOPE_PATH_PREFIXES's own comment. Deliberately narrow (device->field
+    // names only), not the broader /api/events the test above still rejects.
+    @Test
+    void aGuestTokenScopedToObservationsReadAlsoReachesReportedFields() throws Exception {
+        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("observations_read"), null, "nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/events/reported-fields");
+        request.setParameter("t", token.token());
+
+        assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
     }
 
     @Test

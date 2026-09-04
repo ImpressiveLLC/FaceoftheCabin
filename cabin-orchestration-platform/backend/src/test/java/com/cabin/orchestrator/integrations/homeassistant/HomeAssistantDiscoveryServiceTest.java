@@ -234,23 +234,53 @@ class HomeAssistantDiscoveryServiceTest {
             .containsExactlyInAnyOrder(DeviceType.AIR_QUALITY_SENSOR, DeviceType.AIR_QUALITY_SENSOR);
     }
 
-    // Confirmed live (docs/MAINTENANCE.md): Kidde's own CO-level entity has
-    // NO device_class set at all on the real account -- a vendor gap, not
-    // something this app's discovery invents. unit_of_measurement is the
-    // only remaining signal, and is deliberately generic (not keyed to
-    // "kidde") so a future non-native integration with the same gap is
-    // covered too.
+    // A hypothetical vendor whose sensor DOES set unit_of_measurement=ppm
+    // but no device_class -- kept as the generic, name-independent fallback
+    // case (deliberately not keyed to "kidde" so any future integration with
+    // this specific gap is covered too). See the test below for Kidde's own,
+    // deeper real-world gap.
     @Test
     void ppmUnitWithNoDeviceClassInfersCoSensorTypeAsAVendorGapFallback() {
         when(adapter.discover("cabin")).thenReturn(List.of(
             new HomeAssistantAdapter.DiscoveredEntity(
-                "sensor.kidde_co_level", "3",
-                Map.of("friendly_name", "Kidde CO Level", "unit_of_measurement", "ppm"))));
+                "sensor.some_other_co_sensor", "3",
+                Map.of("friendly_name", "Some Other CO Sensor", "unit_of_measurement", "ppm"))));
         when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
 
         service.discoverLocation("cabin");
 
         assertThat(registry.byLocation("cabin")).extracting(DeviceStatus::type).containsExactly(DeviceType.CO_SENSOR);
+    }
+
+    // WSJF bug #3: the ppm-unit test above was written assuming Kidde's real
+    // CO-level entity sets unit_of_measurement=ppm -- verified live against
+    // the actual M920q Postgres (cabin_event payloads, 2026-09-03) that this
+    // was never true: BOTH device_class and unit_of_measurement are empty
+    // for this exact entity. Neither prior fallback ever matched it, so it
+    // silently classified as generic HOME_ASSISTANT_ENTITY this whole time --
+    // no Monitoring tile, no "co" semantic field for Sensor History -- despite
+    // reporting a real CO ppm value every cycle (only visible via Grafana's
+    // raw-payload SQL, a separate path that bypasses this classification
+    // entirely). This is the exact live payload shape; the name-match
+    // fallback is what actually saves it.
+    @Test
+    void kiddesRealCoLevelEntityHasNoDeviceClassAndNoUnitButIsStillInferredAsCoSensor() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "sensor.kidde_co_temp_and_humidity_cabin_upstairs_co_level", "3",
+                Map.of("friendly_name", "Kidde CO Temp and Humidity Cabin Upstairs CO Level"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        List<DeviceStatus> devices = registry.byLocation("cabin");
+        assertThat(devices).extracting(DeviceStatus::type).containsExactly(DeviceType.CO_SENSOR);
+        // The whole point of the fix: a value now actually lands under the
+        // "co" semantic field, matching D13/bug #3's own vocabulary rule
+        // (co = carbon monoxide only, never carbon dioxide) -- this is the
+        // literal "measurement_type for the Kidde device entity is co"
+        // success criterion, exercised end to end, not asserted in isolation.
+        assertThat(devices.get(0).attributes()).containsEntry("co", 3.0);
     }
 
     @Test

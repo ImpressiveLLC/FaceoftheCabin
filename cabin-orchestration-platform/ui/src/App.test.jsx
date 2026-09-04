@@ -117,6 +117,33 @@ describe("kpiTileFor", () => {
     const device = { deviceId: "co-alarm", name: "Kidde CO Alarm", type: "CO_ALARM", state: "ALARM" };
     expect(kpiTileFor(device, "F")).toMatchObject({ value: "ALARM", state: "ALARM" });
   });
+
+  // D13 (Service-Level Data Lineage), WSJF bug #4: a curated display_label
+  // for this device's specific measurement wins over the raw device.name --
+  // the exact "Upstairs CO" vs. the real, much longer HA friendly_name case.
+  it("uses the curated display_label for a CO sensor's tile title when one is set", () => {
+    const device = { deviceId: "kidde-co-level", name: "Kidde CO Temp and Humidity Cabin Upstairs CO Level",
+      type: "CO_SENSOR", state: "ONLINE", attributes: { co: 3 } };
+    const reportingRelationships = { "kidde-co-level": [{ semanticField: "co", displayLabel: "Upstairs CO" }] };
+
+    expect(kpiTileFor(device, "F", reportingRelationships).label).toBe("Upstairs CO");
+  });
+
+  it("falls back to device.name when no display_label has been curated yet", () => {
+    const device = { deviceId: "kidde-co-level", name: "Kidde CO Level", type: "CO_SENSOR", state: "ONLINE",
+      attributes: { co: 3 } };
+
+    expect(kpiTileFor(device, "F", {}).label).toBe("Kidde CO Level");
+    expect(kpiTileFor(device, "F").label).toBe("Kidde CO Level"); // reportingRelationships also fully optional
+  });
+
+  it("uses the curated display_label for a humidity-only device's tile title too", () => {
+    const device = { deviceId: "kidde-humidity", name: "Kidde CO Temp and Humidity Cabin Upstairs Humidity",
+      type: "HUMIDITY_SENSOR", state: "ONLINE", attributes: { humidity: 57 } };
+    const reportingRelationships = { "kidde-humidity": [{ semanticField: "humidity", displayLabel: "Upstairs Humidity" }] };
+
+    expect(kpiTileFor(device, "F", reportingRelationships).label).toBe("Upstairs Humidity");
+  });
 });
 
 // 2026-08-25: replaces the Grafana "View Sensor History" link-out, which
@@ -328,6 +355,30 @@ describe("SensorHistoryPanel", () => {
     const legend = document.querySelector(".sensor-history-legend");
     expect(within(legend).getByText("Mech Room")).toBeTruthy();
     expect(within(legend).getByText("Kitchen")).toBeTruthy();
+  });
+
+  // D13 (Service-Level Data Lineage), WSJF bug #4: a curated display_label
+  // for THIS field wins over the device's own name in both the legend and
+  // the table header -- the exact "temp_kitchen"/"temp_mech_room" mislabel
+  // the bug report was about.
+  it("uses a curated display_label instead of the device name in the legend and table header when one is set", async () => {
+    const fieldsMap = Object.fromEntries(sensors.map(d => [d.deviceId, d.attributes.reportsFields]));
+    const reportingRelationships = {
+      "z2m-humid_mech": [{ semanticField: "humidity", displayLabel: "Mech Room Humidity" }],
+      "z2m-humid_kitchen": [{ semanticField: "humidity", displayLabel: "Kitchen Humidity" }],
+    };
+    vi.stubGlobal("fetch", vi.fn((url) => {
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => fieldsMap });
+      if (url.includes("/reporting-relationships")) return Promise.resolve({ ok: true, json: async () => reportingRelationships });
+      return Promise.resolve({ ok: true, json: async () => points });
+    }));
+
+    render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+
+    const headerRow = (await screen.findAllByRole("row"))[0];
+    expect(within(headerRow).getByText("Mech Room Humidity")).toBeTruthy();
+    expect(within(headerRow).getByText("Kitchen Humidity")).toBeTruthy();
+    expect(within(headerRow).queryByText("Mech Room")).toBeFalsy();
   });
 
   // 2026-08-27: closes the gap docs/MAINTENANCE.md flagged -- "Kidde's CO/CO2
@@ -3035,8 +3086,24 @@ describe("FamilyConfigPanel", () => {
 describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
   afterEach(cleanup);
 
-  function mockAuth() {
-    return { authedFetch: vi.fn() };
+  // FamilyConfigPanel also renders PlatformInfoCard (Bug #5), which
+  // independently calls /api/system/platform-info on mount through this same
+  // authedFetch mock -- route that URL to its own stub response so it never
+  // consumes a queued /api/access-tokens response meant for these tests, and
+  // never trips these tests' own positional-call assertions.
+  function mockAuth(accessTokenResponses) {
+    const queue = [...accessTokenResponses];
+    const authedFetch = vi.fn((url) => {
+      if (url.includes("/api/system/platform-info")) {
+        return Promise.resolve({ ok: true, json: async () => ({ versions: {}, hardware: [], aiDisclosure: null }) });
+      }
+      return Promise.resolve(queue.shift());
+    });
+    return { authedFetch };
+  }
+
+  function accessTokenCalls(auth) {
+    return auth.authedFetch.mock.calls.filter(([url]) => url.includes("/api/access-tokens"));
   }
 
   function renderPanel(auth) {
@@ -3048,10 +3115,9 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
   }
 
   it("lists existing share links returned by the API", async () => {
-    const auth = mockAuth();
-    auth.authedFetch.mockResolvedValue({ ok: true, json: async () => [
+    const auth = mockAuth([{ ok: true, json: async () => [
       { id: "tok-1", label: "Insurance Claim", scope: ["dashboard", "device_states"], expiresAt: null, revokedAt: null },
-    ] });
+    ] }]);
 
     renderPanel(auth);
 
@@ -3060,14 +3126,14 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
   });
 
   it("creates a new link with only the checked scopes and shows the full URL exactly once", async () => {
-    const auth = mockAuth();
-    auth.authedFetch
-      .mockResolvedValueOnce({ ok: true, json: async () => [] })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "tok-2", token: "secret-xyz", label: "Contractor", scope: ["device_states"] }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: "tok-2", label: "Contractor", scope: ["device_states"], revokedAt: null }] });
+    const auth = mockAuth([
+      { ok: true, json: async () => [] },
+      { ok: true, json: async () => ({ id: "tok-2", token: "secret-xyz", label: "Contractor", scope: ["device_states"] }) },
+      { ok: true, json: async () => [{ id: "tok-2", label: "Contractor", scope: ["device_states"], revokedAt: null }] },
+    ]);
 
     renderPanel(auth);
-    await waitFor(() => expect(auth.authedFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(accessTokenCalls(auth).length).toBe(1));
 
     fireEvent.change(screen.getByPlaceholderText(/Label, e.g\./), { target: { value: "Contractor" } });
     // All four start checked -- uncheck the three not wanted, leaving only device_states.
@@ -3077,24 +3143,101 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
     fireEvent.click(screen.getByText("Create link"));
 
     expect(await screen.findByText(/view\/secret-xyz/)).toBeTruthy();
-    const createBody = JSON.parse(auth.authedFetch.mock.calls[1][1].body);
+    const createBody = JSON.parse(accessTokenCalls(auth)[1][1].body);
     expect(createBody.scope).toEqual(["device_states"]);
   });
 
   it("revokes a link and the list reflects it without a page reload", async () => {
-    const auth = mockAuth();
-    auth.authedFetch
-      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: "tok-3", label: "Old Contractor", scope: ["dashboard"], revokedAt: null }] })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
-      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: "tok-3", label: "Old Contractor", scope: ["dashboard"], revokedAt: "2026-09-01T00:00:00Z" }] });
+    const auth = mockAuth([
+      { ok: true, json: async () => [{ id: "tok-3", label: "Old Contractor", scope: ["dashboard"], revokedAt: null }] },
+      { ok: true, json: async () => ({}) },
+      { ok: true, json: async () => [{ id: "tok-3", label: "Old Contractor", scope: ["dashboard"], revokedAt: "2026-09-01T00:00:00Z" }] },
+    ]);
 
     renderPanel(auth);
     await screen.findByText("Old Contractor");
     fireEvent.click(screen.getByText("Revoke"));
 
     expect(await screen.findByText("Revoked")).toBeTruthy();
-    expect(auth.authedFetch.mock.calls[1][0]).toContain("/api/access-tokens/tok-3");
-    expect(auth.authedFetch.mock.calls[1][1].method).toBe("DELETE");
+    expect(accessTokenCalls(auth)[1][0]).toContain("/api/access-tokens/tok-3");
+    expect(accessTokenCalls(auth)[1][1].method).toBe("DELETE");
+  });
+});
+
+// Bug #5 (2026-09 bug sprint): admin-only versions + hardware catalog + AI
+// disclosure. PlatformInfoCard isn't itself exported -- tested through its
+// parent, same pattern as GuestAccessCard above.
+describe("FamilyConfigPanel — Platform Info (Bug #5)", () => {
+  afterEach(cleanup);
+
+  // FamilyConfigPanel also renders GuestAccessCard, which independently
+  // calls /api/access-tokens on mount through the same authedFetch mock --
+  // route by URL (like mockFetchByUrl elsewhere in this file) so that call
+  // gets its own empty-array shape instead of crashing on a platform-info body.
+  function mockAuth(platformInfoResponse) {
+    return { authedFetch: vi.fn((url) => {
+      if (url.includes("/api/system/platform-info")) return Promise.resolve(platformInfoResponse);
+      return Promise.resolve({ ok: true, json: async () => [] });
+    }) };
+  }
+
+  function renderPanel(auth) {
+    return render(
+      <AppContext.Provider value={{ config: {}, locationCfg: { haUrl: "http://cabin-hub:8123" } }}>
+        <FamilyConfigPanel auth={auth} />
+      </AppContext.Provider>
+    );
+  }
+
+  it("shows live integration versions from the API", async () => {
+    const auth = mockAuth({ ok: true, json: async () => ({
+      versions: { cabinBackend: "0.1.0", homeAssistant: "2026.9.1", zigbee2mqtt: "1.35.0", ollama: "0.3.12", mqttBroker: "not exposed by Mosquitto over MQTT -- no version topic to read" },
+      hardware: [],
+      aiDisclosure: null,
+    }) });
+
+    renderPanel(auth);
+
+    expect(await screen.findByText("2026.9.1")).toBeTruthy();
+    expect(screen.getByText("1.35.0")).toBeTruthy();
+    expect(screen.getByText("0.3.12")).toBeTruthy();
+    expect(screen.getByText("Home Assistant")).toBeTruthy();
+  });
+
+  it("shows the static hardware catalog rows", async () => {
+    const auth = mockAuth({ ok: true, json: async () => ({
+      versions: {},
+      hardware: [
+        { category: "Host", description: "Lenovo ThinkCentre M920q" },
+        { category: "Refrigeration", description: "No refrigeration appliance is currently paired" },
+      ],
+      aiDisclosure: null,
+    }) });
+
+    renderPanel(auth);
+
+    expect(await screen.findByText("Lenovo ThinkCentre M920q")).toBeTruthy();
+    expect(screen.getByText("No refrigeration appliance is currently paired")).toBeTruthy();
+  });
+
+  it("shows the AI-inference disclosure naming the model and Tailscale-only exposure", async () => {
+    const auth = mockAuth({ ok: true, json: async () => ({
+      versions: {}, hardware: [],
+      aiDisclosure: { model: "llama3.2:3b (Ollama)", hostedWhere: "Locally, on the cabin M920q", networkExposure: "Tailscale-only", dataHandling: "No prompt is ever sent to an external AI service." },
+    }) });
+
+    renderPanel(auth);
+
+    expect(await screen.findByText(/llama3.2:3b/)).toBeTruthy();
+    expect(screen.getByText(/Tailscale-only/)).toBeTruthy();
+  });
+
+  it("shows an admin-required message rather than a raw error on 403", async () => {
+    const auth = mockAuth({ ok: false, status: 403, json: async () => ({ error: "forbidden" }) });
+
+    renderPanel(auth);
+
+    expect(await screen.findByText(/Admin access required/)).toBeTruthy();
   });
 });
 
@@ -3105,29 +3248,95 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
 describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
   afterEach(cleanup);
 
-  it("shows devices and active alerts, with the token appended to every request", async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => [
+  // Bug #1: this component used to fire a single Promise.all over exactly
+  // two hardcoded endpoints, so a token scoped to anything other than
+  // {device_states + alerts_read} together tripped the shared .catch and
+  // showed "invalid link" for a perfectly valid, differently-scoped token.
+  // Each of these mocks routes by URL (not call order) since the real
+  // component now fetches every scope's endpoint independently and
+  // concurrently -- a 403 for an out-of-scope endpoint must never surface
+  // as the generic invalid-link error, only a genuine 401 may.
+  const mockFetchByUrl = (handlers) => vi.fn((url) => {
+    for (const [match, response] of handlers) {
+      if (url.includes(match)) return Promise.resolve(response);
+    }
+    return Promise.resolve({ ok: false, status: 403, json: async () => ({}) });
+  });
+
+  it("device_states scope shows devices, other sections stay empty without an error", async () => {
+    vi.stubGlobal("fetch", mockFetchByUrl([
+      ["/api/devices", { ok: true, json: async () => [
         { deviceId: "z2m-main_water_valve", name: "main_water_valve", state: "ONLINE", location: "cabin", lastSeen: "2026-09-01T12:00:00Z" },
-      ] })
-      .mockResolvedValueOnce({ ok: true, json: async () => [
-        { id: "a1", severity: "CRITICAL", message: "Water leak detected", timestamp: "2026-09-01T11:00:00Z" },
-      ] });
-    vi.stubGlobal("fetch", fetchMock);
+      ] }],
+    ]));
 
     render(<GuestDashboard token="secret-abc" />);
 
     expect(await screen.findByText("main_water_valve")).toBeTruthy();
-    expect(screen.getByText(/Water leak detected/)).toBeTruthy();
+    expect(screen.queryByText(/isn't valid, has expired/)).toBeFalsy();
+  });
+
+  it("alerts_read scope shows active alerts (continues to work as before)", async () => {
+    vi.stubGlobal("fetch", mockFetchByUrl([
+      ["/api/alerts/active", { ok: true, json: async () => [
+        { id: "a1", severity: "CRITICAL", message: "Water leak detected", timestamp: "2026-09-01T11:00:00Z" },
+      ] }],
+    ]));
+
+    render(<GuestDashboard token="secret-abc" />);
+
+    expect(await screen.findByText(/Water leak detected/)).toBeTruthy();
+  });
+
+  it("dashboard scope shows the platform name from /api/dashboard/config", async () => {
+    vi.stubGlobal("fetch", mockFetchByUrl([
+      ["/api/dashboard/config", { ok: true, json: async () => ({ platformName: "Cumberland Cabin" }) }],
+    ]));
+
+    render(<GuestDashboard token="secret-abc" />);
+
+    expect(await screen.findByText("Cumberland Cabin")).toBeTruthy();
+  });
+
+  it("observations_read scope shows historical readings via reported-fields + telemetry-history", async () => {
+    vi.stubGlobal("fetch", mockFetchByUrl([
+      ["/api/events/reported-fields", { ok: true, json: async () => ({ "z2m-temp_kitchen": ["humidity"] }) }],
+      ["/api/events/telemetry-history", { ok: true, json: async () => [
+        { day: "2026-09-01T00:00:00Z", avg: 47.5, min: 40, max: 55, sampleCount: 90 },
+      ] }],
+    ]));
+
+    render(<GuestDashboard token="secret-abc" />);
+
+    expect(await screen.findByText(/z2m-temp_kitchen — humidity/)).toBeTruthy();
+    expect(screen.getByText(/avg 47.5/)).toBeTruthy();
+  });
+
+  it("a fresh token appends the token to every request regardless of scope", async () => {
+    const fetchMock = mockFetchByUrl([]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GuestDashboard token="secret-abc" />);
+
+    await screen.findByText(/doesn't currently grant access/);
     fetchMock.mock.calls.forEach(call => expect(call[0]).toContain("t=secret-abc"));
   });
 
-  it("shows a not-valid message when the token is rejected", async () => {
+  it("shows a not-valid message only on a genuine 401, not a scope-mismatch 403", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }));
 
     render(<GuestDashboard token="bad-token" />);
 
     expect(await screen.findByText(/isn't valid, has expired, or has been revoked/)).toBeTruthy();
+  });
+
+  it("a token granted no covered scope shows a distinct message, not the invalid-link error", async () => {
+    vi.stubGlobal("fetch", mockFetchByUrl([])); // everything 403s
+
+    render(<GuestDashboard token="secret-abc" />);
+
+    expect(await screen.findByText(/doesn't currently grant access to any data/)).toBeTruthy();
+    expect(screen.queryByText(/isn't valid, has expired/)).toBeFalsy();
   });
 });
 

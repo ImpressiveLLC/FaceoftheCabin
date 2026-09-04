@@ -75,6 +75,11 @@ class DeviceHealthMonitorTest {
         return new DeviceHealthMonitor(registry, z2m);
     }
 
+    private DeviceHealthMonitor monitorWith(DeviceRegistry registry, DeviceEventLookup eventLookup) {
+        Zigbee2MqttAdapter z2m = new Zigbee2MqttAdapter(registry, new EventPublisher(), new SignalQualityRegistry());
+        return new DeviceHealthMonitor(registry, z2m, eventLookup);
+    }
+
     private DeviceDescriptor haDescriptor(String id, boolean enabled) {
         return new DeviceDescriptor(id, "Test HA Lock", DeviceType.LOCK,
             Set.of(DeviceCapability.COMMAND), "ha_rest", "lock.test", enabled, "cabin");
@@ -197,6 +202,116 @@ class DeviceHealthMonitorTest {
 
         assertEquals(CheckinStatus.ON_SCHEDULE, monitor.getCheckinStatuses().get("z2m-battery-motion"));
         assertEquals(1560L, monitor.getCheckinDetails().get("z2m-battery-motion").get("expectedMinutes"));
+    }
+
+    // ── WSJF bug #2: telemetry-liveness cross-check ─────────────────────────
+    // Real root cause found for the Kidde false-OFFLINE report:
+    // HomeAssistantDiscoveryService's own comment confirms Kidde surfaces as
+    // several ungrouped HA entities, so one entity going stale on the HA
+    // side can leave ITS DeviceStatus row stuck (never refreshing lastSeen)
+    // while sibling entities for the "same" physical device keep publishing
+    // real TELEMETRY events under their own deviceIds. These tests exercise
+    // DeviceHealthMonitor's own cross-check directly via a fake
+    // DeviceEventLookup rather than standing up a real CabinEventService --
+    // see that interface's own javadoc for why it exists.
+
+    @Test
+    void aDeviceWithRecentTelemetryIsNeverShownOfflineEvenPastTheMissedThreshold() {
+        FakeHaAdapter ha = new FakeHaAdapter(); // active fetch fails -- telemetry evidence is the only thing saving this device
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of(ha));
+        registry.registerDescriptor(haDescriptor("dev-5", true));
+        registry.update(new DeviceStatus("dev-5", DeviceType.LOCK, "Test HA Lock", "ONLINE",
+            Instant.now().minus(Duration.ofMinutes(50)), Map.of(), "cabin")); // well past the 45min missed threshold
+
+        DeviceHealthMonitor monitor = monitorWith(registry, (deviceId, eventTypePrefix, since) -> true);
+        monitor.checkHealth();
+
+        assertEquals(CheckinStatus.ON_SCHEDULE, monitor.getCheckinStatuses().get("dev-5"),
+            "recent telemetry is direct evidence of liveness, independent of the adapter's own lastSeen mechanism");
+        assertEquals("ONLINE", registry.get("dev-5").state());
+    }
+
+    @Test
+    void aDeviceAlreadyMarkedOfflineRecoversTheMomentRecentTelemetryIsSeen() {
+        FakeHaAdapter ha = new FakeHaAdapter();
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of(ha));
+        registry.registerDescriptor(haDescriptor("dev-6", true));
+        // Simulates the live bug: DeviceStatus is already stuck at OFFLINE
+        // from an earlier cycle, exactly like the Kidde sensor card.
+        registry.update(new DeviceStatus("dev-6", DeviceType.LOCK, "Test HA Lock", "OFFLINE",
+            Instant.now().minus(Duration.ofMinutes(50)), Map.of(), "cabin"));
+
+        DeviceHealthMonitor monitor = monitorWith(registry, (deviceId, eventTypePrefix, since) -> true);
+        monitor.checkHealth();
+
+        assertEquals("ONLINE", registry.get("dev-6").state(),
+            "an already-incorrectly-OFFLINE device must self-correct once telemetry evidence is found, not just stay stuck");
+    }
+
+    @Test
+    void telemetryLivenessCheckOnlyLooksAtTelemetryTypeEvents() {
+        FakeHaAdapter ha = new FakeHaAdapter();
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of(ha));
+        registry.registerDescriptor(haDescriptor("dev-7", true));
+        registry.update(new DeviceStatus("dev-7", DeviceType.LOCK, "Test HA Lock", "ONLINE",
+            Instant.now().minus(Duration.ofMinutes(50)), Map.of(), "cabin"));
+        java.util.List<String> seenPrefixes = new java.util.ArrayList<>();
+
+        DeviceHealthMonitor monitor = monitorWith(registry, (deviceId, eventTypePrefix, since) -> {
+            seenPrefixes.add(eventTypePrefix);
+            return false;
+        });
+        monitor.checkHealth();
+
+        assertEquals(java.util.List.of("TELEMETRY"), seenPrefixes);
+        assertEquals("OFFLINE", registry.get("dev-7").state(),
+            "no matching telemetry -- falls through to the existing MISSED->OFFLINE behavior unchanged");
+    }
+
+    // D13 (Service-Level Data Lineage): Kidde's CO service entity is
+    // event_driven (electrochemical, only reports on a real Clear/Warning/
+    // Alarm state change) -- resting silence for days is the expected,
+    // healthy state, never evidence the device stopped working. These tests
+    // prove CO_SENSOR-typed devices are exempt from time-based staleness
+    // entirely, unlike the 30-minute recent-telemetry cross-check above
+    // (which still isn't enough on its own for a device that can legitimately
+    // go far longer than 30 minutes between events while perfectly healthy).
+
+    @Test
+    void aCoSensorWithNoRecentTelemetryForDaysIsNeverShownOfflineOrLate() {
+        FakeHaAdapter ha = new FakeHaAdapter(); // respond=false -- active recovery can't save this either
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of(ha));
+        DeviceDescriptor coDescriptor = new DeviceDescriptor("kidde-co", "Kidde CO Level", DeviceType.CO_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "ha_rest", "sensor.kidde_co_level", true, "cabin");
+        registry.registerDescriptor(coDescriptor);
+        registry.update(new DeviceStatus("kidde-co", DeviceType.CO_SENSOR, "Kidde CO Level", "ONLINE",
+            Instant.now().minus(Duration.ofDays(5)), Map.of(), "cabin"));
+
+        DeviceHealthMonitor monitor = monitorWith(registry, (deviceId, eventTypePrefix, since) -> false);
+        monitor.checkHealth();
+
+        assertEquals(CheckinStatus.ON_SCHEDULE, monitor.getCheckinStatuses().get("kidde-co"),
+            "an event-driven service's resting silence must never be classified LATE/MISSED, no matter how long it's been");
+        assertEquals("ONLINE", registry.get("kidde-co").state());
+    }
+
+    @Test
+    void aCoSensorAlreadyMarkedOfflineFromBeforeThisFixIsRecoveredOnTheNextCycle() {
+        FakeHaAdapter ha = new FakeHaAdapter();
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of(ha));
+        DeviceDescriptor coDescriptor = new DeviceDescriptor("kidde-co-2", "Kidde CO Level", DeviceType.CO_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "ha_rest", "sensor.kidde_co_level", true, "cabin");
+        registry.registerDescriptor(coDescriptor);
+        registry.update(new DeviceStatus("kidde-co-2", DeviceType.CO_SENSOR, "Kidde CO Level", "OFFLINE",
+            Instant.now().minus(Duration.ofDays(5)), Map.of(), "cabin"));
+
+        DeviceHealthMonitor monitor = monitorWith(registry, (deviceId, eventTypePrefix, since) -> false);
+        monitor.checkHealth();
+
+        assertEquals(CheckinStatus.ON_SCHEDULE, monitor.getCheckinStatuses().get("kidde-co-2"),
+            "the event-driven exemption applies regardless of whatever checkin status a device was previously stuck at");
+        assertEquals("ONLINE", registry.get("kidde-co-2").state(),
+            "a device incorrectly left OFFLINE from before this fix must self-correct, not stay stuck");
     }
 
     @Test

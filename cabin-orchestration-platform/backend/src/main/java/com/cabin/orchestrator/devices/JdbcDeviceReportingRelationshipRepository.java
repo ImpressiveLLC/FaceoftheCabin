@@ -32,8 +32,14 @@ public class JdbcDeviceReportingRelationshipRepository implements DeviceReportin
               measurement_type    TEXT NOT NULL,
               confirmation_source TEXT NOT NULL,
               confirmed_at        TIMESTAMPTZ NOT NULL,
+              display_label       TEXT,
               PRIMARY KEY (device_id, semantic_field)
             )""");
+        // D13 (2026-09-03): this table already existed live before displayLabel
+        // did -- CREATE TABLE IF NOT EXISTS above is a no-op against it, so the
+        // column needs adding explicitly, same pattern JdbcDeviceRepository/
+        // JdbcWorkflowVocabularyStore/JdbcWorkflowRuleStore already use for this.
+        jdbc.execute("ALTER TABLE device_reporting_relationship ADD COLUMN IF NOT EXISTS display_label TEXT");
     }
 
     // The CASE below duplicates ConfirmationSource.priority() in SQL so the
@@ -69,7 +75,7 @@ public class JdbcDeviceReportingRelationshipRepository implements DeviceReportin
     @Override
     public List<DeviceReportingRelationship> findByDevice(String deviceId) {
         return jdbc.query("""
-            SELECT device_id, semantic_field, measurement_type, confirmation_source, confirmed_at
+            SELECT device_id, semantic_field, measurement_type, confirmation_source, confirmed_at, display_label
             FROM device_reporting_relationship WHERE device_id = ? ORDER BY semantic_field
             """, (rs, rowNum) -> fromRow(rs), deviceId);
     }
@@ -77,7 +83,7 @@ public class JdbcDeviceReportingRelationshipRepository implements DeviceReportin
     @Override
     public Map<String, List<DeviceReportingRelationship>> loadAll() {
         List<DeviceReportingRelationship> all = jdbc.query("""
-            SELECT device_id, semantic_field, measurement_type, confirmation_source, confirmed_at
+            SELECT device_id, semantic_field, measurement_type, confirmation_source, confirmed_at, display_label
             FROM device_reporting_relationship ORDER BY device_id, semantic_field
             """, (rs, rowNum) -> fromRow(rs));
         Map<String, List<DeviceReportingRelationship>> byDevice = new LinkedHashMap<>();
@@ -87,6 +93,24 @@ public class JdbcDeviceReportingRelationshipRepository implements DeviceReportin
         return byDevice;
     }
 
+    /**
+     * D13: the one explicit curation action. A blank displayLabel clears it
+     * back to null (matching this codebase's existing "empty value is an
+     * explicit removal" convention -- see DeviceRegistry.registerCandidate()'s
+     * own comment on the same convention for expectedCheckinMinutes). Never
+     * touches any other column, and never creates a row that doesn't already
+     * exist -- a display_label can only ever attach to a measurement this
+     * device has actually confirmed reporting.
+     */
+    @Override
+    public void setDisplayLabel(String deviceId, String semanticField, String displayLabel) {
+        String normalized = (displayLabel == null || displayLabel.isBlank()) ? null : displayLabel.trim();
+        jdbc.update("""
+            UPDATE device_reporting_relationship SET display_label = ?
+            WHERE device_id = ? AND semantic_field = ?
+            """, normalized, deviceId, semanticField);
+    }
+
     private static DeviceReportingRelationship fromRow(ResultSet rs) throws SQLException {
         OffsetDateTime confirmedAt = rs.getObject("confirmed_at", OffsetDateTime.class);
         return new DeviceReportingRelationship(
@@ -94,6 +118,7 @@ public class JdbcDeviceReportingRelationshipRepository implements DeviceReportin
             rs.getString("semantic_field"),
             rs.getString("measurement_type"),
             ConfirmationSource.fromDbValue(rs.getString("confirmation_source")),
-            confirmedAt == null ? null : confirmedAt.toInstant());
+            confirmedAt == null ? null : confirmedAt.toInstant(),
+            rs.getString("display_label"));
     }
 }

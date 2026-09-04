@@ -311,4 +311,20 @@ class CabinEventServiceTest {
         var found = reportingRepository.findByDevice("z2m-humid_confirmed").get(0);
         assertThat(found.confirmationSource()).isEqualTo(ConfirmationSource.VENDOR_SPEC);
     }
+
+    // WSJF bug #2 (Kidde false OFFLINE): DeviceHealthMonitor's own
+    // liveness cross-check calls this directly against real Postgres.
+    @Test
+    void hasRecentEventIsTrueOnlyForAMatchingDeviceAndEventTypeWithinTheWindow() {
+        save(service, "evt-telemetry-1", "kidde-co", "TELEMETRY", "INFO", Instant.now().minusSeconds(30));
+
+        assertThat(service.hasRecentEvent("kidde-co", "TELEMETRY", Instant.now().minus(java.time.Duration.ofMinutes(5))))
+            .isTrue();
+        assertThat(service.hasRecentEvent("kidde-co", "TELEMETRY", Instant.now().plusSeconds(5)))
+            .isFalse();
+        assertThat(service.hasRecentEvent("some-other-device", "TELEMETRY", Instant.now().minus(java.time.Duration.ofMinutes(5))))
+            .isFalse();
+        assertThat(service.hasRecentEvent("kidde-co", "KIDDE_CO_ALARM_CHANGED", Instant.now().minus(java.time.Duration.ofMinutes(5))))
+            .isFalse();
+    }
 }

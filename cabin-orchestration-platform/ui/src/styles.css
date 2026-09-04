@@ -291,6 +291,23 @@ body {
   display: flex; align-items: center; gap: 5px;
   color: #6e7681; font-size: 11px; margin: 6px 0 0 0;
 }
+.platform-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.platform-info-table td {
+  padding: 3px 0;
+  border-bottom: 1px solid #21262d;
+  color: #8b949e;
+}
+.platform-info-table td:first-child {
+  color: #f0f6fc;
+  font-weight: 500;
+  padding-right: 10px;
+  white-space: nowrap;
+}
 .code-block {
   display: block;
   background: #0d1117;

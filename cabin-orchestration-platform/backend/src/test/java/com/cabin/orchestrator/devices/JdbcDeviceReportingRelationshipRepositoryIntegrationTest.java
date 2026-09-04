@@ -95,4 +95,59 @@ class JdbcDeviceReportingRelationshipRepositoryIntegrationTest {
 
         assertEquals(2, all.get("z2m-multi").size());
     }
+
+    // D13 (Service-Level Data Lineage), WSJF bug #4 ────────────────────────
+
+    @Test
+    void setDisplayLabelAttachesToAnExistingRowWithoutTouchingOtherColumns() {
+        JdbcDeviceReportingRelationshipRepository repository = newRepository();
+        Instant confirmedAt = Instant.now();
+        repository.upsert(new DeviceReportingRelationship(
+            "z2m-temp_kitchen_e", "humidity", "humidity", ConfirmationSource.VENDOR_SPEC, confirmedAt));
+
+        repository.setDisplayLabel("z2m-temp_kitchen_e", "humidity", "Kitchen Humidity");
+
+        DeviceReportingRelationship found = repository.findByDevice("z2m-temp_kitchen_e").get(0);
+        assertEquals("Kitchen Humidity", found.displayLabel());
+        assertEquals(ConfirmationSource.VENDOR_SPEC, found.confirmationSource());
+        assertEquals(confirmedAt.getEpochSecond(), found.confirmedAt().getEpochSecond());
+    }
+
+    @Test
+    void aBlankDisplayLabelClearsItBackToNull() {
+        JdbcDeviceReportingRelationshipRepository repository = newRepository();
+        repository.upsert(new DeviceReportingRelationship(
+            "z2m-temp_kitchen_f", "temperature", "temperature", ConfirmationSource.VENDOR_SPEC, Instant.now()));
+        repository.setDisplayLabel("z2m-temp_kitchen_f", "temperature", "Kitchen Temp");
+
+        repository.setDisplayLabel("z2m-temp_kitchen_f", "temperature", "  ");
+
+        assertNull(repository.findByDevice("z2m-temp_kitchen_f").get(0).displayLabel());
+    }
+
+    @Test
+    void aRoutineUpsertNeverOverwritesAnAlreadyCuratedDisplayLabel() {
+        JdbcDeviceReportingRelationshipRepository repository = newRepository();
+        repository.upsert(new DeviceReportingRelationship(
+            "z2m-temp_kitchen_g", "humidity", "humidity", ConfirmationSource.VENDOR_SPEC, Instant.now()));
+        repository.setDisplayLabel("z2m-temp_kitchen_g", "humidity", "Kitchen Humidity");
+
+        // The routine auto-observation path re-confirming the same field --
+        // must never silently clobber the curated label (D13: "set at
+        // curation time, never auto-derived").
+        repository.upsert(new DeviceReportingRelationship(
+            "z2m-temp_kitchen_g", "humidity", "humidity", ConfirmationSource.EMPIRICAL_OBSERVATION, Instant.now()));
+
+        assertEquals("Kitchen Humidity", repository.findByDevice("z2m-temp_kitchen_g").get(0).displayLabel());
+    }
+
+    @Test
+    void setDisplayLabelOnANonExistentRowIsANoOpNotAFabricatedRow() {
+        JdbcDeviceReportingRelationshipRepository repository = newRepository();
+
+        repository.setDisplayLabel("never-confirmed-device", "temperature", "Should Not Exist");
+
+        assertTrue(repository.findByDevice("never-confirmed-device").isEmpty(),
+            "a display_label must never create a Service Entity for a measurement that was never actually confirmed reported");
+    }
 }

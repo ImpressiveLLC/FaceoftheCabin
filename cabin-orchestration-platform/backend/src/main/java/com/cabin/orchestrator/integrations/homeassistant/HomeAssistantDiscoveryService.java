@@ -252,14 +252,30 @@ public class HomeAssistantDiscoveryService {
             return DeviceType.AIR_QUALITY_SENSOR;
         }
         // Fallback for a `sensor`-domain entity with NO device_class at all
-        // (the Kidde CO-level entity, confirmed live) -- unit_of_measurement
-        // is the only remaining signal HA's own convention guarantees. This
-        // is deliberately generic (unit-based, not "if entity_id contains
-        // kidde") so it also covers a future non-native integration with the
-        // same vendor-side gap, not just this one device.
+        // -- unit_of_measurement is the next signal HA's own convention
+        // guarantees. Deliberately generic (unit-based, not "if entity_id
+        // contains kidde") so it also covers a future non-native integration
+        // with the same vendor-side gap, not just this one device.
         if ("sensor".equals(domain)) {
             String unit = String.valueOf(attrs.getOrDefault("unit_of_measurement", "")).toLowerCase(Locale.ROOT);
             if ("ppm".equals(unit)) return DeviceType.CO_SENSOR;
+            // Bug #3 (2026-09-03): confirmed live against the real M920q
+            // Postgres (cabin_event payloads) that Kidde's actual CO-level
+            // entity has BOTH device_class AND unit_of_measurement empty --
+            // an even deeper vendor gap than the ppm-unit case above, so
+            // neither prior fallback ever matched it, and this entity has
+            // been silently falling through to generic HOME_ASSISTANT_ENTITY
+            // this whole time: no Monitoring tile, no "co" semantic field
+            // captured for Sensor History, despite reporting a real,
+            // safety-relevant CO ppm value every ~11 minutes (visible only
+            // via Grafana's own raw-payload SQL, which doesn't go through
+            // this classification at all). Matches by name -- the same
+            // device_id-substring fallback cabin-telemetry.json's Grafana
+            // panel already uses for this identical entity, since a name
+            // match is the only signal left once both HA-standard fields
+            // are absent.
+            String friendlyName = String.valueOf(attrs.getOrDefault("friendly_name", "")).toLowerCase(Locale.ROOT);
+            if (friendlyName.contains("co level") || friendlyName.contains("co-level")) return DeviceType.CO_SENSOR;
         }
         return DeviceType.HOME_ASSISTANT_ENTITY;
     }

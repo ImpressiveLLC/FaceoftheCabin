@@ -2,15 +2,19 @@ package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.devices.DeviceHealthMonitor;
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.DeviceReportingRelationshipRepository;
 import com.cabin.orchestrator.devices.JdbcDeviceLifecycleVocabularyStore;
 import com.cabin.orchestrator.devices.display.DeviceDisplayConfig;
 import com.cabin.orchestrator.devices.display.DeviceDisplayConfigService;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
+import com.cabin.orchestrator.devices.model.DeviceReportingRelationship;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceLifecycleAction;
 import com.cabin.orchestrator.integrations.zigbee.Zigbee2MqttAdapter;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
@@ -28,17 +32,54 @@ public class DeviceController {
     private final DeviceHealthMonitor healthMonitor;
     private final DeviceDisplayConfigService displayConfigService;
     private final JdbcDeviceLifecycleVocabularyStore lifecycleVocabulary;
+    private final DeviceReportingRelationshipRepository reportingRelationshipRepository;
 
     public DeviceController(DeviceRegistry registry,
                              Zigbee2MqttAdapter z2mAdapter,
                              DeviceHealthMonitor healthMonitor,
                              DeviceDisplayConfigService displayConfigService,
-                             JdbcDeviceLifecycleVocabularyStore lifecycleVocabulary) {
+                             JdbcDeviceLifecycleVocabularyStore lifecycleVocabulary,
+                             DeviceReportingRelationshipRepository reportingRelationshipRepository) {
         this.registry = registry;
         this.z2mAdapter = z2mAdapter;
         this.healthMonitor = healthMonitor;
         this.displayConfigService = displayConfigService;
         this.lifecycleVocabulary = lifecycleVocabulary;
+        this.reportingRelationshipRepository = reportingRelationshipRepository;
+    }
+
+    /**
+     * D13 (Service-Level Data Lineage) -- every confirmed (device, measurement_type)
+     * Service Entity, including its curated display_label when one has been
+     * set. Backs the frontend's chart-series/card-title lookups (bug #4) --
+     * see JdbcDeviceReportingRelationshipRepository's own doc for why
+     * display_label is never touched by the routine auto-observation path.
+     */
+    @GetMapping("/reporting-relationships")
+    public Map<String, List<DeviceReportingRelationship>> reportingRelationships() {
+        return reportingRelationshipRepository.loadAll();
+    }
+
+    /**
+     * D13's one explicit curation action -- sets (or, given a blank body value,
+     * clears) the human-readable display_label for one already-confirmed
+     * (deviceId, semanticField) Service Entity. 404s rather than silently
+     * creating a row for a measurement this device has never actually
+     * confirmed reporting -- a display_label can only ever attach to a real,
+     * observed fact, never a speculative one.
+     */
+    @PatchMapping("/{deviceId}/reporting/{semanticField}/display-label")
+    public ResponseEntity<?> setDisplayLabel(@PathVariable String deviceId, @PathVariable String semanticField,
+                                              @RequestBody Map<String, String> body) {
+        boolean exists = reportingRelationshipRepository.findByDevice(deviceId).stream()
+            .anyMatch(r -> r.semanticField().equals(semanticField));
+        if (!exists) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", deviceId + " has never confirmed reporting " + semanticField));
+        }
+        reportingRelationshipRepository.setDisplayLabel(deviceId, semanticField, body.get("displayLabel"));
+        return ResponseEntity.ok(reportingRelationshipRepository.findByDevice(deviceId).stream()
+            .filter(r -> r.semanticField().equals(semanticField)).findFirst().orElseThrow());
     }
 
     /** List devices worth showing on monitoring surfaces (everything except deferred/ignored). */

@@ -62,6 +62,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     private final Set<String> knownFriendlyNames = ConcurrentHashMap.newKeySet();
     // Tracks whether bridge is online
     private volatile String bridgeState = "offline";
+    private volatile String bridgeVersion = null;
 
     @Autowired
     public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher,
@@ -120,6 +121,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 handleBridgeDeviceList(payload);
             } else if (topic.equals(Z2M_PREFIX + "bridge/state")) {
                 handleBridgeState(payload);
+            } else if (topic.equals(Z2M_PREFIX + "bridge/info")) {
+                handleBridgeInfo(payload);
             } else if (topic.startsWith(Z2M_PREFIX) && !topic.contains("/set") && !topic.contains("/get")) {
                 String friendlyName = topic.substring(Z2M_PREFIX.length());
                 if (friendlyName.endsWith("/availability")) {
@@ -142,6 +145,19 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             log.debug("Z2M bridge state: {}", bridgeState);
         } catch (Exception e) {
             bridgeState = payload.trim();
+        }
+    }
+
+    /** zigbee2mqtt/bridge/info -- retained, published on startup/config change. Version only, for the platform-info panel. */
+    private void handleBridgeInfo(String payload) {
+        try {
+            JsonNode node = mapper.readTree(payload);
+            if (node.has("version")) {
+                bridgeVersion = node.get("version").asText();
+                log.debug("Z2M bridge version: {}", bridgeVersion);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse Z2M bridge/info: {}", e.getMessage());
         }
     }
 
@@ -488,6 +504,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     }
 
     public String getBridgeState() { return bridgeState; }
+    public Optional<String> getBridgeVersion() { return Optional.ofNullable(bridgeVersion); }
     public Set<String> getKnownFriendlyNames() { return Collections.unmodifiableSet(knownFriendlyNames); }
 
     @Override public void connectionLost(Throwable cause) {

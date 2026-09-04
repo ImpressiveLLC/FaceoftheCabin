@@ -93,7 +93,7 @@
     },
     {
       "datasource": { "type": "postgres", "uid": "P1274E9D34A851028" },
-      "description": "Kidde CO2 sensor (ppm). Populates once the sensor-domain value-capture fix (2026-08-25) is deployed and HA has polled at least twice. Kidde's dedicated CO-level entity has no device_class set on the live account (a HA-side gap, not something faked here) -- included by device_id match instead.",
+      "description": "Bug #3 (2026-09-03): this description used to say 'Kidde CO2 sensor', which is factually wrong for what this panel mostly shows -- Kidde's CO-LEVEL entity (carbon monoxide, matched by the device_id fallback below since it has no device_class at all) is a MONOXIDE reading, never dioxide. This panel combines two different device_class matches (a genuine carbon_dioxide entity, if this account has one, plus Kidde's CO-level entity as a fallback) into one chart (ppm) -- populates once the sensor-domain value-capture fix (2026-08-25) is deployed and HA has polled at least twice.",
       "fieldConfig": { "defaults": { "unit": "ppm" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
       "id": 6,

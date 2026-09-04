@@ -50,4 +50,20 @@ public class OllamaHttpClient implements OllamaClient {
     private static class GenerateResponse {
         public String response;
     }
+
+    @Override
+    public Optional<String> fetchVersion() {
+        try {
+            VersionResponse response = rest.getForObject(ollamaUrl + "/api/version", VersionResponse.class);
+            return (response == null || response.version == null) ? Optional.empty() : Optional.of(response.version);
+        } catch (Exception e) {
+            log.warn("Ollama version fetch failed: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** Minimal shape matching Ollama's own /api/version response body. */
+    private static class VersionResponse {
+        public String version;
+    }
 }

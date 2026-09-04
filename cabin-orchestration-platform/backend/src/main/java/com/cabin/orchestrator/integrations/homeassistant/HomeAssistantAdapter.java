@@ -209,6 +209,32 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
         return Optional.empty();
     }
 
+    /**
+     * On-demand HA version lookup for the platform-info panel -- never
+     * polled/scheduled, mirrors fetchState()'s own on-demand-fetch shape.
+     * "cabin" or "home"; any other value is treated as "cabin".
+     */
+    public Optional<String> fetchVersion(String location) {
+        String url = "home".equals(location) ? homeHaUrl : cabinHaUrl;
+        String token = "home".equals(location) ? homeHaToken : cabinHaToken;
+        if (token.isBlank()) {
+            log.warn("HA token not configured for location '{}' — cannot fetch version", location);
+            return Optional.empty();
+        }
+        try {
+            HttpHeaders headers = bearerHeaders(token);
+            ResponseEntity<Map> response = rest.exchange(
+                url + "/api/config", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object version = response.getBody().get("version");
+                return version == null ? Optional.empty() : Optional.of(String.valueOf(version));
+            }
+        } catch (Exception e) {
+            log.warn("HA version fetch failed for location '{}': {}", location, e.getMessage());
+        }
+        return Optional.empty();
+    }
+
     @Override
     public boolean sendCommand(DeviceDescriptor descriptor, String command, Object payload) {
         String[] parts = command.split("\\.");   // "lock.lock" or "climate.set_temperature"

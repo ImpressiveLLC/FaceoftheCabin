@@ -9,6 +9,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -211,11 +212,20 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
     // endpoint (e.g. "/api/devices" itself) and any sub-path
     // ("/api/devices/{id}/..."). A naive "/api/devices/" prefix excludes
     // the collection endpoint itself, since it has no trailing slash.
-    private static final Map<String, String> SCOPE_PATH_PREFIXES = Map.of(
-        "dashboard", "/api/dashboard",
-        "device_states", "/api/devices",
-        "alerts_read", "/api/alerts",
-        "observations_read", "/api/events/telemetry-history"
+    //
+    // observations_read maps to TWO prefixes, not one -- found fixing bug
+    // #1 (GuestDashboard showed "invalid link" for any scope other than
+    // device_states+alerts_read together): /api/events/telemetry-history
+    // alone needs a deviceId+field the caller must already know, and the
+    // only place to discover those without device_states granted too is
+    // /api/events/reported-fields (device->field-names only, no raw event
+    // content -- deliberately NOT the broader /api/events collection,
+    // which carries camera/motion event replay and stays out of scope).
+    private static final Map<String, List<String>> SCOPE_PATH_PREFIXES = Map.of(
+        "dashboard", List.of("/api/dashboard"),
+        "device_states", List.of("/api/devices"),
+        "alerts_read", List.of("/api/alerts"),
+        "observations_read", List.of("/api/events/telemetry-history", "/api/events/reported-fields")
     );
 
     private String extractGuestToken(HttpServletRequest request) {
@@ -246,6 +256,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         boolean covered = accessToken.scope().stream()
             .map(SCOPE_PATH_PREFIXES::get)
             .filter(Objects::nonNull)
+            .flatMap(List::stream)
             .map(prefix -> contextPath + prefix)
             .anyMatch(base -> path.equals(base) || path.startsWith(base + "/"));
         if (!covered) {

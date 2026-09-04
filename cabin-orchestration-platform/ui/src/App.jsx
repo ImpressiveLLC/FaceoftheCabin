@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle, Link2
+  Wind, MessageCircle, Link2, Info
 } from "lucide-react";
 import "./styles.css";
 
@@ -1620,10 +1620,83 @@ export function FamilyConfigPanel({ auth }) {
         <ConfigCard title="Guest Access" icon={Link2}>
           <GuestAccessCard auth={auth} />
         </ConfigCard>
+        <ConfigCard title="Platform Info" icon={Info}>
+          <PlatformInfoCard auth={auth} />
+        </ConfigCard>
       </div>
     </div>
   );
 }
+
+// Bug #5 (2026-09 bug sprint): admin-only versions + hardware catalog + AI
+// disclosure. GET /api/system/platform-info is ADMINISTRATOR-gated server
+// side (see SystemController) -- a non-admin viewer sees a plain "admin
+// access required" message rather than a raw 403/error, same graceful
+// degradation style as GuestAccessCard's own error handling.
+function PlatformInfoCard({ auth }) {
+  const [info, setInfo] = useState(null);
+  const [forbidden, setForbidden] = useState(false);
+  const [error, setError] = useState(null);
+  const doFetch = auth?.authedFetch || fetch;
+  const apiBase = LOCATIONS.cabin.apiBase;
+
+  useEffect(() => {
+    let cancelled = false;
+    doFetch(`${apiBase}/api/system/platform-info`)
+      .then(async r => {
+        if (cancelled) return;
+        if (r.status === 403) { setForbidden(true); return; }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        setInfo(await r.json());
+      })
+      .catch(err => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
+  }, [doFetch, apiBase]);
+
+  if (forbidden) {
+    return <p className="config-desc">Admin access required to view platform details.</p>;
+  }
+  if (error) {
+    return <p className="config-desc">Couldn't load platform info: {error}</p>;
+  }
+  if (!info) {
+    return <p className="config-desc">Loading…</p>;
+  }
+
+  return (
+    <>
+      <p className="config-desc">Live integration versions, cabin hardware, and AI-inference disclosure.</p>
+      <table className="platform-info-table">
+        <tbody>
+          {Object.entries(info.versions || {}).map(([key, value]) => (
+            <tr key={key}><td>{VERSION_LABELS[key] || key}</td><td>{value}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="config-hint" style={{ marginTop: "0.75rem" }}>Hardware</p>
+      <table className="platform-info-table">
+        <tbody>
+          {(info.hardware || []).map(row => (
+            <tr key={row.category}><td>{row.category}</td><td>{row.description}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      {info.aiDisclosure && (
+        <div className="tailscale-hint" style={{ marginTop: "0.75rem" }}>
+          <Info size={11} /> AI inference: {info.aiDisclosure.model} — {info.aiDisclosure.hostedWhere}, {info.aiDisclosure.networkExposure}. {info.aiDisclosure.dataHandling}
+        </div>
+      )}
+    </>
+  );
+}
+
+const VERSION_LABELS = {
+  cabinBackend: "Cabin Backend",
+  homeAssistant: "Home Assistant",
+  zigbee2mqtt: "Zigbee2MQTT",
+  ollama: "Ollama",
+  mqttBroker: "MQTT Broker",
+};
 
 // Tier 1 guest share links -- see the plan's "Guest Access Model" section
 // and CabinAccessTokenService's own doc. Built for the concrete case of an
@@ -3483,7 +3556,18 @@ function CameraHealthPanel({ locCfg }) {
 // instead of a fixed per-type sequence, while every type's existing
 // icon/label/value logic stays byte-for-byte the same. Returns null for
 // any device type that never got a tile before (unchanged).
-export function kpiTileFor(device, tempUnit) { // exported for src/App.test.jsx's Monitoring reorder tests
+// reportingRelationships (D13/bug #4, default {} so every existing direct
+// call -- App.test.jsx's reorder tests included -- keeps working unchanged)
+// is the same shape SensorHistoryPanel fetches from
+// GET /api/devices/reporting-relationships: { deviceId: [{semanticField,
+// displayLabel, ...}] }. Only consulted for single-service device types
+// (HUMIDITY_SENSOR, CO_SENSOR) where exactly one measurement backs the
+// whole tile -- TEMPERATURE_SENSOR's combined temp+humidity tile is
+// legitimately device-level, not a single Service Entity, so it's
+// deliberately left on device.name.
+export function kpiTileFor(device, tempUnit, reportingRelationships = {}) { // exported for src/App.test.jsx's Monitoring reorder tests
+  const curatedLabel = (semanticField) =>
+    (reportingRelationships[device.deviceId] || []).find(r => r.semanticField === semanticField)?.displayLabel;
   switch (device.type) {
     case "WATER_PRESSURE_SENSOR":
       return { icon: Droplets, label: "Water Pressure", deviceId: device.deviceId,
@@ -3508,16 +3592,16 @@ export function kpiTileFor(device, tempUnit) { // exported for src/App.test.jsx'
     // humidity is usually its own separate device/entity with no
     // sibling `temperature` attribute to pair it with.
     case "HUMIDITY_SENSOR":
-      return { icon: Droplets, label: device.name, deviceId: device.deviceId,
+      return { icon: Droplets, label: curatedLabel("humidity") || device.name, deviceId: device.deviceId,
         value: device.attributes?.humidity != null ? `${device.attributes.humidity}%` : "—", state: device.state };
     case "CO2_SENSOR":
-      return { icon: Wind, label: device.name, deviceId: device.deviceId,
+      return { icon: Wind, label: curatedLabel("co2") || device.name, deviceId: device.deviceId,
         value: device.attributes?.co2 != null ? `${device.attributes.co2} ppm` : "—", state: device.state };
     case "AIR_QUALITY_SENSOR":
       return { icon: Wind, label: device.name, deviceId: device.deviceId,
         value: device.attributes?.airQualityIndex != null ? `${device.attributes.airQualityIndex}` : "—", state: device.state };
     case "CO_SENSOR":
-      return { icon: Wind, label: device.name, deviceId: device.deviceId,
+      return { icon: Wind, label: curatedLabel("co") || device.name, deviceId: device.deviceId,
         value: device.attributes?.co != null ? `${device.attributes.co} ppm` : "—", state: device.state };
     case "SMOKE_ALARM":
     case "CO_ALARM":
@@ -3627,6 +3711,26 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
       .catch(() => { if (!cancelled) setReportedFields({}); });
     return () => { cancelled = true; };
   }, [apiBase, devices.length, authedFetch]);
+
+  // D13 (Service-Level Data Lineage), WSJF bug #4: a chart series or table
+  // column showing one device's one field must use that (device, field)
+  // Service Entity's curated display_label when one exists -- e.g. two
+  // Zigbee combo sensors both named by their device_id ("temp_kitchen",
+  // "temp_mech_room") were indistinguishable from their own device names in
+  // a humidity chart, when "Kitchen Humidity"/"Mech Room Humidity" is what
+  // a person actually wants to read. Falls back to device.name (the
+  // pre-D13 behavior) whenever no label has been curated yet -- most
+  // devices won't have one, and that's a valid, unbroken state, not an error.
+  const [reportingRelationships, setReportingRelationships] = useState({});
+  useEffect(() => {
+    if (devices.length === 0) return;
+    let cancelled = false;
+    authedFetch(`${apiBase}/api/devices/reporting-relationships`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setReportingRelationships(data && typeof data === "object" ? data : {}); })
+      .catch(() => { if (!cancelled) setReportingRelationships({}); });
+    return () => { cancelled = true; };
+  }, [apiBase, devices.length, authedFetch]);
   const realFieldsFor = (device) =>
     (reportedFields[device.deviceId] || []).filter(f => SENSOR_HISTORY_KNOWN_FIELDS.has(f));
 
@@ -3727,7 +3831,11 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
     ids.includes(deviceId) ? ids.filter(id => id !== deviceId) : [...ids, deviceId]);
   const selectAll = () => setSelectedIds(fieldDevices.map(d => d.deviceId));
   const selectNone = () => setSelectedIds([]);
-  const nameFor = (deviceId) => devices.find(d => d.deviceId === deviceId)?.name || deviceId;
+  const nameFor = (deviceId) => {
+    const curated = (reportingRelationships[deviceId] || [])
+      .find(r => r.semanticField === field)?.displayLabel;
+    return curated || devices.find(d => d.deviceId === deviceId)?.name || deviceId;
+  };
 
   const unit = field === "temperature" ? `°${tempUnit}` : (SENSOR_FIELD_UNITS[field] ?? "");
   // Backend always stores/returns Celsius -- convert for display only,
@@ -3882,6 +3990,21 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
   const liveMessages = useMqttTelemetry(active, locCfg.wsBase);
   const [tempUnit, toggleTempUnit] = useTempUnit();
 
+  // D13/bug #4: curated Service Entity display_labels for single-service
+  // tile types (CO_SENSOR, HUMIDITY_SENSOR) -- see kpiTileFor's own comment.
+  // Same endpoint/shape SensorHistoryPanel already fetches.
+  const [reportingRelationships, setReportingRelationships] = useState({});
+  useEffect(() => {
+    if (devices.length === 0) return;
+    let cancelled = false;
+    const doFetch = auth?.authedFetch || fetch;
+    doFetch(`${locCfg.apiBase}/api/devices/reporting-relationships`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setReportingRelationships(data && typeof data === "object" ? data : {}); })
+      .catch(() => { if (!cancelled) setReportingRelationships({}); });
+    return () => { cancelled = true; };
+  }, [locCfg.apiBase, devices.length, auth]);
+
   // 2026-08-27 (user report, insurance-inspection-critical): this filter
   // never checked enabled/lifecycle, so a device that's disabled -- or an
   // unreviewed candidate that just happens to match a monitored type --
@@ -3899,7 +4022,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
     .map((d, globalIdx) => ({ d, globalIdx }))
     .filter(({ d }) => !d.location || d.location === locCfg.id)
     .filter(({ d }) => d.attributes?.enabled !== false)
-    .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit) }))
+    .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit, reportingRelationships) }))
     .filter(({ tile }) => tile !== null);
 
   return (
@@ -5870,24 +5993,55 @@ function App() {
 // index.html, so no server-side routing change was needed for this URL to
 // reach React at all.
 export function GuestDashboard({ token }) { // exported for src/App.test.jsx
+  const [dashboardConfig, setDashboardConfig] = useState(null);
   const [devices, setDevices] = useState(null);
   const [alerts, setAlerts] = useState(null);
-  const [error, setError] = useState(null);
+  const [telemetryHistory, setTelemetryHistory] = useState(null);
+  const [tokenInvalid, setTokenInvalid] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const apiBase = LOCATIONS.cabin.apiBase;
     const withToken = (url) => `${url}${url.includes("?") ? "&" : "?"}t=${encodeURIComponent(token)}`;
 
+    // Bug #1: this used to be a single Promise.all over exactly two
+    // hardcoded endpoints (devices, alerts), so ANY token scope other than
+    // {device_states + alerts_read} together tripped the shared .catch and
+    // showed "invalid link" for a perfectly valid, just differently-scoped
+    // token. Each scope's data is now fetched independently: a 401 means
+    // the token itself is invalid/expired/revoked (GoogleAuthInterceptor
+    // checks that before scope, so it's unambiguous); a 403 just means this
+    // link's scope doesn't cover that section, which is expected and must
+    // not show an error at all -- the section simply stays empty.
+    const fetchScoped = (url) => fetch(withToken(url)).then(r => {
+      if (r.status === 401) { setTokenInvalid(true); return null; }
+      if (!r.ok) return null;
+      return r.json();
+    }).catch(() => null);
+
+    const loadTelemetryHistory = async () => {
+      const fields = await fetchScoped(`${apiBase}/api/events/reported-fields`);
+      if (!fields) return;
+      // A handful of representative device/field combos is enough for a
+      // read-only guest summary -- not every device's every field.
+      const entries = Object.entries(fields).filter(([, f]) => f.length > 0).slice(0, 5);
+      const points = await Promise.all(entries.map(async ([deviceId, deviceFields]) => {
+        const field = deviceFields[0];
+        const data = await fetchScoped(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(deviceId)}&field=${encodeURIComponent(field)}&days=7`);
+        return data ? { deviceId, field, data } : null;
+      }));
+      setTelemetryHistory(points.filter(Boolean));
+    };
+
     Promise.all([
-      fetch(withToken(`${apiBase}/api/devices`)).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
-      fetch(withToken(`${apiBase}/api/alerts/active`)).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
-    ]).then(([deviceList, alertList]) => {
-      setDevices(deviceList);
-      setAlerts(alertList);
-    }).catch(err => setError(err.message));
+      fetchScoped(`${apiBase}/api/dashboard/config`).then(setDashboardConfig),
+      fetchScoped(`${apiBase}/api/devices`).then(setDevices),
+      fetchScoped(`${apiBase}/api/alerts/active`).then(setAlerts),
+      loadTelemetryHistory(),
+    ]).finally(() => setLoaded(true));
   }, [token]);
 
-  if (error) {
+  if (tokenInvalid) {
     return (
       <div className="guest-view">
         <h1>Cabin Conditions</h1>
@@ -5896,14 +6050,20 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
     );
   }
 
-  if (!devices) {
+  if (!loaded) {
     return <div className="guest-view"><h1>Cabin Conditions</h1><p className="config-hint">Loading…</p></div>;
   }
 
+  const nothingGranted = !dashboardConfig && !devices && !alerts && !(telemetryHistory && telemetryHistory.length > 0);
+
   return (
     <div className="guest-view">
-      <h1>Cabin Conditions</h1>
-      <p className="config-hint">Read-only view — current device status and active alerts.</p>
+      <h1>{dashboardConfig?.platformName || "Cabin Conditions"}</h1>
+      <p className="config-hint">Read-only view — only the sections this link is scoped to grant are shown below.</p>
+
+      {nothingGranted && (
+        <p className="config-hint">This link doesn't currently grant access to any data. Contact the cabin owner.</p>
+      )}
 
       {alerts && alerts.length > 0 && (
         <section className="guest-section">
@@ -5917,16 +6077,33 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
         </section>
       )}
 
-      <section className="guest-section">
-        <h2>Devices</h2>
-        {devices.map(d => (
-          <div key={d.deviceId} className="guest-device-row">
-            <span>{d.name}</span>
-            <span className={`state-badge ${stateColor(d.state)}`}>{d.state}</span>
-            <span className="config-hint">{d.location} · last seen {d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "—"}</span>
-          </div>
-        ))}
-      </section>
+      {devices && (
+        <section className="guest-section">
+          <h2>Devices</h2>
+          {devices.map(d => (
+            <div key={d.deviceId} className="guest-device-row">
+              <span>{d.name}</span>
+              <span className={`state-badge ${stateColor(d.state)}`}>{d.state}</span>
+              <span className="config-hint">{d.location} · last seen {d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "—"}</span>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {telemetryHistory && telemetryHistory.length > 0 && (
+        <section className="guest-section">
+          <h2>Recent Readings</h2>
+          {telemetryHistory.map(({ deviceId, field, data }) => {
+            const latest = [...data].reverse().find(p => p.avg != null);
+            return (
+              <div key={`${deviceId}-${field}`} className="guest-device-row">
+                <span>{deviceId} — {field}</span>
+                <span className="config-hint">{latest ? `avg ${latest.avg.toFixed(1)} on ${new Date(latest.day).toLocaleDateString()}` : "no data yet"}</span>
+              </div>
+            );
+          })}
+        </section>
+      )}
     </div>
   );
 }

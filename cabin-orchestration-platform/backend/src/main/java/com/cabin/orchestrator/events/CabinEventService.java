@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.events;
 
+import com.cabin.orchestrator.devices.DeviceEventLookup;
 import com.cabin.orchestrator.devices.DeviceReportingRelationshipRepository;
 import com.cabin.orchestrator.devices.model.ConfirmationSource;
 import com.cabin.orchestrator.devices.model.D7MeasurementTypes;
@@ -22,7 +23,7 @@ import java.util.Map;
  * that existing schema, kept for consistency with the established pattern.
  */
 @Service
-public class CabinEventService {
+public class CabinEventService implements DeviceEventLookup {
 
     private final JdbcTemplate jdbc;
     private final DeviceReportingRelationshipRepository reportingRelationshipRepository;
@@ -96,6 +97,27 @@ public class CabinEventService {
     /** Most recent events, newest first, optionally filtered by camera/device and a lookback window. */
     public List<CabinEvent> recent(String deviceId, int limit, Instant since) {
         return recent(deviceId, limit, 0, since, null);
+    }
+
+    /**
+     * WSJF bug #2 (Kidde false OFFLINE): DeviceHealthMonitor's own staleness
+     * math is entirely a function of DeviceStatus.lastSeen, which for an
+     * HA-polled device only refreshes when HomeAssistantDiscoveryService's
+     * poll cycle actually sees that exact entity_id in /api/states -- Kidde
+     * surfaces as several ungrouped HA entities (see that class's own
+     * comment), so one entity going stale/renamed on the HA side can leave
+     * its DeviceStatus row stuck while sibling entities for the "same"
+     * physical device keep publishing real telemetry under their own
+     * deviceIds. Rather than chase the exact HA-side cause, this gives
+     * DeviceHealthMonitor a direct, adapter-agnostic way to ask "has
+     * anything actually happened for this device recently" before ever
+     * declaring it OFFLINE -- telemetry arrival is sufficient evidence of
+     * liveness regardless of which adapter or availability mechanism
+     * produced it.
+     */
+    @Override
+    public boolean hasRecentEvent(String deviceId, String eventTypePrefix, Instant since) {
+        return !recent(deviceId, 1, 0, since, List.of(eventTypePrefix)).isEmpty();
     }
 
     /**

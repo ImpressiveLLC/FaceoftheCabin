@@ -42,7 +42,8 @@ class DeviceControllerTest {
         // DeviceHealthMonitor method removeDevice() calls) -- null is safe.
         DeviceHealthMonitor healthMonitor = new DeviceHealthMonitor(registry, null);
         return new DeviceController(registry, null, healthMonitor,
-            new DeviceDisplayConfigService(null), new JdbcDeviceLifecycleVocabularyStore(jdbc));
+            new DeviceDisplayConfigService(null), new JdbcDeviceLifecycleVocabularyStore(jdbc),
+            new com.cabin.orchestrator.devices.JdbcDeviceReportingRelationshipRepository(jdbc));
     }
 
     private DeviceRegistry registryWithAssignedDevice(String deviceId) {
@@ -90,5 +91,58 @@ class DeviceControllerTest {
 
         assertEquals(false, result.get("changed"));
         assertEquals(com.cabin.orchestrator.devices.model.DeviceLifecycleState.IGNORED, result.get("deviceLifecycle"));
+    }
+
+    // D13 (Service-Level Data Lineage), WSJF bug #4 ────────────────────────
+
+    private com.cabin.orchestrator.devices.JdbcDeviceReportingRelationshipRepository reportingRepositoryFor(
+            DeviceController controller) {
+        // Both newController() and these tests need the SAME underlying
+        // JdbcTemplate/table -- rebuilding a repository against the same
+        // Testcontainers instance reaches the identical rows the controller
+        // itself reads/writes through, matching KnowledgeNodeControllerTest's
+        // own "share the container, not the object" pattern.
+        JdbcTemplate jdbc = new JdbcTemplate(new SimpleDriverDataSource(
+            new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
+        return new com.cabin.orchestrator.devices.JdbcDeviceReportingRelationshipRepository(jdbc);
+    }
+
+    @Test
+    void reportingRelationshipsEndpointReturnsWhatTheRepositoryHoldsIncludingDisplayLabel() {
+        DeviceController controller = newController(new DeviceRegistry(List.of()));
+        var repository = reportingRepositoryFor(controller);
+        repository.upsert(new com.cabin.orchestrator.devices.model.DeviceReportingRelationship(
+            "z2m-endpoint-test", "humidity", "humidity",
+            com.cabin.orchestrator.devices.model.ConfirmationSource.VENDOR_SPEC, java.time.Instant.now()));
+        repository.setDisplayLabel("z2m-endpoint-test", "humidity", "Kitchen Humidity");
+
+        var result = controller.reportingRelationships().get("z2m-endpoint-test");
+
+        assertEquals(1, result.size());
+        assertEquals("Kitchen Humidity", result.get(0).displayLabel());
+    }
+
+    @Test
+    void setDisplayLabelEndpointUpdatesAnExistingConfirmedField() {
+        DeviceController controller = newController(new DeviceRegistry(List.of()));
+        reportingRepositoryFor(controller).upsert(new com.cabin.orchestrator.devices.model.DeviceReportingRelationship(
+            "z2m-endpoint-test-2", "temperature", "temperature",
+            com.cabin.orchestrator.devices.model.ConfirmationSource.VENDOR_SPEC, java.time.Instant.now()));
+
+        var result = controller.setDisplayLabel("z2m-endpoint-test-2", "temperature", Map.of("displayLabel", "Kitchen Temperature"));
+
+        assertEquals(org.springframework.http.HttpStatus.OK, result.getStatusCode());
+        assertEquals(1, controller.reportingRelationships().get("z2m-endpoint-test-2").size());
+        assertEquals("Kitchen Temperature",
+            controller.reportingRelationships().get("z2m-endpoint-test-2").get(0).displayLabel());
+    }
+
+    @Test
+    void setDisplayLabelEndpoint404sForAFieldThisDeviceHasNeverConfirmedReporting() {
+        DeviceController controller = newController(new DeviceRegistry(List.of()));
+
+        var result = controller.setDisplayLabel("never-confirmed-device", "temperature", Map.of("displayLabel", "Should Not Exist"));
+
+        assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, result.getStatusCode());
     }
 }
