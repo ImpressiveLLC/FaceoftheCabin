@@ -47,10 +47,13 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
     private final RestTemplate http = new RestTemplate();
     private final CabinAccessTokenService accessTokens;
     private final ManagedUserService managedUsers;
+    private final CabinSessionService cabinSessions;
 
-    public GoogleAuthInterceptor(CabinAccessTokenService accessTokens, ManagedUserService managedUsers) {
+    public GoogleAuthInterceptor(CabinAccessTokenService accessTokens, ManagedUserService managedUsers,
+                                  CabinSessionService cabinSessions) {
         this.accessTokens = accessTokens;
         this.managedUsers = managedUsers;
+        this.cabinSessions = cabinSessions;
     }
 
     @Override
@@ -110,6 +113,24 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         if (isKbRead) {
             return true;
         }
+        // /api/events/telemetry-history and /api/events/reported-fields stay
+        // open -- found 2026-09-04, same day /api/devices and /api/alerts
+        // were ungated: these two are numeric sensor-history endpoints
+        // (humidity/temperature/CO readings over time), not the camera/
+        // motion event log the /api/events collection gate exists to
+        // protect. They got swept up in that gate purely by sharing the
+        // /api/events/** prefix, which silently broke SensorHistoryPanel's
+        // charting/dropdowns/history entirely for a not-signed-in caller --
+        // the exact same "reveals whether anyone's home" test the events
+        // gate is actually for doesn't apply to a humidity reading. The
+        // bare GET /api/events collection (camera/motion replay) stays
+        // gated below; only these two exact sub-paths are exempted.
+        boolean isSensorHistoryRead = "GET".equalsIgnoreCase(request.getMethod())
+            && (path.equals(contextPath + "/api/events/telemetry-history")
+                || path.equals(contextPath + "/api/events/reported-fields"));
+        if (isSensorHistoryRead) {
+            return true;
+        }
         // Tier 2 managed-user magic-link consumption -- a managed user has
         // no Google account by definition, so the one endpoint that
         // exchanges their clicked email link for a real session can never
@@ -135,6 +156,21 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         String managedSessionToken = extractManagedSessionToken(request);
         if (managedSessionToken != null) {
             return handleManagedSession(managedSessionToken, request, response);
+        }
+        // 2026-09-04 -- a real Google-authenticated caller's 30-day rolling
+        // recognition (CabinSessionService), issued by POST /api/auth/session
+        // in exchange for a fresh Google token. Checked before the raw
+        // Google-token validation below so a caller holding one of these
+        // never needs to hit Google's tokeninfo endpoint (or re-run the
+        // interactive sign-in popup) just because their original ~1-hour
+        // Google access token expired -- see CabinSession's own doc for why
+        // that friction is the whole problem this exists to remove. Full
+        // access, same as a live Google token (not VIEWER-limited like a
+        // managed session): this represents someone who already proved a
+        // real Google identity, not a passwordless invite.
+        String cabinSessionToken = extractCabinSessionToken(request);
+        if (cabinSessionToken != null) {
+            return handleCabinSession(cabinSessionToken, request, response);
         }
         // Tier 1 guest share links -- see CabinAccessTokenService's own doc
         // and the plan's "Guest Access Model" section. Checked before the
@@ -304,6 +340,26 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         request.setAttribute(REQUEST_ATTR_EMAIL, user.email());
         request.setAttribute(REQUEST_ATTR_MANAGED_USER_ID, user.id());
         request.setAttribute(REQUEST_ATTR_HOUSEHOLD_ROLE, resolveHouseholdRole(user.email()));
+        return true;
+    }
+
+    private String extractCabinSessionToken(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("CabinSession ") && header.length() > 13) {
+            return header.substring(13);
+        }
+        return null;
+    }
+
+    private boolean handleCabinSession(String rawToken, HttpServletRequest request, HttpServletResponse response) throws IOException {
+        var emailOpt = cabinSessions.validateAndExtend(rawToken);
+        if (emailOpt.isEmpty()) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "This session is invalid, expired, or revoked -- sign in again");
+            return false;
+        }
+        String email = emailOpt.get();
+        request.setAttribute(REQUEST_ATTR_EMAIL, email);
+        request.setAttribute(REQUEST_ATTR_HOUSEHOLD_ROLE, resolveHouseholdRole(email));
         return true;
     }
 

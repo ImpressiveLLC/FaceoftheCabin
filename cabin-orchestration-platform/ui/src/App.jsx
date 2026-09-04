@@ -129,12 +129,44 @@ function loadStoredGoogleSession() {
   return { token, email };
 }
 
+// 2026-09-04 -- 30-day rolling recognition on top of Google's own ~1-hour
+// access token (see backend CabinSession's own doc for the full reasoning:
+// this app's kiosk/glanceable use case can't tolerate an interactive
+// re-auth popup every hour). Deliberately localStorage, not sessionStorage
+// -- the whole point is surviving a tab close/reload, which is exactly
+// where the raw Google token (sessionStorage-backed, below) doesn't.
+const CABIN_SESSION_TOKEN_KEY = "cabinSessionToken";
+const CABIN_SESSION_EXPIRES_KEY = "cabinSessionExpiresAt";
+const CABIN_SESSION_EMAIL_KEY = "cabinSessionEmail";
+
+function loadStoredCabinSession() {
+  const token = localStorage.getItem(CABIN_SESSION_TOKEN_KEY);
+  const expiresAtRaw = localStorage.getItem(CABIN_SESSION_EXPIRES_KEY);
+  const email = localStorage.getItem(CABIN_SESSION_EMAIL_KEY);
+  const expiresAt = expiresAtRaw ? Number(expiresAtRaw) : null;
+  if (token && (!expiresAt || Date.now() >= expiresAt)) {
+    localStorage.removeItem(CABIN_SESSION_TOKEN_KEY);
+    localStorage.removeItem(CABIN_SESSION_EXPIRES_KEY);
+    localStorage.removeItem(CABIN_SESSION_EMAIL_KEY);
+    return { token: null, email: null };
+  }
+  return { token, email };
+}
+
 function useGoogleAuth() {
   const clientId = import.meta.env.VITE_CABIN_GOOGLE_CLIENT_ID || "";
   const [accessToken, setAccessToken] = useState(() => loadStoredGoogleSession().token);
-  const [userEmail, setUserEmail] = useState(() => loadStoredGoogleSession().email);
+  const [userEmail, setUserEmail] = useState(() => loadStoredGoogleSession().email || loadStoredCabinSession().email);
+  const [cabinSessionToken, setCabinSessionToken] = useState(() => loadStoredCabinSession().token);
   const [sessionExpired, setSessionExpired] = useState(false);
   const tokenClientRef = useRef(null);
+
+  const clearCabinSession = useCallback(() => {
+    setCabinSessionToken(null);
+    localStorage.removeItem(CABIN_SESSION_TOKEN_KEY);
+    localStorage.removeItem(CABIN_SESSION_EXPIRES_KEY);
+    localStorage.removeItem(CABIN_SESSION_EMAIL_KEY);
+  }, []);
 
   const clearSession = useCallback(() => {
     setAccessToken(null);
@@ -142,6 +174,27 @@ function useGoogleAuth() {
     sessionStorage.removeItem("cabinAccessToken");
     sessionStorage.removeItem("cabinUserEmail");
     sessionStorage.removeItem("cabinTokenExpiresAt");
+    clearCabinSession();
+  }, [clearCabinSession]);
+
+  // Exchanges a just-obtained Google access token for a 30-day CabinSession
+  // (AuthController) -- best-effort: if this fails (backend briefly down,
+  // etc.) the raw Google token still works fine for the rest of THIS
+  // session, it just won't survive a tab close until the next successful
+  // sign-in retries the exchange.
+  const exchangeForCabinSession = useCallback(async (googleAccessToken, email) => {
+    try {
+      const res = await fetch(`${LOCATIONS.cabin.apiBase}/api/auth/session`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${googleAccessToken}` },
+      });
+      if (!res.ok) return;
+      const body = await res.json();
+      setCabinSessionToken(body.token);
+      localStorage.setItem(CABIN_SESSION_TOKEN_KEY, body.token);
+      localStorage.setItem(CABIN_SESSION_EXPIRES_KEY, String(new Date(body.expiresAt).getTime()));
+      if (email) localStorage.setItem(CABIN_SESSION_EMAIL_KEY, email);
+    } catch { /* best-effort, see comment above */ }
   }, []);
 
   const ensureTokenClient = useCallback(() => {
@@ -160,20 +213,23 @@ function useGoogleAuth() {
         // exact expiry instant.
         const expiresAt = Date.now() + (Math.max(Number(resp.expires_in) || 3600, 60) - 30) * 1000;
         sessionStorage.setItem("cabinTokenExpiresAt", String(expiresAt));
+        let resolvedEmail = null;
         try {
           const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
             headers: { Authorization: `Bearer ${resp.access_token}` },
           });
           const info = await res.json();
           if (info.email) {
+            resolvedEmail = info.email;
             setUserEmail(info.email);
             sessionStorage.setItem("cabinUserEmail", info.email);
           }
         } catch { /* email display is cosmetic — sign-in already succeeded */ }
+        exchangeForCabinSession(resp.access_token, resolvedEmail);
       },
     });
     return tokenClientRef.current;
-  }, [clientId]);
+  }, [clientId, exchangeForCabinSession]);
 
   const signIn = useCallback(() => {
     const client = ensureTokenClient();
@@ -182,23 +238,39 @@ function useGoogleAuth() {
 
   const signOut = useCallback(() => {
     setSessionExpired(false);
+    if (cabinSessionToken) {
+      // Best-effort -- an unreachable backend shouldn't block clearing the
+      // local session; the token is just abandoned server-side until it
+      // naturally expires instead of being explicitly revoked.
+      fetch(`${LOCATIONS.cabin.apiBase}/api/auth/session/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: cabinSessionToken }),
+      }).catch(() => {});
+    }
     clearSession();
-  }, [clearSession]);
+  }, [clearSession, cabinSessionToken]);
 
-  // Called by authedFetch on a 401 -- the token looked valid client-side
-  // (present, not past its tracked expiry) but the server rejected it
-  // anyway (revoked, clock skew, etc.). Clearing accessToken here also
-  // stops any in-flight media: CameraLiveView's <img src> and
+  // Called by authedFetch on a 401 -- the credential looked valid
+  // client-side (present, not past its tracked expiry) but the server
+  // rejected it anyway (revoked, clock skew, etc.). Clearing accessToken
+  // here also stops any in-flight media: CameraLiveView's <img src> and
   // useAuthedMediaUrl's effect both key off accessToken being present.
   const handleUnauthorized = useCallback(() => {
     clearSession();
     setSessionExpired(true);
   }, [clearSession]);
 
-  // Every call that MIGHT need a Google token should go through this
-  // instead of a raw fetch() + manual Authorization header, so a 401 is
-  // handled once, consistently, instead of each caller independently
-  // swallowing it into an empty array with no visible explanation.
+  // Every call that MIGHT need auth should go through this instead of a
+  // raw fetch() + manual Authorization header, so a 401 is handled once,
+  // consistently, instead of each caller independently swallowing it into
+  // an empty array with no visible explanation.
+  //
+  // Prefers the 30-day CabinSession over the raw ~1-hour Google token when
+  // both are present -- it's the one that actually survives a tab close,
+  // and every successful use slides its window forward another 30 days
+  // server-side (CabinSessionService), so routing traffic through it here
+  // is what keeps "signed in within the last 30 days" actually true.
   //
   // Found 2026-09-04 (direct user report): this used to hard-reject with
   // "Not signed in" the instant accessToken was missing, before even
@@ -206,22 +278,27 @@ function useGoogleAuth() {
   // through here genuinely required a token, but /api/devices and
   // /api/alerts are public again (see WebConfig's own comment on why),
   // and this app's whole point is glanceable, zero-login status. A caller
-  // with no token now just omits the Authorization header and lets the
-  // server decide -- a still-gated endpoint (e.g. /api/rules writes)
+  // with no credential now just omits the Authorization header and lets
+  // the server decide -- a still-gated endpoint (e.g. /api/rules writes)
   // correctly 401s and that's handled below same as ever, but a public
   // endpoint succeeds instead of being refused client-side for no reason.
   // handleUnauthorized (which shows "session expired") only fires when a
-  // token that looked valid got rejected server-side -- never for a caller
-  // that was never signed in to begin with, which isn't an expired session.
+  // credential that looked valid got rejected server-side -- never for a
+  // caller that was never signed in to begin with, which isn't an expired session.
   const authedFetch = useCallback((url, options = {}) => {
-    const headers = accessToken
-      ? { ...(options.headers || {}), Authorization: `Bearer ${accessToken}` }
+    const authHeader = cabinSessionToken
+      ? `CabinSession ${cabinSessionToken}`
+      : accessToken
+        ? `Bearer ${accessToken}`
+        : null;
+    const headers = authHeader
+      ? { ...(options.headers || {}), Authorization: authHeader }
       : (options.headers || {});
     return fetch(url, { ...options, headers }).then(res => {
-      if (res.status === 401 && accessToken) handleUnauthorized();
+      if (res.status === 401 && authHeader) handleUnauthorized();
       return res;
     });
-  }, [accessToken, handleUnauthorized]);
+  }, [accessToken, cabinSessionToken, handleUnauthorized]);
 
   // Found 2026-08-03: this hook's return value was a fresh object literal
   // on every render, which is invisible for consumers that only read
@@ -240,9 +317,9 @@ function useGoogleAuth() {
   // same latent bug (excessive re-fetching), just less visible since
   // repeating a GET is cheaper than repeatedly restarting a live session.
   return useMemo(() => ({
-    accessToken, userEmail, signedIn: !!accessToken, sessionExpired,
+    accessToken, userEmail, signedIn: !!accessToken || !!cabinSessionToken, sessionExpired,
     signIn, signOut, authedFetch, configured: !!clientId,
-  }), [accessToken, userEmail, sessionExpired, signIn, signOut, authedFetch, clientId]);
+  }), [accessToken, cabinSessionToken, userEmail, sessionExpired, signIn, signOut, authedFetch, clientId]);
 }
 
 // ─── Camera media: authenticated snapshot/clip fetch ──────────────────────

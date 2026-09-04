@@ -9,7 +9,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * /api/notes, /api/chores, /api/profiles, /api/camera, /api/schedule,
  * /api/rules (writes only — see GoogleAuthInterceptor's GET carve-out, added
  * 2026-08-14), (PATCH only, see GoogleAuthInterceptor) /api/tech-id/findings,
- * and /api/events (every method, no carve-out) require a Google token.
+ * and /api/events (GET .../telemetry-history and .../reported-fields stay
+ * open — see GoogleAuthInterceptor's carve-out, added 2026-09-04; every
+ * other method/path, including the bare GET collection, requires a token).
  *
  * The events gate closes a real, confirmed-live exposure: a security audit
  * found it returning full unauthenticated responses (camera/motion event
@@ -17,6 +19,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * cabin-ui's own fetch calls to this endpoint never sent a token before
  * that change (confirmed by direct grep) — see App.jsx's authedFetch
  * threading, added in the same change, for the frontend half of this fix.
+ * telemetry-history/reported-fields don't carry that signal at all (numeric
+ * sensor history, not a camera/motion log) and were only ever gated by
+ * sharing the /api/events/** prefix — carving them out fixed a real,
+ * reported regression: SensorHistoryPanel's charting/dropdowns/history
+ * silently rendered nothing for a not-signed-in caller.
  *
  * /api/devices and /api/alerts — gated 2026-09-01, ungated again 2026-09-04
  * after direct user pushback: this app's whole purpose is glanceable,
@@ -81,6 +88,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * dashboard config stays open, matching how it already worked before this
  * interceptor existed — that decision is unchanged.
  *
+ * /api/auth/session — added 2026-09-04, the CabinSession exchange endpoint
+ * (see AuthController and CabinSession's own doc). Gated on purpose: this
+ * is where "prove who you are" turns into "stay recognized for 30 days,"
+ * so it has to go through the exact same check as everything else here --
+ * the interceptor's own REQUEST_ATTR_EMAIL, set by whichever of the three
+ * paths (Google token, managed session, or an existing CabinSession due
+ * for renewal) actually authenticated the caller. /api/auth/session/revoke
+ * is deliberately NOT in this list -- signing out only requires holding
+ * the token you want to invalidate, the same "no extra proof needed to
+ * destroy your own credential" contract a logout endpoint always has.
+ *
  * cabin.security.googleAuth.enabled defaults to true (secure by default —
  * absence of the property changes nothing). The only reason it exists is
  * local verification: there's no way to obtain a real Google access token
@@ -108,6 +126,6 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
                 "/api/events/**", "/api/access-tokens/**",
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
-                "/api/platform-import/**", "/api/system/platform-info");
+                "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session");
     }
 }

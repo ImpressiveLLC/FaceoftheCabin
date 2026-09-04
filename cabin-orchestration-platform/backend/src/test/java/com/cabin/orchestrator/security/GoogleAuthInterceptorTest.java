@@ -31,6 +31,7 @@ class GoogleAuthInterceptorTest {
 
     private CabinAccessTokenService accessTokens;
     private ManagedUserService managedUsers;
+    private CabinSessionService cabinSessions;
     private GoogleAuthInterceptor interceptor;
     private final List<String> sentMagicLinkUrls = new java.util.ArrayList<>();
 
@@ -45,7 +46,8 @@ class GoogleAuthInterceptorTest {
         // service directly), the field stays null unless set explicitly,
         // same convention already used for expectedClientId below.
         ReflectionTestUtils.setField(managedUsers, "frontendOrigin", "http://localhost:5173");
-        interceptor = new GoogleAuthInterceptor(accessTokens, managedUsers);
+        cabinSessions = new CabinSessionService(new InMemoryCabinSessionStore());
+        interceptor = new GoogleAuthInterceptor(accessTokens, managedUsers, cabinSessions);
     }
 
     /** Real end-to-end create -> invite -> click -> consume, same path a real managed user goes through, returning the resulting session's bearer token. */
@@ -85,6 +87,20 @@ class GoogleAuthInterceptorTest {
         @Override public void revoke(String token, Instant revokedAt) {
             byToken.computeIfPresent(token, (t, existing) -> new ManagedUserSession(
                 existing.token(), existing.managedUserId(), existing.expiresAt(), revokedAt, existing.createdAt()));
+        }
+    }
+
+    private static final class InMemoryCabinSessionStore implements CabinSessionStore {
+        private final Map<String, CabinSession> byToken = new HashMap<>();
+        @Override public void save(CabinSession session) { byToken.put(session.token(), session); }
+        @Override public Optional<CabinSession> findByToken(String token) { return Optional.ofNullable(byToken.get(token)); }
+        @Override public void extend(String token, Instant newExpiresAt) {
+            byToken.computeIfPresent(token, (t, existing) -> new CabinSession(
+                existing.token(), existing.googleEmail(), newExpiresAt, existing.revokedAt(), existing.createdAt()));
+        }
+        @Override public void revoke(String token, Instant revokedAt) {
+            byToken.computeIfPresent(token, (t, existing) -> new CabinSession(
+                existing.token(), existing.googleEmail(), existing.expiresAt(), revokedAt, existing.createdAt()));
         }
     }
 
@@ -439,6 +455,101 @@ class GoogleAuthInterceptorTest {
 
         assertFalse(interceptor.preHandle(request, response, new Object()));
         assertEquals(401, response.getStatus());
+    }
+
+    // ── CabinSession: 30-day rolling recognition for a real Google
+    // identity (added 2026-09-04) -- see CabinSession's own doc for why. ──
+
+    @Test
+    void aValidCabinSessionGrantsFullReadAndWriteAccess() throws Exception {
+        CabinSession session = cabinSessions.issue("nate@example.com");
+        MockHttpServletRequest getReq = new MockHttpServletRequest("GET", "/api/devices");
+        getReq.addHeader("Authorization", "CabinSession " + session.token());
+        assertTrue(interceptor.preHandle(getReq, new MockHttpServletResponse(), new Object()));
+
+        MockHttpServletRequest postReq = new MockHttpServletRequest("POST", "/api/notes");
+        postReq.addHeader("Authorization", "CabinSession " + session.token());
+        assertTrue(interceptor.preHandle(postReq, new MockHttpServletResponse(), new Object()),
+            "unlike a managed VIEWER session, a real Google identity's CabinSession is never read-only");
+    }
+
+    @Test
+    void aValidCabinSessionSetsTheSameEmailAttributeAGoogleTokenWould() throws Exception {
+        CabinSession session = cabinSessions.issue("nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "CabinSession " + session.token());
+
+        interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
+
+        assertEquals("nate@example.com", request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_EMAIL));
+    }
+
+    @Test
+    void aCabinSessionForAnAdminEmailResolvesToAdministratorRole() throws Exception {
+        ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "nate@example.com");
+        CabinSession session = cabinSessions.issue("nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "CabinSession " + session.token());
+
+        interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
+
+        assertEquals(HouseholdRole.ADMINISTRATOR, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
+    }
+
+    @Test
+    void anUnknownCabinSessionTokenIsRejected() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "CabinSession not-a-real-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    void aRevokedCabinSessionIsRejected() throws Exception {
+        CabinSession session = cabinSessions.issue("nate@example.com");
+        cabinSessions.revoke(session.token());
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "CabinSession " + session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    void anExpiredCabinSessionIsRejected() throws Exception {
+        CabinSessionStore rawStore = new InMemoryCabinSessionStore();
+        CabinSessionService expiredSessions = new CabinSessionService(rawStore);
+        CabinSession fresh = expiredSessions.issue("nate@example.com");
+        rawStore.extend(fresh.token(), Instant.now().minus(Duration.ofDays(1))); // force it into the past
+        GoogleAuthInterceptor expiredInterceptor = new GoogleAuthInterceptor(accessTokens, managedUsers, expiredSessions);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "CabinSession " + fresh.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(expiredInterceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    void aSuccessfulCabinSessionValidationSlidesTheThirtyDayWindowForward() throws Exception {
+        CabinSessionStore rawStore = new InMemoryCabinSessionStore();
+        CabinSessionService slidingSessions = new CabinSessionService(rawStore);
+        CabinSession original = slidingSessions.issue("nate@example.com");
+        // Simulate this session being close to expiry already.
+        Instant almostExpired = Instant.now().plus(Duration.ofDays(1));
+        rawStore.extend(original.token(), almostExpired);
+        GoogleAuthInterceptor slidingInterceptor = new GoogleAuthInterceptor(accessTokens, managedUsers, slidingSessions);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.addHeader("Authorization", "CabinSession " + original.token());
+
+        assertTrue(slidingInterceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
+
+        CabinSession afterUse = rawStore.findByToken(original.token()).orElseThrow();
+        assertTrue(afterUse.expiresAt().isAfter(almostExpired.plus(Duration.ofDays(20))),
+            "a successful validate must push expiresAt back out to a fresh ~30 days, not leave the old near-expiry in place");
     }
 
     // ── /api/kb GET-open, writes-gated (found 2026-09-02) ──
