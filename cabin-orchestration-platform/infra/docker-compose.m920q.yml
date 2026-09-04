@@ -195,6 +195,17 @@ services:
       # claim on tokens sent to /api/notes and /api/chores against this, so
       # a token from an unrelated Google app can't be used to write here.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Found 2026-09-04 (direct user report: Platform Info always says
+      # "Admin access required," for anyone): this was never actually wired
+      # here at all, on any prior deploy -- GoogleAuthInterceptor's own
+      # @Value("${cabin.admin.emails:}") has been resolving to its empty
+      # default the whole time, so resolveHouseholdRole() could never
+      # return ADMINISTRATOR for anyone, ever, on this host. family-hub and
+      # Grafana both already receive the same ADMIN_EMAILS .env value
+      # correctly (see below/GF_AUTH_GOOGLE_ALLOWED_EMAILS above) -- only
+      # cabin-backend's own copy was missing. Spring Boot's relaxed env
+      # binding maps CABIN_ADMIN_EMAILS -> cabin.admin.emails.
+      CABIN_ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # Tech ID Service findings-submission key -- optional, empty by
       # default (submission returns 503 until an operator sets this).
       # See docs/REPLICATION.md §8.
