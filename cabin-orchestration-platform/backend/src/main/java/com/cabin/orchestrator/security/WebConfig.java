@@ -9,36 +9,28 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * /api/notes, /api/chores, /api/profiles, /api/camera, /api/schedule,
  * /api/rules (writes only — see GoogleAuthInterceptor's GET carve-out, added
  * 2026-08-14), (PATCH only, see GoogleAuthInterceptor) /api/tech-id/findings,
- * and — added 2026-09-01 — /api/events and /api/alerts (every method,
- * including GET, no carve-out) require a Google token.
+ * and /api/events (every method, no carve-out) require a Google token.
  *
- * The events/alerts addition closes a real, confirmed-live exposure: a
- * security audit found both returning full unauthenticated responses
- * (real-time device telemetry, active security alerts, and — for
- * main_water_valve specifically — public confirmation that the safety-
- * critical water shutoff was currently offline) to the open internet.
- * Unlike /api/rules's read side, there's no "read can't fire a physical
- * action so it's safe public" argument here — the data itself (occupancy-
- * adjacent telemetry, live alarm/alert state) is the thing worth
- * protecting, not just write access. cabin-ui's own fetch calls to these
- * endpoints never sent a token before this change (confirmed by direct
- * grep) — see App.jsx's authedFetch threading, added in the same change,
- * for the frontend half of this fix.
+ * The events gate closes a real, confirmed-live exposure: a security audit
+ * found it returning full unauthenticated responses (camera/motion event
+ * replay — the specific "is anyone home" signal) to the open internet.
+ * cabin-ui's own fetch calls to this endpoint never sent a token before
+ * that change (confirmed by direct grep) — see App.jsx's authedFetch
+ * threading, added in the same change, for the frontend half of this fix.
  *
- * /api/devices — added 2026-09-01, same day as events/alerts above.
- * Previously left open deliberately (room names, vendor/model, and
- * capabilities aren't safety-sensitive the way an active alert is), but a
- * live check confirmed it discloses a full physical device inventory
- * (room "Mech Room", vendor "Tuya", model "TS0001", etc.) to anonymous
- * internet callers — the same "reveals the physical layout of an
- * unoccupied cabin" category of concern as events/alerts, just one notch
- * less urgent. Gated the same way, no partial/sanitized-projection carve-
- * out — see App.jsx's authedFetch threading for the ~20 call sites this
- * touched. A guest-access model (share links, then passwordless managed
- * users) is planned separately for parties without a Google account
- * (e.g. an insurance adjuster) — see the plan doc; this endpoint will
- * gain a second, non-Google auth path once that lands, not a rollback of
- * this gate.
+ * /api/devices and /api/alerts — gated 2026-09-01, ungated again 2026-09-04
+ * after direct user pushback: this app's whole purpose is glanceable,
+ * zero-friction status (a kiosk/wall display can't stop and OAuth every
+ * time someone looks at it), and neither endpoint's content actually maps
+ * onto the threat this project cares about (a physical break-in, which
+ * doesn't depend on whether someone could also see the humidity reading
+ * online). Device inventory (room names, vendor/model, capabilities) and
+ * alert state (leak/CO/battery) don't reveal whether anyone is home right
+ * now the way camera/motion events do -- that's the one signal worth
+ * protecting, and it's what /api/events above still gates. Do not re-add
+ * these two without the same explicit conversation this reversal came from
+ * -- see the shared "Cabin Platform Decisions" ontology artifact (D14) for
+ * the full reasoning either way.
  *
  * /api/access-tokens — added 2026-09-01, admin-only management (create/
  * list/revoke) of Tier 1 guest share links. See GoogleAuthInterceptor's
@@ -114,7 +106,7 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(authInterceptor)
             .addPathPatterns("/api/notes/**", "/api/chores/**", "/api/profiles/**", "/api/camera/**",
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
-                "/api/events/**", "/api/alerts/**", "/api/devices/**", "/api/access-tokens/**",
+                "/api/events/**", "/api/access-tokens/**",
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
                 "/api/platform-import/**", "/api/system/platform-info");
     }

@@ -195,17 +195,30 @@ function useGoogleAuth() {
     setSessionExpired(true);
   }, [clearSession]);
 
-  // Every authenticated call in this app should go through this instead
-  // of a raw fetch() + manual Authorization header, so a 401 is handled
-  // once, consistently, instead of each caller independently swallowing
-  // it into an empty array with no visible explanation.
+  // Every call that MIGHT need a Google token should go through this
+  // instead of a raw fetch() + manual Authorization header, so a 401 is
+  // handled once, consistently, instead of each caller independently
+  // swallowing it into an empty array with no visible explanation.
+  //
+  // Found 2026-09-04 (direct user report): this used to hard-reject with
+  // "Not signed in" the instant accessToken was missing, before even
+  // attempting the request -- which made sense back when every call
+  // through here genuinely required a token, but /api/devices and
+  // /api/alerts are public again (see WebConfig's own comment on why),
+  // and this app's whole point is glanceable, zero-login status. A caller
+  // with no token now just omits the Authorization header and lets the
+  // server decide -- a still-gated endpoint (e.g. /api/rules writes)
+  // correctly 401s and that's handled below same as ever, but a public
+  // endpoint succeeds instead of being refused client-side for no reason.
+  // handleUnauthorized (which shows "session expired") only fires when a
+  // token that looked valid got rejected server-side -- never for a caller
+  // that was never signed in to begin with, which isn't an expired session.
   const authedFetch = useCallback((url, options = {}) => {
-    if (!accessToken) return Promise.reject(new Error("Not signed in"));
-    return fetch(url, {
-      ...options,
-      headers: { ...(options.headers || {}), Authorization: `Bearer ${accessToken}` },
-    }).then(res => {
-      if (res.status === 401) handleUnauthorized();
+    const headers = accessToken
+      ? { ...(options.headers || {}), Authorization: `Bearer ${accessToken}` }
+      : (options.headers || {});
+    return fetch(url, { ...options, headers }).then(res => {
+      if (res.status === 401 && accessToken) handleUnauthorized();
       return res;
     });
   }, [accessToken, handleUnauthorized]);
@@ -5933,6 +5946,20 @@ function App() {
                 <span className="api-status api-ok">
                   <CheckCircle size={12}/> API
                 </span>
+              ) : !cameraAuth.signedIn && cameraAuth.configured ? (
+                // Found 2026-09-04 (direct user report): this badge used to
+                // always link straight to /actuator/health, with no path
+                // to actually fix anything -- unhelpful for the one cause
+                // that's actually common now that /api/devices and
+                // /api/alerts are public again (see WebConfig): a
+                // still-gated call (e.g. a write action) failing because
+                // nobody's signed in. Offer sign-in first since it's the
+                // one-click fix; the diagnostic link is still one click
+                // away for a signed-in caller below.
+                <button type="button" className="api-status api-err" onClick={cameraAuth.signIn}
+                  title={apiError ? `${apiError.message} (as of ${apiError.at.toLocaleTimeString()}) — click to sign in` : "click to sign in"}>
+                  <AlertTriangle size={12}/> API offline — Sign in
+                </button>
               ) : (
                 <a
                   className="api-status api-err"
