@@ -84,8 +84,8 @@ class PlatformInfoServiceTest {
         assertTrue(rendered.contains("Environmental"));
         assertTrue(rendered.contains("Refrigeration"));
         assertTrue(rendered.contains("Sensors"));
-        assertTrue(rendered.contains("No refrigeration appliance is currently paired"),
-            "must not fabricate a Liebherr or other fridge that was never actually confirmed installed");
+        assertTrue(rendered.contains("Liebherr") && rendered.contains("Loonie Mc Frigerton"),
+            "corrected 2026-09-04 -- a real Liebherr fridge is paired and reporting multiple services; the row used to wrongly claim none was paired");
     }
 
     @Test

@@ -79,7 +79,7 @@ public class PlatformInfoService {
         new HardwareRow("Zigbee coordinator", "SONOFF ZBDongle-E (Sonoff Dongle Plus V2), ember adapter, USB on the M920q"),
         new HardwareRow("Cameras", "Blink cameras, bridged via blinkbridge into Frigate (detection/recording) and MediaMTX (RTSP relay)"),
         new HardwareRow("Environmental", "Zigbee temperature/humidity sensors: mechanical room, kitchen, outdoor low-temperature probe"),
-        new HardwareRow("Refrigeration", "No refrigeration appliance is currently paired -- a future integration is tracked in docs/ontology/DECISIONS.md (D10)"),
+        new HardwareRow("Refrigeration", "Liebherr smart fridge/freezer (\"Loonie Mc Frigerton\", Home Assistant integration) -- top/bottom zone temperature + humidity, NightMode, SuperCool, SuperFrost, PartyMode, IceMaker state. Corrected 2026-09-04: this row previously said none was paired, which was wrong -- direct user correction, verified live against /api/devices."),
         new HardwareRow("Sensors", "Kidde CO/temperature/humidity monitor (Home Assistant integration; electrochemical CO sensor + MOX temperature/humidity); Zigbee water leak (mechanical room, fridge, dishwasher, bathroom); door/motion contact (front door, second door, entry); main water valve actuator; breaker box smart switch")
     );
 }
