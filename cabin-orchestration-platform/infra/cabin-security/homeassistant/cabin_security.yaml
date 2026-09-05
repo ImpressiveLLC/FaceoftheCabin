@@ -1,3 +1,14 @@
+# DEPLOYMENT PATH, confirmed live 2026-09-05 (a real deploy blocker that
+# cost real debugging time -- don't repeat it): this file's source of
+# truth is here in git, but the M920q's actual Home Assistant only loads
+# packages from its own /config/packages/ directory
+# (homeassistant.packages: !include_dir_named packages in
+# configuration.yaml). The live copy lives at
+# /config/packages/cabin_security.yaml INSIDE the homeassistant container
+# -- copying an updated version of this file to /config/cabin_security.yaml
+# (the container's config root) silently does nothing; HA never reads it
+# from there. Always copy into /config/packages/ and `docker restart
+# homeassistant` to pick up changes.
 input_boolean:
   cabin_security_armed_away:
     name: Cabin Security Armed Away
