@@ -59,28 +59,39 @@ automation:
   # Added 2026-09-05 -- replaces the phone-side MacroDroid listener
   # (adware-driven, required watching ads to keep working) that used to
   # call BlinkMotionWebhookController's HTTP endpoint directly. Source:
-  # the HA Companion App's own "Last Notification" sensor -- enable it via
-  # the Companion App's own Settings -> Manage Sensors -> Last Notification
-  # (add the Blink app to its "Allowed apps" list there), and grant the
-  # Companion App "Notification access" under Android Settings first, or
-  # the sensor never updates at all.
+  # the HA Companion App's own "Last Notification" sensor -- enabled via
+  # the Companion App's own Manage Sensors -> Last Notification -> its own
+  # Allow list (Blink checked there), with the Companion App itself granted
+  # Android's system "Notification access" permission first (a separate
+  # screen -- that one lists listener apps like Home Assistant/MacroDroid,
+  # never source apps like Blink; Blink only ever appears in HA's own
+  # per-sensor allow list, one level deeper).
   #
-  # PLACEHOLDER, same as every other entity id in this file per its own
-  # README -- replace sensor.REPLACE_WITH_YOUR_PHONE_last_notification with
-  # this phone's real entity id (Developer Tools -> States, after enabling
-  # the sensor above; it's phone-model-specific, e.g.
-  # sensor.pixel_8_last_notification). Also verify the attribute names
-  # below (android.package/android.title/android.text/android.bigText) are
-  # what community docs describe as of this writing -- confirm the real
-  # sensor's attributes in Developer Tools -> States before trusting this
-  # blindly, since HA's Companion App has changed this shape before.
+  # entity_id and every attribute name below are live-verified (Nate's
+  # phone, 2026-09-05, Companion App 2026.8.4 -- 2026.6.5 was too old for
+  # this sensor to even appear in Manage Sensors at all, a real bug fixed
+  # upstream between those versions) against a real Blink motion
+  # notification's actual Developer Tools -> States dump, not guessed from
+  # docs: the package attribute is the bare `package` key (NOT
+  # `android.package`, which doesn't exist), and the real notification text
+  # lives in `android.title` ("Motion detected at your AldrichFront.") --
+  # `android.text`/`android.subText` were both the literal string "null" on
+  # this notification, and `android.bigText` wasn't present at all. Kept as
+  # a fallback chain rather than hardcoding to title alone, in case a future
+  # Blink app version moves the text elsewhere -- filters out the literal
+  # "null" string HA reports for an genuinely-unset attribute so a stale
+  # fallback field can never masquerade as real content.
   #
   # KNOWN LIMITATION, confirmed against HA's own GitHub issue tracker: if
   # two notifications from the same app arrive back-to-back with identical
   # text before the first is dismissed, this sensor's state doesn't change
-  # and won't re-fire. Worth checking Blink's real notification text (it
-  # may already vary per event, e.g. a timestamp) before assuming this is
-  # a real gap in practice, not just a theoretical one.
+  # and won't re-fire. Blink's real title text has no timestamp in it
+  # ("Motion detected at your AldrichFront." -- confirmed live), so two
+  # motion events on the same camera within that window IS a real, live
+  # gap here, not just theoretical -- accepted for now since MacroDroid's
+  # own trigger had no stronger guarantee either, and BlinkLiveviewService's
+  # start() being idempotent means a missed second trigger just means no
+  # session-restart, not a broken liveview.
   #
   # mode: queued (not restart, unlike every automation above) -- those are
   # ongoing STATE republishers where only the latest value matters; this is
@@ -91,23 +102,26 @@ automation:
     mode: queued
     triggers:
       - trigger: state
-        entity_id: sensor.REPLACE_WITH_YOUR_PHONE_last_notification
+        entity_id: sensor.nates_s23_last_notification
     conditions:
-      # Defense in depth -- correct even if "Allowed apps" above is ever
+      # Defense in depth -- correct even if the allow list above is ever
       # left broader than just Blink for some other use.
       - condition: template
         value_template: >-
-          {{ trigger.to_state.attributes.get('android.package') == 'com.immediasemi.android.blink' }}
+          {{ trigger.to_state.attributes.get('package') == 'com.immediasemi.android.blink' }}
     actions:
       - variables:
-          # Concatenates every text-bearing attribute Blink's notification
-          # might use rather than betting on exactly one field -- a
-          # substring match below is robust to not knowing Blink's exact
-          # notification wording.
+          # Live-verified 2026-09-05: android.title carries the real text
+          # ("Motion detected at your AldrichFront."); android.text/
+          # android.subText report the literal string "null" (not empty)
+          # when unset on this device, which the reject filter below drops
+          # so it can never pollute the substring match.
           notification_text: >-
-            {{ (trigger.to_state.attributes.get('android.title', '') ~ ' ' ~
-                trigger.to_state.attributes.get('android.text', '') ~ ' ' ~
-                trigger.to_state.attributes.get('android.bigText', '')) }}
+            {% set candidates = [trigger.to_state.attributes.get('android.title', ''),
+                                  trigger.to_state.attributes.get('android.text', ''),
+                                  trigger.to_state.attributes.get('android.subText', ''),
+                                  trigger.to_state.attributes.get('android.bigText', '')] %}
+            {{ candidates | reject('equalto', 'null') | reject('equalto', '') | join(' ') }}
       - choose:
           # cameraName "driveway" -> Blink's own device name "Outdoor 4 -
           # DHEE" (see BLINK_CAMERA_MAP in docker-compose.m920q.yml).
