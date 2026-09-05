@@ -12,6 +12,8 @@ for another family, another property, or another team's use case. See
 takes.
 
 ---
+> **📖 Living Ontology** — The authoritative guide to what this system models, why, and how every decision was made.
+> [Read the Living Ontology →](https://claude.ai/code/artifact/a9c467c8-9958-4b17-95e5-f28b7af6e68f)
 
 ## Northstar Goals
 
