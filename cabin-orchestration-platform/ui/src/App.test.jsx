@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -3310,16 +3310,20 @@ describe("FamilyConfigPanel", () => {
 describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
   afterEach(cleanup);
 
-  // FamilyConfigPanel also renders PlatformInfoCard (Bug #5), which
-  // independently calls /api/system/platform-info on mount through this same
-  // authedFetch mock -- route that URL to its own stub response so it never
-  // consumes a queued /api/access-tokens response meant for these tests, and
-  // never trips these tests' own positional-call assertions.
+  // FamilyConfigPanel also renders PlatformInfoCard (Bug #5) and
+  // ManagedUsersCard (Tier 2), which independently call
+  // /api/system/platform-info and /api/managed-users on mount through this
+  // same authedFetch mock -- route both to their own stub responses so
+  // neither ever consumes a queued /api/access-tokens response meant for
+  // these tests, and never trips these tests' own positional-call assertions.
   function mockAuth(accessTokenResponses) {
     const queue = [...accessTokenResponses];
     const authedFetch = vi.fn((url) => {
       if (url.includes("/api/system/platform-info")) {
         return Promise.resolve({ ok: true, json: async () => ({ versions: {}, hardware: [], aiDisclosure: null }) });
+      }
+      if (url.includes("/api/managed-users")) {
+        return Promise.resolve({ ok: true, json: async () => [] });
       }
       return Promise.resolve(queue.shift());
     });
@@ -3393,6 +3397,110 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
     renderPanel(auth);
 
     expect(await screen.findByText("No share links yet.")).toBeTruthy();
+  });
+});
+
+// Tier 2 managed users (WSJF #3, D12). ManagedUsersCard isn't itself
+// exported -- tested through its parent, same pattern as GuestAccessCard
+// above. FamilyConfigPanel also renders GuestAccessCard and PlatformInfoCard
+// at the same time, each independently calling authedFetch on mount -- route
+// by URL (not call order) so those two never consume a response queued for
+// these tests, matching the "Platform Info" describe block's own approach.
+describe("FamilyConfigPanel — Managed Users (Tier 2)", () => {
+  afterEach(cleanup);
+
+  function mockAuth(managedUserResponses) {
+    const queue = [...managedUserResponses];
+    const authedFetch = vi.fn((url) => {
+      if (url.includes("/api/system/platform-info")) {
+        return Promise.resolve({ ok: true, json: async () => ({ versions: {}, hardware: [], aiDisclosure: null }) });
+      }
+      if (url.includes("/api/access-tokens")) {
+        return Promise.resolve({ ok: true, json: async () => [] });
+      }
+      return Promise.resolve(queue.shift());
+    });
+    return { authedFetch };
+  }
+
+  function managedUserCalls(auth) {
+    return auth.authedFetch.mock.calls.filter(([url]) => url.includes("/api/managed-users"));
+  }
+
+  function renderPanel(auth) {
+    return render(
+      <AppContext.Provider value={{ config: {}, locationCfg: { haUrl: "http://cabin-hub:8123" } }}>
+        <FamilyConfigPanel auth={auth} />
+      </AppContext.Provider>
+    );
+  }
+
+  it("lists existing managed users with their role and status", async () => {
+    const auth = mockAuth([{ ok: true, json: async () => [
+      { id: "u1", email: "alice@example.com", name: "Alice", role: "VIEWER", active: true },
+    ] }]);
+
+    renderPanel(auth);
+
+    expect(await screen.findByText("Alice")).toBeTruthy();
+    expect(screen.getByText(/alice@example\.com · Viewer \(read-only\)/)).toBeTruthy();
+  });
+
+  it("creates a new managed user with the selected role", async () => {
+    const auth = mockAuth([
+      { ok: true, json: async () => [] },
+      { ok: true, json: async () => ({ id: "u2", email: "bob@example.com", name: "Bob", role: "HOUSEHOLD_MEMBER", active: true }) },
+      { ok: true, json: async () => [{ id: "u2", email: "bob@example.com", name: "Bob", role: "HOUSEHOLD_MEMBER", active: true }] },
+    ]);
+
+    renderPanel(auth);
+    await waitFor(() => expect(managedUserCalls(auth).length).toBe(1));
+
+    fireEvent.change(screen.getByPlaceholderText("Email address"), { target: { value: "bob@example.com" } });
+    fireEvent.change(screen.getByPlaceholderText("Name"), { target: { value: "Bob" } });
+    fireEvent.change(screen.getByDisplayValue("Viewer (read-only)"), { target: { value: "HOUSEHOLD_MEMBER" } });
+    fireEvent.click(screen.getByText("Add managed user"));
+
+    expect(await screen.findByText("Bob")).toBeTruthy();
+    const createBody = JSON.parse(managedUserCalls(auth)[1][1].body);
+    expect(createBody).toEqual({ email: "bob@example.com", name: "Bob", role: "HOUSEHOLD_MEMBER" });
+  });
+
+  it("deactivates a managed user and the list reflects it without a page reload", async () => {
+    const auth = mockAuth([
+      { ok: true, json: async () => [{ id: "u3", email: "carl@example.com", name: "Carl", role: "VIEWER", active: true }] },
+      { ok: true, json: async () => ({ id: "u3", active: false }) },
+      { ok: true, json: async () => [{ id: "u3", email: "carl@example.com", name: "Carl", role: "VIEWER", active: false }] },
+    ]);
+
+    renderPanel(auth);
+    await screen.findByText("Carl");
+    fireEvent.click(screen.getByText("Deactivate"));
+
+    expect(await screen.findByText(/deactivated/)).toBeTruthy();
+    expect(managedUserCalls(auth)[1][0]).toContain("/api/managed-users/u3/deactivate");
+    expect(managedUserCalls(auth)[1][1].method).toBe("POST");
+  });
+
+  it("invite shows a confirmation message", async () => {
+    const auth = mockAuth([
+      { ok: true, json: async () => [{ id: "u4", email: "dana@example.com", name: "Dana", role: "VIEWER", active: true }] },
+      { ok: true, json: async () => ({ sent: true }) },
+    ]);
+
+    renderPanel(auth);
+    await screen.findByText("Dana");
+    fireEvent.click(screen.getByText("Invite"));
+
+    expect(await screen.findByText("Invite sent.")).toBeTruthy();
+  });
+
+  it("degrades to an empty list instead of crashing when the request is unauthenticated", async () => {
+    const auth = mockAuth([{ ok: false, status: 401, json: async () => ({ error: "Missing bearer token" }) }]);
+
+    renderPanel(auth);
+
+    expect(await screen.findByText("No managed users yet.")).toBeTruthy();
   });
 });
 
@@ -3569,6 +3677,57 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
 
     expect(await screen.findByText(/doesn't currently grant access to any data/)).toBeTruthy();
     expect(screen.queryByText(/isn't valid, has expired/)).toBeFalsy();
+  });
+});
+
+// Tier 2 managed users (WSJF #3, D12) -- where a managed user's browser
+// lands right after clicking their emailed magic link. Deliberately uses
+// the global fetch, not authedFetch, matching GuestDashboard above: a
+// managed user by definition has no session yet at this point. On success
+// this writes straight to the same localStorage keys useGoogleAuth() reads
+// on mount, then navigates to "/" -- jsdom logs a harmless "Not
+// implemented: navigation" line for that assignment (same as the existing
+// window.location.reload() precedent elsewhere in this file), so these
+// tests assert on the localStorage write itself rather than the navigation.
+describe("MagicLinkLanding (Tier 2 magic link, /auth/magic/{token})", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => { cleanup(); localStorage.clear(); });
+
+  it("consuming a valid token stores the managed session and role", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        sessionToken: "sess-abc", email: "carol@example.com", name: "Carol",
+        role: "HOUSEHOLD_MEMBER", expiresAt: "2026-12-01T00:00:00Z",
+      }),
+    }));
+
+    render(<MagicLinkLanding token="link-xyz" />);
+
+    await waitFor(() => expect(localStorage.getItem("managedSessionToken")).toBe("sess-abc"));
+    expect(localStorage.getItem("managedSessionEmail")).toBe("carol@example.com");
+    expect(localStorage.getItem("managedSessionRole")).toBe("HOUSEHOLD_MEMBER");
+    expect(Number(localStorage.getItem("managedSessionExpiresAt"))).toBe(new Date("2026-12-01T00:00:00Z").getTime());
+  });
+
+  it("an invalid/expired token shows the server's error message and stores nothing", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ error: "This link is invalid, expired, already used, or the account is no longer active" }),
+    }));
+
+    render(<MagicLinkLanding token="stale-token" />);
+
+    expect(await screen.findByText(/invalid, expired, already used/)).toBeTruthy();
+    expect(localStorage.getItem("managedSessionToken")).toBeNull();
+  });
+
+  it("a network failure shows a distinct, actionable message rather than hanging", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    render(<MagicLinkLanding token="link-xyz" />);
+
+    expect(await screen.findByText(/Couldn't reach the cabin server/)).toBeTruthy();
   });
 });
 

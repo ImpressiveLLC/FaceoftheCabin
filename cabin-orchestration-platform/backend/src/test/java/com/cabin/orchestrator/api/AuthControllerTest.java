@@ -68,6 +68,26 @@ class AuthControllerTest {
         assertEquals(HttpStatus.UNAUTHORIZED, result.getStatusCode());
     }
 
+    // Found 2026-09-05 while wiring the first real ManagedSession-issuing
+    // client: GoogleAuthInterceptor.handleManagedSession() already lets a
+    // ManagedSession token reach this path (it isn't under /api/managed-users
+    // or /api/access-tokens) and sets REQUEST_ATTR_EMAIL exactly like a real
+    // Google token does -- without this guard, a VIEWER-role managed user
+    // could exchange their read-only, deactivate-revocable session for a
+    // full-trust CabinSession immune to deactivation for up to 30 sliding
+    // days. See AuthController's own javadoc for the full reasoning.
+    @Test
+    void refusesToUpgradeAManagedSessionIntoAStandingCabinSession() {
+        CabinSessionService sessions = new CabinSessionService(new InMemoryCabinSessionStore());
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/session");
+        request.setAttribute(GoogleAuthInterceptor.REQUEST_ATTR_EMAIL, "viewer@example.com");
+        request.setAttribute(GoogleAuthInterceptor.REQUEST_ATTR_MANAGED_USER_ID, "managed-user-1");
+
+        ResponseEntity<?> result = newController(sessions).issueSession(request);
+
+        assertEquals(HttpStatus.FORBIDDEN, result.getStatusCode());
+    }
+
     @Test
     void revokingATokenMakesItStopWorkingImmediately() {
         CabinSessionService sessions = new CabinSessionService(new InMemoryCabinSessionStore());

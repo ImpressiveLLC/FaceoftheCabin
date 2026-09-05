@@ -92,6 +92,7 @@ public class ManagedUsersController {
         ManagedUser user = service.validateSession(session.token()).orElseThrow();
         return Map.of(
             "sessionToken", session.token(),
+            "expiresAt", session.expiresAt().toString(),
             "email", user.email(),
             "name", user.name(),
             "role", user.role().name());

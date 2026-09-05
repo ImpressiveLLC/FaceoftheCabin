@@ -153,13 +153,57 @@ function loadStoredCabinSession() {
   return { token, email };
 }
 
+// Tier 2 managed users (WSJF #3, D12) -- a household member/collaborator
+// without a Google account, signed in via a one-time emailed magic link
+// (see MagicLinkLanding below) rather than Google OAuth. Deliberately a
+// SEPARATE credential from CabinSession, never upgraded into one --
+// AuthController.issueSession() refuses a ManagedSession-authenticated
+// caller specifically because a CabinSession has no concept of
+// ManagedUserRole (VIEWER's read-only rule would be lost) or of the managed
+// user being deactivated later (CabinSession's own validity check never
+// looks up the managed user record again). This app must always send a
+// managed user's real token as `Authorization: ManagedSession {token}` so
+// every request re-checks both of those server-side, every time.
+// Same localStorage-not-sessionStorage reasoning as CabinSession above --
+// this should survive a tab close.
+const MANAGED_SESSION_TOKEN_KEY = "managedSessionToken";
+const MANAGED_SESSION_EXPIRES_KEY = "managedSessionExpiresAt";
+const MANAGED_SESSION_EMAIL_KEY = "managedSessionEmail";
+const MANAGED_SESSION_ROLE_KEY = "managedSessionRole";
+
+function loadStoredManagedSession() {
+  const token = localStorage.getItem(MANAGED_SESSION_TOKEN_KEY);
+  const expiresAtRaw = localStorage.getItem(MANAGED_SESSION_EXPIRES_KEY);
+  const email = localStorage.getItem(MANAGED_SESSION_EMAIL_KEY);
+  const role = localStorage.getItem(MANAGED_SESSION_ROLE_KEY);
+  const expiresAt = expiresAtRaw ? Number(expiresAtRaw) : null;
+  if (token && (!expiresAt || Date.now() >= expiresAt)) {
+    localStorage.removeItem(MANAGED_SESSION_TOKEN_KEY);
+    localStorage.removeItem(MANAGED_SESSION_EXPIRES_KEY);
+    localStorage.removeItem(MANAGED_SESSION_EMAIL_KEY);
+    localStorage.removeItem(MANAGED_SESSION_ROLE_KEY);
+    return { token: null, email: null, role: null };
+  }
+  return { token, email, role };
+}
+
 function useGoogleAuth() {
   const clientId = import.meta.env.VITE_CABIN_GOOGLE_CLIENT_ID || "";
   const [accessToken, setAccessToken] = useState(() => loadStoredGoogleSession().token);
-  const [userEmail, setUserEmail] = useState(() => loadStoredGoogleSession().email || loadStoredCabinSession().email);
+  const [userEmail, setUserEmail] = useState(() =>
+    loadStoredGoogleSession().email || loadStoredCabinSession().email || loadStoredManagedSession().email);
   const [cabinSessionToken, setCabinSessionToken] = useState(() => loadStoredCabinSession().token);
+  const [managedSession, setManagedSession] = useState(() => loadStoredManagedSession());
   const [sessionExpired, setSessionExpired] = useState(false);
   const tokenClientRef = useRef(null);
+
+  const clearManagedSession = useCallback(() => {
+    setManagedSession({ token: null, email: null, role: null });
+    localStorage.removeItem(MANAGED_SESSION_TOKEN_KEY);
+    localStorage.removeItem(MANAGED_SESSION_EXPIRES_KEY);
+    localStorage.removeItem(MANAGED_SESSION_EMAIL_KEY);
+    localStorage.removeItem(MANAGED_SESSION_ROLE_KEY);
+  }, []);
 
   const clearCabinSession = useCallback(() => {
     setCabinSessionToken(null);
@@ -175,7 +219,16 @@ function useGoogleAuth() {
     sessionStorage.removeItem("cabinUserEmail");
     sessionStorage.removeItem("cabinTokenExpiresAt");
     clearCabinSession();
-  }, [clearCabinSession]);
+    // No server-side revoke call for a managed session -- there is no
+    // self-revoke endpoint (handleManagedSession() in GoogleAuthInterceptor
+    // deliberately 403s a ManagedSession token on every /api/managed-users
+    // path, including one hypothetically added for this, to keep account
+    // management strictly admin-only), same "just abandon it locally"
+    // behavior the raw ~1-hour Google access token already has. An admin
+    // deactivating the managed user is the real, immediate revoke lever --
+    // see ManagedUserService.validateSession()'s own doc.
+    clearManagedSession();
+  }, [clearCabinSession, clearManagedSession]);
 
   // Exchanges a just-obtained Google access token for a 30-day CabinSession
   // (AuthController) -- best-effort: if this fails (backend briefly down,
@@ -285,12 +338,21 @@ function useGoogleAuth() {
   // handleUnauthorized (which shows "session expired") only fires when a
   // credential that looked valid got rejected server-side -- never for a
   // caller that was never signed in to begin with, which isn't an expired session.
+  // managedSession.token comes third -- a managed user has no Google
+  // account at all, so cabinSessionToken/accessToken are never both present
+  // for the same browser in normal use, but the order matters defensively.
+  // Sent as its own distinct scheme (never folded into or exchanged for
+  // CabinSession -- see loadStoredManagedSession's own comment) so every
+  // request re-checks VIEWER's read-only rule and the managed user's
+  // active flag server-side, every time.
   const authedFetch = useCallback((url, options = {}) => {
     const authHeader = cabinSessionToken
       ? `CabinSession ${cabinSessionToken}`
       : accessToken
         ? `Bearer ${accessToken}`
-        : null;
+        : managedSession.token
+          ? `ManagedSession ${managedSession.token}`
+          : null;
     const headers = authHeader
       ? { ...(options.headers || {}), Authorization: authHeader }
       : (options.headers || {});
@@ -298,7 +360,7 @@ function useGoogleAuth() {
       if (res.status === 401 && authHeader) handleUnauthorized();
       return res;
     });
-  }, [accessToken, cabinSessionToken, handleUnauthorized]);
+  }, [accessToken, cabinSessionToken, managedSession.token, handleUnauthorized]);
 
   // Found 2026-08-03: this hook's return value was a fresh object literal
   // on every render, which is invisible for consumers that only read
@@ -317,9 +379,11 @@ function useGoogleAuth() {
   // same latent bug (excessive re-fetching), just less visible since
   // repeating a GET is cheaper than repeatedly restarting a live session.
   return useMemo(() => ({
-    accessToken, cabinSessionToken, userEmail, signedIn: !!accessToken || !!cabinSessionToken, sessionExpired,
+    accessToken, cabinSessionToken, userEmail,
+    signedIn: !!accessToken || !!cabinSessionToken || !!managedSession.token,
+    managedUserRole: managedSession.role, sessionExpired,
     signIn, signOut, authedFetch, configured: !!clientId,
-  }), [accessToken, cabinSessionToken, userEmail, sessionExpired, signIn, signOut, authedFetch, clientId]);
+  }), [accessToken, cabinSessionToken, userEmail, managedSession, sessionExpired, signIn, signOut, authedFetch, clientId]);
 }
 
 // ─── Camera media: authenticated snapshot/clip fetch ──────────────────────
@@ -1747,6 +1811,9 @@ export function FamilyConfigPanel({ auth }) {
         <ConfigCard title="Guest Access" icon={Link2}>
           <GuestAccessCard auth={auth} />
         </ConfigCard>
+        <ConfigCard title="Managed Users" icon={UserPlus}>
+          <ManagedUsersCard auth={auth} />
+        </ConfigCard>
         <ConfigCard title="Platform Info" icon={Info}>
           <PlatformInfoCard auth={auth} />
         </ConfigCard>
@@ -1937,6 +2004,121 @@ function GuestAccessCard({ auth }) {
             {t.revokedAt
               ? <span className="config-hint">Revoked</span>
               : <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// Tier 2 managed users (WSJF #3, D12) -- admin CRUD for a household
+// member/collaborator without a Google account, who signs in via a
+// one-time emailed magic link (see MagicLinkLanding) instead. Structurally
+// mirrors GuestAccessCard just above (list + create form + per-row action),
+// but the lifecycle here is standing enrollment rather than a share link:
+// deactivate/reactivate instead of revoke (matching this project's
+// non-destructive-by-default convention -- ManagedUser's own doc), and an
+// explicit "Invite" action that (re-)sends the magic link on demand rather
+// than showing a one-time secret at creation time -- creating a managed
+// user and inviting them are deliberately separate steps here, since an
+// admin may want to fix a typo'd email before the first email ever sends.
+const MANAGED_USER_ROLE_OPTIONS = [
+  ["VIEWER", "Viewer (read-only)"],
+  ["HOUSEHOLD_MEMBER", "Household member (read/write)"],
+];
+
+function ManagedUsersCard({ auth }) {
+  const [users, setUsers] = useState([]);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("VIEWER");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState(null);
+  const [actionResult, setActionResult] = useState(null);
+  const doFetch = auth?.authedFetch || fetch;
+  const apiBase = LOCATIONS.cabin.apiBase;
+
+  const refresh = useCallback(() => {
+    doFetch(`${apiBase}/api/managed-users`)
+      .then(r => r.ok ? r.json() : [])
+      .then(body => setUsers(Array.isArray(body) ? body : []))
+      .catch(() => {});
+  }, [doFetch, apiBase]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const create = async () => {
+    if (!email.trim() || !name.trim()) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const response = await doFetch(`${apiBase}/api/managed-users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), name: name.trim(), role }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+      setEmail("");
+      setName("");
+      setRole("VIEWER");
+      refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const setActive = async (id, active) => {
+    await doFetch(`${apiBase}/api/managed-users/${id}/${active ? "reactivate" : "deactivate"}`, { method: "POST" });
+    refresh();
+  };
+
+  const invite = async (id) => {
+    setActionResult(null);
+    const response = await doFetch(`${apiBase}/api/managed-users/${id}/invite`, { method: "POST" });
+    const body = await response.json().catch(() => ({}));
+    setActionResult(body.error ? { id, ok: false, message: body.error } : { id, ok: true, message: "Invite sent." });
+  };
+
+  return (
+    <>
+      <p className="config-desc">Standing access for a household member or collaborator without a Google account — passwordless, via an emailed sign-in link.</p>
+      <div className="guest-access-form">
+        <input value={email} placeholder="Email address"
+          onChange={e => setEmail(e.target.value)} />
+        <input value={name} placeholder="Name"
+          onChange={e => setName(e.target.value)} />
+        <select value={role} onChange={e => setRole(e.target.value)}>
+          {MANAGED_USER_ROLE_OPTIONS.map(([key, text]) => <option key={key} value={key}>{text}</option>)}
+        </select>
+        <button className="btn-primary" onClick={create} disabled={creating || !email.trim() || !name.trim()}>
+          {creating ? "Adding…" : "Add managed user"}
+        </button>
+        {error && <p className="action-result action-error">Not added: {error}</p>}
+      </div>
+
+      <div className="guest-access-list">
+        {users.length === 0 && <p className="config-hint">No managed users yet.</p>}
+        {users.map(u => (
+          <div key={u.id} className={`guest-access-row ${!u.active ? "guest-access-revoked" : ""}`}>
+            <div>
+              <strong>{u.name}</strong>
+              <span className="config-hint">
+                {u.email} · {MANAGED_USER_ROLE_OPTIONS.find(([k]) => k === u.role)?.[1] || u.role}
+                {!u.active && " · deactivated"}
+              </span>
+              {actionResult?.id === u.id && (
+                <p className={`action-result ${actionResult.ok ? "" : "action-error"}`}>{actionResult.message}</p>
+              )}
+            </div>
+            <div className="managed-users-row-actions">
+              {u.active && <button className="btn-ghost" onClick={() => invite(u.id)}>Invite</button>}
+              {u.active
+                ? <button className="btn-danger" onClick={() => setActive(u.id, false)}>Deactivate</button>
+                : <button className="btn-secondary" onClick={() => setActive(u.id, true)}>Reactivate</button>}
+            </div>
           </div>
         ))}
       </div>
@@ -6491,6 +6673,64 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
   );
 }
 
+// /auth/magic/{token} -- Tier 2 (D12, WSJF #3): a managed user's browser
+// lands here right after clicking their emailed magic link.
+// ManagedUserService.invite() builds this exact URL. Public POST (see
+// ManagedUsersController's own doc) -- a managed user by definition has no
+// Google account, so this can never require one. On success, writes the
+// returned ManagedSession token+role+email straight into the same
+// localStorage keys useGoogleAuth() reads on mount, then does a full
+// navigation back to "/" so <App/> mounts fresh and picks it up through
+// its ordinary lazy-init path -- same reasoning GuestDashboard's own
+// separate-root-render split already established for /view/{token}: this
+// runs in a completely different render tree than <App/>'s useGoogleAuth()
+// instance, so writing shared storage + reloading is simpler and more
+// robust than trying to thread state across that boundary live.
+export function MagicLinkLanding({ token }) { // exported for src/App.test.jsx
+  const [status, setStatus] = useState("consuming"); // consuming | error
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${LOCATIONS.cabin.apiBase}/api/managed-users/magic/${encodeURIComponent(token)}/consume`, { method: "POST" })
+      .then(async r => {
+        const body = await r.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!r.ok || body.error || !body.sessionToken) {
+          setError(body.error || "This link is invalid, expired, already used, or the account is no longer active");
+          setStatus("error");
+          return;
+        }
+        localStorage.setItem(MANAGED_SESSION_TOKEN_KEY, body.sessionToken);
+        localStorage.setItem(MANAGED_SESSION_EMAIL_KEY, body.email);
+        localStorage.setItem(MANAGED_SESSION_ROLE_KEY, body.role);
+        if (body.expiresAt) localStorage.setItem(MANAGED_SESSION_EXPIRES_KEY, String(new Date(body.expiresAt).getTime()));
+        window.location.href = "/";
+      })
+      .catch(() => {
+        if (!cancelled) { setError("Couldn't reach the cabin server. Check your connection and try the link again."); setStatus("error"); }
+      });
+    return () => { cancelled = true; };
+  }, [token]);
+
+  if (status === "error") {
+    return (
+      <div className="guest-view">
+        <h1>Sign-in link</h1>
+        <p>{error}</p>
+        <p className="config-hint">Contact the person who invited you for a fresh link.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="guest-view">
+      <h1>Sign-in link</h1>
+      <p className="config-hint">Signing you in…</p>
+    </div>
+  );
+}
+
 // Guarded so this module can be imported for its exported pure functions
 // (isCameraEvent, mergeHubLocations) from a unit test without a real
 // index.html/#root present -- see src/App.test.jsx. Always truthy in the
@@ -6498,9 +6738,12 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
 const rootEl = document.getElementById("root");
 if (rootEl) {
   const guestMatch = window.location.pathname.match(/^\/view\/([^/]+)/);
+  const magicMatch = window.location.pathname.match(/^\/auth\/magic\/([^/]+)/);
   createRoot(rootEl).render(
     <ThemeProvider>
-      {guestMatch ? <GuestDashboard token={guestMatch[1]} /> : <App />}
+      {guestMatch ? <GuestDashboard token={guestMatch[1]} />
+        : magicMatch ? <MagicLinkLanding token={magicMatch[1]} />
+        : <App />}
     </ThemeProvider>
   );
 }

@@ -119,7 +119,7 @@ class ManagedUsersControllerTest {
 
         Map<String, Object> result = controller.consumeMagicLink(token);
 
-        assertThat(result).containsKeys("sessionToken", "email", "name", "role");
+        assertThat(result).containsKeys("sessionToken", "expiresAt", "email", "name", "role");
         assertThat(result.get("email")).isEqualTo("a@example.com");
         assertThat(result.get("role")).isEqualTo("HOUSEHOLD_MEMBER");
     }

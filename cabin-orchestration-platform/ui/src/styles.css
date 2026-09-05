@@ -1921,7 +1921,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .guest-access-form {
   display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;
 }
-.guest-access-form input[type="text"], .guest-access-form input:not([type]) {
+.guest-access-form input[type="text"], .guest-access-form input:not([type]), .guest-access-form select {
   padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border);
   background: var(--bg-secondary); color: var(--text); font-size: 13px;
 }
@@ -1946,6 +1946,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
   padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-secondary);
 }
 .guest-access-row.guest-access-revoked { opacity: 0.55; }
+.managed-users-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* ─── Guest view (/view/{token}) ────────────────────────────────────────── */
 .guest-view {
