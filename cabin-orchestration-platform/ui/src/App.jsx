@@ -1852,8 +1852,8 @@ function GuestAccessCard({ auth }) {
 
   const refresh = useCallback(() => {
     doFetch(`${apiBase}/api/access-tokens`)
-      .then(r => r.json())
-      .then(setTokens)
+      .then(r => r.ok ? r.json() : [])
+      .then(body => setTokens(Array.isArray(body) ? body : []))
       .catch(() => {});
   }, [doFetch, apiBase]);
 

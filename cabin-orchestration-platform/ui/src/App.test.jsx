@@ -3162,6 +3162,14 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
     expect(accessTokenCalls(auth)[1][0]).toContain("/api/access-tokens/tok-3");
     expect(accessTokenCalls(auth)[1][1].method).toBe("DELETE");
   });
+
+  it("degrades to an empty list instead of crashing when the request is unauthenticated", async () => {
+    const auth = mockAuth([{ ok: false, status: 401, json: async () => ({ error: "Missing bearer token" }) }]);
+
+    renderPanel(auth);
+
+    expect(await screen.findByText("No share links yet.")).toBeTruthy();
+  });
 });
 
 // Bug #5 (2026-09 bug sprint): admin-only versions + hardware catalog + AI
