@@ -99,6 +99,20 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * the token you want to invalidate, the same "no extra proof needed to
  * destroy your own credential" contract a logout endpoint always has.
  *
+ * /api/presence and /api/security — gated 2026-09-05, closing a tension
+ * flagged during D14's own implementation: neither had ever been gated
+ * (confirmed directly against this list), yet D14's own principle -- does
+ * this endpoint reveal occupancy -- applies to both more directly than to
+ * almost anything else in this file. /api/presence's GET returns the live
+ * at-home/at-cabin/away profile and per-person signals; its PUT is a write
+ * regardless. /api/security's GET returns armed/disarmed per location,
+ * which for "armed_away" specifically implies nobody's home. Unlike
+ * /api/devices/alerts above, there's no non-occupancy sub-path here worth
+ * carving out -- the entire endpoint is the signal D14 says is worth
+ * protecting, so both are fully gated, no GET carve-out. See the shared
+ * ontology artifact's D14 section for the "Unresolved D14 Tensions" pin
+ * this resolves.
+ *
  * cabin.security.googleAuth.enabled defaults to true (secure by default —
  * absence of the property changes nothing). The only reason it exists is
  * local verification: there's no way to obtain a real Google access token
@@ -126,6 +140,7 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/tech-id/findings/**", "/api/rules/**", "/api/schedule/**",
                 "/api/events/**", "/api/access-tokens/**",
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
-                "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session");
+                "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session",
+                "/api/presence/**", "/api/security/**");
     }
 }

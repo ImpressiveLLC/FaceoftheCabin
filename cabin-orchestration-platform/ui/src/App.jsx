@@ -5661,23 +5661,24 @@ function useHubLocations() {
 // manual fallback (a location/instance with no presence automation
 // configured yet still needs the manual path -- see PresenceService's
 // class comment).
-function usePresence() {
+function usePresence(authedFetch = fetch) {
   const [profile, setProfileState] = useState("AT_HOME");
   const [options, setOptions]      = useState([]);
   const [autoDerived, setAutoDerived] = useState(false);
   const [signals, setSignals]      = useState([]);
 
   const refresh = useCallback(() => {
-    fetch(`${LOCATIONS.cabin.apiBase}/api/presence`)
-      .then(r => r.json())
+    authedFetch(`${LOCATIONS.cabin.apiBase}/api/presence`)
+      .then(r => r.ok ? r.json() : null)
       .then(data => {
+        if (!data) return; // not signed in -- leave the safe AT_HOME/manual default in place
         setProfileState(data.profile);
         setOptions(data.options || []);
         setAutoDerived(!!data.autoDerived);
         setSignals(data.signals || []);
       })
       .catch(() => {});
-  }, []);
+  }, [authedFetch]);
 
   useEffect(() => {
     refresh();
@@ -5692,11 +5693,11 @@ function usePresence() {
   const setProfile = (p) => {
     setProfileState(p); // optimistic
     setAutoDerived(false); // a manual PUT is never auto-derived -- see PresenceService.set()
-    fetch(`${LOCATIONS.cabin.apiBase}/api/presence`, {
+    authedFetch(`${LOCATIONS.cabin.apiBase}/api/presence`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ profile: p }),
-    }).then(r => r.json()).then(d => setProfileState(d.profile)).catch(() => {});
+    }).then(r => r.ok ? r.json() : null).then(d => { if (d) setProfileState(d.profile); }).catch(() => {});
   };
 
   return { profile, setProfile, options, autoDerived, signals };
@@ -5712,15 +5713,15 @@ function usePresence() {
 // deliberately not folded into it -- arming and presence are different
 // concerns with different sources of truth (a human toggle vs. a WiFi
 // signal) even though both ride the same MQTT bridge.
-function useSecurityState() {
+function useSecurityState(authedFetch = fetch) {
   const [states, setStates] = useState({}); // { [location]: { armed, lastUpdated } }
 
   const refresh = useCallback(() => {
-    fetch(`${LOCATIONS.cabin.apiBase}/api/security`)
-      .then(r => r.json())
+    authedFetch(`${LOCATIONS.cabin.apiBase}/api/security`)
+      .then(r => r.ok ? r.json() : {}) // not signed in -- leaves securityStates empty, SecurityBadge already renders "Unknown" for that
       .then(setStates)
       .catch(() => {});
-  }, []);
+  }, [authedFetch]);
 
   useEffect(() => {
     refresh();
@@ -5940,8 +5941,8 @@ function App() {
     generatedAt: activeAlertsGeneratedAt,
   } = useNavAlerts(cameraAuth.authedFetch);
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
-  const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence();
-  const securityStates = useSecurityState();
+  const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence(cameraAuth.authedFetch);
+  const securityStates = useSecurityState(cameraAuth.authedFetch);
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile, cameraAuth.authedFetch);
   const lifecycleLabels = useLifecycleStateLabels(LOCATIONS.cabin.apiBase, cameraAuth.authedFetch);
 
