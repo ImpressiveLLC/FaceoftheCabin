@@ -128,6 +128,7 @@ finer-grained permission tier for video vs. the rest of cabin-ui today.
 | **QA / Testing** | [`docs/QA.md`](docs/QA.md) | Technical | Per-feature test coverage, automated + manual checklists |
 | **Definition of Done** | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md) | Internal (session process) | Per-session exit checklist — not a product or architecture doc |
 | **Replicating This Template** | [`docs/REPLICATION.md`](docs/REPLICATION.md) | Standing up a fully independent instance — own accounts, domain, host, repo |
+| **Living Ontology** | [Living Artifact](https://claude.ai/code/artifact/a9c467c8-9958-4b17-95e5-f28b7af6e68f) | All | Canonical knowledge model — entities, relationships, decision log |
 
 ---
 
