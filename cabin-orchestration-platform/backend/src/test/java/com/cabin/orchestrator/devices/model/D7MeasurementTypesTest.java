@@ -32,4 +32,14 @@ class D7MeasurementTypesTest {
         assertEquals("current", D7MeasurementTypes.toMeasurementType("current").orElseThrow());
         assertEquals("voltage", D7MeasurementTypes.toMeasurementType("voltage").orElseThrow());
     }
+
+    // D16, Cowork ratification 2026-09-05: the real Z2M expose names for
+    // security_presence's three signals -- confirmed live against
+    // z2m-motion_entry/z2m-door_front_contact/z2m-leak_mech_room.
+    @Test
+    void d16SecurityPresenceFieldsAreRecognized() {
+        assertEquals("occupancy", D7MeasurementTypes.toMeasurementType("occupancy").orElseThrow());
+        assertEquals("contact", D7MeasurementTypes.toMeasurementType("contact").orElseThrow());
+        assertEquals("water_leak", D7MeasurementTypes.toMeasurementType("water_leak").orElseThrow());
+    }
 }

@@ -213,6 +213,51 @@ class Zigbee2MqttAdapterTest {
         assertEquals(List.of("battery", "voltage", "temperature", "humidity"), fields);
     }
 
+    // D16 (Reporting Topics IA), Cowork ratification 2026-09-05: before this,
+    // motion/contact/leak devices never got a device_reporting_relationship
+    // row for their own binary reading at all -- only numeric exposes were
+    // ever captured. Fixture is the REAL exposes[] confirmed live against
+    // z2m-motion_entry 2026-09-05 (via mosquitto_sub on zigbee2mqtt/bridge/devices),
+    // not a simplified guess.
+    @Test
+    void occupancyIsCapturedAsAVendorReportedFieldAlongsideNumericOnes() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"motion_entry","type":"EndDevice","definition":{
+              "model":"SNZB-03P","vendor":"SONOFF","description":"motion",
+              "exposes":[
+                {"type":"binary","name":"occupancy","property":"occupancy","value_on":true,"value_off":false},
+                {"type":"numeric","name":"illuminance","property":"illuminance","unit":"lx"},
+                {"type":"numeric","name":"battery","property":"battery","category":"diagnostic"}
+              ]}}]
+            """);
+
+        @SuppressWarnings("unchecked")
+        List<String> fields = (List<String>) registry.get("z2m-motion_entry").attributes().get("vendorReportedFields");
+        // illuminance isn't a D7MeasurementTypes value -- excluded same as ever.
+        assertEquals(List.of("occupancy", "battery"), fields);
+    }
+
+    // Fixture is the REAL exposes[] confirmed live against
+    // z2m-door_front_contact 2026-09-05 -- battery_low is a real binary
+    // diagnostic this device also reports, deliberately NOT in
+    // BINARY_PRESENCE_FIELDS (it's not a security_presence signal).
+    @Test
+    void contactIsCapturedButUnrelatedBinaryDiagnosticsAreNot() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"door_front_contact","type":"EndDevice","definition":{
+              "model":"SNZB-04","vendor":"SONOFF","description":"contact",
+              "exposes":[
+                {"type":"binary","name":"contact","property":"contact","value_on":false,"value_off":true},
+                {"type":"binary","name":"battery_low","property":"battery_low","category":"diagnostic","value_on":true,"value_off":false},
+                {"type":"numeric","name":"voltage","property":"voltage","category":"diagnostic"}
+              ]}}]
+            """);
+
+        @SuppressWarnings("unchecked")
+        List<String> fields = (List<String>) registry.get("z2m-door_front_contact").attributes().get("vendorReportedFields");
+        assertEquals(List.of("contact", "voltage"), fields);
+    }
+
     @Test
     void vendorReportedFieldsIsAbsentEntirelyWhenExposesHasNoRealMeasurements() throws Exception {
         registerDevice("motion_entry"); // fixture's own exposes:[] is empty
@@ -221,6 +266,10 @@ class Zigbee2MqttAdapterTest {
             "omitted entirely, not an empty list -- see the field's own comment on why that distinction matters");
     }
 
+    // water_leak used to be excluded here too (binary types were entirely
+    // unrecognized before D16's security_presence capture) -- updated
+    // 2026-09-05 to reflect that it's now correctly captured alongside
+    // temperature, same fixture, still proving composite recursion works.
     @Test
     void vendorReportedFieldsRecursesIntoCompositeFeatures() throws Exception {
         deliver("zigbee2mqtt/bridge/devices", """
@@ -235,7 +284,7 @@ class Zigbee2MqttAdapterTest {
 
         @SuppressWarnings("unchecked")
         List<String> fields = (List<String>) registry.get("z2m-leak_spare").attributes().get("vendorReportedFields");
-        assertEquals(List.of("temperature"), fields);
+        assertEquals(List.of("temperature", "water_leak"), fields);
     }
 
     @Test

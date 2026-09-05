@@ -12,19 +12,30 @@ import java.util.Set;
  * navigation, not a 15+-measurement_type dropdown (see the ontology
  * decisions artifact's own "what NOT to build" note).
  *
- * Sprint 4 scope is narrower than the full Topic-picker IA: seed these
- * constants and wire the mapping that already has somewhere real to attach
- * to. COMFORT_AIR and ENERGY genuinely do -- every measurement_type they
- * cover already backs real device_reporting_relationship rows (D7/D13/D15).
- * SECURITY_PRESENCE does not, today: motion/contact/leak devices are
- * binary/event-driven, never produce a numeric vendorReportedFields entry,
- * and so never get a device_reporting_relationship row at all -- there is
- * no existing per-service place to attach that mapping to yet. ALERT_HISTORY
- * and OCCUPANCY are event-log-level aggregate views by D16's own
- * description ("all types -> alert event log", "aggregate motion + contact
- * patterns"), not a property any single service has -- they don't need a
- * topicFor() entry at all. Flagged rather than silently worked around by
- * inventing a service-entity row for device types that don't have one.
+ * Cowork-ratified 2026-09-05 (see the ontology artifact's Discrepancy Log):
+ * COMFORT_AIR, SECURITY_PRESENCE, and ENERGY are the only Topics a service
+ * entity can be assigned to -- ALERT_HISTORY and OCCUPANCY are computed
+ * views over cross-cutting data (the alert log; an aggregate inference over
+ * security_presence-tagged services), not a property any single service
+ * has, so they're kept in the ALL vocabulary (the Topic picker needs all
+ * five labels) but never returned by topicFor().
+ *
+ * NAMING TRAP: the Topic OCCUPANCY ("How busy is it?", an aggregate view)
+ * is a completely different thing from the measurement_type "occupancy"
+ * (Z2M's real field name for a motion sensor's PIR reading, which feeds
+ * SECURITY_PRESENCE below). Sharing the English word is a coincidence of
+ * two independent vocabularies, not a relationship -- do not "fix" this by
+ * routing measurement_type "occupancy" to the Topic OCCUPANCY constant.
+ *
+ * voltage/current require device-type context, unlike every other entry:
+ * both are dual-use, live confirmed 2026-09-05 -- a power-monitoring smart
+ * plug's voltage/current are real energy-usage readings, but a
+ * battery-powered contact/motion/leak sensor also incidentally reports its
+ * own battery voltage/current numerically, and D7MeasurementTypes has no
+ * device-type awareness at the capture layer. topicFor() takes the
+ * reporting device's DeviceType specifically to resolve this -- see its
+ * own doc. Every other measurement_type's Topic is unambiguous regardless
+ * of device type.
  */
 public final class ReportingTopics {
 
@@ -40,7 +51,7 @@ public final class ReportingTopics {
     // air_quality" table -- read as shorthand covering every real
     // environmental reading this schema models, not a deliberate exclusion,
     // since there's no other Topic co2 could plausibly belong to.
-    private static final Map<String, String> BY_MEASUREMENT_TYPE = Map.ofEntries(
+    private static final Map<String, String> UNAMBIGUOUS_BY_MEASUREMENT_TYPE = Map.ofEntries(
         Map.entry("temperature", COMFORT_AIR),
         Map.entry("humidity", COMFORT_AIR),
         Map.entry("co", COMFORT_AIR),
@@ -48,18 +59,36 @@ public final class ReportingTopics {
         Map.entry("air_quality_index", COMFORT_AIR),
         Map.entry("power", ENERGY),
         Map.entry("energy", ENERGY),
-        Map.entry("current", ENERGY),
-        Map.entry("voltage", ENERGY)
+        // "occupancy" here is Z2M's real field name for a PIR motion
+        // reading -- see this class's own NAMING TRAP note. Not the Topic
+        // OCCUPANCY.
+        Map.entry("occupancy", SECURITY_PRESENCE),
+        Map.entry("contact", SECURITY_PRESENCE),
+        Map.entry("water_leak", SECURITY_PRESENCE)
     );
+
+    // Cowork ratification 2026-09-05: energy-topic assignment for these two
+    // is conditioned on the reporting device actually being a power meter,
+    // resolved at read time (not baked in at row-creation time) so a later
+    // correction to a device's type inference is reflected automatically
+    // rather than leaving a stale decision behind.
+    private static final Set<String> DEVICE_TYPE_GATED_TO_POWER_METER = Set.of("voltage", "current");
 
     private ReportingTopics() {}
 
     /**
-     * Which Topic a Service Entity's measurement_type feeds -- empty for a
-     * real D7MeasurementTypes value with no Topic assignment yet
-     * (pressure, battery), not an error.
+     * Which Topic a Service Entity's measurement_type feeds, given the
+     * DeviceType of the device that reported it -- empty for a real
+     * D7MeasurementTypes value with no Topic assignment (pressure, battery),
+     * not an error. voltage/current only resolve to ENERGY when deviceType
+     * is POWER_METER; from any other device type they're a real, valid
+     * D7MeasurementTypes reading (a battery's own voltage) that simply
+     * doesn't feed any Topic yet.
      */
-    public static Optional<String> topicFor(String measurementType) {
-        return Optional.ofNullable(BY_MEASUREMENT_TYPE.get(measurementType));
+    public static Optional<String> topicFor(String measurementType, DeviceType deviceType) {
+        if (DEVICE_TYPE_GATED_TO_POWER_METER.contains(measurementType)) {
+            return deviceType == DeviceType.POWER_METER ? Optional.of(ENERGY) : Optional.empty();
+        }
+        return Optional.ofNullable(UNAMBIGUOUS_BY_MEASUREMENT_TYPE.get(measurementType));
     }
 }

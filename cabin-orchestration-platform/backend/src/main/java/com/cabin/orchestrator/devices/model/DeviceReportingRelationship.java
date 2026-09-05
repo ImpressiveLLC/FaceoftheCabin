@@ -1,7 +1,5 @@
 package com.cabin.orchestrator.devices.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.time.Instant;
 
 /**
@@ -17,6 +15,14 @@ import java.time.Instant;
  * from the device's own name (see JdbcDeviceReportingRelationshipRepository's
  * upsert(), which deliberately never touches this column). Null until a
  * person explicitly sets one.
+ *
+ * D16's reports_to Topic is deliberately NOT a field on this record --
+ * ReportingTopics.topicFor() needs the reporting device's DeviceType too
+ * (voltage/current resolve differently for a power meter than for a
+ * battery-powered sensor's own diagnostic reading, Cowork-ratified
+ * 2026-09-05), and this record has no device-type context. See
+ * DeviceController.reportingRelationships() for where reportsTo is actually
+ * computed, with that context available.
  */
 public record DeviceReportingRelationship(
     String deviceId,
@@ -30,20 +36,5 @@ public record DeviceReportingRelationship(
     public DeviceReportingRelationship(String deviceId, String semanticField, String measurementType,
                                          ConfirmationSource confirmationSource, Instant confirmedAt) {
         this(deviceId, semanticField, measurementType, confirmationSource, confirmedAt, null);
-    }
-
-    /**
-     * D16 (Reporting Topics IA, Sprint 4): which reporting Topic this
-     * Service Entity feeds, per ReportingTopics.topicFor(). Deliberately
-     * computed here, not a stored column -- it's a pure function of
-     * measurementType under D16's current 5-topic scheme, so persisting it
-     * separately would just be a second copy of the same fact that could
-     * drift. Null (not present as a UI-facing gap) when this measurement_type
-     * has no Topic assignment yet -- see ReportingTopics' own doc for which
-     * ones that's true of today.
-     */
-    @JsonProperty("reportsTo")
-    public String reportsTo() {
-        return ReportingTopics.topicFor(measurementType).orElse(null);
     }
 }

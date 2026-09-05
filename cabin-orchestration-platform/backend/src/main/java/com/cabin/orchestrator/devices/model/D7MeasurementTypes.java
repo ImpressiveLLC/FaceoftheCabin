@@ -19,7 +19,16 @@ public final class D7MeasurementTypes {
         // D15 (Energy Device Ontology, 2026-09-05): added for the two real
         // Third Reality smart plugs (z2m-heater_mech_room,
         // z2m-smart_switch_breaker_box) -- both already report these live.
-        "energy", "current", "voltage");
+        "energy", "current", "voltage",
+        // D16 (Reporting Topics IA), Cowork ratification 2026-09-05: the
+        // real, exact Z2M expose names for the security_presence topic's
+        // three underlying signals -- confirmed live against z2m-motion_entry
+        // ("occupancy"), z2m-door_front_contact ("contact"), and
+        // z2m-leak_mech_room ("water_leak"). Deliberately these exact
+        // strings, not "motion"/"leak" -- matching every other entry in this
+        // vocabulary's own convention of using the real protocol field name
+        // verbatim, never a normalized synonym.
+        "occupancy", "contact", "water_leak");
 
     private D7MeasurementTypes() {}
 

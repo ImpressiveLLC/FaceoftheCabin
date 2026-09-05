@@ -12,7 +12,9 @@ import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceLifecycleAction;
+import com.cabin.orchestrator.devices.model.ReportingTopics;
 import com.cabin.orchestrator.integrations.zigbee.Zigbee2MqttAdapter;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -54,11 +56,32 @@ public class DeviceController {
      * set. Backs the frontend's chart-series/card-title lookups (bug #4) --
      * see JdbcDeviceReportingRelationshipRepository's own doc for why
      * display_label is never touched by the routine auto-observation path.
+     *
+     * reportsTo is additive -- @JsonUnwrapped keeps every DeviceReportingRelationship
+     * field a flat sibling in the same JSON object, same pattern as
+     * RulesController.WorkflowRuleView. Computed here, not on the domain
+     * record itself, because it needs the reporting device's DeviceType
+     * (ReportingTopics.topicFor()'s own doc explains why -- voltage/current
+     * resolve differently for a power meter than for a battery sensor's own
+     * diagnostic reading). A device missing from the registry (deleted/
+     * renamed since its relationship rows were confirmed) resolves reportsTo
+     * as absent rather than guessing a type.
      */
     @GetMapping("/reporting-relationships")
-    public Map<String, List<DeviceReportingRelationship>> reportingRelationships() {
-        return reportingRelationshipRepository.loadAll();
+    public Map<String, List<ReportingRelationshipView>> reportingRelationships() {
+        Map<String, List<DeviceReportingRelationship>> byDevice = reportingRelationshipRepository.loadAll();
+        Map<String, List<ReportingRelationshipView>> result = new LinkedHashMap<>();
+        for (var entry : byDevice.entrySet()) {
+            DeviceType type = registry.descriptor(entry.getKey()).map(DeviceDescriptor::type).orElse(null);
+            result.put(entry.getKey(), entry.getValue().stream()
+                .map(r -> new ReportingRelationshipView(r,
+                    type == null ? null : ReportingTopics.topicFor(r.measurementType(), type).orElse(null)))
+                .toList());
+        }
+        return result;
     }
+
+    public record ReportingRelationshipView(@JsonUnwrapped DeviceReportingRelationship relationship, String reportsTo) {}
 
     /**
      * D13's one explicit curation action -- sets (or, given a blank body value,

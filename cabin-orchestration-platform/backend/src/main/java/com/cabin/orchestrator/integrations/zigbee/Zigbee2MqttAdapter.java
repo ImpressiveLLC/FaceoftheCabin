@@ -413,6 +413,19 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     // so the two vocabularies could silently drift. Found while adding D15's
     // three new values; now there is exactly one place to extend.
 
+    // D16 (Reporting Topics IA), Cowork ratification 2026-09-05: motion/
+    // contact/leak service entities never existed at all before this --
+    // confirmed live no device_reporting_relationship row existed for any
+    // of z2m-motion_entry/z2m-door_front_contact/z2m-leak_mech_room's actual
+    // binary reading (only their incidental numeric battery/voltage rows
+    // did), because this method only ever captured "numeric" exposes.
+    // Deliberately scoped to exactly these three real, confirmed Z2M expose
+    // names (verified live 2026-09-05 against motion_entry/door_front_contact/
+    // leak_mech_room's own definition.exposes) -- not "every binary expose,"
+    // which would also sweep in battery_low, tamper, and other diagnostic
+    // booleans that aren't a security_presence signal.
+    private static final Set<String> BINARY_PRESENCE_FIELDS = Set.of("occupancy", "contact", "water_leak");
+
     private List<String> extractVendorReportedFields(JsonNode definition) {
         List<String> fields = new ArrayList<>();
         JsonNode exposes = definition.path("exposes");
@@ -433,7 +446,9 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         }
         String category = expose.path("category").asText("");
         String name = expose.path("name").asText("");
-        if ("numeric".equals(type) && !"config".equals(category) && D7MeasurementTypes.toMeasurementType(name).isPresent()) {
+        boolean recognizedNumeric = "numeric".equals(type) && !"config".equals(category);
+        boolean recognizedPresenceSignal = "binary".equals(type) && BINARY_PRESENCE_FIELDS.contains(name);
+        if ((recognizedNumeric || recognizedPresenceSignal) && D7MeasurementTypes.toMeasurementType(name).isPresent()) {
             fields.add(name);
         }
     }

@@ -119,7 +119,7 @@ class DeviceControllerTest {
         var result = controller.reportingRelationships().get("z2m-endpoint-test");
 
         assertEquals(1, result.size());
-        assertEquals("Kitchen Humidity", result.get(0).displayLabel());
+        assertEquals("Kitchen Humidity", result.get(0).relationship().displayLabel());
     }
 
     @Test
@@ -134,7 +134,48 @@ class DeviceControllerTest {
         assertEquals(org.springframework.http.HttpStatus.OK, result.getStatusCode());
         assertEquals(1, controller.reportingRelationships().get("z2m-endpoint-test-2").size());
         assertEquals("Kitchen Temperature",
-            controller.reportingRelationships().get("z2m-endpoint-test-2").get(0).displayLabel());
+            controller.reportingRelationships().get("z2m-endpoint-test-2").get(0).relationship().displayLabel());
+    }
+
+    // D16 (Reporting Topics IA), Cowork ratification 2026-09-05: reportsTo
+    // needs the reporting device's real DeviceType from the registry, not
+    // just the measurement_type -- this is the actual regression the fix
+    // closes (a door contact sensor's own battery voltage was wrongly
+    // tagged "energy" before this). Registered here as a real POWER_METER,
+    // matching the two real Third Reality smart plugs.
+    @Test
+    void reportsToResolvesEnergyForARealPowerMeterDevice() {
+        DeviceRegistry registry = new DeviceRegistry(List.of());
+        registry.registerCandidate(new DeviceDescriptor(
+            "z2m-heater_mech_room", "heater_mech_room", DeviceType.POWER_METER,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/heater_mech_room", true, "cabin"), Map.of());
+        DeviceController controller = newController(registry);
+        reportingRepositoryFor(controller).upsert(new com.cabin.orchestrator.devices.model.DeviceReportingRelationship(
+            "z2m-heater_mech_room", "voltage", "voltage",
+            com.cabin.orchestrator.devices.model.ConfirmationSource.VENDOR_SPEC, java.time.Instant.now()));
+
+        var result = controller.reportingRelationships().get("z2m-heater_mech_room").get(0);
+
+        assertEquals("energy", result.reportsTo());
+    }
+
+    // The exact live regression this fix closes: z2m-door_front_contact's
+    // own battery voltage reading, confirmed live 2026-09-05 to have been
+    // mislabeled reportsTo: "energy" before device-type gating existed.
+    @Test
+    void reportsToIsAbsentForVoltageFromANonPowerMeterDevice() {
+        DeviceRegistry registry = new DeviceRegistry(List.of());
+        registry.registerCandidate(new DeviceDescriptor(
+            "z2m-door_front_contact", "door_front_contact", DeviceType.CONTACT_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/door_front_contact", true, "cabin"), Map.of());
+        DeviceController controller = newController(registry);
+        reportingRepositoryFor(controller).upsert(new com.cabin.orchestrator.devices.model.DeviceReportingRelationship(
+            "z2m-door_front_contact", "voltage", "voltage",
+            com.cabin.orchestrator.devices.model.ConfirmationSource.VENDOR_SPEC, java.time.Instant.now()));
+
+        var result = controller.reportingRelationships().get("z2m-door_front_contact").get(0);
+
+        assertNull(result.reportsTo());
     }
 
     @Test
