@@ -106,6 +106,23 @@ cabin:
     # ever set in infra/.env on the actual host, never committed. Empty by
     # default = CRITICAL events still save to cabin_event, just no push.
     ntfyTopic: ${CABIN_ALERT_NTFY_TOPIC:}
+  vaultwarden:
+    # WSJF #9's real completion (2026-09-05) -- see VaultwardenOAuthCredentialStore's
+    # own javadoc for why this shells out to the official `bw` CLI rather
+    # than a raw REST client (cipher content is end-to-end encrypted
+    # client-side; an Organization API key alone can't decrypt it). All
+    # four unset by default -- SmartThings/Ring platform-import fails
+    # loudly (not silently) until an operator completes the one-time
+    # Vaultwarden Organization + API key setup documented in
+    # docs/MAINTENANCE.md's Vaultwarden section.
+    url: ${VAULTWARDEN_URL:}
+    clientId: ${VAULTWARDEN_CLIENT_ID:}
+    clientSecret: ${VAULTWARDEN_CLIENT_SECRET:}
+    # The Vaultwarden account's own master password -- distinct from the
+    # Organization API key above. The API key only bypasses 2FA for login;
+    # this is what the CLI actually needs to derive the decryption key for
+    # any cipher content (see the class javadoc's cited verification).
+    masterPassword: ${VAULTWARDEN_MASTER_PASSWORD:}
   techid:
     # Shared secret any Tech ID Service provider (this instance's own
     # scheduled Claude Code routine, an operator's paid scanning tier, or
