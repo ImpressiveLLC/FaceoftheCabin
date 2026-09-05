@@ -200,7 +200,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 JsonNode definition = device.path("definition");
                 Set<DeviceCapability> caps = inferCapabilities(definition);
                 DeviceType type = inferType(definition, caps);
-                List<String> vendorReportedFields = extractVendorReportedFields(definition);
+                List<String> vendorReportedFields = extractVendorReportedFields(definition, type);
 
                 DeviceDescriptor desc = new DeviceDescriptor(
                     deviceId,
@@ -419,35 +419,41 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     // of z2m-motion_entry/z2m-door_front_contact/z2m-leak_mech_room's actual
     // binary reading (only their incidental numeric battery/voltage rows
     // did), because this method only ever captured "numeric" exposes.
-    // Deliberately scoped to exactly these three real, confirmed Z2M expose
-    // names (verified live 2026-09-05 against motion_entry/door_front_contact/
-    // leak_mech_room's own definition.exposes) -- not "every binary expose,"
-    // which would also sweep in battery_low, tamper, and other diagnostic
-    // booleans that aren't a security_presence signal.
-    private static final Set<String> BINARY_PRESENCE_FIELDS = Set.of("occupancy", "contact", "water_leak");
+    // DeviceType-keyed, not bare-field-name-keyed, per Cowork's own
+    // refinement (same reasoning as the voltage/current device-context fix
+    // right below in the vocabulary comment): a field name alone isn't a
+    // safe signal on its own, so this only recognizes a device's binary
+    // presence reading when the device is actually classified as the
+    // matching DeviceType -- not "every binary expose named occupancy/
+    // contact/water_leak regardless of what kind of device sent it."
+    private static final Map<DeviceType, String> PRESENCE_FIELD_BY_DEVICE_TYPE = Map.of(
+        DeviceType.MOTION_SENSOR, "occupancy",
+        DeviceType.CONTACT_SENSOR, "contact",
+        DeviceType.WATER_LEAK_SENSOR, "water_leak"
+    );
 
-    private List<String> extractVendorReportedFields(JsonNode definition) {
+    private List<String> extractVendorReportedFields(JsonNode definition, DeviceType deviceType) {
         List<String> fields = new ArrayList<>();
         JsonNode exposes = definition.path("exposes");
         if (exposes.isArray()) {
-            for (JsonNode expose : exposes) collectVendorReportedFields(expose, fields);
+            for (JsonNode expose : exposes) collectVendorReportedFields(expose, fields, deviceType);
         }
         return fields;
     }
 
-    private void collectVendorReportedFields(JsonNode expose, List<String> fields) {
+    private void collectVendorReportedFields(JsonNode expose, List<String> fields, DeviceType deviceType) {
         String type = expose.path("type").asText("");
         if ("composite".equals(type)) {
             JsonNode features = expose.path("features");
             if (features.isArray()) {
-                for (JsonNode sub : features) collectVendorReportedFields(sub, fields);
+                for (JsonNode sub : features) collectVendorReportedFields(sub, fields, deviceType);
             }
             return;
         }
         String category = expose.path("category").asText("");
         String name = expose.path("name").asText("");
         boolean recognizedNumeric = "numeric".equals(type) && !"config".equals(category);
-        boolean recognizedPresenceSignal = "binary".equals(type) && BINARY_PRESENCE_FIELDS.contains(name);
+        boolean recognizedPresenceSignal = "binary".equals(type) && name.equals(PRESENCE_FIELD_BY_DEVICE_TYPE.get(deviceType));
         if ((recognizedNumeric || recognizedPresenceSignal) && D7MeasurementTypes.toMeasurementType(name).isPresent()) {
             fields.add(name);
         }
