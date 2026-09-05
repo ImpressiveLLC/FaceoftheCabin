@@ -3491,6 +3491,28 @@ elements:
       incident is what "camera_role_driveway" is about — the role kept
       failing, not the hardware.
 
+      Bootstrap mechanism, added 2026-09-05: these are battery-powered
+      Blink cameras with no continuous stream, so nothing above (Frigate,
+      mediamtx) has any frames to work with until blinkbridge's on-demand
+      liveview session is actually started — see BlinkLiveviewService and
+      BlinkMotionWebhookController's own javadoc for why that start signal
+      has to come from the phone's own Blink push notification (Blink's
+      motion/clip API is a confirmed dead end for this account) rather
+      than from Frigate detecting anything itself. Was phone-side
+      MacroDroid (adware-driven, required watching ads to keep working)
+      calling that webhook directly; replaced by
+      cabin_security_publish_blink_motion (infra/cabin-security/
+      homeassistant/cabin_security.yaml), an HA automation on the HA
+      Companion App's own Last Notification sensor, publishing to
+      MqttBridgeService's cabin/blink/motion topic instead. Covers both
+      Blink cameras on this account (driveway here, and
+      home_aldrich_front at the home location) since both share one
+      Blink app/notification stream on the one phone. This is a distinct
+      signal from trigger_blink_motion_detected below (Frigate re-
+      detecting motion once frames ARE flowing) — this one's only job is
+      waking the camera up in the first place, not itself a
+      user-configurable workflow trigger.
+
   - id: smart_appliance_fridge_liebherr
     entity_type: owl:Class
     layer: integration

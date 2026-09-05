@@ -7,6 +7,7 @@ import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.events.AlertSeverityClassifier;
 import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.integrations.cameras.BlinkLiveviewService;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
@@ -47,6 +48,13 @@ import java.util.*;
  *                                         state (see handleArmedTopic) —
  *                                         the other location-agnostic
  *                                         subscription, same reasoning.
+ *   cabin/kidde/co_alarm               — "ON"/"OFF", real HA-published
+ *                                         push bridge (see
+ *                                         handleKiddeCoAlarmTopic).
+ *   cabin/blink/motion                 — plain camera name, real
+ *                                         HA-published push bridge,
+ *                                         deliberately NOT retained (see
+ *                                         handleBlinkMotionTopic).
  */
 @Service
 public class MqttBridgeService implements MqttCallback {
@@ -66,18 +74,21 @@ public class MqttBridgeService implements MqttCallback {
     private final PresenceSignalRegistry presenceSignalRegistry;
     private final SecurityStateRegistry securityStateRegistry;
     private final FrigateEventReconciliationService frigateReconciliation;
+    private final BlinkLiveviewService blinkLiveviewService;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     public MqttBridgeService(DeviceRegistry registry, EventPublisher eventPublisher,
                               PresenceService presenceService, PresenceSignalRegistry presenceSignalRegistry,
                               SecurityStateRegistry securityStateRegistry,
-                              FrigateEventReconciliationService frigateReconciliation) {
+                              FrigateEventReconciliationService frigateReconciliation,
+                              BlinkLiveviewService blinkLiveviewService) {
         this.registry = registry;
         this.eventPublisher = eventPublisher;
         this.presenceService = presenceService;
         this.presenceSignalRegistry = presenceSignalRegistry;
         this.securityStateRegistry = securityStateRegistry;
         this.frigateReconciliation = frigateReconciliation;
+        this.blinkLiveviewService = blinkLiveviewService;
     }
 
     @PostConstruct
@@ -129,6 +140,18 @@ public class MqttBridgeService implements MqttCallback {
             // device on this instance today, not a per-location family of
             // topics.
             client.subscribe("cabin/kidde/co_alarm", 1);
+            // Added 2026-09-05 -- real push bridge replacing the phone-side
+            // MacroDroid listener (adware-driven, required watching ads to
+            // keep working) that used to call BlinkMotionWebhookController's
+            // HTTP endpoint directly. New source: an HA automation
+            // (infra/cabin-security/homeassistant/cabin_security.yaml,
+            // cabin_security_publish_blink_motion) watching the HA Companion
+            // App's own Last Notification sensor for the Blink app, through
+            // the same allow-listed shell_command as the topics above. Not
+            // wildcarded -- exactly one bridge-wide topic carries the
+            // camera name in its payload (see handleBlinkMotionTopic), same
+            // reasoning as Kidde's single fixed topic.
+            client.subscribe("cabin/blink/motion", 1);
             log.info("MQTT bridge connected to {}", brokerUrl);
         } catch (MqttException e) {
             log.error("MQTT connect failed: {}", e.getMessage());
@@ -167,6 +190,25 @@ public class MqttBridgeService implements MqttCallback {
             if ("cabin/kidde/co_alarm".equals(topic)) {
                 // Plain text ("ON"/"OFF"), same reasoning as armed_away above.
                 handleKiddeCoAlarmTopic(payload);
+                return;
+            }
+
+            if ("cabin/blink/motion".equals(topic)) {
+                // Plain text camera name, deliberately never retained on
+                // publish (see handleBlinkMotionTopic's own doc) -- but
+                // guard here too in case a future misconfiguration of the
+                // publish script ever re-enables retain for this topic.
+                // Replaying a stale "motion happened" message on our own
+                // restart/resubscribe would incorrectly re-open a liveview
+                // session for a notification that may be long over --
+                // exactly the retained-message mistake
+                // Zigbee2MqttAdapter.messageArrived() made before it started
+                // checking message.isRetained().
+                if (message.isRetained()) {
+                    log.debug("Ignoring retained cabin/blink/motion message (stale replay, not a live event): {}", payload);
+                    return;
+                }
+                handleBlinkMotionTopic(payload);
                 return;
             }
 
@@ -396,6 +438,51 @@ public class MqttBridgeService implements MqttCallback {
         eventPublisher.publish(new CabinEvent(
             UUID.randomUUID().toString(), "kidde-co-alarm", "KIDDE_CO_ALARM_CHANGED",
             alarm ? "CRITICAL" : "INFO", Instant.now(), Map.of("alarm", alarm)));
+    }
+
+    /**
+     * cabin/blink/motion -- plain text camera name (one of
+     * BlinkLiveviewService.blinkCameraMap()'s own keys, e.g. "driveway" /
+     * "home_aldrich_front"), published by the new
+     * cabin_security_publish_blink_motion HA automation watching the HA
+     * Companion App's own Last Notification sensor for the Blink app.
+     * Replaces the phone-side MacroDroid listener that used to call
+     * BlinkMotionWebhookController's HTTP endpoint directly -- that
+     * endpoint still exists and still works (manual/fallback trigger,
+     * "start" is idempotent per BlinkLiveviewService's own doc), it just
+     * isn't the primary path anymore.
+     *
+     * This is a distinct signal from MOTION_ON/trigger_blink_motion_detected
+     * (Frigate re-detecting motion on the relayed stream once frames are
+     * flowing) -- this one is Blink's OWN cloud-side detection, arriving via
+     * the phone's push notification because Blink's motion/clip API is a
+     * confirmed dead end for this account (see BlinkMotionWebhookController's
+     * javadoc). Its actual job is to bootstrap the on-demand liveview
+     * session in the first place: these are battery-powered Blink cameras
+     * with no continuous stream, so Frigate has nothing to detect motion IN
+     * until something starts that session. Not wired into
+     * WorkflowRuleService as a trigger -- unlike Kidde's CO alarm, there's
+     * no user-configurable "what should happen" question here, only "wake
+     * the camera up," exactly matching the single, fixed action the
+     * replaced webhook always performed.
+     *
+     * Deliberately BLINK_PUSH_MOTION_DETECTED, not MOTION_ON -- conflating
+     * "Blink's cloud said motion happened" with "Frigate saw motion in the
+     * relayed stream" would blur two materially different claims the same
+     * way D13/D16 already learned not to for CO/CO2 and the OCCUPANCY
+     * naming trap.
+     */
+    private void handleBlinkMotionTopic(String payload) {
+        String camera = payload.trim();
+        if (!blinkLiveviewService.blinkCameraMap().containsKey(camera)) {
+            log.warn("Blink motion push for unrecognized camera '{}' -- ignoring", camera);
+            return;
+        }
+        BlinkLiveviewService.Result result = blinkLiveviewService.start(camera);
+        log.info("Blink motion push (HA notification bridge) triggered liveview start for {}: ok={}", camera, result.ok());
+        eventPublisher.publish(new CabinEvent(
+            UUID.randomUUID().toString(), "blink-" + camera, "BLINK_PUSH_MOTION_DETECTED",
+            "INFO", Instant.now(), Map.of("camera", camera, "liveviewStarted", result.ok())));
     }
 
     /**

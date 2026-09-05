@@ -25,7 +25,30 @@ ALLOWED = {
     # HA state string, so cabin-backend's MqttBridgeService subscriber
     # doesn't need to know that string either.
     "cabin/kidde/co_alarm": {"ON", "OFF"},
+    # Added 2026-09-05 -- replaces the phone-side MacroDroid listener
+    # (adware-driven, required watching ads to keep working) that used to
+    # call BlinkMotionWebhookController's HTTP endpoint directly. Payload
+    # is the camera name (BlinkLiveviewService's own blinkCameraMap key,
+    # not the Blink app's own device name) -- see
+    # cabin_security_publish_blink_motion in cabin_security.yaml for the
+    # HA automation that resolves a Last-Notification-sensor hit into one
+    # of these two exact strings. Allow-list is a real safety gate here,
+    # same as everywhere else in this file: the automation's own template
+    # logic could have a bug, but it can never publish a camera name this
+    # script doesn't already know is real.
+    "cabin/blink/motion": {"driveway", "home_aldrich_front"},
 }
+
+# A motion notification is a one-off EVENT, not ongoing state, unlike every
+# other topic above (armed/presence/Kidde's alarm, which genuinely persist
+# until something changes them and are retained so a reconnecting
+# subscriber gets the current value immediately). Retaining an event
+# topic would mean cabin-backend's own MqttBridgeService restart/resubscribe
+# replays "motion happened" as if it just did -- exactly the retained-
+# message mistake this project's own Zigbee2MqttAdapter made before it
+# started checking message.isRetained(). Anything not listed here defaults
+# to the original, unchanged retain=True behavior.
+NOT_RETAINED = {"cabin/blink/motion"}
 
 
 def main() -> int:
@@ -40,7 +63,7 @@ def main() -> int:
         topic,
         payload=payload,
         qos=1,
-        retain=True,
+        retain=topic not in NOT_RETAINED,
         hostname="127.0.0.1",
         port=1883,
         client_id="homeassistant-cabin-security",

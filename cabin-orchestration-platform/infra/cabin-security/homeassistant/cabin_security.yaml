@@ -56,6 +56,90 @@ automation:
           topic: cabin/kidde/co_alarm
           payload: "{{ 'ON' if is_state('binary_sensor.living_room_kidde_co_temp_and_humidity_cabin_upstairs_co_alarm', 'on') else 'OFF' }}"
 
+  # Added 2026-09-05 -- replaces the phone-side MacroDroid listener
+  # (adware-driven, required watching ads to keep working) that used to
+  # call BlinkMotionWebhookController's HTTP endpoint directly. Source:
+  # the HA Companion App's own "Last Notification" sensor -- enable it via
+  # the Companion App's own Settings -> Manage Sensors -> Last Notification
+  # (add the Blink app to its "Allowed apps" list there), and grant the
+  # Companion App "Notification access" under Android Settings first, or
+  # the sensor never updates at all.
+  #
+  # PLACEHOLDER, same as every other entity id in this file per its own
+  # README -- replace sensor.REPLACE_WITH_YOUR_PHONE_last_notification with
+  # this phone's real entity id (Developer Tools -> States, after enabling
+  # the sensor above; it's phone-model-specific, e.g.
+  # sensor.pixel_8_last_notification). Also verify the attribute names
+  # below (android.package/android.title/android.text/android.bigText) are
+  # what community docs describe as of this writing -- confirm the real
+  # sensor's attributes in Developer Tools -> States before trusting this
+  # blindly, since HA's Companion App has changed this shape before.
+  #
+  # KNOWN LIMITATION, confirmed against HA's own GitHub issue tracker: if
+  # two notifications from the same app arrive back-to-back with identical
+  # text before the first is dismissed, this sensor's state doesn't change
+  # and won't re-fire. Worth checking Blink's real notification text (it
+  # may already vary per event, e.g. a timestamp) before assuming this is
+  # a real gap in practice, not just a theoretical one.
+  #
+  # mode: queued (not restart, unlike every automation above) -- those are
+  # ongoing STATE republishers where only the latest value matters; this is
+  # a discrete EVENT, so a second motion notification arriving while this
+  # is still running must still be processed, not cancelled.
+  - id: cabin_security_publish_blink_motion
+    alias: Cabin Security - Publish Blink Motion (from phone notification)
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: sensor.REPLACE_WITH_YOUR_PHONE_last_notification
+    conditions:
+      # Defense in depth -- correct even if "Allowed apps" above is ever
+      # left broader than just Blink for some other use.
+      - condition: template
+        value_template: >-
+          {{ trigger.to_state.attributes.get('android.package') == 'com.immediasemi.android.blink' }}
+    actions:
+      - variables:
+          # Concatenates every text-bearing attribute Blink's notification
+          # might use rather than betting on exactly one field -- a
+          # substring match below is robust to not knowing Blink's exact
+          # notification wording.
+          notification_text: >-
+            {{ (trigger.to_state.attributes.get('android.title', '') ~ ' ' ~
+                trigger.to_state.attributes.get('android.text', '') ~ ' ' ~
+                trigger.to_state.attributes.get('android.bigText', '')) }}
+      - choose:
+          # cameraName "driveway" -> Blink's own device name "Outdoor 4 -
+          # DHEE" (see BLINK_CAMERA_MAP in docker-compose.m920q.yml).
+          - conditions:
+              - condition: template
+                value_template: "{{ 'Outdoor 4' in notification_text or 'DHEE' in notification_text }}"
+            sequence:
+              - action: shell_command.cabin_security_publish
+                data:
+                  topic: cabin/blink/motion
+                  payload: "driveway"
+          # cameraName "home_aldrich_front" -> Blink's own device name
+          # "AldrichFront".
+          - conditions:
+              - condition: template
+                value_template: "{{ 'AldrichFront' in notification_text }}"
+            sequence:
+              - action: shell_command.cabin_security_publish
+                data:
+                  topic: cabin/blink/motion
+                  payload: "home_aldrich_front"
+        default:
+          # Don't silently drop an unmatched Blink notification -- a third
+          # camera added later, or a non-motion Blink notification (e.g. a
+          # low-battery alert) that this automation was never meant to act
+          # on, should be visible for review, not invisible.
+          - action: logbook.log
+            data:
+              name: Cabin Security
+              message: >-
+                Blink notification didn't match a known camera name: "{{ notification_text }}"
+
   - id: cabin_security_publish_state_at_startup
     alias: Cabin Security - Publish State At Startup
     mode: single

@@ -5,6 +5,7 @@ import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
+import com.cabin.orchestrator.integrations.cameras.BlinkLiveviewService;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceProfile;
 import com.cabin.orchestrator.presence.PresenceService;
@@ -26,7 +27,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Regression coverage for the 2026-08-07 finding: handleCameraTopic()
@@ -75,6 +78,7 @@ class MqttBridgeServiceTest {
     private SecurityStateRegistry securityStateRegistry;
     private EventPublisher eventPublisher;
     private CabinEventService eventService;
+    private BlinkLiveviewService blinkLiveviewService;
     private MqttBridgeService bridge;
 
     @BeforeEach
@@ -95,8 +99,11 @@ class MqttBridgeServiceTest {
         // for coverage of the REST fetch/cursor/health side.
         FrigateEventReconciliationService frigateReconciliation =
             new FrigateEventReconciliationService(eventService, registry, "http://unused:0", 5, 300, 200);
+        blinkLiveviewService = mock(BlinkLiveviewService.class);
+        when(blinkLiveviewService.blinkCameraMap()).thenReturn(Map.of(
+            "driveway", "Outdoor 4 - DHEE", "home_aldrich_front", "AldrichFront"));
         bridge = new MqttBridgeService(registry, eventPublisher, presenceService, presenceSignalRegistry,
-            securityStateRegistry, frigateReconciliation);
+            securityStateRegistry, frigateReconciliation, blinkLiveviewService);
     }
 
     private void deliver(String topic, String payload) throws Exception {
@@ -406,5 +413,48 @@ class MqttBridgeServiceTest {
         ArgumentCaptor<CabinEvent> captor = ArgumentCaptor.forClass(CabinEvent.class);
         verify(eventPublisher).publish(captor.capture());
         assertEquals(Boolean.FALSE, captor.getValue().payload().get("present"));
+    }
+
+    // 2026-09-05 -- real push bridge replacing the phone-side MacroDroid
+    // listener (see MqttBridgeService.handleBlinkMotionTopic's own javadoc).
+
+    @Test
+    void blinkMotionTopicStartsLiveviewForAKnownCameraAndPublishesAnEvent() throws Exception {
+        when(blinkLiveviewService.start("driveway"))
+            .thenReturn(new BlinkLiveviewService.Result(true, false, 200, "ok", null));
+
+        deliver("cabin/blink/motion", "driveway");
+
+        verify(blinkLiveviewService).start("driveway");
+        ArgumentCaptor<CabinEvent> captor = ArgumentCaptor.forClass(CabinEvent.class);
+        verify(eventPublisher).publish(captor.capture());
+        CabinEvent event = captor.getValue();
+        assertEquals("BLINK_PUSH_MOTION_DETECTED", event.eventType());
+        assertEquals("INFO", event.severity());
+        assertEquals("driveway", event.payload().get("camera"));
+        assertEquals(Boolean.TRUE, event.payload().get("liveviewStarted"));
+    }
+
+    @Test
+    void blinkMotionTopicIgnoresAnUnrecognizedCameraWithoutStartingAnyLiveview() throws Exception {
+        deliver("cabin/blink/motion", "some_camera_not_in_the_map");
+
+        verify(blinkLiveviewService, never()).start(org.mockito.ArgumentMatchers.anyString());
+        verify(eventPublisher, never()).publish(org.mockito.ArgumentMatchers.any());
+    }
+
+    // The exact retained-message mistake Zigbee2MqttAdapter made before it
+    // started checking message.isRetained() -- a motion notification is a
+    // one-off event, not ongoing state, so a broker replay on our own
+    // resubscribe/restart must never re-trigger a liveview start.
+    @Test
+    void retainedBlinkMotionMessageIsIgnoredEvenForAKnownCamera() throws Exception {
+        MqttMessage retained = new MqttMessage("driveway".getBytes());
+        retained.setRetained(true);
+
+        bridge.messageArrived("cabin/blink/motion", retained);
+
+        verify(blinkLiveviewService, never()).start(org.mockito.ArgumentMatchers.anyString());
+        verify(eventPublisher, never()).publish(org.mockito.ArgumentMatchers.any());
     }
 }

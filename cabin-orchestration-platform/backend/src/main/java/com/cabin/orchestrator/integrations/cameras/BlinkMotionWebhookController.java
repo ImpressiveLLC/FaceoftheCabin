@@ -21,9 +21,20 @@ import java.util.Map;
  * in Blink's backend, invisible to any client API. The one channel that
  * DOES reliably fire for every real motion event is the phone's own Blink
  * push notification, so this endpoint lets a notification-listener
- * automation on the phone (e.g. Tasker/MacroDroid watching for the Blink
- * app's notification) call straight through to blinkbridge's proven-working
- * manual liveview trigger -- see BlinkLiveviewService.
+ * automation on the phone call straight through to blinkbridge's
+ * proven-working manual liveview trigger -- see BlinkLiveviewService.
+ *
+ * 2026-09-05: no longer the primary path. The phone-side listener used to
+ * be MacroDroid (adware-driven, required watching ads to keep working);
+ * replaced by MqttBridgeService's cabin/blink/motion bridge, sourced from
+ * the HA Companion App's own Last Notification sensor instead of a
+ * third-party automation app -- see that class's own javadoc and
+ * infra/cabin-security/homeassistant/cabin_security.yaml's
+ * cabin_security_publish_blink_motion automation. This endpoint is kept,
+ * unchanged, as a manual/fallback trigger (e.g. a direct curl to force a
+ * liveview open without waiting for a real motion event) -- "start" is
+ * idempotent per BlinkLiveviewService's own doc, so both paths calling it
+ * is harmless.
  *
  * Deliberately NOT under /api/camera/** -- that prefix requires a Google
  * user token (WebConfig), which an unattended phone automation can't
