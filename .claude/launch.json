@@ -7,7 +7,7 @@
       "runtimeArgs": ["run", "dev"],
       "port": 5173,
       "autoPort": true,
-      "cwd": "C:/dev/FaceoftheCabin/cabin-orchestration-platform/ui"
+      "cwd": "C:/Users/nhsmr/Documents/Resume and work/work/FaceoftheCabin-current-main-20260818/cabin-orchestration-platform/ui"
     }
   ]
 }

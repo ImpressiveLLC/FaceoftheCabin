@@ -517,6 +517,32 @@ body {
 .sensor-history-legend-item { display: inline-flex; align-items: center; gap: 4px; }
 .sensor-history-legend-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 
+/* D16 Topic tab-strip (added 2026-09-05) -- the picker's only navigation
+   layer, replacing what would otherwise be a raw dropdown of 15+
+   measurement_types. Same pill-row convention as .sensor-history-device-chip
+   above, just horizontal-tab semantics (role="tab"/aria-selected) instead of
+   a multi-select toggle. */
+.sensor-history-topic-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.sensor-history-topic-tab {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sensor-history-topic-tab.active { border-color: #1f6feb; background: #131a24; color: var(--text); }
+.sensor-history-topic-tab:disabled { color: var(--text-dim); opacity: 0.5; cursor: not-allowed; }
+.sensor-history-topic-soon { margin-left: 6px; font-size: 9px; vertical-align: middle; }
+.sensor-history-alert-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.sensor-history-alert-item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.sensor-history-alert-item.severity-critical { border-color: #f85149; }
+.sensor-history-alert-item.severity-warn { border-color: #d29922; }
+.sensor-history-alert-severity { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); }
+.sensor-history-alert-title { color: var(--text); }
+.sensor-history-alert-detail { color: var(--text-dim); font-size: 11px; }
+
 /* ─── Event Log ─────────────────────────────────────────────────────────── */
 .event-log {
   background: #0d1117;

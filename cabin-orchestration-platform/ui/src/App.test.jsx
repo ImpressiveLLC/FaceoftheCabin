@@ -519,6 +519,119 @@ describe("SensorHistoryPanel", () => {
 
     expect(await screen.findByText(/how many individual readings were averaged/i)).toBeTruthy();
   });
+
+  // D16 (Reporting Topics IA, ratified 2026-09-05): the field/measurement
+  // dropdown alone risked becoming a sprawling 15+-item list as the platform
+  // grows -- the Topic tab-strip is the resolution, a fixed 5-tab layer
+  // above the (now per-Topic-scoped) Field picker, 1:1 with the ratified
+  // Topic table.
+  describe("D16 Topic tab-strip", () => {
+    it("renders all five ratified Topics, defaults to Comfort & Air, and disables Occupancy as coming soon", async () => {
+      vi.stubGlobal("fetch", reportedFieldsFetch(sensors));
+      render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+
+      await screen.findByRole("tab", { name: /comfort & air/i });
+      expect(screen.getByRole("tab", { name: /comfort & air/i }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.getByRole("tab", { name: /security & presence/i })).toBeTruthy();
+      expect(screen.getByRole("tab", { name: /^energy$/i })).toBeTruthy();
+      expect(screen.getByRole("tab", { name: /alert history/i })).toBeTruthy();
+      expect(screen.getByRole("tab", { name: /occupancy/i }).disabled).toBe(true);
+      // Unchanged pre-D16 behavior: Comfort & Air's own default field is still Humidity.
+      expect(screen.getByLabelText(/^field$/i).value).toBe("humidity");
+    });
+
+    it("clicking a Topic with no chartable fields at this location shows an honest empty state, not a blank picker", async () => {
+      vi.stubGlobal("fetch", reportedFieldsFetch(sensors)); // sensors only report humidity/temperature (comfort_air)
+      render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+      await screen.findByRole("tab", { name: /comfort & air/i });
+
+      fireEvent.click(screen.getByRole("tab", { name: /security & presence/i }));
+
+      expect(await screen.findByText(/no chartable trend history yet for security & presence/i)).toBeTruthy();
+      expect(screen.queryByLabelText(/^field$/i)).toBeNull();
+    });
+
+    // D15/D16: voltage/current are the one pair genuinely gated on the
+    // reporting device's own DeviceType (POWER_METER only) -- everything
+    // else in TOPIC_BY_FIELD is unconditional. This is the live regression
+    // D16 fixed (a contact sensor's own battery voltage previously showed
+    // up mislabeled as Energy) expressed as a Topic-tab test.
+    it("Energy tab offers Power/Energy/Voltage/Current, but a battery-powered sensor's own voltage stays out of the device list", async () => {
+      const powerMeter = { deviceId: "z2m-heater", name: "Heater", type: "POWER_METER", state: "ONLINE", location: "cabin",
+        attributes: { enabled: true, reportsFields: ["power", "energy", "voltage", "current"] } };
+      const batterySensor = { deviceId: "z2m-door", name: "Door", type: "CONTACT_SENSOR", state: "ONLINE", location: "cabin",
+        attributes: { enabled: true, reportsFields: ["voltage"] } };
+      const fieldsMap = { "z2m-heater": ["power", "energy", "voltage", "current"], "z2m-door": ["voltage"] };
+      const reportingRelationships = {
+        "z2m-heater": [
+          { semanticField: "power", reportsTo: "energy" },
+          { semanticField: "energy", reportsTo: "energy" },
+          { semanticField: "voltage", reportsTo: "energy" },
+          { semanticField: "current", reportsTo: "energy" },
+        ],
+        "z2m-door": [{ semanticField: "voltage", reportsTo: null }],
+      };
+      vi.stubGlobal("fetch", vi.fn((url) => {
+        if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => fieldsMap });
+        if (url.includes("/reporting-relationships")) return Promise.resolve({ ok: true, json: async () => reportingRelationships });
+        return Promise.resolve({ ok: true, json: async () => [] });
+      }));
+      render(<SensorHistoryPanel devices={[powerMeter, batterySensor]} apiBase="http://cabin" tempUnit="F" />);
+      await screen.findByRole("tab", { name: /^energy$/i });
+
+      fireEvent.click(screen.getByRole("tab", { name: /^energy$/i }));
+
+      const fieldSelect = await screen.findByLabelText(/^field$/i);
+      expect(within(fieldSelect).getByText("Power")).toBeTruthy();
+      expect(within(fieldSelect).getByText("Voltage")).toBeTruthy();
+      // Defaults to Power (first Energy field) -- only the real power meter reports it.
+      expect(screen.getByRole("button", { name: "Heater" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Door" })).toBeNull();
+
+      fireEvent.change(fieldSelect, { target: { value: "voltage" } });
+      await waitFor(() => expect(screen.getByRole("button", { name: "Heater" }).className).toContain("selected"));
+      // The battery sensor also emits a raw "voltage" reading, but its
+      // reporting-relationship resolves no Topic for it (not a POWER_METER)
+      // -- it must never appear as a selectable device under Energy.
+      expect(screen.queryByRole("button", { name: "Door" })).toBeNull();
+    });
+
+    it("Alert History tab shows currently active alerts from GET /api/alerts/active", async () => {
+      const activeAlertsSnapshot = {
+        generatedAt: "2026-09-05T12:00:00Z",
+        alerts: [
+          { alertId: "a1", sourceDeviceId: "leak_mech_room", sourceName: "Mech Room Leak", location: "cabin",
+            condition: "water_leak", severity: "CRITICAL", evidenceAt: "2026-09-05T11:55:00Z",
+            title: "Water leak detected", detail: "Leak sensor tripped" },
+        ],
+        counts: { CRITICAL: 1 },
+      };
+      const fieldsMap = Object.fromEntries(sensors.map(d => [d.deviceId, d.attributes.reportsFields]));
+      vi.stubGlobal("fetch", vi.fn((url) => {
+        if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => fieldsMap });
+        if (url.includes("/alerts/active")) return Promise.resolve({ ok: true, json: async () => activeAlertsSnapshot });
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }));
+      render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+      await screen.findByRole("tab", { name: /alert history/i });
+
+      fireEvent.click(screen.getByRole("tab", { name: /alert history/i }));
+
+      expect(await screen.findByText(/water leak detected/i)).toBeTruthy();
+      expect(screen.getByText("CRITICAL")).toBeTruthy();
+    });
+
+    it("Occupancy tab cannot be selected and shows the Sprint 5 not-yet-built note if reached", async () => {
+      vi.stubGlobal("fetch", reportedFieldsFetch(sensors));
+      render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
+      const occupancyTab = await screen.findByRole("tab", { name: /occupancy/i });
+
+      fireEvent.click(occupancyTab); // disabled -- must not change the active topic
+
+      expect(occupancyTab.getAttribute("aria-selected")).toBe("false");
+      expect(screen.queryByText(/sprint 5 design work/i)).toBeNull();
+    });
+  });
 });
 
 describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)", () => {

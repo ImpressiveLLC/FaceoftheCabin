@@ -3821,6 +3821,39 @@ const SENSOR_HISTORY_COLORS = ["#58a6ff", "#3fb950", "#f0883e", "#f85149", "#a37
 
 const SENSOR_HISTORY_KNOWN_FIELDS = new Set(SENSOR_FIELD_OPTIONS.map(o => o.value));
 
+// D16 (Reporting Topics IA, ratified 2026-09-05): the Topic picker is the
+// only navigation layer -- no dropdown of raw measurement_types. This is a
+// direct mirror of the backend's own ReportingTopics.UNAMBIGUOUS_BY_MEASUREMENT_TYPE
+// (topicFor()'s non-gated branch), same pattern already used for
+// SENSOR_FIELD_UNITS above -- safe to hardcode because these seven fields are
+// topic-unconditional and ratified, not a guess. voltage/current are
+// deliberately absent here: they're the one pair D16 gates on the reporting
+// device's own DeviceType (POWER_METER only), which only the backend can
+// resolve (see topicForDeviceField below, which asks
+// /api/devices/reporting-relationships's own computed reportsTo for exactly
+// these two). security_presence's own fields (occupancy/contact/water_leak)
+// have no entry in SENSOR_FIELD_OPTIONS at all -- they're binary state
+// changes, not day-bucketed numeric history this panel's chart can render.
+const TOPIC_BY_FIELD = {
+  temperature: "comfort_air", humidity: "comfort_air", co: "comfort_air",
+  co2: "comfort_air", airQualityIndex: "comfort_air",
+  power: "energy", energy: "energy",
+};
+const DEVICE_TYPE_GATED_FIELDS = new Set(["voltage", "current"]);
+
+// Five Topics, same order and reports_to[] values as the ratified D16
+// section -- alert_history and occupancy are deliberately not per-service
+// assignments (pure computed views, Cowork-ratified 2026-09-05), so they
+// never appear in TOPIC_BY_FIELD; they get their own render branch below
+// instead of the field/chart UI the other three share.
+const REPORTING_TOPICS = [
+  { id: "comfort_air", label: "Comfort & Air" },
+  { id: "security_presence", label: "Security & Presence" },
+  { id: "energy", label: "Energy" },
+  { id: "alert_history", label: "Alert History" },
+  { id: "occupancy", label: "Occupancy", comingSoon: true },
+];
+
 // 2026-08-27: redesigned from a single-device/single-field picker into a
 // field-first, multi-device chart -- the user's own two-step request: (1)
 // pick a field (e.g. Humidity) and see every device that actually reports
@@ -3888,13 +3921,32 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
   const realFieldsFor = (device) =>
     (reportedFields[device.deviceId] || []).filter(f => SENSOR_HISTORY_KNOWN_FIELDS.has(f));
 
+  // Resolves which of the five D16 Topics a given (device, field) pair
+  // belongs to. Unconditional fields resolve from the static, ratified
+  // TOPIC_BY_FIELD mirror above with no network dependency; voltage/current
+  // are the one pair that genuinely needs the reporting device's own
+  // DeviceType, which only the backend's ReportingTopics.topicFor() can
+  // resolve -- ask reporting-relationships' own computed reportsTo for
+  // those two specifically rather than guessing here.
+  const topicForDeviceField = (deviceId, fieldValue) => {
+    if (TOPIC_BY_FIELD[fieldValue]) return TOPIC_BY_FIELD[fieldValue];
+    if (DEVICE_TYPE_GATED_FIELDS.has(fieldValue)) {
+      return (reportingRelationships[deviceId] || []).find(r => r.semanticField === fieldValue)?.reportsTo ?? null;
+    }
+    return null;
+  };
+
   const sensors = devices.filter(d => d.attributes?.enabled !== false && realFieldsFor(d).length > 0);
-  const availableFields = SENSOR_FIELD_OPTIONS.filter(o =>
-    sensors.some(d => realFieldsFor(d).includes(o.value)));
+  const fieldsForTopic = (t) => SENSOR_FIELD_OPTIONS.filter(o =>
+    sensors.some(d => realFieldsFor(d).includes(o.value) && topicForDeviceField(d.deviceId, o.value) === t));
+
+  const [topic, setTopic] = useState("comfort_air");
+  const availableFields = fieldsForTopic(topic);
   const [field, setField] = useState(availableFields[0]?.value || "temperature");
   const [selectedIds, setSelectedIds] = useState([]);
   const readyRef = useRef(false);
   const lastAppliedField = useRef(null);
+  const lastAppliedTopic = useRef(topic);
 
   // One-time correction, done directly during render (not in a useEffect)
   // the moment real data first becomes available -- committing the true
@@ -3926,29 +3978,76 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
     const firstField = availableFields[0].value;
     lastAppliedField.current = firstField;
     if (field !== firstField) setField(firstField);
-    setSelectedIds(sensors.filter(d => realFieldsFor(d).includes(firstField)).map(d => d.deviceId));
+    setSelectedIds(sensors.filter(d => realFieldsFor(d).includes(firstField)
+      && topicForDeviceField(d.deviceId, firstField) === topic).map(d => d.deviceId));
   }
-  const fieldDevices = sensors.filter(d => realFieldsFor(d).includes(field));
+  const fieldDevices = sensors.filter(d => realFieldsFor(d).includes(field)
+    && topicForDeviceField(d.deviceId, field) === topic);
+
+  // Switching Topic tabs re-scopes straight to that Topic's own first field
+  // (or none, for Security & Presence/Alert History/Occupancy -- see the
+  // render branch below, none of which use the field/chart UI at all) --
+  // same "select every device that reports it" default as the field-change
+  // effect right after it, just one layer up. Plain effect (not the
+  // render-body hack above) is correct here: that hack exists only for the
+  // very first paint racing a test's immediate action, and a topic switch
+  // is always a later, user-initiated action, exactly like a manual field
+  // change already was before this Topic layer existed.
+  useEffect(() => {
+    if (lastAppliedTopic.current === topic) return;
+    lastAppliedTopic.current = topic;
+    const fields = fieldsForTopic(topic);
+    const nextField = fields[0]?.value ?? null;
+    lastAppliedField.current = nextField;
+    setField(nextField);
+    setSelectedIds(nextField
+      ? sensors.filter(d => realFieldsFor(d).includes(nextField) && topicForDeviceField(d.deviceId, nextField) === topic).map(d => d.deviceId)
+      : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topic]);
 
   // Keeps `selectedIds` in sync whenever `field` actually changes after
   // the initial correction above -- i.e. a manual switch via the
   // dropdown -- resetting to every device that reports the new field
   // ("select all" as the default, same reasoning as the initial
   // correction). lastAppliedField's guard means this never redundantly
-  // re-fires for a field the render-phase block (or a previous run of
-  // this same effect) already applied, so a routine devices poll or an
-  // unrelated new device/field appearing never wipes a manually
-  // customized selection out from under the person using it.
+  // re-fires for a field the render-phase block, the topic-switch effect,
+  // or a previous run of this same effect already applied, so a routine
+  // devices poll or an unrelated new device/field appearing never wipes a
+  // manually customized selection out from under the person using it.
   useEffect(() => {
     if (lastAppliedField.current === field) return;
     lastAppliedField.current = field;
-    setSelectedIds(sensors.filter(d => realFieldsFor(d).includes(field)).map(d => d.deviceId));
+    setSelectedIds(field
+      ? sensors.filter(d => realFieldsFor(d).includes(field) && topicForDeviceField(d.deviceId, field) === topic).map(d => d.deviceId)
+      : []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [field]);
 
   const [days, setDays] = useState(30);
   const [seriesByDevice, setSeriesByDevice] = useState({});
   const [loading, setLoading] = useState(false);
+
+  // Alert History (D16): "a view over the alert event log (all types)" --
+  // Cowork-ratified 2026-09-05 as a pure computed view, not a per-service
+  // reports_to[] assignment, so it doesn't share any of the field/chart
+  // machinery above. No dedicated alert-history endpoint exists yet
+  // (docs/ontology.yaml's event_severity notes this as future work), so this
+  // tab surfaces the real, already-shipped GET /api/alerts/active snapshot --
+  // current active alerts, not a full historical log -- rather than
+  // fabricating a page this app doesn't have. Fetched lazily, only while
+  // this tab is actually open, since the nav rail already polls the same
+  // endpoint for its own badges.
+  const [activeAlerts, setActiveAlerts] = useState(null);
+  useEffect(() => {
+    if (topic !== "alert_history") return;
+    let cancelled = false;
+    authedFetch(`${apiBase}/api/alerts/active`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setActiveAlerts(Array.isArray(data?.alerts) ? data.alerts : []); })
+      .catch(() => { if (!cancelled) setActiveAlerts([]); });
+    return () => { cancelled = true; };
+  }, [topic, apiBase, authedFetch]);
 
   useEffect(() => {
     // Found via test 2026-08-27: clicking Clear while a previous fetch is
@@ -4050,84 +4149,134 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
   return (
     <div className="sensor-history-panel">
       <div className="sensor-history-header">Sensor History</div>
-      <div className="sensor-history-controls">
-        <label className="dm-toolbar-select">Field
-          <select value={field} onChange={e => setField(e.target.value)}>
-            {availableFields.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </label>
-        <label className="dm-toolbar-select">Range
-          <select value={days} onChange={e => setDays(Number(e.target.value))}>
-            <option value={7}>7 days</option>
-            <option value={30}>30 days</option>
-            <option value={60}>60 days</option>
-            <option value={90}>90 days</option>
-          </select>
-        </label>
-        <button className="btn-ghost" onClick={downloadCsv} disabled={selectedIds.length === 0 || allDates.length === 0}>Download CSV</button>
-      </div>
-      <div className="sensor-history-device-picker">
-        <button className="btn-ghost" onClick={selectAll} disabled={selectedIds.length === fieldDevices.length}>Select all</button>
-        <button className="btn-ghost" onClick={selectNone} disabled={selectedIds.length === 0}>Clear</button>
-        {fieldDevices.map(d => (
-          <button key={d.deviceId} type="button"
-            className={`sensor-history-device-chip${selectedIds.includes(d.deviceId) ? " selected" : ""}`}
-            onClick={() => toggleDevice(d.deviceId)}>
-            {d.name}
+      <div className="sensor-history-topic-tabs" role="tablist" aria-label="Reporting topic">
+        {REPORTING_TOPICS.map(t => (
+          <button key={t.id} type="button" role="tab" aria-selected={topic === t.id}
+            className={`sensor-history-topic-tab${topic === t.id ? " active" : ""}`}
+            disabled={t.comingSoon}
+            title={t.comingSoon ? "Coming soon — Sprint 5 presence/occupancy design" : undefined}
+            onClick={() => setTopic(t.id)}>
+            {t.label}{t.comingSoon && <span className="chip info sensor-history-topic-soon">Soon</span>}
           </button>
         ))}
       </div>
-      {loading && <p className="config-hint">Loading…</p>}
-      {!loading && selectedIds.length === 0 && (
-        <p className="config-hint">Select at least one device above to chart {SENSOR_FIELD_LABELS[field] || field}.</p>
+
+      {topic === "occupancy" && (
+        <p className="config-hint">Occupancy inference (aggregate motion + contact patterns) is Sprint 5 design work, not yet built — see the shared ontology doc's D16 section.</p>
       )}
-      {!loading && selectedIds.length > 0 && allDates.length === 0 && (
-        <p className="config-hint">No {field} history for the selected devices in the last {days} days.</p>
-      )}
-      {!loading && allDates.length > 0 && (
+
+      {topic === "alert_history" && (
         <>
-          {allDates.length > 1 && (
-            <svg viewBox={`0 0 ${chartW} ${chartH}`} className="sensor-history-chart">
-              {devicePaths.filter(p => p.hasPoints).map(p => (
-                <path key={p.deviceId} d={p.d} fill="none" stroke={p.color} strokeWidth="2"/>
+          {activeAlerts === null && <p className="config-hint">Loading…</p>}
+          {activeAlerts?.length === 0 && <p className="config-hint">No active alerts right now.</p>}
+          {activeAlerts != null && activeAlerts.length > 0 && (
+            <ul className="sensor-history-alert-list">
+              {activeAlerts.map(a => (
+                <li key={a.alertId} className={`sensor-history-alert-item severity-${(a.severity || "info").toLowerCase()}`}>
+                  <span className="sensor-history-alert-severity">{a.severity}</span>
+                  <div>
+                    <div className="sensor-history-alert-title">{a.title || a.condition} — {a.sourceName || a.sourceDeviceId}</div>
+                    {a.detail && <div className="sensor-history-alert-detail">{a.detail}</div>}
+                    {a.evidenceAt && <div className="config-hint">{new Date(a.evidenceAt).toLocaleString()}</div>}
+                  </div>
+                </li>
               ))}
-            </svg>
+            </ul>
           )}
-          {selectedIds.length > 1 && (
-            <div className="sensor-history-legend">
-              {devicePaths.map(p => (
-                <span key={p.deviceId} className="sensor-history-legend-item">
-                  <span className="sensor-history-legend-swatch" style={{ background: p.color }} />
-                  {p.name}
-                </span>
+          <p className="config-hint">Showing currently active alerts, not a full historical log — a dedicated alert-history view is future work under this same Topic.</p>
+        </>
+      )}
+
+      {(topic === "comfort_air" || topic === "security_presence" || topic === "energy") && (
+        availableFields.length === 0 ? (
+          <p className="config-hint">
+            {topic === "security_presence"
+              ? "No chartable trend history yet for Security & Presence — motion/contact/leak are binary state changes, not day-bucketed readings. Check Alert History for individual events."
+              : "No devices at this location report a field under this Topic yet."}
+          </p>
+        ) : (
+          <>
+            <div className="sensor-history-controls">
+              <label className="dm-toolbar-select">Field
+                <select value={field ?? ""} onChange={e => setField(e.target.value)}>
+                  {availableFields.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label className="dm-toolbar-select">Range
+                <select value={days} onChange={e => setDays(Number(e.target.value))}>
+                  <option value={7}>7 days</option>
+                  <option value={30}>30 days</option>
+                  <option value={60}>60 days</option>
+                  <option value={90}>90 days</option>
+                </select>
+              </label>
+              <button className="btn-ghost" onClick={downloadCsv} disabled={selectedIds.length === 0 || allDates.length === 0}>Download CSV</button>
+            </div>
+            <div className="sensor-history-device-picker">
+              <button className="btn-ghost" onClick={selectAll} disabled={selectedIds.length === fieldDevices.length}>Select all</button>
+              <button className="btn-ghost" onClick={selectNone} disabled={selectedIds.length === 0}>Clear</button>
+              {fieldDevices.map(d => (
+                <button key={d.deviceId} type="button"
+                  className={`sensor-history-device-chip${selectedIds.includes(d.deviceId) ? " selected" : ""}`}
+                  onClick={() => toggleDevice(d.deviceId)}>
+                  {d.name}
+                </button>
               ))}
             </div>
-          )}
-          <p className="config-hint sensor-history-count-note">
-            Each value is that day's average; (n=…) is how many individual readings were averaged into it — the CSV export has the count as its own column.
-          </p>
-          <div className="sensor-history-table-wrap">
-            <table className="sensor-history-table">
-              <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}</tr></thead>
-              <tbody>
-                {[...allDates].reverse().map(day => (
-                  <tr key={day}>
-                    <td>{new Date(day).toLocaleDateString()}</td>
-                    {selectedIds.map(id => {
-                      const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
-                      // Sample count matters for credibility, not just decoration --
-                      // the user flagged that a wide multi-device table with only an
-                      // average per cell hides whether a reading came from dozens of
-                      // samples or one stray point, which is exactly the kind of
-                      // question an insurance inspector would ask.
-                      return <td key={id}>{p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—"}</td>;
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+            {loading && <p className="config-hint">Loading…</p>}
+            {!loading && selectedIds.length === 0 && (
+              <p className="config-hint">Select at least one device above to chart {SENSOR_FIELD_LABELS[field] || field}.</p>
+            )}
+            {!loading && selectedIds.length > 0 && allDates.length === 0 && (
+              <p className="config-hint">No {field} history for the selected devices in the last {days} days.</p>
+            )}
+            {!loading && allDates.length > 0 && (
+              <>
+                {allDates.length > 1 && (
+                  <svg viewBox={`0 0 ${chartW} ${chartH}`} className="sensor-history-chart">
+                    {devicePaths.filter(p => p.hasPoints).map(p => (
+                      <path key={p.deviceId} d={p.d} fill="none" stroke={p.color} strokeWidth="2"/>
+                    ))}
+                  </svg>
+                )}
+                {selectedIds.length > 1 && (
+                  <div className="sensor-history-legend">
+                    {devicePaths.map(p => (
+                      <span key={p.deviceId} className="sensor-history-legend-item">
+                        <span className="sensor-history-legend-swatch" style={{ background: p.color }} />
+                        {p.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="config-hint sensor-history-count-note">
+                  Each value is that day's average; (n=…) is how many individual readings were averaged into it — the CSV export has the count as its own column.
+                </p>
+                <div className="sensor-history-table-wrap">
+                  <table className="sensor-history-table">
+                    <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}</tr></thead>
+                    <tbody>
+                      {[...allDates].reverse().map(day => (
+                        <tr key={day}>
+                          <td>{new Date(day).toLocaleDateString()}</td>
+                          {selectedIds.map(id => {
+                            const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
+                            // Sample count matters for credibility, not just decoration --
+                            // the user flagged that a wide multi-device table with only an
+                            // average per cell hides whether a reading came from dozens of
+                            // samples or one stray point, which is exactly the kind of
+                            // question an insurance inspector would ask.
+                            return <td key={id}>{p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—"}</td>;
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )
       )}
     </div>
   );
