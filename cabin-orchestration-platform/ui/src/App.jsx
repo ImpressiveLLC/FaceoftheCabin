@@ -3012,7 +3012,10 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
       <Icon size={16} className="dm-row-icon"/>
       <div className="dm-row-info">
         <span className="dm-row-name">{device.name}</span>
-        <span className="dm-row-meta">{device.type} · {device.location}{isZ2m ? " · zigbee" : ""}</span>
+        <span className="dm-row-meta">
+          {device.attributes?.area && <span className="dm-row-area">{device.attributes.area}</span>}
+          {device.type} · {device.location}{isZ2m ? " · zigbee" : ""}
+        </span>
       </div>
       {lifecycle !== "ASSIGNED" && (
         <span className={`candidate-badge lifecycle-${lifecycle.toLowerCase()}`}>
@@ -3064,6 +3067,9 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       <div className="dm-detail-id">{device.deviceId}</div>
       <div className="dm-detail-rows">
         <div className="dm-detail-row"><span>Type</span><span>{device.type}</span></div>
+        {device.attributes?.area && (
+          <div className="dm-detail-row"><span>Area</span><span>{device.attributes.area}</span></div>
+        )}
         {device.attributes?.category && (
           <div className="dm-detail-row"><span>Category</span>
             <span className="category-badge">{device.attributes.category}</span>
@@ -3261,6 +3267,63 @@ function DmLockActions({ device, auth }) {
   );
 }
 
+// D15/Sprint 5 Area pipe (ratified 2026-09-05): its own small, atomic
+// save -- a separate backend write path (DeviceMetadata.area, a real
+// column) from Room's PATCH .../config (DeviceLifecycleRecord.extraAttributes),
+// so it can't ride the main form's single "Save changes" button without
+// either splitting that button's one request into two or teaching
+// .../config about a field it has nothing to do with. Mirrors the same
+// label/input/feedback shape as the fields around it. No way to clear an
+// already-set area yet -- PATCH /api/devices/{id}/area rejects a blank
+// value (DeviceRepository.upsert()'s COALESCE-based write can't null a
+// column, only leave it unchanged, same constraint manufacturer/model
+// already live with) -- Save stays disabled on a blank value instead of
+// letting a person submit a request that will only ever 400.
+function DmAreaEditor({ device, apiBase, auth, onSaved }) {
+  const originalArea = device.attributes?.area || "";
+  const [area, setArea] = useState(originalArea);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+  const doFetch = auth?.authedFetch || fetch;
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await doFetch(`${apiBase}/api/devices/${device.deviceId}/area`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ area: area.trim() })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body.error || `HTTP ${response.status}`);
+      setSaved(true);
+      onSaved();
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <label>Area
+      <div className="dm-area-editor">
+        <input value={area} placeholder="e.g. Entryway, Driveway — where this device physically is"
+          onChange={e => { setArea(e.target.value); setSaved(false); setError(null); }}/>
+        <button className="btn-ghost" onClick={save}
+          disabled={saving || !area.trim() || area.trim() === originalArea}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {saved && <span className="save-ok"><CheckCircle size={13}/> Saved</span>}
+      {error && <span className="action-result action-error">Not saved: {error}</span>}
+    </label>
+  );
+}
+
 export function DmEditForm({ device, onSaved, onOpenDiscovery, workflows, onManageWorkflows, auth }) {
   const [name, setName]       = useState(device.name);
   const [enabled, setEnabled] = useState(device.attributes?.enabled ?? (device.enabled !== false));
@@ -3347,6 +3410,7 @@ export function DmEditForm({ device, onSaved, onOpenDiscovery, workflows, onMana
         <input value={room} placeholder="e.g. Kitchen, Mechanical Room"
           onChange={e => { setRoom(e.target.value); setSaved(false); setSaveError(null); }}/>
       </label>
+      <DmAreaEditor device={device} apiBase={apiBase} auth={auth} onSaved={onSaved} />
       <label>Parent device
         <select value={parentDeviceId}
           onChange={e => { setParentDeviceId(e.target.value); setSaved(false); setSaveError(null); }}>
@@ -4219,6 +4283,7 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
                 <button key={d.deviceId} type="button"
                   className={`sensor-history-device-chip${selectedIds.includes(d.deviceId) ? " selected" : ""}`}
                   onClick={() => toggleDevice(d.deviceId)}>
+                  {d.attributes?.area && <span className="sensor-history-chip-area">{d.attributes.area} – </span>}
                   {d.name}
                 </button>
               ))}

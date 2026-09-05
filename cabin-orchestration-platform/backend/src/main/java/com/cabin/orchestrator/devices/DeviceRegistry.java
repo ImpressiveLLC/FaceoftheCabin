@@ -625,6 +625,20 @@ public class DeviceRegistry {
         if (descriptor != null) {
             attrs.put("capabilities", descriptor.capabilities().stream().map(Enum::name).sorted().toList());
         }
+        // D15/Sprint 5 Area pipe (ratified 2026-09-05): show Area when known,
+        // omit gracefully when null -- no "area": null key at all, so the
+        // frontend's existing "omit gracefully" handling never has to special-
+        // case an empty string vs. absent. Sourced from DeviceMetadata.area
+        // (a real column, populated only via the admin PATCH endpoint -- Z2M's
+        // own bridge/devices payload carries no location field to auto-derive
+        // this from, and friendly_name is the same string that already
+        // becomes this device's entity_id, so parsing it would be exactly the
+        // "fabricate area from entity_id" anti-pattern this feature's own
+        // hard rule forbids).
+        deviceRepository.find(status.deviceId())
+            .map(DeviceMetadata::area)
+            .filter(area -> area != null && !area.isBlank())
+            .ifPresent(area -> attrs.put("area", area));
         return new DeviceStatus(status.deviceId(), status.type(), status.name(), status.state(),
             status.lastSeen(), attrs, status.location());
     }

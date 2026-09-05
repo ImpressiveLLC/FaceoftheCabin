@@ -43,7 +43,8 @@ class DeviceControllerTest {
         DeviceHealthMonitor healthMonitor = new DeviceHealthMonitor(registry, null);
         return new DeviceController(registry, null, healthMonitor,
             new DeviceDisplayConfigService(null), new JdbcDeviceLifecycleVocabularyStore(jdbc),
-            new com.cabin.orchestrator.devices.JdbcDeviceReportingRelationshipRepository(jdbc));
+            new com.cabin.orchestrator.devices.JdbcDeviceReportingRelationshipRepository(jdbc),
+            new com.cabin.orchestrator.devices.JdbcDeviceRepository(jdbc));
     }
 
     private DeviceRegistry registryWithAssignedDevice(String deviceId) {
@@ -185,5 +186,90 @@ class DeviceControllerTest {
         var result = controller.setDisplayLabel("never-confirmed-device", "temperature", Map.of("displayLabel", "Should Not Exist"));
 
         assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, result.getStatusCode());
+    }
+
+    // D15/Sprint 5 Area pipe (ratified 2026-09-05) ──────────────────────────
+    //
+    // JdbcDeviceRepository.upsert() is an UPDATE against an existing `device`
+    // row -- but registryWithAssignedDevice()'s DeviceRegistry(List.of())
+    // convenience constructor uses an in-memory, non-persisting
+    // DeviceLifecycleStore (its own save()/delete() are no-ops), so it never
+    // actually writes that row to Postgres. These tests need a registry
+    // backed by the REAL JdbcDeviceLifecycleStore (same Testcontainers
+    // instance the controller's own JdbcDeviceRepository reads/writes)
+    // instead, or setArea's UPDATE would silently match zero rows.
+
+    private JdbcTemplate sharedJdbc() {
+        return new JdbcTemplate(new SimpleDriverDataSource(
+            new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
+    }
+
+    private DeviceRegistry registryWithRealPersistedDevice(String deviceId) {
+        JdbcTemplate jdbc = sharedJdbc();
+        var lifecycleStore = new com.cabin.orchestrator.devices.JdbcDeviceLifecycleStore(jdbc, new com.fasterxml.jackson.databind.ObjectMapper());
+        DeviceRegistry registry = new DeviceRegistry(List.of(), lifecycleStore, new com.cabin.orchestrator.devices.JdbcDeviceRepository(jdbc));
+        registry.registerCandidate(new DeviceDescriptor(
+            deviceId, "Test Device", DeviceType.MOTION_SENSOR, Set.of(DeviceCapability.TELEMETRY),
+            "mqtt", "zigbee2mqtt/" + deviceId, true, "cabin"), Map.of());
+        registry.applyLifecycleAction(deviceId, DeviceLifecycleAction.ACCEPT);
+        registry.saveConfiguration(deviceId, "Test Device", true);
+        return registry;
+    }
+
+    @Test
+    void setAreaPersistsAndReturnsTheNewValue() {
+        DeviceRegistry registry = registryWithRealPersistedDevice("z2m-area-test");
+        DeviceController controller = newController(registry);
+
+        var result = controller.setArea("z2m-area-test", Map.of("area", "Entryway"));
+
+        assertEquals(org.springframework.http.HttpStatus.OK, result.getStatusCode());
+        assertEquals(Map.of("deviceId", "z2m-area-test", "area", "Entryway"), result.getBody());
+        assertEquals("Entryway", new com.cabin.orchestrator.devices.JdbcDeviceRepository(sharedJdbc())
+                .find("z2m-area-test").orElseThrow().area(),
+            "must persist to the real device table, not just echo the request back");
+    }
+
+    @Test
+    void setArea404sForAnUnknownDevice() {
+        DeviceController controller = newController(new DeviceRegistry(List.of()));
+
+        var result = controller.setArea("never-registered-device", Map.of("area", "Entryway"));
+
+        assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, result.getStatusCode());
+    }
+
+    @Test
+    void setAreaRejectsABlankValueInsteadOfSilentlyNoOpingOrClobbering() {
+        DeviceRegistry registry = registryWithRealPersistedDevice("z2m-area-blank-test");
+        DeviceController controller = newController(registry);
+
+        var result = controller.setArea("z2m-area-blank-test", Map.of("area", "   "));
+
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, result.getStatusCode());
+    }
+
+    @Test
+    void listDevicesIncludesAreaOnceSet() {
+        DeviceRegistry registry = registryWithRealPersistedDevice("z2m-area-listed");
+        DeviceController controller = newController(registry);
+
+        controller.setArea("z2m-area-listed", Map.of("area", "Driveway"));
+        var listed = controller.listDevices().stream()
+            .filter(d -> d.deviceId().equals("z2m-area-listed")).findFirst().orElseThrow();
+
+        assertEquals("Driveway", listed.attributes().get("area"));
+    }
+
+    @Test
+    void listDevicesOmitsAreaKeyEntirelyRatherThanNull() {
+        DeviceRegistry registry = registryWithRealPersistedDevice("z2m-area-never-set");
+        DeviceController controller = newController(registry);
+
+        var listed = controller.listDevices().stream()
+            .filter(d -> d.deviceId().equals("z2m-area-never-set")).findFirst().orElseThrow();
+
+        assertFalse(listed.attributes().containsKey("area"),
+            "D15's own 'omit gracefully when null' rule -- no bare 'area': null key when nothing has been set");
     }
 }

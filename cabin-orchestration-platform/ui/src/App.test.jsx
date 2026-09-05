@@ -1791,6 +1791,85 @@ describe("Device candidate configuration", () => {
   });
 });
 
+// D15/Sprint 5 Area pipe (ratified 2026-09-05): its own small, atomic save
+// against PATCH /api/devices/{id}/area -- a separate backend write path
+// (DeviceMetadata.area, a real column) from Room's bundled PATCH .../config,
+// so it necessarily has its own Save button rather than riding the main
+// form's "Save changes".
+describe("DmAreaEditor (Area pipe, via DmEditForm)", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const device = {
+    deviceId: "z2m-motion_entry", name: "motion_entry", type: "MOTION_SENSOR",
+    state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED", enabled: true },
+  };
+
+  it("Area input starts empty and Save is disabled until a real value is entered", () => {
+    render(<DmEditForm device={device} onSaved={() => {}} />);
+
+    const areaInput = screen.getByLabelText(/^area$/i);
+    expect(areaInput.value).toBe("");
+    expect(screen.getByRole("button", { name: /^save$/i }).disabled).toBe(true);
+  });
+
+  it("prefills Area from the device's existing attribute, and Save stays disabled until it actually changes", () => {
+    render(<DmEditForm device={{ ...device, attributes: { ...device.attributes, area: "Entryway" } }} onSaved={() => {}} />);
+
+    expect(screen.getByLabelText(/^area$/i).value).toBe("Entryway");
+    expect(screen.getByRole("button", { name: /^save$/i }).disabled).toBe(true);
+  });
+
+  it("saving a new Area calls the dedicated area endpoint, not the main config PATCH", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ deviceId: device.deviceId, area: "Entryway" }) }));
+    const onSaved = vi.fn();
+    render(<DmEditForm device={device} onSaved={onSaved} />);
+
+    fireEvent.change(screen.getByLabelText(/^area$/i), { target: { value: "Entryway" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toContain(`/api/devices/${device.deviceId}/area`);
+    expect(options.method).toBe("PATCH");
+    expect(JSON.parse(options.body)).toEqual({ area: "Entryway" });
+    expect(await screen.findByText(/saved/i)).toBeTruthy();
+  });
+
+  it("shows a real error instead of a silent failure when the area save fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false, status: 400, json: async () => ({ error: "area must not be blank" }),
+    }));
+    render(<DmEditForm device={device} onSaved={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/^area$/i), { target: { value: "Somewhere" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/not saved: area must not be blank/i)).toBeTruthy();
+  });
+});
+
+describe("DmDeviceRow area display", () => {
+  afterEach(() => cleanup());
+
+  it("shows the Area as a prefix in the row's meta line when set", () => {
+    render(<DmDeviceRow device={{
+      deviceId: "z2m-motion_entry", name: "motion_entry", type: "MOTION_SENSOR",
+      state: "ONLINE", location: "cabin", attributes: { area: "Entryway" },
+    }} onClick={() => {}} />);
+
+    expect(screen.getByText("Entryway")).toBeTruthy();
+  });
+
+  it("renders no area tag at all when unset, rather than a blank one", () => {
+    const { container } = render(<DmDeviceRow device={{
+      deviceId: "z2m-motion_entry", name: "motion_entry", type: "MOTION_SENSOR",
+      state: "ONLINE", location: "cabin", attributes: {},
+    }} onClick={() => {}} />);
+
+    expect(container.querySelector(".dm-row-area")).toBeNull();
+  });
+});
+
 // 2026-08-25, Item 4a: the Parent device picker itself. Server-side
 // validation (self/nonexistent/cross-location/cycle) is DeviceRegistryTest's
 // job -- this covers only what the picker offers and what it saves.

@@ -2,11 +2,13 @@ package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.devices.DeviceHealthMonitor;
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.DeviceRepository;
 import com.cabin.orchestrator.devices.DeviceReportingRelationshipRepository;
 import com.cabin.orchestrator.devices.JdbcDeviceLifecycleVocabularyStore;
 import com.cabin.orchestrator.devices.display.DeviceDisplayConfig;
 import com.cabin.orchestrator.devices.display.DeviceDisplayConfigService;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
+import com.cabin.orchestrator.devices.model.DeviceMetadata;
 import com.cabin.orchestrator.devices.model.DeviceReportingRelationship;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
@@ -35,19 +37,22 @@ public class DeviceController {
     private final DeviceDisplayConfigService displayConfigService;
     private final JdbcDeviceLifecycleVocabularyStore lifecycleVocabulary;
     private final DeviceReportingRelationshipRepository reportingRelationshipRepository;
+    private final DeviceRepository deviceRepository;
 
     public DeviceController(DeviceRegistry registry,
                              Zigbee2MqttAdapter z2mAdapter,
                              DeviceHealthMonitor healthMonitor,
                              DeviceDisplayConfigService displayConfigService,
                              JdbcDeviceLifecycleVocabularyStore lifecycleVocabulary,
-                             DeviceReportingRelationshipRepository reportingRelationshipRepository) {
+                             DeviceReportingRelationshipRepository reportingRelationshipRepository,
+                             DeviceRepository deviceRepository) {
         this.registry = registry;
         this.z2mAdapter = z2mAdapter;
         this.healthMonitor = healthMonitor;
         this.displayConfigService = displayConfigService;
         this.lifecycleVocabulary = lifecycleVocabulary;
         this.reportingRelationshipRepository = reportingRelationshipRepository;
+        this.deviceRepository = deviceRepository;
     }
 
     /**
@@ -109,6 +114,38 @@ public class DeviceController {
     @GetMapping
     public List<DeviceStatus> listDevices() {
         return registry.visible();
+    }
+
+    /**
+     * D15/Sprint 5 Area pipe (ratified 2026-09-05) -- the one legitimate
+     * write path for DeviceMetadata.area. Z2M's own bridge/devices payload
+     * carries no location field, and its friendly_name is the same string
+     * that already becomes a device's entity_id, so deriving area from it
+     * would be exactly the "fabricate area from entity_id" pattern this
+     * feature's own hard rule forbids -- an admin-curated value is the only
+     * honest source until a real upstream location signal exists.
+     * 404s for an unknown deviceId rather than silently creating a
+     * DeviceMetadata row for a device that was never registered --
+     * DeviceRepository.upsert() is a no-op UPDATE, so a typo'd deviceId
+     * would otherwise fail invisibly instead of telling the caller.
+     * Rejects a blank value with 400 rather than pretending to clear it --
+     * upsert()'s SQL is COALESCE(?, area), so passing null leaves the
+     * existing value untouched (deliberate, shared with manufacturer/model,
+     * so one silent adapter never erases another's earlier-set fact); this
+     * endpoint doesn't get a different clear semantic without changing that
+     * shared column-write contract, which is out of scope here.
+     */
+    @PatchMapping("/{deviceId}/area")
+    public ResponseEntity<?> setArea(@PathVariable String deviceId, @RequestBody Map<String, String> body) {
+        if (registry.descriptor(deviceId).isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Unknown device: " + deviceId));
+        }
+        String area = body.get("area") == null ? "" : body.get("area").trim();
+        if (area.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "area must not be blank (clearing an already-set area isn't supported yet)"));
+        }
+        deviceRepository.upsert(deviceId, new DeviceMetadata(null, null, area, null, null, null, "admin", null, 0));
+        return ResponseEntity.ok(Map.of("deviceId", deviceId, "area", area));
     }
 
     /** Passively discovered devices awaiting an explicit person-authored decision. */

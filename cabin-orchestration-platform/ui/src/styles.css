@@ -513,6 +513,10 @@ body {
   cursor: pointer;
 }
 .sensor-history-device-chip.selected { border-color: #1f6feb; background: #131a24; color: var(--text); }
+/* D15/Sprint 5 Area pipe -- muted prefix ahead of the device name itself,
+   which stays the curated display_label/device.name per the display-label
+   rule; area is location context, never a replacement for the name. */
+.sensor-history-chip-area { color: var(--text-dim); }
 .sensor-history-legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; font-size: 11px; color: var(--text-dim); }
 .sensor-history-legend-item { display: inline-flex; align-items: center; gap: 4px; }
 .sensor-history-legend-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
@@ -1039,6 +1043,14 @@ body {
 .toggle-on  { color: #3fb950; }
 .toggle-off { color: #6e7681; }
 .save-ok { display: flex; align-items: center; gap: 4px; color: #3fb950; font-size: 12px; }
+/* D15/Sprint 5 Area pipe -- .dm-row-area is a small tag ahead of the usual
+   type/location meta line (Device Manager row); .dm-area-editor pairs the
+   input with its own atomic Save button (separate backend write path from
+   the rest of DmEditForm, see DmAreaEditor's own comment). */
+.dm-row-area { color: #58a6ff; font-weight: 500; }
+.dm-row-area::after { content: " · "; color: #6e7681; font-weight: 400; }
+.dm-area-editor { display: flex; gap: 6px; align-items: center; }
+.dm-area-editor input { flex: 1; }
 
 /* ─── Remove panel ───────────────────────────────────────────────────────── */
 .dm-remove-panel {
