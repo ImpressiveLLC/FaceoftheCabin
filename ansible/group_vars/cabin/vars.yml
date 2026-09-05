@@ -86,6 +86,32 @@ blink_motion_webhook_api_key: "{{ vault_blink_motion_webhook_api_key | default('
 # Vaultwarden's admin page -- generate a real random token
 # (`openssl rand -base64 48`), don't invent a weak one by hand.
 vaultwarden_admin_token: "{{ vault_vaultwarden_admin_token | default('') }}"
+# WSJF #9 -- lets cabin-backend's VaultwardenOAuthCredentialStore actually
+# read/write OAuth credentials (SmartThings/Ring) via the `bw` CLI, as
+# opposed to vaultwarden_admin_token above which only unlocks Vaultwarden's
+# own /admin config page. Same "empty is a valid, working state" pattern:
+# unset just means SmartThings/Ring platform-import fails loudly (not
+# silently) until an operator completes the one-time setup documented in
+# docs/MAINTENANCE.md's Vaultwarden section. Container-internal URL
+# (cabin-backend and vaultwarden share the compose project's own `default`
+# network -- see docker-compose.m920q.yml) rather than the Tailscale IP,
+# matching FRIGATE_URL/BLINKBRIDGE_URL's existing container-hostname
+# convention for same-host service-to-service calls.
+vaultwarden_url: "{{ vault_vaultwarden_url | default('http://vaultwarden:80') }}"
+# Organization API key (client_id/client_secret) from Vaultwarden's own web
+# vault -- Settings -> Organizations -> (org) -> API Key. Only bypasses 2FA
+# for `bw login --apikey`; does NOT by itself decrypt anything (see
+# VaultwardenOAuthCredentialStore's own javadoc for why the master password
+# below is still required). Add `vault_vaultwarden_client_id` /
+# `vault_vaultwarden_client_secret` to vault.yml once that org + key exist.
+vaultwarden_client_id: "{{ vault_vaultwarden_client_id | default('') }}"
+vaultwarden_client_secret: "{{ vault_vaultwarden_client_secret | default('') }}"
+# The Vaultwarden ACCOUNT's real login master password -- distinct from
+# both tokens above. `bw unlock` needs this to derive the actual decryption
+# key for cipher content; there is no way around supplying it (Bitwarden's
+# end-to-end encryption model has no server-side bypass). Treat this vault
+# entry with the same care as any other real account password.
+vaultwarden_master_password: "{{ vault_vaultwarden_master_password | default('') }}"
 
 # Production-stack credentials — the pre-existing, separately-managed
 # mosquitto/HA/Frigate/blinkbridge/cloudflared/etc. stack, brought under

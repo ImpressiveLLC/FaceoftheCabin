@@ -140,6 +140,79 @@ not deliberately avoiding it.
 
 ---
 
+## Vaultwarden (credential vault)
+
+Self-hosted Bitwarden-compatible vault (`vaultwarden/server`, WSJF #8),
+Tailscale-only at `http://100.77.44.113:8222` — not reachable from the open
+internet. Two independent things live here, each gated by its own secret:
+
+1. **Vaultwarden's own `/admin` config page** — `VAULTWARDEN_ADMIN_TOKEN`.
+   Only needed to reach that page in a browser to manage the server itself
+   (create the Organization below, etc). Generate with `openssl rand
+   -base64 48`, add as `vault_vaultwarden_admin_token` in the vault.
+2. **cabin-backend's own read/write access to vault contents** — the four
+   vars below (WSJF #9). This is what lets `VaultwardenOAuthCredentialStore`
+   actually store/retrieve SmartThings/Ring OAuth credentials instead of
+   throwing on every call. Both are optional and independent: you can run
+   Vaultwarden with no admin-page access, or give cabin-backend vault
+   access without ever opening the admin page yourself.
+
+### One-time setup for cabin-backend's vault access (WSJF #9)
+
+`VaultwardenOAuthCredentialStore` shells out to the official `bw` CLI
+(baked into the `cabin-backend` image — see `backend/Dockerfile`'s own
+comment for why npm's `@bitwarden/cli` rather than Bitwarden's standalone
+binary) rather than a raw REST client, because cipher content in
+Bitwarden/Vaultwarden is end-to-end encrypted client-side — an
+Organization API key alone can authenticate but cannot decrypt anything.
+See that class's javadoc for the full verification. Concretely, this means
+setup needs **three real secrets**, not one:
+
+1. **Create an Organization** in Vaultwarden's own web vault (sign in at
+   `http://100.77.44.113:8222`, or create the account first if this is a
+   fresh instance) — Organizations → New Organization. Any name works
+   (e.g. "Cabin Platform").
+2. **Generate an Organization API key** — that Organization → Settings →
+   My Organization → API Key (may require re-entering your master
+   password). This gives you a `client_id` (looks like
+   `organization.<uuid>`) and a `client_secret`.
+3. **You already have the third secret** — it's the Vaultwarden account's
+   own login master password. Not a new value to generate, just the
+   existing password for the account you signed in with above.
+4. Add all three to the vault:
+   ```bash
+   cd ansible
+   ansible-vault edit group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass
+   # add:
+   #   vault_vaultwarden_client_id: "organization.xxxxxxxx-xxxx-..."
+   #   vault_vaultwarden_client_secret: "..."
+   #   vault_vaultwarden_master_password: "..."
+   ```
+   `vault_vaultwarden_url` is optional — the default
+   (`http://vaultwarden:80`, the container's own service name on the
+   compose project's shared `default` network) is correct for this
+   deployment and only needs overriding for a differently-shaped instance.
+5. Re-template `.env` and restart cabin-backend:
+   ```bash
+   ansible-playbook -i inventory.ini site.yml --limit cabin --vault-password-file ~/.ansible_vault_pass --tags secrets
+   ```
+   then redeploy/restart `cabin-backend` (see "Manual (cabin-backend)"
+   above) so it picks up the new env vars.
+6. **Verify**: trigger a SmartThings platform-import call (or check
+   `cabin-backend` logs for the first `store()`/`retrieve()` call) — a
+   working setup logs a one-time `bw login --apikey` + `bw unlock`
+   (session key then cached for that JVM's lifetime); a config problem
+   throws a clear, actionable `IllegalStateException` naming exactly which
+   of `url`/`clientId`/`clientSecret`/`masterPassword` to check.
+
+Until this is done, SmartThings/Ring platform-import fails loudly (not
+silently) — this is intentional graceful degradation, not a bug to chase.
+
+**Never diff or log any of these three values raw** — same rule as every
+other secret in this file's Secrets section above.
+
+---
+
 ## CI/CD
 
 Self-hosted GitHub Actions runner, registered on the M920q, connecting

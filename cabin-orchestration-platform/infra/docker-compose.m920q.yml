@@ -272,6 +272,18 @@ services:
       CABIN_LOCATIONS_CABIN_FRIGATE_URL: http://100.77.44.113:5000
       CABIN_LOCATIONS_CABIN_Z2M_URL: http://100.77.44.113:8080
       CABIN_LOCATIONS_CABIN_FAMILY_HUB_URL: ${FAMILY_HUB_URL:-https://hub.unicornpingpong.com}
+      # Vaultwarden OAuth credential store (WSJF #9) -- lets
+      # VaultwardenOAuthCredentialStore actually store/retrieve
+      # SmartThings/Ring OAuth tokens via the `bw` CLI baked into this
+      # image (see Dockerfile). All four optional, empty by default --
+      # platform-import fails loudly until an operator completes the
+      # one-time setup in docs/MAINTENANCE.md's Vaultwarden section.
+      # Default URL is the vaultwarden container's own service name --
+      # both containers share this compose project's `default` network.
+      VAULTWARDEN_URL: ${VAULTWARDEN_URL:-http://vaultwarden:80}
+      VAULTWARDEN_CLIENT_ID: ${VAULTWARDEN_CLIENT_ID:-}
+      VAULTWARDEN_CLIENT_SECRET: ${VAULTWARDEN_CLIENT_SECRET:-}
+      VAULTWARDEN_MASTER_PASSWORD: ${VAULTWARDEN_MASTER_PASSWORD:-}
     volumes:
       # Read-only mount so OntologyLookupService can resolve entity ids to
       # display names for the Opportunity Map (and future data-dictionary
