@@ -48,4 +48,14 @@ class DeviceTypeTest {
         assertThat(DeviceType.HOME_ASSISTANT_ENTITY.category()).isEqualTo(DeviceCategory.PLATFORM);
         assertThat(DeviceType.DASHBOARD.category()).isEqualTo(DeviceCategory.PLATFORM);
     }
+
+    // D15 (Energy Device Ontology, 2026-09-05): POWER_METER previously had no
+    // case here at all, falling through to the empty default -- meaning the
+    // two real Third Reality smart plugs' attrs.reportsFields was always
+    // empty even though they report all four of these live.
+    @Test
+    void powerMeterReportsAllFourD15EnergyFields() {
+        assertThat(DeviceType.POWER_METER.telemetryFields())
+            .containsExactlyInAnyOrder("power", "energy", "current", "voltage");
+    }
 }

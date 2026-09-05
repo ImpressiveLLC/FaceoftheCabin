@@ -144,6 +144,38 @@ describe("kpiTileFor", () => {
 
     expect(kpiTileFor(device, "F", reportingRelationships).label).toBe("Upstairs Humidity");
   });
+
+  // D15 (Energy Device Ontology, 2026-09-05): before this fix, every
+  // POWER_METER tile showed the literal, hardcoded label "Energy" (never
+  // device.name or a curated label) and read device.attributes.state_w,
+  // a field that doesn't exist on either real smart plug -- confirmed live
+  // the real keys are power/energy/current/voltage. This is the exact user
+  // complaint that drove D15: a device with no name, no location, and no
+  // indication of what the number means.
+  it("combines power and energy into one value, primary metric first", () => {
+    const device = { deviceId: "z2m-heater_mech_room", name: "heater_mech_room", type: "POWER_METER",
+      state: "ONLINE", attributes: { power: 117.7, energy: 119.97, current: 1.42, voltage: 121.8 } };
+    expect(kpiTileFor(device, "F").value).toBe("117.7 W · 119.97 kWh");
+  });
+
+  it("uses the curated display_label for a power meter's tile title when one is set", () => {
+    const device = { deviceId: "z2m-heater_mech_room", name: "heater_mech_room", type: "POWER_METER",
+      state: "ONLINE", attributes: { power: 117.7, energy: 119.97 } };
+    const reportingRelationships = { "z2m-heater_mech_room": [{ semanticField: "power", displayLabel: "Mech Room Heater Power" }] };
+
+    expect(kpiTileFor(device, "F", reportingRelationships).label).toBe("Mech Room Heater Power");
+  });
+
+  it("falls back to device.name, not a hardcoded 'Energy' literal, when no display_label has been curated yet", () => {
+    const device = { deviceId: "z2m-smart_switch_breaker_box", name: "smart_switch @ breaker_box",
+      type: "POWER_METER", state: "ONLINE", attributes: { power: 0, energy: 0 } };
+    expect(kpiTileFor(device, "F", {}).label).toBe("smart_switch @ breaker_box");
+  });
+
+  it("shows an em dash when a power meter has no readings yet, not '— W'", () => {
+    const device = { deviceId: "z2m-new-plug", name: "New Plug", type: "POWER_METER", state: "ONLINE", attributes: {} };
+    expect(kpiTileFor(device, "F").value).toBe("—");
+  });
 });
 
 // 2026-08-25: replaces the Grafana "View Sensor History" link-out, which

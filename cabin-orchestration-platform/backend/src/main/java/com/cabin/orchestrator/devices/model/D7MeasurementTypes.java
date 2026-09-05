@@ -15,7 +15,11 @@ import java.util.Set;
 public final class D7MeasurementTypes {
 
     private static final Set<String> TYPES = Set.of(
-        "temperature", "humidity", "co2", "air_quality_index", "co", "pressure", "power", "battery");
+        "temperature", "humidity", "co2", "air_quality_index", "co", "pressure", "power", "battery",
+        // D15 (Energy Device Ontology, 2026-09-05): added for the two real
+        // Third Reality smart plugs (z2m-heater_mech_room,
+        // z2m-smart_switch_breaker_box) -- both already report these live.
+        "energy", "current", "voltage");
 
     private D7MeasurementTypes() {}
 

@@ -3734,9 +3734,23 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}) { // e
     case "CO_ALARM":
       return { icon: ShieldAlert, label: device.name || "Smoke/CO Alarm", deviceId: device.deviceId,
         value: device.state || "UNKNOWN", state: device.state === "ALARM" ? "ALARM" : device.state };
-    case "POWER_METER":
-      return { icon: Zap, label: "Energy", deviceId: device.deviceId,
-        value: device.attributes?.state_w != null ? `${device.attributes.state_w} W` : "—", state: device.state };
+    // D15 (Energy Device Ontology, 2026-09-05): this hardcoded "Energy"
+    // label (and a device.attributes.state_w field that doesn't exist on
+    // either real smart plug -- confirmed live, the real keys are power/
+    // energy/current/voltage) is exactly the bug behind the user complaint
+    // that drove this decision: a device with no name, no location, and no
+    // indication of what the number means. Power (W) is the primary metric
+    // per D15's sensor-card layout rule, energy (kWh) secondary in the same
+    // line (matching TEMPERATURE_SENSOR's own temp+humidity combo above);
+    // voltage/current are tertiary/collapsed -- available in the device
+    // detail view's full attributes list and Sensor History, not this tile.
+    case "POWER_METER": {
+      const watts = device.attributes?.power;
+      const kwh = device.attributes?.energy;
+      const val = [watts != null && `${watts} W`, kwh != null && `${kwh} kWh`].filter(Boolean).join(" · ") || "—";
+      return { icon: Zap, label: curatedLabel("power") || device.name, deviceId: device.deviceId,
+        value: val, state: device.state };
+    }
     case "LOCK":
       return { icon: Lock, label: device.name, deviceId: device.deviceId, value: device.state, state: device.state };
     case "CAMERA":
@@ -3773,14 +3787,27 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}) { // e
 // device is selected (fieldOptions[0]) -- "humidity" stays before
 // "temperature" specifically to preserve this panel's pre-existing default
 // (a Zigbee TEMPERATURE_SENSOR device defaulted to showing humidity first).
+// power/energy/current/voltage added 2026-09-05 (D15, Energy Device
+// Ontology) -- POWER_METER devices already report all four live (see
+// DeviceType.telemetryFields()'s own D15 case); this is the onboarding
+// this component's own comment above describes ("adding one entry here
+// plus one DeviceType case -- nothing else in this component should need
+// to change").
 const SENSOR_FIELD_OPTIONS = [
   { value: "humidity", label: "Humidity", types: ["TEMPERATURE_SENSOR", "HUMIDITY_SENSOR"] },
   { value: "temperature", label: "Temperature", types: ["TEMPERATURE_SENSOR"] },
   { value: "co2", label: "CO₂", types: ["CO2_SENSOR"] },
   { value: "airQualityIndex", label: "Air Quality Index", types: ["AIR_QUALITY_SENSOR"] },
   { value: "co", label: "CO", types: ["CO_SENSOR"] },
+  { value: "power", label: "Power", types: ["POWER_METER"] },
+  { value: "energy", label: "Energy", types: ["POWER_METER"] },
+  { value: "current", label: "Current", types: ["POWER_METER"] },
+  { value: "voltage", label: "Voltage", types: ["POWER_METER"] },
 ];
-const SENSOR_FIELD_UNITS = { temperature: "°", humidity: "%", co2: " ppm", co: " ppm", airQualityIndex: "" };
+const SENSOR_FIELD_UNITS = {
+  temperature: "°", humidity: "%", co2: " ppm", co: " ppm", airQualityIndex: "",
+  power: " W", energy: " kWh", current: " A", voltage: " V",
+};
 // Human labels for DeviceStatus.attributes.reportsFields (DeviceType.telemetryFields()
 // backend-side) -- reuses this same picker's own labels so "Reports: Humidity" in
 // Device Manager's device detail and "Humidity" in the Sensor History field picker

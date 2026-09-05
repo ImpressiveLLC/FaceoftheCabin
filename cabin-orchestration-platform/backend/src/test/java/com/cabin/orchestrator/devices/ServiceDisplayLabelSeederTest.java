@@ -61,6 +61,27 @@ class ServiceDisplayLabelSeederTest {
             "a human's own curation must survive every restart, matching CredentialPointerSeeder's own rule");
     }
 
+    // D15 (Energy Device Ontology, 2026-09-05): the two real smart plugs'
+    // "power" row is auto-upserted by Zigbee2MqttAdapter's vendor_spec path
+    // before this seeder ever runs, same as z2m-temp_kitchen's humidity row
+    // above -- confirms the fix for kpiTileFor's hardcoded "Energy" label
+    // actually has a real curated label to find.
+    @Test
+    void labelsBothRealSmartPlugsPowerRows() {
+        FakeRepository repo = new FakeRepository();
+        repo.upsert(new DeviceReportingRelationship("z2m-heater_mech_room", "power", "power",
+            ConfirmationSource.VENDOR_SPEC, Instant.now()));
+        repo.upsert(new DeviceReportingRelationship("z2m-smart_switch_breaker_box", "power", "power",
+            ConfirmationSource.VENDOR_SPEC, Instant.now()));
+
+        new ServiceDisplayLabelSeeder(repo).seedIfMissing();
+
+        assertEquals("Mech Room Heater Power", repo.findByDevice("z2m-heater_mech_room").stream()
+            .filter(r -> r.semanticField().equals("power")).findFirst().orElseThrow().displayLabel());
+        assertEquals("Breaker Box Switch Power", repo.findByDevice("z2m-smart_switch_breaker_box").stream()
+            .filter(r -> r.semanticField().equals("power")).findFirst().orElseThrow().displayLabel());
+    }
+
     @Test
     void isANoOpWhenTheUnderlyingRowDoesNotExistYet() {
         FakeRepository repo = new FakeRepository();

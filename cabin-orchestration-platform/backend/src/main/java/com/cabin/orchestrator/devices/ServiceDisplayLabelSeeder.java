@@ -38,7 +38,19 @@ public class ServiceDisplayLabelSeeder {
         new Seed("z2m-temp_mech_room", "temperature", "Mech Room Temperature"),
         new Seed("ha-cabin-sensor-living-room-kidde-co-temp-and-humidity-cabin-upstairs-co-level", "co", "Upstairs CO"),
         new Seed("ha-cabin-sensor-living-room-kidde-co-temp-and-humidity-cabin-upstairs-indoor-temperature", "temperature", "Upstairs Temperature"),
-        new Seed("ha-cabin-sensor-living-room-kidde-co-temp-and-humidity-cabin-upstairs-humidity", "humidity", "Upstairs Humidity")
+        new Seed("ha-cabin-sensor-living-room-kidde-co-temp-and-humidity-cabin-upstairs-humidity", "humidity", "Upstairs Humidity"),
+        // D15 (Energy Device Ontology, 2026-09-05): the two real Third
+        // Reality smart plugs -- both already auto-upsert a "power" row via
+        // Zigbee2MqttAdapter's vendor_spec path (D7MeasurementTypes already
+        // included "power"), just never had a curated label, so Monitoring's
+        // tile fell back to the hardcoded literal "Energy" (see kpiTileFor's
+        // fix, same commit). Named for what each plug actually controls,
+        // not a generic "{Area} Outlet" template -- there's no populated
+        // Area/room field on either device yet (DeviceMetadata.area is a
+        // real column but nothing writes it for Zigbee devices today), and
+        // these two specific names are more useful than a fabricated one.
+        new Seed("z2m-heater_mech_room", "power", "Mech Room Heater Power"),
+        new Seed("z2m-smart_switch_breaker_box", "power", "Breaker Box Switch Power")
     );
 
     private final DeviceReportingRelationshipRepository repository;

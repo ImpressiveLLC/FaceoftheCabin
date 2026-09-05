@@ -86,6 +86,8 @@ public enum DeviceType {
             case CO2_SENSOR -> Set.of("co2");
             case AIR_QUALITY_SENSOR -> Set.of("airQualityIndex");
             case CO_SENSOR -> Set.of("co");
+            // D15 (Energy Device Ontology, 2026-09-05).
+            case POWER_METER -> Set.of("power", "energy", "current", "voltage");
             default -> Set.of();
         };
     }

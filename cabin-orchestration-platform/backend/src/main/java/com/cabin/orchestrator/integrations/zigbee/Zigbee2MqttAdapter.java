@@ -245,7 +245,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 // ConfirmationSource short of a manual override, so this never
                 // needs to check what's already there -- upsert()'s own
                 // priority rule handles that. measurement_type == semanticField
-                // here because D7_MEASUREMENT_TYPES is already the exact
+                // here because D7MeasurementTypes is already the exact
                 // vocabulary this schema's measurement_type enum uses.
                 Instant confirmedNow = Instant.now();
                 for (String field : vendorReportedFields) {
@@ -397,13 +397,21 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     // z2m-temp_kitchen's real exposes[] (2026-08-29) that a naive "every
     // numeric expose" mapping would have wrongly included temperature_calibration/
     // humidity_calibration (category: "config", i.e. a writable setting, not
-    // a reported measurement) and voltage/linkquality (real diagnostic
-    // values, but not environmental measurement types this schema models) --
-    // filtering on both category and this closed name set is why the
-    // exclusion holds even for a device whose exposes happen to use the
-    // same "numeric" type for a setting as for a real reading.
-    private static final Set<String> D7_MEASUREMENT_TYPES = Set.of(
-        "temperature", "humidity", "co2", "air_quality_index", "co", "pressure", "power", "battery");
+    // a reported measurement) and linkquality (a real diagnostic value, not
+    // an environmental/utility measurement type this schema models) --
+    // filtering on both category and the closed D7MeasurementTypes vocabulary
+    // is why the exclusion holds even for a device whose exposes happen to
+    // use the same "numeric" type for a setting as for a real reading.
+    // (voltage/current used to be excluded here too, on the same
+    // "diagnostic, not measurement" reasoning -- D15, 2026-09-05, ratifies
+    // them as real measurement types specifically for power-monitoring
+    // devices, so they're now in D7MeasurementTypes like everything else.)
+    //
+    // Fixed 2026-09-05: this used to be a second, independent Set literal
+    // instead of calling D7MeasurementTypes -- despite that class's own doc
+    // comment already claiming this adapter used it, it never actually did,
+    // so the two vocabularies could silently drift. Found while adding D15's
+    // three new values; now there is exactly one place to extend.
 
     private List<String> extractVendorReportedFields(JsonNode definition) {
         List<String> fields = new ArrayList<>();
@@ -425,7 +433,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         }
         String category = expose.path("category").asText("");
         String name = expose.path("name").asText("");
-        if ("numeric".equals(type) && !"config".equals(category) && D7_MEASUREMENT_TYPES.contains(name)) {
+        if ("numeric".equals(type) && !"config".equals(category) && D7MeasurementTypes.toMeasurementType(name).isPresent()) {
             fields.add(name);
         }
     }

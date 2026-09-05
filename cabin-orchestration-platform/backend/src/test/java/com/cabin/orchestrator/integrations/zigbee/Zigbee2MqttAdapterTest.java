@@ -183,10 +183,13 @@ class Zigbee2MqttAdapterTest {
     // (SNZB-02WD) 2026-08-29, not a simplified guess: a naive "every numeric
     // expose" mapping would have wrongly included temperature_calibration/
     // humidity_calibration (category "config" -- a writable setting, not a
-    // reported measurement) and voltage/linkquality (real diagnostic values,
-    // but not environmental measurement types this schema models).
+    // reported measurement) and linkquality (a real diagnostic value, but
+    // not a measurement type this schema models). voltage used to be
+    // excluded on that same reasoning -- D15 (2026-09-05) ratified it as a
+    // real measurement type for power-monitoring devices, so it's now kept,
+    // same as battery already was.
     @Test
-    void vendorReportedFieldsExcludesConfigAndDiagnosticExposesKeepingOnlyRealMeasurements() throws Exception {
+    void vendorReportedFieldsExcludesConfigAndNonVocabularyDiagnosticExposes() throws Exception {
         deliver("zigbee2mqtt/bridge/devices", """
             [{"friendly_name":"temp_kitchen","type":"EndDevice","definition":{
               "model":"SNZB-02WD","vendor":"SONOFF","description":"Waterproof temperature and humidity sensor",
@@ -204,10 +207,10 @@ class Zigbee2MqttAdapterTest {
 
         @SuppressWarnings("unchecked")
         List<String> fields = (List<String>) registry.get("z2m-temp_kitchen").attributes().get("vendorReportedFields");
-        // Order follows the exposes[] array itself (battery appears before
-        // temperature/humidity in the real fixture) -- this asserts the
-        // filtering, not a re-sort the method doesn't claim to do.
-        assertEquals(List.of("battery", "temperature", "humidity"), fields);
+        // Order follows the exposes[] array itself (battery/voltage appear
+        // before temperature/humidity in the real fixture) -- this asserts
+        // the filtering, not a re-sort the method doesn't claim to do.
+        assertEquals(List.of("battery", "voltage", "temperature", "humidity"), fields);
     }
 
     @Test
