@@ -26,8 +26,8 @@ ALLOWED = {
     # doesn't need to know that string either.
     "cabin/kidde/co_alarm": {"ON", "OFF"},
     # Added 2026-09-05 -- replaces the phone-side MacroDroid listener
-    # (adware-driven, required watching ads to keep working) that used to
-    # call BlinkMotionWebhookController's HTTP endpoint directly. Payload
+    # (validated working, since uninstalled) that used to call
+    # BlinkMotionWebhookController's HTTP endpoint directly. Payload
     # is the camera name (BlinkLiveviewService's own blinkCameraMap key,
     # not the Blink app's own device name) -- see
     # cabin_security_publish_blink_motion in cabin_security.yaml for the

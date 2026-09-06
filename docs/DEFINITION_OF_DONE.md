@@ -198,19 +198,24 @@ accumulate.*
      any client API. Arming/disarming either camera is not expected to
      change anything. Don't repeat the arm-state guess in a future
      session without re-reading this.
-  3. **The real designed fix for AldrichFront already exists and is
-     server-configured, but likely not phone-side-activated.**
+  3. **The real designed fix for AldrichFront already exists and, as of
+     2026-09-05, is live end-to-end.**
      `POST /api/webhooks/blink-motion` (added same commit,
-     `BlinkMotionWebhookController.java`) lets a phone-side
-     notification-listener automation (Tasker/MacroDroid watching for
-     Blink's own push notification, which reliably fires even though the
-     clip API doesn't) trigger blinkbridge's proven-working manual
-     liveview start. `BLINK_MOTION_WEBHOOK_API_KEY` is confirmed set on
-     the live `cabin-backend` container (checked presence/length only,
-     never the value, per this project's own credential-diffing rule).
-     **Unknown and needs the user to confirm: whether a phone-side
-     automation calling this webhook was ever actually set up.** If not,
-     that's the actual next step — not arming, not more backend work.
+     `BlinkMotionWebhookController.java`) triggers blinkbridge's
+     proven-working manual liveview start off the Blink app's own push
+     notification (which reliably fires even though the clip API
+     doesn't). The original phone-side trigger for this was MacroDroid —
+     validated working, but a third-party automation app the user has
+     since uninstalled. It's been replaced by
+     `cabin_security_publish_blink_motion`, a native HA automation on the
+     HA Companion App's own Last Notification sensor, publishing over MQTT
+     to `MqttBridgeService` instead of calling the webhook directly (see
+     that automation's own file,
+     `infra/cabin-security/homeassistant/cabin_security.yaml`). The
+     webhook itself is kept as a manual/fallback trigger only.
+     `BLINK_MOTION_WEBHOOK_API_KEY` is confirmed set on the live
+     `cabin-backend` container (checked presence/length only, never the
+     value, per this project's own credential-diffing rule).
   4. **Camera Events' "if possible" framing on motion-only clips
      (`ed1c60d`, 2026-08-18) is honestly hedged for intermittent-feed
      cameras (AldrichFront) but overstates uncertainty for

@@ -25,8 +25,8 @@ import java.util.Map;
  * proven-working manual liveview trigger -- see BlinkLiveviewService.
  *
  * 2026-09-05: no longer the primary path. The phone-side listener used to
- * be MacroDroid (adware-driven, required watching ads to keep working);
- * replaced by MqttBridgeService's cabin/blink/motion bridge, sourced from
+ * be MacroDroid -- validated working, since uninstalled -- replaced by
+ * MqttBridgeService's cabin/blink/motion bridge, sourced from
  * the HA Companion App's own Last Notification sensor instead of a
  * third-party automation app -- see that class's own javadoc and
  * infra/cabin-security/homeassistant/cabin_security.yaml's

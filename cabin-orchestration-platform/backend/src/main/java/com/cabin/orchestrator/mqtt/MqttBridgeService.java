@@ -141,9 +141,9 @@ public class MqttBridgeService implements MqttCallback {
             // topics.
             client.subscribe("cabin/kidde/co_alarm", 1);
             // Added 2026-09-05 -- real push bridge replacing the phone-side
-            // MacroDroid listener (adware-driven, required watching ads to
-            // keep working) that used to call BlinkMotionWebhookController's
-            // HTTP endpoint directly. New source: an HA automation
+            // MacroDroid listener (validated working, since uninstalled)
+            // that used to call BlinkMotionWebhookController's HTTP endpoint
+            // directly. New source: an HA automation
             // (infra/cabin-security/homeassistant/cabin_security.yaml,
             // cabin_security_publish_blink_motion) watching the HA Companion
             // App's own Last Notification sensor for the Blink app, through

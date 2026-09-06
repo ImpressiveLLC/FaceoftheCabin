@@ -567,10 +567,21 @@ in Blink's own backend, invisible to any client API — **arming/disarming
 either camera does not change this** (confirmed by that same
 comparison; don't re-guess this in a future session). The one channel
 that reliably fires for real AldrichFront motion is the Blink phone
-app's own push notification, so a phone-side notification-listener
-automation (Tasker/MacroDroid on Android, a Shortcuts automation on iOS,
-or similar) calling this webhook is the actual fix — not more backend
-work, not arming.
+app's own push notification.
+
+**As of 2026-09-05, the primary trigger path is a native HA automation,
+not a phone-side app.** `cabin_security_publish_blink_motion`
+(`infra/cabin-security/homeassistant/cabin_security.yaml`) watches the
+HA Companion App's own Last Notification sensor for Blink's push and
+publishes to `MqttBridgeService`'s `cabin/blink/motion` topic — see that
+automation and `MqttBridgeService.handleBlinkMotionTopic`'s javadoc for
+the full wiring. The original trigger here was MacroDroid, a
+phone-side notification-listener automation — it was validated working,
+but has since been uninstalled in favor of the native HA path below,
+which needs no separate app on the phone. The webhook documented in this
+section is kept only as a manual/fallback trigger (e.g. a direct curl to
+force a liveview open) — `BlinkLiveviewService.start()`'s idempotency
+means both paths calling it is harmless.
 
 **Endpoint**: `POST /api/webhooks/blink-motion` on `cabin-backend`
 (port 8090 on the M920q; deliberately outside `/api/camera/**`'s
@@ -624,11 +635,13 @@ Camera Events the same way any Blink motion does today (a `MOTION_ON`/
   session rather than starting a second one, by design.
 
 **Known limitation, not yet built**: nothing today tracks whether the
-phone-side automation is actually still calling this on a live schedule
-— it can silently stop working after an OS or Blink app update with no
-visible signal anywhere in this app. A "last successful call" timestamp
-plus a stale-heartbeat indicator is a real, scoped follow-up (see this
-session's plan file, Item 3) — not built as of this entry.
+`cabin_security_publish_blink_motion` HA automation is actually still
+firing on a live schedule — it can silently stop working after an
+Android/HA Companion App update with no visible signal anywhere in this
+app (the same class of risk that applied to the MacroDroid trigger it
+replaced). A "last successful call" timestamp plus a stale-heartbeat
+indicator is a real, scoped follow-up (see this session's plan file,
+Item 3) — not built as of this entry.
 
 ---
 

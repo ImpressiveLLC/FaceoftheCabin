@@ -68,8 +68,8 @@ automation:
           payload: "{{ 'ON' if is_state('binary_sensor.living_room_kidde_co_temp_and_humidity_cabin_upstairs_co_alarm', 'on') else 'OFF' }}"
 
   # Added 2026-09-05 -- replaces the phone-side MacroDroid listener
-  # (adware-driven, required watching ads to keep working) that used to
-  # call BlinkMotionWebhookController's HTTP endpoint directly. Source:
+  # (validated working, since uninstalled) that used to call
+  # BlinkMotionWebhookController's HTTP endpoint directly. Source:
   # the HA Companion App's own "Last Notification" sensor -- enabled via
   # the Companion App's own Manage Sensors -> Last Notification -> its own
   # Allow list (Blink checked there), with the Companion App itself granted

@@ -3499,8 +3499,8 @@ elements:
       has to come from the phone's own Blink push notification (Blink's
       motion/clip API is a confirmed dead end for this account) rather
       than from Frigate detecting anything itself. Was phone-side
-      MacroDroid (adware-driven, required watching ads to keep working)
-      calling that webhook directly; replaced by
+      MacroDroid calling that webhook directly -- validated as a working
+      interim solution, since uninstalled and replaced by
       cabin_security_publish_blink_motion (infra/cabin-security/
       homeassistant/cabin_security.yaml), an HA automation on the HA
       Companion App's own Last Notification sensor, publishing to
