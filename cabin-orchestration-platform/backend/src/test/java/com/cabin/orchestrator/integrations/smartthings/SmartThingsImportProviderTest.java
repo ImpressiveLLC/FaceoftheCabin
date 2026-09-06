@@ -105,6 +105,44 @@ class SmartThingsImportProviderTest {
         });
     }
 
+    // Sprint 5 WSJF #3: refresh() itself is a thin live-HTTP wrapper (same
+    // untested-by-design shape as listDevices() -- no RestTemplate mocking
+    // convention exists anywhere in this codebase); parseRefreshResponse()
+    // is the pure function under test here, same split as parseDevices().
+    @Test
+    void parsesARefreshResponseKeepingExtraAndComputingExpiry() {
+        OAuthCredential previous = new OAuthCredential("old-token", "old-refresh", null,
+            java.util.Map.of("client_id", "abc", "client_secret", "xyz"));
+        String json = """
+            {"access_token": "new-token", "refresh_token": "new-refresh", "expires_in": 3600}""";
+
+        OAuthCredential refreshed = provider.parseRefreshResponse(json, previous);
+
+        assertEquals("new-token", refreshed.accessToken());
+        assertEquals("new-refresh", refreshed.refreshToken());
+        assertNotNull(refreshed.expiresAt());
+        assertTrue(refreshed.expiresAt().isAfter(java.time.Instant.now()));
+        assertEquals(previous.extra(), refreshed.extra(), "client_id/client_secret must carry over unchanged");
+    }
+
+    @Test
+    void refreshResponseFallsBackToThePreviousRefreshTokenWhenNoneIsReturned() {
+        OAuthCredential previous = new OAuthCredential("old-token", "old-refresh", null, java.util.Map.of());
+        String json = """
+            {"access_token": "new-token", "expires_in": 3600}""";
+
+        OAuthCredential refreshed = provider.parseRefreshResponse(json, previous);
+
+        assertEquals("old-refresh", refreshed.refreshToken(), "SmartThings doesn't document always rotating the refresh token");
+    }
+
+    @Test
+    void refreshResponseWithNoAccessTokenThrows() {
+        OAuthCredential previous = new OAuthCredential("old-token", "old-refresh", null, java.util.Map.of());
+
+        assertThrows(IllegalStateException.class, () -> provider.parseRefreshResponse("{}", previous));
+    }
+
     private static final class NeverCalledCredentialStore implements OAuthCredentialStore {
         @Override public void store(String vaultEntryName, OAuthCredential credential) {
             throw new AssertionError("not expected to be called in this test");

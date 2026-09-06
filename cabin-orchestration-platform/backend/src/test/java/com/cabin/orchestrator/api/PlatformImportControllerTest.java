@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.platformimport.ImportUpsertOutcome;
 import com.cabin.orchestrator.platformimport.PlatformImportProvider;
 import com.cabin.orchestrator.platformimport.PlatformImportRecord;
@@ -13,7 +14,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -27,11 +31,14 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class PlatformImportControllerTest {
 
+    private FakeRecordRepository recordRepository;
+
     private PlatformImportController newController() {
         PlatformImportProvider smartThings = fakeProvider("smartthings");
         PlatformImportProvider ring = fakeProvider("ring");
+        recordRepository = new FakeRecordRepository();
         return new PlatformImportController(List.of(smartThings, ring),
-            new PlatformImportTranslationService(), new FakeRecordRepository());
+            new PlatformImportTranslationService(), recordRepository, new DeviceRegistry(List.of()));
     }
 
     private static PlatformImportProvider fakeProvider(String platform) {
@@ -93,16 +100,111 @@ class PlatformImportControllerTest {
 
     @Test
     void confirmIsAdministratorOnlyToo() {
-        ResponseEntity<?> result = newController().confirm("smartthings", java.util.Map.of(), requestWithRole(HouseholdRole.ADULT_HOUSEHOLD_MEMBER));
+        ResponseEntity<?> result = newController().confirm("smartthings", Map.of(), requestWithRole(HouseholdRole.ADULT_HOUSEHOLD_MEMBER));
 
         assertEquals(HttpStatus.FORBIDDEN, result.getStatusCode());
     }
 
     @Test
-    void confirmIsDeliberatelyStubbedForAnAdministrator() {
-        ResponseEntity<?> result = newController().confirm("smartthings", java.util.Map.of(), requestWithRole(HouseholdRole.ADMINISTRATOR));
+    void confirmRejectsAMissingRequiredField() {
+        PlatformImportController controller = newController();
+        recordRepository.seed("smartthings", "1");
 
-        assertEquals(HttpStatus.NOT_IMPLEMENTED, result.getStatusCode());
+        ResponseEntity<?> result = controller.confirm("smartthings",
+            confirmBody("1", "smartthings-kitchen", "Kitchen Temp", "TEMPERATURE_SENSOR", null),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        assertEquals(HttpStatus.BAD_REQUEST, result.getStatusCode());
+    }
+
+    @Test
+    void confirmRejectsAnInvalidLocation() {
+        PlatformImportController controller = newController();
+        recordRepository.seed("smartthings", "1");
+
+        ResponseEntity<?> result = controller.confirm("smartthings",
+            confirmBody("1", "smartthings-kitchen", "Kitchen Temp", "TEMPERATURE_SENSOR", "garage"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        assertEquals(HttpStatus.BAD_REQUEST, result.getStatusCode());
+    }
+
+    @Test
+    void confirmRejectsAnUnknownDeviceType() {
+        PlatformImportController controller = newController();
+        recordRepository.seed("smartthings", "1");
+
+        ResponseEntity<?> result = controller.confirm("smartthings",
+            confirmBody("1", "smartthings-kitchen", "Kitchen Temp", "NOT_A_REAL_TYPE", "cabin"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        assertEquals(HttpStatus.BAD_REQUEST, result.getStatusCode());
+    }
+
+    @Test
+    void confirmReturns404WhenNoPendingImportMatches() {
+        PlatformImportController controller = newController();
+        // Deliberately not seeded -- no proposals() call ever happened for this originalId.
+
+        ResponseEntity<?> result = controller.confirm("smartthings",
+            confirmBody("does-not-exist", "smartthings-kitchen", "Kitchen Temp", "TEMPERATURE_SENSOR", "cabin"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        assertEquals(HttpStatus.NOT_FOUND, result.getStatusCode());
+    }
+
+    @Test
+    void confirmCreatesADeviceAtCandidateAndMarksTheImportRecordConfirmed() {
+        PlatformImportController controller = newController();
+        recordRepository.seed("smartthings", "1");
+
+        ResponseEntity<?> result = controller.confirm("smartthings",
+            confirmBody("1", "smartthings-kitchen_temp", "Kitchen Temp", "TEMPERATURE_SENSOR", "cabin"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        assertEquals(HttpStatus.OK, result.getStatusCode());
+        assertEquals("CANDIDATE", ((Map<?, ?>) result.getBody()).get("deviceLifecycle"),
+            "must not auto-promote -- DeviceLifecycleState has no ACTIVE value, see this controller's own javadoc");
+        assertEquals("smartthings-kitchen_temp", recordRepository.find("smartthings", "1").orElseThrow().confirmedEntityId());
+    }
+
+    @Test
+    void confirmIsRejectedOnASecondAttemptForTheSameImport() {
+        PlatformImportController controller = newController();
+        recordRepository.seed("smartthings", "1");
+        controller.confirm("smartthings", confirmBody("1", "smartthings-kitchen_temp", "Kitchen Temp", "TEMPERATURE_SENSOR", "cabin"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        ResponseEntity<?> result = controller.confirm("smartthings",
+            confirmBody("1", "smartthings-kitchen_temp_2", "Kitchen Temp", "TEMPERATURE_SENSOR", "cabin"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        assertEquals(HttpStatus.CONFLICT, result.getStatusCode(), "D10: never overwrite a confirmed entity_id on re-import");
+    }
+
+    @Test
+    void confirmIsRejectedWhenTheEntityIdIsAlreadyInUse() {
+        PlatformImportController controller = newController();
+        recordRepository.seed("smartthings", "1");
+        recordRepository.seed("smartthings", "2");
+        controller.confirm("smartthings", confirmBody("1", "smartthings-kitchen_temp", "Kitchen Temp", "TEMPERATURE_SENSOR", "cabin"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        ResponseEntity<?> result = controller.confirm("smartthings",
+            confirmBody("2", "smartthings-kitchen_temp", "A Different Device", "TEMPERATURE_SENSOR", "cabin"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        assertEquals(HttpStatus.CONFLICT, result.getStatusCode());
+    }
+
+    private static Map<String, Object> confirmBody(String originalId, String entityId, String name, String type, String location) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("originalId", originalId);
+        body.put("entityId", entityId);
+        body.put("name", name);
+        body.put("type", type);
+        body.put("location", location);
+        return body;
     }
 
     @Test
@@ -116,10 +218,29 @@ class PlatformImportControllerTest {
         assertEquals(HttpStatus.FORBIDDEN, asChild.getStatusCode());
     }
 
+    /** In-memory, keyed by "platform/originalId" -- matches the real repository's (platform, originalId) PRIMARY KEY. */
     private static final class FakeRecordRepository implements PlatformImportRecordRepository {
+        private final Map<String, PlatformImportRecord> records = new HashMap<>();
+
+        void seed(String platform, String originalId) {
+            records.put(key(platform, originalId), new PlatformImportRecord(
+                platform, originalId, "Test Device", "loc", "{}", null, Instant.now(), Instant.now()));
+        }
+
         @Override public ImportUpsertOutcome upsert(RawImportRecord raw) { return ImportUpsertOutcome.NEW; }
-        @Override public List<PlatformImportRecord> loadAll() { return List.of(); }
-        @Override public List<PlatformImportRecord> findByPlatform(String platform) { return List.of(); }
-        @Override public Optional<PlatformImportRecord> find(String platform, String originalId) { return Optional.empty(); }
+        @Override public List<PlatformImportRecord> loadAll() { return List.copyOf(records.values()); }
+        @Override public List<PlatformImportRecord> findByPlatform(String platform) { return List.copyOf(records.values()); }
+        @Override public Optional<PlatformImportRecord> find(String platform, String originalId) {
+            return Optional.ofNullable(records.get(key(platform, originalId)));
+        }
+        @Override public boolean markConfirmed(String platform, String originalId, String confirmedEntityId) {
+            PlatformImportRecord existing = records.get(key(platform, originalId));
+            if (existing == null || existing.confirmedEntityId() != null) return false;
+            records.put(key(platform, originalId), new PlatformImportRecord(
+                existing.platform(), existing.originalId(), existing.originalName(), existing.originalLocation(),
+                existing.rawPayloadJson(), confirmedEntityId, existing.importedAt(), Instant.now()));
+            return true;
+        }
+        private static String key(String platform, String originalId) { return platform + "/" + originalId; }
     }
 }

@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle, Link2, Info
+  Wind, MessageCircle, Link2, Info, Cloud
 } from "lucide-react";
 import "./styles.css";
 
@@ -2841,7 +2841,7 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onO
 
 // ── L2/L3: Add ──
 function DmAddView({ onDone, auth }) {
-  const [mode, setMode] = useState(null); // null | "zigbee" | "manual"
+  const [mode, setMode] = useState(null); // null | "zigbee" | "manual" | "platform"
   return (
     <div className="dm-add-root">
       {!mode && (
@@ -2858,11 +2858,17 @@ function DmAddView({ onDone, auth }) {
               <strong>Register manually</strong>
               <span>Add a Home Assistant entity, RTSP camera, or MQTT device by ID</span>
             </button>
+            <button className="dm-add-option" onClick={() => setMode("platform")}>
+              <Cloud size={28}/>
+              <strong>Import from a connected platform</strong>
+              <span>SmartThings or Ring, once an administrator has connected the account — see docs/MAINTENANCE.md</span>
+            </button>
           </div>
         </div>
       )}
       {mode === "zigbee" && <ZigbeePairingFlow onBack={() => setMode(null)} onDone={onDone} auth={auth} />}
       {mode === "manual" && <ManualAddForm onBack={() => setMode(null)} onDone={onDone} auth={auth} />}
+      {mode === "platform" && <PlatformImportFlow onBack={() => setMode(null)} onDone={onDone} auth={auth} />}
     </div>
   );
 }
@@ -3058,6 +3064,169 @@ function ManualAddForm({ onBack, onDone, auth }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Platform import (Sprint 5 WSJF #3, r7 handover) ──
+// Two-step by design, not a shortcut: this confirms a raw platform-sourced
+// device into a real DeviceRegistry entry at DeviceLifecycleState.CANDIDATE
+// (there is no "ACTIVE" state -- see PlatformImportController.confirm()'s
+// own javadoc for why the handover's original wording didn't match this
+// enum). It does not accept the candidate into active use; that's the
+// existing Accept action already available from Device Manager's own
+// See -> Candidates view, unchanged by this feature.
+export function PlatformImportFlow({ onBack, auth }) {
+  const doFetch = auth?.authedFetch || fetch;
+  const apiBase = LOCATIONS.cabin.apiBase;
+  const [platform, setPlatform] = useState("smartthings");
+  const [records, setRecords] = useState([]);
+  const [deviceTypes, setDeviceTypes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [fetchingLive, setFetchingLive] = useState(false);
+  const [error, setError] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+
+  const loadRecords = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await doFetch(`${apiBase}/api/platform-import/records`);
+      if (!res.ok) throw new Error(res.status === 403 ? "Administrator access required" : `HTTP ${res.status}`);
+      const all = await res.json();
+      setRecords(all.filter(r => r.platform === platform && !r.confirmedEntityId));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [doFetch, apiBase, platform]);
+
+  useEffect(() => { loadRecords(); }, [loadRecords]);
+  useEffect(() => {
+    doFetch(`${apiBase}/api/devices/meta/types`)
+      .then(r => r.ok ? r.json() : { types: [] })
+      .then(d => setDeviceTypes(d.types || []))
+      .catch(() => setDeviceTypes([]));
+  }, [doFetch, apiBase]);
+
+  const fetchLive = async () => {
+    setFetchingLive(true); setError(null);
+    try {
+      const res = await doFetch(`${apiBase}/api/platform-import/${platform}/proposals`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      await loadRecords();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setFetchingLive(false);
+    }
+  };
+
+  const platformLabel = platform === "smartthings" ? "SmartThings" : "Ring";
+
+  return (
+    <div className="pairing-container">
+      <button className="btn-ghost dm-back" onClick={onBack}><ArrowLeft size={14}/> Back</button>
+      <div className="dm-edit-form">
+        <h3>Import from a Connected Platform</h3>
+        <p className="dm-hint">
+          Requires an administrator to have already connected this platform's account in Vaultwarden
+          (see docs/MAINTENANCE.md). Confirming an import here creates a candidate device — it does not
+          activate it. Accept the resulting candidate from Device Manager's "See → Candidates" view afterward.
+        </p>
+        <label>Platform
+          <select value={platform} onChange={e => { setExpandedId(null); setPlatform(e.target.value); }}>
+            <option value="smartthings">SmartThings</option>
+            <option value="ring">Ring</option>
+          </select>
+        </label>
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={fetchLive} disabled={fetchingLive}>
+            {fetchingLive ? "Fetching…" : `Fetch devices from ${platformLabel}`}
+          </button>
+          <button className="btn-ghost" onClick={loadRecords} disabled={loading}>
+            <RefreshCw size={14}/> Refresh list
+          </button>
+        </div>
+        {error && <p className="dm-hint dm-error-text">{error}</p>}
+        {loading ? (
+          <p className="dm-hint">Loading…</p>
+        ) : records.length === 0 ? (
+          <p className="dm-hint">No pending {platformLabel} imports. Fetch devices above to check for new ones.</p>
+        ) : (
+          <div className="dm-list">
+            {records.map(record => (
+              <PendingImportRow key={record.originalId} record={record} platform={platform}
+                deviceTypes={deviceTypes}
+                expanded={expandedId === record.originalId}
+                onToggle={() => setExpandedId(expandedId === record.originalId ? null : record.originalId)}
+                onConfirmed={() => { setExpandedId(null); loadRecords(); }}
+                doFetch={doFetch} apiBase={apiBase} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function PendingImportRow({ record, platform, deviceTypes, expanded, onToggle, onConfirmed, doFetch, apiBase }) {
+  const suggestedEntityId = `${platform}-${(record.originalName || "unnamed")
+    .toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "unnamed"}`;
+  const [form, setForm] = useState({ entityId: suggestedEntityId, name: record.originalName || "", type: "", location: "cabin" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const submit = async () => {
+    if (!form.entityId || !form.name || !form.type || !form.location) return;
+    setSaving(true); setError(null);
+    try {
+      const res = await doFetch(`${apiBase}/api/platform-import/${platform}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ originalId: record.originalId, ...form }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      onConfirmed();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="dm-candidate-card">
+      <div className="dm-pending-import-header" onClick={onToggle}>
+        <strong>{record.originalName || record.originalId}</strong>
+        <span className="dm-hint">{record.originalLocation || "no location reported"}</span>
+      </div>
+      {expanded && (
+        <div className="dm-edit-form">
+          <label>Entity ID <input value={form.entityId} onChange={e => setForm({ ...form, entityId: e.target.value })}/></label>
+          <label>Display Name <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}/></label>
+          <label>Type
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+              <option value="">Choose a type…</option>
+              {deviceTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label>Location
+            <select value={form.location} onChange={e => setForm({ ...form, location: e.target.value })}>
+              <option value="cabin">Cabin</option>
+              <option value="home">Home</option>
+            </select>
+          </label>
+          {error && <p className="dm-hint dm-error-text">{error}</p>}
+          <div className="modal-actions">
+            <button className="btn-primary" onClick={submit} disabled={saving || !form.entityId || !form.name || !form.type}>
+              {saving ? "Confirming…" : "Confirm as Device"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

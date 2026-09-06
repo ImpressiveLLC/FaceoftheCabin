@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -4090,5 +4090,143 @@ describe("HelpdeskPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /Ask/ }));
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// Sprint 5 WSJF #3 (r7 handover): confirm() wiring + the frontend "Pending
+// Import" surface. PlatformImportFlow/PendingImportRow are exported the
+// same way DmDeviceRow/DmRemoveView are, for direct testing rather than
+// through the full DeviceManagerPanel (which would need candidates/
+// previously-exposed/devices endpoints all mocked just to reach this one
+// sub-flow).
+describe("PlatformImportFlow", () => {
+  afterEach(cleanup);
+
+  function mockAuth({ records = [], types = ["TEMPERATURE_SENSOR", "MOTION_SENSOR"], proposalsResponse } = {}) {
+    return { authedFetch: vi.fn((url) => {
+      if (url.includes("/api/platform-import/records")) {
+        return Promise.resolve({ ok: true, json: async () => records });
+      }
+      if (url.includes("/api/devices/meta/types")) {
+        return Promise.resolve({ ok: true, json: async () => ({ types }) });
+      }
+      if (url.includes("/proposals")) {
+        return Promise.resolve(proposalsResponse || { ok: true, json: async () => [] });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    }) };
+  }
+
+  it("shows the empty state when there are no pending imports for the selected platform", async () => {
+    const auth = mockAuth({ records: [] });
+
+    render(<PlatformImportFlow onBack={() => {}} auth={auth} />);
+
+    expect(await screen.findByText(/No pending SmartThings imports/)).toBeTruthy();
+  });
+
+  it("lists only unconfirmed records for the currently selected platform", async () => {
+    const auth = mockAuth({ records: [
+      { platform: "smartthings", originalId: "1", originalName: "Kitchen Temp", originalLocation: "Kitchen", confirmedEntityId: null },
+      { platform: "smartthings", originalId: "2", originalName: "Already Done", originalLocation: "Kitchen", confirmedEntityId: "smartthings-already_done" },
+      { platform: "ring", originalId: "3", originalName: "Front Doorbell", originalLocation: "Front", confirmedEntityId: null },
+    ] });
+
+    render(<PlatformImportFlow onBack={() => {}} auth={auth} />);
+
+    expect(await screen.findByText("Kitchen Temp")).toBeTruthy();
+    expect(screen.queryByText("Already Done")).toBeFalsy();
+    expect(screen.queryByText("Front Doorbell")).toBeFalsy();
+  });
+
+  it("switching the platform dropdown re-filters the list", async () => {
+    const auth = mockAuth({ records: [
+      { platform: "smartthings", originalId: "1", originalName: "Kitchen Temp", originalLocation: "Kitchen", confirmedEntityId: null },
+      { platform: "ring", originalId: "3", originalName: "Front Doorbell", originalLocation: "Front", confirmedEntityId: null },
+    ] });
+
+    render(<PlatformImportFlow onBack={() => {}} auth={auth} />);
+    expect(await screen.findByText("Kitchen Temp")).toBeTruthy();
+
+    fireEvent.change(screen.getByRole("combobox", { name: /Platform/i }), { target: { value: "ring" } });
+
+    expect(await screen.findByText("Front Doorbell")).toBeTruthy();
+    expect(screen.queryByText("Kitchen Temp")).toBeFalsy();
+  });
+
+  it("shows a live-fetch error inline instead of throwing, e.g. no OAuth credential set up yet", async () => {
+    const auth = mockAuth({
+      records: [],
+      proposalsResponse: { ok: false, status: 500, json: async () => ({ error: "No SmartThings OAuth credential in Vaultwarden (smartthings_oauth) -- complete OAuth first" }) },
+    });
+    render(<PlatformImportFlow onBack={() => {}} auth={auth} />);
+    await screen.findByText(/No pending SmartThings imports/);
+
+    fireEvent.click(screen.getByRole("button", { name: /Fetch devices from SmartThings/ }));
+
+    expect(await screen.findByText(/No SmartThings OAuth credential/)).toBeTruthy();
+  });
+
+  it("shows an administrator-required message rather than a raw error on 403", async () => {
+    const auth = { authedFetch: vi.fn(() => Promise.resolve({ ok: false, status: 403, json: async () => ({}) })) };
+
+    render(<PlatformImportFlow onBack={() => {}} auth={auth} />);
+
+    expect(await screen.findByText("Administrator access required")).toBeTruthy();
+  });
+});
+
+describe("PendingImportRow", () => {
+  afterEach(cleanup);
+
+  const record = { originalId: "1", originalName: "Kitchen Temp", originalLocation: "Kitchen" };
+  const deviceTypes = ["TEMPERATURE_SENSOR", "MOTION_SENSOR"];
+
+  it("pre-fills a slugified entity ID and the original name", () => {
+    render(<PendingImportRow record={record} platform="smartthings" deviceTypes={deviceTypes}
+      expanded={true} onToggle={() => {}} onConfirmed={() => {}} doFetch={vi.fn()} apiBase="http://cabin" />);
+
+    expect(screen.getByDisplayValue("smartthings-kitchen_temp")).toBeTruthy();
+    expect(screen.getByDisplayValue("Kitchen Temp")).toBeTruthy();
+  });
+
+  it("does not render the confirm form until expanded", () => {
+    render(<PendingImportRow record={record} platform="smartthings" deviceTypes={deviceTypes}
+      expanded={false} onToggle={() => {}} onConfirmed={() => {}} doFetch={vi.fn()} apiBase="http://cabin" />);
+
+    expect(screen.queryByLabelText(/Entity ID/)).toBeFalsy();
+  });
+
+  it("confirm is disabled until a type is chosen", () => {
+    render(<PendingImportRow record={record} platform="smartthings" deviceTypes={deviceTypes}
+      expanded={true} onToggle={() => {}} onConfirmed={() => {}} doFetch={vi.fn()} apiBase="http://cabin" />);
+
+    expect(screen.getByRole("button", { name: "Confirm as Device" }).disabled).toBe(true);
+  });
+
+  it("submits exactly the confirmed fields and calls onConfirmed on success", async () => {
+    const doFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ deviceId: "smartthings-kitchen_temp", deviceLifecycle: "CANDIDATE" }) });
+    const onConfirmed = vi.fn();
+    render(<PendingImportRow record={record} platform="smartthings" deviceTypes={deviceTypes}
+      expanded={true} onToggle={() => {}} onConfirmed={onConfirmed} doFetch={doFetch} apiBase="http://cabin" />);
+
+    fireEvent.change(screen.getByLabelText(/Type/), { target: { value: "TEMPERATURE_SENSOR" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm as Device" }));
+
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalled());
+    expect(doFetch).toHaveBeenCalledWith("http://cabin/api/platform-import/smartthings/confirm", expect.objectContaining({ method: "POST" }));
+    const body = JSON.parse(doFetch.mock.calls[0][1].body);
+    expect(body).toEqual({ originalId: "1", entityId: "smartthings-kitchen_temp", name: "Kitchen Temp", type: "TEMPERATURE_SENSOR", location: "cabin" });
+  });
+
+  it("shows the server's error inline on a 409 conflict instead of throwing, e.g. already confirmed", async () => {
+    const doFetch = vi.fn().mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: "Already confirmed", entityId: "smartthings-kitchen_temp" }) });
+    render(<PendingImportRow record={record} platform="smartthings" deviceTypes={deviceTypes}
+      expanded={true} onToggle={() => {}} onConfirmed={() => {}} doFetch={doFetch} apiBase="http://cabin" />);
+
+    fireEvent.change(screen.getByLabelText(/Type/), { target: { value: "TEMPERATURE_SENSOR" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm as Device" }));
+
+    expect(await screen.findByText("Already confirmed")).toBeTruthy();
   });
 });

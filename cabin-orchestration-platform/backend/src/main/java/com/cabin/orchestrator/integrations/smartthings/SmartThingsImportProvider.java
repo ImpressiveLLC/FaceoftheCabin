@@ -9,9 +9,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -36,6 +40,7 @@ public class SmartThingsImportProvider implements PlatformImportProvider {
     public static final String VAULT_ENTRY_NAME = "smartthings_oauth";
     private static final String DEVICES_URL = "https://api.smartthings.com/v1/devices";
     private static final String LOCATION_URL = "https://api.smartthings.com/v1/locations/";
+    private static final String TOKEN_URL = "https://api.smartthings.com/oauth/token";
 
     /** SmartThings capability id -> D7 measurement_type. Extend as devices surface more; never guess a mapping that isn't in the spec. */
     private static final Map<String, String> CAPABILITY_TO_MEASUREMENT_TYPE = Map.of(
@@ -65,10 +70,76 @@ public class SmartThingsImportProvider implements PlatformImportProvider {
         OAuthCredential credential = credentialStore.retrieve(VAULT_ENTRY_NAME)
             .orElseThrow(() -> new IllegalStateException(
                 "No SmartThings OAuth credential in Vaultwarden (" + VAULT_ENTRY_NAME + ") -- complete OAuth first"));
+        credential = ensureFresh(credential);
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(credential.accessToken());
         String body = http.exchange(DEVICES_URL, HttpMethod.GET, new HttpEntity<>(headers), String.class).getBody();
         return resolveLocationNames(parseDevices(body), headers);
+    }
+
+    /**
+     * Sprint 5 WSJF #3. Checked before every use, not on a timer -- matches
+     * OAuthCredential.isExpired()'s own reasoning. A credential with no
+     * refreshToken can't be refreshed at all; that's a real setup gap
+     * (re-authorize), not something to retry.
+     */
+    private OAuthCredential ensureFresh(OAuthCredential credential) {
+        if (!credential.isExpired()) return credential;
+        if (credential.refreshToken() == null) {
+            throw new IllegalStateException(
+                "SmartThings credential expired and has no refresh token -- re-authorize and re-store " + VAULT_ENTRY_NAME);
+        }
+        OAuthCredential refreshed = refresh(credential);
+        credentialStore.store(VAULT_ENTRY_NAME, refreshed);
+        return refreshed;
+    }
+
+    /**
+     * Live HTTP call -- thin wrapper around the pure, fixture-testable
+     * parseRefreshResponse() below (see SmartThingsImportProviderTest).
+     * client_id/client_secret ride in OAuthCredential.extra() (same seam
+     * Ring's hardware_id already uses) rather than a new env var/config
+     * surface -- OAuthCredentialStore's whole point is that every OAuth
+     * value for a platform goes through this one seam, never a second one.
+     */
+    private OAuthCredential refresh(OAuthCredential credential) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        String clientId = credential.extra() == null ? null : credential.extra().get("client_id");
+        String clientSecret = credential.extra() == null ? null : credential.extra().get("client_secret");
+        if (clientId != null && clientSecret != null) {
+            headers.setBasicAuth(clientId, clientSecret);
+        }
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "refresh_token");
+        form.add("refresh_token", credential.refreshToken());
+        String body = http.exchange(TOKEN_URL, HttpMethod.POST, new HttpEntity<>(form, headers), String.class).getBody();
+        return parseRefreshResponse(body, credential);
+    }
+
+    /**
+     * Pure, fixture-testable: turns a raw POST .../oauth/token refresh
+     * response into a new OAuthCredential. refresh_token defaults to the
+     * previous value when the response omits one -- SmartThings does not
+     * document that it always rotates the refresh token on every use.
+     * extra() (client_id/client_secret) always carries over unchanged;
+     * this response never contains them.
+     */
+    public OAuthCredential parseRefreshResponse(String responseBody, OAuthCredential previous) {
+        try {
+            JsonNode root = mapper.readTree(responseBody);
+            String accessToken = root.path("access_token").asText(null);
+            if (accessToken == null || accessToken.isBlank()) {
+                throw new IllegalStateException("SmartThings token refresh response had no access_token");
+            }
+            String refreshToken = root.hasNonNull("refresh_token") ? root.path("refresh_token").asText() : previous.refreshToken();
+            Instant expiresAt = root.hasNonNull("expires_in") ? Instant.now().plusSeconds(root.path("expires_in").asLong()) : null;
+            return new OAuthCredential(accessToken, refreshToken, expiresAt, previous.extra());
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to parse SmartThings token refresh response", e);
+        }
     }
 
     /** Pure, fixture-testable: turns a raw GET /v1/devices response body into RawImportRecords. originalLocation is the raw locationId here -- resolveLocationNames() (live path only) fills in the human name. */

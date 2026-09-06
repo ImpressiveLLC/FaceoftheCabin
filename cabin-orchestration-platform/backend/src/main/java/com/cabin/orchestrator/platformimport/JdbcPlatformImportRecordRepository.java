@@ -76,6 +76,17 @@ public class JdbcPlatformImportRecordRepository implements PlatformImportRecordR
     }
 
     @Override
+    public boolean markConfirmed(String platform, String originalId, String confirmedEntityId) {
+        int updated = jdbc.update("""
+            UPDATE platform_import_record
+            SET confirmed_entity_id = ?, updated_at = ?
+            WHERE platform = ? AND original_id = ? AND confirmed_entity_id IS NULL
+            """,
+            confirmedEntityId, Instant.now().atOffset(ZoneOffset.UTC), platform, originalId);
+        return updated > 0;
+    }
+
+    @Override
     public List<PlatformImportRecord> loadAll() {
         return jdbc.query("SELECT * FROM platform_import_record ORDER BY platform, original_id", (rs, rowNum) -> fromRow(rs));
     }

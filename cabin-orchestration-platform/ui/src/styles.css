@@ -256,6 +256,11 @@ body {
 .workflow-badge { border:1px solid #79c0ff; color:#79c0ff; border-radius:999px; padding:2px 7px; font-size:10px; flex-shrink:0; white-space:nowrap; }
 .dm-why-card,.dm-candidate-card { display:flex; flex-direction:column; gap:6px; margin-top:12px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); font-size:12px; }
 .dm-why-card small { color:var(--text-dim); }
+/* Platform import (Sprint 5 WSJF #3) -- reuses .dm-candidate-card's own
+   card styling for each pending row; this is just the clickable header
+   row within it. */
+.dm-pending-import-header { display:flex; justify-content:space-between; align-items:center; gap:10px; cursor:pointer; }
+.dm-error-text { color:var(--state-warning); }
 .action-result { margin:8px 0 0; padding:7px 9px; border-radius:7px; font-size:12px; }
 .action-ok { color:var(--state-online); background:color-mix(in srgb, var(--state-online) 12%, transparent); }
 .action-error { color:var(--state-warning); background:color-mix(in srgb, var(--state-warning) 12%, transparent); }

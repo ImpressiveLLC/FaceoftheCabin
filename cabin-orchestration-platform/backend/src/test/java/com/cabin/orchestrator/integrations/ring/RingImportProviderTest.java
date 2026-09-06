@@ -88,6 +88,42 @@ class RingImportProviderTest {
         });
     }
 
+    // Sprint 5 WSJF #3: parseRefreshResponse() is the pure function under
+    // test, same split as SmartThingsImportProviderTest's own tests.
+    @Test
+    void parsesARefreshResponseKeepingHardwareIdAndComputingExpiry() {
+        OAuthCredential previous = new OAuthCredential("old-token", "old-refresh", null,
+            java.util.Map.of("hardware_id", "some-uuid"));
+        String json = """
+            {"access_token": "new-token", "refresh_token": "new-refresh", "expires_in": 1800}""";
+
+        OAuthCredential refreshed = provider.parseRefreshResponse(json, previous);
+
+        assertEquals("new-token", refreshed.accessToken());
+        assertEquals("new-refresh", refreshed.refreshToken());
+        assertNotNull(refreshed.expiresAt());
+        assertTrue(refreshed.expiresAt().isAfter(java.time.Instant.now()));
+        assertEquals("some-uuid", refreshed.extra().get("hardware_id"), "hardware_id must carry over unchanged");
+    }
+
+    @Test
+    void refreshResponseFallsBackToThePreviousRefreshTokenWhenNoneIsReturned() {
+        OAuthCredential previous = new OAuthCredential("old-token", "old-refresh", null, java.util.Map.of());
+        String json = """
+            {"access_token": "new-token", "expires_in": 1800}""";
+
+        OAuthCredential refreshed = provider.parseRefreshResponse(json, previous);
+
+        assertEquals("old-refresh", refreshed.refreshToken());
+    }
+
+    @Test
+    void refreshResponseWithNoAccessTokenThrows() {
+        OAuthCredential previous = new OAuthCredential("old-token", "old-refresh", null, java.util.Map.of());
+
+        assertThrows(IllegalStateException.class, () -> provider.parseRefreshResponse("{}", previous));
+    }
+
     private static final class NeverCalledCredentialStore implements OAuthCredentialStore {
         @Override public void store(String vaultEntryName, OAuthCredential credential) {
             throw new AssertionError("not expected to be called in this test");
