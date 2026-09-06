@@ -438,6 +438,40 @@ function check(label, actual, expected) {
 
   check('no JS errors during the run', jsErrors, []);
 
+  // Cabin presence badge (D11 minimal aggregate assertion, Sprint 4 WSJF
+  // #1). No real backend to hit in this harness, so this exercises
+  // renderPresenceBadge() directly rather than mocking fetch -- the
+  // network/expiry-timer path itself is covered by the backend's own
+  // PresenceContractV1Test, and this file's job is the DOM/CSS contract.
+  check('presence badge is hidden by default (signed out, nothing fetched yet)',
+    await page.locator('#presence-badge').isVisible(), false);
+
+  await page.evaluate(() => renderPresenceBadge('home'));
+  // .custody-status-label is CSS text-transform:uppercase (same class
+  // custody-card's own status text uses) -- checking rendered innerText
+  // (what a person actually sees), not the raw JS-set textContent, same
+  // convention this file already uses elsewhere (see chore-full-label above).
+  check('presence badge shows "Someone\'s home" for a home assertion',
+    await page.locator('#presence-badge-label').innerText(), "SOMEONE'S HOME");
+  check('presence badge is visible for a home assertion',
+    await page.locator('#presence-badge').isVisible(), true);
+
+  const presenceBadgeBox = await page.locator('#presence-badge').boundingBox();
+  const custodyCardBox = await page.locator('#custody-card').boundingBox();
+  check('presence badge never overlaps the custody card stacked above it',
+    presenceBadgeBox.y >= custodyCardBox.y + custodyCardBox.height, true);
+
+  await page.evaluate(() => renderPresenceBadge('away'));
+  check('presence badge shows "Away" for an away assertion',
+    await page.locator('#presence-badge-label').innerText(), 'AWAY');
+
+  await page.evaluate(() => renderPresenceBadge(null));
+  check('presence badge is hidden again for an unknown assertion, not shown as literal "Unknown"',
+    await page.locator('#presence-badge').isVisible(), false);
+
+  check('presence badge markup never contains a person id, matching the D11 contract it renders',
+    await page.locator('#presence-badge').evaluate(el => el.innerHTML.toLowerCase().includes('nate')), false);
+
   // Cross-app theme handoff (added 2026-08-07, Phase 7 §2c/2d -- see
   // docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md): the actual
   // reported bug was "theme resets when I link out to cabin-ui," root-caused
@@ -503,6 +537,13 @@ function check(label, actual, expected) {
   check('mobile dock exposes four single-tap actions', await mobile.locator('#mobile-action-dock .mobile-action').count(), 4);
   check('desktop dashboard FAB is replaced on mobile', await mobile.locator('#dashboard-fab').isVisible(), false);
   check('mobile page has no horizontal document overflow', await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+
+  // Matches custody-card's own pre-existing mobile-hide rule -- forced to
+  // 'home' first so this actually proves the media query wins, not just
+  // that the badge happened to already be hidden for an unrelated reason.
+  await mobile.evaluate(() => renderPresenceBadge('home'));
+  check('presence badge (and custody card) stack is hidden on mobile',
+    await mobile.locator('#top-right-stack').isVisible(), false);
 
   await mobile.getByRole('button', { name: 'View the parenting schedule' }).click();
   await mobile.waitForTimeout(150);

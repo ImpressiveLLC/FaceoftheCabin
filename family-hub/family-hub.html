@@ -1961,8 +1961,13 @@
       <!-- D11 minimal aggregate presence assertion (GET /api/presence/contract)
            -- hidden by default and stays hidden for "unknown"; see
            renderPresenceBadge(). Never shows a name, a location, or raw
-           sensor data, only "Someone's home" / "Away". -->
-      <div class="glass-card" id="presence-badge" hidden>
+           sensor data, only "Someone's home" / "Away". style="display:none"
+           here (not the `hidden` attribute) to match this file's own
+           show/hide convention -- .glass-card's own `display:flex` rule
+           would otherwise outrank a bare `hidden` attribute in the cascade
+           (author CSS always beats the UA stylesheet's [hidden] rule,
+           regardless of specificity), silently leaving the badge visible. -->
+      <div class="glass-card" id="presence-badge" style="display:none">
         <div class="card-label">
           <span class="card-label-icon" id="presence-badge-icon">🟢</span>
           <span class="custody-status-label" id="presence-badge-label">Someone's home</span>
@@ -4154,11 +4159,12 @@ function renderPresenceBadge(state) {
   if (state !== 'home' && state !== 'away') {
     // Not signed in, contract unreachable, stale, or an unrecognized
     // policy_version -- omit the chip entirely rather than showing an
-    // "Unknown" label. Absence is less alarming than "Unknown".
-    card.hidden = true;
+    // "Unknown" label. Absence is less alarming than "Unknown". style.display,
+    // not the `hidden` attribute -- see the markup's own comment for why.
+    card.style.display = 'none';
     return;
   }
-  card.hidden = false;
+  card.style.display = '';
   card.className = 'glass-card ' + state;
   document.getElementById('presence-badge-icon').textContent = state === 'home' ? '🟢' : '⚪';
   document.getElementById('presence-badge-label').textContent = state === 'home' ? "Someone's home" : 'Away';
