@@ -160,6 +160,17 @@ cabin:
     hotRetentionMonths: ${TELEMETRY_ARCHIVAL_HOT_MONTHS:3}
     archiveDir: ${TELEMETRY_ARCHIVAL_DIR:/app/archives/cabin_event}
     cron: ${TELEMETRY_ARCHIVAL_CRON:0 0 2 1 * *}
+  # Sprint 5 WSJF #1 (Optimization Opportunities, 2026-09-06) -- see
+  # OptimizationAnalyticsService's own javadoc for why POWER_DRAW_ANOMALY
+  # replaces the handover's originally-specified ENERGY_IDLE rule.
+  opportunities:
+    enabled: ${OPPORTUNITIES_ENABLED:true}
+    cron: ${OPPORTUNITIES_CRON:0 0 * * * *}
+    # A device counts as "continuously drawing power" once this many hours
+    # pass with no telemetry reading at/below offThresholdWatts.
+    continuousDrawHours: ${OPPORTUNITIES_CONTINUOUS_DRAW_HOURS:48}
+    lookbackDays: ${OPPORTUNITIES_LOOKBACK_DAYS:30}
+    offThresholdWatts: ${OPPORTUNITIES_OFF_THRESHOLD_WATTS:1.0}
 
 management:
   endpoints:

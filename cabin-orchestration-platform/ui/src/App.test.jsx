@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -3728,6 +3728,139 @@ describe("MagicLinkLanding (Tier 2 magic link, /auth/magic/{token})", () => {
     render(<MagicLinkLanding token="link-xyz" />);
 
     expect(await screen.findByText(/Couldn't reach the cabin server/)).toBeTruthy();
+  });
+});
+
+// Sprint 5 WSJF #1 (r5 handover, "Optimization Opportunities"). Tested
+// standalone (not through RulesPanel, whose Node-RED/Kafka/WorkflowRulesCard
+// siblings all fetch on mount too) -- OptimizationOpportunitiesCard is
+// exported specifically to make this possible cleanly.
+describe("OptimizationOpportunitiesCard", () => {
+  afterEach(cleanup);
+
+  const devices = [
+    { deviceId: "z2m-heater_mech_room", name: "heater_mech_room", attributes: { area: "Mech Room" } },
+  ];
+
+  function mockAuth(response) {
+    return { authedFetch: vi.fn().mockResolvedValue(response) };
+  }
+
+  it("shows a device's area and name resolved from the devices list, not the bare deviceId", async () => {
+    const auth = mockAuth({ ok: true, json: async () => [
+      { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-heater_mech_room", status: "OPEN",
+        detectedAt: "2026-09-01T00:00:00Z", evidence: { currentPowerWatts: 42, continuousHours: 60 } },
+    ] });
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+
+    expect(await screen.findByText("Mech Room · heater_mech_room")).toBeTruthy();
+    expect(screen.getByText(/Drawing ~42W continuously for 60h/)).toBeTruthy();
+  });
+
+  it("falls back to the bare deviceId when no matching device is found", async () => {
+    const auth = mockAuth({ ok: true, json: async () => [
+      { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-unknown", status: "OPEN",
+        detectedAt: "2026-09-01T00:00:00Z", evidence: {} },
+    ] });
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+
+    expect(await screen.findByText("z2m-unknown")).toBeTruthy();
+  });
+
+  it("shows the empty state when there are no open opportunities", async () => {
+    const auth = mockAuth({ ok: true, json: async () => [] });
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+
+    expect(await screen.findByText("No open opportunities — the cabin looks good.")).toBeTruthy();
+  });
+
+  it("excludes resolved opportunities from the visible list", async () => {
+    const auth = mockAuth({ ok: true, json: async () => [
+      { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-heater_mech_room", status: "RESOLVED",
+        detectedAt: "2026-09-01T00:00:00Z", evidence: {} },
+    ] });
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+
+    expect(await screen.findByText("No open opportunities — the cabin looks good.")).toBeTruthy();
+    expect(screen.queryByText("Mech Room · heater_mech_room")).toBeFalsy();
+  });
+
+  it("shows an admin-required message rather than a raw error on 403", async () => {
+    const auth = mockAuth({ ok: false, status: 403, json: async () => ({ error: "forbidden" }) });
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+
+    expect(await screen.findByText(/Admin access required/)).toBeTruthy();
+  });
+
+  it("an OPEN row offers both Acknowledge and Resolve; an ACKNOWLEDGED row offers only Resolve", async () => {
+    const auth = mockAuth({ ok: true, json: async () => [
+      { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-heater_mech_room", status: "OPEN",
+        detectedAt: "2026-09-01T00:00:00Z", evidence: {} },
+    ] });
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+
+    expect(await screen.findByText("Acknowledge")).toBeTruthy();
+    expect(screen.getByText("Resolve")).toBeTruthy();
+  });
+
+  it("acknowledging PATCHes the right id and status, then refreshes", async () => {
+    const auth = {
+      authedFetch: vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => [
+          { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-heater_mech_room", status: "OPEN",
+            detectedAt: "2026-09-01T00:00:00Z", evidence: {} },
+        ] })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+        .mockResolvedValueOnce({ ok: true, json: async () => [
+          { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-heater_mech_room", status: "ACKNOWLEDGED",
+            detectedAt: "2026-09-01T00:00:00Z", evidence: {} },
+        ] }),
+    };
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+    await screen.findByText("Acknowledge");
+    fireEvent.click(screen.getByText("Acknowledge"));
+
+    expect(await screen.findByText(/acknowledged/)).toBeTruthy();
+    const patchCall = auth.authedFetch.mock.calls[1];
+    expect(patchCall[0]).toContain("/api/opportunities/op-1/status");
+    expect(patchCall[1].method).toBe("PATCH");
+    expect(JSON.parse(patchCall[1].body)).toEqual({ status: "ACKNOWLEDGED" });
+  });
+
+  it("a failed status update shows an inline error instead of crashing", async () => {
+    const auth = {
+      authedFetch: vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => [
+          { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-heater_mech_room", status: "OPEN",
+            detectedAt: "2026-09-01T00:00:00Z", evidence: {} },
+        ] })
+        .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ error: "boom" }) }),
+    };
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+    await screen.findByText("Resolve");
+    fireEvent.click(screen.getByText("Resolve"));
+
+    expect(await screen.findByText("boom")).toBeTruthy();
+  });
+
+  it("shows type filter chips only when more than one type is present among open opportunities", async () => {
+    const auth = mockAuth({ ok: true, json: async () => [
+      { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-heater_mech_room", status: "OPEN",
+        detectedAt: "2026-09-01T00:00:00Z", evidence: {} },
+    ] });
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+    await screen.findByText("heater_mech_room", { exact: false });
+
+    expect(screen.queryByText("All")).toBeFalsy();
   });
 });
 

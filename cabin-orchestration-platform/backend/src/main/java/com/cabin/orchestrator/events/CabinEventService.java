@@ -247,6 +247,58 @@ public class CabinEventService implements DeviceEventLookup {
         return result;
     }
 
+    /**
+     * Most recent TELEMETRY event for one numeric payload field whose value
+     * is at or below a threshold, within a lookback window -- built for
+     * OptimizationAnalyticsService's continuous-power-draw check ("when did
+     * this device last report near-zero power, if ever, in the window").
+     * Same numeric-format guard as dailyAggregates().
+     */
+    public java.util.Optional<Instant> mostRecentAtOrBelow(String deviceId, String payloadField, double threshold, Instant since) {
+        String sql = """
+            SELECT time FROM cabin_event
+            WHERE device_id = ? AND event_type = 'TELEMETRY'
+              AND jsonb_exists(payload, ?)
+              AND payload->>? ~ '^-?[0-9]+\\.?[0-9]*$'
+              AND (payload->>?)::numeric <= ?
+              AND time >= ?
+            ORDER BY time DESC LIMIT 1
+            """;
+        List<Map<String, Object>> rows = jdbc.queryForList(sql,
+            deviceId, payloadField, payloadField, payloadField, threshold, java.sql.Timestamp.from(since));
+        return rows.isEmpty() ? java.util.Optional.empty() : rowTime(rows.get(0));
+    }
+
+    /**
+     * Earliest TELEMETRY event reporting this numeric field within a
+     * lookback window -- the anchor used when a device has never reported
+     * at/below the "off" threshold anywhere in that window (see
+     * mostRecentAtOrBelow above), so a continuous-draw duration has *some*
+     * real timestamp to measure from rather than assuming Instant.MIN.
+     */
+    public java.util.Optional<Instant> earliestInWindow(String deviceId, String payloadField, Instant since) {
+        String sql = """
+            SELECT time FROM cabin_event
+            WHERE device_id = ? AND event_type = 'TELEMETRY'
+              AND jsonb_exists(payload, ?)
+              AND payload->>? ~ '^-?[0-9]+\\.?[0-9]*$'
+              AND time >= ?
+            ORDER BY time ASC LIMIT 1
+            """;
+        List<Map<String, Object>> rows = jdbc.queryForList(sql,
+            deviceId, payloadField, payloadField, java.sql.Timestamp.from(since));
+        return rows.isEmpty() ? java.util.Optional.empty() : rowTime(rows.get(0));
+    }
+
+    // Same defensive instanceof pattern as fromRow()/toDailyPoint() below --
+    // a query returning only a "time" column still goes through the
+    // driver's generic row mapping, so treat a surprising type as "no
+    // timestamp" rather than risking a ClassCastException.
+    private java.util.Optional<Instant> rowTime(Map<String, Object> row) {
+        Object timeVal = row.get("time");
+        return timeVal instanceof java.sql.Timestamp t ? java.util.Optional.of(t.toInstant()) : java.util.Optional.empty();
+    }
+
     private TelemetryDailyPoint toDailyPoint(Map<String, Object> row) {
         Object dayVal = row.get("day");
         Instant day = dayVal instanceof java.sql.Timestamp t ? t.toInstant() : Instant.now();

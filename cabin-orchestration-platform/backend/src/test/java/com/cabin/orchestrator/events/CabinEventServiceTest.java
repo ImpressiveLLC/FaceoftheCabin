@@ -327,4 +327,54 @@ class CabinEventServiceTest {
         assertThat(service.hasRecentEvent("kidde-co", "KIDDE_CO_ALARM_CHANGED", Instant.now().minus(java.time.Duration.ofMinutes(5))))
             .isFalse();
     }
+
+    // Sprint 5 WSJF #1 (Optimization Opportunities) -- OptimizationAnalyticsService's
+    // own continuous-power-draw check.
+    @Test
+    void mostRecentAtOrBelowFindsTheNewestQualifyingReadingNotTheOldest() {
+        saveTelemetry("power-1", "z2m-plug", Instant.now().minusSeconds(300), Map.of("power", 0.5));
+        saveTelemetry("power-2", "z2m-plug", Instant.now().minusSeconds(200), Map.of("power", 40.0));
+        saveTelemetry("power-3", "z2m-plug", Instant.now().minusSeconds(100), Map.of("power", 0.3));
+
+        var found = service.mostRecentAtOrBelow("z2m-plug", "power", 1.0, Instant.now().minusSeconds(600));
+
+        assertThat(found).isPresent();
+        assertThat(found.get()).isCloseTo(Instant.now().minusSeconds(100), org.assertj.core.api.Assertions.within(2, java.time.temporal.ChronoUnit.SECONDS));
+    }
+
+    @Test
+    void mostRecentAtOrBelowIsEmptyWhenNothingEverDippedBelowTheThreshold() {
+        saveTelemetry("power-4", "z2m-always-on", Instant.now().minusSeconds(100), Map.of("power", 40.0));
+
+        var found = service.mostRecentAtOrBelow("z2m-always-on", "power", 1.0, Instant.now().minusSeconds(600));
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void mostRecentAtOrBelowIgnoresReadingsOutsideTheLookbackWindow() {
+        saveTelemetry("power-5", "z2m-plug2", Instant.now().minusSeconds(1000), Map.of("power", 0.1));
+
+        var found = service.mostRecentAtOrBelow("z2m-plug2", "power", 1.0, Instant.now().minusSeconds(600));
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void earliestInWindowFindsTheOldestReadingNotTheNewest() {
+        saveTelemetry("power-6", "z2m-plug3", Instant.now().minusSeconds(500), Map.of("power", 40.0));
+        saveTelemetry("power-7", "z2m-plug3", Instant.now().minusSeconds(100), Map.of("power", 42.0));
+
+        var found = service.earliestInWindow("z2m-plug3", "power", Instant.now().minusSeconds(600));
+
+        assertThat(found).isPresent();
+        assertThat(found.get()).isCloseTo(Instant.now().minusSeconds(500), org.assertj.core.api.Assertions.within(2, java.time.temporal.ChronoUnit.SECONDS));
+    }
+
+    @Test
+    void earliestInWindowIsEmptyWhenTheDeviceHasNeverReportedThatField() {
+        var found = service.earliestInWindow("z2m-never-reported", "power", Instant.now().minusSeconds(600));
+
+        assertThat(found).isEmpty();
+    }
 }

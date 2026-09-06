@@ -5027,6 +5027,7 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
           <KafkaStatus location={activeLocation} />
           <WorkflowRulesCard workflows={workflows} auth={auth} devices={devices} activeLocation={activeLocation}
             defaultLocation={activeLocation !== "both" ? activeLocation : "cabin"} onChanged={refreshWorkflows} />
+          <OptimizationOpportunitiesCard auth={auth} devices={devices} />
           <BuiltinRules location={activeLocation} auth={auth} />
         </div>
       </div>
@@ -5860,6 +5861,125 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
 // authedFetch falls back to plain fetch when no auth prop is passed (same
 // reasoning as AutomationAlertCard above) -- required in production since
 // /api/alerts now needs a Google token (WebConfig.java, 2026-09-01).
+// Sprint 5 WSJF #1 (r5 handover, "Optimization Opportunities") -- passive,
+// admin-reviewed analytics findings from scanning device telemetry, kept
+// as its own card in this sidebar (not merged into WorkflowRulesCard above,
+// a reactive trigger->action engine on live events, and not merged into
+// the Tech ID Service's "Opportunities" tab, OpportunityMapPanel -- that
+// one surfaces externally-sourced findings from a scanning provider, a
+// different data source and lifecycle entirely). ADMIN-only backend (see
+// OpportunitiesController) -- degrades to a plain message on 403 rather
+// than crashing or silently rendering an empty list, same pattern as
+// PlatformInfoCard.
+const OPPORTUNITY_TYPE_LABELS = {
+  POWER_DRAW_ANOMALY: "Power",
+};
+
+export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // exported for src/App.test.jsx -- tested standalone rather than through RulesPanel's much larger fetch surface
+  const [opportunities, setOpportunities] = useState([]);
+  const [forbidden, setForbidden] = useState(false);
+  const [error, setError] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  const [typeFilter, setTypeFilter] = useState("ALL");
+  const doFetch = auth?.authedFetch || fetch;
+  const apiBase = LOCATIONS.cabin.apiBase;
+
+  const refresh = useCallback(() => {
+    doFetch(`${apiBase}/api/opportunities`)
+      .then(r => {
+        if (r.status === 403) { setForbidden(true); return []; }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        setForbidden(false);
+        setError(null);
+        return r.json();
+      })
+      .then(list => setOpportunities(Array.isArray(list) ? list : []))
+      .catch(err => setError(err.message));
+  }, [doFetch, apiBase]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const setStatus = async (id, status) => {
+    setActionError(null);
+    const response = await doFetch(`${apiBase}/api/opportunities/${id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setActionError(body.error || `HTTP ${response.status}`);
+      return;
+    }
+    refresh();
+  };
+
+  if (forbidden) {
+    return (
+      <div className="sidebar-card">
+        <strong>Optimization Opportunities</strong>
+        <p className="config-hint">Admin access required to view optimization opportunities.</p>
+      </div>
+    );
+  }
+
+  // Defensive against a malformed/unexpected response shape (a real `id` is
+  // required for a stable React key) -- never trust the API blindly, same
+  // pattern as the Array.isArray guard above.
+  const open = opportunities.filter(o => o && typeof o.id === "string" && o.status !== "RESOLVED");
+  const types = [...new Set(open.map(o => o.opportunityType))];
+  const visible = typeFilter === "ALL" ? open : open.filter(o => o.opportunityType === typeFilter);
+
+  return (
+    <div className="sidebar-card">
+      <strong>Optimization Opportunities</strong>
+      <p className="config-hint">Patterns worth a look, found by scanning device telemetry — never an automatic action.</p>
+      {error && <p className="action-result action-error">Couldn't load: {error}</p>}
+      {types.length > 1 && (
+        <div className="sensor-history-topic-tabs">
+          <button type="button" className={`sensor-history-topic-tab ${typeFilter === "ALL" ? "active" : ""}`} onClick={() => setTypeFilter("ALL")}>All</button>
+          {types.map(t => (
+            <button key={t} type="button" className={`sensor-history-topic-tab ${typeFilter === t ? "active" : ""}`} onClick={() => setTypeFilter(t)}>
+              {OPPORTUNITY_TYPE_LABELS[t] || t}
+            </button>
+          ))}
+        </div>
+      )}
+      {actionError && <p className="action-result action-error">{actionError}</p>}
+      {!error && visible.length === 0 && <p className="config-hint">No open opportunities — the cabin looks good.</p>}
+      <div className="guest-access-list">
+        {visible.map(o => {
+          const device = devices.find(d => d.deviceId === o.deviceId);
+          const area = device?.attributes?.area;
+          const deviceLabel = device ? `${area ? area + " · " : ""}${device.name}` : o.deviceId;
+          const watts = o.evidence?.currentPowerWatts;
+          const hours = o.evidence?.continuousHours;
+          return (
+            <div key={o.id} className="guest-access-row">
+              <div>
+                <span className="opportunity-type-badge">{OPPORTUNITY_TYPE_LABELS[o.opportunityType] || o.opportunityType}</span>
+                <strong>{deviceLabel}</strong>
+                <p className="config-hint">
+                  {watts != null && `Drawing ~${Number(watts).toFixed(0)}W`}
+                  {hours != null && ` continuously for ${hours}h`}
+                  {" · detected "}{new Date(o.detectedAt).toLocaleString()}
+                  {o.status === "ACKNOWLEDGED" && " · acknowledged"}
+                </p>
+              </div>
+              <div className="managed-users-row-actions">
+                {o.status === "OPEN" && (
+                  <button type="button" className="btn-ghost" onClick={() => setStatus(o.id, "ACKNOWLEDGED")}>Acknowledge</button>
+                )}
+                <button type="button" className="btn-secondary" onClick={() => setStatus(o.id, "RESOLVED")}>Resolve</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function BuiltinRules({ location, auth }) {
   const loc = location === "both" ? LOCATIONS.cabin : (LOCATIONS[location] || LOCATIONS.cabin);
   const doFetch = auth?.authedFetch || fetch;
