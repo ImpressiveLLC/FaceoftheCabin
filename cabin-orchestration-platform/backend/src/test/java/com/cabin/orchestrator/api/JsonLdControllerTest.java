@@ -10,6 +10,8 @@ import com.cabin.orchestrator.devices.model.DeviceLifecycleAction;
 import com.cabin.orchestrator.devices.model.DeviceMetadata;
 import com.cabin.orchestrator.devices.model.DeviceReportingRelationship;
 import com.cabin.orchestrator.devices.model.DeviceType;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -48,6 +50,31 @@ class JsonLdControllerTest {
         String body = new String(response.getBody().getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertTrue(body.contains("\"@context\""));
         assertTrue(body.contains("sosa:Sensor"), "must define the SSN/SOSA mapping D1 specifies");
+    }
+
+    /**
+     * Sprint 5 WSJF #2 (r7 handover): every term the handover names, plus
+     * this file's own pre-existing D1 terms, resolve to a real IRI --
+     * "deserializes without error" per the handover's own checklist, and a
+     * real parse (ObjectMapper), not just a substring search, so a broken
+     * comma or duplicate key would actually fail this test.
+     */
+    @Test
+    void contextIsValidJsonAndCoversEveryTermTheR7HandoverNamed() throws Exception {
+        JsonLdController controller = newController(new DeviceRegistry(List.of()));
+        ResponseEntity<org.springframework.core.io.Resource> response = controller.context();
+        String body = new String(response.getBody().getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+
+        JsonNode context = new ObjectMapper().readTree(body).get("@context");
+        assertNotNull(context, "must parse as valid JSON with a top-level @context object");
+
+        List<String> requiredTerms = List.of(
+            "KnowledgeNode", "KnowledgeChunkType", "ServiceEntity", "Device", "DeviceType",
+            "HouseholdRole", "measurement_type", "reports_to", "derived_from", "capabilities",
+            "reporting_mode", "display_label", "policy_version");
+        for (String term : requiredTerms) {
+            assertTrue(context.has(term), "context must define a mapping for '" + term + "'");
+        }
     }
 
     @Test

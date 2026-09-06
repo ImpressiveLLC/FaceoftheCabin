@@ -3,6 +3,8 @@
     "cabin": "https://cabin.unicornpingpong.com/entity/",
     "sosa": "http://www.w3.org/ns/sosa/",
     "schema": "https://schema.org/",
+    "prov": "http://www.w3.org/ns/prov#",
+    "ssn-system": "http://www.w3.org/ns/ssn/systems/",
 
     "id": "@id",
     "type": "@type",
@@ -20,6 +22,29 @@
       "@id": "sosa:observedProperty",
       "@container": "@set"
     },
-    "hasDescription": "schema:description"
+    "hasDescription": "schema:description",
+
+    "KnowledgeNode": "cabin:KnowledgeNode",
+    "KnowledgeChunkType": "cabin:KnowledgeChunkType",
+    "ServiceEntity": "cabin:ServiceEntity",
+    "DeviceType": "cabin:DeviceType",
+    "HouseholdRole": "cabin:HouseholdRole",
+
+    "measurement_type": "sosa:observedProperty",
+    "measurementType": "sosa:observedProperty",
+
+    "reports_to": "cabin:reportsTo",
+    "reportsTo": "cabin:reportsTo",
+
+    "derived_from": "prov:wasDerivedFrom",
+
+    "capabilities": "ssn-system:hasSystemCapability",
+
+    "reporting_mode": "cabin:reportingMode",
+
+    "display_label": "schema:name",
+    "displayLabel": "schema:name",
+
+    "policy_version": "schema:schemaVersion"
   }
 }

@@ -131,9 +131,9 @@ class KnowledgeNodeControllerTest {
         controller.curate(Map.of("entityRef", "Resend", "chunkType", "credential_pointer",
             "content", "vault_resend_api_key"));
 
-        List<KnowledgeNode> asAdmin = controller.nodes(requestWithRole(HouseholdRole.ADMINISTRATOR));
-        List<KnowledgeNode> asNonAdmin = controller.nodes(requestWithRole(HouseholdRole.ADULT_HOUSEHOLD_MEMBER));
-        List<KnowledgeNode> asAnonymous = controller.nodes(requestWithRole(null));
+        List<KnowledgeNode> asAdmin = controller.nodes(requestWithRole(HouseholdRole.ADMINISTRATOR)).getBody();
+        List<KnowledgeNode> asNonAdmin = controller.nodes(requestWithRole(HouseholdRole.ADULT_HOUSEHOLD_MEMBER)).getBody();
+        List<KnowledgeNode> asAnonymous = controller.nodes(requestWithRole(null)).getBody();
 
         KnowledgeNode adminView = asAdmin.stream().filter(n -> n.entityRef().equals("Resend")).findFirst().orElseThrow();
         KnowledgeNode nonAdminView = asNonAdmin.stream().filter(n -> n.entityRef().equals("Resend")).findFirst().orElseThrow();
@@ -142,6 +142,19 @@ class KnowledgeNodeControllerTest {
         assertTrue(adminView.content().contains("vault_resend_api_key"), "an administrator sees the real vault entry name");
         assertFalse(nonAdminView.content().contains("vault_"), "a non-administrator must never see it, even via the raw listing endpoint");
         assertFalse(anonymousView.content().contains("vault_"), "an unauthenticated caller (this route stays open per WebConfig) must fail closed too");
+    }
+
+    @Test
+    void nodesPointsAtTheOntologyContextViaALinkHeaderNotEmbeddedInline() {
+        KnowledgeNodeController controller = newController(new DeviceRegistry(List.of()));
+
+        var response = controller.nodes(requestWithRole(null));
+
+        String link = response.getHeaders().getFirst("Link");
+        assertNotNull(link, "GET /api/kb/nodes must advertise its JSON-LD context via a Link header");
+        assertTrue(link.contains("/api/context/cabin-context.jsonld"), "must point at D1's existing context document, not a second competing one");
+        assertTrue(link.contains("rel=\"http://www.w3.org/ns/json-ld#context\""));
+        assertTrue(link.contains("type=\"application/ld+json\""));
     }
 
     @Test

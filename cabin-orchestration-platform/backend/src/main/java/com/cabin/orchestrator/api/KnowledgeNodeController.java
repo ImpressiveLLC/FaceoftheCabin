@@ -9,6 +9,7 @@ import com.cabin.orchestrator.devices.model.KnowledgeSource;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
 import com.cabin.orchestrator.security.HouseholdRole;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -41,6 +42,17 @@ public class KnowledgeNodeController {
         return Map.of("chunksWritten", generator.regenerateFor(deviceId));
     }
 
+    // Sprint 5 WSJF #2 (r7 handover): points external tooling/LLM
+    // tool-call schemas at the ontology's own machine-readable vocabulary.
+    // Reuses D1's existing /api/context/cabin-context.jsonld (JsonLdController)
+    // rather than standing up a second, competing context document at a
+    // different IRI base -- see that file's own comment for why a second
+    // "cabin.*" namespace would fragment, not extend, the one D1 already
+    // made real and dereferenceable. Link header only, not embedded inline
+    // per the handover's own instruction (avoids inflating every response).
+    private static final String JSON_LD_CONTEXT_LINK =
+        "</api/context/cabin-context.jsonld>; rel=\"http://www.w3.org/ns/json-ld#context\"; type=\"application/ld+json\"";
+
     /**
      * GET /api/kb/nodes -- every KnowledgeNode, for the Tiny Helpdesk (or
      * anything else) to consume. This route stays open per WebConfig's
@@ -52,9 +64,11 @@ public class KnowledgeNodeController {
      * all (null), which redacts exactly like any non-administrator.
      */
     @GetMapping("/nodes")
-    public List<KnowledgeNode> nodes(HttpServletRequest request) {
+    public ResponseEntity<List<KnowledgeNode>> nodes(HttpServletRequest request) {
         HouseholdRole role = roleOf(request);
-        return repository.loadAll().stream().map(node -> CredentialPointerRedactor.redact(node, role)).toList();
+        List<KnowledgeNode> nodes = repository.loadAll().stream()
+            .map(node -> CredentialPointerRedactor.redact(node, role)).toList();
+        return ResponseEntity.ok().header("Link", JSON_LD_CONTEXT_LINK).body(nodes);
     }
 
     /** GET /api/kb/nodes/{entityRef} -- one device's KnowledgeNodes. Same redaction as nodes() above. */
