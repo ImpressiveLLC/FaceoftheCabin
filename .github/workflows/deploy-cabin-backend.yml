@@ -254,6 +254,13 @@ jobs:
           IMAGE_TAG="$SHA" $COMPOSE build cabin-backend
           IMAGE_TAG="$SHA" $COMPOSE up -d cabin-backend
 
+          # Sprint 5 WSJF #1 (r7 handover): HaTokenCabinHealthIndicator/
+          # HaTokenHomeHealthIndicator now contribute to this same
+          # aggregate status -- a blank HA_TOKEN turns "status" DOWN, which
+          # the grep below already treats as unhealthy and rolls back. No
+          # new step needed here; a blank HA_TOKEN degrading Kidde/Liebherr
+          # discovery for days with no loud error (2026-08-21, 2026-09-05)
+          # now fails this exact check on the very next deploy instead.
           echo "Waiting for cabin-backend to become healthy..."
           HEALTHY=false
           for i in $(seq 1 30); do

@@ -188,6 +188,7 @@ services:
       HA_TOKEN: ${HA_TOKEN:-}
       HOME_HA_URL: ${HOME_HA_URL:-http://home-hub:8123}
       HOME_HA_TOKEN: ${HOME_HA_TOKEN:-}
+      HOME_HUB_DEPLOYED: ${HOME_HUB_DEPLOYED:-false}
       KAFKA_BOOTSTRAP: cabin-kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://cabin-postgres:5432/cabin
       # Same Web Client ID family-hub signs in with (see family-hub's

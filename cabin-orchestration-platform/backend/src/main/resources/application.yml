@@ -192,3 +192,19 @@ management:
       # frontend's own "API offline" badge only checks reachability, not
       # detail content -- so "never" costs nothing real.
       show-details: never
+      status:
+        # Default order ranks OUT_OF_SERVICE above UP -- correct in
+        # general, wrong for this app's specific use of it.
+        # HaTokenHomeHealthIndicator (Sprint 5 WSJF #1) deliberately
+        # reports OUT_OF_SERVICE for the home location until the home hub
+        # is actually deployed (HOME_HUB_DEPLOYED=false), which is the
+        # normal, permanent state today -- not a fault. Left at the
+        # default order, that single indicator would drag the aggregate
+        # /actuator/health status to OUT_OF_SERVICE forever, which
+        # deploy-cabin-backend.yml's existing health check
+        # (`grep -q '"status":"UP"'`) would then treat as unhealthy on
+        # every single deploy, rolling back a perfectly good release.
+        # Ranking UP above OUT_OF_SERVICE means the aggregate only goes
+        # unhealthy on a real DOWN somewhere (e.g. a blank HA_TOKEN),
+        # exactly the behavior this feature exists for.
+        order: down,up,out-of-service,unknown
