@@ -1,10 +1,12 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.presence.PresenceContractV1;
 import com.cabin.orchestrator.presence.PresenceProfile;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +47,23 @@ public class PresenceController {
                 "lastUpdated", s.lastUpdated().toString()))
             .toList());
         return body;
+    }
+
+    /**
+     * D11's minimal aggregate presence assertion -- the only presence
+     * shape Family Hub (or any other cross-domain caller) is allowed to
+     * see. Deliberately a separate endpoint from GET /api/presence above,
+     * not a change to that response's shape: the existing shape backs
+     * cabin-ui's own PresenceToggle picker (profile/options/signals,
+     * including personId) and changing it out from under that consumer
+     * would be a real regression, not a refinement. See
+     * PresenceContractV1's own javadoc for the full field-by-field
+     * reasoning. Already covered by WebConfig's existing
+     * "/api/presence/**" gate -- no separate wiring needed.
+     */
+    @GetMapping("/contract")
+    public PresenceContractV1 contract() {
+        return PresenceContractV1.of(presenceService.isAutoDerived(), signalRegistry.all(), Instant.now());
     }
 
     @PutMapping

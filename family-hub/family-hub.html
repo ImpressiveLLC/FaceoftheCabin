@@ -130,9 +130,16 @@
       font-weight:400; letter-spacing:3.5px; text-transform:uppercase;
       color: var(--cream-dim);
     }
-    /* custody-card repositioned to top-right of top-bar */
-    #custody-card {
+    /* custody-card + presence-badge stacked at top-right of top-bar --
+       a shared absolutely-positioned flex column, not two independently
+       absolute-positioned cards, so a variable-height custody-card (its
+       "next transition" line can wrap) never needs a guessed pixel offset
+       for whatever sits below it. */
+    #top-right-stack {
       position:absolute; top:0; right:0;
+      display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+    }
+    #custody-card, #presence-badge {
       min-width:170px; max-width:210px;
     }
 
@@ -1203,6 +1210,16 @@
     #custody-card .card-label-icon.away-icon { background:rgba(255,255,255,.06); }
     #custody-next { font-size:11px; color:var(--cream-dim); margin-top:2px; }
 
+    /* Cabin presence badge -- D11 minimal aggregate assertion, reusing
+       custody-card's own home/away color language (--teal / --cream-dim)
+       rather than introducing a third status color for a two-state chip.
+       Hidden entirely (not just empty) for the "unknown" case per spec --
+       see renderPresenceBadge(). */
+    #presence-badge.home .custody-status-label { color:var(--teal); }
+    #presence-badge.away .custody-status-label { color:var(--cream-dim); }
+    #presence-badge .card-label-icon.home-icon { background:rgba(75,200,200,.12); }
+    #presence-badge .card-label-icon.away-icon { background:rgba(255,255,255,.06); }
+
     /* ═══════════════════════════════════════════
        UTILITY
     ═══════════════════════════════════════════ */
@@ -1409,7 +1426,7 @@
          already shows the time/date, and the custody/"kids home today"
          card is redundant screen space at this width -- both dropped on
          mobile only, desktop/tablet (>900px) unchanged. */
-      #clock-center, #custody-card { display:none; }
+      #clock-center, #top-right-stack { display:none; }
 
       #dashboard-fab, #settings-btn { display:none; }
       #mobile-action-dock {
@@ -1933,12 +1950,24 @@
       <div id="clock"><span id="clock-time">2:31</span><span class="ampm" id="clock-ampm">PM</span></div>
       <div id="date-line">Sunday  ·  March 15, 2026</div>
     </div>
-    <div class="glass-card" id="custody-card">
-      <div class="card-label">
-        <div class="card-label-icon" id="custody-icon-el">🏠</div>
-        <span class="custody-status-label" id="custody-card-status">Kids at Mom's today</span>
+    <div id="top-right-stack">
+      <div class="glass-card" id="custody-card">
+        <div class="card-label">
+          <div class="card-label-icon" id="custody-icon-el">🏠</div>
+          <span class="custody-status-label" id="custody-card-status">Kids at Mom's today</span>
+        </div>
+        <div id="custody-next"></div>
       </div>
-      <div id="custody-next"></div>
+      <!-- D11 minimal aggregate presence assertion (GET /api/presence/contract)
+           -- hidden by default and stays hidden for "unknown"; see
+           renderPresenceBadge(). Never shows a name, a location, or raw
+           sensor data, only "Someone's home" / "Away". -->
+      <div class="glass-card" id="presence-badge" hidden>
+        <div class="card-label">
+          <span class="card-label-icon" id="presence-badge-icon">🟢</span>
+          <span class="custody-status-label" id="presence-badge-label">Someone's home</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -4073,6 +4102,69 @@ function updateCustodyBadge() {
 }
 
 /* ═══════════════════════════════════════════
+   CABIN PRESENCE BADGE (D11 minimal aggregate assertion)
+═══════════════════════════════════════════ */
+// GET /api/presence/contract is auth-gated (D14 -- unlike /api/events
+// above, /api/presence has no public GET carve-out), so this can't reuse
+// refreshCabinActivity()'s unauthenticated shape. There's no
+// authFetch/authedFetch wrapper anywhere in this file -- every other
+// authenticated call (chores, notes, profiles) builds the same
+// `Authorization: Bearer ${accessToken}` header by hand at the call site,
+// so this matches that existing pattern rather than introducing a new one.
+//
+// Per the D11 contract, this function must never read or render anything
+// from the response beyond `state`/`expires_at`/`policy_version` -- no
+// confidence, no sources, no raw signal -- those exist in the wire format
+// for other consumers, not for display here.
+const PRESENCE_POLL_MS = 5 * 60 * 1000; // 5 min minimum, per the contract's own spec
+let presenceExpiryTimer = null;
+
+async function refreshPresenceBadge() {
+  if (presenceExpiryTimer) { clearTimeout(presenceExpiryTimer); presenceExpiryTimer = null; }
+  if (!CABIN_API_URL || !accessToken) { renderPresenceBadge(null); return; }
+  try {
+    const res = await fetch(`${CABIN_API_URL}/api/presence/contract`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) { renderPresenceBadge(null); return; }
+    const data = await res.json();
+    if (data.policy_version !== '1') {
+      console.warn('Presence contract policy_version not recognized, treating as unknown:', data.policy_version);
+      renderPresenceBadge(null);
+      return;
+    }
+    const expiresAtMs = data.expires_at ? new Date(data.expires_at).getTime() : null;
+    if (expiresAtMs !== null && expiresAtMs <= Date.now()) { renderPresenceBadge(null); return; }
+    renderPresenceBadge(data.state === 'home' || data.state === 'away' ? data.state : null);
+    // Stale-signal guard: flip to unknown the moment expires_at actually
+    // passes, without waiting for the next 5-minute poll -- a setTimeout,
+    // not a new network call.
+    if (expiresAtMs !== null) {
+      presenceExpiryTimer = setTimeout(() => renderPresenceBadge(null), expiresAtMs - Date.now());
+    }
+  } catch (e) {
+    renderPresenceBadge(null);
+    console.warn('Could not refresh cabin presence:', e);
+  }
+}
+
+function renderPresenceBadge(state) {
+  const card = document.getElementById('presence-badge');
+  if (!card) return;
+  if (state !== 'home' && state !== 'away') {
+    // Not signed in, contract unreachable, stale, or an unrecognized
+    // policy_version -- omit the chip entirely rather than showing an
+    // "Unknown" label. Absence is less alarming than "Unknown".
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  card.className = 'glass-card ' + state;
+  document.getElementById('presence-badge-icon').textContent = state === 'home' ? '🟢' : '⚪';
+  document.getElementById('presence-badge-label').textContent = state === 'home' ? "Someone's home" : 'Away';
+}
+
+/* ═══════════════════════════════════════════
    TODAY'S CHORES (ambient panel)
 ═══════════════════════════════════════════ */
 // 2026-08-15: at 4+ kids, every one of them always fully expanded made
@@ -4943,6 +5035,7 @@ async function onToken(resp) {
   startAccessSession();
   loadCalendar();
   restorePhotos();
+  refreshPresenceBadge();
   refreshNotesFromServer().then(ok => { if (ok) renderNotepad(); });
   refreshProfilesFromServer().then(ok => { if (ok) rerenderProfileViews(); });
   refreshScheduleRulesFromServer().then(ok => { if (ok) { renderSchedule(); renderSchedDayPicker(); renderObservations(); } });
@@ -4998,6 +5091,13 @@ setInterval(async () => {
 // load too, rather than waiting for the first 20s tick.
 refreshCabinActivity();
 setInterval(refreshCabinActivity, 20000);
+
+// Presence badge -- gated, unlike the activity widget above, so this
+// no-ops (renders nothing) until signed in rather than erroring; onToken()
+// below also calls this directly so the badge doesn't wait up to 5 minutes
+// to appear right after sign-in.
+refreshPresenceBadge();
+setInterval(refreshPresenceBadge, PRESENCE_POLL_MS);
 
 // Identifies who's signed in, purely so schedule-change and access logs can
 // attribute entries to a real person instead of an anonymous browser.

@@ -8,6 +8,13 @@
       "port": 5173,
       "autoPort": true,
       "cwd": "C:/Users/nhsmr/Documents/Resume and work/work/FaceoftheCabin-current-main-20260818/cabin-orchestration-platform/ui"
+    },
+    {
+      "name": "family-hub-static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8765"],
+      "port": 8765,
+      "cwd": "C:/Users/nhsmr/Documents/Resume and work/work/FaceoftheCabin-current-main-20260818/family-hub"
     }
   ]
 }
