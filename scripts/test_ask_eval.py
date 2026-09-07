@@ -22,6 +22,7 @@ class HarnessTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 hits.append(self.path)
+                self.rfile.read(int(self.headers["Content-Length"]))
                 self.send_response(302)
                 self.send_header("Location", "/unexpected")
                 self.end_headers()
@@ -99,6 +100,8 @@ class HarnessTests(unittest.TestCase):
         token = "12345678-1234-1234-1234-123456789012"
         with patch("ask_eval.capture", side_effect=["admin@example.test", token]) as capture:
             self.assertEqual(harness.resident_session(), token)
+            self.assertEqual(capture.call_args_list[0].args[0],
+                             ["docker", "exec", "cabin-backend", "printenv", "CABIN_ADMIN_EMAILS"])
             query = capture.call_args.kwargs["stdin"]
             self.assertIn("BEGIN READ ONLY", query)
             self.assertIn("revoked_at IS NULL AND expires_at > now()", query)

@@ -40,7 +40,9 @@ def capture(argv, *, stdin=None):
 
 def resident_session():
     """Explicit operator opt-in; token crosses only local process pipes and HTTP."""
-    emails = capture(["docker", "exec", "cabin-backend", "printenv", "ADMIN_EMAILS"])
+    # M920q Compose passes CABIN_ADMIN_EMAILS, which Spring binds directly to
+    # cabin.admin.emails; ADMIN_EMAILS is the Compose interpolation input only.
+    emails = capture(["docker", "exec", "cabin-backend", "printenv", "CABIN_ADMIN_EMAILS"])
     admins = [value.strip().lower() for value in emails.split(",") if value.strip()]
     if not admins:
         raise EvalError("No configured administrator; no authentication attempted.")
