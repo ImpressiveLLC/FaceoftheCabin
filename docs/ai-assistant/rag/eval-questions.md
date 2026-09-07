@@ -1,6 +1,6 @@
 # Corpus evaluation questions — r1
 
-These questions test knowledge needed for operating and recreating the platform. They supplement the proposal's E01–E25; Q identifiers here are corpus-specific and stable. **All model/live/clean-room results are NOT RUN.** Source-grounded expected outcomes are defined before changing the LLM/RAG. Source applicability follows the [corpus baseline](../README.md).
+These questions test knowledge needed for operating and recreating the platform. They supplement the proposal's E01–E25; Q identifiers here are corpus-specific and stable. Source-grounded expected outcomes are defined before changing the LLM/RAG. Source applicability follows the [corpus baseline](../README.md). The first live baseline was run on 2026-09-07; see [baseline-2026-09-07](baseline-2026-09-07.md). C1/C3 remain incomplete pending ratification of that result and the first measured improvement.
 
 The [reference answer set](../corpus/eval-answer-evidence.md) supplies answers and source citations for every informational seed, plus the Q20 execution oracle. It incorporates existing Markdown/README/ontology/WSJF sources and selected [Claude working history](../corpus/local-history-evidence.md). These are source-reviewed oracles, not model outputs.
 
@@ -43,7 +43,7 @@ Freeze question, inputs, role, relevant corpus sections/version and expected ass
 | Evidence type | Current result |
 |---|---|
 | Source oracles and coverage links | 24/24 informational reference answers sourced; Q20 execution oracle defined; not model outputs |
-| Current Ask baseline | NOT RUN |
+| Current Ask baseline | EXECUTED 2026-09-07: Q01–Q25, 0/25 fully grounded/correct; 19 model-backed, 6 fallback; see [baseline report](baseline-2026-09-07.md) |
 | Whole-context baseline | NOT RUN |
 | Retrieval/model improvement | NOT RUN; no pipeline/model change |
 | Clean-room installation/recovery | NOT RUN; dependencies in coverage gap register |
