@@ -115,7 +115,7 @@ Current first-PR scope and pending implementation ratification remain recorded b
 
 ## [C2] Full operating/recreation corpus (including all A3 sections)
 
-**Status:** proposed 2026-09-07
+**Status:** in progress 2026-09-07 — operator directed continuation; corpus foundation r1 proposed in [PR #35](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/35); full C2 completion not claimed
 
 **WSJF score:** 3.231
 
@@ -214,6 +214,24 @@ For each ratified item, retain in its PR: eval version, corpus manifest/commit, 
 4. **Audience/safety, before the affected content is exposed:** apply the existing approved controls and stricter curated-only rule to new safety-critical content. Resolve concrete provenance/role-filtering issues with domain reviewers; these gate that exposure, not every unrelated documentation entry.
 5. **Validation access, when executing live checks:** establish authenticated read-only M920q access for current-state assertions and an isolated authorized target for clean-room installation. Until then, source review and corpus preparation can proceed; mark live claims unverified. C4 production writes need their own explicit target/scope.
 6. **Shared governance, after the working knowledge assistant:** decompose/score the in-app contribution/review/release/refresh workflow; preserve human authority and all actors' access to reusable knowledge/evidence. Existing Cowork Ratification lines stay intact until the current review process updates them. This scope clarification is not a blanket approval to merge, deploy, weaken access controls or execute physical actions.
+
+## Dependency and question register
+
+Nate directed that dependencies/questions be recorded here and work continue on unaffected items. These entries track actual dependencies, not additional global gates or newly ratified WSJF items. All are OPEN; accountable owners are unassigned, with suggested review domains below. Any authorized human/Claude/Codex collaborator may add evidence or take an agreed work item through the shared PR process. Preserve the Ratification fields above.
+
+Corpus foundation r1 is available for review in [PR #35](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/35): operating/configuration/installation/maintenance/Ask supplements, shared contribution procedure, reproducible source index and 25 corpus eval seeds. It records 237 scanned source files, 126 route declarations, 44 service declarations and 146 configuration names. These are structural counts, not completed semantic coverage or measured answer quality. Its coverage register contains the detailed G01–G10 evidence; the following is the shared WSJF coordination view.
+
+| ID / corpus gaps | Dependency or question | Affected item/claim only | Resolution evidence / next action | Suggested review domain | Work that continues |
+|---|---|---|---|---|---|
+| DEP01 / G02,G03 | The M920q overlay assumes an existing support stack/external network and host assets; the bootstrap script installs development tooling, not the full platform. | C2 clean-host recreation and any future full installer | Define a supported independent stack/host-asset plan, audit prerequisites and rehearse on an authorized isolated clean host. | Installer/platform maintainer | Existing-platform runbooks, capability coverage, configuration semantics and eval oracles |
+| DEP02 / G04 | Full-platform consistent backup/restore and replacement-host recovery are unverified. | C2 disaster-recovery completion | Write service-specific consistent backup/restore procedures, secure custody and required-state inventory; demonstrate isolated restore and real feature checks. | Operations/data maintainer | Operating/troubleshooting docs and all unaffected capability answers |
+| DEP03 / G01,G09 | Generated declarations lack complete reviewed purpose/requiredness/default/validation and per-capability mapping. | C2 complete corpus / minimal-input installer schema | Review each setting/route/service against its consumer; add normal/failure procedures and expected answers; track a real denominator. | Shared documentation and implementation reviewers | Incremental supplements and testable questions for already verified functions |
+| DEP04 / G05 | Handover's intentional WEBUI_AUTH=false differs from checked-in Compose=true. | That instance's WebUI access-configuration assertion | Record intended versus current setting through authorized read-only inspection; any change is separately reviewed. Do not infer that all application auth is disabled. | Operator/security reviewer | Unrelated corpus and LLM evaluation preparation |
+| DEP05 / G06,G07 | Safety-procedure curation and broad document audience filtering need explicit applicability/denial evidence. | Unsupported safety advice and broader household ingestion/exposure | Obtain reviewed applicable procedures; review role/source projection and test prompt, response, sources and fallback. No automatic curation or physical action. | Safety operator/security reviewer | Non-safety operator docs, existing approved content, scoped synthetic evals |
+| DEP06 / G08 | Active model/digest, deployed SHA and authenticated answer baseline remain unmeasured. | C1/C3 live improvement/completion claims | Obtain authorized read-only runtime access; freeze corpus/model settings and record paired answer/task results. Source preparation does not wait for access. | Runtime operator/eval contributor | Source-grounded corpus completion and local isolated evaluation setup |
+| DEP07 / G10 | Shared in-app contribution/review/knowledge-refresh workflow is not implemented. | Follow-on in-app governance completion | Decompose/score the workflow, link canonical GitHub states, then verify contribution, rejection, refresh failure/retry and rollback. | Product/operator plus collaborating implementers | Shared repository procedure and all C2/C1/C3 work |
+
+Next unblocked work: expand the 146-name configuration inventory into consumer-backed semantics and complete the capability-to-question map, using the source-linked corpus in PR #35. Installation/recovery dependencies stay visible here without freezing that work. No D13–D16 dependency is introduced. If resolution requires new implementation, propose its scope/score here before building it; recording a dependency does not grant production authorization.
 
 ## Proposal validation
 
