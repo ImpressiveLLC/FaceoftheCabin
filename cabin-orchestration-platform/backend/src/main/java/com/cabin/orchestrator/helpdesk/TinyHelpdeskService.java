@@ -4,6 +4,8 @@ import com.cabin.orchestrator.devices.KnowledgeNodeRepository;
 import com.cabin.orchestrator.devices.model.CredentialPointerRedactor;
 import com.cabin.orchestrator.devices.model.KnowledgeNode;
 import com.cabin.orchestrator.security.HouseholdRole;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
@@ -30,6 +32,8 @@ import java.util.stream.Collectors;
 @Service
 public class TinyHelpdeskService {
 
+    private static final Logger log = LoggerFactory.getLogger(TinyHelpdeskService.class);
+
     private static final int MAX_CONTEXT_NODES = 5;
     private static final Set<String> STOPWORDS = Set.of(
         "the", "a", "an", "is", "are", "was", "were", "what", "which", "who",
@@ -38,10 +42,13 @@ public class TinyHelpdeskService {
 
     private final KnowledgeNodeRepository knowledgeNodeRepository;
     private final OllamaClient ollamaClient;
+    private final AskContextBuilder askContextBuilder;
 
-    public TinyHelpdeskService(KnowledgeNodeRepository knowledgeNodeRepository, OllamaClient ollamaClient) {
+    public TinyHelpdeskService(KnowledgeNodeRepository knowledgeNodeRepository, OllamaClient ollamaClient,
+            AskContextBuilder askContextBuilder) {
         this.knowledgeNodeRepository = knowledgeNodeRepository;
         this.ollamaClient = ollamaClient;
+        this.askContextBuilder = askContextBuilder;
     }
 
     public TinyHelpdeskAnswer ask(String question) {
@@ -59,7 +66,9 @@ public class TinyHelpdeskService {
      * fails closed, never open.
      */
     public TinyHelpdeskAnswer ask(String question, HouseholdRole role) {
-        List<KnowledgeNode> relevant = retrieveRelevant(question).stream()
+        List<KnowledgeNode> contextNodes = askContextBuilder.buildContext(question);
+        List<KnowledgeNode> candidates = contextNodes.isEmpty() ? retrieveRelevant(question) : contextNodes;
+        List<KnowledgeNode> relevant = candidates.stream()
             .map(node -> CredentialPointerRedactor.redact(node, role))
             .toList();
         if (relevant.isEmpty()) {

@@ -14,6 +14,9 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class TinyHelpdeskServiceTest {
 
@@ -25,7 +28,9 @@ class TinyHelpdeskServiceTest {
     void setUp() {
         knowledgeNodeRepository = new FakeKnowledgeNodeRepository();
         ollamaClient = new FakeOllamaClient();
-        service = new TinyHelpdeskService(knowledgeNodeRepository, ollamaClient);
+        AskContextBuilder noopContextBuilder = mock(AskContextBuilder.class);
+        when(noopContextBuilder.buildContext(anyString())).thenReturn(List.of());
+        service = new TinyHelpdeskService(knowledgeNodeRepository, ollamaClient, noopContextBuilder);
     }
 
     private void addNode(String entityRef, KnowledgeChunkType chunkType, String content) {

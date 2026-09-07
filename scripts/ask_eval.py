@@ -61,10 +61,13 @@ def resident_session():
 
 def endpoint(value):
     parsed = urlsplit(value)
-    if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1"
+    host = parsed.hostname
+    is_loopback = host == "127.0.0.1"
+    is_tailscale = re.fullmatch(r"100\.\d{1,3}\.\d{1,3}\.\d{1,3}", host or "") is not None
+    if (parsed.scheme != "http" or not (is_loopback or is_tailscale)
             or parsed.username or parsed.password or parsed.query or parsed.fragment
             or parsed.path.rstrip("/") or parsed.port is None):
-        raise EvalError("Use http://127.0.0.1:PORT (M920q loopback or an SSH forward).")
+        raise EvalError("Use http://127.0.0.1:PORT or http://100.x.x.x:PORT (M920q loopback, Tailscale IP, or an SSH forward).")
     return value.rstrip("/") + "/api/helpdesk/ask"
 
 
@@ -146,6 +149,29 @@ def load_cases(path):
     return cases, hashlib.sha256(raw).hexdigest()
 
 
+def load_context_fixtures(path):
+    """CLIENT-SIDE PROBE ONLY -- see --use-context help. Mirrors the
+    keyword-pattern substring logic AskContextBuilder applies server-side;
+    does not affect what the server actually injects."""
+    raw = json.loads(path.read_bytes())
+    categories = raw.get("categories", [])
+    if not categories:
+        raise EvalError("Context fixture file has no categories.")
+    return categories
+
+
+def select_context_category(question, categories):
+    """CLIENT-SIDE PROBE ONLY -- see --use-context help. Returns the id of
+    the first category whose keywordPatterns substring-matches the
+    lowercased question, or None if no category matches."""
+    lowered = question.lower()
+    for category in categories:
+        for pattern in category.get("keywordPatterns", []):
+            if pattern in lowered:
+                return category.get("id")
+    return None
+
+
 def runtime_metadata():
     return {
         "hostname": capture(["hostname"]),
@@ -165,7 +191,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--questions", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True, help="Private JSONL file; must not exist")
-    parser.add_argument("--url", default="http://127.0.0.1:8090")
+    parser.add_argument("--url", "--endpoint", dest="url", default="http://127.0.0.1:8090")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--delay", type=float, default=1.0)
@@ -175,8 +201,18 @@ def main():
     auth.add_argument("--token-file", type=Path, help="Operator-provided CabinSession, mode 0600")
     auth.add_argument("--denial-only", action="store_true", help="Check unauthenticated denial only")
     parser.add_argument("--record-runtime", action="store_true")
+    parser.add_argument("--use-context", type=Path, dest="use_context", default=None,
+                        help="CLIENT-SIDE PROBE ONLY: path to a context-fixtures JSON file used to "
+                             "record which category the harness would have selected per question, "
+                             "for local debugging of AskContextBuilder's keyword patterns. Does not "
+                             "change what the server injects. Must NOT be used for C1a ratification "
+                             "runs -- those measure the server's real, unmodified behavior.")
     args = parser.parse_args()
     url = endpoint(args.url)
+    context_categories = load_context_fixtures(args.use_context) if args.use_context else None
+    if context_categories is not None:
+        print("WARNING: --use-context is active -- this is a client-side probe only and "
+              "must not be used for C1a ratification.", flush=True)
     if not 1 <= args.repeats <= 3 or not 1 <= args.timeout <= 180 or not 0 <= args.delay <= 30:
         raise EvalError("Invalid repeat, timeout or delay bound.")
     cases, digest = load_cases(args.questions)
@@ -219,10 +255,13 @@ def main():
             for case in cases["questions"]:
                 start = time.monotonic()
                 status, body, error = request_ask(url, case["question"], token, args.timeout)
+                probe_category = (select_context_category(case["question"], context_categories)
+                                  if context_categories is not None else None)
                 row = {"type": "trial", "id": case["id"], "repeat": repeat,
                        "question": case["question"], "status": status,
                        "completed_at": datetime.now(timezone.utc).isoformat(),
-                       "elapsed_seconds": round(time.monotonic() - start, 3), "grade": "UNREVIEWED"}
+                       "elapsed_seconds": round(time.monotonic() - start, 3), "grade": "UNREVIEWED",
+                       "probe_category": probe_category}
                 if status == 200 and error is None:
                     try:
                         row.update(project_response(body, token))
