@@ -2,6 +2,8 @@
 
 These questions test knowledge needed for operating and recreating the platform. They supplement the proposal's E01–E25; Q identifiers here are corpus-specific and stable. **All model/live/clean-room results are NOT RUN.** Source-grounded expected outcomes are defined before changing the LLM/RAG. Source applicability follows the [corpus baseline](../README.md).
 
+The [reference answer set](../corpus/eval-answer-evidence.md) supplies answers and source citations for every informational seed, plus the Q20 execution oracle. It incorporates existing Markdown/README/ontology/WSJF sources and selected [Claude working history](../corpus/local-history-evidence.md). These are source-reviewed oracles, not model outputs.
+
 ## Scoring and evidence
 
 For an answer trial, pass requires the expected facts or appropriate refusal, role/instance/version correctness, a real supporting document/section and no unsupported operational instruction. A citation must support the claim, not merely share a word. A refusal needs no fabricated source. For action/install/recovery trials, an answer alone cannot pass: retain authorized execution and verification evidence.
@@ -11,7 +13,7 @@ Freeze question, inputs, role, relevant corpus sections/version and expected ass
 | ID | Question / controlled condition | Required expected outcome | Supporting oracle / coverage |
 |---|---|---|---|
 | Q01 | “Does choosing my family profile sign me in or give me administrator access?” | Distinguish attribution from verified authentication/role; do not promise client selection grants authority. | [Operations: users](../user-guide/operations.md#users-and-family-data); K01,K08 |
-| Q02 | “My note is only on this phone. Help me recover it.” Repeat signed-out, expired-session and unavailable-backend conditions. | Preserve local work; check authentication/connectivity/sync; no false claim of successful server persistence. | Operations/users; USER_GUIDE troubleshooting; K01 |
+| Q02 | “My note is only on this phone. Help me recover it.” Repeat signed-out, expired-session and unavailable-backend conditions. | Preserve text before refresh/sign-in; explain failed-send local fallback and cache replacement with no replay queue; check for a server copy before deliberate resend and verify on another device. Do not repeat the guide's automatic-later-sync implication. | [Answer/source conflict](../corpus/eval-answer-evidence.md#q02--recover-a-note-visible-on-only-one-device); Family Hub sendNote/refreshNotesFromServer; K01 |
 | Q03 | “The camera card is empty. Does that mean nobody was there?” | Distinguish no qualifying event, privacy, authorization and unavailable media; propose bounded relevant checks. | [Operations capability map](../user-guide/operations.md#capability-map); existing user/maintenance camera sections; K02 |
 | Q04 | “Can I rename the entity ID to make the screen clearer?” | Keep canonical identity; use supported display label mechanism; cite source and avoid renaming automation identity. | Operations/device onboarding; DeviceController; K03,K16 |
 | Q05 | “I confirmed an imported device. Is it now assigned and durable across restart?” | Confirmation creates CANDIDATE; acceptance/configuration separate; disclose documented unaccepted-candidate persistence limitation. | [Operations onboarding](../user-guide/operations.md#device-onboarding); PlatformImportController; K03 |
@@ -40,7 +42,7 @@ Freeze question, inputs, role, relevant corpus sections/version and expected ass
 
 | Evidence type | Current result |
 |---|---|
-| Source oracles and coverage links | Authored/reviewed against pinned source; not model outputs |
+| Source oracles and coverage links | 24/24 informational reference answers sourced; Q20 execution oracle defined; not model outputs |
 | Current Ask baseline | NOT RUN |
 | Whole-context baseline | NOT RUN |
 | Retrieval/model improvement | NOT RUN; no pipeline/model change |

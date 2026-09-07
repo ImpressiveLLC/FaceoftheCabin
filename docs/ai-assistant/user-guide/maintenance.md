@@ -42,6 +42,8 @@ The [base Compose](../../../cabin-orchestration-platform/infra/docker-compose.ym
 
 This is a **recovery scope**, not a verified backup procedure. Do not copy a live database volume or stop production based on this table. Service-specific consistent backup/restore commands, encrypted off-host custody, recovery objectives and an isolated restore rehearsal remain open in [G04](../corpus/coverage.md#gap-register). A recreated stack with empty/lost required state fails recovery acceptance even if every container is green.
 
+Existing component guidance is available now: [REPLICATION section 10](../../REPLICATION.md#kuma-config-as-code-decision--poc-passed-production-approval-pending) records the Kuma 2.5.0 disposable reconciliation POC and distinguishes a monitor specification from a complete `/app/data` backup. It leaves production reconciliation separately pending and provides a manual monitor target list. Use that current record instead of the older Claude plan's proposed JSON-import wording. For camera/MQTT diagnosis, the same section explains the configured availability topic, frame checks and notification routing; a green service on the wrong broker/topic does not prove the intended path. See [recovered history H06](../corpus/local-history-evidence.md#findings-reconciled-with-current-source).
+
 ## Close the incident
 
 Record the symptom, affected instance/capability, source/runtime version, bounded checks, cause evidence, authorized correction, verification and remaining uncertainty. Submit reusable facts or corrected instructions through the [shared contribution process](../contributing.md). Keep secret values and household telemetry out of the shared incident summary. Never label an inferred cause “confirmed” or a suggested command “executed.”

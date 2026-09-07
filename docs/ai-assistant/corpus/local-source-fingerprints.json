@@ -1,0 +1,83 @@
+{
+  "inspected_on": "2026-09-07",
+  "purpose": "Local source identity only; raw content excluded; not a retrieval allowlist",
+  "sources": [
+    {
+      "evidence_id": "H01",
+      "root_alias": "M",
+      "path": "project_candidate_persistence_gap.md",
+      "sha256": "91e986073d96c8dc3b4a22dba7200a8b307385291574e3e6004f6f6727fa769a",
+      "bytes": 2572
+    },
+    {
+      "evidence_id": "H02",
+      "root_alias": "S",
+      "path": "e9b8b6a1-7a4d-4903-ada9-7bdd10b974a4.jsonl",
+      "sha256": "17489b046552d879d0defb5a20865bae6bb35175c58d3c05ddc762efa5001e37",
+      "bytes": 88724082
+    },
+    {
+      "evidence_id": "H03",
+      "root_alias": "M",
+      "path": "project_discovery_lookup_key_gap.md",
+      "sha256": "9fc3808926a1b2f4b8dd3220e5453182176d312bdfbb44ea4bbbb1d98d0b4f51",
+      "bytes": 2167
+    },
+    {
+      "evidence_id": "H04",
+      "root_alias": "M",
+      "path": "project_device_definition_architecture.md",
+      "sha256": "57887aa677c9b1dd82b57bd228b728b72ec2d58cb5ede4b31bfe778044e33a07",
+      "bytes": 3635
+    },
+    {
+      "evidence_id": "H04",
+      "root_alias": "M",
+      "path": "feedback_evidence_ledger_not_single_winner.md",
+      "sha256": "1349a685d1f11a41485d9abe0d4edcea09afb3714dd3d24ad90b4610bd91a008",
+      "bytes": 2267
+    },
+    {
+      "evidence_id": "H05",
+      "root_alias": "M",
+      "path": "project_device_lifecycle_workflow_health_shipped.md",
+      "sha256": "f93251b5d2f392bdc38390222e3b0deaafcbba1b73623a0d00ec3cde96d8c22d",
+      "bytes": 3477
+    },
+    {
+      "evidence_id": "H06",
+      "root_alias": "P",
+      "path": "quiet-petting-newt.md",
+      "sha256": "fe0575b3212258fbe3fbec7cc33b501ed10fd620aa6bf6d17ab90d33f994996d",
+      "bytes": 11000
+    },
+    {
+      "evidence_id": "H07",
+      "root_alias": "C",
+      "path": "docs/cabin-ontology-decisions.md",
+      "sha256": "7cce202e1a4100d142ddcc28b90e1a5ad084a9f8c7a097903c9f10b207b9cac2",
+      "bytes": 24362
+    },
+    {
+      "evidence_id": "H07",
+      "root_alias": "Downloads",
+      "path": "cabin-ontology-decisions.md",
+      "sha256": "f463e73e0ed8448a66907c514a7698055482e04fe13482c0fe675de47e8b701a",
+      "bytes": 16184
+    },
+    {
+      "evidence_id": "H08",
+      "root_alias": "L",
+      "path": "CabinAutomations/CLAUDE_CODE_BRIEF_device_manager.md",
+      "sha256": "f1db74caf067165f658a978a332e057d7b37b37defcdca6bb435df5d54bfbb61",
+      "bytes": 8652
+    },
+    {
+      "evidence_id": "H09",
+      "root_alias": "Downloads",
+      "path": "obsidian-cabin-setup.md",
+      "sha256": "427b9bcd88aea3a1df848da54990a7d0e1381144eefa8af1d5e93abbf992e5f9",
+      "bytes": 6416
+    }
+  ]
+}

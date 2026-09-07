@@ -27,6 +27,8 @@ Do not paste `.env`, decrypted vault output, full resolved Compose output, sessi
 
 ## Explicit source disagreement
 
+Two existing incident runbooks answer common configuration failures. A successfully rebuilt Family Hub may still receive old `host-config.js` from an edge cache; inspect the browser-served nonsecret configuration and use the authorized cache correction described in [MAINTENANCE](../../MAINTENANCE.md#cloudflare-edge-caching-a-build-time-config-file-found-2026-08-01). Frigate's configuration substitutions require its `FRIGATE_` namespace, distinct from Compose interpolation; see the [existing two-stage mapping](../../REPLICATION.md#frigate-environment-substitution-is-prefix-restricted). Neither problem is resolved merely by proving a setting exists.
+
 The supplied handover says `WEBUI_AUTH=false` is intentional with Tailscale as the access layer. The inspected [M920q Compose](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml) declares `WEBUI_AUTH: "true"`. Both observations must remain visible; neither proves the active runtime value. Do not change the running setting or assume the broader app is unauthenticated. Resolve the intended deployment setting for the specific instance when preparing its configuration. This disagreement does not block unrelated documentation.
 
 ## Remaining configuration work

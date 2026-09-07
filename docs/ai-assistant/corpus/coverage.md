@@ -29,6 +29,8 @@ The [generated inventory](source-inventory.md) scans 237 allowlisted tracked fil
 
 ## Gap register
 
+The [source-answer set](eval-answer-evidence.md) now answers all 24 informational Q seeds and defines the Q20 execution oracle using existing code, manuals and [local Claude evidence](local-history-evidence.md). This closes “answers have not been located” for those seeds; it does not close their unexecuted model/live checks or claim full domain coverage. Recovered findings are available for immediate baseline work. Remaining gaps below are refinement work, not a global corpus-completeness gate.
+
 All entries are OPEN unless explicitly closed with evidence. The shared reviewer assigns responsibility; these are not private agent work queues.
 
 | Gap | Finding | Next evidence/deliverable | Blocks |
@@ -36,7 +38,7 @@ All entries are OPEN unless explicitly closed with evidence. The shared reviewer
 | G01 | 146 configuration references are names, not reviewed installer semantics. | Per-name purpose, requirement, safe default, binding, audience, validation and lifecycle; dynamic settings audit. | Complete configuration/automated-input claims |
 | G02 | M920q overlay expects an existing network/support stack and host-specific assets. | Reviewed standalone arrangement and host asset checklist for selected services. | Clean-host install claim, not general documentation |
 | G03 | Bootstrap script is development tooling, not a complete installer. | Separate host prerequisites/account steps; verified installation automation if approved. | One-command recreation claim |
-| G04 | Full-platform consistent backup/restore has not been rehearsed here. | Service-specific runbooks, secure custody and isolated replacement-host restore evidence. | Disaster-recovery completion |
+| G04 | Full-platform consistent backup/restore has not been rehearsed here; existing Kuma full-data backup guidance and health/notification runbooks are located and linked in Q14/Q16. | Extend the existing component guidance to selected services, secure custody and isolated replacement-host restore evidence. | Disaster-recovery completion |
 | G05 | Intended WEBUI_AUTH setting differs from checked-in overlay. | Record instance-specific intended/current setting through authorized verification; no speculative runtime change. | That access-configuration assertion only |
 | G06 | Safety-procedure curation is historically incomplete. | Operator-supplied reviewed procedures and applicability; validate current curated KB safely. | Unsupported safety instructions only |
 | G07 | Raw KB listing carve-out and pointer redaction do not prove full document audience filtering. | Reviewed role/source projection and denial tests before broad corpus exposure. | Broad household ingestion/exposure |
@@ -45,6 +47,8 @@ All entries are OPEN unless explicitly closed with evidence. The shared reviewer
 | G10 | Shared in-app contribution/refresh controls are a target, not current behavior. | Separately reviewed workflow implementation and E2E tests. | In-app governance completion, not repository collaboration |
 
 The unavailable handover/D13–D16 are not global gaps blocking these tasks. Record a specific unsupported assertion only if it actually needs that evidence.
+
+Two localized follow-ups recovered during the answer review: (1) Q02 exposes a local-only note recovery/replay gap in the current code; the safe preservation/resend guidance is documented now, and implementation can be proposed separately. (2) Claude history H02 relays **CANDIDATE persistence + D10 provenance tag** as one proposed WSJF item; current code confirms the early-candidate persistence issue. This applies to durable imports before their household use, not to general documentation or an unrelated assistant baseline. It is recorded as a proposal, without changing Cowork Ratification fields.
 
 ## Completion accounting
 

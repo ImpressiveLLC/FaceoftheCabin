@@ -28,6 +28,8 @@ Start with the [user guide's sign-in versus attribution explanation](../../USER_
 
 If a note/profile/chore appears on one device only: preserve the local work, check the other device's sign-in and connection, then verify a real cross-device change. Do not call a server error “no data,” and do not erase the local copy as a first troubleshooting step. Existing sync behavior and troubleshooting are in [USER_GUIDE](../../USER_GUIDE.md); the requested consistent recovery experience is defined in [UX Journey Standard](../../UX_JOURNEY_STANDARD.md). Not all desired recovery UI is implemented.
 
+**Note recovery correction:** copy a local-only note's text privately before signing in again or refreshing. `sendNote()` saves a failed send locally, but `refreshNotesFromServer()` replaces the cache with server notes; the inspected path has no replay queue. The older guide's implication of automatic later upload is not reliable. Check for an existing server copy before deliberately resending, then verify on a second signed-in device. See [Q02 and its source evidence](../corpus/eval-answer-evidence.md#q02--recover-a-note-visible-on-only-one-device).
+
 ## Device onboarding
 
 1. Identify the supported source: existing adapter discovery, device-specific assisted discovery or an external platform import. Review prerequisites and permission before triggering a provider call.
@@ -38,6 +40,8 @@ If a note/profile/chore appears on one device only: preserve the local work, che
 Sources: [DeviceDiscoveryController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceDiscoveryController.java), [PlatformImportController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PlatformImportController.java), [DeviceController lifecycle](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java), [DeviceLifecycleState](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceLifecycleState.java).
 
 Known limitation: the platform-import controller documents that an unaccepted candidate is memory-only and can disappear on backend restart. Do not represent a successful import confirmation as durable completion until acceptance/persistence is verified. Also, `GET /api/platform-import/{platform}/proposals` contacts the provider and upserts import records; it is not an innocuous health probe. `GET /api/platform-import/records` reads existing records and has its own role check. Source: the controller's `proposals`, `records` and `confirm` methods.
+
+Historical Claude findings now reconciled with source: discovery lookup-result persistence does not persist an undecided candidate; the optional external discovery provider can fall back to local catalog results; and the current Remove action applies IGNORE rather than hard deletion. Do not repeat the older Remove/deployment claims as current behavior. See [recovered evidence H01–H05](../corpus/local-history-evidence.md#findings-reconciled-with-current-source) and [Q04–Q07](../corpus/eval-answer-evidence.md#q04--clearer-names-without-changing-identity).
 
 ## Rules and safety
 
