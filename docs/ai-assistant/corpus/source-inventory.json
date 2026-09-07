@@ -1,0 +1,3936 @@
+{
+  "schema_version": 1,
+  "source_revision": "cd145620bcbe7deaa30e236779ec7e1134db7880",
+  "scope": "tracked source declarations; not semantic completeness or deployed state",
+  "exclusions": [
+    "raw values/defaults",
+    ".env files",
+    "vault filenames",
+    "group_vars",
+    "tests/fixtures",
+    "live state"
+  ],
+  "sources": [
+    {
+      "path": ".github/workflows/deploy-cabin-backend.yml",
+      "sha256": "5c5ef37608ba3ccc7164c7622add9c6fc2d9f92c718c5c482299fe61f5308cf9"
+    },
+    {
+      "path": ".github/workflows/deploy-cabin-discovery.yml",
+      "sha256": "07f77604886f7dfdc15cbfb83cd9c3576149c378bbcefa4f3c8b353edf147751"
+    },
+    {
+      "path": ".github/workflows/deploy-family-hub.yml",
+      "sha256": "452a78cf5855787ebc7ec44303dd21d0aa2e4e40bfb4902de55dafec9fa11e74"
+    },
+    {
+      "path": ".github/workflows/deploy-production-stack.yml",
+      "sha256": "7147066ac6af8be031f5bcf30a60d32524a7554374a3d0b6b2f0cb5c4c495be2"
+    },
+    {
+      "path": ".github/workflows/rotate-secrets.yml",
+      "sha256": "7981a1eabce3ef791f105a5b3164e70dcdad3d1cefb3cc64c2db79670a0ef344"
+    },
+    {
+      "path": "ansible/roles/cabin_host/tasks/main.yml",
+      "sha256": "0ecc2784be3c4f044223a9b186a18e06194df3c86f0a3d4ab4d800901773afe6"
+    },
+    {
+      "path": "ansible/roles/nodered_auth/tasks/main.yml",
+      "sha256": "88935673f530ac6a58edf59a1e91327cdc8bdfc565bf59737308d47da5b3ad97"
+    },
+    {
+      "path": "ansible/roles/secrets/tasks/main.yml",
+      "sha256": "90c13e85a654406de8317f35041f99b42f505b62457a2bdf53a483d63dc0feb5"
+    },
+    {
+      "path": "ansible/roles/secrets/templates/env.j2",
+      "sha256": "279cdbd67ad91e73a2440e0ae31d4f7456635fb3b45acf11fc1e6dd2f93688c2"
+    },
+    {
+      "path": "ansible/roles/secrets/templates/production-stack-env.j2",
+      "sha256": "2a7a4efb7066a6ef7096aa572d5b59cbd0977d84eba9796bb1e9ad25bd539a69"
+    },
+    {
+      "path": "ansible/roles/webhosted_placeholder/tasks/main.yml",
+      "sha256": "1345294633a5392aec5b2b98ca8134c54c6bd22b614ea1cc8769b4e65b261a80"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/Dockerfile",
+      "sha256": "f96277019039348dc3d6d4531a3fae5ef31c263df85fde12e9f69f2544ac8266"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/CabinOrchestratorApplication.java",
+      "sha256": "8136bc5a6ea4acd701f447e687bcae4e8ae01f1b76f25e4edde37eac003f2814"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/alerts/ActiveAlert.java",
+      "sha256": "8b649f780e7063d3b8777158041069c822fb5f2e3781584498e86b5e9223a789"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/alerts/ActiveAlertService.java",
+      "sha256": "d244d69a859e93437ff686e81e7cfcf90653d9a4454ae0dc03ec54dd5ef27c6f"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/alerts/ActiveAlertsSnapshot.java",
+      "sha256": "37ee7250849e6eb540dc4f609f6c98092b91d4480947037df224e7cff3326091"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/AlertController.java",
+      "sha256": "b17cf376e8247b9aefab0c7b34cc9dce990a567717b7248674cea87de8f8060b"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/AuthController.java",
+      "sha256": "438b88bf93f65c6613f961c57c0ef4a91d65075bd0c3353679308930c834ea6d"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+      "sha256": "ac356788521fffb41aaa8b57c87c7872e8802187bb56cf565135d2aaf52918a4"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CrossDomainController.java",
+      "sha256": "bdd9b968bfd7943e574d28836b30713fb774d34154a39d7fd5a22766c6980348"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DashboardController.java",
+      "sha256": "28e762b2f0d3806cb3c7dfd9af953a4e44e47c17afad8c55dae8d08b1f31ed64"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "sha256": "8612da41e5967a201ddba306abb461d1859a2d0a7804f7b094e45852f1032f78"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceDiscoveryController.java",
+      "sha256": "9ed68ce82fc6da0919a31f84b72fb172bdf4dd8b2ebc5652ab61aaf0d4b96eea"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/EventController.java",
+      "sha256": "c1f145df3542fc523c234853b7fb98d5ed7455f8fe6cefa0ce794bd4ce48395e"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/FrigateMetricsController.java",
+      "sha256": "b391c775ee43947c035f46e56cdf6e5bd40bb7cfc70da1db882dba7ec74c0dea"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/JsonLdController.java",
+      "sha256": "fca3d8d814ded4fbced4e3b7b38913ca4cd2b89d16c3659a2046d9179b71dffb"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/KnowledgeNodeController.java",
+      "sha256": "40651b6006c8030b1f83884065dc02d2db576c8aced041a4e01efbe6d93395a2"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/OpportunitiesController.java",
+      "sha256": "1fcb82ed007a2ff3f9d09842db05a77b615ca9c1741fed6ba5173d016fe40002"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PlatformImportController.java",
+      "sha256": "9ba950fc16ba605ce47f2690b6ab532f9da4d83123d1f2d0af6d887eef6684ff"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PresenceController.java",
+      "sha256": "bffe6bb1a885134d47ed1915a35b3033643be675a98b4d6903203d58381e86e3"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "sha256": "607dfa873405c0ba1fdf7dba7cc14c26a884b04cb609f637915fe515462b7e08"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/SecurityController.java",
+      "sha256": "b81bb2d9e520073f042e9e89217bf959481c99dd371de137a9f82b9e867d6572"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/SignalQualityController.java",
+      "sha256": "08d191d0dc471a753585f79c1ecf3995f8a77037b4cea488a19f67a6f7ab8d2a"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/SystemController.java",
+      "sha256": "0a49ed239196993ad426cc6824f32d04819c11cc6ac225aec97753d2e8a32b80"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/TinyHelpdeskController.java",
+      "sha256": "348d4ca79ae79e359d21565198675ccffe43c5356d248dd0905b2a310be6cb9c"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/automation/AutomationRuleService.java",
+      "sha256": "90f1a389d99c80d61faacca6cbee9c40454024129bb6827a4a33f36c79ab54e3"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/automation/AutomationRuleStatus.java",
+      "sha256": "04ca552765821ccca9be57bd36d8ffbc605eb3b0b745187583b2e83a3889d860"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/CredentialPointerSeeder.java",
+      "sha256": "7553b3cd466c4b135a2360964efa56882b699fca6ea2a4a1db11d69e13d7bd0f"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceEventLookup.java",
+      "sha256": "6680f84ebafab64eb836b391ccdc60964e5da2999f86e3dd5a3fbb5a498bbdc6"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceHealthMonitor.java",
+      "sha256": "9d1f018725880726b731faa8eb4f376259911967bb4ae91f4e46d74cbd0227ad"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceLifecycleRecord.java",
+      "sha256": "bd40f0ecbbaf722f6a588077f1966cfd3a0391c2e95002c3889f1b3ce342fcfa"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceLifecycleStore.java",
+      "sha256": "eb10e79c317f99737fa49a301da04d65cbc55c1b0edf9c095b186d1f6431d48d"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceRegistry.java",
+      "sha256": "413c6ba16a44a57ed679ad50eb767522bf9348d4c58723fb215d816097f4fc96"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceReportingRelationshipRepository.java",
+      "sha256": "abaef4fce286977ae8db58b61b856a2cfc5023a629c94268f9dd0ede2c288415"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceRepository.java",
+      "sha256": "878647393bc3241f7dff605b35a425c6cc7193e0f307854091a5b8b6a1a4cac5"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/JdbcDeviceDiscoveryStore.java",
+      "sha256": "4ddb3a55ac14f78f8f469796e60e3475e985b9b4dc8ba216376ee6f20da191df"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/JdbcDeviceLifecycleStore.java",
+      "sha256": "2e3951cab0ac2a40fe9b0e1cb2f3abaa2f43174058edf90e4a4fdd76110ba354"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/JdbcDeviceLifecycleVocabularyStore.java",
+      "sha256": "67da6645dde383ce7a3b8f83d7dba4df870e430365c59837f1828a24bfa74823"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/JdbcDeviceReportingRelationshipRepository.java",
+      "sha256": "98cd4086f2265d77ffdcd9092a4920b344f060edc35b978f70bb185f3ed4bc0b"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/JdbcDeviceRepository.java",
+      "sha256": "ef32fd12547c37d025979d1c6483a2f0fc4528b3b3661281e271f2c426df1d05"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/JdbcKnowledgeNodeRepository.java",
+      "sha256": "2bc3ffee149010397827b3d7c08d9e8463e954a520d435a0415746916f966dbf"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/JsonLdService.java",
+      "sha256": "85c32981d157407d3d0a4d57d02e05c7a7a6096cbf8f16cd9272ab53acff73ec"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/KbGeneratorService.java",
+      "sha256": "fc958aa858c1cce78da8392589a15c75fcb6f0633eebebbcb044cd2e477fe2af"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/KnowledgeNodeRepository.java",
+      "sha256": "cdd65f3ef46f45572335cb0880581e05ec56b6ccc930f2acf85abb56ec5762d4"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/ServiceDisplayLabelSeeder.java",
+      "sha256": "8d2941e94813f68be282a557a6a3ac10e09f2a01ce4df9d26173e1d2b4c31d1b"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/adapter/ProtocolAdapter.java",
+      "sha256": "248d263343f5413301e83402e403bcefd7f73dec7659225009bf473d95717cee"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/display/DeviceDisplayConfig.java",
+      "sha256": "6122625f733a9cfe7602f7dd039f869affb3b3e5ad4054c5110e1282a4cbc3df"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/display/DeviceDisplayConfigService.java",
+      "sha256": "8bc237e91ed114ab2b56592af3af56b68b396a708a7284f220129e20ca2794f3"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/CheckinStatus.java",
+      "sha256": "05d0f4faf25fdfd87b8a5d0b0512511e1c1c09c204811779a00a78190db64121"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/ConfirmationSource.java",
+      "sha256": "fb479b226f1927cb017f4ea9fe3b3c92afd618855408ecb9f28ef24aaf31a3cc"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/CredentialPointerRedactor.java",
+      "sha256": "1cad98cd9760b8940773e29659a354904973bd3f3153fee0eec36bb1fb29a069"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/D7MeasurementTypes.java",
+      "sha256": "93b728ac92813dd1a18d49a2ba5f0eaddd86a74b0aa6f8bdf6e748ae4b342cbd"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceCapability.java",
+      "sha256": "8f3b751413d11f91ab65bfcc19fec456ece760a8337c828ad97d4154e2e9cf91"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceCategory.java",
+      "sha256": "f047cc4139da7c8b2b59c78cd8d1dc3c0a9d99827c9b8cae4ab4437b5b08efeb"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceDescriptor.java",
+      "sha256": "f5eeba99cb85cb4d70866e9053827a0b4e539f974dd5bdbefbcd723648c48f67"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceDiscoveryResult.java",
+      "sha256": "d08858ae459141b38b0513eb932f528a8ae9ca80d8ca98eba26eeb5a12bc34e5"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceLifecycleAction.java",
+      "sha256": "0c790fcc4d1b07602450b6335f5eb5ff93d7711566d7103f604b264b8aa95a87"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceLifecycleState.java",
+      "sha256": "2be591239c8eb924b110b8f6f12c009d45c1006d20fe91a03a2dca22a32339b2"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceMetadata.java",
+      "sha256": "b5fdd464a87dabbec38e30cee0b3f8022c2d130a7dff370bcb74f404303d81ee"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceReportingRelationship.java",
+      "sha256": "0b945ad33ba9a1a4218d5bdc9ecfab8e8b50d973fccd14b54ee8411dbb931244"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceStatus.java",
+      "sha256": "95ee85a6bd4228d53b27ea627330f3352d50cfdcac82c280476a3122d4d7ffd0"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceType.java",
+      "sha256": "f916fa16a6d66f02801af458a7718f094e4a44103548b8ae5d19b4ebe7296606"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/KnowledgeChunkType.java",
+      "sha256": "f2aca5e51cd6d787f6b3e393533e5d459cbf35bd8b30629f5a511e1af36fd1a8"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/KnowledgeNode.java",
+      "sha256": "2efaaa51bc8a2b0067e9c879d4d85c5b3cfe19d0ad8aabf7d19721e9b332b9d9"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/KnowledgeSource.java",
+      "sha256": "a4cf157039fb6aa2c4bcd8a169617c639693d4be974217eff0831bd36686ec8e"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/LifecycleActionVocabularyEntry.java",
+      "sha256": "4f5c475b565063379c6414ba349066ccd5f13a2e155992d0789062e16d433462"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/LifecycleStateVocabularyEntry.java",
+      "sha256": "5dd24017d00d9aa34dec4f254f9a6b253bc88c886730a32479a016c35d8e4283"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/ReportingTopics.java",
+      "sha256": "6ba5c06eeb0cbe63335bba8fa822caf8d179b5691f10dd2d114fc6a983eee08d"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/AlertSeverityClassifier.java",
+      "sha256": "354236fa8ee5ffd3d68246ea1f1887983677a92f85a0caab82f7993237075da3"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/CabinEvent.java",
+      "sha256": "8f1d8d61c30ceb83a5ee2cf691263b9960e309e05d8b35a046a52b8d3f3a77fd"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/CabinEventService.java",
+      "sha256": "63275f133ac07fc5eb162a2414b771ee19a62b835fc2d0f27d345e39613a6b4d"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/NtfyAlertPublisher.java",
+      "sha256": "0ca577948bd0397397d4e0826b7e930707a0a0a91d83bb77a42e7c921a7d0dd9"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/TelemetryArchivalService.java",
+      "sha256": "1c1c88f1c24f99c42db01f9313965608b26c54f86368c82510107072a79e19fd"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/TelemetryDailyPoint.java",
+      "sha256": "23fe9181124a00d4676a5de86e7ef19756587f3edfc8912af0c611751f40d1e8"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreAssignment.java",
+      "sha256": "3b6d54a0c71ddd21a26d1c047680553c24926a4988b2d8af7f89f63e7622d1e4"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreAssignmentService.java",
+      "sha256": "74b754a7965ab5b2a1409fdc79d1617962561359b65cea1ce64bf5c83da864b1"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreAssignmentsController.java",
+      "sha256": "775d95e36fca882bbfc3ac0d8a6d62b17606d4ad63df8124bdb7abb1d0d899da"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreCompletionService.java",
+      "sha256": "919e01a3c19c1adcaf4eb2157e101eab7ee4482204a0caf6e4e096ee0d01a522"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreDefinition.java",
+      "sha256": "9a0ca0189476ff4244e3e07e5adcd0d127097ed707bc8e41e623741ad410baf1"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreDefinitionService.java",
+      "sha256": "75c0f9ebc77487a5d07f2c5d6bc67a55f4557ad9a738239a7d9a917fa58b6a1b"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreDefinitionsController.java",
+      "sha256": "796c75f28c6b5ae2e1dd0fec421e3ad2d59b846a86422f208a06c3524e39324e"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoresController.java",
+      "sha256": "bc4d97cd023d47082e22fee2ca1b5c4de190f96f5c7840b2abc389ed30dac59c"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/FamilyNote.java",
+      "sha256": "cb666ba1fa4e0051ac1545d1fc205049f402f8226048ddc820a9d54cfac43597"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/FamilyNoteService.java",
+      "sha256": "fc789b5f4419b2d604e2776798327669179cb956a70e48c1b5b1bd8a392c02f1"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/FamilyProfile.java",
+      "sha256": "713aeb8b8732cbd91679e758b1caebe711886075175a7a43579e7d2a344fd286"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/FamilyProfileService.java",
+      "sha256": "31019c64e5fdada1051b7508024af18f0ea218990ab21499439623f47134fbfd"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/Holiday.java",
+      "sha256": "2306903c6e903a79d4c6ef7d0a4095feea9eae06c5db59d61c6a8f2ddf852c0a"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/HolidayService.java",
+      "sha256": "5ead4195cd8da806faf066ba242f331eeb51ab62792cb8a091e375b76ffe3581"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/HolidaysController.java",
+      "sha256": "44c181b57ecbc6b52cd1b6748c78237ac56e127f98f2ba5368efa271234df9b9"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/NotesController.java",
+      "sha256": "098cbba90b36d9317691c4738dc70a566dc092d49405ee385fcdf18b48efcd30"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ProfilesController.java",
+      "sha256": "a03fba7d98364aa7f4d3ed6c191791c67df122bb85ff6610d7316bd16724fff0"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ScheduleRule.java",
+      "sha256": "bd44fed6a91baa0d551d4136c8685f0254ad08079460e85c080c4a23349404f5"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ScheduleRuleService.java",
+      "sha256": "9a692f53df4bf45cc493bd7708f2162094ae9ed818c943d0db1018079c50c1eb"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ScheduleRulesController.java",
+      "sha256": "135d6e339a87957d16f820ed4a29e046d7bea1a282ac4d6ab9b408f7b067862f"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/health/HaTokenCabinHealthIndicator.java",
+      "sha256": "3e0f60b567a0f0812aa61c9feebc0348eea508b86e23796834a67d93f3035223"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/health/HaTokenHomeHealthIndicator.java",
+      "sha256": "d8012c0c2533adf370ce62c95c74dd267abb52cdcf6ee7064122e5e42adf83ac"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/helpdesk/OllamaClient.java",
+      "sha256": "a120dc252f117b642157047506ca4152d61d775fe1f6a094b7bae60afeda16c6"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/helpdesk/OllamaHttpClient.java",
+      "sha256": "c5e1f162ac5f95f5e4f0ac7e47b5a0f752ff7c0c5a50c72f6fe0f33f3e98c829"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/helpdesk/TinyHelpdeskAnswer.java",
+      "sha256": "054f2fe0a8b2d2a8d3f2c04bc64ef4fbed893492d6be95e3784671f68406b6c0"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/helpdesk/TinyHelpdeskService.java",
+      "sha256": "5f2cbb1c8bf808c2e9291363149f4890be157065d9fae4404cbbecd511357e57"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/cameras/BlinkLiveviewService.java",
+      "sha256": "e605b186b0f1e1a1925bd0e86d2beebf28db5497acbc4b42d38a3c69541add0b"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/cameras/BlinkMotionWebhookController.java",
+      "sha256": "048feafcf1e2182be44dbc2c524b004ba3551b27eaafc2b5dbc0cd51a3f103e2"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/cameras/CameraIntegration.java",
+      "sha256": "7349390479d3b6aa598e5ee4f86b9612fc74e9bdfa9f30200edf79e2274babb7"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/discovery/DiscoveryServiceClient.java",
+      "sha256": "9e04773ad97975ebe3f42ece6ff807426de1d228bfbbaaf7fb6d9b9e50f69729"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/google/GoogleHomeIntegration.java",
+      "sha256": "cbd7fbb73623b1cf77a661c0721e50745cdaae47a0759dfeecad40f7fa0b24fe"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/homeassistant/HomeAssistantAdapter.java",
+      "sha256": "ac523decdf9a6e72cad678a03ef90252acb47ad586513bfe389ad640429cfa21"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/homeassistant/HomeAssistantDiscoveryService.java",
+      "sha256": "af5711b2c65250288ddfff3feebac390874915e8206c91d04a2bc001a0400fbc"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/kidde/KiddeIntegration.java",
+      "sha256": "26108ae431439b022bfdf79c7fedf5d9f63bfd3c5ae66431a26477b1418a3701"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/ring/RingImportProvider.java",
+      "sha256": "243f38a9ecb0285688d636be00204745716b4c83a180e1d26c1157ad87dca13f"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/smartthings/SmartThingsImportProvider.java",
+      "sha256": "904cf38c7921d77facea1184d43261f2c89abe3b736f18fc6dcbbdba17682fd6"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/zigbee/MqttProtocolAdapter.java",
+      "sha256": "5b148a5657f4f89082e0a9a5d15161f2e864da6af7e481ccb306c951d10337b0"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/zigbee/Zigbee2MqttAdapter.java",
+      "sha256": "a4df90745af210a6ac85a330da836edf8cc54adc1866023abd860934382c91c2"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/kafka/EventConsumer.java",
+      "sha256": "fc03b9061300f13a5f9b220b77113f875fc982b848f0b77224a9b05ae120520a"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/kafka/EventPublisher.java",
+      "sha256": "444e0a288b9d993e17162df11a8f29f6a95d4b3da558f8dbce875bbeb87325a6"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocation.java",
+      "sha256": "f0b409a2c2d60906f0aa299ad03a420020f21272201dc65da528cd5895c111c8"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+      "sha256": "a6d982556bd944fb789a6a905dd4e47d4493a1a1649d3fbb34d4213c064e2287"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/LocationsController.java",
+      "sha256": "5c9ae6ec56b41b06bf81b448d1277aafdf7fc016f38f90a23c6a511ebe683fd4"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/FrigateEventReconciliationService.java",
+      "sha256": "3fd1bff2e2119a6c515cc8431ea39d3642884efefcdb47316251481d445671fa"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/MqttBridgeService.java",
+      "sha256": "04a1e33ed1defbc19b718be16e643f0fc2b4e3c0283d735448f386f0a157afb5"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/ontology/OntologyController.java",
+      "sha256": "c17e0cec5895469e07f01ead171896bb082072559910cdcf71dc141ae3f18860"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/ontology/OntologyEntitySummary.java",
+      "sha256": "202d7952f845db046c61cbf1ebe9bb8bbca50d9bbcb9ee3d667479ffd3470e77"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/ontology/OntologyLookupService.java",
+      "sha256": "77b9870d7c2066b989212e8bb89604f9a381888ee1fa892a316ce135294bd7da"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/JdbcOptimizationOpportunityStore.java",
+      "sha256": "f80cbc48c48166f83cf8ab8ccb20e9dd2d55e8ce1a95809ca617fbf4b21328d9"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/OpportunityStatus.java",
+      "sha256": "9be24b4467b1df98a417bfe2b2dd42c42b26b146012a66b438fb4bb83880ae4d"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/OpportunityType.java",
+      "sha256": "0ce8359d36c2e346fed4c1ad989eed51afd06e4ad88d2e329e613bcbfe5aae72"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/OptimizationAnalyticsService.java",
+      "sha256": "acbded9f1d688cd4b133d54fc098ef883c7be082b9fb3c53b86077eaec79d8bd"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/OptimizationOpportunity.java",
+      "sha256": "a8eaa6b7162bb11bdf245df6d82c501a161616e8d96886c041ec35be755c11f2"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/platformimport/ImportProposal.java",
+      "sha256": "14ae0640ec44dbb758cb52b9c4efeb8c6972c44a5b4b27073fca64426c9f9318"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/platformimport/ImportUpsertOutcome.java",
+      "sha256": "728332ef5b59cf099ea8a0e97c5fb31ab8ab2f0a46c29d72f13f80d3ebacf8ca"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/platformimport/JdbcPlatformImportRecordRepository.java",
+      "sha256": "b69262b55f8e85d36ecb1d1bf4b8b8eac7e27dbdbc7d355bbaa2caca48a9953b"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/platformimport/PlatformImportProvider.java",
+      "sha256": "3a666507ce68fb1f15ef3c0bdf5d2b55288c9122b6f1effdc8e00f32f6f265d8"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/platformimport/PlatformImportRecord.java",
+      "sha256": "41c145067abdbfdaf0a567955e659bd9665482b2342ac6efc83488bd7101da0a"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/platformimport/PlatformImportRecordRepository.java",
+      "sha256": "6bd8ba3bfef0a55420df5f9ce17574d130de9647328d8bc87fba2ae18050deae"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/platformimport/PlatformImportTranslationService.java",
+      "sha256": "8e0835dbe39bd7bf2107fc2448b7b324a9da0fd21c1759d469fa3d747b751fe7"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/platformimport/RawImportRecord.java",
+      "sha256": "4bd788e97a0d923b569e20c283fe8879f5b8dab60100bc55d96d89a5fe45a922"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/platforminfo/PlatformInfoService.java",
+      "sha256": "ecc63805070d3fdc3e4a171e793d383dd862290333d668ac4553d4cd76c658cd"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/presence/PresenceContractV1.java",
+      "sha256": "093504b84d62b93d4cf10b235505e76a444fa0a7c67d4b4ddaf0f21afcbf80b8"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/presence/PresenceProfile.java",
+      "sha256": "8b9c69ae8362c79543988646413600498b6b2267426a55da56e9e2b230b2ff47"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/presence/PresenceService.java",
+      "sha256": "3675e3900b6d68b92aa543fc38ebd928b78acc6e4e086dc7eeccaf22eabc4238"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/presence/PresenceSignalRegistry.java",
+      "sha256": "c6497343146d806af09e408fe401ceacbe2ed36c8025bd321ccd626aee198cd1"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/BwCliRunner.java",
+      "sha256": "5e7fbe802ea71c30aaf3d2fa6e7fb955d26a505ee52f6f85802e203d6698c059"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinAccessToken.java",
+      "sha256": "8e9ba2f7e1d3ca085c1e9e03954fd2bdff9256143ba362b18c7327eed16fc776"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinAccessTokenService.java",
+      "sha256": "9865f7ace34f5c2347131df2624c41e28420817004439ea655abd468578a70c0"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinAccessTokenStore.java",
+      "sha256": "1de96d4efdd6927cc691180fa3fd91f71a69bdb9e1b8d31843519d593e195446"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinAccessTokensController.java",
+      "sha256": "140c67d83232bb5b2169f5dadd10a2edf7b286f7facb02e073a0fb2acc6a3264"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinSession.java",
+      "sha256": "6b0baeffd6802f50d396839258ddf83af1303e61a94cc0f37d0f792be1de31e9"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinSessionService.java",
+      "sha256": "5bafe234a85d4a54e06f01cfcfe0805f8af466353b2d44cb65e849d9a1ac9f82"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinSessionStore.java",
+      "sha256": "bdea8fb0867bbbf18a18433ffd503d81784601d3e073e9ba4052cf925bee31db"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/GoogleAuthInterceptor.java",
+      "sha256": "43141879a5a0578f71f362b67f86013f0c6ce43ceb82a136e8bc06f739ce3208"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/HouseholdRole.java",
+      "sha256": "8eca06b7ab9beecb748d0354cee1e85b24d84b01698bd7e7919b248bee840675"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/JdbcCabinAccessTokenStore.java",
+      "sha256": "810448468feeaa93b8d8a4464b11a9117df5a57d16393a8aee384c6418a6a708"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/JdbcCabinSessionStore.java",
+      "sha256": "49afd0a6297837e46d7ad7bec7a86c273ded20743c73127d87e5b892136bee39"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/JdbcMagicLinkTokenStore.java",
+      "sha256": "2daf5471dacee2d33d58d57c6c2406f856c0666999aaa5501c21dd4dbea41e3f"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/JdbcManagedUserSessionStore.java",
+      "sha256": "2d46aec2aa25ec9389933e2cb99bb6778ad53f7f76ff0ca068b8b0edb0594742"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/JdbcManagedUserStore.java",
+      "sha256": "15cea5434d4260e89d7664ce515d4aee13ff5371c8dac2b20a4914bb4ad5dc09"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/MagicLinkEmailSender.java",
+      "sha256": "a6c667222af1e3f616440f174fcb3326111c15a7769c87c33f4f2d77dee1ace9"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/MagicLinkToken.java",
+      "sha256": "04aa3eb09a61f21800536b70479fa61e681b3bccfdd5e22d89e5af73b4dd1d2c"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/MagicLinkTokenStore.java",
+      "sha256": "8f20989823f911e35a88fc7fa3434457fb02e261535f9b56d475e38e5b5c8c61"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUser.java",
+      "sha256": "f47a585a9ff7f2583cae150b950f40a8609d03f6cd24b5d2709f7007288d93a4"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUserRole.java",
+      "sha256": "c88e93cc350819c26cbcc9e0e5ac13d1c3f2d1c3154b870e4ecc7c7be5197869"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUserService.java",
+      "sha256": "9214b9fbad51823cc712c2c9d5d1360bc004650262970bd4e909774cd742f754"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUserSession.java",
+      "sha256": "7e9f1a75f8080b82d8238a44491b85794a17a28a74dd7198badb8fbdf15190e9"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUserSessionStore.java",
+      "sha256": "0121f75f7c5647ca18a24680fd8a5177965c4080847c9d29498e089303dc315b"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUserStore.java",
+      "sha256": "7dfe50716ad10ccbf14858267f6047156b0675d1f96561b23a1e461e2958eaa3"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUsersController.java",
+      "sha256": "bab322913b056925ed484b30452b0d56579ec7508fa980eca1a8f2e6678f5f56"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/OAuthCredential.java",
+      "sha256": "458ef0696f1d28cdbf25027a40ecc50dd229314ce1d54e7e73c68fe39205e0ef"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/OAuthCredentialStore.java",
+      "sha256": "70af04407525e22d8bb1afd85d41c06a5470631eccaa3a2656023f35d834a16c"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ProcessBwCliRunner.java",
+      "sha256": "8fc168f30f51684cd56be61628d39f82132ac87937f1fe2466d32d767a2d86ce"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ResendEmailSender.java",
+      "sha256": "71e8dc726c3b192096e47a026a56edc41181a534cb4ff2bce8565c5108181775"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/SecurityStateRegistry.java",
+      "sha256": "227d70964a4bbe3be38cef6e62eb1ac8be3d1e3ed2eb4cf1d5d06516a759b05d"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/WebConfig.java",
+      "sha256": "24da27483126a22ef32a96c173f45d5d290dab3052de6763d8eb5f1e632fb7dc"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/signalquality/SignalQualityRegistry.java",
+      "sha256": "4235b515bd4b4da9c1d132e846b55cd314f204f919d283e547e2b4b44bdabd90"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdController.java",
+      "sha256": "9531deb0584b11fb52f4afd18101a429fd1caffe9a75254cb240a4d7bf050679"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdFinding.java",
+      "sha256": "6701c891d96a97320d5c81c6ae600bd629094d016e2ac5b63e7e67d757b7ed42"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdFindingAction.java",
+      "sha256": "5e119915ae142f66d1da6e9f1f7451012d4979be4b3eb374c8588c4c40979aca"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdFindingActionService.java",
+      "sha256": "55e51da9327ce4fdaa44aab1a2752bc3b335f3526dd26d31cc74bfb94188a289"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdFindingService.java",
+      "sha256": "63525f070998907e9f12db01f68747f75cbbc39a003800229e383f0333c0f3c2"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/CommandCatalogService.java",
+      "sha256": "0fc98925fa99ba8cca2e60d836fdd9a909cb9174e341a5f3850bcc4dee9ec155"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/JdbcWorkflowExecutionStore.java",
+      "sha256": "3657ca0008ce17ba55d496a6e2596c3150e9df3f727c063e2d53c0d3db7b590e"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/JdbcWorkflowRuleStore.java",
+      "sha256": "5239242dee8a0ab9c9bd8da4a7a15d6c7b0075ab0ba8fcc6e4f132725510cb15"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/JdbcWorkflowVocabularyStore.java",
+      "sha256": "e4414c7c3885f293924604f96edbb3cb99e79bc6cb698bf488a120309e447ab5"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/WorkflowActionTargetValidator.java",
+      "sha256": "6298837a0c0fb5038ad8b4f75546a8dd101eb2b2de2c6dad10c0887d16615b57"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/WorkflowRuleService.java",
+      "sha256": "881ac72ef46f548b9f3beb28490e6a4a95d4312dbe66f0375f6e0292288f468a"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/model/ActionVocabularyEntry.java",
+      "sha256": "96c133438615925d28a217e9a39c875e0b4cbd07388e09b09eec957390ff9e05"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/model/TriggerVocabularyEntry.java",
+      "sha256": "2ec73e2a4316cb726858f3d9ee7aa09f33f32b42e6464907d374165da809268b"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/model/WorkflowAction.java",
+      "sha256": "0619a2e1ac611da4c79cbe1d76b547c7edaa5fc198402297856d0c7483d853ea"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/model/WorkflowActionHealthEntry.java",
+      "sha256": "3e285660b534f0c8af75b0a776e8e1bac838852941dab68933e209d9c6f1d85f"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/model/WorkflowExecution.java",
+      "sha256": "3c0b29595833c14e1f6f7c54dd2d4959dd2040717ff456675f72da4522478449"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/model/WorkflowHealth.java",
+      "sha256": "35bcd13d8f1ca5001c34de1182aaa3ac29cc3c578778db69bd4d8dab56ae9732"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/model/WorkflowRule.java",
+      "sha256": "d6921faae3c0a7cfa04383040bc63618162437be78bd3bf4256c261bc2b44ecd"
+    },
+    {
+      "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+      "sha256": "1ee51691db97618c6a70b09f452f8c0c67db0a4eaeae1904897a4c25b3310edc"
+    },
+    {
+      "path": "cabin-orchestration-platform/discovery-service/Dockerfile",
+      "sha256": "e1886a87fcdcde9dec1db25937e523646b1b75b099a9e467ed4b317b39bb5647"
+    },
+    {
+      "path": "cabin-orchestration-platform/discovery-service/app/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "cabin-orchestration-platform/discovery-service/app/anthropic_lookup.py",
+      "sha256": "ae166ca2570fde01640ec62d5bbefcfd6ce1f0b1e0bd2d1a0b6d0910b0cc03bd"
+    },
+    {
+      "path": "cabin-orchestration-platform/discovery-service/app/catalog.py",
+      "sha256": "5a8fde124236a1719daafe8134156acc7a39ff21fc66a29af78d97ddb6295490"
+    },
+    {
+      "path": "cabin-orchestration-platform/discovery-service/app/main.py",
+      "sha256": "6024eaab01fb1cffac896d6716dc20c485ab5e1ac6c553fcb8da21d5db58c32c"
+    },
+    {
+      "path": "cabin-orchestration-platform/discovery-service/app/models.py",
+      "sha256": "aaa66fb911068003e1c1325c123e064d8c6bed2915178bd038424686be21fe66"
+    },
+    {
+      "path": "cabin-orchestration-platform/discovery-service/app/vendor_spec.py",
+      "sha256": "4812b139ab1fe6e6417cddb0e8444a9f663e14d40cfe69d561e9ed481c9ff439"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/cabin-security/homeassistant/cabin_security.yaml",
+      "sha256": "af50ce344b9c9cee0b355126f4ce3e06356b485808fa093848dad3431da55acc"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/cabin-security/homeassistant/cabin_security_mqtt_publish.py",
+      "sha256": "386a89fa51503575d30d67f297ce717b21c9d1f1ddc3600f252ec05889c1144f"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/cabin-security/homeassistant/cabin_security_presence.yaml",
+      "sha256": "f229655fa84c4d61e082bb14edfe096f5d57953bb66d988da06036630315fb39"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/cabin-security/homeassistant/configuration.yaml",
+      "sha256": "f3547c2408cead056f7ced3c4f94ad80584312fb4680be89036cd2a4e28ea053"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/docker-compose.local.yml",
+      "sha256": "1ed78457c49c85fdf54420a9544e34a30508a07d0f76923f1272a6df0389eb78"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "sha256": "bb2a6d866d91fa879a545e66261be34009a67fef3bad9c6aae4a860d583d47ef"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "sha256": "6de46e834cb202e46cd6c47ab44f2810697e25c200bdf9e2b1f758d80bbc38da"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/frigate.yml",
+      "sha256": "6be4be2fc975a442e7cfd5dbea4f575b8082d49f668c735d2c7b630a33a9d975"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/grafana/provisioning/dashboards/dashboards.yml",
+      "sha256": "b9d81c90f7a620f1f8c51aed614b49da4fb43e7016fa4658edc5d724ba0f8124"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/grafana/provisioning/datasources/prometheus.yml",
+      "sha256": "350c17fb4b8ff4c56f194ae394261fa5cb853478f224b3d1e67b89c0d627d2e9"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/grafana/provisioning/datasources/timescale.yml",
+      "sha256": "1cbaa0cb2d2ca0b1704cb1dee96103614e21664a9e697495f3b51dc326a5d45f"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "sha256": "0f839e1623ed72c99a70469e18e7d3e6c4e8339504fe6ae13b7a07190116c54f"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/production-stack/frigate/config.yml",
+      "sha256": "a6748c4f8bede92879a096736f480779731cb8ac44fb86b62e4683ffab90b860"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/prometheus.yml",
+      "sha256": "4b18ad1a0ea5dd5e5522bfcfcebc575d2abf7cceb265096f882667aa406be61d"
+    },
+    {
+      "path": "cabin-orchestration-platform/infra/watchdog/watchdog.py",
+      "sha256": "1ec624b5200a21c223e1bb818b14f0285d0d87f044d02eb4e92d91350484bc1e"
+    },
+    {
+      "path": "cabin-orchestration-platform/locations/home/application-home.yml",
+      "sha256": "f0e9fd494d2c0992ad606f666407b26407e6c0b41cc3b24c410a74f0f82f74cf"
+    },
+    {
+      "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+      "sha256": "ef1b984099043091eaf1d9ad7b5107f21bc1d1254bbb5c2901fedea12fdac056"
+    },
+    {
+      "path": "cabin-orchestration-platform/locations/home/frigate.yml",
+      "sha256": "e4c4acc683f2d9a6d852458b33f846a6a15a752a03488cb5b5b4b343b745f990"
+    },
+    {
+      "path": "cabin-orchestration-platform/qa/cabin_qa.py",
+      "sha256": "eda2a2bc9d876de9100da4d71c4fcbb9472af492be0d9b3802de6c029229cf4d"
+    },
+    {
+      "path": "cabin-orchestration-platform/ui/Dockerfile",
+      "sha256": "35e168f2c5f329f9fb6040d9345b9fa6279f86fc70899ed057d544fc548385e0"
+    },
+    {
+      "path": "cabin-orchestration-platform/ui/src/App.jsx",
+      "sha256": "e251c855096cc1081ba0b00a57673e544482ea83b0deeaa7a56f0a86adcd8c04"
+    },
+    {
+      "path": "cabin-orchestration-platform/ui/src/App.test.jsx",
+      "sha256": "4dd1ac829fca527083cc4d84a29f765be11c6c7c5391430c162ab4a1f27e5e1e"
+    },
+    {
+      "path": "cabin-orchestration-platform/ui/src/ThemeCatalogDrift.test.jsx",
+      "sha256": "a6dc4296b2d5e895a746ac2ce93f50f5445e5ec77a00921b5ce549f523ce2758"
+    },
+    {
+      "path": "cabin-orchestration-platform/ui/src/ThemeControlStyles.test.jsx",
+      "sha256": "fe20d5f090e39abaa3b0cd54f8200750e4eb8d3b49d0905ddad4f736b4b662b3"
+    },
+    {
+      "path": "cabin-orchestration-platform/ui/src/ThemeProvider.jsx",
+      "sha256": "12dda2b510f258ccd3a1c50707c407889f95a160f0f42d9e84b74b38c1e7dd2f"
+    },
+    {
+      "path": "cabin-orchestration-platform/ui/src/ThemeProvider.test.jsx",
+      "sha256": "66500400eb8d4a3f6f7c184760ecadae4de909a26aef9eb90deb6544e51579d2"
+    },
+    {
+      "path": "cabin-orchestration-platform/ui/vite.config.js",
+      "sha256": "1eea0a0dc37125bd3d9dfaf01172c317b0e93150f3270ab153165fa475f19f9e"
+    },
+    {
+      "path": "family-hub/Dockerfile",
+      "sha256": "dfd745118c7c303520777b551cc08d547744fd4403e196c08ffa0e911585d431"
+    },
+    {
+      "path": "family-hub/host-config.js",
+      "sha256": "046088beb901999f584c6561ad2da0d2d801c6e74dbdc95db99ca6face078e78"
+    }
+  ],
+  "routes": [
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/alerts/active",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/AlertController.java",
+      "line": 28,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/alerts/rules",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/AlertController.java",
+      "line": 34,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/auth/session",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/AuthController.java",
+      "line": 58,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/auth/session/revoke",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/AuthController.java",
+      "line": 83,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/camera/reconciliation/status",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+      "line": 111,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/camera/list",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+      "line": 124,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/camera/events/{frigateEventId}/snapshot",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+      "line": 164,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/camera/events/{frigateEventId}/clip",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+      "line": 169,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/camera/events/{eventId}/clip-by-time",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+      "line": 186,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/camera/{cameraName}/live",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+      "line": 209,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/camera/{cameraName}/liveview/start",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+      "line": 248,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/camera/{cameraName}/liveview/stop",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+      "line": 254,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/cross-domain/cabin-status-summary",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CrossDomainController.java",
+      "line": 49,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/dashboard/config",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DashboardController.java",
+      "line": 36,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/reporting-relationships",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 75,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/devices/{deviceId}/reporting/{semanticField}/display-label",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 99,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 114,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/devices/{deviceId}/area",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 138,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/candidates",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 152,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/previously-exposed",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 161,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/{deviceId}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 167,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/checkin-status",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 177,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/checkin-details",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 184,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/devices",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 190,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PUT",
+      "route": "/api/devices/{deviceId}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 196,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "DELETE",
+      "route": "/api/devices/{deviceId}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 215,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/devices/{deviceId}/command",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 226,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/meta/types",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 236,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/meta/lifecycle",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 246,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/devices/permit-join",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 259,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/{deviceId}/config",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 277,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/devices/{deviceId}/config",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 294,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/devices/{deviceId}/lifecycle",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 335,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/display-config",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 354,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/{deviceId}/display-config",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 363,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/devices/{deviceId}/display-config",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 384,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "DELETE",
+      "route": "/api/devices/{deviceId}/display-config",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceController.java",
+      "line": 404,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/devices/{deviceId}/discovery/run",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceDiscoveryController.java",
+      "line": 51,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/{deviceId}/discovery/latest",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceDiscoveryController.java",
+      "line": 87,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/devices/{deviceId}/discovery/apply",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DeviceDiscoveryController.java",
+      "line": 114,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/events",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/EventController.java",
+      "line": 53,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/events/telemetry-history",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/EventController.java",
+      "line": 96,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/events/reported-fields",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/EventController.java",
+      "line": 110,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/frigate-metrics",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/FrigateMetricsController.java",
+      "line": 50,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/context/cabin-context.jsonld",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/JsonLdController.java",
+      "line": 26,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/devices/{deviceId}/jsonld",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/JsonLdController.java",
+      "line": 33,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/kb/regenerate",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/KnowledgeNodeController.java",
+      "line": 34,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/kb/regenerate/{deviceId}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/KnowledgeNodeController.java",
+      "line": 40,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/kb/nodes",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/KnowledgeNodeController.java",
+      "line": 66,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/kb/nodes/{entityRef}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/KnowledgeNodeController.java",
+      "line": 75,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/kb/curate",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/KnowledgeNodeController.java",
+      "line": 94,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/opportunities",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/OpportunitiesController.java",
+      "line": 41,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/opportunities/{id}/status",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/OpportunitiesController.java",
+      "line": 64,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/platform-import/{platform}/proposals",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PlatformImportController.java",
+      "line": 63,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/platform-import/records",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PlatformImportController.java",
+      "line": 85,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/platform-import/{platform}/confirm",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PlatformImportController.java",
+      "line": 133,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/presence",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PresenceController.java",
+      "line": 28,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/presence/contract",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PresenceController.java",
+      "line": 64,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PUT",
+      "route": "/api/presence",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PresenceController.java",
+      "line": 69,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/rules/vocabulary/triggers",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 95,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/rules/vocabulary/actions",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 105,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/rules/workflows",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 120,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/rules/workflows",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 130,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/rules/workflows/{id}/activate",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 148,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/rules/workflows/{id}/deactivate",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 164,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/rules/workflows/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 176,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "DELETE",
+      "route": "/api/rules/workflows/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 183,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/rules/workflows/{id}/executions",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 189,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/rules/executions/recent",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 195,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/rules/executions/{id}/view",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 200,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/rules/executions/{id}/clear",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 211,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/rules/workflows/{id}/fire",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 237,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/rules/workflows/{id}/actions/{actionId}/retarget",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java",
+      "line": 262,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/security",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/SecurityController.java",
+      "line": 34,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/signal-quality",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/SignalQualityController.java",
+      "line": 27,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/system/health",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/SystemController.java",
+      "line": 28,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/system/platform-info",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/SystemController.java",
+      "line": 40,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/helpdesk/ask",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/TinyHelpdeskController.java",
+      "line": 32,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/chores/assignments",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreAssignmentsController.java",
+      "line": 28,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/chores/assignments",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreAssignmentsController.java",
+      "line": 35,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/chores/assignments/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreAssignmentsController.java",
+      "line": 45,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "DELETE",
+      "route": "/api/chores/assignments/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreAssignmentsController.java",
+      "line": 52,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/chores/assignments/reorder",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreAssignmentsController.java",
+      "line": 57,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/chores/definitions",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreDefinitionsController.java",
+      "line": 28,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/chores/definitions",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreDefinitionsController.java",
+      "line": 33,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/chores/definitions/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreDefinitionsController.java",
+      "line": 43,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "DELETE",
+      "route": "/api/chores/definitions/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreDefinitionsController.java",
+      "line": 51,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/chores/definitions/{id}/restore",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreDefinitionsController.java",
+      "line": 56,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/chores/definitions/reorder",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoreDefinitionsController.java",
+      "line": 61,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/chores/completion",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoresController.java",
+      "line": 31,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PUT",
+      "route": "/api/chores/completions/{date}/{childId}/{assignmentId}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ChoresController.java",
+      "line": 36,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/schedule/holidays",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/HolidaysController.java",
+      "line": 18,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/schedule/holidays",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/HolidaysController.java",
+      "line": 21,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/schedule/holidays/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/HolidaysController.java",
+      "line": 30,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "DELETE",
+      "route": "/api/schedule/holidays/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/HolidaysController.java",
+      "line": 37,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/notes",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/NotesController.java",
+      "line": 17,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/notes",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/NotesController.java",
+      "line": 22,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/profiles",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ProfilesController.java",
+      "line": 17,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/profiles",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ProfilesController.java",
+      "line": 22,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/profiles/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ProfilesController.java",
+      "line": 31,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "DELETE",
+      "route": "/api/profiles/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ProfilesController.java",
+      "line": 39,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/schedule/rules",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ScheduleRulesController.java",
+      "line": 28,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/schedule/rules",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/family/ScheduleRulesController.java",
+      "line": 31,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/webhooks/blink-motion",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/cameras/BlinkMotionWebhookController.java",
+      "line": 77,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/locations",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/LocationsController.java",
+      "line": 24,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/locations",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/LocationsController.java",
+      "line": 29,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/locations/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/LocationsController.java",
+      "line": 38,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/locations/reorder",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/LocationsController.java",
+      "line": 46,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "DELETE",
+      "route": "/api/locations/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/LocationsController.java",
+      "line": 51,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/ontology/entities",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/ontology/OntologyController.java",
+      "line": 20,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/access-tokens",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinAccessTokensController.java",
+      "line": 28,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/access-tokens",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinAccessTokensController.java",
+      "line": 33,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "DELETE",
+      "route": "/api/access-tokens/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/CabinAccessTokensController.java",
+      "line": 46,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/managed-users",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUsersController.java",
+      "line": 33,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/managed-users",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUsersController.java",
+      "line": 38,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/managed-users/{id}/deactivate",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUsersController.java",
+      "line": 55,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/managed-users/{id}/reactivate",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUsersController.java",
+      "line": 60,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/managed-users/{id}/invite",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUsersController.java",
+      "line": 74,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/managed-users/magic/{token}/consume",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUsersController.java",
+      "line": 85,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/tech-id/findings",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdController.java",
+      "line": 76,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/tech-id/findings",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdController.java",
+      "line": 106,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "PATCH",
+      "route": "/api/tech-id/findings/{id}",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdController.java",
+      "line": 114,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "POST",
+      "route": "/api/tech-id/findings/{id}/actions",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdController.java",
+      "line": 132,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "spring",
+      "method": "GET",
+      "route": "/api/tech-id/findings/{id}/actions",
+      "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdController.java",
+      "line": 145,
+      "review": "source mapping only; permissions and side effects require review"
+    },
+    {
+      "kind": "python-decorator",
+      "method": "GET",
+      "route": "/health",
+      "path": "cabin-orchestration-platform/discovery-service/app/main.py",
+      "line": 28,
+      "review": "decorator path; router prefixes and permissions require review"
+    },
+    {
+      "kind": "python-decorator",
+      "method": "POST",
+      "route": "/discover",
+      "path": "cabin-orchestration-platform/discovery-service/app/main.py",
+      "line": 33,
+      "review": "decorator path; router prefixes and permissions require review"
+    }
+  ],
+  "services": [
+    {
+      "name": "homeassistant",
+      "path": "cabin-orchestration-platform/infra/docker-compose.local.yml",
+      "line": 9,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "watchdog",
+      "path": "cabin-orchestration-platform/infra/docker-compose.local.yml",
+      "line": 12,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "mqtt",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 26,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "homeassistant",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 29,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "nodered",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 32,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "frigate",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 35,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "watchdog",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 38,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "prometheus",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 46,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "kafka",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 53,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "grafana",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 61,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "cabin-grafana",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 64,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "cabin-backend",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 167,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "cabin-discovery",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 321,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "family-hub",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 351,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "cabin-ui",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 367,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "ollama",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 444,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "open-webui",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 465,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "vaultwarden",
+      "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+      "line": 497,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "mqtt",
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "line": 11,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "postgres",
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "line": 24,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "kafka",
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "line": 45,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "grafana",
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "line": 83,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "homeassistant",
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "line": 103,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "nodered",
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "line": 117,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "prometheus",
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "line": 132,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "frigate",
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "line": 141,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "watchdog",
+      "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+      "line": 160,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "homeassistant",
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "line": 4,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "mosquitto",
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "line": 21,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "mediamtx",
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "line": 48,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "frigate",
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "line": 68,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "uptime-kuma",
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "line": 96,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "homepage",
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "line": 113,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "blinkbridge",
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "line": 131,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "nodered",
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "line": 159,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "zigbee2mqtt",
+      "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+      "line": 168,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "mqtt",
+      "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+      "line": 13,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "postgres",
+      "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+      "line": 27,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "kafka",
+      "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+      "line": 43,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "grafana",
+      "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+      "line": 66,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "homeassistant",
+      "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+      "line": 93,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "nodered",
+      "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+      "line": 110,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "frigate",
+      "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+      "line": 127,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    },
+    {
+      "name": "watchdog",
+      "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+      "line": 147,
+      "review": "declaration only; overlay/profile may disable or modify service"
+    }
+  ],
+  "configuration_references": [
+    {
+      "name": "ADMIN_EMAILS",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 48
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 148
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 209
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 357
+        },
+        {
+          "path": "family-hub/Dockerfile",
+          "line": 13
+        },
+        {
+          "path": "family-hub/Dockerfile",
+          "line": 22
+        }
+      ]
+    },
+    {
+      "name": "ANTHROPIC_API_KEY",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/discovery-service/app/anthropic_lookup.py",
+          "line": 87
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 333
+        }
+      ]
+    },
+    {
+      "name": "ANTHROPIC_WORKSPACE_ID",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/discovery-service/app/anthropic_lookup.py",
+          "line": 104
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 340
+        }
+      ]
+    },
+    {
+      "name": "AUTOMATION_ALERT_EVENT_PREFIXES",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 5300
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 5304
+        }
+      ]
+    },
+    {
+      "name": "BLINKBRIDGE_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 83
+        }
+      ]
+    },
+    {
+      "name": "BLINK_CAMERA_MAP",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 88
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 228
+        }
+      ]
+    },
+    {
+      "name": "BLINK_MOTION_WEBHOOK_API_KEY",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 149
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 234
+        }
+      ]
+    },
+    {
+      "name": "BLINK_PASSWORD",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+          "line": 142
+        }
+      ]
+    },
+    {
+      "name": "BLINK_USERNAME",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+          "line": 141
+        }
+      ]
+    },
+    {
+      "name": "CABIN_ALERT_NTFY_TOPIC",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 108
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 217
+        }
+      ]
+    },
+    {
+      "name": "CABIN_API_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 268
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 358
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 377
+        },
+        {
+          "path": "family-hub/Dockerfile",
+          "line": 17
+        },
+        {
+          "path": "family-hub/Dockerfile",
+          "line": 22
+        }
+      ]
+    },
+    {
+      "name": "CABIN_EMAIL_FROM",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 59
+        }
+      ]
+    },
+    {
+      "name": "CABIN_FRONTEND_ORIGIN",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 63
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 242
+        }
+      ]
+    },
+    {
+      "name": "CABIN_INSTANCE_PLATFORM",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 27
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 250
+        }
+      ]
+    },
+    {
+      "name": "CABIN_INSTANCE_REMOTE_ACCESS",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 28
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 251
+        }
+      ]
+    },
+    {
+      "name": "CAMERA_EVENTS_PAGE_SIZE",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 648
+        }
+      ]
+    },
+    {
+      "name": "CAMERA_PASSWORD",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+          "line": 148
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+          "line": 87
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/production-stack/docker-compose.yml",
+          "line": 88
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+          "line": 134
+        }
+      ]
+    },
+    {
+      "name": "CAMERA_RECONCILIATION_BACKFILL_DAYS",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 98
+        }
+      ]
+    },
+    {
+      "name": "CAMERA_RECONCILIATION_OVERLAP_SECONDS",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 99
+        }
+      ]
+    },
+    {
+      "name": "CAMERA_RECONCILIATION_PAGE_LIMIT",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 100
+        }
+      ]
+    },
+    {
+      "name": "COMPOSE_ARGS",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 92
+        },
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 104
+        },
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 129
+        },
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 135
+        },
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 150
+        },
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 200
+        },
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 277
+        },
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 289
+        }
+      ]
+    },
+    {
+      "name": "E",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-cabin-backend.yml",
+          "line": 207
+        },
+        {
+          "path": ".github/workflows/deploy-cabin-backend.yml",
+          "line": 210
+        }
+      ]
+    },
+    {
+      "name": "F",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-cabin-backend.yml",
+          "line": 207
+        },
+        {
+          "path": ".github/workflows/deploy-cabin-backend.yml",
+          "line": 209
+        }
+      ]
+    },
+    {
+      "name": "FAMILY_DASHBOARD_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 21
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/application-home.yml",
+          "line": 22
+        }
+      ]
+    },
+    {
+      "name": "FAMILY_HUB_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 275
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 415
+        }
+      ]
+    },
+    {
+      "name": "FORCE_COLOR",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/qa/cabin_qa.py",
+          "line": 60
+        }
+      ]
+    },
+    {
+      "name": "FRIGATE_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 79
+        }
+      ]
+    },
+    {
+      "name": "GITHUB_RUN_ATTEMPT",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 55
+        }
+      ]
+    },
+    {
+      "name": "GITHUB_RUN_ID",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 55
+        }
+      ]
+    },
+    {
+      "name": "GOOGLE_CALENDAR_ID",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 38
+        }
+      ]
+    },
+    {
+      "name": "GOOGLE_CLIENT_ID",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 39
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 138
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 198
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 356
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 420
+        },
+        {
+          "path": "family-hub/Dockerfile",
+          "line": 7
+        },
+        {
+          "path": "family-hub/Dockerfile",
+          "line": 22
+        }
+      ]
+    },
+    {
+      "name": "GOOGLE_CLIENT_SECRET",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 40
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 139
+        }
+      ]
+    },
+    {
+      "name": "GRAFANA_EXTERNAL_HOST",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 124
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 270
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 397
+        }
+      ]
+    },
+    {
+      "name": "GRAFANA_PASSWORD",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 69
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+          "line": 88
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+          "line": 71
+        }
+      ]
+    },
+    {
+      "name": "HA_TOKEN",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/health/HaTokenCabinHealthIndicator.java",
+          "line": 26
+        },
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/homeassistant/HomeAssistantAdapter.java",
+          "line": 55
+        },
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 31
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 188
+        }
+      ]
+    },
+    {
+      "name": "HA_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/homeassistant/HomeAssistantAdapter.java",
+          "line": 52
+        },
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 30
+        }
+      ]
+    },
+    {
+      "name": "HOME_HA_TOKEN",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/health/HaTokenHomeHealthIndicator.java",
+          "line": 40
+        },
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/homeassistant/HomeAssistantAdapter.java",
+          "line": 61
+        },
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 36
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 190
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/application-home.yml",
+          "line": 25
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/application-home.yml",
+          "line": 30
+        }
+      ]
+    },
+    {
+      "name": "HOME_HA_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/homeassistant/HomeAssistantAdapter.java",
+          "line": 58
+        },
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 35
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 189
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/application-home.yml",
+          "line": 24
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/application-home.yml",
+          "line": 29
+        }
+      ]
+    },
+    {
+      "name": "HOME_HUB_DEPLOYED",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/health/HaTokenHomeHealthIndicator.java",
+          "line": 37
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 191
+        }
+      ]
+    },
+    {
+      "name": "IMAGE_TAG",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 178
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 325
+        }
+      ]
+    },
+    {
+      "name": "KAFKA_BOOTSTRAP",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 19
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/application-home.yml",
+          "line": 20
+        }
+      ]
+    },
+    {
+      "name": "MQTT_HOST",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/watchdog/watchdog.py",
+          "line": 29
+        }
+      ]
+    },
+    {
+      "name": "MQTT_PORT",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/watchdog/watchdog.py",
+          "line": 30
+        }
+      ]
+    },
+    {
+      "name": "MQTT_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 16
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/application-home.yml",
+          "line": 17
+        }
+      ]
+    },
+    {
+      "name": "NO_COLOR",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/qa/cabin_qa.py",
+          "line": 58
+        }
+      ]
+    },
+    {
+      "name": "ONTOLOGY_PATH",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 154
+        }
+      ]
+    },
+    {
+      "name": "OPPORTUNITIES_CONTINUOUS_DRAW_HOURS",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 173
+        }
+      ]
+    },
+    {
+      "name": "OPPORTUNITIES_CRON",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 170
+        }
+      ]
+    },
+    {
+      "name": "OPPORTUNITIES_ENABLED",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 169
+        }
+      ]
+    },
+    {
+      "name": "OPPORTUNITIES_LOOKBACK_DAYS",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 174
+        }
+      ]
+    },
+    {
+      "name": "OPPORTUNITIES_OFF_THRESHOLD_WATTS",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 175
+        }
+      ]
+    },
+    {
+      "name": "POSTGRES_PASSWORD",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 10
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 150
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 155
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 185
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.yml",
+          "line": 31
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/grafana/provisioning/datasources/timescale.yml",
+          "line": 9
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/application-home.yml",
+          "line": 12
+        },
+        {
+          "path": "cabin-orchestration-platform/locations/home/docker-compose.yml",
+          "line": 34
+        }
+      ]
+    },
+    {
+      "name": "PREVIOUS_IMAGE",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-cabin-backend.yml",
+          "line": 251
+        },
+        {
+          "path": ".github/workflows/deploy-cabin-backend.yml",
+          "line": 252
+        }
+      ]
+    },
+    {
+      "name": "RANGE",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-cabin-backend.yml",
+          "line": 129
+        }
+      ]
+    },
+    {
+      "name": "RESEND_API_KEY",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 55
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 239
+        }
+      ]
+    },
+    {
+      "name": "S",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-cabin-backend.yml",
+          "line": 210
+        }
+      ]
+    },
+    {
+      "name": "SERVER_PORT",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 2
+        }
+      ]
+    },
+    {
+      "name": "SYNTHETIC_FRIENDLY",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-production-stack.yml",
+          "line": 56
+        }
+      ]
+    },
+    {
+      "name": "T",
+      "references": [
+        {
+          "path": ".github/workflows/deploy-cabin-backend.yml",
+          "line": 209
+        }
+      ]
+    },
+    {
+      "name": "TECH_ID_API_KEY",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 134
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 213
+        }
+      ]
+    },
+    {
+      "name": "TELEMETRY_ARCHIVAL_CRON",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 164
+        }
+      ]
+    },
+    {
+      "name": "TELEMETRY_ARCHIVAL_DIR",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 163
+        }
+      ]
+    },
+    {
+      "name": "TELEMETRY_ARCHIVAL_ENABLED",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 161
+        }
+      ]
+    },
+    {
+      "name": "TELEMETRY_ARCHIVAL_HOT_MONTHS",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 162
+        }
+      ]
+    },
+    {
+      "name": "TERM",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/qa/cabin_qa.py",
+          "line": 58
+        }
+      ]
+    },
+    {
+      "name": "VAULTWARDEN_ADMIN_TOKEN",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 507
+        }
+      ]
+    },
+    {
+      "name": "VAULTWARDEN_CLIENT_ID",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 119
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 285
+        }
+      ]
+    },
+    {
+      "name": "VAULTWARDEN_CLIENT_SECRET",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 120
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 286
+        }
+      ]
+    },
+    {
+      "name": "VAULTWARDEN_MASTER_PASSWORD",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 125
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 287
+        }
+      ]
+    },
+    {
+      "name": "VAULTWARDEN_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/resources/application.yml",
+          "line": 118
+        },
+        {
+          "path": "cabin-orchestration-platform/infra/docker-compose.m920q.yml",
+          "line": 284
+        }
+      ]
+    },
+    {
+      "name": "VITE_CABIN_API_BASE",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 20
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 34
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 54
+        }
+      ]
+    },
+    {
+      "name": "VITE_CABIN_FAMILY_HUB_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 27
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 41
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 61
+        }
+      ]
+    },
+    {
+      "name": "VITE_CABIN_FRIGATE_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 24
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 38
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 59
+        }
+      ]
+    },
+    {
+      "name": "VITE_CABIN_GOOGLE_CLIENT_ID",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 33
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 42
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 191
+        }
+      ]
+    },
+    {
+      "name": "VITE_CABIN_GRAFANA_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 22
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 36
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 56
+        }
+      ]
+    },
+    {
+      "name": "VITE_CABIN_HA_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 25
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 39
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 58
+        }
+      ]
+    },
+    {
+      "name": "VITE_CABIN_NODERED_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 23
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 37
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 57
+        }
+      ]
+    },
+    {
+      "name": "VITE_CABIN_WS_BASE",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 21
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 35
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 55
+        }
+      ]
+    },
+    {
+      "name": "VITE_CABIN_Z2M_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 26
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/Dockerfile",
+          "line": 40
+        },
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 60
+        }
+      ]
+    },
+    {
+      "name": "VITE_HOME_API_BASE",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 66
+        }
+      ]
+    },
+    {
+      "name": "VITE_HOME_FAMILY_HUB_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 72
+        }
+      ]
+    },
+    {
+      "name": "VITE_HOME_FRIGATE_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 71
+        }
+      ]
+    },
+    {
+      "name": "VITE_HOME_GRAFANA_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 68
+        }
+      ]
+    },
+    {
+      "name": "VITE_HOME_HA_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 70
+        }
+      ]
+    },
+    {
+      "name": "VITE_HOME_NODERED_URL",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 69
+        }
+      ]
+    },
+    {
+      "name": "VITE_HOME_WS_BASE",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/ui/src/App.jsx",
+          "line": 67
+        }
+      ]
+    },
+    {
+      "name": "cabin.admin.emails",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/GoogleAuthInterceptor.java",
+          "line": 44
+        }
+      ]
+    },
+    {
+      "name": "cabin.alerts.ntfyBaseUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/NtfyAlertPublisher.java",
+          "line": 43
+        }
+      ]
+    },
+    {
+      "name": "cabin.alerts.ntfyTopic",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/NtfyAlertPublisher.java",
+          "line": 40
+        }
+      ]
+    },
+    {
+      "name": "cabin.blinkMotionWebhook.apiKey",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/cameras/BlinkMotionWebhookController.java",
+          "line": 67
+        }
+      ]
+    },
+    {
+      "name": "cabin.dashboard.familyDashboardUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DashboardController.java",
+          "line": 25
+        }
+      ]
+    },
+    {
+      "name": "cabin.deviceHealth.telemetryLivenessWindowMinutes",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceHealthMonitor.java",
+          "line": 77
+        }
+      ]
+    },
+    {
+      "name": "cabin.devices.cameras.blinkBridgeUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/cameras/BlinkLiveviewService.java",
+          "line": 32
+        }
+      ]
+    },
+    {
+      "name": "cabin.devices.cameras.blinkCameraMap",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/cameras/BlinkLiveviewService.java",
+          "line": 37
+        }
+      ]
+    },
+    {
+      "name": "cabin.devices.cameras.frigateUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/CameraMediaController.java",
+          "line": 62
+        },
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/FrigateEventReconciliationService.java",
+          "line": 95
+        }
+      ]
+    },
+    {
+      "name": "cabin.devices.cameras.reconciliation.backfillDays",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/FrigateEventReconciliationService.java",
+          "line": 100
+        }
+      ]
+    },
+    {
+      "name": "cabin.devices.cameras.reconciliation.overlapSeconds",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/FrigateEventReconciliationService.java",
+          "line": 108
+        }
+      ]
+    },
+    {
+      "name": "cabin.devices.cameras.reconciliation.pageLimit",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/FrigateEventReconciliationService.java",
+          "line": 109
+        }
+      ]
+    },
+    {
+      "name": "cabin.devices.thermostat.freezeRiskTempF",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/automation/AutomationRuleService.java",
+          "line": 68
+        }
+      ]
+    },
+    {
+      "name": "cabin.devices.waterPressure.highPsiAlert",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/automation/AutomationRuleService.java",
+          "line": 65
+        }
+      ]
+    },
+    {
+      "name": "cabin.devices.waterPressure.lowPsiAlert",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/automation/AutomationRuleService.java",
+          "line": 62
+        }
+      ]
+    },
+    {
+      "name": "cabin.discovery.url",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/discovery/DiscoveryServiceClient.java",
+          "line": 34
+        }
+      ]
+    },
+    {
+      "name": "cabin.email.from",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ResendEmailSender.java",
+          "line": 36
+        }
+      ]
+    },
+    {
+      "name": "cabin.email.resendApiKey",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ResendEmailSender.java",
+          "line": 33
+        }
+      ]
+    },
+    {
+      "name": "cabin.frontend.origin",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/ManagedUserService.java",
+          "line": 36
+        }
+      ]
+    },
+    {
+      "name": "cabin.google.oauthClientId",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/GoogleAuthInterceptor.java",
+          "line": 34
+        }
+      ]
+    },
+    {
+      "name": "cabin.homeassistant.discovery-interval-ms",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/homeassistant/HomeAssistantDiscoveryService.java",
+          "line": 65
+        }
+      ]
+    },
+    {
+      "name": "cabin.instance.platform",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DashboardController.java",
+          "line": 26
+        }
+      ]
+    },
+    {
+      "name": "cabin.instance.remoteAccess",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/DashboardController.java",
+          "line": 30
+        }
+      ]
+    },
+    {
+      "name": "cabin.kafka.bootstrapServers",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/kafka/EventConsumer.java",
+          "line": 54
+        },
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/kafka/EventPublisher.java",
+          "line": 26
+        }
+      ]
+    },
+    {
+      "name": "cabin.kbGenerator.cron",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/KbGeneratorService.java",
+          "line": 66
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.cabin.apiBase",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 33
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.cabin.familyHubUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 40
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.cabin.frigateUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 38
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.cabin.grafanaUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 35
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.cabin.haUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 37
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.cabin.noderedUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 36
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.cabin.wsBase",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 34
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.cabin.z2mUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 39
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.home.apiBase",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 42
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.home.familyHubUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 48
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.home.frigateUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 47
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.home.grafanaUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 44
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.home.haUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 46
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.home.noderedUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 45
+        }
+      ]
+    },
+    {
+      "name": "cabin.locations.home.wsBase",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/locations/HubLocationService.java",
+          "line": 43
+        }
+      ]
+    },
+    {
+      "name": "cabin.mqtt.brokerUrl",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/zigbee/Zigbee2MqttAdapter.java",
+          "line": 48
+        },
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/MqttBridgeService.java",
+          "line": 64
+        }
+      ]
+    },
+    {
+      "name": "cabin.mqtt.clientId",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/MqttBridgeService.java",
+          "line": 67
+        }
+      ]
+    },
+    {
+      "name": "cabin.ollama.model",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/helpdesk/OllamaHttpClient.java",
+          "line": 28
+        }
+      ]
+    },
+    {
+      "name": "cabin.ollama.url",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/helpdesk/OllamaHttpClient.java",
+          "line": 25
+        }
+      ]
+    },
+    {
+      "name": "cabin.ontology.path",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/ontology/OntologyLookupService.java",
+          "line": 48
+        }
+      ]
+    },
+    {
+      "name": "cabin.opportunities.continuousDrawHours",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/OptimizationAnalyticsService.java",
+          "line": 65
+        }
+      ]
+    },
+    {
+      "name": "cabin.opportunities.cron",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/OptimizationAnalyticsService.java",
+          "line": 85
+        }
+      ]
+    },
+    {
+      "name": "cabin.opportunities.enabled",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/OptimizationAnalyticsService.java",
+          "line": 62
+        }
+      ]
+    },
+    {
+      "name": "cabin.opportunities.lookbackDays",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/OptimizationAnalyticsService.java",
+          "line": 68
+        }
+      ]
+    },
+    {
+      "name": "cabin.opportunities.offThresholdWatts",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/opportunities/OptimizationAnalyticsService.java",
+          "line": 71
+        }
+      ]
+    },
+    {
+      "name": "cabin.prometheus.url",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/FrigateMetricsController.java",
+          "line": 47
+        }
+      ]
+    },
+    {
+      "name": "cabin.security.googleAuth.enabled",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/WebConfig.java",
+          "line": 133
+        }
+      ]
+    },
+    {
+      "name": "cabin.techid.apiKey",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/techid/TechIdController.java",
+          "line": 48
+        }
+      ]
+    },
+    {
+      "name": "cabin.telemetryArchival.archiveDir",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/TelemetryArchivalService.java",
+          "line": 66
+        }
+      ]
+    },
+    {
+      "name": "cabin.telemetryArchival.cron",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/TelemetryArchivalService.java",
+          "line": 83
+        }
+      ]
+    },
+    {
+      "name": "cabin.telemetryArchival.enabled",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/TelemetryArchivalService.java",
+          "line": 60
+        }
+      ]
+    },
+    {
+      "name": "cabin.telemetryArchival.hotRetentionMonths",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/TelemetryArchivalService.java",
+          "line": 63
+        }
+      ]
+    },
+    {
+      "name": "cabin.workflow.confirmation.finalDelayMillis",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/WorkflowRuleService.java",
+          "line": 101
+        }
+      ]
+    },
+    {
+      "name": "cabin.workflow.confirmation.initialDelayMillis",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/WorkflowRuleService.java",
+          "line": 98
+        }
+      ]
+    },
+    {
+      "name": "cabin.zigbee.location",
+      "references": [
+        {
+          "path": "cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/zigbee/Zigbee2MqttAdapter.java",
+          "line": 51
+        }
+      ]
+    }
+  ],
+  "extraction_gaps": []
+}
