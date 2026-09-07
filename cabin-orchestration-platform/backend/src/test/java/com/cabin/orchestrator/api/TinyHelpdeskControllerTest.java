@@ -4,6 +4,7 @@ import com.cabin.orchestrator.devices.KnowledgeNodeRepository;
 import com.cabin.orchestrator.devices.model.KnowledgeChunkType;
 import com.cabin.orchestrator.devices.model.KnowledgeNode;
 import com.cabin.orchestrator.devices.model.KnowledgeSource;
+import com.cabin.orchestrator.helpdesk.AskContextBuilder;
 import com.cabin.orchestrator.helpdesk.OllamaClient;
 import com.cabin.orchestrator.helpdesk.TinyHelpdeskAnswer;
 import com.cabin.orchestrator.helpdesk.TinyHelpdeskService;
@@ -19,6 +20,9 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /** Wiring only -- TinyHelpdeskService's own retrieval/prompt logic is covered in TinyHelpdeskServiceTest. */
 class TinyHelpdeskControllerTest {
@@ -27,6 +31,13 @@ class TinyHelpdeskControllerTest {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/helpdesk/ask");
         if (role != null) request.setAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE, role);
         return request;
+    }
+
+    /** C1a's deterministic AskContextBuilder is exercised in AskContextBuilderTest -- here it's a no-op. */
+    private static AskContextBuilder noopContextBuilder() {
+        AskContextBuilder builder = mock(AskContextBuilder.class);
+        when(builder.buildContext(anyString())).thenReturn(List.of());
+        return builder;
     }
 
     @Test
@@ -40,7 +51,7 @@ class TinyHelpdeskControllerTest {
             @Override public List<KnowledgeNode> loadAll() { return nodes; }
         };
         OllamaClient ollamaClient = prompt -> Optional.of("It's a SONOFF sensor.");
-        TinyHelpdeskController controller = new TinyHelpdeskController(new TinyHelpdeskService(repository, ollamaClient));
+        TinyHelpdeskController controller = new TinyHelpdeskController(new TinyHelpdeskService(repository, ollamaClient, noopContextBuilder()));
 
         TinyHelpdeskAnswer answer = controller.ask(Map.of("question", "What sensor is in the kitchen?"), requestWithRole(null));
 
@@ -56,7 +67,7 @@ class TinyHelpdeskControllerTest {
             @Override public List<KnowledgeNode> loadAll() { return List.of(); }
         };
         OllamaClient ollamaClient = prompt -> Optional.empty();
-        TinyHelpdeskController controller = new TinyHelpdeskController(new TinyHelpdeskService(repository, ollamaClient));
+        TinyHelpdeskController controller = new TinyHelpdeskController(new TinyHelpdeskService(repository, ollamaClient, noopContextBuilder()));
 
         TinyHelpdeskAnswer answer = controller.ask(Map.of(), requestWithRole(null));
 
@@ -74,7 +85,7 @@ class TinyHelpdeskControllerTest {
             @Override public List<KnowledgeNode> loadAll() { return nodes; }
         };
         OllamaClient ollamaClient = prompt -> Optional.empty();
-        TinyHelpdeskController controller = new TinyHelpdeskController(new TinyHelpdeskService(repository, ollamaClient));
+        TinyHelpdeskController controller = new TinyHelpdeskController(new TinyHelpdeskService(repository, ollamaClient, noopContextBuilder()));
 
         TinyHelpdeskAnswer answer = controller.ask(Map.of("question", "How do I access Resend?"), requestWithRole(HouseholdRole.ADMINISTRATOR));
 
@@ -92,7 +103,7 @@ class TinyHelpdeskControllerTest {
             @Override public List<KnowledgeNode> loadAll() { return nodes; }
         };
         OllamaClient ollamaClient = prompt -> Optional.empty();
-        TinyHelpdeskController controller = new TinyHelpdeskController(new TinyHelpdeskService(repository, ollamaClient));
+        TinyHelpdeskController controller = new TinyHelpdeskController(new TinyHelpdeskService(repository, ollamaClient, noopContextBuilder()));
 
         TinyHelpdeskAnswer answer = controller.ask(Map.of("question", "How do I access Resend?"), requestWithRole(HouseholdRole.ADULT_HOUSEHOLD_MEMBER));
 
