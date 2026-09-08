@@ -36,7 +36,7 @@
     {
       "id": "camera_capability",
       "description": "Camera card empty: no qualifying event vs. privacy vs. authorization vs. unavailable media",
-      "keywordPatterns": ["camera", "card is empty", "nobody was there", "motion", "recording"],
+      "keywordPatterns": ["card is empty", "nobody was there", "motion", "recording"],
       "questions": ["Q03"],
       "contextNodes": [
         { "entityRef": "system.cameras", "chunkType": "DESCRIPTION" },
@@ -83,7 +83,7 @@
     {
       "id": "live_sensors",
       "description": "Live readings unavailable via Ask; distinguish examples from current observations; presence signal limitations",
-      "keywordPatterns": ["temperature", "right now", "current", "presence", "away", "sensor", "live"],
+      "keywordPatterns": ["temperature", "right now", "current", "away", "sensor", "live"],
       "questions": ["Q09", "Q10"],
       "contextNodes": [
         { "entityRef": "system.sensors", "chunkType": "DESCRIPTION" },
