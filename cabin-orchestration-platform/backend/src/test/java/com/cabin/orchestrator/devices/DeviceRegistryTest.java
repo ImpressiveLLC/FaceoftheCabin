@@ -512,6 +512,55 @@ class DeviceRegistryTest {
         assertEquals(DeviceLifecycleState.CANDIDATE, registry.lifecycleState("new-3"));
     }
 
+    // ── Platform-import candidate persistence (D10 provenance tag, added 2026-09-08) ──
+
+    @Test
+    void registerPersistentCandidatePersistsAsCandidateAndSurvivesARestart() {
+        registry.registerPersistentCandidate(descriptor(
+            "smartthings-kitchen_temp", "Kitchen Temp", DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "platform_import", "1", false, "cabin"),
+            Map.of("importedFrom", "smartthings"));
+
+        assertEquals(DeviceLifecycleState.CANDIDATE, registry.lifecycleState("smartthings-kitchen_temp"));
+        assertNotNull(store.records.get("smartthings-kitchen_temp"),
+            "unlike registerCandidate(), this must actually persist");
+
+        DeviceRegistry restarted = new DeviceRegistry(List.of(), store);
+
+        assertEquals(DeviceLifecycleState.CANDIDATE, restarted.lifecycleState("smartthings-kitchen_temp"));
+        assertTrue(restarted.candidates().stream().anyMatch(d -> d.deviceId().equals("smartthings-kitchen_temp")),
+            "a platform-imported candidate must not vanish on restart before someone Accepts it");
+        assertEquals("smartthings", restarted.get("smartthings-kitchen_temp").attributes().get("importedFrom"),
+            "D10 provenance tag must survive the restart too, not just the CANDIDATE state");
+    }
+
+    @Test
+    void registerPersistentCandidateUpsertsManufacturerFromVendor() {
+        RecordingDeviceRepository deviceRepository = new RecordingDeviceRepository();
+        DeviceRegistry withMetadata = new DeviceRegistry(List.of(), store, deviceRepository);
+
+        withMetadata.registerPersistentCandidate(descriptor(
+            "ring-doorbell", "Front Doorbell", DeviceType.CAMERA,
+            Set.of(DeviceCapability.TELEMETRY), "platform_import", "abc", false, "cabin"),
+            Map.of("vendor", "Ring", "importedFrom", "ring"));
+
+        var metadata = deviceRepository.find("ring-doorbell").orElseThrow();
+        assertEquals("Ring", metadata.manufacturer());
+        assertEquals("ring", withMetadata.get("ring-doorbell").attributes().get("importedFrom"));
+    }
+
+    @Test
+    void registerPersistentCandidateRefusesToClobberAnExistingDevice() {
+        registry.registerConfiguredDevice(descriptor(
+            "already-here", "Existing", DeviceType.CONTACT_SENSOR,
+            Set.of(DeviceCapability.ACCESS_CONTROL), "mqtt", "zigbee2mqtt/door", true, "cabin"));
+
+        assertThrows(IllegalStateException.class, () -> registry.registerPersistentCandidate(descriptor(
+            "already-here", "Imported Duplicate", DeviceType.CONTACT_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "platform_import", "2", false, "cabin"),
+            Map.of("importedFrom", "smartthings")));
+    }
+
     // ── Ontology metadata on read (added 2026-08-19) ──
 
     @Test
