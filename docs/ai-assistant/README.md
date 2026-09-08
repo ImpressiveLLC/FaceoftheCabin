@@ -18,6 +18,7 @@ Source baseline: `cd145620bcbe7deaa30e236779ec7e1134db7880`. Reviewed from repos
 | Find exact source declarations | [Route/service/configuration inventory](corpus/source-inventory.md), [machine-readable inventory](corpus/source-inventory.json) |
 | Measure usefulness before LLM/RAG changes | [Corpus evaluation questions](rag/eval-questions.md) |
 | Read the first live baseline | [2026-09-07 baseline report](rag/baseline-2026-09-07.md) |
+| Run the multi-agent eval pipeline or add a question | [Eval pipeline environment guide](rag/EVAL-ENVIRONMENTS.md) |
 | Read the supported answers and their evidence | [Evaluation answer set](corpus/eval-answer-evidence.md) |
 | Reconcile earlier Claude work and retired project names | [Recovered local evidence](corpus/local-history-evidence.md) |
 
