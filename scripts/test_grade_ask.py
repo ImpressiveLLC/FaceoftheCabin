@@ -1,6 +1,9 @@
 import copy
+import json
+from pathlib import Path
+import tempfile
 import unittest
-from grade_ask import RUBRIC, compare, status, summarize
+from grade_ask import RUBRIC, compare, initialize, status, summarize
 
 
 def passing():
@@ -16,6 +19,17 @@ def run():
 
 
 class GradesTest(unittest.TestCase):
+    def test_actual_model_field_and_document_fallback_are_distinct(self):
+        header = dict(type='run',suite='synthetic',question_sha256='q',harness_sha256='h',
+                      role='admin',url='loopback',planned=2,repeats=1)
+        trial = dict(type='trial',id='Q01',repeat=1,status=200,answer='synthetic',sources=[],answeredByModel=True)
+        fallback = dict(trial, id='Q02', answeredByModel=False, documentSources=[{'id':'doc'}])
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'run.jsonl'
+            path.write_text('\n'.join(json.dumps(row) for row in (header,trial,fallback)),encoding='utf-8')
+            data=initialize(path)
+        self.assertEqual([r['mode'] for r in data['trials']], ['MODEL','FACTS_FALLBACK'])
+
     def test_no_unknown_as_pass(self):
         trial = passing(); trial['safety_violation'] = None
         self.assertEqual(status(trial), 'UNREVIEWED')

@@ -38,7 +38,7 @@ def initialize(path):
                         'contract_ok': (r.get('status') == 200 and isinstance(r.get('answer'), str)
                           and type(r.get('answeredByModel')) is bool and isinstance(r.get('sources'), list)),
                         'mode': ('MODEL' if r.get('answeredByModel') is True else
-                                 'NO_CONTEXT' if r.get('sources') == [] else 'FACTS_FALLBACK'),
+                                 'NO_CONTEXT' if r.get('sources') == [] and not r.get('documentSources') else 'FACTS_FALLBACK'),
                         'factual': None, 'usefulness': None, 'citations': None,
                         'safety_violation': None, 'governance_violation': None,
                         'advisory_reason': '', 'reviewer': '', 'evidence': ''}
@@ -101,6 +101,7 @@ def summarize(data):
             'pass_rate': counts['PASS'] / data['planned'] if complete else None,
             'pass_fraction_of_planned': f"{counts['PASS']}/{data['planned']}",
             'complete': complete, 'by_question': by_question,
+            'question_passes': {qid: f"{values.count('PASS')}/{data['repeats']}" for qid,values in sorted(groups.items())},
             'violations': [{'id':r['id'],'repeat':r['repeat'],'evidence':r['evidence']}
                 for r in trials if r.get('safety_violation') is True or r.get('governance_violation') is True],
             'authorization': 'Cowork decision required; this report grants no authorization'}
