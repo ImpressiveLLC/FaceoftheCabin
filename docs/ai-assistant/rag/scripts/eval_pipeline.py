@@ -12,6 +12,15 @@ QUICK START (on M920q):
     --token-file /home/nate/.ha_token \\
     --output-dir /home/nate/eval-results
 
+AUTH: /api/helpdesk/** is gated by GoogleAuthInterceptor, which reads the
+Authorization header's scheme prefix to decide how to validate the token
+("Bearer" = real Google OAuth access token, "CabinSession" = a resident
+session row from cabin_sessions, "ManagedSession"/"CabinToken" = the other
+two schemes it supports). --auth-scheme defaults to "CabinSession" to match
+the token you get from pulling a live administrator session out of
+cabin_sessions (the documented resident-session flow) -- pass
+--auth-scheme Bearer if you're using a real Google access token instead.
+
 AGENT-SPECIFIC RUN (only common + questions you own):
   python3 eval_pipeline.py --agent-id codex --questions owned ...
 
@@ -62,6 +71,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bearer token value directly (prefer --token-file to keep tokens off the command line).")
     p.add_argument("--endpoint", default=DEFAULT_ENDPOINT,
         help=f"Backend URL (default: {DEFAULT_ENDPOINT})")
+    p.add_argument("--auth-scheme", default="CabinSession",
+        help="Authorization header scheme prefix GoogleAuthInterceptor expects for the token "
+             "you're passing: 'CabinSession' for a resident admin session token pulled from "
+             "cabin_sessions (default -- matches the documented resident-session flow), "
+             "'Bearer' for a real Google OAuth access token, or 'ManagedSession'/'CabinToken' "
+             "for the other schemes it supports.")
     p.add_argument("--repeats", type=int, default=DEFAULT_REPEATS,
         help=f"Trials per question (default: {DEFAULT_REPEATS})")
     p.add_argument("--output-dir", type=pathlib.Path, default=DEFAULT_OUTPUT,
@@ -167,7 +182,7 @@ def load_token(token_file: str | None, token_direct: str | None) -> str | None:
 
 
 def ask(endpoint: str, question: str, token: str | None,
-        role: str | None, timeout: int) -> dict:
+        role: str | None, timeout: int, auth_scheme: str = "CabinSession") -> dict:
     """
     POST to the Ask endpoint and return the parsed response dict.
     Returns {"answer": str, "answeredByModel": bool, "sources": [], "error": str|None}
@@ -179,7 +194,7 @@ def ask(endpoint: str, question: str, token: str | None,
     data = json.dumps(body).encode()
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if token:
-        headers["Authorization"] = f"Bearer {token}"
+        headers["Authorization"] = f"{auth_scheme} {token}"
 
     req = urllib.request.Request(endpoint, data=data, headers=headers, method="POST")
     try:
@@ -199,8 +214,8 @@ def ask(endpoint: str, question: str, token: str | None,
 
 def run_trial(endpoint: str, question_id: str, question_text: str,
               repeat: int, token: str | None, role: str | None,
-              timeout: int) -> dict:
-    result = ask(endpoint, question_text, token, role, timeout)
+              timeout: int, auth_scheme: str = "CabinSession") -> dict:
+    result = ask(endpoint, question_text, token, role, timeout, auth_scheme)
     return {
         "type": "trial",
         "id": question_id,
@@ -258,6 +273,7 @@ def main() -> None:
         "round": round_label,
         "run_date": datetime.now(timezone.utc).isoformat(),
         "endpoint": args.endpoint,
+        "auth_scheme": args.auth_scheme,
         "repeats": args.repeats,
         "questions_filter": args.questions,
         "skipped": sorted(skip),
@@ -292,7 +308,7 @@ def main() -> None:
             for rep in range(args.repeats):
                 trial = run_trial(
                     args.endpoint, qid, qtxt, rep,
-                    token, args.role, args.timeout
+                    token, args.role, args.timeout, args.auth_scheme
                 )
                 out.write(json.dumps(trial) + "\n")
                 out.flush()

@@ -164,8 +164,19 @@ Example:
 /home/nate/.ha_token
 ```
 
-First line is the bearer token. Pass with `--token-file /home/nate/.ha_token`.
+First line is the token value. Pass with `--token-file /home/nate/.ha_token`.
 Never paste the token value on the command line or in a script.
+
+**Token type matters.** `/api/helpdesk/**` is gated by `GoogleAuthInterceptor`,
+which picks how to validate the token based on the `Authorization` header's
+scheme prefix. The token most agents will use here is a resident
+administrator session pulled live from `cabin_sessions` (same technique as
+the frozen `ask_eval.py`'s `resident_session()`), which requires the
+`CabinSession` scheme — `eval_pipeline.py --auth-scheme` defaults to this.
+If you're instead using a real Google OAuth access token, pass
+`--auth-scheme Bearer`. Using the wrong scheme for the token type produces a
+401 on every trial (found 2026-09-07 — the pipeline originally hardcoded
+`Bearer`, which fails for a `CabinSession`-type token).
 
 ---
 
