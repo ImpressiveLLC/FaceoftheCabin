@@ -244,14 +244,59 @@ public class DeviceRegistry {
             // ("vendor"/"model" for Zigbee2MqttAdapter); other adapters that
             // don't populate them just leave metadata unchanged, not nulled.
             if (discoveryAttributes != null) {
-                String manufacturer = stringAttr(discoveryAttributes, "vendor");
-                String model = stringAttr(discoveryAttributes, "model");
-                if (manufacturer != null || model != null) {
-                    deviceRepository.upsert(desc.deviceId(), new DeviceMetadata(
-                        manufacturer, model, null, Instant.now(), null, null, "system", null, 0));
-                }
+                upsertMetadataIfPresent(desc.deviceId(), discoveryAttributes);
             }
             return firstSeen;
+        }
+    }
+
+    /**
+     * Register a candidate that must survive a backend restart before a
+     * person gets to Accept or reject it -- for sources with no ongoing
+     * rediscovery loop of their own. registerCandidate() above is designed
+     * around Z2M/HA's continuous re-announce (an undecided candidate simply
+     * reappears on the next republish, so skipping persistence there is
+     * deliberate, not an oversight -- see that method's own comment).
+     * Platform imports (D10: SmartThings/Ring via PlatformImportController)
+     * have no such loop -- a device confirmed here and left un-Accepted
+     * would otherwise silently vanish on the next deploy.
+     *
+     * Reuses the same DeviceLifecycleStore/extraAttributes plumbing every
+     * other lifecycle state already persists through (see
+     * DeviceLifecycleRecord's own doc comment on extraAttributes being
+     * deliberately generic for exactly this kind of reuse -- "room" was
+     * the first tenant, this is the second) rather than a new scheduled
+     * re-sync subsystem against each platform's live API, which couldn't
+     * even run today: the Vaultwarden one-time operator setup that
+     * OAuth-backed re-sync would depend on is still pending. "vendor"/
+     * "model" in attributes are upserted into DeviceMetadata exactly like
+     * registerCandidate() does; everything else (e.g. "importedFrom")
+     * becomes a durable extraAttributes entry on the lifecycle record, so
+     * it round-trips through a restart the same way "room" does.
+     */
+    public void registerPersistentCandidate(DeviceDescriptor desc, Map<String, Object> attributes) {
+        synchronized (lockFor(desc.deviceId())) {
+            if (descriptors.containsKey(desc.deviceId())) {
+                throw new IllegalStateException("Device already registered: " + desc.deviceId());
+            }
+            Map<String, Object> extraAttributes = new LinkedHashMap<>(attributes);
+            extraAttributes.remove("vendor");
+            extraAttributes.remove("model");
+            DeviceLifecycleRecord record = new DeviceLifecycleRecord(
+                desc, DeviceLifecycleState.CANDIDATE, false, extraAttributes);
+            lifecycleStore.save(record);
+            applyPersistedRecord(record);
+            upsertMetadataIfPresent(desc.deviceId(), attributes);
+        }
+    }
+
+    /** Manufacturer/model ride whatever key each caller already populates ("vendor"/"model"). */
+    private void upsertMetadataIfPresent(String deviceId, Map<String, Object> attrs) {
+        String manufacturer = stringAttr(attrs, "vendor");
+        String model = stringAttr(attrs, "model");
+        if (manufacturer != null || model != null) {
+            deviceRepository.upsert(deviceId, new DeviceMetadata(
+                manufacturer, model, null, Instant.now(), null, null, "system", null, 0));
         }
     }
 

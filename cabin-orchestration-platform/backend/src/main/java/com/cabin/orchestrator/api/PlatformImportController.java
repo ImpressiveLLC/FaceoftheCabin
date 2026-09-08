@@ -119,16 +119,21 @@ public class PlatformImportController {
      * with {"action":"ACCEPT"} -- no new endpoint needed) is what actually
      * accepts it into scope.
      *
-     * Real gap found and flagged, not silently worked around:
+     * Restart-durability gap (found shipping Sprint 5 WSJF #3, closed here):
      * registerCandidate() is designed for devices with an ongoing discovery
      * loop (Z2M/HA poll every restart) that keeps re-registering a
      * CANDIDATE in memory -- "passive discovery deliberately never
      * persists" per that method's own comment. Platform imports have no
-     * such loop: a CANDIDATE created here will not survive a cabin-backend
-     * restart before someone ACCEPTs it. Fixing that properly means either
-     * a scheduled re-sync per platform or letting CANDIDATE rows persist,
-     * both real design decisions outside this item's scope -- see the
-     * matching Discrepancy Log pin.
+     * such loop, so this uses DeviceRegistry.registerPersistentCandidate()
+     * instead: the ratified fix (single WSJF item, "CANDIDATE persistence +
+     * D10 provenance tag") persists directly via the existing
+     * DeviceLifecycleStore/extraAttributes plumbing rather than a scheduled
+     * re-sync against each platform's live API -- the latter couldn't run
+     * today anyway, since the Vaultwarden one-time operator setup that
+     * OAuth-backed re-sync would depend on is still pending. This also
+     * closes D10's provenance-tag gap: "importedFrom" now rides the same
+     * durable extraAttributes slot "room" already established, instead of
+     * the ephemeral runtime-only attribute it was before.
      */
     @PostMapping("/{platform}/confirm")
     public ResponseEntity<?> confirm(@PathVariable String platform, @RequestBody Map<String, Object> body, HttpServletRequest request) {
@@ -184,16 +189,16 @@ public class PlatformImportController {
             entityId, name, type, Set.of(DeviceCapability.TELEMETRY),
             "platform_import", originalId, false, location);
         // "vendor" here (not a made-up value) rides DeviceRegistry's own
-        // existing vendor/model -> DeviceMetadata upsert path (see
-        // registerCandidate()'s own code) -- same mechanism Zigbee2MqttAdapter
-        // already uses, not a new one. D10's "provenance tag: imported:
-        // platform_name" doesn't map onto a real column on DeviceMetadata
-        // today (only D4's createdBy/modifiedBy/version exist, and
-        // DeviceRepository.upsert() is itself a no-op until a real `device`
-        // row exists -- see this method's own restart-durability note) --
-        // "importedFrom" is carried as a plain runtime attribute instead so
-        // it's at least visible immediately, not silently dropped.
-        deviceRegistry.registerCandidate(descriptor, Map.of(
+        // existing vendor/model -> DeviceMetadata upsert path -- same
+        // mechanism Zigbee2MqttAdapter already uses, not a new one. D10's
+        // "provenance tag: imported:platform_name" still doesn't map onto a
+        // real DeviceMetadata column (only D4's createdBy/modifiedBy/version
+        // exist there), so "importedFrom" rides the durable extraAttributes
+        // slot instead -- registerPersistentCandidate() persists it through
+        // JdbcDeviceLifecycleStore's JSONB config column (the same plumbing
+        // "room" already established), not a new column, and unlike before
+        // it now survives a restart rather than being a runtime-only stand-in.
+        deviceRegistry.registerPersistentCandidate(descriptor, Map.of(
             "vendor", platformDisplayName(platform),
             "importedFrom", platform));
         recordRepository.markConfirmed(platform, originalId, entityId);

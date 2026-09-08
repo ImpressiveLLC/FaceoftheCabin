@@ -1,6 +1,9 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.devices.DeviceLifecycleRecord;
+import com.cabin.orchestrator.devices.DeviceLifecycleStore;
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.model.DeviceLifecycleState;
 import com.cabin.orchestrator.platformimport.ImportUpsertOutcome;
 import com.cabin.orchestrator.platformimport.PlatformImportProvider;
 import com.cabin.orchestrator.platformimport.PlatformImportRecord;
@@ -195,6 +198,41 @@ class PlatformImportControllerTest {
             requestWithRole(HouseholdRole.ADMINISTRATOR));
 
         assertEquals(HttpStatus.CONFLICT, result.getStatusCode());
+    }
+
+    /**
+     * D10 restart-durability fix (2026-09-08): confirm() must persist the
+     * CANDIDATE it creates -- registerCandidate()'s in-memory-only design is
+     * correct for Z2M/HA's ongoing rediscovery loop, but a platform import
+     * has no such loop, so a device confirmed here previously vanished on
+     * the next cabin-backend restart before anyone got to Accept it.
+     */
+    @Test
+    void confirmedCandidateSurvivesARestartWithItsProvenanceTagIntact() {
+        RecordingLifecycleStore store = new RecordingLifecycleStore();
+        DeviceRegistry registry = new DeviceRegistry(List.of(), store);
+        PlatformImportController controller = new PlatformImportController(
+            List.of(fakeProvider("smartthings"), fakeProvider("ring")),
+            new PlatformImportTranslationService(), recordRepository = new FakeRecordRepository(), registry);
+        recordRepository.seed("smartthings", "1");
+
+        controller.confirm("smartthings",
+            confirmBody("1", "smartthings-kitchen_temp", "Kitchen Temp", "TEMPERATURE_SENSOR", "cabin"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        DeviceRegistry restarted = new DeviceRegistry(List.of(), store);
+        assertEquals(DeviceLifecycleState.CANDIDATE, restarted.lifecycleState("smartthings-kitchen_temp"));
+        assertEquals("smartthings", restarted.get("smartthings-kitchen_temp").attributes().get("importedFrom"),
+            "D10 provenance tag must be durable, not just the ephemeral runtime attribute it used to be");
+    }
+
+    /** In-memory stand-in for JdbcDeviceLifecycleStore, shared across two DeviceRegistry instances to simulate a restart. */
+    private static final class RecordingLifecycleStore implements DeviceLifecycleStore {
+        private final Map<String, DeviceLifecycleRecord> records = new HashMap<>();
+
+        @Override public Map<String, DeviceLifecycleRecord> loadAll() { return Map.copyOf(records); }
+        @Override public void save(DeviceLifecycleRecord record) { records.put(record.descriptor().deviceId(), record); }
+        @Override public void delete(String deviceId) { records.remove(deviceId); }
     }
 
     private static Map<String, Object> confirmBody(String originalId, String entityId, String name, String type, String location) {
