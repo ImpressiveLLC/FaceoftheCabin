@@ -15,6 +15,15 @@ cabin:
   mqtt:
     brokerUrl: ${MQTT_URL:tcp://localhost:1883}
     clientId: cabin-orchestrator
+  zigbee:
+    # Comma-separated, same order/count -- e.g. "zigbee2mqtt,home_z2m" /
+    # "cabin,home" once Home's Termux Z2M collector is live on its own
+    # base topic (see docs/MAINTENANCE.md's Home Location section). Defaults
+    # to the single cabin bridge that has run since 2026-07-25; see
+    # Zigbee2MqttAdapter's own class comment for why cabin's device ids
+    # never gain a location qualifier even once a second bridge is added.
+    topicPrefixes: ${CABIN_ZIGBEE_TOPIC_PREFIXES:zigbee2mqtt}
+    locations: ${CABIN_ZIGBEE_LOCATIONS:cabin}
   kafka:
     bootstrapServers: ${KAFKA_BOOTSTRAP:localhost:9092}
   dashboard:

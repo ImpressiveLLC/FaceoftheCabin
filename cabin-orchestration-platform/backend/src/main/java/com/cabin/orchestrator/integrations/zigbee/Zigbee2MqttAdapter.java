@@ -23,33 +23,56 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Bridges Zigbee2MQTT into the DeviceRegistry.
+ * Bridges one or more Zigbee2MQTT instances into the DeviceRegistry.
  *
- * Subscriptions:
- *   zigbee2mqtt/bridge/devices        — device list (device discovery)
- *   zigbee2mqtt/bridge/state          — bridge health
- *   zigbee2mqtt/{friendly_name}       — per-device state updates
+ * Every configured bridge shares the same MQTT broker connection
+ * ({@code cabin.mqtt.brokerUrl}) but has its own topic prefix and location
+ * (see {@code cabin.zigbee.topicPrefixes}/{@code cabin.zigbee.locations},
+ * comma-separated and matched by index) — this is how Home's Termux
+ * collector (its own Z2M instance, published to this same broker over
+ * Tailscale) and Cabin's real 13-device mesh coexist without colliding on
+ * retained topics like {@code bridge/state}/{@code bridge/devices}. Each
+ * bridge has its own {@code knownFriendlyNames} scope so a friendly name
+ * reused across two physical meshes can't cross-contaminate device state.
  *
- * Publishes:
- *   zigbee2mqtt/bridge/request/permit_join   — open/close pairing window
- *   zigbee2mqtt/{friendly_name}/set          — commands to device
+ * Subscriptions (per bridge, {@code <prefix>} e.g. "zigbee2mqtt"):
+ *   {@code <prefix>/bridge/devices}        — device list (device discovery)
+ *   {@code <prefix>/bridge/state}          — bridge health
+ *   {@code <prefix>/{friendly_name}}       — per-device state updates
  *
- * Device IDs are prefixed with "z2m-" to avoid collision with MQTT/HA devices.
- * Location is always "cabin" (Z2M is cabin-only for now; extend if home-hub
- * gets a coordinator).
+ * Publishes (to every configured bridge):
+ *   {@code <prefix>/bridge/request/permit_join}   — open/close pairing window
+ *   {@code <prefix>/{friendly_name}/set}          — commands to device
+ *
+ * Device IDs are prefixed with "z2m-" to avoid collision with MQTT/HA
+ * devices. Cabin's bridge keeps the original unqualified "z2m-<friendlyName>"
+ * scheme (every already-persisted cabin device id — DeviceLifecycleRecord
+ * rows, ontology mappings, display configs — stays byte-identical); any
+ * other location gets a "z2m-<location>-<friendlyName>" id instead. See
+ * {@link #deviceId(ZigbeeBridge, String)}.
  */
 @Service
 public class Zigbee2MqttAdapter implements MqttCallback {
 
     private static final Logger log = LoggerFactory.getLogger(Zigbee2MqttAdapter.class);
-    private static final String Z2M_PREFIX = "zigbee2mqtt/";
     private static final String DEVICE_ID_PREFIX = "z2m-";
 
     @Value("${cabin.mqtt.brokerUrl:tcp://localhost:1883}")
     private String brokerUrl;
 
-    @Value("${cabin.zigbee.location:cabin}")
-    private String zigbeeLocation;
+    // Comma-separated, same order/count as locationsConfig -- e.g.
+    // "zigbee2mqtt,home_z2m" / "cabin,home". Field initializers
+    // (not just the @Value default) matter here: plain `new
+    // Zigbee2MqttAdapter(...)` unit tests never go through Spring's
+    // property injection, so without a literal default these would stay
+    // null and buildBridges() would have nothing to parse.
+    @Value("${cabin.zigbee.topicPrefixes:zigbee2mqtt}")
+    private String topicPrefixesConfig = "zigbee2mqtt";
+
+    @Value("${cabin.zigbee.locations:cabin}")
+    private String locationsConfig = "cabin";
+
+    private List<ZigbeeBridge> bridges;
 
     private MqttClient client;
     private final DeviceRegistry registry;
@@ -58,11 +81,30 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     private final DeviceReportingRelationshipRepository reportingRelationshipRepository;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
-    // Tracks friendly names seen via bridge/devices so we know which topics are Z2M devices
-    private final Set<String> knownFriendlyNames = ConcurrentHashMap.newKeySet();
-    // Tracks whether bridge is online
+    // Bridge health is intentionally still a single, shared value across
+    // every configured bridge (not per-bridge) -- DeviceHealthMonitor's
+    // /api/system/health "zigbeeBridge" field and PlatformInfoService's
+    // platform-info panel both consume it as one scalar today, and giving
+    // Home its own bridge health surface is a separate, UI-facing change
+    // this pass deliberately doesn't take on. Whichever bridge last
+    // published wins; device-level state/location correctness (the actual
+    // goal here) doesn't depend on this.
     private volatile String bridgeState = "offline";
     private volatile String bridgeVersion = null;
+
+    /** One configured Zigbee2MQTT instance: its own topic namespace, location, and known-device set. */
+    private static final class ZigbeeBridge {
+        final String topicPrefix;
+        final String location;
+        final Set<String> knownFriendlyNames = ConcurrentHashMap.newKeySet();
+
+        ZigbeeBridge(String topicPrefix, String location) {
+            this.topicPrefix = topicPrefix;
+            this.location = location;
+        }
+
+        String prefix() { return topicPrefix + "/"; }
+    }
 
     @Autowired
     public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher,
@@ -84,6 +126,66 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         });
     }
 
+    /**
+     * Lazily built, then cached. Safe to call from either connect() or a
+     * messageArrived() callback regardless of ordering: Spring resolves
+     * every @Value field before @PostConstruct runs, and no MQTT message
+     * can arrive before connect() has a client to receive it on, so by the
+     * time this is first called the config fields already hold their real
+     * values (Spring-injected in production, the literal field defaults in
+     * a bare `new Zigbee2MqttAdapter(...)` unit test).
+     */
+    private List<ZigbeeBridge> bridges() {
+        if (bridges == null) {
+            bridges = buildBridges(topicPrefixesConfig, locationsConfig);
+        }
+        return bridges;
+    }
+
+    /** Package-private test hook: configures multiple bridges without a Spring context/property injection. */
+    void configureBridgesForTest(String topicPrefixesCsv, String locationsCsv) {
+        this.topicPrefixesConfig = topicPrefixesCsv;
+        this.locationsConfig = locationsCsv;
+        this.bridges = null;
+    }
+
+    private static List<ZigbeeBridge> buildBridges(String prefixesCsv, String locationsCsv) {
+        List<String> prefixes = splitCsv(prefixesCsv);
+        List<String> locations = splitCsv(locationsCsv);
+        if (prefixes.isEmpty()) prefixes = List.of("zigbee2mqtt");
+        List<ZigbeeBridge> result = new ArrayList<>();
+        for (int i = 0; i < prefixes.size(); i++) {
+            String location = i < locations.size() ? locations.get(i) : "cabin";
+            result.add(new ZigbeeBridge(prefixes.get(i), location));
+        }
+        return result;
+    }
+
+    private static List<String> splitCsv(String csv) {
+        List<String> out = new ArrayList<>();
+        if (csv == null) return out;
+        for (String part : csv.split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) out.add(trimmed);
+        }
+        return out;
+    }
+
+    /** Which configured bridge a topic belongs to, or null if it matches none of them. */
+    private ZigbeeBridge resolveBridge(String topic) {
+        for (ZigbeeBridge bridge : bridges()) {
+            if (topic.startsWith(bridge.prefix())) return bridge;
+        }
+        return null;
+    }
+
+    private static String deviceId(ZigbeeBridge bridge, String friendlyName) {
+        String slug = friendlyName.replace(" ", "_");
+        return "cabin".equals(bridge.location)
+            ? DEVICE_ID_PREFIX + slug
+            : DEVICE_ID_PREFIX + bridge.location + "-" + slug;
+    }
+
     @PostConstruct
     public void connect() {
         try {
@@ -93,10 +195,13 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             opts.setAutomaticReconnect(true);
             opts.setCleanSession(false);
             client.connect(opts);
-            client.subscribe(Z2M_PREFIX + "bridge/devices", 1);
-            client.subscribe(Z2M_PREFIX + "bridge/state", 1);
-            client.subscribe(Z2M_PREFIX + "#", 0);
-            log.info("Zigbee2MQTT adapter connected to {}", brokerUrl);
+            for (ZigbeeBridge bridge : bridges()) {
+                client.subscribe(bridge.prefix() + "bridge/devices", 1);
+                client.subscribe(bridge.prefix() + "bridge/state", 1);
+                client.subscribe(bridge.prefix() + "#", 0);
+            }
+            log.info("Zigbee2MQTT adapter connected to {} ({} bridge(s): {})",
+                brokerUrl, bridges().size(), bridges().stream().map(b -> b.topicPrefix + "=" + b.location).toList());
         } catch (MqttException e) {
             log.warn("Zigbee2MQTT adapter connect failed (Z2M may not be running): {}", e.getMessage());
         }
@@ -117,20 +222,23 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             // lastSeen and "back online" for exactly one health-check cycle before
             // going stale again. See handleAvailability/handleDeviceState below.
             boolean retained = message.isRetained();
-            if (topic.equals(Z2M_PREFIX + "bridge/devices")) {
-                handleBridgeDeviceList(payload);
-            } else if (topic.equals(Z2M_PREFIX + "bridge/state")) {
+            ZigbeeBridge bridge = resolveBridge(topic);
+            if (bridge == null) return; // not one of our configured bridges
+            String prefix = bridge.prefix();
+            if (topic.equals(prefix + "bridge/devices")) {
+                handleBridgeDeviceList(bridge, payload);
+            } else if (topic.equals(prefix + "bridge/state")) {
                 handleBridgeState(payload);
-            } else if (topic.equals(Z2M_PREFIX + "bridge/info")) {
+            } else if (topic.equals(prefix + "bridge/info")) {
                 handleBridgeInfo(payload);
-            } else if (topic.startsWith(Z2M_PREFIX) && !topic.contains("/set") && !topic.contains("/get")) {
-                String friendlyName = topic.substring(Z2M_PREFIX.length());
+            } else if (!topic.contains("/set") && !topic.contains("/get")) {
+                String friendlyName = topic.substring(prefix.length());
                 if (friendlyName.endsWith("/availability")) {
                     // Z2M availability is the authoritative online/offline signal — use it directly
                     String name = friendlyName.substring(0, friendlyName.lastIndexOf("/availability"));
-                    if (knownFriendlyNames.contains(name)) handleAvailability(name, payload, retained);
-                } else if (!friendlyName.startsWith("bridge/") && knownFriendlyNames.contains(friendlyName)) {
-                    handleDeviceState(friendlyName, payload, retained);
+                    if (bridge.knownFriendlyNames.contains(name)) handleAvailability(bridge, name, payload, retained);
+                } else if (!friendlyName.startsWith("bridge/") && bridge.knownFriendlyNames.contains(friendlyName)) {
+                    handleDeviceState(bridge, friendlyName, payload, retained);
                 }
             }
         } catch (Exception e) {
@@ -161,8 +269,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         }
     }
 
-    private void handleAvailability(String friendlyName, String payload, boolean retained) {
-        String deviceId = DEVICE_ID_PREFIX + friendlyName.replace(" ", "_");
+    private void handleAvailability(ZigbeeBridge bridge, String friendlyName, String payload, boolean retained) {
+        String deviceId = deviceId(bridge, friendlyName);
         try {
             JsonNode node = mapper.readTree(payload);
             String avail = node.has("state") ? node.get("state").asText() : payload.trim();
@@ -187,15 +295,15 @@ public class Zigbee2MqttAdapter implements MqttCallback {
      * Parses the zigbee2mqtt/bridge/devices array and refreshes every device.
      * Each element has: ieee_address, friendly_name, type, definition.exposes[]
      */
-    private void handleBridgeDeviceList(String payload) {
+    private void handleBridgeDeviceList(ZigbeeBridge bridge, String payload) {
         try {
             JsonNode devices = mapper.readTree(payload);
             if (!devices.isArray()) return;
             for (JsonNode device : devices) {
                 String friendlyName = device.path("friendly_name").asText(null);
                 if (friendlyName == null || friendlyName.equals("Coordinator")) continue;
-                knownFriendlyNames.add(friendlyName);
-                String deviceId = DEVICE_ID_PREFIX + friendlyName.replace(" ", "_");
+                bridge.knownFriendlyNames.add(friendlyName);
+                String deviceId = deviceId(bridge, friendlyName);
 
                 JsonNode definition = device.path("definition");
                 Set<DeviceCapability> caps = inferCapabilities(definition);
@@ -208,9 +316,9 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                     type,
                     caps,
                     "mqtt",
-                    Z2M_PREFIX + friendlyName,
+                    bridge.prefix() + friendlyName,
                     false,
-                    zigbeeLocation
+                    bridge.location
                 );
                 Map<String, Object> discovery = new LinkedHashMap<>();
                 discovery.put("discoveredFrom", "Zigbee2MQTT bridge/devices");
@@ -263,8 +371,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
      * with property names matching the 'property' fields from definition.exposes.
      * Unknown properties are stored in attributes as-is.
      */
-    private void handleDeviceState(String friendlyName, String payload, boolean retained) {
-        String deviceId = DEVICE_ID_PREFIX + friendlyName.replace(" ", "_");
+    private void handleDeviceState(ZigbeeBridge bridge, String friendlyName, String payload, boolean retained) {
+        String deviceId = deviceId(bridge, friendlyName);
         try {
             JsonNode node = mapper.readTree(payload);
             if (!node.isObject()) return;
@@ -499,7 +607,15 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         return node.toString();
     }
 
-    /** Open or close the Zigbee pairing window. duration=254 = max (4m14s). */
+    /**
+     * Open or close the Zigbee pairing window on every configured bridge.
+     * duration=254 = max (4m14s). Broadcasting to every bridge rather than
+     * targeting one is deliberate and safe: a Zigbee join is RF-proximity
+     * bound, so opening pairing on a coordinator the new device physically
+     * can't reach is a no-op there, not a wrong-mesh pairing risk. This
+     * keeps the existing single-argument /api/devices/permit-join endpoint
+     * working unchanged even once a second (Home) bridge is configured.
+     */
     public void permitJoin(boolean enable, int duration) {
         if (client == null || !client.isConnected()) {
             log.warn("Z2M not connected — cannot permit_join");
@@ -510,9 +626,11 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             body.put("value", enable);
             if (enable) body.put("time", duration);
             String json = mapper.writeValueAsString(body);
-            client.publish(Z2M_PREFIX + "bridge/request/permit_join",
-                new MqttMessage(json.getBytes()));
-            log.info("Z2M permit_join={} duration={}s", enable, duration);
+            for (ZigbeeBridge bridge : bridges()) {
+                client.publish(bridge.prefix() + "bridge/request/permit_join",
+                    new MqttMessage(json.getBytes()));
+            }
+            log.info("Z2M permit_join={} duration={}s ({} bridge(s))", enable, duration, bridges().size());
         } catch (Exception e) {
             log.error("Z2M permit_join failed: {}", e.getMessage());
         }
@@ -523,7 +641,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         if (client == null || !client.isConnected()) return false;
         try {
             String json = mapper.writeValueAsString(payload);
-            client.publish(Z2M_PREFIX + friendlyName + "/set",
+            client.publish(bridgeForFriendlyName(friendlyName).prefix() + friendlyName + "/set",
                 new MqttMessage(json.getBytes()));
             return true;
         } catch (Exception e) {
@@ -532,9 +650,22 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         }
     }
 
+    /** Falls back to the first/default bridge for a name none of them have seen yet -- matches pre-multi-bridge behavior. */
+    private ZigbeeBridge bridgeForFriendlyName(String friendlyName) {
+        for (ZigbeeBridge bridge : bridges()) {
+            if (bridge.knownFriendlyNames.contains(friendlyName)) return bridge;
+        }
+        return bridges().get(0);
+    }
+
     public String getBridgeState() { return bridgeState; }
     public Optional<String> getBridgeVersion() { return Optional.ofNullable(bridgeVersion); }
-    public Set<String> getKnownFriendlyNames() { return Collections.unmodifiableSet(knownFriendlyNames); }
+
+    public Set<String> getKnownFriendlyNames() {
+        Set<String> all = new LinkedHashSet<>();
+        for (ZigbeeBridge bridge : bridges()) all.addAll(bridge.knownFriendlyNames);
+        return Collections.unmodifiableSet(all);
+    }
 
     @Override public void connectionLost(Throwable cause) {
         log.warn("Z2M adapter connection lost: {}", cause.getMessage());

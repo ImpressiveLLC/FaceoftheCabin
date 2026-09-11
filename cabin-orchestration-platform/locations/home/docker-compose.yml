@@ -1,6 +1,18 @@
 version: "3.9"
 
 # ─────────────────────────────────────────────────────────────
+# DEPRECATED (flagged 2026-09-11, not yet swept) — this file predates
+# ROADMAP.md's Phase 8 correction: Home is a lightweight *collector*
+# (Zigbee2MQTT + MQTT forward, no Postgres/Kafka/backend of its own),
+# not a second full stack. This "Full Stack" overlay has never been
+# deployed and is not the current plan for Home. Deprecation header
+# added now rather than deleting the file outright, so the real
+# restructure (or removal) happens as its own reviewed change, not
+# bundled into the Home-Zigbee-bridge work that surfaced this. See
+# docs/MAINTENANCE.md's "Home Location — Android/Termux Collector
+# Bring-Up" section for what Home actually runs today.
+# ─────────────────────────────────────────────────────────────
+#
 # Home Orchestration Platform — Full Stack
 # Lenovo ThinkCentre M920q / Ubuntu 24.04 / 16 GB RAM / SSD
 # Memory limits sized for 16 GB: ~9 GB allocated to containers,
