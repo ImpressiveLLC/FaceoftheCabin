@@ -196,6 +196,17 @@
       ],
       "oracleRefs": ["K19"],
       "safetyNote": "Q25 had a governance failure at baseline"
+    },
+    {
+      "id": "home_collector_termux",
+      "description": "Home location Zigbee collector: Android/Termux + SMLIGHT SLZB-MR5U bring-up, feasibility, and known gotchas",
+      "keywordPatterns": ["termux", "zigbee2mqtt android", "mr5u", "slzb", "home collector", "zigbee collector"],
+      "questions": ["CC-01"],
+      "contextNodes": [
+        { "entityRef": "home-zigbee-coordinator-mr5u", "chunkType": "DESCRIPTION" },
+        { "entityRef": "home-zigbee-coordinator-mr5u", "chunkType": "TROUBLESHOOTING" }
+      ],
+      "oracleRefs": ["K11"]
     }
   ]
 }
