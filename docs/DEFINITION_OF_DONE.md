@@ -233,6 +233,27 @@ accumulate.*
      Not re-verified for the return-to-away transition (dog walk) before
      session's live-investigation thread ended — worth a quick spot
      check next live session if it comes up again.
+- **Two identically-named Claude Code Remote sessions ran the same
+  "Frigate password configuration recovery" task in parallel, unaware of
+  each other — closing the loop per this file's own hand-back rule,
+  2026-09-11.** A cloud-container session (no live M920q access) diagnosed
+  the same `home_aldrich_front` clip gap the user was independently
+  working on directly against the M920q, and pushed a speculative,
+  unverified fix (`92db57c`, guessed `blinkCameraMap`/mediamtx path
+  values) to a shared branch, `claude/frigate-password-recovery-9a026d`.
+  The real, live-verified fix landed on `main` the same night (`7fc4faa`)
+  and was built on extensively since (webhook-based recording, clip
+  recovery, the live investigation entries above) — `92db57c` is a fully
+  superseded duplicate with nothing unique in it. Confirmed there is no
+  live messaging channel between separate Claude Code Remote sessions
+  (`ListAgents`/`SendMessage` both fail with "not reachable" across
+  sessions, even same-account, same-repo) — this entry *is* the
+  reconciliation, per `CLAUDE.md`'s "explicit hand-back" rule for
+  decisions a session can't otherwise get out of its own transcript.
+  **Action for whoever has repo-admin access**: delete the stale
+  `claude/frigate-password-recovery-9a026d` branch — a same-account push
+  attempt to delete it got a 403 (no permission from that session's
+  token). No PR needed; nothing to merge.
 - **Local-network-scan concern raised by the user re: a Family Hub
   "grandpa" actor login, 2026-08-24 — hypothesis only, not confirmed.**
   User reported the app seemed to ask to "check for devices local to
