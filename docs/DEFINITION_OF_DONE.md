@@ -478,15 +478,25 @@ accumulate.*
 
 ---
 
-**Last full session close-out:** 2026-08-14 — complete codex-fork
-accounting audit (with surviving features explicitly left open), the
-Device Discovery Assistant feature shipped end-to-end (4 phases, all
-merged), and an unplanned live
-incident: the production-stack cutover (Phase 0/0.5 of a separate,
-approved plan) triggered a real Frigate crash-loop, root-caused and
-fixed after an unrelated mid-session crash lost and then recovered
-context from the crashed session's own transcript. Phase A's healthcheck
-piece shipped (PR #18); Kuma monitor work is blocked on a vault-credential
-decision, not yet made — see the punch list above. See git log for the
-actual session-by-session record — that's the authoritative history
-now, not this file.
+**Last full session close-out:** 2026-09-10/11 — the SMLIGHT SLZB-MR5U +
+Termux Home-collector POC passed end-to-end (real Zigbee network formed,
+MQTT telemetry confirmed reaching the M920q's broker over Tailscale,
+independently verified on both ends — full log in
+`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`), then formalized
+across every documentation surface it was previously invisible from:
+`PRODUCT_NOTES.md` (new dated multi-persona review — PM, Dev Lead,
+AI/LLM Prompt Writer, UX Lead, QA Test Lead, Delivery Manager,
+Marketing), `MAINTENANCE.md` (new Home Location/Termux bring-up
+section), `QA.md` (new manual checklist), `CLAUDE.md` (Design
+constraints refreshed — also caught and fixed an unrelated stale claim,
+the "no Python beyond `watchdog.py`" line, which had drifted since the
+AI-assistant corpus tooling shipped), `README.md`, and a resolved
+"Phase 8" naming collision between `ROADMAP.md`'s program and the POC
+playbook's own internal step numbering. Separately wired the same
+finding into the live `knowledge_node` table (`POST /api/kb/curate`,
+two curated nodes) and the `docs/ai-assistant/` corpus/eval tracking
+system (coverage.md, a new evidence doc, a new eval question) —
+live-verified Tiny Helpdesk answers correctly from it, distinguishing
+"the collector mechanism works" from "Home has real deployed devices,"
+which it does not yet. See git log for the actual session-by-session
+record — that's the authoritative history now, not this file.
