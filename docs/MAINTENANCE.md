@@ -1064,10 +1064,16 @@ future device before re-debugging them from scratch:
    `node_modules/zigbee2mqtt/data/configuration.yaml` is silently written
    correctly and never once read.
 
-**Open, not yet resolved**: how Zigbee2MQTT's MQTT traffic actually reaches
-the M920q. The documented path is Tailscale (`mqtt://cabin-hub:1883`) —
-Tailscale is now installed on the collector phone (2026-09-10) and pending
-Nate's own sign-in to the tailnet; not yet confirmed end-to-end.
+**Resolved 2026-09-11**: Zigbee2MQTT's MQTT traffic reaches the M920q via
+Tailscale, confirmed end-to-end (client log shows `Connected to MQTT
+server`; independently confirmed on the M920q itself via `mosquitto_sub`
+receiving the real `zigbee2mqtt/bridge/state` message). **One real
+gotcha**: use the M920q's numeric Tailscale IP (`100.77.44.113`) for
+`mqtt.server`, not the `cabin-hub` MagicDNS hostname — Termux's own
+resolver doesn't pick up Tailscale's MagicDNS names even while actively
+connected and routing (`ping cabin-hub` fails, `ping 100.77.44.113`
+succeeds with a real tailnet TTL). Full detail in
+`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`'s Step 5.
 
 ---
 

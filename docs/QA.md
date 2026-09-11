@@ -116,9 +116,12 @@ None yet — see Known gaps below.
 - [x] A real Zigbee network forms (not just a coordinator ping) — confirmed
       via a real PAN ID/extended PAN ID/channel assignment and a
       `coordinator_backup.json` written to disk
-- [ ] MQTT telemetry actually reaches the M920q's broker (`mqtt://cabin-hub:1883`
-      via Tailscale) — **not yet verified end-to-end**; Tailscale is
-      installed on the collector phone (2026-09-10) pending sign-in
+- [x] MQTT telemetry actually reaches the M920q's broker via Tailscale —
+      **verified end-to-end 2026-09-11**, both client-side (`Connected to
+      MQTT server`) and independently on the M920q itself
+      (`mosquitto_sub` received the real message). Use the numeric
+      Tailscale IP (`100.77.44.113`), not the `cabin-hub` MagicDNS name —
+      Termux's own resolver doesn't pick that up even when connected
 - [ ] At least one real Zigbee end device paired and visible as a topic
       under `zigbee2mqtt/` on the M920q's broker
 - [ ] Survives a phone reboot / Termux process restart without manual

@@ -50,20 +50,26 @@ installed package). Also recorded operationally in
 `docs/MAINTENANCE.md`'s "Home Location — Android/Termux Collector
 Bring-Up" section.
 
-## E04 — What is NOT yet resolved
+## E04 — MQTT routing resolved end-to-end (2026-09-11)
 
-**Claim:** the coordinator/network result does not by itself make Home a
-live collector — MQTT routing from the phone to the M920q is a separate,
-still-open item.
+**Claim:** the coordinator/network result did not by itself make Home a
+live collector at first — MQTT routing from the phone to the M920q was a
+separate item, and it is now resolved and independently verified.
 
-**Evidence:** `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`'s own
-"Open question, not yet resolved" note (Step 3) and "Next steps" section;
-restated in `docs/DEFINITION_OF_DONE.md`'s open-items list (2026-09-10
-entry). As of this doc's writing, Tailscale is installed on the
-collector phone but not yet signed in/connected (confirmed via `adb`
-network-capability inspection showing no active VPN interface) — do not
-assert the routing question is closed until that changes and is verified
-against a real `mosquitto_sub` or equivalent check on the M920q side.
+**Evidence:** `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`'s
+Step 5. Tailscale (installed via `adb install` of the official
+`tailscale-android` GitHub release APK) was signed into by Nate directly
+on the device. Zigbee2MQTT's `mqtt.server` was pointed at the M920q's
+**numeric** Tailscale IP (`100.77.44.113:1883`) — the `cabin-hub`
+MagicDNS hostname does not resolve from Termux's own shell even while
+Tailscale is actively connected and routing (`ping cabin-hub` fails,
+`ping 100.77.44.113` succeeds with a real tailnet TTL of 64, not an
+internet hop). The client log shows `Connected to MQTT server` and a
+real topic publish; independently confirmed on the M920q itself via
+`mosquitto_sub -t zigbee2mqtt/bridge/state` receiving the actual
+`{"state":"online"}` message, not just trusting the phone's own log.
+This closes the loop completely — nothing about the collector path is
+theoretical anymore.
 
 ## Curated KnowledgeNode rows (live, not this doc)
 

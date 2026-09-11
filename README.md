@@ -110,7 +110,7 @@ finer-grained permission tier for video vs. the rest of cabin-ui today.
 | Google OAuth owner | `nhsmrekar@gmail.com` |
 | Calendar / Photos | `smrekarfamilia@gmail.com` |
 | Zigbee coordinator (Cabin) | `/dev/ttyACM0` · adapter: ember · 14 devices paired |
-| Home collector (POC) | SMLIGHT SLZB-MR5U + Termux on Android · PASS 2026-09-10 · not yet a live production collector — see `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md` and `docs/MAINTENANCE.md`'s "Home Location" section |
+| Home collector (POC) | SMLIGHT SLZB-MR5U + Termux on Android · PASS end-to-end 2026-09-11 (coordinator + real Zigbee network + MQTT reaching the M920q via Tailscale, independently verified both ends) — see `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md` and `docs/MAINTENANCE.md`'s "Home Location" section |
 | Parenting schedule | Versioned rules — current: 50/50 split since July 27 2026 (see `ROADMAP.md`'s Environment & Credentials Reference for the full detail; `docs/ontology.yaml`'s `parenting_schedule_rule_version` is the source of truth) |
 | Secrets | Ansible Vault (`ansible/group_vars/*/vault.yml`) — see `ansible/README.md`'s Secrets section, not hand-edited `.env` |
 

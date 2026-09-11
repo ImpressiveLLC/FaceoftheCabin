@@ -620,6 +620,19 @@ not an unknown, and one only Nate can execute (it needs his own Tailscale
 login on the device). Logged as an open item in `DEFINITION_OF_DONE.md`
 rather than left implicit in the run log alone.
 
+**Update, same session, 2026-09-11: resolved end-to-end, removed from the
+open-items list.** Nate signed into Tailscale on the phone directly. MQTT
+traffic from the phone's Zigbee2MQTT now reaches the M920q's real broker
+— confirmed independently on both ends, not just the client log. The
+only wrinkle: the documented `cabin-hub` MagicDNS hostname doesn't
+resolve from Termux's own shell even while Tailscale is actively
+connected and routing — the fix is the M920q's numeric Tailscale IP
+instead. Full detail in `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`'s
+Step 5. This means the Home collector path (coordinator → real Zigbee
+network → MQTT → M920q) is now proven end-to-end, not partially — the
+scope note above (13 seeded placeholder devices, zero real inventory
+yet) still stands unchanged.
+
 **Home's device inventory is still 100% aspirational, and that shouldn't
 get conflated with tonight's result.** `DeviceRegistry` already carries
 13 seeded Home devices (cameras, locks, an HVAC unit, appliances) — all

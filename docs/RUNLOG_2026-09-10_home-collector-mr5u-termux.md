@@ -1,14 +1,21 @@
 # Run Log — MR5U + Termux Home Collector Bring-Up (2026-09-10)
 
-> **Result: PASS.** Termux on a stock, non-rooted Android 8.0 phone
-> formed a real Zigbee network against the SMLIGHT SLZB-MR5U over a
-> plain TCP socket (`Coordinator firmware version: EmberZNet 7.4.2
-> [GA]`, network formed on PAN ID 23611 / channel 11, coordinator
-> backup written to disk). This answers `ROADMAP.md`'s Phase 8 open
-> question — Termux is viable for this role, the Pi 4 fallback is not
-> needed. The only remaining gap before this is a genuinely live
-> collector is routing (`mqtt.server`) to the M920q for real — see
-> "Open question" in Step 3 and "Next steps" at the bottom.
+> **Result: PASS — full end-to-end, not just the coordinator half.**
+> Termux on a stock, non-rooted Android 8.0 phone formed a real Zigbee
+> network against the SMLIGHT SLZB-MR5U over a plain TCP socket
+> (`Coordinator firmware version: EmberZNet 7.4.2 [GA]`, network formed
+> on PAN ID 23611 / channel 11, coordinator backup written to disk), and
+> — as of 2026-09-11, ~30 minutes after Tailscale sign-in completed on
+> the phone — its Zigbee2MQTT MQTT traffic reached the M920q's real
+> broker for real: `Connected to MQTT server` / `Zigbee2MQTT started!`
+> in the phone's own log, independently confirmed by subscribing on the
+> M920q itself (`mosquitto_sub -t zigbee2mqtt/bridge/state` returned the
+> real `{"state":"online"}` message, not just trusting the client side).
+> This answers `ROADMAP.md`'s Phase 8 open question completely — Termux
+> is viable for this role, the Pi 4 fallback is not needed, and there is
+> no longer an open MQTT-routing question. See "Step 5 — MQTT routing
+> resolved" below for the exact fix (numeric Tailscale IP, not the
+> `cabin-hub` MagicDNS name — Termux's own resolver didn't pick that up).
 >
 > Companion to `docs/POC_2026-08-08_termux-zigbee-collector.md` (the
 > original playbook) and `ROADMAP.md`'s Phase 8. That playbook says
@@ -171,16 +178,15 @@ to the M920q's public endpoints, are both confirmed from the collector
 device itself.** This is the literal go/no-go signal the original ask
 was after, before any Zigbee2MQTT install work started.
 
-**Open question, not yet resolved:** the *documented* routing path
-(`docs/POC_2026-08-08_termux-zigbee-collector.md` Phase 5) uses
-**Tailscale** to reach `cabin-hub:1883` (the M920q's Mosquitto broker
-directly), not the public HTTPS domain. Confirming `cabin.unicornpingpong.com`
-returns 200 proves the *web* path is open; it does **not** prove MQTT
-(port 1883) is reachable that way, since Cloudflare Tunnel typically
-only proxies HTTP(S)/WebSocket unless explicitly configured otherwise.
-Tailscale is not yet installed on this phone. This needs to be settled
-before Zigbee2MQTT's `mqtt.server` setting can point anywhere real —
-see "Next steps" below.
+**Open question at the time — resolved, see Step 5 below:** the
+*documented* routing path (`docs/POC_2026-08-08_termux-zigbee-collector.md`
+Phase 5) uses **Tailscale** to reach `cabin-hub:1883` (the M920q's
+Mosquitto broker directly), not the public HTTPS domain. Confirming
+`cabin.unicornpingpong.com` returns 200 proved the *web* path was open;
+it did **not** prove MQTT (port 1883) was reachable that way, since
+Cloudflare Tunnel typically only proxies HTTP(S)/WebSocket unless
+explicitly configured otherwise. Tailscale was not yet installed on this
+phone at this point in the session.
 
 ---
 
@@ -324,32 +330,85 @@ against the MR5U over a plain TCP socket. The process then exited
 cleanly (not a crash) on `MQTT failed to connect ... ECONNREFUSED
 127.0.0.1:1883` — expected, since `mqtt.server` was deliberately left
 pointed at a non-existent local broker per the original playbook's own
-"doesn't need to be real yet for this test" guidance. **The one open
-item left before this is a real, working collector is the
-Tailscale-vs-public-domain MQTT routing question flagged in Step 3
-above** — nothing else stands between this exact setup and a live,
-functioning Home collector.
+"doesn't need to be real yet for this test" guidance. At this point in
+the session, MQTT routing to the M920q was the one remaining open item —
+**resolved same session, see Step 5.**
+
+---
+
+## Step 5 — MQTT routing resolved: Tailscale confirmed, full end-to-end PASS (2026-09-11)
+
+Tailscale (installed earlier via `adb install` of the official
+`tailscale-android` GitHub release APK) was signed in on the phone by
+Nate directly — the one step that genuinely required physical
+interaction (OAuth/SSO consent), not scriptable from `ilikethelights`.
+
+**One real gotcha, worth carrying forward:** `cabin-hub` (the documented
+MagicDNS hostname) does **not** resolve from Termux's own shell, even
+with Tailscale actively connected and routing:
+```bash
+$SSH 'ping -c 3 cabin-hub'   # ping: unknown host cabin-hub
+```
+Termux appears not to pick up Android's system/VPN-provided DNS resolver
+for MagicDNS names specifically (the numeric IP works fine — this is a
+Termux/Android resolver quirk, not a Tailscale connectivity problem).
+**Fix: use the M920q's numeric Tailscale IP directly** — confirmed via
+`README.md`'s own Infrastructure Quick-Reference table (`100.77.44.113`):
+```bash
+$SSH 'ping -c 3 100.77.44.113'
+# 64 bytes from 100.77.44.113: icmp_seq=1 ttl=64 time=107 ms   (real tailnet hop, ttl=64 — not an internet route)
+$SSH '(echo > /dev/tcp/100.77.44.113/1883 && echo "1883 OPEN")'
+# 1883 OPEN
+```
+
+**Wired and verified end-to-end:**
+```bash
+$SSH 'sed -i "s|server: mqtt://localhost:1883|server: mqtt://100.77.44.113:1883|" ~/.z2m/configuration.yaml'
+# kill + relaunch Zigbee2MQTT (same Z2M_ONBOARD_NO_SERVER=true launch as Step 4)
+```
+```
+[info] zh:ember: [INIT TC] Adapter network matches config.
+[info] z2m: zigbee-herdsman started (resumed)          <- "resumed", not "reset" -- recognized the existing network from the Step 4 backup
+[info] z2m: Coordinator firmware version: '{"meta":{...,"revision":"7.4.2 [GA]",...},"type":"EmberZNet"}'
+[info] z2m: Connecting to MQTT server at mqtt://100.77.44.113:1883
+[info] z2m: Connected to MQTT server
+[info] z2m:mqtt: MQTT publish: topic 'zigbee2mqtt/bridge/state', payload '{"state":"online"}'
+[info] z2m: Zigbee2MQTT started!
+```
+
+**Independently confirmed from the M920q's own broker**, not just
+trusting the phone's client-side log:
+```bash
+ssh nate@100.77.44.113 'mosquitto_sub -h localhost -p 1883 -t "zigbee2mqtt/bridge/state" -C 1'
+# {"state":"online"}
+```
+
+**This closes the loop completely.** Every open item from Step 3/Phase 4
+is now resolved: coordinator handshake, real Zigbee network formation,
+and MQTT delivery to the M920q's actual broker, all real and
+independently verified from both ends. Nothing about this setup is
+theoretical or "should work" anymore.
 
 ---
 
 ## Next steps toward "plug and play on an SD card"
 
-Phase 4 is done (see above — full network formed, not just a firmware
-ping). Remaining, recorded here as the concrete target, per Nate's
-explicit ask to invest the logging effort now:
+The full collector path (coordinator → Zigbee network → MQTT → M920q) is
+now proven end-to-end. Remaining, recorded here as the concrete target,
+per Nate's explicit ask to invest the logging effort now:
 
-1. **Resolve the Tailscale-vs-public-domain routing question above**
-   before wiring `mqtt.server` to anything real — installing/signing in
-   to Tailscale on the phone is the documented path and needs Nate's own
-   Tailscale account, not something scriptable from here alone.
-2. **Collapse Steps 1–4 above into one script** (`provision-collector.sh`)
+1. **Collapse Steps 1–5 above into one script** (`provision-collector.sh`)
    that a fresh phone/tablet/Pi could run after nothing more than: install
    Termux + Termux:API + Termux:Boot, grant storage permission, and run
    one command referencing a pre-generated keypair. The MR5U-discovery
    step (mDNS query) and the SSH-bootstrap step (ADB key push) are
    already fully scriptable from what's logged above — the coordinator's
-   own IP/model name would be the only per-device variable.
-3. **Termux:Boot integration** (Phase 7 of the original playbook) so the
+   own IP/model name would be the only per-device variable. Bake in the
+   two real fixes Step 5 found: pin the numeric Tailscale IP for
+   `mqtt.server` (not the `cabin-hub` MagicDNS name, which Termux's own
+   resolver doesn't pick up), and expect a "reset" vs. "resumed" log line
+   depending on whether a coordinator backup already exists.
+2. **Termux:Boot integration** (Phase 7 of the original playbook) so the
    script re-runs automatically on power-on, which is the actual
    "plug the SD card in and it just launches" behavior being asked for
    — SD-card portability itself is an Android storage/OS question
