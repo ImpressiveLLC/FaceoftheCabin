@@ -16,6 +16,7 @@ import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceLifecycleAction;
 import com.cabin.orchestrator.devices.model.ReportingTopics;
 import com.cabin.orchestrator.integrations.zigbee.Zigbee2MqttAdapter;
+import com.cabin.orchestrator.mqtt.MqttBridgeService;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +34,7 @@ public class DeviceController {
 
     private final DeviceRegistry registry;
     private final Zigbee2MqttAdapter z2mAdapter;
+    private final MqttBridgeService mqttBridgeService;
     private final DeviceHealthMonitor healthMonitor;
     private final DeviceDisplayConfigService displayConfigService;
     private final JdbcDeviceLifecycleVocabularyStore lifecycleVocabulary;
@@ -41,6 +43,7 @@ public class DeviceController {
 
     public DeviceController(DeviceRegistry registry,
                              Zigbee2MqttAdapter z2mAdapter,
+                             MqttBridgeService mqttBridgeService,
                              DeviceHealthMonitor healthMonitor,
                              DeviceDisplayConfigService displayConfigService,
                              JdbcDeviceLifecycleVocabularyStore lifecycleVocabulary,
@@ -48,6 +51,7 @@ public class DeviceController {
                              DeviceRepository deviceRepository) {
         this.registry = registry;
         this.z2mAdapter = z2mAdapter;
+        this.mqttBridgeService = mqttBridgeService;
         this.healthMonitor = healthMonitor;
         this.displayConfigService = displayConfigService;
         this.lifecycleVocabulary = lifecycleVocabulary;
@@ -262,6 +266,22 @@ public class DeviceController {
         int duration = body.containsKey("duration") ? ((Number) body.get("duration")).intValue() : 254;
         z2mAdapter.permitJoin(enable, duration);
         return Map.of("permitJoin", enable, "duration", duration);
+    }
+
+    /**
+     * Opens or closes a time-boxed network scan window on Home's LAN.
+     * Body: { "enable": true, "duration": 254 }. Same shape as permit-join
+     * above -- this backend can't run the scan itself (mDNS can't cross
+     * Tailscale from the cabin M920q to Home's physical network), it just
+     * asks the phone-side scan agent to do it (see MqttBridgeService's
+     * requestNetworkScan()/handleNetworkScanResult()).
+     */
+    @PostMapping("/network-scan")
+    public Map<String, Object> networkScan(@RequestBody Map<String, Object> body) {
+        boolean enable = Boolean.TRUE.equals(body.get("enable"));
+        int duration = body.containsKey("duration") ? ((Number) body.get("duration")).intValue() : 254;
+        mqttBridgeService.requestNetworkScan(enable, duration);
+        return Map.of("networkScan", enable, "duration", duration);
     }
 
     /**

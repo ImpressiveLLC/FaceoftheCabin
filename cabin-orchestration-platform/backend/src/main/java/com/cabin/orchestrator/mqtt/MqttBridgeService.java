@@ -55,6 +55,23 @@ import java.util.*;
  *                                         HA-published push bridge,
  *                                         deliberately NOT retained (see
  *                                         handleBlinkMotionTopic).
+ *   home/network-scan/request          — published BY this backend (see
+ *                                         requestNetworkScan()), consumed
+ *                                         by a small standalone Node agent
+ *                                         running on the Home Termux
+ *                                         phone (the only thing this
+ *                                         instance has with an actual
+ *                                         presence on Home's LAN — mDNS
+ *                                         can't cross Tailscale, so
+ *                                         cabin-backend itself could never
+ *                                         scan Home's network directly).
+ *                                         {"enable":true,"durationSeconds":254}
+ *                                         / {"enable":false}.
+ *   home/network-scan/results          — one message per device the
+ *                                         phone's mDNS scan finds (see
+ *                                         handleNetworkScanResult), not
+ *                                         retained -- a discovery event,
+ *                                         not device state.
  */
 @Service
 public class MqttBridgeService implements MqttCallback {
@@ -152,6 +169,10 @@ public class MqttBridgeService implements MqttCallback {
             // camera name in its payload (see handleBlinkMotionTopic), same
             // reasoning as Kidde's single fixed topic.
             client.subscribe("cabin/blink/motion", 1);
+            // Added 2026-09-11 -- see this class's own javadoc for why this
+            // has to be a phone-side agent rather than a scan run from
+            // cabin-backend itself.
+            client.subscribe("home/network-scan/results", 1);
             log.info("MQTT bridge connected to {}", brokerUrl);
         } catch (MqttException e) {
             log.error("MQTT connect failed: {}", e.getMessage());
@@ -190,6 +211,11 @@ public class MqttBridgeService implements MqttCallback {
             if ("cabin/kidde/co_alarm".equals(topic)) {
                 // Plain text ("ON"/"OFF"), same reasoning as armed_away above.
                 handleKiddeCoAlarmTopic(payload);
+                return;
+            }
+
+            if ("home/network-scan/results".equals(topic)) {
+                handleNetworkScanResult(payload);
                 return;
             }
 
@@ -483,6 +509,76 @@ public class MqttBridgeService implements MqttCallback {
         eventPublisher.publish(new CabinEvent(
             UUID.randomUUID().toString(), "blink-" + camera, "BLINK_PUSH_MOTION_DETECTED",
             "INFO", Instant.now(), Map.of("camera", camera, "liveviewStarted", result.ok())));
+    }
+
+    /**
+     * Opens or closes a time-boxed mDNS scan window on Home's actual LAN,
+     * mirroring Zigbee2MqttAdapter.permitJoin()'s exact shape. Published
+     * to home/network-scan/request, consumed by the phone-side scan agent
+     * (network-scan-agent/agent.js) -- this backend has no way to run the
+     * scan itself (see class javadoc), it can only ask the one thing that
+     * actually sits on Home's network to do it.
+     */
+    public void requestNetworkScan(boolean enable, int durationSeconds) {
+        if (client == null || !client.isConnected()) {
+            log.warn("MQTT not connected — cannot request network scan");
+            return;
+        }
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("enable", enable);
+            if (enable) body.put("durationSeconds", durationSeconds);
+            String json = mapper.writeValueAsString(body);
+            client.publish("home/network-scan/request", new MqttMessage(json.getBytes()));
+            log.info("Home network scan request: enable={} durationSeconds={}", enable, durationSeconds);
+        } catch (Exception e) {
+            log.error("Failed to publish network scan request: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * One message per mDNS service the phone-side agent found this scan
+     * window: {name, host, address, port, type, txt}. Registered the same
+     * way every other discovery path does (registerCandidate), so a
+     * repeat scan finding the same device refreshes rather than
+     * duplicates it. type is always the generic HOME_ASSISTANT_ENTITY
+     * catch-all -- same fallback Zigbee2MqttAdapter.inferType() and this
+     * class's own inferType() already use for "found something real, no
+     * way to classify it further yet" -- a raw mDNS record alone doesn't
+     * carry enough to infer a real DeviceType, and guessing wrong would be
+     * worse than an honest "unclassified."
+     */
+    @SuppressWarnings("unchecked")
+    private void handleNetworkScanResult(String payload) {
+        try {
+            Map<String, Object> data = mapper.readValue(payload, Map.class);
+            String name = String.valueOf(data.get("name"));
+            String address = String.valueOf(data.getOrDefault("address", ""));
+            Object port = data.get("port");
+            if (name == null || name.isBlank() || name.equals("null")) {
+                log.debug("Network scan result with no name, skipping: {}", payload);
+                return;
+            }
+            String slug = name.toLowerCase().replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
+            String deviceId = "netscan-" + slug;
+            String connectionString = port != null ? address + ":" + port : address;
+
+            DeviceDescriptor descriptor = new DeviceDescriptor(
+                deviceId, name, DeviceType.HOME_ASSISTANT_ENTITY,
+                Set.of(DeviceCapability.TELEMETRY), "http_poll", connectionString, false, "home");
+
+            Map<String, Object> discovery = new LinkedHashMap<>();
+            discovery.put("discoveredFrom", "Home network scan (mDNS)");
+            if (data.get("type") != null) discovery.put("serviceType", data.get("type"));
+            if (data.get("host") != null) discovery.put("host", data.get("host"));
+            if (data.get("txt") != null) discovery.put("txt", data.get("txt"));
+
+            boolean firstSeen = registry.registerCandidate(descriptor, discovery);
+            if (firstSeen) log.info("Home network scan discovered new device: {} ({})", name, connectionString);
+            else log.debug("Home network scan refreshed device: {} ({})", name, connectionString);
+        } catch (Exception e) {
+            log.warn("Failed to parse network scan result: {}", e.getMessage());
+        }
     }
 
     /**

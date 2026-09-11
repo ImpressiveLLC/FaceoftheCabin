@@ -1,0 +1,14 @@
+{
+  "name": "network-scan-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runs on the Home Termux phone (the only thing with an actual presence on Home's LAN) alongside Zigbee2MQTT. Listens for a scan request from cabin-backend over MQTT, browses Home's network via mDNS for the requested window, and relays each device found back over MQTT. See docs/MAINTENANCE.md's Home Location section for why this can't run in cabin-backend itself (mDNS can't cross Tailscale).",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.0",
+    "multicast-dns": "^7.2.5"
+  }
+}
