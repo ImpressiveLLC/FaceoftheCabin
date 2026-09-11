@@ -2841,7 +2841,7 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onO
 
 // ── L2/L3: Add ──
 function DmAddView({ onDone, auth }) {
-  const [mode, setMode] = useState(null); // null | "zigbee" | "manual" | "platform"
+  const [mode, setMode] = useState(null); // null | "zigbee" | "netscan" | "manual" | "platform"
   return (
     <div className="dm-add-root">
       {!mode && (
@@ -2851,7 +2851,12 @@ function DmAddView({ onDone, auth }) {
             <button className="dm-add-option" onClick={() => setMode("zigbee")}>
               <Radio size={28}/>
               <strong>Pair a Zigbee device</strong>
-              <span>Opens a 4-minute pairing window on the cabin hub's Zigbee coordinator</span>
+              <span>Opens a 4-minute pairing window on this location's Zigbee coordinator</span>
+            </button>
+            <button className="dm-add-option" onClick={() => setMode("netscan")}>
+              <Wifi size={28}/>
+              <strong>Scan for devices</strong>
+              <span>Actively discovers devices already on this network for ~4 minutes — smart speakers, TVs, printers, HomeKit/Matter accessories, and similar</span>
             </button>
             <button className="dm-add-option" onClick={() => setMode("manual")}>
               <Cpu size={28}/>
@@ -2867,6 +2872,7 @@ function DmAddView({ onDone, auth }) {
         </div>
       )}
       {mode === "zigbee" && <ZigbeePairingFlow onBack={() => setMode(null)} onDone={onDone} auth={auth} />}
+      {mode === "netscan" && <NetworkScanFlow onBack={() => setMode(null)} onDone={onDone} auth={auth} />}
       {mode === "manual" && <ManualAddForm onBack={() => setMode(null)} onDone={onDone} auth={auth} />}
       {mode === "platform" && <PlatformImportFlow onBack={() => setMode(null)} onDone={onDone} auth={auth} />}
     </div>
@@ -2939,7 +2945,7 @@ function ZigbeePairingFlow({ onBack, onDone, auth }) {
         <Radio size={36} className="pairing-icon"/>
         <h3>Pair a Zigbee Device</h3>
         <p>Put your device into pairing mode (hold the button until the LED flashes), then open the pairing window.</p>
-        <p className="config-hint">The cabin hub's Zigbee coordinator will accept new devices for 4 minutes 14 seconds.</p>
+        <p className="config-hint">This location's Zigbee coordinator will accept new devices for 4 minutes 14 seconds.</p>
         <button className="btn-primary pairing-start-btn" onClick={startPairing}>
           Open pairing window
         </button>
@@ -2992,6 +2998,141 @@ function ZigbeePairingFlow({ onBack, onDone, auth }) {
             <Clock size={36} className="pairing-icon"/>
             <h3>Pairing window closed</h3>
             <p className="config-hint">No new devices were found. Make sure the device is in pairing mode before opening the window.</p>
+            <div className="pairing-choices">
+              <button className="btn-secondary" onClick={() => setPhase("idle")}>Try again</button>
+              <button className="btn-ghost" onClick={onBack}>Back</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Home network scan flow ──
+// Mirrors ZigbeePairingFlow above almost exactly (same countdown/poll
+// shape) but for Home's mDNS scan agent instead of a Zigbee pairing
+// window. Posts to the same single shared backend ZigbeePairingFlow
+// already does (LOCATIONS.cabin.apiBase) -- there is only one real
+// cabin-backend instance; Home never got its own deployment (see
+// docs/MAINTENANCE.md's Home Location section). The actual scanning
+// happens on the Home Termux phone, relayed back over MQTT -- this
+// component only ever talks to cabin-backend's REST API, same as every
+// other Add flow.
+function NetworkScanFlow({ onBack, onDone, auth }) {
+  const doFetch = auth?.authedFetch || fetch;
+  const SCAN_DURATION = 254; // seconds -- same window length as Zigbee pairing
+  const [phase, setPhase]         = useState("idle"); // idle | scanning | done
+  const [secondsLeft, setSeconds] = useState(SCAN_DURATION);
+  const [newDevices, setNewDevices] = useState([]);
+  const timerRef = useRef(null);
+  const pollRef  = useRef(null);
+  const prevIds  = useRef(null);
+
+  const startScan = async () => {
+    const snap = await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
+      .then(r => r.json()).catch(() => []);
+    prevIds.current = new Set(snap.map(d => d.deviceId));
+
+    await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices/network-scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enable: true, duration: SCAN_DURATION })
+    });
+    setPhase("scanning");
+    setSeconds(SCAN_DURATION);
+
+    timerRef.current = setInterval(() => {
+      setSeconds(s => {
+        if (s <= 1) { clearInterval(timerRef.current); setPhase("done"); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+
+    pollRef.current = setInterval(async () => {
+      const all = await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
+        .then(r => r.json()).catch(() => []);
+      const found = all.filter(d => !prevIds.current.has(d.deviceId));
+      if (found.length > 0) setNewDevices(found);
+    }, 3000);
+  };
+
+  const stopScan = async () => {
+    clearInterval(timerRef.current);
+    clearInterval(pollRef.current);
+    await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices/network-scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enable: false, duration: 0 })
+    });
+    setPhase("done");
+  };
+
+  useEffect(() => () => { clearInterval(timerRef.current); clearInterval(pollRef.current); }, []);
+
+  const mins = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
+  const secs = String(secondsLeft % 60).padStart(2, "0");
+
+  if (phase === "idle") return (
+    <div className="pairing-container">
+      <button className="btn-ghost dm-back" onClick={onBack}><ArrowLeft size={14}/> Back</button>
+      <div className="pairing-card">
+        <Wifi size={36} className="pairing-icon"/>
+        <h3>Scan for Devices</h3>
+        <p>Actively looks for devices already on this network (smart speakers, TVs, printers, HomeKit/Matter accessories, and similar) — no pairing mode needed, just power the device on and make sure it's joined the WiFi.</p>
+        <p className="config-hint">Scans for 4 minutes 14 seconds.</p>
+        <button className="btn-primary pairing-start-btn" onClick={startScan}>
+          Start scan
+        </button>
+      </div>
+    </div>
+  );
+
+  if (phase === "scanning") return (
+    <div className="pairing-container">
+      <div className="pairing-card pairing-active">
+        <div className="pairing-countdown">{mins}:{secs}</div>
+        <p className="pairing-status">Scanning this network for devices…</p>
+        {newDevices.length > 0 && (
+          <div className="pairing-found">
+            <strong>New device{newDevices.length > 1 ? "s" : ""} found:</strong>
+            {newDevices.map(d => (
+              <div key={d.deviceId} className="pairing-found-row">
+                <CheckCircle size={14} className="found-check"/> {d.name} ({d.deviceId})
+              </div>
+            ))}
+          </div>
+        )}
+        <button className="btn-ghost" onClick={stopScan}>Stop early</button>
+      </div>
+    </div>
+  );
+
+  // phase === "done"
+  return (
+    <div className="pairing-container">
+      <div className="pairing-card">
+        {newDevices.length > 0 ? (
+          <>
+            <CheckCircle size={36} className="pairing-icon pairing-success"/>
+            <h3>Found {newDevices.length} device{newDevices.length > 1 ? "s" : ""}!</h3>
+            {newDevices.map(d => (
+              <div key={d.deviceId} className="pairing-found-row">
+                <CheckCircle size={13} className="found-check"/> {d.name}
+              </div>
+            ))}
+            <div className="pairing-choices">
+              <button className="btn-secondary" onClick={() => { setPhase("idle"); setNewDevices([]); }}>
+                Scan again
+              </button>
+              <button className="btn-primary" onClick={onDone}>See all devices</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <Clock size={36} className="pairing-icon"/>
+            <h3>Scan finished</h3>
+            <p className="config-hint">No new devices were found. Make sure the device is powered on and already connected to this WiFi network.</p>
             <div className="pairing-choices">
               <button className="btn-secondary" onClick={() => setPhase("idle")}>Try again</button>
               <button className="btn-ghost" onClick={onBack}>Back</button>

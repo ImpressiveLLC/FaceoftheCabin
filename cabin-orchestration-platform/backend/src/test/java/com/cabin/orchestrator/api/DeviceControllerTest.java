@@ -41,7 +41,7 @@ class DeviceControllerTest {
         // never triggered by refreshAfterConfigurationChange() (the only
         // DeviceHealthMonitor method removeDevice() calls) -- null is safe.
         DeviceHealthMonitor healthMonitor = new DeviceHealthMonitor(registry, null);
-        return new DeviceController(registry, null, healthMonitor,
+        return new DeviceController(registry, null, null, healthMonitor,
             new DeviceDisplayConfigService(null), new JdbcDeviceLifecycleVocabularyStore(jdbc),
             new com.cabin.orchestrator.devices.JdbcDeviceReportingRelationshipRepository(jdbc),
             new com.cabin.orchestrator.devices.JdbcDeviceRepository(jdbc));

@@ -1,6 +1,7 @@
 package com.cabin.orchestrator.mqtt;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.events.CabinEvent;
@@ -456,5 +457,49 @@ class MqttBridgeServiceTest {
 
         verify(blinkLiveviewService, never()).start(org.mockito.ArgumentMatchers.anyString());
         verify(eventPublisher, never()).publish(org.mockito.ArgumentMatchers.any());
+    }
+
+    // 2026-09-11: the phone-side scan agent is the only thing that actually
+    // sits on Home's LAN (mDNS can't cross Tailscale from cabin-backend
+    // itself) -- this proves the relay side, that a result it publishes
+    // becomes a real, correctly-tagged candidate.
+    @Test
+    void networkScanResultRegistersAHomeLocationCandidate() throws Exception {
+        assertNull(registry.get("netscan-living_room_tv"));
+
+        deliver("home/network-scan/results", """
+            {"name":"Living Room TV","host":"livingroomtv.local","address":"192.168.1.50","port":8008,"type":"_googlecast._tcp.local"}
+            """);
+
+        DeviceStatus status = registry.get("netscan-living_room_tv");
+        assertNotNull(status, "a network scan result should register a candidate device");
+        assertEquals("home", status.location());
+        assertEquals(DeviceType.HOME_ASSISTANT_ENTITY, status.type());
+        assertEquals(true, status.attributes().get("candidate"));
+
+        DeviceDescriptor descriptor = registry.descriptor("netscan-living_room_tv").orElseThrow();
+        assertEquals("192.168.1.50:8008", descriptor.connectionString());
+        assertEquals("http_poll", descriptor.protocolAdapter());
+    }
+
+    @Test
+    void repeatedNetworkScanResultRefreshesRatherThanDuplicates() throws Exception {
+        deliver("home/network-scan/results", """
+            {"name":"Living Room TV","address":"192.168.1.50","port":8008}
+            """);
+        deliver("home/network-scan/results", """
+            {"name":"Living Room TV","address":"192.168.1.51","port":8008}
+            """);
+
+        DeviceDescriptor descriptor = registry.descriptor("netscan-living_room_tv").orElseThrow();
+        assertEquals("192.168.1.51:8008", descriptor.connectionString(),
+            "a repeat scan finding the same device again should refresh it, not create a second entry");
+    }
+
+    @Test
+    void networkScanResultWithNoNameIsIgnored() throws Exception {
+        deliver("home/network-scan/results", "{\"address\":\"192.168.1.99\"}");
+
+        assertTrue(registry.candidates().isEmpty());
     }
 }

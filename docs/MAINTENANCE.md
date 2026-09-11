@@ -1147,6 +1147,61 @@ Code: `Zigbee2MqttAdapter.java`, `Zigbee2MqttAdapterTest.java` (new
 `secondBridgeKeepsHomeDevicesSeparateFromCabinEvenWithAClashingFriendlyName`
 test), `application.yml`.
 
+**Home network scan agent, added 2026-09-11** — closes the gap the
+Zigbee bridge work above surfaced immediately: Home had a real Add flow
+for Zigbee (pairing) but nothing for anything else, because
+`HomeAssistantDiscoveryService`'s passive 60s-poll discovery — the thing
+that makes Cabin's Candidates list rich — only works because Cabin has
+its own real Home Assistant instance to poll. Home doesn't (deliberate,
+Phase 8), so nothing was ever going to arrive that way, and "Register
+manually" requires already knowing an HA entity ID / RTSP URL / MQTT
+topic, which isn't a substitute for actual discovery.
+
+**Hard constraint that shaped the whole design**: `cabin-backend` runs on
+the M920q, physically at the *cabin*. mDNS (the discovery protocol
+behind finding devices on a LAN) is link-local multicast — it cannot
+cross Tailscale to reach Home's physical network. A scanner built inside
+`cabin-backend` would only ever see the cabin's own network, never
+Home's, no matter how it's implemented. The only thing that actually
+sits on Home's LAN is the Termux phone (same one running Zigbee2MQTT) —
+so the scan has to run there, with results relayed back over MQTT, same
+shape as every other push-style integration this project already has
+(Kidde's CO alarm, Blink's motion push).
+
+**What shipped**:
+1. `cabin-orchestration-platform/home-collector/network-scan-agent/` —
+   new standalone Node.js script (`mqtt` + `multicast-dns`, both pure JS,
+   no native compile step — same reasoning as picking `npm install
+   zigbee2mqtt` over the git-clone-and-build path during the original
+   Termux bring-up). Subscribes to `home/network-scan/request`, browses a
+   curated list of common smart-home mDNS service types (Chromecast,
+   HomeKit, AirPlay, Hue, Matter, ESPHome, printers, NAS/SMB, generic
+   HTTP, ...) for the requested window, and publishes each device found
+   to `home/network-scan/results`. Deployed and run the same way as
+   Zigbee2MQTT (`setsid env ... nohup node agent.js >> ~/network-scan-agent.log 2>&1 &`).
+2. `MqttBridgeService.java` — new `requestNetworkScan()` (publishes the
+   request) and `handleNetworkScanResult()` (turns each result into a
+   `location: home` candidate via the same `registerCandidate()` every
+   other discovery path already uses — repeat scans refresh rather than
+   duplicate, for free).
+3. `POST /api/devices/network-scan` (`DeviceController.java`) — same
+   shape as `permit-join`.
+4. `App.jsx` — new `NetworkScanFlow` component, a near-exact copy of
+   `ZigbeePairingFlow` (254s countdown, poll for new devices), plus a
+   fourth "Scan for devices" option next to Zigbee/Manual/Import in the
+   Add flow. Also fixed the Add screen's Zigbee copy while touching this
+   area — it hardcoded "the cabin hub's Zigbee coordinator," stale
+   wording from before Home had its own bridge; now says "this location's
+   Zigbee coordinator."
+
+Not yet live-verified against Home's real network at the time this was
+written — deploy-and-test is the immediate next step, not assumed done.
+
+Code: `home-collector/network-scan-agent/agent.js` + `package.json`,
+`MqttBridgeService.java` (+ `MqttBridgeServiceTest.java`),
+`DeviceController.java` (+ `DeviceControllerTest.java` constructor
+update), `App.jsx`.
+
 ---
 
 ## Known Issues & Operational Lessons

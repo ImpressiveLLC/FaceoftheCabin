@@ -388,6 +388,22 @@ zigbee2mqtt/bridge/state             ← bridge health heartbeat
 zigbee2mqtt/{friendly_name}          ← per-device state
 zigbee2mqtt/{friendly_name}/set      ← commands to device
 zigbee2mqtt/bridge/request/permit_join
+home_z2m/...                         ← Home's own Zigbee2MQTT instance,
+                                        same shape as zigbee2mqtt/... above,
+                                        distinct base_topic so it doesn't
+                                        collide with cabin's bridge on the
+                                        shared broker (added 2026-09-11 —
+                                        see docs/MAINTENANCE.md's Home
+                                        Location section)
+home/network-scan/request            ← cabin-backend → Home's Termux
+                                        phone: opens/closes a time-boxed
+                                        mDNS scan window (added 2026-09-11,
+                                        see docs/MAINTENANCE.md — mDNS
+                                        can't cross Tailscale, so the scan
+                                        has to run phone-side, not in
+                                        cabin-backend)
+home/network-scan/results            ← phone → cabin-backend: one message
+                                        per device the scan finds
 ```
 
 ---
@@ -405,6 +421,7 @@ forward from an earlier session's list)
 | POST | `/api/devices/{id}/command` | DeviceController |
 | GET | `/api/devices/meta/types` | DeviceController |
 | POST | `/api/devices/permit-join` | DeviceController |
+| POST | `/api/devices/network-scan` | DeviceController — opens/closes a time-boxed mDNS scan window on Home's LAN via the phone-side scan agent (added 2026-09-11) |
 | GET | `/api/devices/{id}/config` | DeviceController |
 | GET | `/api/devices/display-config` | DeviceController |
 | GET | `/api/devices/{id}/display-config` | DeviceController |
