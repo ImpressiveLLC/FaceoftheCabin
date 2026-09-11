@@ -163,6 +163,16 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
+- **Home collector MQTT routing decision — blocks a live collector, found
+  2026-09-10.** The SMLIGHT SLZB-MR5U + Termux bench POC passed (real
+  Zigbee network formed — see `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`),
+  retiring the Raspberry Pi 4 hardware fallback. What's left is a decision,
+  not a technical unknown: does the phone's Zigbee2MQTT MQTT traffic reach
+  the M920q via Tailscale (`mqtt://cabin-hub:1883`, the documented path —
+  Tailscale is now installed on the phone, pending Nate's own sign-in), or
+  some other reachable path. Nothing else stands between this exact setup
+  and a real, live Home collector.
+
 - **Monitoring panel can't group tiles, only reorder one flat list — real
   gap, found 2026-08-25, not started.** User wants their temp/humidity
   tiles visually grouped together, out of the general device-status

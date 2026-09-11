@@ -1233,7 +1233,12 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       than replacing it. See `docs/HANDOFF_2026-08-08_codex-fork.md`'s
       Item 6 for the full framing if picked up on the fork.
 
-### Phase 8 — Accessible Hardware Program: Local Collector Hubs (planning only, 2026-08-08)
+### Phase 8 — Accessible Hardware Program: Local Collector Hubs (POC passed 2026-09-10)
+
+> Note: `docs/POC_2026-08-08_termux-zigbee-collector.md` used to have its
+> own unrelated internal "Phase 8" step heading (a kiosk-display stretch
+> test) — renamed there 2026-09-10 to avoid confusion with this program-
+> level Phase 8, which is the one that matters for cross-referencing.
 
 > Product decision, not yet implemented. **Corrected same day** by the
 > user after my first pass wrongly assumed the goal was cheap hardware to

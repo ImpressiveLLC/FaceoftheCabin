@@ -109,7 +109,8 @@ finer-grained permission tier for video vs. the rest of cabin-ui today.
 | Monitoring | Uptime Kuma + Homepage on M920q |
 | Google OAuth owner | `nhsmrekar@gmail.com` |
 | Calendar / Photos | `smrekarfamilia@gmail.com` |
-| Zigbee coordinator | `/dev/ttyACM0` · adapter: ember · 14 devices paired |
+| Zigbee coordinator (Cabin) | `/dev/ttyACM0` · adapter: ember · 14 devices paired |
+| Home collector (POC) | SMLIGHT SLZB-MR5U + Termux on Android · PASS 2026-09-10 · not yet a live production collector — see `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md` and `docs/MAINTENANCE.md`'s "Home Location" section |
 | Parenting schedule | Versioned rules — current: 50/50 split since July 27 2026 (see `ROADMAP.md`'s Environment & Credentials Reference for the full detail; `docs/ontology.yaml`'s `parenting_schedule_rule_version` is the source of truth) |
 | Secrets | Ansible Vault (`ansible/group_vars/*/vault.yml`) — see `ansible/README.md`'s Secrets section, not hand-edited `.env` |
 
@@ -131,6 +132,7 @@ finer-grained permission tier for video vs. the rest of cabin-ui today.
 | **Definition of Done** | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md) | Internal (session process) | Per-session exit checklist — not a product or architecture doc |
 | **Replicating This Template** | [`docs/REPLICATION.md`](docs/REPLICATION.md) | Standing up a fully independent instance — own accounts, domain, host, repo |
 | **Living Ontology** | [Living Artifact](https://claude.ai/code/artifact/a9c467c8-9958-4b17-95e5-f28b7af6e68f) | All | Canonical knowledge model — entities, relationships, decision log |
+| **Session Run Logs** | `docs/RUNLOG_*.md`, `docs/POC_*.md`, `docs/HANDOFF_*.md` | Technical | Dated, literal, replayable session logs for specific bring-ups/investigations (e.g. the Home/Termux collector POC) — not summarized elsewhere; check by filename pattern, not a single index page |
 
 ---
 

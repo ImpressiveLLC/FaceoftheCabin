@@ -54,6 +54,12 @@ Tailscale-only. This isn't an oversight to "fix" — it's the deliberate
 boundary between the product surface and the reconfiguration surface. See
 `docs/ontology.yaml` and `ROADMAP.md` for the full reasoning.
 
+**This diagram is Cabin-specific.** A second location, Home, has a real
+deploy template at `cabin-orchestration-platform/locations/home/` and a
+seeded (currently disabled) device inventory in `DeviceRegistry` — see
+"Home Location — Android/Termux Collector Bring-Up" below and
+`ROADMAP.md`'s Phase 8 for the current state and architecture.
+
 ---
 
 ## Deployment
@@ -1007,6 +1013,61 @@ transport now works, but the tile's own message-handling code hasn't
 been exercised against a real live connection since this fix (it was
 never reachable before, so it's realistically untested code, not just
 unverified today).
+
+---
+
+## Home Location — Android/Termux Collector Bring-Up
+
+*Home is a second physical property, distinct from Cabin. Per `ROADMAP.md`'s
+Phase 8 (Accessible Hardware Program), Home is designed as a lightweight
+**collector**, not a second full stack: whatever runs there (currently a
+spare Android phone under Termux, running Zigbee2MQTT) collects device
+telemetry and ships it to the M920q as the one shared "main brain." It does
+NOT run its own Postgres/Kafka/cabin-backend, and it does NOT need its own
+Home Assistant instance for the Zigbee path specifically — only MQTT
+telemetry needs to reach the M920q. A real, deployable-but-never-deployed
+full-stack overlay also exists at `cabin-orchestration-platform/locations/home/`
+for other (non-Zigbee) integrations — see the architecture note in that
+directory before assuming it should be stood up as-is; it predates the
+Phase 8 lightweight-collector correction.*
+
+**Status as of 2026-09-10**: a real bench POC (SMLIGHT SLZB-MR5U coordinator
++ Termux on a Sony Xperia) passed — Zigbee2MQTT formed a real Zigbee network
+over a plain TCP socket to the coordinator. Full replayable command log at
+[`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`](RUNLOG_2026-09-10_home-collector-mr5u-termux.md).
+Three reusable gotchas from that bring-up, worth checking first on any
+future device before re-debugging them from scratch:
+
+1. **Termux's auto-selected apt mirror can silently serve corrupted large
+   packages** — looks exactly like a slow/hung download, isn't. `apt`
+   prints `Ign:` (hash-sum mismatch) lines rather than a loud error.
+   **Fix, do this first on any fresh Termux install, before the first
+   `pkg install`:**
+   ```bash
+   echo "deb https://packages.termux.dev/apt/termux-main stable main" > \
+     $PREFIX/etc/apt/sources.list
+   apt clean && pkg update -y
+   ```
+2. **TypeScript 7's native compiler has no `android` build target at all**
+   (confirmed via `npm view @typescript/typescript-android-arm64` —
+   returns nothing; the package's own `optionalDependencies` list every
+   other OS/arch combination except Android). **Never `git clone` +
+   `npm run build` a TypeScript project like Zigbee2MQTT on Termux** —
+   `npm install zigbee2mqtt` instead, which pulls the already-published,
+   pre-built JS and sidesteps the gap entirely.
+3. **Zigbee2MQTT's own `cli.js` silently redirects all config to `~/.z2m/`**,
+   not the installed package's bundled `data/` folder:
+   ```js
+   process.env.ZIGBEE2MQTT_DATA = process.env.ZIGBEE2MQTT_DATA || path.join(process.env.HOME, ".z2m");
+   ```
+   Always edit `~/.z2m/configuration.yaml` directly — an edit to
+   `node_modules/zigbee2mqtt/data/configuration.yaml` is silently written
+   correctly and never once read.
+
+**Open, not yet resolved**: how Zigbee2MQTT's MQTT traffic actually reaches
+the M920q. The documented path is Tailscale (`mqtt://cabin-hub:1883`) —
+Tailscale is now installed on the collector phone (2026-09-10) and pending
+Nate's own sign-in to the tailnet; not yet confirmed end-to-end.
 
 ---
 

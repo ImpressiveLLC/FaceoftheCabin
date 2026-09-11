@@ -589,3 +589,158 @@ notification delivery runs only when a channel is configured. Editing safety
 rules is intentionally still out of scope: adding a UI toggle without a
 durable, audited write model would recreate the same false-configurability
 problem this change removes.
+
+---
+
+## 2026-09-10 — Home Collector Hardware/Software Path Validated: Multi-Persona Review
+
+_A bench proof-of-concept (SMLIGHT SLZB-MR5U Zigbee coordinator, bridged
+through Termux on a stock, non-rooted Android phone) resolved the one real
+open hardware/OS question behind `ROADMAP.md`'s Phase 8 — Accessible
+Hardware Program: can a spare Android device actually serve as Home's
+Zigbee collector, or does Home need its own M920q-class machine or a
+Raspberry Pi 4 fallback. Full replayable command log in
+[`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`](RUNLOG_2026-09-10_home-collector-mr5u-termux.md).
+Reviewed here across seven perspectives so the result — and what it does
+and doesn't unblock — isn't left sitting in a run log nobody outside
+tonight's session would think to open._
+
+### Product Manager
+
+**The Pi 4 fallback is retired; the remaining constraint moved from
+hardware to a routing decision.** Before tonight, "will Termux even work"
+was a real go/no-go risk gating whether Home needed a dedicated purchase.
+It's answered: Zigbee2MQTT under Termux formed a real Zigbee network
+against the MR5U (coordinator firmware confirmed, PAN ID 23611, a
+coordinator backup written to disk) — not a partial result, a clean pass.
+The next blocking decision is no longer "what hardware do we buy" but
+"how does this phone's MQTT traffic actually reach the M920q" (Tailscale,
+per the documented plan, vs. some other reachable path) — a decision,
+not an unknown, and one only Nate can execute (it needs his own Tailscale
+login on the device). Logged as an open item in `DEFINITION_OF_DONE.md`
+rather than left implicit in the run log alone.
+
+**Home's device inventory is still 100% aspirational, and that shouldn't
+get conflated with tonight's result.** `DeviceRegistry` already carries
+13 seeded Home devices (cameras, locks, an HVAC unit, appliances) — all
+`enabled: false`, all placeholders for hardware that hasn't been bought
+yet. Tonight validated the *collection mechanism* for one category
+(Zigbee), not any of those 13 devices themselves. Scoping the rest of
+Home's real device inventory is deliberately a separate, follow-on
+effort (see Phase 2 of the in-progress ontology/Home-audit work), not
+something this entry should imply is now also done.
+
+### Dev Lead
+
+**Three reusable operational gotchas, none of them specific to this
+phone model — worth carrying into `docs/MAINTENANCE.md` so the next
+person (or the next device) doesn't rediscover them from scratch:**
+
+1. Termux's auto-selected apt mirror (`linux.domainesia.com` this run)
+   silently served corrupted large packages (`Ign:` hash-sum failures on
+   `libicu`/`nodejs`, no loud error) — looked exactly like a slow
+   download, wasn't. Pin `https://packages.termux.dev/apt/termux-main`
+   explicitly, first, on any fresh Termux install, before the first
+   `pkg install`.
+2. TypeScript 7's native compiler ships zero `android` platform targets
+   in its own `optionalDependencies` — confirmed directly, not inferred
+   (`npm view @typescript/typescript-android-arm64` returns nothing).
+   Never clone-and-build Zigbee2MQTT from source on Termux; `npm install
+   zigbee2mqtt` pulls the already-published, pre-built JS and sidesteps
+   the whole gap.
+3. Zigbee2MQTT's own `cli.js` silently redirects all config to
+   `~/.z2m/`, not the package's bundled `data/` folder — every edit to
+   the "obvious" location was correctly written and never once read.
+   This was the actual root cause behind an hour of debugging a
+   USB-auto-discovery fallback that looked like a config or schema bug
+   and wasn't either.
+
+**`cabin-orchestration-platform/locations/home/` exists in this repo
+right now and has never been mentioned in `MAINTENANCE.md`** — worth
+fixing independent of tonight's specific findings, since an operator
+reading that file today would have no idea a second-location deploy
+template exists at all.
+
+### AI/LLM Prompt Writer
+
+**Tonight's findings currently have zero path into anything Tiny
+Helpdesk can answer from.** Confirmed by direct investigation of the
+actual runtime call chain (`TinyHelpdeskService.ask()`): the static
+`docs/ai-assistant/` corpus is a PR-reviewed tracking/eval system, not
+wired to live Ask at all; the live `knowledge_node` Postgres table is
+what Ask actually reads, written only by `KbGeneratorService` (auto,
+device-derived only) or `POST /api/kb/curate` (manual). Tonight's PASS
+result and its three dev gotchas exist in neither — a real, immediate
+gap, not a hypothetical one, given a household member could plausibly
+ask the helpdesk "can I use an old phone for the Home Zigbee setup"
+literally tomorrow and get the generic "I don't have any information
+about that yet" fallback.
+
+**Closing it surfaces one small, honest design tension worth naming
+rather than quietly working around:** every `KnowledgeNode` curated so
+far has been backed by a real `DeviceDescriptor` in the registry — the
+class's own code comment assumes `entityRef` is always a device id
+"until a second kind of node actually gets built." A Zigbee-coordinator
+POC is infrastructure, not a household device, and curating a node for
+it (`home-zigbee-coordinator-mr5u`) is exactly that second kind of node,
+arriving sooner than that comment expected. Doing it anyway, flagged
+explicitly rather than silently, is the right call — the alternative is
+forcing a POC into a fake device row just to satisfy a naming
+assumption that was never meant to be load-bearing.
+
+### UX Lead
+
+**Nothing user-facing shipped tonight, and nothing should be implied
+to have.** The one forward-looking product promise worth flagging now,
+before it's built rather than after: the run log's own "next steps"
+section describes an eventual "plug an SD card into a fresh phone/tablet
+and it just launches" experience. That is a Mom-persona-level unboxing
+flow (per the 2026-07-26 Audience Personas) — it cannot ship as a raw
+Termux command sequence the way tonight's bring-up necessarily was. Not
+scoping that UI now; flagging it so it isn't accidentally treated as
+"basically done" once the underlying script exists.
+
+### QA Test Lead
+
+**A real bench test happened tonight with a genuine, checkable pass
+signal — and zero automated coverage.** The concrete evidence (a
+`Coordinator firmware version:` line, a formed network with a real PAN
+ID, a coordinator backup file written to disk) is exactly the kind of
+manual-checklist item `docs/QA.md`'s existing structure already expects
+for infrastructure that can't yet be exercised by CI. Logging it there,
+with the honest known-gap that no automated smoke test exists yet
+(tracked against the run log's own "collapse into one script" next
+step), keeps this from being verified once and then forgotten the next
+time Termux, Zigbee2MQTT, or the MR5U's firmware changes.
+
+### Delivery Manager
+
+**Uncommitted work sat across three real files plus one unrelated one at
+session start** — a different session's own `App.jsx` React-key fix had
+landed in the same working tree as tonight's documentation. Committed
+separately, first, specifically so it doesn't get misattributed to
+tonight's narrative in `git log` or in this entry. Tonight's actual
+RUNLOG/ROADMAP/HANDOFF trio followed as its own commit, distinct from
+the broader documentation-formalization pass this entry is itself part
+of — each concern its own commit, matching this repo's own established
+git-hygiene discipline.
+
+**`docs/DEFINITION_OF_DONE.md`'s "Last full session close-out" footer
+has been stale since 2026-08-14** even though later-dated items were
+already being appended to its open-items list underneath it — this is
+now the second time that drift has been independently noticed. Fixing
+it is the last step of this documentation pass, not a separate
+follow-up, specifically so it describes the pass that just happened
+rather than becoming stale a second time immediately after being
+touched.
+
+### Marketing
+
+**A real, honest, low-key proof point — not a claim to lead with.**
+"A spare Android phone, not a new hardware purchase, can run a second
+property's Zigbee collector" is a genuine cost/complexity story
+consistent with this platform's stated northstar of device flexibility
+with no hard vendor/protocol assumption. It is *not* a claim that Home
+now works — zero real devices are deployed there, and the MQTT routing
+question above is still open. Any external-facing mention of this
+should read as "de-risked," never "Home is live."
