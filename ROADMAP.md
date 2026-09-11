@@ -1420,6 +1420,26 @@ hasn't been rewritten for this yet since no coordinator has been
 purchased; do that rewrite once the SLZB unit is actually in hand and
 its IP is known, rather than guessing at exact commands now.
 
+**POC result — PASS, confirmed live (2026-09-10).** Full run log:
+`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`. The MR5U arrived
+and was bench-tested with the actual collector phone (a Sony Xperia
+G3223/XZ1 Compact, Android 8.0, not the model Windows' MTP driver
+misreported). Confirmed exactly as predicted above: the USB-OTG/
+`termux-usb` risk never came up — Zigbee2MQTT connected to the MR5U over
+a plain `tcp://192.168.1.142:6638` socket and **formed a real Zigbee
+network** (`Coordinator firmware version: EmberZNet 7.4.2 [GA]`, PAN ID
+23611, channel 11, coordinator backup written to disk) on a stock,
+non-rooted Android 8 phone. **Termux is confirmed viable for this role
+— the Raspberry Pi 4 fallback is not needed.** The one still-unconfirmed
+detail flagged above (fixed vs. user-configurable Zigbee/Thread radio
+assignment) wasn't tested this session — Zigbee landed on the expected
+EFR32MG24/`ember` radio without any explicit assignment step, which is
+what mattered for this test. Remaining before a real, live collector:
+resolve whether MQTT routes to the M920q via Tailscale (the documented
+path, not yet installed on this phone) or some other reachable path —
+tracked as an open question in the run log, not a hardware or Termux
+capability question anymore.
+
 ---
 
 ## Environment & Credentials Reference

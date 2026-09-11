@@ -514,6 +514,29 @@ USB-Zigbee-on-Termux validation spike immediately** (cheap, fast, no
 dependencies) so the hardware question is settled while the collector/
 central design work happens in parallel — don't block one on the other.
 
+**POC run, result: PASS (2026-09-10).** Not simulated or assumed — full
+literal run log at `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`.
+Phone: Sony Xperia G3223 (XZ1 Compact), Android 8.0 (real model confirmed
+via `adb`, correcting Windows' own mislabeling of the same device as "XA1
+Ultra"). Coordinator: the MR5U as specced above, discovered on the LAN via
+its `slzb-mr5u.local` mDNS name rather than the USB path this item worried
+about — network-attached architecture held, exactly as predicted.
+Zigbee2MQTT under Termux connected to it over `tcp://192.168.1.142:6638`
+and **formed a real Zigbee network** (`Coordinator firmware version:
+EmberZNet 7.4.2 [GA]`, PAN ID 23611, channel 11, coordinator backup
+written to disk) — not just a firmware ping, the actual go/no-go bar the
+playbook set. **The USB-OTG/`termux-usb` unknown this item was worried
+about never came up at all**, confirming the network-attached-coordinator
+choice sidestepped it entirely as hoped. **Conclusion: Termux is viable
+for Home's collector role. The Raspberry Pi 4 fallback is not needed.**
+Remaining before a real, live collector (not a hardware or Termux
+question anymore): resolve how Zigbee2MQTT's MQTT traffic actually
+reaches the M920q — Tailscale (this item's own documented path) isn't
+yet installed on this phone, and confirming the public
+`cabin.unicornpingpong.com` domain answers HTTPS does not confirm the
+separate MQTT port is reachable through it. Tracked as an open question
+in the run log, not re-litigated here.
+
 ---
 
 ### Item 6 — Armed state isn't a trigger; no native camera confidence UI — PARTIALLY DONE
