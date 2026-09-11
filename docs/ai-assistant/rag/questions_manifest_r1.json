@@ -596,6 +596,29 @@
           "Returns I don't have any information"
         ]
       }
+    },
+    {
+      "id": "CC-01",
+      "question": "Can I use an old Android phone with Termux as a Zigbee collector for a second property (Home)?",
+      "owner": "common",
+      "safety": false,
+      "source_docs": [
+        "docs/ai-assistant/corpus/home-collector-evidence.md",
+        "docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md"
+      ],
+      "source_doc_status": "available",
+      "expected_answer_summary": "Yes -- a 2026-09-10/11 bench test confirmed Zigbee2MQTT running under Termux on a stock, non-rooted Android phone forms a real Zigbee network against a SMLIGHT SLZB-MR5U coordinator over a plain TCP socket, and that network's MQTT telemetry reaches the M920q's real broker over Tailscale, verified independently on both ends. This retires the Raspberry Pi 4 hardware fallback from ROADMAP.md's Phase 8. The collector path itself is proven end-to-end; this is not the same as Home having any real, deployed devices yet -- Home's device inventory is still all disabled placeholder rows in DeviceRegistry.",
+      "grading": {
+        "required": [
+          "Confirms Android/Termux is a validated, real-hardware-tested collector option with the full path (coordinator + Zigbee network + MQTT to the M920q) working end-to-end",
+          "Does not conflate a working collector path with Home having real, deployed devices already"
+        ],
+        "fail_if": [
+          "Claims Home has real deployed devices today",
+          "Claims the MQTT routing question is still open or unresolved",
+          "Returns I don't have any information about that yet"
+        ]
+      }
     }
   ],
 

@@ -1233,7 +1233,12 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       than replacing it. See `docs/HANDOFF_2026-08-08_codex-fork.md`'s
       Item 6 for the full framing if picked up on the fork.
 
-### Phase 8 — Accessible Hardware Program: Local Collector Hubs (planning only, 2026-08-08)
+### Phase 8 — Accessible Hardware Program: Local Collector Hubs (POC passed 2026-09-10)
+
+> Note: `docs/POC_2026-08-08_termux-zigbee-collector.md` used to have its
+> own unrelated internal "Phase 8" step heading (a kiosk-display stretch
+> test) — renamed there 2026-09-10 to avoid confusion with this program-
+> level Phase 8, which is the one that matters for cross-referencing.
 
 > Product decision, not yet implemented. **Corrected same day** by the
 > user after my first pass wrongly assumed the goal was cheap hardware to
@@ -1419,6 +1424,26 @@ a plain TCP socket to the coordinator's LAN IP" check — the playbook
 hasn't been rewritten for this yet since no coordinator has been
 purchased; do that rewrite once the SLZB unit is actually in hand and
 its IP is known, rather than guessing at exact commands now.
+
+**POC result — PASS, confirmed live (2026-09-10).** Full run log:
+`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`. The MR5U arrived
+and was bench-tested with the actual collector phone (a Sony Xperia
+G3223/XZ1 Compact, Android 8.0, not the model Windows' MTP driver
+misreported). Confirmed exactly as predicted above: the USB-OTG/
+`termux-usb` risk never came up — Zigbee2MQTT connected to the MR5U over
+a plain `tcp://192.168.1.142:6638` socket and **formed a real Zigbee
+network** (`Coordinator firmware version: EmberZNet 7.4.2 [GA]`, PAN ID
+23611, channel 11, coordinator backup written to disk) on a stock,
+non-rooted Android 8 phone. **Termux is confirmed viable for this role
+— the Raspberry Pi 4 fallback is not needed.** The one still-unconfirmed
+detail flagged above (fixed vs. user-configurable Zigbee/Thread radio
+assignment) wasn't tested this session — Zigbee landed on the expected
+EFR32MG24/`ember` radio without any explicit assignment step, which is
+what mattered for this test. Remaining before a real, live collector:
+resolve whether MQTT routes to the M920q via Tailscale (the documented
+path, not yet installed on this phone) or some other reachable path —
+tracked as an open question in the run log, not a hardware or Termux
+capability question anymore.
 
 ---
 

@@ -291,7 +291,13 @@ things to set up before trusting it unattended overnight:
 
 ---
 
-## Phase 8 (stretch, separate from the Zigbee question) — Kiosk display test
+## Extra (stretch, separate from the Zigbee question) — Kiosk display test
+
+> Renamed from "Phase 8" 2026-09-10 — this playbook's own step numbering
+> collided with `ROADMAP.md`'s unrelated "Phase 8 — Accessible Hardware
+> Program" (the roadmap-level program this whole POC exists to validate).
+> Same term, two different meanings; this step is the one being renamed
+> since it has far fewer cross-references.
 
 Independent of everything above — validates the "load Family Hub on a
 touchscreen" half of the ask, and can be done on a *different* Android

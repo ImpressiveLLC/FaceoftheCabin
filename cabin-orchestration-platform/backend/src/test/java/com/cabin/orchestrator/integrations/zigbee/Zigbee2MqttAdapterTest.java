@@ -138,6 +138,37 @@ class Zigbee2MqttAdapterTest {
         assertTrue(signalQualityRegistry.assess("z2m-never_registered").isEmpty());
     }
 
+    // Home's Termux collector (docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md)
+    // shares this same broker with cabin's real Z2M bridge -- this proves a
+    // second bridge on its own topic prefix stays fully independent, even
+    // when both meshes happen to use the same friendly name. Cabin's device
+    // must keep its original unqualified id (every already-persisted cabin
+    // device id depends on that); home's gets a location-qualified id
+    // instead of colliding with it in DeviceRegistry.
+    @Test
+    void secondBridgeKeepsHomeDevicesSeparateFromCabinEvenWithAClashingFriendlyName() throws Exception {
+        adapter.configureBridgesForTest("zigbee2mqtt,zigbee2mqtt_home", "cabin,home");
+
+        registerDevice("motion_entry"); // cabin, via the default "zigbee2mqtt/" prefix
+
+        deliver("zigbee2mqtt_home/bridge/devices", """
+            [{"friendly_name":"motion_entry","type":"EndDevice","definition":{
+              "model":"SNZB-03PR2","description":"motion","vendor":"SONOFF","exposes":[]}}]
+            """);
+
+        assertNotNull(registry.get("z2m-motion_entry"), "cabin's device keeps its original unqualified id");
+        assertNotNull(registry.get("z2m-home-motion_entry"), "home's device gets a location-qualified id instead of colliding");
+        assertEquals("cabin", registry.descriptor("z2m-motion_entry").orElseThrow().location());
+        assertEquals("home", registry.descriptor("z2m-home-motion_entry").orElseThrow().location());
+
+        deliver("zigbee2mqtt/motion_entry", "{\"linkquality\": 90}");
+        deliver("zigbee2mqtt_home/motion_entry", "{\"linkquality\": 150}");
+
+        assertEquals(90, signalQualityRegistry.assess("z2m-motion_entry").orElseThrow().current(),
+            "cabin's reading must not be overwritten by home's message on the same friendly name");
+        assertEquals(150, signalQualityRegistry.assess("z2m-home-motion_entry").orElseThrow().current());
+    }
+
     @Test
     void repeatedBridgeListCorrectsStaleCandidateMetadata() throws Exception {
         registry.registerCandidate(new DeviceDescriptor(

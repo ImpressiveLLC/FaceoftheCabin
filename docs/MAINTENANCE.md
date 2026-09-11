@@ -54,6 +54,12 @@ Tailscale-only. This isn't an oversight to "fix" — it's the deliberate
 boundary between the product surface and the reconfiguration surface. See
 `docs/ontology.yaml` and `ROADMAP.md` for the full reasoning.
 
+**This diagram is Cabin-specific.** A second location, Home, has a real
+deploy template at `cabin-orchestration-platform/locations/home/` and a
+seeded (currently disabled) device inventory in `DeviceRegistry` — see
+"Home Location — Android/Termux Collector Bring-Up" below and
+`ROADMAP.md`'s Phase 8 for the current state and architecture.
+
 ---
 
 ## Deployment
@@ -1007,6 +1013,139 @@ transport now works, but the tile's own message-handling code hasn't
 been exercised against a real live connection since this fix (it was
 never reachable before, so it's realistically untested code, not just
 unverified today).
+
+---
+
+## Home Location — Android/Termux Collector Bring-Up
+
+*Home is a second physical property, distinct from Cabin. Per `ROADMAP.md`'s
+Phase 8 (Accessible Hardware Program), Home is designed as a lightweight
+**collector**, not a second full stack: whatever runs there (currently a
+spare Android phone under Termux, running Zigbee2MQTT) collects device
+telemetry and ships it to the M920q as the one shared "main brain." It does
+NOT run its own Postgres/Kafka/cabin-backend, and it does NOT need its own
+Home Assistant instance for the Zigbee path specifically — only MQTT
+telemetry needs to reach the M920q. A real, deployable-but-never-deployed
+full-stack overlay also exists at `cabin-orchestration-platform/locations/home/`
+for other (non-Zigbee) integrations — see the architecture note in that
+directory before assuming it should be stood up as-is; it predates the
+Phase 8 lightweight-collector correction.*
+
+**Status as of 2026-09-10**: a real bench POC (SMLIGHT SLZB-MR5U coordinator
++ Termux on a Sony Xperia) passed — Zigbee2MQTT formed a real Zigbee network
+over a plain TCP socket to the coordinator. Full replayable command log at
+[`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`](RUNLOG_2026-09-10_home-collector-mr5u-termux.md).
+Three reusable gotchas from that bring-up, worth checking first on any
+future device before re-debugging them from scratch:
+
+1. **Termux's auto-selected apt mirror can silently serve corrupted large
+   packages** — looks exactly like a slow/hung download, isn't. `apt`
+   prints `Ign:` (hash-sum mismatch) lines rather than a loud error.
+   **Fix, do this first on any fresh Termux install, before the first
+   `pkg install`:**
+   ```bash
+   echo "deb https://packages.termux.dev/apt/termux-main stable main" > \
+     $PREFIX/etc/apt/sources.list
+   apt clean && pkg update -y
+   ```
+2. **TypeScript 7's native compiler has no `android` build target at all**
+   (confirmed via `npm view @typescript/typescript-android-arm64` —
+   returns nothing; the package's own `optionalDependencies` list every
+   other OS/arch combination except Android). **Never `git clone` +
+   `npm run build` a TypeScript project like Zigbee2MQTT on Termux** —
+   `npm install zigbee2mqtt` instead, which pulls the already-published,
+   pre-built JS and sidesteps the gap entirely.
+3. **Zigbee2MQTT's own `cli.js` silently redirects all config to `~/.z2m/`**,
+   not the installed package's bundled `data/` folder:
+   ```js
+   process.env.ZIGBEE2MQTT_DATA = process.env.ZIGBEE2MQTT_DATA || path.join(process.env.HOME, ".z2m");
+   ```
+   Always edit `~/.z2m/configuration.yaml` directly — an edit to
+   `node_modules/zigbee2mqtt/data/configuration.yaml` is silently written
+   correctly and never once read.
+
+**Resolved 2026-09-11**: Zigbee2MQTT's MQTT traffic reaches the M920q via
+Tailscale, confirmed end-to-end (client log shows `Connected to MQTT
+server`; independently confirmed on the M920q itself via `mosquitto_sub`
+receiving the real `zigbee2mqtt/bridge/state` message). **One real
+gotcha**: use the M920q's numeric Tailscale IP (`100.77.44.113`) for
+`mqtt.server`, not the `cabin-hub` MagicDNS hostname — Termux's own
+resolver doesn't pick up Tailscale's MagicDNS names even while actively
+connected and routing (`ping cabin-hub` fails, `ping 100.77.44.113`
+succeeds with a real tailnet TTL). Full detail in
+`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`'s Step 5.
+
+**Found and fixed same day (2026-09-11), before any real Home device was
+paired through it**: reaching the M920q's broker wasn't the whole story.
+Zigbee2MQTT defaults its MQTT `base_topic` to `zigbee2mqtt` — the exact
+same topic cabin's real 13-device bridge already publishes under, on the
+same broker. Left as-is, the two bridges would have fought over retained
+topics (`zigbee2mqtt/bridge/state`, `bridge/devices`), and
+`Zigbee2MqttAdapter.java` had no way to know which mesh a device came
+from at all — it hardcoded one topic prefix and tagged every device
+`location: cabin` (its own class comment already flagged this: "extend
+if home-hub gets a coordinator").
+
+**Fix, two parts:**
+1. **Termux side (operational, not code)** — give Home's Z2M instance its
+   own base topic, distinct from cabin's. Edit `~/.z2m/configuration.yaml`
+   (not the package's bundled `data/` copy — see gotcha #3 above):
+   ```yaml
+   mqtt:
+     base_topic: home_z2m
+   ```
+   Restart Z2M after the edit. This alone makes the two bridges fully
+   independent topic trees on the shared broker — no code change required
+   for the collision itself.
+2. **Backend** — `Zigbee2MqttAdapter` now reads a configurable, ordered
+   list of bridges instead of one hardcoded prefix/location:
+   `cabin.zigbee.topicPrefixes` / `cabin.zigbee.locations` (comma-separated,
+   matched by index; env vars `CABIN_ZIGBEE_TOPIC_PREFIXES` /
+   `CABIN_ZIGBEE_LOCATIONS`). Defaults to the single cabin bridge that's
+   run since 2026-07-25, so nothing changes until Home is actually added:
+   ```
+   CABIN_ZIGBEE_TOPIC_PREFIXES=zigbee2mqtt,home_z2m
+   CABIN_ZIGBEE_LOCATIONS=cabin,home
+   ```
+   Each bridge gets its own `knownFriendlyNames` scope (a friendly name
+   reused across both meshes can't cross-contaminate device state) and
+   cabin's devices keep their original unqualified `z2m-<friendlyName>`
+   ids — every already-persisted cabin device id depends on that staying
+   unchanged. Home's (or any other new location's) devices get
+   `z2m-<location>-<friendlyName>` instead. Zigbee pairing
+   (`permit_join`) now broadcasts to every configured bridge rather than
+   targeting one — safe, since a Zigbee join is RF-proximity bound, so
+   opening pairing on a coordinator the new device can't physically reach
+   is a no-op there, not a wrong-mesh pairing risk.
+
+**Two things checked and confirmed NOT to need changes**, worth recording
+so they aren't re-investigated later: `DeviceRegistry.seedDefaults()`
+never seeds Zigbee devices at all (its own comment: "Zigbee devices
+auto-registered by Zigbee2MqttAdapter... Seeds here are non-Zigbee cabin
+devices only") — both meshes are purely live-discovered via
+`bridge/devices`, so there's no hardcoded cabin-only seed list to touch.
+And Mosquitto (`infra/mosquitto.conf`) has `allow_anonymous true` on both
+listeners with no `acl_file` at all — already fully open, consistent with
+this project's existing security posture (Tailscale is the boundary, not
+per-topic broker ACLs — see REPLICATION.md §7), not a new gap introduced
+by adding a second bridge.
+
+**Not done in this pass, deliberately**: no ontology.yaml entity for the
+Home bridge itself. This file's ontology models real physical *devices*
+(`zigbee_motion_entry`, `zigbee_leak_mech_room`, etc.), not bridge
+infrastructure — there's no existing "Zigbee bridge" entity class to
+extend, and inventing one before any real Home device is paired would be
+documenting something speculative rather than real. Once Home's actual
+Zigbee devices are paired, add each one following the exact
+`zigbee_motion_entry`-style entity template and REPLICATION.md §6's
+onboarding checklist (ontology entity before configuration,
+`migration_status: complete` only after a live-device test) — same
+process already used for every cabin device, nothing new invented for
+Home.
+
+Code: `Zigbee2MqttAdapter.java`, `Zigbee2MqttAdapterTest.java` (new
+`secondBridgeKeepsHomeDevicesSeparateFromCabinEvenWithAClashingFriendlyName`
+test), `application.yml`.
 
 ---
 

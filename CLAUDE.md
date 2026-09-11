@@ -632,18 +632,25 @@ themselves, they just never had anything to trip on before:
 
 ## Design constraints
 
-- No Python beyond the existing `watchdog.py`
+- No Python beyond `watchdog.py` **and** the `docs/ai-assistant/` corpus/
+  eval tooling (`scripts/build-corpus-inventory.py`,
+  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`) —
+  updated 2026-09-10, this constraint had drifted stale as those shipped.
+  Both are deliberately narrow, tooling-only exceptions; no Python in the
+  actual runtime request path (backend stays Java/Spring Boot, frontend
+  stays JS/React).
 - No ARM/Pi hardware for the two *production* "main brain" hubs — both
   are x86_64 Lenovo ThinkCentre M920q running the full stack (Postgres,
   Kafka, the Spring Boot backend, Grafana, HA, Node-RED, Frigate), and
   that stays true for Cabin/Home. This does **not** apply to the
   lightweight *local collector hub* role: `ROADMAP.md`'s Phase 8
-  (Accessible Hardware Program, planning only as of 2026-08-08, corrected
-  same day from an earlier full-stack framing) is a deliberate, planned
-  ARM/Pi/Android target for edge devices that collect metrics and route
-  them to a central brain — not a replacement for the M920q-class
-  "brain" role itself. Reconciled here rather than left as a silent
-  contradiction.
+  (Accessible Hardware Program) is a deliberate, planned ARM/Pi/Android
+  target for edge devices that collect metrics and route them to a
+  central brain — not a replacement for the M920q-class "brain" role
+  itself. **No longer just a plan**: a real bench POC (SMLIGHT SLZB-MR5U
+  + Termux on Android, 2026-09-10) confirmed Android/Termux viable for
+  this role — see `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`.
+  Reconciled here rather than left as a silent contradiction.
 - Free/personal-tier remote access only — Tailscale (device platform, cameras/locks/valve)
   and Cloudflare Tunnel on a free personal account (public-facing Family Hub) are both fine.
   This isn't a "Tailscale only" covenant — the goal is keeping the whole template usable

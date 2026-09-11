@@ -89,3 +89,55 @@ npm test
   in `run.js`)
 - No CI wiring yet — `npm test` is local-only until the CI/CD to-do in
   `CLAUDE.md` is built
+
+---
+
+## Home Location: Android/Termux Zigbee Collector (SMLIGHT SLZB-MR5U)
+
+Spec: `ROADMAP.md`'s Phase 8 (Accessible Hardware Program).
+Full run: [`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`](RUNLOG_2026-09-10_home-collector-mr5u-termux.md).
+
+### Automated coverage
+
+None yet — see Known gaps below.
+
+### Manual QA checklist (bench-verified 2026-09-10, real hardware)
+
+- [x] Coordinator discoverable on the local WiFi via mDNS (`slzb-mr5u.local`)
+      when no static IP is known
+- [x] TCP port `6638` (Zigbee coordinator socket) and `80` (web UI) both
+      reachable from the collector device, not just the LAN generally
+- [x] Termux SSH access reachable from a dev machine on the same network
+      (key-based, not password) — enables scripted bring-up instead of
+      on-device touch-typing
+- [x] Zigbee2MQTT starts under Termux and completes a real coordinator
+      handshake — `Coordinator firmware version:` line present in the
+      startup log, not just a process that stays up
+- [x] A real Zigbee network forms (not just a coordinator ping) — confirmed
+      via a real PAN ID/extended PAN ID/channel assignment and a
+      `coordinator_backup.json` written to disk
+- [x] MQTT telemetry actually reaches the M920q's broker via Tailscale —
+      **verified end-to-end 2026-09-11**, both client-side (`Connected to
+      MQTT server`) and independently on the M920q itself
+      (`mosquitto_sub` received the real message). Use the numeric
+      Tailscale IP (`100.77.44.113`), not the `cabin-hub` MagicDNS name —
+      Termux's own resolver doesn't pick that up even when connected
+- [ ] At least one real Zigbee end device paired and visible as a topic
+      under `zigbee2mqtt/` on the M920q's broker
+- [ ] Survives a phone reboot / Termux process restart without manual
+      re-entry of the config (Termux:Boot not yet set up)
+
+### Known gaps
+
+- **No automated smoke test exists.** Every checklist item above was
+  verified by hand, once, on one specific phone/coordinator pair. The run
+  log's own "Next steps" section proposes collapsing the bring-up into a
+  single `provision-collector.sh` — a natural place to add an automated
+  pass/fail check once that script exists, rather than inventing test
+  infrastructure ahead of it.
+- No test coverage for the three dev-gotcha fixes (mirror pin, `npm install`
+  vs. clone+build, `~/.z2m/` config path) — they're operational knowledge in
+  `docs/MAINTENANCE.md`, not asserted anywhere a regression would be caught.
+- Untested: behavior across a Termux/Android update, a Zigbee2MQTT version
+  bump, or a different phone model — this pass covered exactly one specific
+  hardware/software combination.

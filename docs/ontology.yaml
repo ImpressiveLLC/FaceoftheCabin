@@ -83,7 +83,17 @@
 #                     lifecycle_status is deprecated or unused; the date
 #                     this concept stopped being live, with the same
 #                     citation standard as first_used.ref.
-#   data_class:       raw | derived | conceptual | composite
+#   data_class:       raw | derived | conceptual | composite | product
+#                     (product added schema v0.5.0, 2026-09-11 — data
+#                     deliberately packaged/curated for direct external
+#                     or customer-facing delivery: a curated KB answer, a
+#                     marketing claim, a customer-facing report. Defined
+#                     by a human curation act with an accountability/
+#                     freshness contract, not by computation method —
+#                     primitive is always false for data_class: product.
+#                     NOT backfilled across existing entries in one pass,
+#                     same precedent as lifecycle_status's own rollout —
+#                     see ROADMAP.md's "Ontology Migration Review".)
 #   data_type:        XSD primitive (xsd:string, xsd:boolean, xsd:integer,
 #                     xsd:decimal, xsd:date, xsd:anyURI, xsd:hexBinary)
 #                     or owl:Class for structured/composite entries
@@ -105,7 +115,14 @@
 #     - target:       id of related element
 #       type:         derives_from | consumed_by | triggers | depends_on |
 #                     replaces | extends | complements | monitors | controls |
-#                     notifies
+#                     notifies | located_in
+#                     (this list has drifted from actual usage over time —
+#                     related_to, derived_from, applies_to, scoped_to,
+#                     produces, and consumes all appear in entries below
+#                     without ever being added here; not reconciled in
+#                     this pass, flagged so it isn't mistaken for a
+#                     closed/enforced enum. located_in added 2026-09-11
+#                     for device_room → hub_location.)
 #       cardinality:  1:1 | 1:N | N:1 | N:M
 #   normal_range:     expected value envelope (optional, sensor readings)
 #   transformation:   source→middle→target pipeline description
@@ -113,10 +130,15 @@
 #   notes:            implementation notes, constraints, known issues
 # ─────────────────────────────────────────────────────────────────────────────
 
-version: "0.3.0"
+version: "0.5.0"
 status: draft
 maintainer: FaceoftheCabin platform team
-last_updated: "2026-07-28"
+last_updated: "2026-09-11"
+# Note: this top-level version/last_updated pair had drifted stale
+# (frozen at 0.3.0/2026-07-28) even though per-entity schema_version
+# tags already referenced 0.4.0/0.4.1 work done since — not reconciled
+# beyond this bump; entity-level schema_version remains the authoritative
+# per-entry marker, this field is a coarser, slower-moving one.
 
 # ═══════════════════════════════════════════════════════════════════════════
 # HARDWARE ELEMENTS
@@ -465,6 +487,21 @@ elements:
       - target: location_context
         type: consumed_by
         cardinality: "1:1"
+      - target: hub_location
+        type: located_in
+        cardinality: "N:1"
+    notes: >
+      Added 2026-09-11 (WSJF, session-approved, artifact ratification
+      pending): `located_in` → hub_location closes a real ontology-graph
+      gap found while scoping a second real location (Home) — this room's
+      site (Cabin vs. Home) was previously only an implicit assumption
+      via DeviceDescriptor.location's own bare string, never a first-class,
+      queryable edge here. Pure documentation addition; no code change,
+      no migration. DeviceDescriptor.location itself deliberately stays a
+      bare string for now — see D6 (docs/ontology/schema/location.schema.json),
+      already assessed once (Sprint 1) as out of scope for a full enum/FK
+      migration, reassessed here and still deferred; a real migration is
+      a legitimate future WSJF backlog item, not a documentation-pass task.
 
   - id: device_install_photo
     entity_type: owl:DatatypeProperty
@@ -5041,6 +5078,9 @@ elements:
       - target: hub_brand_block
         type: complements
         cardinality: "N:1"
+      - target: device_room
+        type: consumed_by
+        cardinality: "1:N"
     transformation: >
       cabin-ui's useHubLocations() hook (App.jsx) fetches GET
       /api/locations on load and merges each row into the still-present
@@ -9728,3 +9768,103 @@ elements:
       integration has since added a door-sensor entity in a newer
       version than what was verified 2026-08-07 -- both real follow-up
       research, not implementable from what's confirmed today.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# KNOWLEDGE BASE / TINY HELPDESK LAYER
+# The live, Postgres-backed AI-assistant knowledge system — added 2026-09-11,
+# closing a real gap: this layer has been live in code since Sprint 1
+# (KB Generator v1) but had zero ontology.yaml entries until now.
+# ═══════════════════════════════════════════════════════════════════════════
+
+  - id: knowledge_chunk_type
+    entity_type: owl:DatatypeProperty
+    layer: backend
+    primitive: true
+    schema_version: "0.5.0"
+    migration_status: complete
+    lifecycle_status: used
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      vocabulary: closed_enum
+      values: [DESCRIPTION, SETUP, TROUBLESHOOTING, CREDENTIAL_POINTER, RELATIONSHIP]
+      description: >
+        Java enum KnowledgeChunkType. CREDENTIAL_POINTER, SETUP, and
+        TROUBLESHOOTING can only ever be written by a human via
+        POST /api/kb/curate — KbGeneratorService's own upsertAutoGenerated()
+        throws IllegalArgumentException if ever called with
+        CREDENTIAL_POINTER, and structurally never emits SETUP/
+        TROUBLESHOOTING at all. This is how D5/D9's "safety-critical
+        content must never be auto-generated" rule is actually enforced —
+        by what the generator code is capable of producing, not by a
+        runtime type-check on the written row.
+    ui_display_name: "Knowledge Chunk Type"
+    rendering:
+      semantic: (not shown)
+      systems: Knowledge chunk kind
+      technical: KnowledgeChunkType (Java enum)
+      compliance: Content classification
+    definition: >
+      The kind of information a knowledge_node row holds — a device
+      description, a setup procedure, a troubleshooting note, a pointer to
+      a credential's location (never the credential itself), or a
+      relationship between entities.
+    relationships:
+      - target: knowledge_node
+        type: applies_to
+        cardinality: "1:N"
+
+  - id: knowledge_node
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.5.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-30"
+      ref: "Sprint 1, KB Generator v1 — persisted KnowledgeNode records, retrieved via Tiny Helpdesk"
+    data_class: composite
+    data_type: owl:Class
+    ui_display_name: "Knowledge Node"
+    source: >
+      Postgres knowledge_node table (JdbcKnowledgeNodeRepository), primary
+      key (entity_ref, chunk_type) — an upsert-on-conflict natural key, so
+      writing the same pair again overwrites rather than accumulates.
+      This is the live table TinyHelpdeskService.ask() actually reads from
+      at runtime — distinct from and not automatically fed by the separate,
+      static, PR-reviewed docs/ai-assistant/ corpus/eval tracking system.
+    rendering:
+      semantic: (not shown — admin/technical concept only)
+      systems: Knowledge base entry
+      technical: "KnowledgeNode(entityRef, chunkType, content, source, generatedAt)"
+      compliance: Curated/generated knowledge record, source-attributed
+    definition: >
+      One retrievable fact Tiny Helpdesk can answer from — either
+      auto-derived from existing device/registry data, or a human-curated
+      addition for anything the generator can't or shouldn't produce on
+      its own (setup steps, troubleshooting, credential pointers, or any
+      fact — like this platform's own Home-collector POC — that isn't
+      backed by a real DeviceDescriptor at all).
+    relationships:
+      - target: knowledge_chunk_type
+        type: depends_on
+        cardinality: "N:1"
+      - target: device_descriptor
+        type: derives_from
+        cardinality: "N:1"
+    notes: >
+      data_class is genuinely bimodal by row, not fixed for the class —
+      this is the concrete anchor for the new product data_class tier
+      (schema v0.5.0, see header): a row with source=AUTO_GENERATED
+      (written only by KbGeneratorService, always DESCRIPTION or
+      RELATIONSHIP, always device_descriptor-backed) is data_class:
+      derived; a row with source=MANUALLY_CURATED (written only by
+      POST /api/kb/curate) is data_class: product — a human curation act
+      with an accountability/freshness contract, regardless of whether
+      its content happens to restate raw or derived facts. The first
+      MANUALLY_CURATED row not backed by any real device_descriptor
+      (entityRef: home-zigbee-coordinator-mr5u, curated 2026-09-10) is
+      exactly the case this entity's own relationships list already
+      couldn't fully express — derives_from device_descriptor is the
+      common case, not a universal constraint.
