@@ -5978,10 +5978,10 @@ function RecentExecutionsList({ workflows, activeLocation, auth }) {
     <div className="workflow-recent-executions">
       <strong>Recent</strong>
       <p className="config-hint">Unviewed workflow firings.</p>
-      {recent.map(exec => {
+      {recent.map((exec, idx) => {
         const wf = workflows.find(w => w.workflowId === exec.workflowId);
         return (
-          <div key={exec.executionId} className="rule-row">
+          <div key={exec.executionId ?? idx} className="rule-row">
             <span className={`rule-dot ${exec.clearedAt ? "rule-inactive" : "rule-defined"}`}>●</span>
             <div>
               <div className="rule-name">{wf?.name || exec.workflowId}</div>
