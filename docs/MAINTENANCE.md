@@ -1248,6 +1248,51 @@ Code: `home-collector/network-scan-agent/agent.js` + `package.json`,
 `DeviceController.java` (+ `DeviceControllerTest.java` constructor
 update), `App.jsx`.
 
+**The real reason none of this was visible in the app yet, found the same
+night** — `VITE_HOME_API_BASE` (added above) was necessary but not
+sufficient. `App.jsx`'s `useHubLocations()` fetches `GET /api/locations`
+(the real `hub_location` Postgres table) on every page load and
+**mutates the module-level `LOCATIONS` object at runtime**
+(`Object.assign(LOCATIONS, mergeHubLocations(LOCATIONS, list))`), and
+`mergeHubLocations()` prefers the database's own `apiBase` over whatever
+the build baked in. The `home` row had never been touched since it was
+first seeded (`createdAt === updatedAt`) and still held the placeholder
+`http://home-hub:8080` — silently overwriting the correct build-time
+value seconds after every page load, regardless of how many times the
+frontend was rebuilt or how thoroughly the browser cache was cleared.
+`cabin`'s row had already been fixed once, the same way, back on
+2026-08-08 (see `AddPlaceForm`'s own field list comment referencing "the
+live hub_locations URL fix used 2026-08-08") — the precedent was already
+in the codebase, just not connected to this incident until found live.
+
+**Fixed** with `PATCH /api/locations/home` (`{"apiBase":
+"https://api.unicornpingpong.com"}`), the same documented endpoint
+`AddPlaceForm`/cabin's own prior fix already uses — not a code change,
+a one-time data fix. Live-verified afterward: all 20 Home devices (14
+seeded placeholders + 6 real network-scan candidates) render correctly
+in Device Manager for the first time.
+
+**Also explains a second symptom that looked unrelated at first**:
+viewing "Home" made *both* the Cabin and Home cards on My Places show
+0 — `refreshDevices()` only fetches Cabin's devices when
+`activeLocation` is "cabin" or "both" (see that function's own comment,
+"Fetch from cabin hub always; also fetch home hub when viewing home or
+both"), so viewing Home alone never fetches Cabin at all; when Home's
+fetch hit the dead placeholder URL, the shared `devices` array ended up
+completely empty, zeroing out both cards' derived counts, not just
+Home's.
+
+**Left alone, deliberately**: `home`'s other `hub_locations` columns
+(`wsBase`, `grafanaUrl`, `noderedUrl`, `haUrl`, `frigateUrl`) still hold
+placeholders — correctly, since Home genuinely has none of those yet.
+Only `apiBase` was real to fix.
+
+**Worth remembering for any future location-config change**: this
+project now has *two* places a location's connection info can live —
+the frontend build args (`VITE_*_API_BASE` etc., fixed at image-build
+time) and the `hub_location` database row (fetched and merged at
+runtime, taking priority). Changing only one is not enough; check both.
+
 ---
 
 ## Known Issues & Operational Lessons
