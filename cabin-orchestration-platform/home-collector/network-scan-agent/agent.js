@@ -20,8 +20,50 @@
 // waiting for the full window is simpler and more robust than assuming a
 // particular arrival order.
 
+const os = require('os');
+const { execSync } = require('child_process');
 const mqtt = require('mqtt');
-const mdns = require('multicast-dns')();
+
+// This phone also runs Tailscale (needed for this agent's own MQTT
+// connection to reach the cabin M920q broker over the tailnet) -- on a
+// multi-homed host like this, the OS's default outgoing interface for a
+// multicast destination is not guaranteed to be the real WiFi LAN
+// adapter. Confirmed live 2026-09-11: an unbound multicast-dns instance
+// here (and an equivalent unbound raw socket on a separate Windows PC on
+// the same LAN) got zero responses from real devices; explicitly binding
+// to the WiFi adapter's own address immediately found the Home network's
+// real devices (SLZB-MR5U, a Brother printer, the router, others). Tailscale's
+// CGNAT range is 100.64.0.0/10 -- skip it, prefer whatever private LAN
+// address is left.
+function pickLanInterface() {
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const iface of ifaces[name]) {
+      if (iface.family !== 'IPv4' || iface.internal) continue;
+      if (iface.address.startsWith('100.')) {
+        const second = parseInt(iface.address.split('.')[1], 10);
+        if (second >= 64 && second <= 127) continue; // Tailscale CGNAT range
+      }
+      return iface.address;
+    }
+  }
+  return null;
+}
+
+const LAN_INTERFACE = pickLanInterface();
+console.log(`[network-scan-agent] binding mDNS to LAN interface: ${LAN_INTERFACE || '(none found, falling back to library default -- scans will likely find nothing)'}`);
+// multicast-dns uses opts.interface for two different things: which
+// interface to join the multicast group / send queries from (what we
+// actually want fixed), and -- unless overridden -- the socket's own
+// bind address too. Binding the receiving socket to one specific
+// unicast address instead of the wildcard breaks multicast reception on
+// this network stack (confirmed live: 0 'response' events fired at all
+// with opts.interface alone, despite the correct interface being picked
+// and the same query succeeding from a raw socket bound to the
+// wildcard). bind: '0.0.0.0' keeps the socket wildcard-bound for
+// receiving while opts.interface still correctly scopes the multicast
+// group membership and outgoing interface.
+const mdns = require('multicast-dns')(LAN_INTERFACE ? { interface: LAN_INTERFACE, bind: '0.0.0.0' } : {});
 
 const BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://100.77.44.113:1883';
 const REQUEST_TOPIC = 'home/network-scan/request';
@@ -86,12 +128,26 @@ function recordAnswer(a) {
 }
 
 mdns.on('response', (response) => {
+  if (process.env.DEBUG_MDNS) {
+    const all = [...(response.answers || []), ...(response.additionals || [])];
+    console.log(`[network-scan-agent] DEBUG raw response, ${all.length} record(s): ` +
+      JSON.stringify(all.map(a => ({ name: a.name, type: a.type }))));
+  }
   (response.answers || []).forEach(recordAnswer);
   (response.additionals || []).forEach(recordAnswer);
 });
 
 function startScan(durationSeconds) {
   console.log(`[network-scan-agent] scan starting, duration=${durationSeconds}s`);
+  // Confirmed live 2026-09-11: a scan found nothing at all with the phone
+  // locked/screen off, and found everything immediately once unlocked --
+  // Android suppresses incoming WiFi multicast in Doze mode. Holding a
+  // wake lock is an attempt to get the same result without requiring the
+  // screen to stay on; NOT yet confirmed to work by itself (only
+  // screen-on is confirmed) -- if scans still come up empty with the
+  // screen off, this alone isn't sufficient and the screen-on workaround
+  // is still the reliable one.
+  try { execSync('termux-wake-lock'); } catch (e) { console.log('[network-scan-agent] termux-wake-lock failed (Termux:API missing/no permission?):', e.message); }
   resetScanState();
   SERVICE_TYPES.forEach((type) => {
     mdns.query({ questions: [{ name: type, type: 'PTR' }] });
@@ -129,6 +185,7 @@ function finishScan() {
     found++;
   }
   console.log(`[network-scan-agent] scan finished, ${found} device(s) published`);
+  try { execSync('termux-wake-unlock'); } catch (e) { /* no lock held, or termux-api unavailable -- fine either way */ }
 }
 
 const client = mqtt.connect(BROKER_URL, { clientId: 'home-network-scan-agent' });

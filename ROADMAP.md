@@ -1319,14 +1319,38 @@ mechanism, not something invented from scratch.
    phone many people already own), and *more* viable for this scoped-
    down collector role than for running a full stack — Mosquitto/a
    forwarder/even Node-RED (Node.js-based) run fine under Termux without
-   root. **Two real, unproven risks to flag, not assume away**: (a) a
-   USB Zigbee coordinator via Android USB-OTG + Termux USB permissions is
-   genuinely finicky and has not been validated in this project at all;
-   (b) 24/7 unattended reliability against Android's Doze mode/aggressive
-   background-process killing needs `Termux:Boot` + wake locks + a
-   battery-optimization exemption — solvable, known patterns, but not yet
-   prototyped here. Recommend a small spike to validate both before
-   committing to this as a first-class supported option.
+   root. The real "collector hub" here is genuinely two pieces working
+   together, not the phone alone: the Termux phone (compute/networking)
+   *and* a network-attached Zigbee coordinator (the SMLIGHT SLZB-MR5U,
+   confirmed working over a plain TCP socket rather than USB — see item
+   (a) below) — both belong in this decision, not just the phone.
+   **Risk (a), Zigbee coordinator connectivity, resolved**: the original
+   USB-OTG concern is moot — the bench POC used a network-attached
+   coordinator (TCP socket to the coordinator's own IP) instead of USB
+   passthrough, sidestepping Android USB-OTG/Termux permission issues
+   entirely. Confirmed working, `docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`.
+   **Risk (b), Doze mode, now concretely confirmed, not just anticipated**:
+   2026-09-12 live testing (`docs/MAINTENANCE.md`'s Home Location
+   section) found the *specific* manifestation — Android suppresses
+   incoming WiFi multicast traffic (needed for local network device
+   discovery) whenever the screen is off/idle, and there is no
+   Termux:API command to acquire the `WifiManager.MulticastLock` that
+   would prevent it. A CPU wake lock (`termux-wake-lock`) alone was
+   tested and confirmed **not** sufficient. Screen-on is the only
+   currently-confirmed workaround — a real, live limitation, not a
+   hypothetical one anymore.
+   **Real fix, not yet built**: a small companion Android app that holds
+   a proper multicast lock via Android's own `WifiManager` API — Termux
+   itself cannot do this, it's outside what a shell/Node process can
+   request. Per direct user instruction, this should **not** be a
+   separate manual-install side-step: if a companion app is needed for
+   collector duty alongside Termux, it should ship as a single `.apk`
+   and be installable *through this platform's own app* (e.g. offered
+   from My Places or a Home-specific setup screen), not a standalone
+   sideload the user has to go find. Not scoped or started — real
+   Android app development (a new toolchain this repo doesn't have any
+   presence in today), tracked here as a real next step, not a vague
+   someday.
 3. **Cheap secondhand x86_64 mini-PC or laptop, imaged with Ubuntu.**
    Still valid, but no longer uniquely necessary just to have somewhere
    to run things, since the local-hub role no longer needs Kafka/

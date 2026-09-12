@@ -1194,8 +1194,54 @@ shape as every other push-style integration this project already has
    wording from before Home had its own bridge; now says "this location's
    Zigbee coordinator."
 
-Not yet live-verified against Home's real network at the time this was
-written — deploy-and-test is the immediate next step, not assumed done.
+**Live-verified end to end, 2026-09-12** — real devices on Home's actual
+WiFi (`Unicorn Ping-Pong`), not a fixture: `netscan-lg_webos_tv_oled42c5pua`,
+`netscan-brother_hl_l2480dw`, `netscan-slzb_mr5u`, `netscan-myrouter`,
+`netscan-retropie`, `netscan-oled42c5pua`, all correctly tagged
+`location: home` and visible via `GET /api/devices/candidates`.
+
+**Two real bugs found and fixed during that verification, both worth
+knowing before touching this again:**
+
+1. **Wrong outgoing interface on any multi-homed host.** Both the Home
+   phone and (separately, confirmed on this Windows dev machine on the
+   same LAN) a completely different device got zero mDNS responses at
+   first, despite the query clearly being sent. Root cause: both hosts
+   also run Tailscale, and the OS's default outgoing interface for a
+   multicast destination isn't guaranteed to be the real WiFi adapter —
+   it can go out the Tailscale virtual interface instead, where it
+   reaches nothing. Fixed by explicitly detecting and binding to the
+   real LAN interface (`pickLanInterface()` in `agent.js`, skips
+   Tailscale's 100.64.0.0/10 CGNAT range).
+2. **`multicast-dns`'s own `interface` option breaks receiving if used
+   alone.** The library uses `opts.interface` for two different things:
+   which interface to join the multicast group on (correct, what we
+   want), and — unless overridden — the socket's own bind address too.
+   Binding the receiving socket to one specific unicast address instead
+   of the wildcard silently breaks multicast reception on this network
+   stack (confirmed: zero `'response'` events fired at all with
+   `opts.interface` alone, despite the interface being correctly picked).
+   Fixed by also passing `bind: '0.0.0.0'`, which the library's own code
+   prioritizes over `opts.interface` for the bind call specifically.
+
+**A third finding that isn't a code bug — it's a real Android platform
+constraint, and it's the one that actually matters operationally:**
+Android suppresses incoming WiFi multicast traffic in Doze mode (screen
+off/idle) unless an app holds a `WifiManager.MulticastLock` — something
+Termux has no standard way to acquire (`termux-wifi-connectioninfo`,
+`-enable`, `-scaninfo` are Termux:API's only WiFi commands; no
+multicast-lock equivalent exists). Confirmed directly: a scan with the
+phone locked found nothing; the identical scan seconds later with the
+phone merely unlocked (screen on) found all 6 devices immediately.
+`agent.js` calls `termux-wake-lock` around each scan as a cheap attempt
+at a workaround — **confirmed NOT sufficient by itself** (tested with
+the screen off: still zero devices, even with the wake lock held) — kept
+in anyway since it's harmless and may help on other Android versions,
+but don't rely on it. **The phone's screen must be unlocked/on for the
+duration of a scan until this is solved properly** — the real fix would
+be a small companion Android app (or Termux:Tasker-style integration)
+that holds an actual multicast lock via Android's own API, which is out
+of scope for this pass.
 
 Code: `home-collector/network-scan-agent/agent.js` + `package.json`,
 `MqttBridgeService.java` (+ `MqttBridgeServiceTest.java`),

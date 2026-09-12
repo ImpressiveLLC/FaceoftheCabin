@@ -382,6 +382,16 @@ services:
         # config file this repo can drive). Core device list/status and the
         # Family Hub link both need this to work for a non-Tailscale visitor.
         VITE_CABIN_API_BASE: ${CABIN_API_URL:-https://api.unicornpingpong.com}
+        # Found 2026-09-12: never wired at all before -- the source
+        # default (App.jsx's LOCATIONS.home.apiBase, "http://home-hub:8080")
+        # silently pointed every Home-location API call (candidates,
+        # devices, network-scan, ...) at a host that has never existed,
+        # exactly like the CABIN_ADMIN_EMAILS gap found the same night.
+        # There is only one real backend (this same cabin-backend) --
+        # Home's data lives there too, distinguished by the `location`
+        # field on each device, not a separate deployment. Same value as
+        # VITE_CABIN_API_BASE above, not a placeholder Home-specific URL.
+        VITE_HOME_API_BASE: ${CABIN_API_URL:-https://api.unicornpingpong.com}
         # Left Tailscale-only deliberately: raw MQTT pub/sub (device control
         # channel, not just viewing), and every embed below is a direct
         # admin/reconfiguration surface (Node-RED flow editor, Frigate NVR

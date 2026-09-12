@@ -18,6 +18,17 @@ COPY . .
 # ADMIN_EMAILS going missing in family-hub's .env — a value "looks" wired
 # through docker-compose but the receiving Dockerfile silently drops it.
 ARG VITE_CABIN_API_BASE=http://localhost:8090
+# Found 2026-09-12: same bug class as the 2026-08-02 finding above, never
+# caught for Home specifically until Home had real functionality worth
+# testing (the Zigbee bridge + network-scan work). Home has no backend
+# of its own -- there is only one real cabin-backend, serving Home's
+# data too (distinguished by the `location` field on each device) -- so
+# this should carry the SAME real URL as VITE_CABIN_API_BASE, not a
+# separate Home-specific one. Until this was set, App.jsx's own
+# isLocationDeployed() correctly (if confusingly) treated Home as
+# never-deployed, which is also why Home's health badge and Candidates
+# list looked broken rather than just empty.
+ARG VITE_HOME_API_BASE=http://home-hub:8080
 ARG VITE_CABIN_WS_BASE=ws://localhost:9001
 ARG VITE_CABIN_GRAFANA_URL=http://localhost:3002
 ARG VITE_CABIN_NODERED_URL=http://localhost:1880
@@ -32,6 +43,7 @@ ARG VITE_CABIN_FAMILY_HUB_URL=
 # Console -> APIs & Services -> Credentials) — a manual, one-time step.
 ARG VITE_CABIN_GOOGLE_CLIENT_ID=
 ENV VITE_CABIN_API_BASE=$VITE_CABIN_API_BASE
+ENV VITE_HOME_API_BASE=$VITE_HOME_API_BASE
 ENV VITE_CABIN_WS_BASE=$VITE_CABIN_WS_BASE
 ENV VITE_CABIN_GRAFANA_URL=$VITE_CABIN_GRAFANA_URL
 ENV VITE_CABIN_NODERED_URL=$VITE_CABIN_NODERED_URL
