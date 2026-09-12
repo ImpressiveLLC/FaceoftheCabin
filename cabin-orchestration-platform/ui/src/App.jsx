@@ -6822,19 +6822,28 @@ function App() {
   // outage.
   const refreshDevices = useCallback(() => {
     // Fetch from cabin hub always; also fetch home hub when viewing home or both.
-    const attempts = [];
-    if (activeLocation === "cabin" || activeLocation === "both") {
-      attempts.push({ loc: LOCATIONS.cabin, promise:
-        cameraAuth.authedFetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
+    //
+    // Found 2026-09-12 (direct user report): Home has no backend of its own --
+    // GET /api/devices always returns every location's devices from the one
+    // shared cabin-backend, regardless of which location's apiBase it's
+    // requested from (DeviceController.listDevices() has no location filter
+    // at all -- see registry.visible()). Once VITE_HOME_API_BASE/hub_locations
+    // pointed home.apiBase at that same real backend (this session's earlier
+    // fix), cabin.apiBase and home.apiBase became the identical URL -- so
+    // "both" mode was fetching that one endpoint twice and flattening two
+    // full copies of every device together, silently doubling every count.
+    // Deduping by apiBase (not by location label) fetches each distinct
+    // backend exactly once no matter how many LOCATIONS entries point at it.
+    const wantCabin = activeLocation === "cabin" || activeLocation === "both";
+    const wantHome = activeLocation === "home" || activeLocation === "both";
+    const basesToFetch = new Map();
+    if (wantCabin) basesToFetch.set(LOCATIONS.cabin.apiBase, LOCATIONS.cabin);
+    if (wantHome) basesToFetch.set(LOCATIONS.home.apiBase, LOCATIONS.home);
+    const attempts = [...basesToFetch.entries()].map(([apiBase, loc]) => ({
+      loc, promise:
+        cameraAuth.authedFetch(`${apiBase}/api/devices`)
           .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      });
-    }
-    if (activeLocation === "home" || activeLocation === "both") {
-      attempts.push({ loc: LOCATIONS.home, promise:
-        cameraAuth.authedFetch(`${LOCATIONS.home.apiBase}/api/devices`)
-          .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      });
-    }
+    }));
     Promise.allSettled(attempts.map(a => a.promise)).then(results => {
       const succeeded = results.filter(r => r.status === "fulfilled");
       setDevices(succeeded.map(r => r.value).flat());
@@ -6887,6 +6896,18 @@ function App() {
   const locationLabel = activeLocation === "both"
     ? "Cabin + Home"
     : (LOCATIONS[activeLocation]?.label || "Hub");
+
+  // Found 2026-09-12 (direct user report): the toolbar's device-count
+  // toggle read the raw `devices` array directly, which -- since
+  // GET /api/devices always returns every location's devices from the one
+  // shared cabin-backend (see refreshDevices' own comment above) -- meant
+  // the two numbers never changed no matter which location tab was active.
+  // DeviceManagerPanel already solved exactly this for its own list
+  // (locDevices, found 2026-08-08); the toolbar count just never got the
+  // same filter applied.
+  const toolbarDevices = activeLocation === "both"
+    ? devices
+    : devices.filter(d => !d.location || d.location === activeLocation);
 
   return (
     <AppContext.Provider value={{
@@ -6947,14 +6968,14 @@ function App() {
                   onClick={() => setDeviceCountMode("devices")}
                   title="Parent devices -- not itself a child of another device"
                 >
-                  {countParentDevices(devices)} devices
+                  {countParentDevices(toolbarDevices)} devices
                 </button>
                 <button
                   className={`dc-btn ${deviceCountMode === "services" ? "dc-active" : ""}`}
                   onClick={() => setDeviceCountMode("services")}
                   title="Every discovered device/service, including each entity of a multi-service device"
                 >
-                  {devices.length} device services
+                  {toolbarDevices.length} device services
                 </button>
               </div>
             </div>
