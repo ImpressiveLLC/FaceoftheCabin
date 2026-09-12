@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,7 +38,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Subscriptions (per bridge, {@code <prefix>} e.g. "zigbee2mqtt"):
  *   {@code <prefix>/bridge/devices}        — device list (device discovery)
- *   {@code <prefix>/bridge/state}          — bridge health
+ *   {@code <prefix>/bridge/state}          — bridge health (retained; can go stale, see below)
+ *   {@code <prefix>/bridge/health}         — periodic non-retained self-report, cross-checks bridge/state
  *   {@code <prefix>/{friendly_name}}       — per-device state updates
  *
  * Publishes (to every configured bridge):
@@ -91,6 +93,41 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     // goal here) doesn't depend on this.
     private volatile String bridgeState = "offline";
     private volatile String bridgeVersion = null;
+
+    // Found 2026-09-11: cabin's real bridge/state topic was retained
+    // "offline" for at least 4+ days while the bridge was demonstrably up
+    // and actively publishing all 13 devices' telemetry the whole time
+    // (docker logs showed a continuous stream, container never restarted).
+    // Root-caused via the container's own MQTT publish log: Z2M published
+    // "online" at 00:04:53 and again at 00:05:49 on 2026-09-07, then BOTH
+    // the mosquitto and zigbee2mqtt containers restarted together at
+    // 05:04:42 that same morning (docker inspect StartedAt matches to the
+    // second) -- and no further "MQTT publish: topic '.../bridge/state'"
+    // line appears anywhere in the log after that restart. Whatever
+    // mosquitto's persisted retained-message store held at that restart
+    // (mosquitto.conf here has `persistence true` with no autosave_interval
+    // override, i.e. the 1800s/on-clean-shutdown default) won the race
+    // against Z2M's fresh publish, and nothing since has re-asserted the
+    // correct value -- the exact same class of bug as the 2026-09-01
+    // main_water_valve retained-replay incident below, just triggered by a
+    // broker-side restart instead of an adapter-side resubscribe. Mosquitto's
+    // own docker logs only went back about 15 minutes when this was
+    // investigated (stdout log driver, no retention configured), so the
+    // precise trigger at 05:04:42 couldn't be forensically confirmed further
+    // -- see docs/MAINTENANCE.md's entry for the full writeup.
+    //
+    // Rather than chase exactly when a retained flag can silently desync
+    // (broker restart ordering, a dropped initial publish before CONNACK,
+    // etc.), treat it as unreliable by design and cross-check it against a
+    // signal that can't get stuck: zigbee2mqtt/bridge/health, a periodic,
+    // NON-retained self-report Z2M has published every ~10 minutes on this
+    // install (confirmed live, v2.12.1) containing its own live
+    // mqtt.connected view. A stale retained "offline" can't survive more
+    // than one of these cycles once this is wired in.
+    private volatile Instant lastBridgeHealthOnlineAt = null;
+
+    @Value("${cabin.zigbee.bridgeHealthLivenessWindowMinutes:20}")
+    private long bridgeHealthLivenessWindowMinutes = 20;
 
     /** One configured Zigbee2MQTT instance: its own topic namespace, location, and known-device set. */
     private static final class ZigbeeBridge {
@@ -231,6 +268,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 handleBridgeState(payload);
             } else if (topic.equals(prefix + "bridge/info")) {
                 handleBridgeInfo(payload);
+            } else if (topic.equals(prefix + "bridge/health")) {
+                handleBridgeHealth(payload, retained);
             } else if (!topic.contains("/set") && !topic.contains("/get")) {
                 String friendlyName = topic.substring(prefix.length());
                 if (friendlyName.endsWith("/availability")) {
@@ -253,6 +292,30 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             log.debug("Z2M bridge state: {}", bridgeState);
         } catch (Exception e) {
             bridgeState = payload.trim();
+        }
+    }
+
+    /**
+     * zigbee2mqtt/bridge/health -- periodic (this install: ~every 10 min),
+     * NOT retained. Z2M generates this fresh each cycle from its own live
+     * mqtt.connected view, so unlike bridge/state it can never be "handed
+     * back stale by the broker" -- there's no old copy to hand back. Used
+     * by getBridgeState() to override a retained bridge/state that's stuck
+     * "offline" behind a genuinely healthy connection (see this class's own
+     * 2026-09-11 comment above lastBridgeHealthOnlineAt). A retained==true
+     * health message would be surprising (Z2M doesn't retain this topic),
+     * but is still rejected defensively since the whole point is that only
+     * a fresh report proves anything "just now".
+     */
+    private void handleBridgeHealth(String payload, boolean retained) {
+        if (retained) return;
+        try {
+            JsonNode node = mapper.readTree(payload);
+            if (node.path("mqtt").path("connected").asBoolean(false)) {
+                lastBridgeHealthOnlineAt = Instant.now();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse Z2M bridge/health: {}", e.getMessage());
         }
     }
 
@@ -658,7 +721,23 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         return bridges().get(0);
     }
 
-    public String getBridgeState() { return bridgeState; }
+    /**
+     * The retained bridge/state topic, EXCEPT when it says "offline" but a
+     * recent (non-retained) bridge/health ping proved the connection is
+     * actually live -- see lastBridgeHealthOnlineAt's own comment. A bridge
+     * that has never sent bridge/health (an older Z2M version, or one with
+     * it disabled) falls straight through to the raw retained value, same
+     * as before this override existed.
+     */
+    public String getBridgeState() {
+        if ("online".equalsIgnoreCase(bridgeState)) return bridgeState;
+        Instant lastOnline = lastBridgeHealthOnlineAt;
+        if (lastOnline != null && Duration.between(lastOnline, Instant.now())
+                .compareTo(Duration.ofMinutes(bridgeHealthLivenessWindowMinutes)) <= 0) {
+            return "online";
+        }
+        return bridgeState;
+    }
     public Optional<String> getBridgeVersion() { return Optional.ofNullable(bridgeVersion); }
 
     public Set<String> getKnownFriendlyNames() {
