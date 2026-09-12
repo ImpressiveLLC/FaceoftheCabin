@@ -1300,6 +1300,74 @@ runtime, taking priority). Changing only one is not enough; check both.
 *A working incident log — real problems found and fixed, kept here so
 the next person (or session) doesn't have to rediscover them.*
 
+### `zigbee2mqtt/bridge/state` stuck retained "offline" for 4+ days on a genuinely healthy bridge (found and fixed 2026-09-11)
+
+`/api/system/health`'s `zigbeeBridge` field and the Monitoring panel's
+"Z2M:" chip both read `Zigbee2MqttAdapter.getBridgeState()`, which is
+just whatever last arrived on the retained `zigbee2mqtt/bridge/state`
+topic. `mosquitto_sub -h localhost -p 1883 -t zigbee2mqtt/bridge/state
+-C 1` on the M920q returned `{"state":"offline"}` — twice, with unique
+client IDs, ruling out a one-off subscribe glitch — while `docker logs
+zigbee2mqtt` showed a continuous stream of fresh telemetry for all 13
+paired devices and periodic `bridge/health` pings reporting
+`"mqtt":{"connected":true}` roughly every 10 minutes. The container
+itself had been `Up 4 days (healthy)` with no restart (health payload's
+`process.uptime_sec` climbed monotonically the whole time) — a false
+"offline" reading users would see directly, with the real bridge fully
+functional underneath it.
+
+**Root cause, as far as the evidence goes**: `docker logs zigbee2mqtt`'s
+own `MQTT publish: topic 'zigbee2mqtt/bridge/state'` lines show Z2M
+correctly republishing retained `online` on every reconnect it noticed —
+including twice within the incident window itself, `online` at
+2026-09-07 00:04:53 and again at 00:05:49 (moments after an `offline`
+publish at 00:04:31). Then, at 05:04:42 that same morning, **both**
+the `mosquitto` and `zigbee2mqtt` containers restarted together
+(`docker inspect --format '{{.State.StartedAt}}'` matched to the
+second on both) — and no further `bridge/state` publish line appears
+anywhere in the log after that. `mosquitto.conf` has `persistence true`
+with no `autosave_interval` override (Mosquitto's default), so whatever
+was on disk in its retained-message store at that restart is what won —
+and it evidently wasn't the 00:05:49 `online` value. This is the exact
+same *class* of bug as the `main_water_valve` retained-replay incident
+`Zigbee2MqttAdapter.java` already documents from 2026-09-01 (a stale
+retained value getting trusted as if it were live), just triggered by a
+broker-side restart race instead of an adapter-side resubscribe.
+**The precise trigger at 05:04:42 couldn't be forensically confirmed
+further**: `docker logs mosquitto` only went back about 15 minutes at
+investigation time (its `log_dest` is `stdout` with no configured
+retention), so there's no way to see what Mosquitto's persistence
+reload was doing at that exact moment, or whether the restart was clean
+enough to autosave the newer value first. That log-retention gap is
+itself worth fixing (see follow-up below) — this incident could not be
+fully root-caused because of it.
+
+**Fixed** in `Zigbee2MqttAdapter` by no longer trusting the retained
+`bridge/state` topic on its own. The adapter now also parses
+`zigbee2mqtt/bridge/health` — a periodic, **non-retained** self-report
+Z2M was already publishing every ~10 minutes on this install (v2.12.1)
+containing its own live `mqtt.connected` view. Because that topic is
+never retained, there is no stale copy for the broker to hand back —
+each ping is Z2M asserting its connection state fresh, right now.
+`getBridgeState()` now reports `online` if the raw retained value says
+so, **or** if a `bridge/health` ping with `mqtt.connected:true` arrived
+within the last `cabin.zigbee.bridgeHealthLivenessWindowMinutes`
+(default 20 — twice this install's observed 10-minute cadence). A
+bridge running an older Z2M without `bridge/health`, or with it
+disabled, falls straight through to the raw retained value exactly as
+before — this is a pure override, not a replacement. No manual
+remediation (e.g. restarting the `zigbee2mqtt` container to force a
+fresh retained publish) was needed to clear the live false reading —
+the fix takes effect on the next `bridge/health` ping after deploy,
+since those were already flowing the whole time.
+
+**Follow-up, not done in this pass**: Mosquitto's own Docker log
+retention is too short to debug an incident like this after the fact.
+Worth adding either a `max-size`/`max-file` bump to its logging driver
+in the compose file, or pointing `mosquitto.conf`'s `log_dest` at a
+rotated file, so a future retained-message or broker-restart question
+has more than ~15 minutes of history to look at.
+
 ### Grafana redirected every remote request to "localhost" (found and fixed 2026-08-03)
 
 Reported as "won't load off Tailscale" — cabin-ui already carries an

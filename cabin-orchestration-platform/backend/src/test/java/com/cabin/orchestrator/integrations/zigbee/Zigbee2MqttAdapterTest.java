@@ -128,6 +128,50 @@ class Zigbee2MqttAdapterTest {
             "a genuinely live message (not retained) must still advance lastSeen normally");
     }
 
+    // Found 2026-09-11: cabin's real zigbee2mqtt/bridge/state sat retained
+    // "offline" for 4+ days while the bridge was demonstrably healthy and
+    // actively publishing all 13 devices' telemetry the entire time -- see
+    // this class's own comment on lastBridgeHealthOnlineAt for the full
+    // incident writeup and docs/MAINTENANCE.md for the operational entry.
+    @Test
+    void aLiveBridgeHealthPingOverridesAStaleRetainedOfflineState() throws Exception {
+        deliver("zigbee2mqtt/bridge/state", "{\"state\":\"offline\"}");
+        assertEquals("offline", adapter.getBridgeState(), "sanity check: raw retained value is offline before any health ping");
+
+        deliver("zigbee2mqtt/bridge/health", "{\"mqtt\":{\"connected\":true}}");
+
+        assertEquals("online", adapter.getBridgeState(),
+            "a fresh bridge/health ping reporting mqtt.connected=true must override a stuck retained offline");
+    }
+
+    @Test
+    void aRetainedBridgeHealthPingIsIgnored() throws Exception {
+        deliver("zigbee2mqtt/bridge/state", "{\"state\":\"offline\"}");
+
+        MqttMessage retainedHealth = new MqttMessage("{\"mqtt\":{\"connected\":true}}".getBytes());
+        retainedHealth.setRetained(true);
+        adapter.messageArrived("zigbee2mqtt/bridge/health", retainedHealth);
+
+        assertEquals("offline", adapter.getBridgeState(),
+            "bridge/health is only trustworthy because it's a fresh report -- a retained replay proves nothing");
+    }
+
+    @Test
+    void aBridgeHealthPingReportingMqttDisconnectedDoesNotForceOnline() throws Exception {
+        deliver("zigbee2mqtt/bridge/state", "{\"state\":\"offline\"}");
+
+        deliver("zigbee2mqtt/bridge/health", "{\"mqtt\":{\"connected\":false}}");
+
+        assertEquals("offline", adapter.getBridgeState());
+    }
+
+    @Test
+    void aGenuineOnlineBridgeStateIsReportedDirectlyWithNoHealthPingNeeded() throws Exception {
+        deliver("zigbee2mqtt/bridge/state", "{\"state\":\"online\"}");
+
+        assertEquals("online", adapter.getBridgeState());
+    }
+
     @Test
     void anUnregisteredDevicesStateMessageIsIgnoredEntirely() throws Exception {
         // No registerDevice() call -- messageArrived's own routing requires
