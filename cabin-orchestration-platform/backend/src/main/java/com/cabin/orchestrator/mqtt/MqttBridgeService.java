@@ -572,6 +572,17 @@ public class MqttBridgeService implements MqttCallback {
             if (data.get("type") != null) discovery.put("serviceType", data.get("type"));
             if (data.get("host") != null) discovery.put("host", data.get("host"));
             if (data.get("txt") != null) discovery.put("txt", data.get("txt"));
+            // Found 2026-09-12: DiscoveryServiceClient/cabin-discovery only ever
+            // look at attributes["vendor"/"model"/"description"] to decide
+            // whether there's anything to identify -- descriptor.name() (the
+            // mDNS instance name itself, e.g. "Linksys07040" or "Brother MFC-L2750DW")
+            // was never one of those, so every netscan candidate hit
+            // has_local_identity()==false and got refused a lookup ("nothing to
+            // search for") regardless of whether ANTHROPIC_API_KEY was even set.
+            // The instance name is exactly the kind of raw, mDNS-reported string
+            // that field exists for -- not a guess, just relaying what the scan
+            // already found -- so it belongs in "description", not left out.
+            discovery.put("description", data.get("type") != null ? name + " (" + data.get("type") + ")" : name);
 
             boolean firstSeen = registry.registerCandidate(descriptor, discovery);
             if (firstSeen) log.info("Home network scan discovered new device: {} ({})", name, connectionString);

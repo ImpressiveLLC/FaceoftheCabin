@@ -482,6 +482,23 @@ class MqttBridgeServiceTest {
         assertEquals("http_poll", descriptor.protocolAdapter());
     }
 
+    // Found 2026-09-12: the discovery/"identify this device" lookup only
+    // treats attributes["description"] (alongside vendor/model) as something
+    // worth searching on -- without this, a netscan candidate's own mDNS
+    // instance name (the one real identifying string the scan found) never
+    // reached that check at all, so every netscan candidate was refused a
+    // lookup as "nothing to search for" regardless of API key config.
+    @Test
+    void networkScanResultSurfacesTheMdnsNameAsADescriptionForDiscovery() throws Exception {
+        deliver("home/network-scan/results", """
+            {"name":"Linksys07040","host":"linksys07040.local","address":"192.168.1.1","port":80,"type":"_http._tcp.local"}
+            """);
+
+        DeviceStatus status = registry.get("netscan-linksys07040");
+        assertNotNull(status);
+        assertEquals("Linksys07040 (_http._tcp.local)", status.attributes().get("description"));
+    }
+
     @Test
     void repeatedNetworkScanResultRefreshesRatherThanDuplicates() throws Exception {
         deliver("home/network-scan/results", """
