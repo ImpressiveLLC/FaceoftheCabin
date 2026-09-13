@@ -1036,6 +1036,39 @@ been exercised against a real live connection since this fix (it was
 never reachable before, so it's realistically untested code, not just
 unverified today).
 
+### Live MQTT tile blocked as mixed content on the public site (found and fixed 2026-09-13)
+
+Answers the "not yet verified" gap directly above: the reason it was
+never verified is that it never actually worked for a real visitor.
+Reported live by Nate via a real browser console check (Chrome's mixed-
+content advisory), reproduced directly rather than assumed: `useMqttTelemetry`
+opens `new WebSocket(wsBase)` against the raw URL from the 2026-08-08
+work above — `ws://100.77.44.113:9001`, a plain, unencrypted connection
+to mosquitto's Tailscale-IP WS listener. That was fine for a
+Tailscale-only app, but cabin-ui is now served publicly over HTTPS via
+Cloudflare Tunnel (`cabin.unicornpingpong.com`) — browsers hard-block a
+`ws://` connection from an `https://` page as mixed content, no
+exception for being on the same tailnet. The tile has silently shown
+"No live messages" for every visitor to the public site since it went
+public, not a new regression.
+
+**Fixed by terminating the WebSocket same-origin instead of pointing at
+it directly.** `cabin-ui/nginx.conf` gained a `/mqtt-ws` location
+proxying to mosquitto's WS port — reached via the M920q's LAN IP
+(`192.168.2.46:9001`), not the `mosquitto` container hostname, since
+`cabin-ui` and `mosquitto` sit on two different Docker networks
+(`infra_default` vs `cabin_default`, confirmed via `docker inspect`)
+and can't resolve each other directly — the same cross-project-network
+gap `HA_URL: http://192.168.2.46:8123` already works around for Home
+Assistant, not a new workaround. The browser now only ever connects to
+`wss://cabin.unicornpingpong.com/mqtt-ws`, same origin as the page
+itself, no mixed content possible. No frontend code change needed:
+`LOCATIONS.cabin.wsBase` gets its real value from the same
+`hub_locations` runtime-override mechanism (`useHubLocations()`) found
+and fixed for `apiBase` earlier this same session — a
+`PATCH /api/locations/cabin {"wsBase": "wss://cabin.unicornpingpong.com/mqtt-ws"}`
+is the only remaining step, not a redeploy.
+
 ---
 
 ## Home Location — Android/Termux Collector Bring-Up
