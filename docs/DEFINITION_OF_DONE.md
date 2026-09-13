@@ -253,7 +253,8 @@ accumulate.*
   **Action for whoever has repo-admin access**: delete the stale
   `claude/frigate-password-recovery-9a026d` branch — a same-account push
   attempt to delete it got a 403 (no permission from that session's
-  token). No PR needed; nothing to merge.
+  token). No PR needed; nothing to merge. **Confirmed still present via
+  `git ls-remote` 2026-09-13** — not yet actioned.
 - **Local-network-scan concern raised by the user re: a Family Hub
   "grandpa" actor login, 2026-08-24 — hypothesis only, not confirmed.**
   User reported the app seemed to ask to "check for devices local to
@@ -312,31 +313,21 @@ accumulate.*
   the old fork wholesale; surviving work needs scoped current-main PRs.
   **`BLINK_PASSWORD` rotation status is still unconfirmed** — no evidence
   either way was found, so that live action remains carried forward.
-- **Production stack now under version control (Phase 0/0.5 done,
-  2026-08-14)** — see `docs/ontology.yaml`'s
-  `production_stack_compose_project` and `MAINTENANCE.md`'s matching
-  incident entry for the full story: the cutover itself triggered a
-  real Frigate crash-loop (root-caused and fixed, `c104723`), and Phase
-  A's first piece — Docker healthchecks on the 6 services that had
-  none — is merged and live (PR #18). **Still open**: the other two
-  Phase A items — Uptime Kuma monitor gaps, including the direct
-  `cabin/camera/available` MQTT regression test for this exact incident,
-  and Kuma config-as-code — are blocked on a real decision, not just
-  implementation time: Kuma has no REST API for monitor management
-  (confirmed empirically), so scripting it needs the community
-  `uptime-kuma-api` package authenticating as a real Kuma admin login,
-  and that credential isn't in the Ansible vault yet. Add it to the
-  vault first (matches this project's own "keys and ansible, not
-  recorded passwords" principle) before production reconciliation.
-  **Status correction 2026-08-14:** Phase B and the remaining Phase C
-  documentation are no longer unstarted: draft PR #21 contains the
-  cross-container deploy/smoke gate and draft PR #20 contains
-  `REPLICATION.md` §10. Neither is merged or live; PR #21 specifically
-  must remain review-gated because merging activates production-stack
-  deployment behavior. Minor, deliberately not fixed: `mediamtx` is
-  still labeled to the old (now-retired) compose project internally —
-  cosmetic only, no functional difference, will self-correct next time
-  its actual config changes.
+- **Production stack under version control — validated 2026-09-13,
+  status corrected.** PR #20 (`REPLICATION.md` §10) and PR #21
+  (production-stack deploy/smoke/rollback gate) — both listed here as
+  "draft... neither merged or live" — were **merged 2026-08-15**
+  (confirmed via `gh pr view`), a month before this file was last
+  corrected on this point. Docker healthchecks (PR #18) and the deploy
+  gate are live. **Still genuinely open**: Kuma's own notification
+  wiring — confirmed live via direct DB query (`monitor_notification`
+  table) that only 1 of 6 monitors (`Frigate driveway camera_fps`) has
+  a channel attached; Homepage/HA/Frigate-cams/Node-RED/Tailscale can
+  still go red with nobody told. Kuma config-as-code is still only a
+  proven POC (PR #20's own body: "a repo-owned declarative spec," not
+  built), still blocked on a real Kuma admin credential in the vault.
+  `mediamtx`'s stale internal compose-project label is unchanged,
+  still cosmetic-only.
 - **Grafana embed resolved 2026-08-08 (real root cause, not the
   suspected one) — then replaced entirely by user decision.** The
   actual blocker was `hub_locations` seeded with unreachable
@@ -362,10 +353,13 @@ accumulate.*
   hard login wall, landing page = My Places per the user's stated
   assumption) before implementation.
 - **Zigbee LQI signal-quality prototype needs evaluation** (built
-  2026-08-08, `GET /api/signal-quality`) — deliberately not wired to
-  any alert path yet. Check whether `anomalous` flags correlate with
-  anything real before building further; `ANOMALY_DROP_RATIO` (30%) is
-  an untuned placeholder.
+  2026-08-08, `GET /api/signal-quality`) — confirmed still live and
+  collecting 2026-09-13 (real per-device baselines, 18-20 samples each,
+  all `anomalous:false` at check time) but still not wired to any alert
+  path. There's now enough real sample history to actually do the
+  correlation-with-reality check this item asks for — that evaluation
+  itself still hasn't been done. `ANOMALY_DROP_RATIO` (30%) is still an
+  untuned placeholder.
 - **Alert/ontology UX retrenchment — current-state slice implemented in
   draft PR (2026-08-14).** The old browser-local opt-in/timer and aggregate
   OFFLINE inference are replaced by `GET /api/alerts/active`: only enabled,
@@ -380,11 +374,12 @@ accumulate.*
   `active_alert_condition` and `automation_rule_status` entities.
 - **Reolink (`front_door`) camera still physically off-network** — needs
   on-site checking (power, WiFi re-pairing). Not fixable remotely.
-- **`blinkbridge`'s no-clip crash is fixed (2026-08-08)** — a transient
-  Blink API failure crashed the stream-start path instead of retrying
-  cleanly; fixed and redeployed on the M920q (separate repo, not this
-  one). Not yet proven against a second real occurrence, only the one
-  that prompted the fix.
+- **`blinkbridge`'s no-clip crash fix — holding, checked 2026-09-13.**
+  Container uptime confirmed live: started 2026-09-07, `RestartCount: 0`
+  since — no crash-loop recurrence in 6 days of real operation. Stronger
+  evidence than "only the one occurrence that prompted the fix," though
+  still not an infinite guarantee against a future transient Blink API
+  failure recurring differently.
 - **Uptime Kuma had zero notification channels configured at all before
   2026-08-06** — every monitor in it (Homepage, Home Assistant, Frigate,
   Node-RED, Tailscale) could go red with nobody ever told. Added one
@@ -392,19 +387,22 @@ accumulate.*
   building the driveway monitor above; not yet attached to the
   pre-existing monitors — worth doing so they stop being silent too.
 - **Severity classifier (`docs/ontology.yaml`'s `event_severity`) doesn't
-  consider armed/presence state yet** — a WARN-tier event (door open,
-  low battery, tamper) scores the same whether the cabin is occupied or
-  armed-away. Deliberate MVP scope cut (see that entity's `notes`), not
-  forgotten — both signals are now real and live as of 2026-08-08
-  (`cabin/security/armed_away`, `cabin/presence/*`), so this is now
-  purely a wiring task, not blocked on missing data anymore.
+  consider armed/presence state yet** — confirmed still true 2026-09-13,
+  `AlertSeverityClassifier.java`'s own doc comment is unchanged ("no
+  armed/presence awareness yet"). A WARN-tier event (door open, low
+  battery, tamper) scores the same whether the cabin is occupied or
+  armed-away. Deliberate MVP scope cut, not forgotten — both signals are
+  real and live, so this is purely a wiring task. **Nuance found while
+  checking:** presence-awareness isn't entirely absent from the platform
+  — `GET /api/alerts/rules`'s `WATER_PRESSURE_LOW`/`_HIGH` rules already
+  do exactly this ("severity depends on cabin presence"), just via
+  `WorkflowRuleService`/`AutomationRuleService`, a separate code path
+  from this generic classifier. Worth deciding whether that pattern
+  should extend here or stay rule-specific.
 - **Liebherr fridge / Bosch dishwasher account linking** — both need the
   user's own account credentials (SmartDevice login; a Home Connect
   Developer OAuth client_id/secret + account consent). See
   `docs/ontology.yaml`'s `smart_appliance_*` entities for exact steps.
-- **Monitoring runbook** — Uptime Kuma + Homepage are running, but what
-  they actually check and alert on isn't documented yet
-  (`MAINTENANCE.md`).
 - **Real second-host replication test** — `REPLICATION.md` has never
   actually been run end-to-end against a fresh host.
 - **WiFi RSSI presence detection (original idea) vs. Zigbee LQI
@@ -448,35 +446,17 @@ accumulate.*
   services" affordance instead of one flat device list). Likely needs
   its own Plan Mode session given the scope (ontology schema, backend
   grouping semantics, and two frontend pickers all touched together).
-- **`vault_ha_token` still not reconciled with the live 2026-08-21 fix —
-  real drift risk, not yet closed.** A blank `HA_TOKEN` env var was
-  silently hiding all HA discovery on the M920q; fixed live that day by
-  setting the real token directly on the running container. `ansible/
-  group_vars/cabin/vars.yml` still resolves `ha_token` from
-  `vault_ha_token` in the encrypted `ansible/group_vars/cabin/vault.yml`
-  — that vault file's own last-modified timestamp (2026-08-19) predates
-  the fix, meaning the vault almost certainly still holds the old blank/
-  stale value. Never diffed by raw value (this project's own rule) so
-  not confirmed byte-for-byte, but the timeline alone is enough to flag:
-  running `ansible/playbooks/rotate-secrets.yml` or any fresh `env.j2`
-  render against this host today would silently reintroduce the blank-
-  token bug. Needs the real token entered into the vault (`ansible-vault
-  edit group_vars/cabin/vault.yml`) before any secrets-rotation or
-  redeploy-from-scratch playbook next touches this host.
-- **Kidde CO-alarm live push bridge deployed 2026-08-21, end-to-end
-  verification still pending.** New HA automation
-  (`cabin_security_publish_kidde_co_alarm`) + `cabin_security_mqtt_publish.py`
-  ALLOWED-dict entry were deployed to `/storage/services/homeassistant/
-  packages/` on the M920q; matching `cabin-backend` code
-  (`MqttBridgeService.handleKiddeCoAlarmTopic`, a new `FIELD_TRIGGERS`
-  entry, vocabulary rows, `docs/ontology.yaml` entities) is committed and
-  test-green (324/324). The `homeassistant` container restart needed to
-  load the new automation is still pending the user's own Tailscale SSH
-  step-up approval (an interactive `https://login.tailscale.com/a/...`
-  link, not something approvable from this session). Once restarted:
-  confirm HA loaded the automation without error and, ideally, confirm a
-  real CO-alarm state change round-trips through MQTT into a
-  `KIDDE_CO_ALARM_CHANGED` CabinEvent before calling this fully verified.
+- **`vault_ha_token` drift risk — likely closed, not fully confirmed
+  (checked 2026-09-13).** This item's own premise (vault last-modified
+  2026-08-19, predating the 08-21 live fix) no longer holds:
+  `vault.yml`'s real mtime is now **2026-09-05**, matching that day's
+  separate `HA_TOKEN` restoration incident (`MAINTENANCE.md`), whose own
+  write-up states the fresh token was written into the vault "same
+  sitting" as the live `.env`. Never diffed by raw value (this
+  project's own rule), so not byte-confirmed, but the timeline plus
+  that incident's own explicit claim make the old blank-value risk this
+  item warned about unlikely to still be real. Worth a from-scratch
+  `rotate-secrets.yml` dry run to fully close, not urgent.
 - **`home_presence.yaml` found live on the M920q, not in git, root-owned
   — reconciliation status unknown.** Discovered while deploying the
   Kidde bridge (same `packages/` directory as the tracked
@@ -487,15 +467,15 @@ accumulate.*
   session's summary point; check for it before assuming this is
   resolved.
 - **Local `mvn spring-boot:run` hang, Part D (2026-08-21), still
-  undiagnosed.** Against the already-running local Docker stack
-  (Postgres/Kafka reachable), the backend never bound port 8080 after
-  30+ minutes across two separate `java.exe` processes — looked hung,
-  not just slow. Killed rather than left running; root cause not
-  investigated further given strong automated test coverage as a
-  substitute. Blocks live-browser click-through verification of the
-  workflow-vocabulary UI (Part D) and the new triggers (Part E) — both
-  shipped on `mvn test`/`npx vitest run` green plus code review only,
-  not an actual browser session, until this is fixed.
+  undiagnosed — re-test 2026-09-13 inconclusive, not a resolution.**
+  Ran `mvn spring-boot:run` again on this dev machine: it failed fast
+  (~18s) this time, but on `Connection refused` to Postgres, because no
+  local Docker stack was up during this check — not the same
+  precondition as the original report (against an *already-running*
+  local stack with Postgres/Kafka reachable, hanging 30+ min without
+  binding port 8080). Genuinely different failure mode, so this doesn't
+  confirm the original hang is fixed *or* still present — re-test with
+  the local stack actually up before closing this.
 - **Two parallel WSJF backlogs exist with no cross-reference — a real
   liability, not yet a conflict (found 2026-09-13).** The Living Ontology
   artifact's own WSJF Priority Order/Discrepancy Log (D-decisions —
@@ -508,18 +488,16 @@ accumulate.*
   artifact's new reconciliation pin, `wsjf-backlog.md`'s DEP09) — but
   whoever holds product priority (Nate/Cowork) should read both before
   assuming either one is the complete backlog.
-- **`cabin-orchestration-platform/locations/home/docker-compose.yml` is
-  confirmed stale, not just unused (found 2026-09-13).** Its own header
-  still reads "Full Stack" (own Postgres/Kafka/backend/Grafana/HA/
-  Node-RED/Frigate) — a model already rejected 2026-08-08 in favor of
-  the collector-hub design (`ROADMAP.md` Phase 8,
-  `docs/HANDOFF_2026-08-08_codex-fork.md` Item 5), and now further
-  contradicted by what's actually live: the real Home collector
-  (Zigbee2MQTT under Termux + the `network-scan-agent`, both routing to
-  `cabin-backend` as the shared brain, live-verified 2026-09-10 through
-  2026-09-12 — see `MAINTENANCE.md`). No code depends on this file.
-  Needs a deprecation banner or removal, not a new architecture
-  decision — that decision was already made.
+- **`cabin-orchestration-platform/locations/home/docker-compose.yml` —
+  correction 2026-09-13: already flagged, only the sweep remains.**
+  Checked the live file directly: a deprecation header was already
+  added 2026-09-11 (predates this item's own "needs a banner" framing
+  by two days), explicitly calling the file's "Full Stack" design
+  superseded by the collector-hub model and pointing to
+  `MAINTENANCE.md`'s real Home Location section. No code depends on
+  this file. The only real remaining action is the actual removal/
+  restructure ("not yet swept," per the header's own words) — not
+  adding a banner, that part's done.
 - **Home LAN device discovery — resolved, superseded (2026-09-13).** An
   earlier session's manual ARP/port-scan audit flagged one unidentified
   device (`192.168.1.119`) as needing physical identification by the
@@ -561,6 +539,33 @@ discovered devices plus a live Zigbee mesh, both routing to
 C1–C4/Ollama-corpus track) for the first time — see the shared
 artifact's new reconciliation pin and `wsjf-backlog.md`'s DEP09.
 Flagged, not fixed: `locations/home/docker-compose.yml`'s stale "Full
-Stack" header (new Open Item above). See git log for the actual
-session-by-session
+Stack" header (new Open Item above).
+
+**Second pass, same day, direct validation not just re-reading —
+2026-09-13.** Nate asked for every Open Item to be checked against real
+git/code/live state, not assumed from this file's own text. Confirmed
+stale and corrected: PR #20/#21 were actually merged 2026-08-15 (this
+file still called them "draft," a month out of date); the Kidde CO-alarm
+bridge is live (real events landing, most recent 34 min old at check
+time) — removed as resolved; `vault_ha_token` likely reconciled
+2026-09-05 (vault file's own mtime moved, matching that day's HA_TOKEN
+incident's own claim); `locations/home/docker-compose.yml` already had
+its deprecation banner as of 2026-09-11 (only the actual sweep remains,
+not "needs a banner"); `blinkbridge` has run 6 days with zero restarts
+since its fix. Confirmed still accurately open, unchanged: `front_door`
+camera (`camera_fps: 0.0` live), the stale
+`claude/frigate-password-recovery-9a026d` branch (still on `origin` per
+`git ls-remote`), Uptime Kuma's notification gap (5 of 6 monitors still
+have no channel attached, confirmed via its own DB), `home_presence.yaml`
+(still root-owned, unreconciled), the app-wide OAuth gate (still
+unbuilt), the Node-RED iframe's raw LAN URL, and the severity
+classifier's missing armed/presence awareness (though `WATER_PRESSURE_*`
+alert rules already do this via a different code path — worth deciding
+whether to extend that pattern here). One re-test came back genuinely
+inconclusive rather than resolved: the local `mvn spring-boot:run` hang
+failed differently this time (no local Postgres running at all, not the
+original "hangs against an already-reachable stack" precondition) — not
+evidence either way. Removed the now-redundant "Monitoring runbook"
+item — `MAINTENANCE.md`'s own Monitoring section already documents what
+Kuma/Homepage check. See git log for the actual session-by-session
 record — that's the authoritative history now, not this file.
