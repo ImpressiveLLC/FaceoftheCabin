@@ -239,13 +239,17 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         long count = messagesReceived.incrementAndGet();
-        // Temporarily logging every message (not just every 100th) for this
-        // same live incident's diagnosis -- the client-id fix alone got
-        // exactly one message through (this bridge/devices) and then
-        // nothing since, with zero warnings, meaning something after this
-        // point silently stalls. Dial back to the 1/100th cadence once the
-        // stall point is found and fixed.
-        log.info("Z2M messageArrived count={} topic={} retained={}", count, topic, message.isRetained());
+        // 2026-09-13 incident (see docs/MAINTENANCE.md's Zigbee mesh silent
+        // outage entry): logged every message at full verbosity while
+        // diagnosing that outage; dialed back to this cadence now that it's
+        // confirmed resolved. A permanent low-noise liveness signal --
+        // count staying frozen (no new log line for several minutes while
+        // Z2M's own logs keep showing publishes) is the same "callback
+        // stopped receiving anything" symptom that incident had, and is
+        // the fastest first check for a repeat.
+        if (count == 1 || count % 500 == 0) {
+            log.info("Z2M messageArrived count={} (most recent topic: {})", count, topic);
+        }
         try {
             String payload = new String(message.getPayload());
             // isRetained() is true only when the broker is replaying its last-known
@@ -336,20 +340,12 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         try {
             JsonNode devices = mapper.readTree(payload);
             if (!devices.isArray()) return;
-            // Found 2026-09-13 (same live incident as the client-id fix):
-            // that fix alone was NOT sufficient -- the diagnostic counter
-            // confirmed exactly one message (this bridge's own
-            // bridge/devices) ever reaches messageArrived(), and nothing
-            // since, with zero warnings logged. Per-device entry/exit
-            // tracing here so the next deploy shows exactly which device
-            // (if any) this silently stalls on, rather than guessing again.
-            log.info("Z2M bridge/devices for {}: processing {} device(s)", bridge.topicPrefix, devices.size());
+            log.debug("Z2M bridge/devices for {}: processing {} device(s)", bridge.topicPrefix, devices.size());
             int processed = 0;
             for (JsonNode device : devices) {
                 String friendlyName = device.path("friendly_name").asText(null);
                 if (friendlyName == null || friendlyName.equals("Coordinator")) continue;
-                log.info("Z2M bridge/devices for {}: processing device {}/{} ({})",
-                    bridge.topicPrefix, ++processed, devices.size(), friendlyName);
+                processed++;
                 bridge.knownFriendlyNames.add(friendlyName);
                 String deviceId = deviceId(bridge, friendlyName);
 
@@ -408,10 +404,29 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                     reportingRelationshipRepository.upsert(new DeviceReportingRelationship(
                         deviceId, field, field, ConfirmationSource.VENDOR_SPEC, confirmedNow));
                 }
-                log.info("Z2M bridge/devices for {}: finished device {}/{} ({})",
-                    bridge.topicPrefix, processed, devices.size(), friendlyName);
             }
-            log.info("Z2M bridge/devices for {}: all {} device(s) processed successfully", bridge.topicPrefix, processed);
+            // 2026-09-13 incident: Z2M's own retained bridge/devices had
+            // gone stale at "just the Coordinator" (its on-disk database.db
+            // still had all 13 real devices -- confirmed live -- Z2M simply
+            // hadn't re-published a fresh list in a long time), which
+            // silently starved knownFriendlyNames and made every real
+            // device-state message get dropped by the gate in
+            // messageArrived() even after the client-id fix restored the
+            // MQTT connection itself. processed==0 on a non-empty bridge
+            // that has ever had real devices is exactly that symptom --
+            // surfaced at WARN so it doesn't take another live outage
+            // report to notice. Fixed live by restarting the zigbee2mqtt
+            // container (forces a fresh republish from its intact
+            // database) -- see docs/MAINTENANCE.md for the full incident
+            // and the self-healing question of whether this should become
+            // an automated periodic check instead.
+            if (processed == 0 && devices.size() > 0) {
+                log.warn("Z2M bridge/devices for {}: payload had {} entrie(s) but 0 real devices (Coordinator-only?) -- "
+                    + "if this bridge previously had known devices, Z2M's own retained device list may be stale; "
+                    + "see docs/MAINTENANCE.md's 2026-09-13 Zigbee mesh outage entry", bridge.topicPrefix, devices.size());
+            } else {
+                log.debug("Z2M bridge/devices for {}: all {} device(s) processed successfully", bridge.topicPrefix, processed);
+            }
         } catch (Exception e) {
             log.warn("Failed to parse Z2M device list: {}", e.getMessage(), e);
         }

@@ -455,6 +455,8 @@ forward from an earlier session's list)
 | GET | `/api/rules/workflows/{id}/executions` | RulesController — execution history |
 | GET | `/api/rules/executions/recent` | RulesController — unviewed executions |
 | POST | `/api/rules/executions/{id}/view` \| `/clear` | RulesController |
+| GET | `/api/kb/nodes` \| `/nodes/{entityRef}` | KnowledgeNodeController — Tiny Helpdesk's own KB read path (`CREDENTIAL_POINTER` content redacted for any non-ADMINISTRATOR caller). Added to this table 2026-09-13 — was live and in use since Sprint 1 (2026-08-30) but missing from this list entirely; documentation drift, not a new endpoint |
+| POST | `/api/kb/curate` | KnowledgeNodeController — the only way to write `SETUP`/`TROUBLESHOOTING`/`CREDENTIAL_POINTER` chunks (KB Generator v1 only ever auto-writes `DESCRIPTION`/`RELATIONSHIP`); body `{entityRef, chunkType, content}`, `source` is ignored and always forced to `MANUALLY_CURATED` server-side regardless of what's sent |
 | GET | `/actuator/health` | Spring Actuator — what `deploy-cabin-backend.yml`'s health-check gate polls |
 
 **Not yet built**: `/api/alerts/active` (the dashboard-badge fix from the

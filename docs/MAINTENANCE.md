@@ -239,6 +239,28 @@ network path to a Tailscale-only host. Full setup/recovery runbook:
   running instance's actual password, only `ALTER USER` does (the
   rotation playbook handles this correctly; a naive env-var-only change
   would silently break the connection).
+- **SSD vs. HDD, verified live on the M920q 2026-09-13 (Nate's own
+  recollection checked directly, not assumed either way)**: `nvme0n1`
+  (953GB NVMe SSD) backs `/` — the OS, Docker's own root, and every
+  Docker-managed **named volume**, `cabin-postgres`'s included
+  (`/var/lib/docker/volumes/infra_cabin_pgdata/_data`). `sda1` (931GB,
+  a separate physical disk) is mounted at `/storage` and holds Frigate's
+  recordings, Mosquitto's own data/log directories, and Zigbee2MQTT's
+  service directory (its `coordinator_backup.json` lives there) — all
+  **bind-mounted** there directly, confirming Nate's recollection for
+  those three. **Not confirmed the same way: `cabin_event` itself has no
+  standing HDD copy or log-shipping pipeline for its *live* (hot-tier)
+  rows** — only rows already aged past the 3-month hot window reach
+  `/storage` at all, via `TelemetryArchivalService`'s monthly export
+  (below); recent data has exactly one copy, on the SSD-backed Docker
+  volume. This gap is what made the 2026-09-13 Zigbee incident's data
+  recovery depend entirely on Zigbee2MQTT's own `docker logs` output
+  rather than any local telemetry backup — see "Known Issues &
+  Operational Lessons" below. No Logstash or equivalent log-shipping
+  process exists anywhere on this host today; an onsite secondary
+  backup drive/host for exactly this gap has been discussed but isn't
+  built — flagged as `proposed` in the ontology decisions artifact
+  (D19) rather than assumed to already exist.
 - **Kafka** (`cabin-kafka`) — single-broker event bus for camera/device
   events. **Known gotcha**: the internal `__consumer_offsets` topic
   defaults to replication factor 3, which silently fails to create on a
@@ -1636,6 +1658,102 @@ dedicated CO-level entity has no `device_class` set at all on the live
 account (a HA-side gap, not something this fix invents) — the Grafana
 dashboard above matches it by `device_id` instead.
 
+### Cabin's entire Zigbee mesh silently stopped reporting for ~34 hours, two independent root causes (found and fixed 2026-09-13)
+
+**Symptom, reported directly by Nate against a live insurance-claim
+report**: the Sensor History humidity chart showed real data for
+Upstairs (Kidde, HA-polled) but a hard gap for Kitchen and Mech Room
+(both Zigbee) starting 2026-09-11. Live investigation (SSH + psql +
+`mosquitto_sub` on the M920q, not assumed from logs alone) showed this
+wasn't just humidity -- **all 13 cabin Zigbee devices** (leak sensors,
+contacts, motion, the heater/breaker-box plugs, `main_water_valve`)
+stopped advancing `cabin_event` at the same moment, ~19:30-20:14 UTC
+2026-09-11 -- exactly when that evening's Zigbee multi-bridge refactor
+(`67f9745`, adding Home's second bridge) first deployed. Z2M itself
+never stopped (confirmed live via `docker logs zigbee2mqtt`, continuously
+publishing the whole time) -- this was purely a `cabin-backend`-side
+ingestion failure, surviving 7+ redeploys across the rest of that
+session before being reported.
+
+**Root cause #1 -- `Zigbee2MqttAdapter`'s MQTT client id was still
+random.** `client = new MqttClient(brokerUrl, "z2m-adapter-" +
+UUID.randomUUID())` -- the exact anti-pattern `MqttBridgeService.connect()`
+was already fixed for on 2026-08-15 (a random id every connect defeats
+`setCleanSession(false)`, so the broker never resumes a session and each
+restart/redeploy abandons another orphaned persistent session), just
+never applied to this sibling class. Fixed: stable `cabin-z2m-adapter`
+id (`cabin.mqtt.zigbeeClientId`, `application.yml`). Confirmed live via
+mosquitto's own connection log (`New client connected ... as
+cabin-z2m-adapter`) and a new lightweight `messagesReceived` counter
+(logs at INFO on the 1st and every 500th `messageArrived()` call --
+staying flat for several minutes while Z2M's own logs keep publishing is
+now the fastest first check for a repeat of this exact failure mode).
+
+**Root cause #2, found only because #1 wasn't sufficient by itself --
+Zigbee2MQTT's own retained `bridge/devices` message had gone stale at
+just the Coordinator.** After fixing #1, `messageArrived()` confirmed
+messages were reaching the adapter again, but `handleBridgeDeviceList()`
+logged "processing 1 device(s)" / "all 0 device(s) processed
+successfully" (the lone entry was `Coordinator`, which this method
+always skips) -- meaning `knownFriendlyNames` never got populated, so
+every real per-device state message (which *were* now arriving) was
+still being silently dropped by `messageArrived()`'s own
+`bridge.knownFriendlyNames.contains(friendlyName)` gate. Z2M's **on-disk**
+device database (`database.db`) still had all 13 devices intact the
+whole time -- this was purely Z2M not having re-published a fresh,
+complete `bridge/devices` list in a long time, not a lost pairing.
+Fixed by restarting the `zigbee2mqtt` container (forces a fresh republish
+from its intact on-disk database -- does **not** re-pair or erase
+anything); confirmed via `mosquitto_sub -t zigbee2mqtt/bridge/devices -C1`
+going from 1 entry to the real 14 (Coordinator + 13 devices) immediately
+after. A permanent self-healing signal for this half is now in the code
+too: `handleBridgeDeviceList()` logs a WARN when a non-empty
+`bridge/devices` payload yields zero real devices.
+
+**Why the fix took three deploy cycles, not one -- a genuine, unrelated
+third finding, not part of the Zigbee bug itself:** the *first* redeploy
+of the client-id fix failed its `mvn test` gate (`deploy-cabin-backend.yml`'s
+auto-rollback correctly kept the previous, still-broken image running,
+exactly as designed) on `CabinEventServiceTest.averagesMultipleSameDayReadingsIntoOneBucket`
+-- a pre-existing, coincidental day-boundary flake (`dailyAggregates()`'s
+`date_trunc('day', time)` buckets by the JDBC session's *effective*
+timezone, which follows the connecting JVM's default -- America/Chicago
+on this M920q -- not UTC; the test's `Instant.now()`-relative timestamps
+genuinely crossed a calendar-day boundary because this run happened to
+land within an hour of local midnight). Fixed by anchoring that test to
+a fixed mid-day instant instead of `Instant.now()`. Worth remembering:
+an urgent, obviously-unrelated deploy can still be blocked by an old,
+dormant flake nobody was thinking about -- check *what* failed before
+assuming the new change is the cause.
+
+**Data recovery -- no MQTT/Kafka backlog existed to replay** (a QoS0
+wildcard subscription nobody was listening on doesn't queue anywhere,
+and `EventPublisher.publish()` was simply never called for this whole
+window), **but Zigbee2MQTT's own `docker logs` output did**, retained
+back to 2026-09-02 with no rotation loss. Recovered by parsing
+`MQTT publish: topic '...', payload '...'` lines directly out of
+`docker logs zigbee2mqtt --since <window start>`, converting each
+line's local-time log timestamp to real UTC (confirmed the container's
+own local time -- America/Chicago/CDT -- via `docker exec zigbee2mqtt date`
+vs `date -u`, rather than assuming UTC), classifying severity
+identically to the real `AlertSeverityClassifier.classify()`, and
+excluding anything at or before each device's own real last-captured
+`cabin_event` timestamp (avoids duplicating the tail of the
+already-good pre-outage window). **3,215 real historical readings**
+recovered across 12 devices (3,147 INFO / 68 WARN / 0 CRITICAL -- no
+active leak/smoke/alarm condition was silently lost) and inserted
+directly into `cabin_event` in one transaction. `main_water_valve` had
+nothing to recover either way -- it simply wasn't publishing in this
+window, unrelated to this incident.
+
+**This is the concrete playbook for "MQTT-side telemetry gap, adapter
+was silently not ingesting" in general, not just this one incident** --
+see the "Data-loss / telemetry-gap triage" entry under Incident Response
+below, and the matching Tiny Helpdesk KB entries (added the same day,
+`entityRef: zigbee2mqtt_bridge`/`cabin_event_ingestion`) so this
+recovery path is queryable locally through Ollama even with zero
+internet connectivity, not just written down here.
+
 ---
 
 ## Monitoring
@@ -1696,3 +1814,44 @@ trusted at face value.
    relevant service's logs first (`docker logs <container> --since 1m`),
    and confirm the config file is valid before assuming the container
    itself is broken.
+5. **Data-loss / telemetry-gap triage** — a device (or a whole class of
+   devices) has a real gap in `cabin_event`/Sensor History with no
+   corresponding error anywhere obvious. Generalized from the 2026-09-13
+   Zigbee mesh incident above — work this list in order, don't guess:
+   1. **Is the source actually still alive?** For Zigbee: `docker logs
+      zigbee2mqtt --since 5m` (or `mosquitto_sub -t 'zigbee2mqtt/#' -v`
+      for a few seconds) — if it's still publishing real device topics,
+      the source is fine and the break is on `cabin-backend`'s ingestion
+      side. For HA-polled devices, check `HA_TOKEN`/`HOME_HA_TOKEN`
+      health first (see the HA_TOKEN pin in the ontology decisions
+      artifact) — that failure mode is already well-documented and has
+      recurred before.
+   2. **Is `cabin-backend` even receiving anything?** Check
+      `docker logs cabin-backend --since 5m | grep -i 'messageArrived\|
+      MQTT message arrived'` — `Zigbee2MqttAdapter` and `MqttBridgeService`
+      each log a liveness counter/debug line per message. A count that
+      never advances while the source (step 1) keeps publishing means
+      the MQTT client itself is stuck — check for a stable (not
+      `UUID.randomUUID()`-suffixed) client id first, since that's the
+      exact bug this incident found.
+   3. **Is the device just not *known* yet?** For Zigbee specifically,
+      `mosquitto_sub -t 'zigbee2mqtt/bridge/devices' -C1` should return
+      every real paired device, not just `Coordinator` — if it doesn't,
+      Z2M's own retained device-list has gone stale (its on-disk
+      `database.db` is usually still fine; check it before assuming a
+      device un-paired). `docker restart zigbee2mqtt` forces a fresh
+      republish and is safe -- it does not re-pair or erase anything.
+   4. **Recovering the gap itself**: check whether the *source*'s own
+      logs cover the missing window before assuming it's unrecoverable
+      (`docker logs <source-container>`, no `--since`, to see how far
+      back retention actually goes) — Zigbee2MQTT's own `docker logs`
+      output carried real historical readings for this incident's whole
+      outage window. `cabin_event` itself has **no** live-tier backup of
+      its own (see "Database & Storage" above — only rows already aged
+      into the 3-month archival tier reach `/storage`) — a source-side
+      log is often the *only* recovery path for anything still in the
+      hot tier.
+   5. See the matching Tiny Helpdesk KB entries
+      (`entityRef: zigbee2mqtt_bridge`/`cabin_event_ingestion`,
+      `data_recovery_pipeline`) for the same playbook, queryable locally
+      through Ollama with zero internet connectivity.
