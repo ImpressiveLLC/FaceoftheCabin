@@ -130,10 +130,10 @@
 #   notes:            implementation notes, constraints, known issues
 # ─────────────────────────────────────────────────────────────────────────────
 
-version: "0.5.0"
+version: "0.6.0"
 status: draft
 maintainer: FaceoftheCabin platform team
-last_updated: "2026-09-11"
+last_updated: "2026-09-13"
 # Note: this top-level version/last_updated pair had drifted stale
 # (frozen at 0.3.0/2026-07-28) even though per-entity schema_version
 # tags already referenced 0.4.0/0.4.1 work done since — not reconciled
@@ -1368,6 +1368,196 @@ elements:
       `after` attributes through this same classifier before publication;
       this closes the former MqttBridgeService hardcoded-INFO bypass without
       expanding the classifier's deliberately separate armed/presence scope.
+
+  - id: cabin_event
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.5.0"
+    migration_status: complete
+    lifecycle_status: used
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Cabin Event"
+    source: >
+      Postgres cabin_event table (event_id, time, device_id, event_type,
+      severity, payload jsonb) -- the single durable record of every
+      telemetry/state message this platform has ever ingested from any
+      adapter (Zigbee2MqttAdapter, MqttBridgeService, HomeAssistantAdapter).
+      Written exclusively via EventPublisher.publish() -> Kafka
+      cabin.events.raw -> EventConsumer -> CabinEventService -- never
+      written directly by any adapter.
+    rendering:
+      semantic: "A recorded device event or telemetry reading"
+      systems: Event / Telemetry Record
+      technical: cabin_event row
+      compliance: Timestamped Device Activity Record
+    definition: >
+      One durable, timestamped fact about a device: a telemetry reading
+      (event_type=TELEMETRY, e.g. a Zigbee humidity/temperature update) or
+      a discrete state change (motion, contact, alarm, presence, security).
+      This is the entity every Sensor History chart, CSV export, and
+      insurance-claim-grade report reads from -- if a message never
+      reaches an adapter's own publish() call, it never becomes a
+      cabin_event row and does not exist anywhere in this platform,
+      regardless of whether the physical device actually reported it.
+    relationships:
+      - target: event_severity
+        type: derives_from
+        cardinality: "N:1"
+      - target: zigbee2mqtt_bridge
+        type: derives_from
+        cardinality: "N:1"
+      - target: telemetry_recovery_pipeline
+        type: monitors
+        cardinality: "1:1"
+    relates_to:
+      ui_components: [sensor_history_panel]
+      elements: [event_severity, zigbee2mqtt_bridge, telemetry_recovery_pipeline]
+    notes: >
+      Found 2026-09-13: despite being the single most-referenced backend
+      concept in this file (event_severity, cabin_camera_event,
+      cabin_camera_event_clip, cabin_critical_event_alert, D13's own
+      Observation layer all assume it), no entity with this literal id
+      existed until this entry -- flagged and fixed directly (documentation
+      drift, not an architectural gap), added alongside the same-day
+      Zigbee mesh outage's two new sibling entities below. **Known
+      limitation, not yet resolved**: cabin_event's hot tier (anything not
+      yet aged into TelemetryArchivalService's 3-month archival export,
+      docs/MAINTENANCE.md's "Database & Storage" section) has exactly one
+      copy, on the SSD-backed Docker volume cabin-postgres uses -- no
+      standing HDD backup, no log-shipping, no Logstash-equivalent process
+      exists for it today. See telemetry_recovery_pipeline below for the
+      concrete recovery route this forced when it mattered.
+
+  - id: zigbee2mqtt_bridge
+    entity_type: owl:Class
+    layer: infra
+    primitive: false
+    schema_version: "0.5.0"
+    migration_status: complete
+    lifecycle_status: used
+    data_class: raw
+    data_type: owl:Class
+    ui_display_name: "Zigbee2MQTT Ingestion Bridge"
+    source: >
+      Zigbee2MqttAdapter.java, one Eclipse Paho MQTT client shared across
+      every configured Zigbee2MQTT instance (cabin.zigbee.topicPrefixes/
+      locations, comma-separated, matched by index -- e.g.
+      "zigbee2mqtt,home_z2m" / "cabin,home"). Subscribes to each bridge's
+      own {prefix}/bridge/devices, {prefix}/bridge/state, and {prefix}/#.
+    rendering:
+      semantic: "The pipeline that brings Zigbee device readings into this platform"
+      systems: Zigbee Ingestion Bridge
+      technical: Zigbee2MqttAdapter (Spring @Service, implements MqttCallback)
+      compliance: Zigbee Sensor Data Ingestion Pipeline
+    definition: >
+      The single point through which every Zigbee-sourced device (all 13
+      cabin devices as of 2026-07-25, plus Home's own bridge once
+      configured) reaches cabin_event and DeviceRegistry. Depends on two
+      independent things both being healthy at once: (1) this adapter's
+      own MQTT client actually receiving messages -- requires a *stable*
+      client id (cabin.mqtt.zigbeeClientId) for setCleanSession(false) to
+      mean anything across restarts; (2) the real Zigbee2MQTT service's
+      own retained bridge/devices message actually listing every real
+      device, not just its coordinator -- this adapter has no device
+      list of its own, it only ever knows what that one retained message
+      last told it.
+    relationships:
+      - target: cabin_event
+        type: produces
+        cardinality: "1:N"
+      - target: telemetry_recovery_pipeline
+        type: monitors
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [cabin_event, telemetry_recovery_pipeline]
+    notes: >
+      Found 2026-09-13, live incident (docs/MAINTENANCE.md's full
+      write-up): both dependencies named above failed independently and
+      sequentially. (1) A random MQTT client id ("z2m-adapter-" +
+      UUID.randomUUID()) on every connect silently starved this adapter of
+      every message -- retained and live -- for ~34 hours across 7+
+      redeploys, with zero exceptions logged, while the real Zigbee2MQTT
+      service kept publishing normally the whole time. Fixed: stable
+      client id. (2) Fixing (1) alone was not sufficient -- Zigbee2MQTT's
+      own retained bridge/devices message had gone stale at just its
+      Coordinator entry (its on-disk device database was fine the whole
+      time), so this adapter's knownFriendlyNames set never populated and
+      every real device-state message kept getting silently dropped by
+      messageArrived()'s own gate. Fixed by restarting the zigbee2mqtt
+      container (forces a fresh republish from its intact database; does
+      not re-pair anything). A permanent self-healing signal now exists in
+      code for each half: a messagesReceived counter that should never sit
+      flat for minutes while the source keeps publishing (symptom of (1)),
+      and a WARN log when bridge/devices yields zero real devices despite
+      a non-empty payload (symptom of (2)).
+
+  - id: telemetry_recovery_pipeline
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.5.0"
+    migration_status: partial
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: "Telemetry Recovery Route"
+    source: >
+      Not a single running service -- the documented, generalizable
+      procedure (docs/MAINTENANCE.md's "Data-loss / telemetry-gap triage"
+      entry) for recovering a cabin_event gap when the normal ingestion
+      pipeline (zigbee2mqtt_bridge or MqttBridgeService) silently failed
+      to capture something a real device actually reported.
+    rendering:
+      semantic: "What to try when telemetry data is missing"
+      systems: Data Recovery Playbook
+      technical: manual triage procedure, no dedicated endpoint/service yet
+      compliance: Data Loss Incident Response Procedure
+    definition: >
+      Ordered triage: (1) confirm the *source* service is actually still
+      alive and publishing (its own container logs / a fresh MQTT
+      subscribe, independent of cabin-backend's own state); (2) confirm
+      cabin-backend's own MQTT client is actually receiving anything (a
+      liveness counter that stops advancing while the source keeps
+      publishing is the tell); (3) for Zigbee specifically, confirm the
+      bridge/devices device list is actually complete, not just the
+      coordinator; (4) if a real gap exists, check whether the *source*
+      service's own log retention happens to cover the missing window
+      before assuming the data is gone -- cabin_event itself has no
+      standing hot-tier backup of its own (see cabin_event's own notes),
+      so a source-side log is frequently the only real alternate load
+      route available today.
+    relationships:
+      - target: cabin_event
+        type: monitors
+        cardinality: "1:1"
+      - target: zigbee2mqtt_bridge
+        type: monitors
+        cardinality: "1:1"
+    relates_to:
+      ui_components: []
+      elements: [cabin_event, zigbee2mqtt_bridge]
+    notes: >
+      Added 2026-09-13 following the Zigbee mesh outage this same day --
+      3,215 real historical readings across 12 devices were recovered
+      entirely from Zigbee2MQTT's own docker-logs output (retained back to
+      2026-09-02, no rotation loss for this window), converted from the
+      container's local time (America/Chicago) to UTC, classified via the
+      real AlertSeverityClassifier.classify() logic, and de-duplicated
+      against each device's own already-correct pre-outage cabin_event
+      tail before insertion. This worked because Zigbee2MQTT happened to
+      retain its own logs long enough -- not because any deliberate
+      recovery mechanism existed. **Explicitly flagged, not yet built**:
+      no dedicated backup/log-shipping pipeline exists for cabin_event's
+      hot tier today (proposed D19 in the shared ontology decisions
+      artifact covers three concrete options -- extending
+      TelemetryArchivalService to run more frequently, an independent
+      MQTT-subscribing log-shipping side-car, or a physically separate
+      onsite backup host/drive) -- migration_status/lifecycle_status on
+      this entity are deliberately partial/candidate until one is chosen
+      and built, not ratified as if a real pipeline already exists.
 
   - id: temperature_celsius
     entity_type: owl:DatatypeProperty
