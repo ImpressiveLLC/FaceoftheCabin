@@ -496,28 +496,71 @@ accumulate.*
   workflow-vocabulary UI (Part D) and the new triggers (Part E) — both
   shipped on `mvn test`/`npx vitest run` green plus code review only,
   not an actual browser session, until this is fixed.
+- **Two parallel WSJF backlogs exist with no cross-reference — a real
+  liability, not yet a conflict (found 2026-09-13).** The Living Ontology
+  artifact's own WSJF Priority Order/Discrepancy Log (D-decisions —
+  Cabin/Family Hub platform features, reviewed by Cowork) and
+  `docs/ai-assistant/wsjf-backlog.md` (C1–C4 — the Ollama/`llama3.2:3b`
+  corpus/RAG/assistant track, reviewed by Codex) are scored
+  independently, by different reviewers, and neither currently
+  references the other. Not urgent — the two tracks haven't produced a
+  conflicting instruction yet, and a first cross-link now exists (the
+  artifact's new reconciliation pin, `wsjf-backlog.md`'s DEP09) — but
+  whoever holds product priority (Nate/Cowork) should read both before
+  assuming either one is the complete backlog.
+- **`cabin-orchestration-platform/locations/home/docker-compose.yml` is
+  confirmed stale, not just unused (found 2026-09-13).** Its own header
+  still reads "Full Stack" (own Postgres/Kafka/backend/Grafana/HA/
+  Node-RED/Frigate) — a model already rejected 2026-08-08 in favor of
+  the collector-hub design (`ROADMAP.md` Phase 8,
+  `docs/HANDOFF_2026-08-08_codex-fork.md` Item 5), and now further
+  contradicted by what's actually live: the real Home collector
+  (Zigbee2MQTT under Termux + the `network-scan-agent`, both routing to
+  `cabin-backend` as the shared brain, live-verified 2026-09-10 through
+  2026-09-12 — see `MAINTENANCE.md`). No code depends on this file.
+  Needs a deprecation banner or removal, not a new architecture
+  decision — that decision was already made.
+- **Home LAN device discovery — resolved, superseded (2026-09-13).** An
+  earlier session's manual ARP/port-scan audit flagged one unidentified
+  device (`192.168.1.119`) as needing physical identification by the
+  user. That approach is now superseded entirely by the shipped
+  `network-scan-agent` (mDNS-based, phone-side — see MAINTENANCE.md's
+  "Home network scan agent" section): 6 real devices live-verified
+  2026-09-12 (`netscan-lg_webos_tv_oled42c5pua`,
+  `netscan-brother_hl_l2480dw`, `netscan-slzb_mr5u`, `netscan-myrouter`,
+  `netscan-retropie`, `netscan-oled42c5pua`), all visible as candidates
+  in Device Manager. No outstanding manual-identification action
+  remains.
+- **Ontology D17 still awaiting Cowork ratification; D18/D19/D20 newly
+  proposed in the shared artifact (2026-09-11 through 2026-09-13) — not
+  yet reviewed against this repo's own docs.** D17 (device_room↔
+  hub_location edge, `data_class: product` lineage tier, new
+  `knowledge_node`/`knowledge_chunk_type` entities) is implemented in
+  `docs/ontology.yaml` (commit `c925a03`) but not yet ratified. D18
+  (camera-derived media entity naming), D19 (local telemetry
+  backup/log-shipping, triggered by the 2026-09-13 Zigbee mesh outage),
+  and D20 (Live MQTT tile read-only relay) were proposed by a parallel
+  session and remain open in the artifact's Discrepancy Log — next
+  session should read them before assuming the artifact's D-number
+  sequence is caught up here.
 
 ---
 
-**Last full session close-out:** 2026-09-10/11 — the SMLIGHT SLZB-MR5U +
-Termux Home-collector POC passed end-to-end (real Zigbee network formed,
-MQTT telemetry confirmed reaching the M920q's broker over Tailscale,
-independently verified on both ends — full log in
-`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`), then formalized
-across every documentation surface it was previously invisible from:
-`PRODUCT_NOTES.md` (new dated multi-persona review — PM, Dev Lead,
-AI/LLM Prompt Writer, UX Lead, QA Test Lead, Delivery Manager,
-Marketing), `MAINTENANCE.md` (new Home Location/Termux bring-up
-section), `QA.md` (new manual checklist), `CLAUDE.md` (Design
-constraints refreshed — also caught and fixed an unrelated stale claim,
-the "no Python beyond `watchdog.py`" line, which had drifted since the
-AI-assistant corpus tooling shipped), `README.md`, and a resolved
-"Phase 8" naming collision between `ROADMAP.md`'s program and the POC
-playbook's own internal step numbering. Separately wired the same
-finding into the live `knowledge_node` table (`POST /api/kb/curate`,
-two curated nodes) and the `docs/ai-assistant/` corpus/eval tracking
-system (coverage.md, a new evidence doc, a new eval question) —
-live-verified Tiny Helpdesk answers correctly from it, distinguishing
-"the collector mechanism works" from "Home has real deployed devices,"
-which it does not yet. See git log for the actual session-by-session
+**Last full session close-out:** 2026-09-13 — a reconciliation pass
+across two work threads that had drifted apart in this doc: this
+session's own Home-collector/ontology work (2026-09-10/11, the entry
+below) and a parallel session's Home `network-scan-agent` + the
+2026-09-13 Zigbee mesh outage response + Live MQTT tile mixed-content
+fix (visible via `git log` and `docs/MAINTENANCE.md`, but not yet
+cross-referenced from this file before now). Corrected this footer's
+own prior claim — "Home has real deployed devices, which it does not
+yet" — which is no longer true: Home now has 6 real network-scan-
+discovered devices plus a live Zigbee mesh, both routing to
+`cabin-backend`. Cross-referenced the two independent WSJF backlogs
+(this artifact's D-decisions vs. `docs/ai-assistant/wsjf-backlog.md`'s
+C1–C4/Ollama-corpus track) for the first time — see the shared
+artifact's new reconciliation pin and `wsjf-backlog.md`'s DEP09.
+Flagged, not fixed: `locations/home/docker-compose.yml`'s stale "Full
+Stack" header (new Open Item above). See git log for the actual
+session-by-session
 record — that's the authoritative history now, not this file.

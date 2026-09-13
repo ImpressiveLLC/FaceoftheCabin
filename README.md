@@ -131,7 +131,8 @@ finer-grained permission tier for video vs. the rest of cabin-ui today.
 | **QA / Testing** | [`docs/QA.md`](docs/QA.md) | Technical | Per-feature test coverage, automated + manual checklists |
 | **Definition of Done** | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md) | Internal (session process) | Per-session exit checklist — not a product or architecture doc |
 | **Replicating This Template** | [`docs/REPLICATION.md`](docs/REPLICATION.md) | Standing up a fully independent instance — own accounts, domain, host, repo |
-| **Living Ontology** | [Living Artifact](https://claude.ai/code/artifact/a9c467c8-9958-4b17-95e5-f28b7af6e68f) | All | Canonical knowledge model — entities, relationships, decision log |
+| **Living Ontology** | [Living Artifact](https://claude.ai/code/artifact/a9c467c8-9958-4b17-95e5-f28b7af6e68f) | All | Canonical knowledge model — entities, relationships, decision log (WSJF Priority Order + Discrepancy Log — the D-decisions backlog) |
+| **AI Assistant Backlog** | [`docs/ai-assistant/wsjf-backlog.md`](docs/ai-assistant/wsjf-backlog.md) | All | Separate WSJF track (C1–C4) for the Ollama/`llama3.2:3b` corpus/RAG/Tiny-Helpdesk work — scored independently of the Living Ontology's own backlog above; see `docs/ai-assistant/corpus/coverage.md` for the gap register |
 | **Session Run Logs** | `docs/RUNLOG_*.md`, `docs/POC_*.md`, `docs/HANDOFF_*.md` | Technical | Dated, literal, replayable session logs for specific bring-ups/investigations (e.g. the Home/Termux collector POC) — not summarized elsewhere; check by filename pattern, not a single index page |
 
 ---
