@@ -177,7 +177,16 @@ class CabinEventServiceTest {
 
     @Test
     void averagesMultipleSameDayReadingsIntoOneBucket() {
-        Instant today = Instant.now();
+        // Found 2026-09-13 (live incident): dailyAggregates()' date_trunc('day', time)
+        // buckets by the JDBC session's effective timezone, which follows the
+        // connecting JVM's default (America/Chicago on the M920q CI runner), not
+        // UTC. Instant.now() minus up to an hour genuinely crossed a calendar-day
+        // boundary whenever this ran within ~60 minutes of local midnight,
+        // splitting the two readings into two buckets and failing hasSize(1) --
+        // exactly what blocked an unrelated, urgent same-day deploy. Anchored to
+        // a fixed mid-day instant instead so the -3600s/-1800s offsets can never
+        // straddle a day boundary regardless of what timezone this runs under.
+        Instant today = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS).plusSeconds(12 * 3600);
         saveTelemetry("t-1", "z2m-humid_mech", today.minusSeconds(3600), Map.of("humidity", 70));
         saveTelemetry("t-2", "z2m-humid_mech", today.minusSeconds(1800), Map.of("humidity", 80));
 
