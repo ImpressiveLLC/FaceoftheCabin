@@ -72,6 +72,35 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     @Value("${cabin.zigbee.locations:cabin}")
     private String locationsConfig = "cabin";
 
+    // Found 2026-09-13 (live incident -- cabin's entire 13-device Zigbee
+    // mesh silently stopped reaching DeviceRegistry from the moment this
+    // class's multi-bridge refactor (67f9745) first deployed, 2026-09-11
+    // ~20:14 UTC, surviving 7+ subsequent redeploys with zero live/retained
+    // messages ever processed again despite Z2M itself publishing
+    // continuously and every subscribe() call being acknowledged without
+    // error): this field was still "z2m-adapter-" + UUID.randomUUID() --
+    // the exact same anti-pattern MqttBridgeService.connect() documents
+    // fixing on 2026-08-15 for the identical reason (setCleanSession(false)
+    // below is meaningless if the client id is never the same twice, so
+    // the broker never resumes anything, and every restart leaves behind
+    // one more abandoned persistent (non-clean) session the broker keeps
+    // forever). Never applied here when that fix landed. Root cause of
+    // the actual silent-message-loss symptom is not fully confirmed by
+    // static review alone -- this is shipped alongside the diagnostic
+    // counter below specifically so the next deploy proves (not assumes)
+    // whether this was sufficient.
+    @Value("${cabin.mqtt.zigbeeClientId:cabin-z2m-adapter}")
+    private String clientId = "cabin-z2m-adapter";
+
+    // Diagnostic, added alongside the client-id fix above for the same
+    // incident: proves whether messageArrived() is being invoked at all
+    // post-connect, rather than leaving that as an assumption the way the
+    // original incident investigation had to infer it indirectly (via
+    // absence of vendor/model attributes and cabin_event rows). Logged at
+    // INFO so it survives without DEBUG enabled; safe to remove once this
+    // incident is confirmed resolved across a real restart.
+    private final java.util.concurrent.atomic.AtomicLong messagesReceived = new java.util.concurrent.atomic.AtomicLong();
+
     private List<ZigbeeBridge> bridges;
 
     private MqttClient client;
@@ -189,7 +218,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     @PostConstruct
     public void connect() {
         try {
-            client = new MqttClient(brokerUrl, "z2m-adapter-" + UUID.randomUUID());
+            client = new MqttClient(brokerUrl, clientId);
             client.setCallback(this);
             MqttConnectOptions opts = new MqttConnectOptions();
             opts.setAutomaticReconnect(true);
@@ -209,6 +238,10 @@ public class Zigbee2MqttAdapter implements MqttCallback {
 
     @Override
     public void messageArrived(String topic, MqttMessage message) {
+        long count = messagesReceived.incrementAndGet();
+        if (count == 1 || count % 100 == 0) {
+            log.info("Z2M messageArrived count={} (most recent topic: {})", count, topic);
+        }
         try {
             String payload = new String(message.getPayload());
             // isRetained() is true only when the broker is replaying its last-known

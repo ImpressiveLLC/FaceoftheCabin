@@ -15,6 +15,13 @@ cabin:
   mqtt:
     brokerUrl: ${MQTT_URL:tcp://localhost:1883}
     clientId: cabin-orchestrator
+    # Found 2026-09-13: Zigbee2MqttAdapter had its own separate MqttClient
+    # still keyed on a fresh UUID every connect -- the exact anti-pattern
+    # cabin-orchestrator's own clientId above was already fixed for on
+    # 2026-08-15 (a random id every restart defeats setCleanSession(false)
+    # and leaves an abandoned persistent session behind each time). Applied
+    # the same fix here.
+    zigbeeClientId: cabin-z2m-adapter
   zigbee:
     # Comma-separated, same order/count -- e.g. "zigbee2mqtt,home_z2m" /
     # "cabin,home" once Home's Termux Z2M collector is live on its own
