@@ -239,9 +239,13 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         long count = messagesReceived.incrementAndGet();
-        if (count == 1 || count % 100 == 0) {
-            log.info("Z2M messageArrived count={} (most recent topic: {})", count, topic);
-        }
+        // Temporarily logging every message (not just every 100th) for this
+        // same live incident's diagnosis -- the client-id fix alone got
+        // exactly one message through (this bridge/devices) and then
+        // nothing since, with zero warnings, meaning something after this
+        // point silently stalls. Dial back to the 1/100th cadence once the
+        // stall point is found and fixed.
+        log.info("Z2M messageArrived count={} topic={} retained={}", count, topic, message.isRetained());
         try {
             String payload = new String(message.getPayload());
             // isRetained() is true only when the broker is replaying its last-known
@@ -332,9 +336,20 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         try {
             JsonNode devices = mapper.readTree(payload);
             if (!devices.isArray()) return;
+            // Found 2026-09-13 (same live incident as the client-id fix):
+            // that fix alone was NOT sufficient -- the diagnostic counter
+            // confirmed exactly one message (this bridge's own
+            // bridge/devices) ever reaches messageArrived(), and nothing
+            // since, with zero warnings logged. Per-device entry/exit
+            // tracing here so the next deploy shows exactly which device
+            // (if any) this silently stalls on, rather than guessing again.
+            log.info("Z2M bridge/devices for {}: processing {} device(s)", bridge.topicPrefix, devices.size());
+            int processed = 0;
             for (JsonNode device : devices) {
                 String friendlyName = device.path("friendly_name").asText(null);
                 if (friendlyName == null || friendlyName.equals("Coordinator")) continue;
+                log.info("Z2M bridge/devices for {}: processing device {}/{} ({})",
+                    bridge.topicPrefix, ++processed, devices.size(), friendlyName);
                 bridge.knownFriendlyNames.add(friendlyName);
                 String deviceId = deviceId(bridge, friendlyName);
 
@@ -393,9 +408,12 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                     reportingRelationshipRepository.upsert(new DeviceReportingRelationship(
                         deviceId, field, field, ConfirmationSource.VENDOR_SPEC, confirmedNow));
                 }
+                log.info("Z2M bridge/devices for {}: finished device {}/{} ({})",
+                    bridge.topicPrefix, processed, devices.size(), friendlyName);
             }
+            log.info("Z2M bridge/devices for {}: all {} device(s) processed successfully", bridge.topicPrefix, processed);
         } catch (Exception e) {
-            log.warn("Failed to parse Z2M device list: {}", e.getMessage());
+            log.warn("Failed to parse Z2M device list: {}", e.getMessage(), e);
         }
     }
 
