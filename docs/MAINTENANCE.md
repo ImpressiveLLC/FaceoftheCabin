@@ -1036,7 +1036,7 @@ been exercised against a real live connection since this fix (it was
 never reachable before, so it's realistically untested code, not just
 unverified today).
 
-### Live MQTT tile blocked as mixed content on the public site (found and fixed 2026-09-13)
+### Live MQTT tile blocked as mixed content on the public site — browser error silenced, real fix deferred (found 2026-09-13, correctly NOT fully fixed same day)
 
 Answers the "not yet verified" gap directly above: the reason it was
 never verified is that it never actually worked for a real visitor.
@@ -1052,22 +1052,80 @@ exception for being on the same tailnet. The tile has silently shown
 "No live messages" for every visitor to the public site since it went
 public, not a new regression.
 
-**Fixed by terminating the WebSocket same-origin instead of pointing at
-it directly.** `cabin-ui/nginx.conf` gained a `/mqtt-ws` location
-proxying to mosquitto's WS port — reached via the M920q's LAN IP
-(`192.168.2.46:9001`), not the `mosquitto` container hostname, since
-`cabin-ui` and `mosquitto` sit on two different Docker networks
-(`infra_default` vs `cabin_default`, confirmed via `docker inspect`)
-and can't resolve each other directly — the same cross-project-network
-gap `HA_URL: http://192.168.2.46:8123` already works around for Home
-Assistant, not a new workaround. The browser now only ever connects to
-`wss://cabin.unicornpingpong.com/mqtt-ws`, same origin as the page
-itself, no mixed content possible. No frontend code change needed:
-`LOCATIONS.cabin.wsBase` gets its real value from the same
-`hub_locations` runtime-override mechanism (`useHubLocations()`) found
-and fixed for `apiBase` earlier this same session — a
-`PATCH /api/locations/cabin {"wsBase": "wss://cabin.unicornpingpong.com/mqtt-ws"}`
-is the only remaining step, not a redeploy.
+**First attempt (PR #58) was wrong and is superseded, not a working fix
+— caught before it went live, not after.** Added an nginx `/mqtt-ws`
+location proxying to mosquitto's WS port via the M920q's LAN IP
+(`192.168.2.46:9001`), reasoning it was the same cross-project-network
+workaround `HA_URL: http://192.168.2.46:8123` already uses. Two things
+wrong with that, found immediately while verifying it live: (1) it
+doesn't even work — `docker exec cabin-ui curl .../mqtt-ws` returns a
+plain `502 Bad Gateway`; the LAN IP isn't reachable from `cabin-ui`'s
+own container the way it is from `cabin-backend` (which is *also*
+directly attached to `cabin_default`, mosquitto's own network — the
+real reason that one resolves `mosquitto` by hostname at all, not a
+LAN-IP fallback). (2) Far more importantly: re-reading
+`docker-compose.m920q.yml`'s own comment on `VITE_CABIN_WS_BASE`
+surfaced a **prior, deliberate decision** this fix would have reversed
+without anyone noticing: *"Left Tailscale-only deliberately: raw MQTT
+pub/sub (device control channel, not just viewing)... a meaningfully
+different risk than the read-only status/link-out this round is
+actually about."* Mosquitto runs `allow_anonymous true` with no topic
+ACLs — a raw WebSocket connection to it isn't a scoped telemetry feed,
+it's a full MQTT client connection, able to *publish* to any topic
+(including device command topics — `main_water_valve/set`, lock
+control, etc.), not just subscribe. The follow-up fix (attaching
+`cabin-ui` to `cabin_default` and proxying straight to `mosquitto:9001`
+by hostname) would have made that unauthenticated control channel
+reachable from the public internet, reversing that decision silently.
+Caught and stopped before merging anything that would have actually
+worked that way.
+
+**Current state, left as-is deliberately**: the mixed-content *browser
+error* is gone (PATCH `/api/locations/cabin {"wsBase":
+"wss://cabin.unicornpingpong.com/mqtt-ws"}` applied, PR #58's inert
+`/mqtt-ws` nginx block still returns 502) — the tile still shows no
+data for public visitors, same as it always has, just failing quietly
+instead of loudly. This is the safer state to sit in, not a regression:
+nothing is more exposed than before.
+
+**Real fix, decided but deliberately deferred to a fresh, reviewed
+PR — not built same-session as a live incident follow-up:** replace the
+tile's direct broker connection with a real, read-only, sanitized
+relay served *from cabin-backend* (most likely Server-Sent Events over
+the existing `/api/` path — no new Docker networking, no new nginx
+proxy, reuses the exact mediation pattern every other endpoint in this
+app already follows; a raw WebSocket handler is the alternative but adds
+more moving parts for a one-directional need). Never proxies to
+mosquitto directly; only relays already-classified `CabinEvent`s (same
+shape `/api/events` already returns), gated the same way D14 gates
+`/api/events`'s bare collection today so this doesn't quietly reopen
+that boundary. Logged as **Proposed D20** in the shared ontology
+decisions artifact with three concrete implementation options — Nate's
+own call, applying Occam's razor: this is real new backend surface
+touching a security boundary, not an urgent fix, and deserves a normal
+review cycle rather than being rushed at the tail end of tonight's
+Zigbee incident.
+
+### `temp_outside_lowest` briefly shows UNKNOWN/"—" in Monitoring right after a restart — expected, not a bug (clarified 2026-09-13)
+
+Reported directly by Nate mid-incident: Monitoring's KPI tile showed
+this device as unavailable (state `UNKNOWN`, value `—`) while its
+Devices list entry looked fine. Checked live rather than assumed either
+way: `cabin_event` shows this device reporting on its own real, roughly
+hourly cadence throughout the night, including three genuine live
+reports *after* the Zigbee fix landed (06:27, 06:46, 06:52 UTC) — the
+pipeline is working correctly for it. The Monitoring tile's empty
+reading is simply `DeviceRegistry`'s in-memory state, wiped clean by
+the *next* restart minutes later (`PR #57`'s deploy, ~06:53 UTC) — this
+device just hadn't had its next natural check-in yet by the time it was
+looked at. Devices list looked fine because it draws on durable state
+(lifecycle/config/last-known-good), not the same live in-memory
+snapshot. Tonight's several rapid redeploys made this unusually visible
+for a device with a naturally slow (hourly-ish, `expectedCheckinMinutes:
+1560` battery grace window) reporting cadence — under normal single-
+restart operation this same brief gap would still occur but go
+unnoticed. Self-resolves on its own next report; no fix needed, no code
+changed.
 
 ---
 
