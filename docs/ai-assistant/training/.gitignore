@@ -1,0 +1,5 @@
+# Real training run output (adapters, merged weights, GGUF files,
+# datasets exported from a real graded round) -- never committed, stays
+# on whichever machine produced it. Only the pipeline code that produces
+# this output is tracked.
+data/
