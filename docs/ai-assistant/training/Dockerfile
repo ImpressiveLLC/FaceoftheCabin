@@ -5,18 +5,22 @@
 # customer's home server) or a box with a real GPU (bluefin, if it turns
 # out to have one), without a rebuild.
 #
-# CORRECTED 2026-09-14 against a real build on the M920q: the original
-# unpinned `pip install torch` grabbed whatever the latest torch release
-# is as of build time, which is newer than unsloth's own upper bound
-# (`torch<=2.7.0,>=2.4.0`) -- pip's resolver then backtracked through
-# EVERY historical unsloth release (observed: 2025.7.8 down through
-# 2025.2.9 and still going after 23+ minutes) looking for one whose torch
-# constraint happened to accept the too-new torch already installed.
-# Fixed by pinning both torch and unsloth explicitly so there's nothing
-# left to backtrack over. If bitsandbytes fails to install/import on this
-# CPU-only image (its CPU support has historically been uneven), remove
-# it and fall back to plain (non-quantized) LoRA via peft, and update
-# this comment with what actually happened.
+# CORRECTED 2026-09-14, twice, against real runs on the M920q:
+# 1. The original unpinned `pip install torch` grabbed whatever the
+#    latest torch release is as of build time, newer than unsloth's own
+#    upper bound (torch<=2.7.0,>=2.4.0) -- pip's resolver backtracked
+#    through EVERY historical unsloth release (observed: 2025.7.8 down
+#    through 2025.2.9, still unresolved after 23+ minutes) looking for
+#    one that would accept the too-new torch. Fixed by pinning torch.
+# 2. unsloth's FastLanguageModel then turned out to hard-require an
+#    actual NVIDIA/Intel GPU at import time (NotImplementedError, no CPU
+#    fallback exists in the library) -- directly contradicts this POC's
+#    CPU-first goal. Switched train_sft.py to plain
+#    transformers.AutoModelForCausalLM + peft.LoraConfig instead, which
+#    both unsloth AND bitsandbytes (its CUDA-only 4-bit quantization,
+#    no longer used since load_in_4bit was dropped) are now genuinely
+#    unused dead weight for -- removed both rather than leave ~1GB+ of
+#    unused NVIDIA CUDA wheels, xformers, and triton installed.
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -27,40 +31,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git \
     && rm -rf /var/lib/apt/lists/*
 
-# CPU wheel of torch from PyTorch's own CPU index -- pinned to exactly
-# unsloth's documented upper bound (torch<=2.7.0,>=2.4.0) so pip's
-# resolver has nothing to backtrack over during THIS layer.
-#
-# CONFIRMED on the real build (2026-09-14): this pin gets overridden
-# anyway -- unsloth 2025.7.8's own sub-dependencies (unsloth_zoo,
-# xformers, triton) require a newer torch than 2.7.0, so the final
-# `pip install unsloth` layer below uninstalls this 2.7.0+cpu and
-# installs torch-2.12.1 instead. That's fine functionally (still gated
-# by torch.cuda.is_available() at runtime, still CPU-only behavior) --
-# keeping this layer anyway because it still avoids the *initial*
-# resolver backtrack this fix was written for; the version that actually
-# ends up installed is whatever unsloth's own dependency chain needs.
+# CPU wheel of torch from PyTorch's own CPU index, pinned to a known
+# real version (confirmed working on a real CPU training run).
 RUN pip install --no-cache-dir torch==2.7.0 --index-url https://download.pytorch.org/whl/cpu
 
-# unsloth pinned to a specific known release for the same reason. The
-# rest are left unpinned -- transformers/trl/peft/datasets/accelerate
-# have much wider compatibility ranges and weren't part of the observed
-# backtracking explosion.
-#
-# Split into separate RUN layers (not one combined install) and given a
-# longer pip timeout: found on the M920q that unsloth's dependency chain
-# unconditionally pulls several hundred MB of nvidia-*-cu13 CUDA wheels
-# even on this CPU-only box (they're just unused dead weight here, never
-# loaded since torch.cuda.is_available() is False) -- one of those
-# (nvidia_cufft, 214MB) hit a slow network patch and timed out at
-# 191/214MB. Splitting into layers means a retry doesn't have to re-fetch
-# everything that already succeeded.
+# Split into separate RUN layers with a longer pip timeout: found on the
+# M920q that a combined install can hit real network timeouts on large
+# wheels, and splitting means a retry doesn't re-fetch what already
+# succeeded. gguf is for convert_hf_to_gguf.py (export_to_ollama.sh).
 RUN pip install --no-cache-dir --default-timeout=300 transformers datasets accelerate peft
 RUN pip install --no-cache-dir --default-timeout=300 trl
-RUN pip install --no-cache-dir --default-timeout=300 bitsandbytes
-RUN pip install --no-cache-dir --default-timeout=300 unsloth==2025.7.8
+RUN pip install --no-cache-dir --default-timeout=300 gguf sentencepiece protobuf
 
-COPY export_grades_to_sft.py train_sft.py ./
+COPY export_grades_to_sft.py train_sft.py merge_and_convert.py ./
 
 # No ENTRYPOINT/CMD -- every stage of the pipeline is an explicit,
 # manually-invoked command (see README.md), not a long-running service.

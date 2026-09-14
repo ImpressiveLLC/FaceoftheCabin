@@ -12,6 +12,15 @@ services:
       # feature) -- EVAL_RESULTS_DIR must be an already-expanded absolute
       # path, e.g.: EVAL_RESULTS_DIR="$HOME/eval-results" docker compose run ...
       - ${EVAL_RESULTS_DIR}:/root/eval-results:ro
+      # Read-only: convert_hf_to_gguf.py's own conversion script (pure
+      # Python, per README's "clone llama.cpp" step). Mounted rather than
+      # baked into the image so it can be updated independently of a
+      # rebuild -- README already documents matching this to whatever
+      # llama.cpp build Ollama has bundled. Same rule as EVAL_RESULTS_DIR
+      # above: must be an already-expanded absolute path, no default here
+      # (a wrong hardcoded default is exactly the mistake EVAL_RESULTS_DIR
+      # already taught -- require it explicitly instead).
+      - ${LLAMA_CPP_DIR}:/opt/llama.cpp:ro
     environment:
       - HF_HOME=/root/.cache/huggingface
 volumes:
