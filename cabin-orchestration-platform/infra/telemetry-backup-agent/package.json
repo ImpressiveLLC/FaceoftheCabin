@@ -1,0 +1,13 @@
+{
+  "name": "telemetry-backup-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "D19 (Cabin Platform Decisions artifact), Option B: an independent MQTT log-shipping side-car. Subscribes directly to the same broker cabin-backend does and appends every message verbatim to /storage, completely decoupled from cabin-backend's own health -- the 2026-09-13 Zigbee mesh outage was only recoverable because Zigbee2MQTT's own docker logs happened to retain the window; this makes that recovery path deliberate instead of lucky, and covers every topic, not just Zigbee's. See docs/MAINTENANCE.md's D19 write-up for the full incident and design rationale.",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.0"
+  }
+}

@@ -177,4 +177,73 @@ class TelemetryArchivalServiceTest {
             return new String(gzip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).lines().toList();
         }
     }
+
+    // ── D19 Option A: exportIncremental() ──────────────────────────────
+
+    @Test
+    void exportIncrementalWritesNewTelemetryRowsWithoutDeletingThem(@TempDir Path tempDir) throws Exception {
+        JdbcTemplate jdbc = jdbc();
+        insertEvent(jdbc, "e1", "2026-09-14T08:00:00Z", "z2m-leak_mech_room", "TELEMETRY", "{\"water_leak\": false}");
+        insertEvent(jdbc, "e2", "2026-09-14T08:05:00Z", "front_door", "DETECTION_NEW", "{\"label\": \"person\"}");
+        TelemetryArchivalService service = new TelemetryArchivalService(jdbc);
+        ReflectionTestUtils.setField(service, "archiveDir", tempDir.toString());
+
+        service.exportIncremental();
+
+        Path dir = tempDir.resolve("incremental");
+        Path expectedFile = dir.resolve("incremental-" + java.time.LocalDate.now(java.time.ZoneOffset.UTC) + ".jsonl");
+        assertTrue(Files.exists(expectedFile), "expected an incremental JSONL file to be written");
+        List<String> lines = Files.readAllLines(expectedFile);
+        assertEquals(1, lines.size(), "only the TELEMETRY row, not the DETECTION_NEW row");
+        assertTrue(lines.get(0).contains("z2m-leak_mech_room"));
+
+        Integer stillLive = jdbc.queryForObject(
+            "SELECT count(*) FROM cabin_event WHERE event_type = 'TELEMETRY'", Integer.class);
+        assertEquals(1, stillLive, "incremental export is additive-only -- it must never delete from the live table");
+        assertTrue(Files.exists(dir.resolve(".watermark")), "expected a watermark file to be written");
+    }
+
+    @Test
+    void exportIncrementalOnlyExportsRowsAfterThePreviousWatermarkOnASecondRun(@TempDir Path tempDir) throws Exception {
+        JdbcTemplate jdbc = jdbc();
+        insertEvent(jdbc, "e1", "2026-09-14T08:00:00Z", "z2m-temp_kitchen", "TELEMETRY", "{\"temperature\": 68}");
+        TelemetryArchivalService service = new TelemetryArchivalService(jdbc);
+        ReflectionTestUtils.setField(service, "archiveDir", tempDir.toString());
+        service.exportIncremental();
+
+        insertEvent(jdbc, "e2", "2026-09-14T08:10:00Z", "z2m-temp_kitchen", "TELEMETRY", "{\"temperature\": 69}");
+        service.exportIncremental();
+
+        Path expectedFile = tempDir.resolve("incremental")
+            .resolve("incremental-" + java.time.LocalDate.now(java.time.ZoneOffset.UTC) + ".jsonl");
+        List<String> lines = Files.readAllLines(expectedFile);
+        assertEquals(2, lines.size(), "e1 from the first run plus e2 from the second, e1 must not repeat");
+        assertEquals(1, lines.stream().filter(l -> l.contains("\"eventId\":\"e1\"")).count());
+        assertEquals(1, lines.stream().filter(l -> l.contains("\"eventId\":\"e2\"")).count());
+    }
+
+    @Test
+    void exportIncrementalSkipsWhenDisabled(@TempDir Path tempDir) {
+        JdbcTemplate jdbc = jdbc();
+        insertEvent(jdbc, "e1", "2026-09-14T08:00:00Z", "z2m-temp_kitchen", "TELEMETRY", "{\"temperature\": 68}");
+        TelemetryArchivalService service = new TelemetryArchivalService(jdbc);
+        ReflectionTestUtils.setField(service, "archiveDir", tempDir.toString());
+        ReflectionTestUtils.setField(service, "enabled", false);
+
+        service.exportIncremental();
+
+        assertFalse(Files.exists(tempDir.resolve("incremental")), "disabled means no export directory is even created");
+    }
+
+    @Test
+    void exportIncrementalWithNoNewRowsWritesNoFileAndDoesNotThrow(@TempDir Path tempDir) {
+        JdbcTemplate jdbc = jdbc();
+        TelemetryArchivalService service = new TelemetryArchivalService(jdbc);
+        ReflectionTestUtils.setField(service, "archiveDir", tempDir.toString());
+
+        assertDoesNotThrow(service::exportIncremental);
+        Path expectedFile = tempDir.resolve("incremental")
+            .resolve("incremental-" + java.time.LocalDate.now(java.time.ZoneOffset.UTC) + ".jsonl");
+        assertFalse(Files.exists(expectedFile), "no new rows means nothing to write");
+    }
 }
