@@ -1482,27 +1482,46 @@ function deviceIcon(type) {
   return map[type] || Circle;
 }
 
-// ─── Live WebSocket telemetry hook ─────────────────────────────────────────
-// wsBase: the Mosquitto WebSocket URL for the target hub, or null to disconnect.
-function useMqttTelemetry(active, wsBase) {
+// ─── Live event stream hook (D20) ──────────────────────────────────────────
+// Replaces a raw WebSocket straight to mosquitto (unauthenticated MQTT
+// pub/sub -- a de facto device-control channel, not a scoped telemetry
+// feed; see the Cabin Platform Decisions artifact's D20 and this file's own
+// prior wsBase-based useMqttTelemetry) with a real, read-only,
+// backend-mediated relay: GET /api/events/live (Server-Sent Events),
+// pushing already-persisted, already-classified CabinEvents only. One-
+// directional by construction -- there is no way for a browser to publish
+// anything back through this, unlike the broker connection it replaces.
+//
+// apiBase: the target hub's cabin-backend URL, or null to disconnect.
+// authToken: { cabinSession, accessToken } -- EventSource can't set a
+// custom Authorization header, so whichever token is live travels as a
+// query param instead, same technique CameraLiveView already uses for the
+// identical reason (cabin_session preferred, falling back to access_token).
+// This endpoint is gated exactly like the bare GET /api/events collection
+// it mirrors, so an anonymous visitor simply never connects -- expected,
+// not a bug.
+function useLiveEventStream(active, apiBase, authToken) {
   const [messages, setMessages] = useState([]);
-  const ws = useRef(null);
+  const source = useRef(null);
+  const { cabinSession, accessToken } = authToken || {};
+  const token = cabinSession || accessToken;
+  const tokenParam = cabinSession ? "cabin_session" : "access_token";
 
   useEffect(() => {
-    if (!active || !wsBase) { ws.current?.close(); return; }
+    if (!active || !apiBase || !token) { source.current?.close(); return; }
+    const url = `${apiBase}/api/events/live?${tokenParam}=${encodeURIComponent(token)}`;
     try {
-      ws.current = new WebSocket(wsBase);
-      ws.current.onopen = () => console.log("MQTT WS connected →", wsBase);
-      ws.current.onmessage = (e) => {
+      source.current = new EventSource(url);
+      source.current.addEventListener("cabin-event", (e) => {
         try {
           const data = JSON.parse(e.data);
           setMessages(prev => [{ ts: Date.now(), ...data }, ...prev].slice(0, 50));
         } catch {}
-      };
-      ws.current.onerror = () => {};
+      });
+      source.current.onerror = () => {};
     } catch {}
-    return () => ws.current?.close();
-  }, [active, wsBase]);
+    return () => source.current?.close();
+  }, [active, apiBase, token, tokenParam]);
 
   return messages;
 }
@@ -4847,7 +4866,8 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
 // are undefined outside reorder mode, same as KpiTile's own defaults.
 function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragIdx, overIdx, pinnedCount,
     onDragStart, onDragOver, onDrop, onDragEnd, auth }) {
-  const liveMessages = useMqttTelemetry(active, locCfg.wsBase);
+  const liveMessages = useLiveEventStream(active, locCfg.apiBase,
+    { cabinSession: auth?.cabinSessionToken, accessToken: auth?.accessToken });
   const [tempUnit, toggleTempUnit] = useTempUnit();
 
   // D13/bug #4: curated Service Entity display_labels for single-service
@@ -4917,9 +4937,9 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       <CameraHealthPanel locCfg={locCfg} />
 
       <div className="event-log">
-        <div className="event-log-header">Live MQTT — {locCfg.label}</div>
+        <div className="event-log-header">Live Events — {locCfg.label}</div>
         {liveMessages.length === 0 && (
-          <div className="event-log-empty">No live messages from {locCfg.wsBase}</div>
+          <div className="event-log-empty">No live events yet from {locCfg.label}</div>
         )}
         {liveMessages.map((m, i) => (
           <div key={i} className="event-row">

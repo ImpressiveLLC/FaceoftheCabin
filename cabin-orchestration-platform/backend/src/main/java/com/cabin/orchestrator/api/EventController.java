@@ -3,8 +3,10 @@ package com.cabin.orchestrator.api;
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
+import com.cabin.orchestrator.events.EventStreamBroadcaster;
 import com.cabin.orchestrator.events.TelemetryDailyPoint;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -19,10 +21,13 @@ public class EventController {
 
     private final CabinEventService eventService;
     private final DeviceRegistry registry;
+    private final EventStreamBroadcaster streamBroadcaster;
 
-    public EventController(CabinEventService eventService, DeviceRegistry registry) {
+    public EventController(CabinEventService eventService, DeviceRegistry registry,
+                           EventStreamBroadcaster streamBroadcaster) {
         this.eventService = eventService;
         this.registry = registry;
+        this.streamBroadcaster = streamBroadcaster;
     }
 
     /**
@@ -110,6 +115,31 @@ public class EventController {
     @GetMapping("/reported-fields")
     public java.util.Map<String, List<String>> reportedFields() {
         return eventService.reportedFieldsByDevice();
+    }
+
+    /**
+     * GET /api/events/live -- D20 (Cabin Platform Decisions artifact):
+     * real-time push of already-persisted CabinEvents via Server-Sent
+     * Events, replacing cabin-ui's old Live MQTT tile (a raw WebSocket
+     * straight to mosquitto -- unauthenticated MQTT pub/sub, a de facto
+     * device-control channel, not a scoped telemetry feed). SSE is
+     * one-directional by construction: there is no way for a connected
+     * browser to publish anything back through this endpoint, unlike
+     * the broker connection it replaces.
+     *
+     * Falls under this class's own /api/events/** prefix in WebConfig,
+     * so it is gated exactly like the bare GET /api/events collection
+     * this mirrors -- deliberately not exempted the way telemetry-history/
+     * reported-fields are (see GoogleAuthInterceptor's own comment on
+     * that exact-path carve-out). EventSource can't set a custom
+     * Authorization header, so the browser passes its session the same
+     * way CameraLiveView already does for the same reason -- a
+     * cabin_session (or access_token) query parameter, both already
+     * supported by GoogleAuthInterceptor's token extraction.
+     */
+    @GetMapping("/live")
+    public SseEmitter liveEvents() {
+        return streamBroadcaster.subscribe();
     }
 
     private Duration parseWindow(String window) {

@@ -91,7 +91,8 @@ class EventPipelineIntegrationTest {
         CommandCatalogService commandCatalog = new CommandCatalogService(deviceRegistry);
         WorkflowRuleService workflowRuleService = new WorkflowRuleService(
             workflowRuleStore, workflowExecutionStore, deviceRegistry, commandCatalog, publisher);
-        consumer = new EventConsumer(eventService, ntfy, automationRuleService, workflowRuleService);
+        consumer = new EventConsumer(eventService, ntfy, automationRuleService, workflowRuleService,
+            new EventStreamBroadcaster());
         ReflectionTestUtils.setField(consumer, "bootstrapServers", kafka.getBootstrapServers());
         consumer.start();
     }
