@@ -100,6 +100,24 @@ public class HomeAssistantDiscoveryService {
             Map<String, Object> attrs = new LinkedHashMap<>(entity.attributes());
             attrs.put("entityId", entity.entityId());
             attrs.put("discoveredFrom", "Home Assistant");
+            // Found 2026-09-14, live: an HA-discovered entity's attrs never
+            // carried "description" (or "vendor"/"model" -- HA's own
+            // per-entity state attributes don't expose device-registry
+            // manufacturer/model at all, unlike Zigbee2MqttAdapter's own
+            // Z2M-sourced attrs) -- cabin-discovery's DeviceDiscoveryController
+            // looks for exactly those three keys, so every HA-discovered
+            // candidate silently got "nothing to search for" regardless of
+            // ANTHROPIC_API_KEY/web_lookup being configured. Same fix shape
+            // as e052c4a's netscan/mDNS description fix: friendly_name +
+            // device_class is what's actually known here, so it's what
+            // gets searched -- not always a real product name (an
+            // HA-invented label like "motion_entry Occupancy" won't find
+            // anything), but honest about what discovery actually knows,
+            // and a real product-ish friendly_name (Kidde/Liebherr's own
+            // integration-provided names) now gets a genuine chance at a
+            // real result instead of never trying at all.
+            String deviceClass = String.valueOf(entity.attributes().getOrDefault("device_class", "")).trim();
+            attrs.put("description", deviceClass.isEmpty() ? name : name + " (" + deviceClass + ")");
             // 2026-08-25: a sensor-domain entity's real reading IS HA's own
             // state field (e.g. "72.5" for a temperature sensor, "415" for
             // a CO2 sensor) -- HA's own convention, not a nested attribute
