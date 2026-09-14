@@ -4,6 +4,14 @@ services:
     volumes:
       - ./data:/app/data
       - model-cache:/root/.cache/huggingface
+      # Read-only: export_grades_to_sft.py only reads already-graded
+      # rounds from here, never writes back. Found missing on the real
+      # M920q run -- Path.home()/"eval-results" resolved to the
+      # container's own empty /root, not the host's real data. Compose's
+      # variable interpolation does NOT expand `~` (that's a shell
+      # feature) -- EVAL_RESULTS_DIR must be an already-expanded absolute
+      # path, e.g.: EVAL_RESULTS_DIR="$HOME/eval-results" docker compose run ...
+      - ${EVAL_RESULTS_DIR}:/root/eval-results:ro
     environment:
       - HF_HOME=/root/.cache/huggingface
 volumes:

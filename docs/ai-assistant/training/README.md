@@ -50,6 +50,9 @@ export_to_ollama.sh (merge -> GGUF -> ollama create)
 
 ```bash
 export DOCKER_HOST=ssh://nate@<target-host>.tailb20f8b.ts.net
+export EVAL_RESULTS_DIR="$HOME/eval-results"  # must be an already-expanded
+                                                # absolute path -- compose
+                                                # does not expand ~
 cd docs/ai-assistant/training
 docker compose build
 docker compose run --rm trainer python export_grades_to_sft.py \
