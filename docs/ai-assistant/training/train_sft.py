@@ -56,11 +56,15 @@ def main():
 
     use_gpu = torch.cuda.is_available()
     print(f"CUDA available: {use_gpu} (this run will {'use' if use_gpu else 'NOT use'} a GPU)")
-    # bf16 halves the frozen base model's memory footprint vs fp32; the
-    # base weights are frozen (LoRA only trains the small adapter), so
-    # this doesn't carry the precision-stability concerns a full
-    # fine-tune's optimizer state would have in bf16.
-    dtype = torch.bfloat16 if not use_gpu else torch.float16
+    # CORRECTED 2026-09-14 against a real run: this box's CPU doesn't
+    # actually support bf16 training (transformers' own validation
+    # rejects it -- "Your setup doesn't support bf16/gpu"). Plain fp32
+    # for CPU avoids that entirely, and avoids a dtype mismatch between
+    # frozen base weights and the LoRA adapter's fp32 params. Costs more
+    # memory (~12GB vs ~6GB for the frozen 3B weights) but there's ~21GB
+    # available on this machine (see the Firefox-memory-pressure fix
+    # earlier this session), so fp32 is the safer first-run choice.
+    dtype = torch.float32 if not use_gpu else torch.float16
 
     examples = load_dataset_dicts()
     dataset = Dataset.from_list(examples)
@@ -98,7 +102,8 @@ def main():
             learning_rate=2e-4,
             logging_steps=1,
             save_strategy="no",  # we save the adapter explicitly below
-            bf16=not use_gpu,
+            use_cpu=not use_gpu,  # required explicitly -- transformers doesn't auto-detect "no GPU present"
+            bf16=False,  # this box's CPU doesn't support bf16 training (found on a real run)
             fp16=use_gpu,
             report_to="none",
         ),
