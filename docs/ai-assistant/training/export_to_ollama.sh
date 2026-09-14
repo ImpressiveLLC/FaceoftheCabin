@@ -5,7 +5,7 @@
 # (cabin-assistant-poc1) -- never overwrites whatever tag production
 # actually serves from.
 #
-# CORRECTED 2026-09-14 against real hardware, twice:
+# CORRECTED 2026-09-14 against real hardware, three times:
 # 1. Ollama on this stack runs as a Docker container
 #    (ollama/ollama:latest, container name "ollama"), not a
 #    host-installed CLI -- there is no `ollama` binary on the host PATH
@@ -21,6 +21,12 @@
 #    merge_and_convert.py (runs in-container via `docker compose run`)
 #    plus the host-level handoff below, run from THIS script directly on
 #    the host, not inside any container.
+# 3. The trainer container runs as root, so files it writes under the
+#    bind-mounted ./data (including the GGUF itself) are root-owned on
+#    the host -- this script couldn't write a NEW file (Modelfile) into
+#    that same directory ("Permission denied", found on a real run).
+#    merge_and_convert.py now writes the Modelfile itself (it already has
+#    write access there); this script only reads it.
 #
 # Requires: EVAL_RESULTS_DIR and LLAMA_CPP_DIR set (see README.md) --
 # same already-expanded-absolute-path rule as every other script here.
@@ -40,17 +46,14 @@ fi
 echo "Running merge + GGUF conversion inside the trainer container..."
 ( cd "${SCRIPT_DIR}" && docker compose run --rm trainer python merge_and_convert.py )
 
-if [ ! -f "${GGUF_PATH}" ]; then
-  echo "Expected GGUF at ${GGUF_PATH} but it doesn't exist -- merge_and_convert.py must have failed silently." >&2
+MODELFILE="${SCRIPT_DIR}/data/Modelfile"
+if [ ! -f "${GGUF_PATH}" ] || [ ! -f "${MODELFILE}" ]; then
+  echo "Expected ${GGUF_PATH} and ${MODELFILE} but at least one is missing -- merge_and_convert.py must have failed silently." >&2
   exit 1
 fi
 
 CONTAINER_GGUF="/root/${NEW_TAG}.gguf"
 CONTAINER_MODELFILE="/root/Modelfile.${NEW_TAG}"
-MODELFILE="${SCRIPT_DIR}/data/Modelfile"
-cat > "${MODELFILE}" <<EOF
-FROM ${CONTAINER_GGUF}
-EOF
 
 echo "Copying GGUF + Modelfile into the '${OLLAMA_CONTAINER}' container (host-level step, not the trainer container)..."
 docker cp "${GGUF_PATH}" "${OLLAMA_CONTAINER}:${CONTAINER_GGUF}"
