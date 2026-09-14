@@ -3,11 +3,11 @@
 set. Reads the real, existing output of docs/ai-assistant/rag/scripts/
 eval_pipeline.py and grade_pipeline.py -- does not invent a new data format.
 
-UNVERIFIED as of this write (2026-09-14): written against the real trial/
-grade JSON schemas confirmed live on the M920q
-(~/eval-results/claude-code/20260908-r3/*.jsonl and *-grades.json), but
-this script itself has not been run. Run it for real before trusting its
-output.
+VERIFIED 2026-09-14: run for real against claude-code/20260908-r3 on the
+M920q, produced 9 examples across Q04/Q08/Q18. Reading that output
+surfaced two real grading-data-quality issues (see KNOWN_GRADING_ISSUES
+below) -- not a defect in this script, a defect in the source grading
+that this script now works around explicitly and reversibly.
 
 Usage:
     python export_grades_to_sft.py --agent claude-code --round 20260908-r3
@@ -20,6 +20,54 @@ from pathlib import Path
 
 EVAL_RESULTS_ROOT = Path.home() / "eval-results"
 OUTPUT_PATH = Path(__file__).parent / "data" / "sft_dataset.jsonl"
+EXCLUDED_PATH = Path(__file__).parent / "data" / "sft_dataset.excluded.jsonl"
+
+# Corrections found by actually reading the exported training data on the
+# real M920q run (2026-09-14), not a hypothetical concern. Grading happens
+# once per QUESTION, not per repeat/trial, so a single PASS verdict can
+# pull in a repeat that doesn't deserve it. These are narrow, cited,
+# reversible exclusions -- NOT an edit to the original grades.json/trial
+# files (those stay untouched, append-only) -- and NOT a new subjective
+# judgment call where one wasn't already made:
+#
+# - Q18 (all repeats, round claude-code/20260908-r3): the answer lists
+#   "Driveway camera" and "Front door" as required inputs for a system
+#   explicitly requested with no cameras or zone presence -- this is the
+#   exact bug already documented as STILL FAILING in the
+#   claude-code/20260908-r2-postfix grading notes ("All 3 repeats list
+#   'driveway' and 'front_door' (camera entityRefs) as required inputs
+#   for an explicitly no-camera install"), matching that question's own
+#   documented fail_if criterion verbatim. r3 graded the same unfixed
+#   behavior PASS -- two grading rounds directly disagree on the same
+#   bug. This propagates the already-established r2-postfix finding
+#   rather than making a fresh call.
+# - Q04 repeat 1 (round claude-code/20260908-r3): a flat "I don't know."
+#   -- not wrong, just a non-answer -- while the other two repeats of the
+#   same PASS-graded question actually answer. Genuinely re-grading which
+#   repeat(s) should count needs a human at grade_pipeline.py's
+#   interactive prompt (it refuses to run non-interactively by design);
+#   this is a narrow, mechanical exclusion of one clearly-non-answering
+#   repeat, not a substitute for that real re-grade.
+#
+# Remove an entry here once the underlying question has been properly
+# re-graded (Q18) or re-run with a consistent, reviewed answer (Q04) --
+# excluded examples aren't deleted, they land in sft_dataset.excluded.jsonl
+# instead, specifically so they're easy to pull back in later.
+KNOWN_GRADING_ISSUES = {
+    ("claude-code", "20260908-r3", "Q18", None): (
+        "Answer violates its own documented fail_if (recommends camera "
+        "entities for an explicitly no-camera install) -- matches the "
+        "claude-code/20260908-r2-postfix finding for the same unfixed "
+        "bug, which correctly graded this FAIL. r3's PASS verdict "
+        "contradicts that finding."
+    ),
+    ("claude-code", "20260908-r3", "Q04", 1): (
+        "This repeat is a flat 'I don't know.' non-answer, inconsistent "
+        "with the other 2 repeats of the same PASS-graded question. "
+        "Needs real per-repeat re-grading via grade_pipeline.py's "
+        "interactive prompt, not a mechanical fix."
+    ),
+}
 
 
 def load_trials(jsonl_path: Path) -> dict[str, list[dict]]:
@@ -90,25 +138,35 @@ def main():
     pass_ids, graded_at = result
 
     examples = []
+    excluded = []
     for qid in pass_ids:
-        for trial in trials.get(qid, []):
+        for repeat_idx, trial in enumerate(trials.get(qid, [])):
             if not trial.get("answer") or trial.get("error"):
                 continue
-            examples.append(
-                {
-                    "messages": [
-                        {"role": "user", "content": trial["question"]},
-                        {"role": "assistant", "content": trial["answer"]},
-                    ],
-                    "source": "human-graded",
-                    "agent_id": args.agent,
-                    "round": args.round,
-                    "graded_at": graded_at,
-                    "question_id": qid,
-                }
-            )
+            ex = {
+                "messages": [
+                    {"role": "user", "content": trial["question"]},
+                    {"role": "assistant", "content": trial["answer"]},
+                ],
+                "source": "human-graded",
+                "agent_id": args.agent,
+                "round": args.round,
+                "graded_at": graded_at,
+                "question_id": qid,
+            }
+            # Check both a whole-question exclusion (repeat=None) and a
+            # specific-repeat exclusion for this exact trial.
+            reason = KNOWN_GRADING_ISSUES.get(
+                (args.agent, args.round, qid, None)
+            ) or KNOWN_GRADING_ISSUES.get((args.agent, args.round, qid, repeat_idx))
+            if reason:
+                ex["excluded_reason"] = reason
+                ex["repeat"] = repeat_idx
+                excluded.append(ex)
+            else:
+                examples.append(ex)
 
-    if not examples:
+    if not examples and not excluded:
         sys.exit(
             f"Zero PASS-graded, non-error trials found for {args.agent}/{args.round} -- "
             "nothing to write. This is a real, honest outcome, not a bug: check "
@@ -119,9 +177,16 @@ def main():
     with OUTPUT_PATH.open("w") as f:
         for ex in examples:
             f.write(json.dumps(ex) + "\n")
-
     print(f"Wrote {len(examples)} example(s) to {OUTPUT_PATH}")
     print(f"Question ids included: {sorted({e['question_id'] for e in examples})}")
+
+    if excluded:
+        with EXCLUDED_PATH.open("w") as f:
+            for ex in excluded:
+                f.write(json.dumps(ex) + "\n")
+        print(f"Excluded {len(excluded)} known-bad example(s) to {EXCLUDED_PATH} (see KNOWN_GRADING_ISSUES):")
+        for ex in excluded:
+            print(f"  - {ex['question_id']} repeat {ex['repeat']}: {ex['excluded_reason']}")
 
 
 if __name__ == "__main__":
