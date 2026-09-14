@@ -4,6 +4,7 @@ import com.cabin.orchestrator.automation.AutomationRuleService;
 import com.cabin.orchestrator.workflow.WorkflowRuleService;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
+import com.cabin.orchestrator.events.EventStreamBroadcaster;
 import com.cabin.orchestrator.events.NtfyAlertPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -58,16 +59,19 @@ public class EventConsumer {
     private final NtfyAlertPublisher ntfyAlertPublisher;
     private final AutomationRuleService automationRuleService;
     private final WorkflowRuleService workflowRuleService;
+    private final EventStreamBroadcaster streamBroadcaster;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread pollThread;
 
     public EventConsumer(CabinEventService eventService, NtfyAlertPublisher ntfyAlertPublisher,
-                          AutomationRuleService automationRuleService, WorkflowRuleService workflowRuleService) {
+                          AutomationRuleService automationRuleService, WorkflowRuleService workflowRuleService,
+                          EventStreamBroadcaster streamBroadcaster) {
         this.eventService = eventService;
         this.ntfyAlertPublisher = ntfyAlertPublisher;
         this.automationRuleService = automationRuleService;
         this.workflowRuleService = workflowRuleService;
+        this.streamBroadcaster = streamBroadcaster;
     }
 
     @PostConstruct
@@ -98,6 +102,12 @@ public class EventConsumer {
                         CabinEvent event = mapper.readValue(record.value(), CabinEvent.class);
                         eventService.save(event);
                         log.debug("Saved event {} to Postgres", event.eventId());
+                        // D20: fan out to any browser subscribed to the Live
+                        // MQTT tile's replacement, GET /api/events/live --
+                        // after persistence, same as the ntfy push below, so
+                        // a live-relayed event is never one this platform
+                        // hasn't already durably recorded.
+                        streamBroadcaster.broadcast(event);
                         ntfyAlertPublisher.publishIfCritical(event);
                         // AUTOMATION_ALERT events this itself produces fall through
                         // evaluate()'s switch to a no-op default -- no feedback loop.

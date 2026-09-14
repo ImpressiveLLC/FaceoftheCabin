@@ -7,6 +7,7 @@ import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
+import com.cabin.orchestrator.events.EventStreamBroadcaster;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,7 +49,7 @@ class EventControllerTest {
         jdbc.execute("DROP TABLE IF EXISTS cabin_event");
         CabinEventService eventService = new CabinEventService(jdbc);
         registry = new DeviceRegistry(List.of());
-        controller = new EventController(eventService, registry);
+        controller = new EventController(eventService, registry, new EventStreamBroadcaster());
 
         registerCamera("driveway", "cabin");
         registerCamera("home_aldrich_front", "home");
