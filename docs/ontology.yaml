@@ -1095,8 +1095,8 @@ elements:
     definition: >
       A proposal, never authoritative -- a discovery run's matches are
       produced by cabin-discovery (local Zigbee2MQTT/Home-Assistant
-      discovery metadata, plus an external Anthropic API web-search lookup
-      when ANTHROPIC_API_KEY is configured) and persisted independently
+      discovery metadata, plus a keyless DuckDuckGo web-search lookup --
+      see cabin-discovery/app/web_lookup.py) and persisted independently
       from the live `device` table. Nothing here affects a real device
       until a person explicitly selects fields and calls
       POST .../discovery/apply, which routes through the same locked,
@@ -1104,13 +1104,18 @@ elements:
       (saveConfiguration()/applyLifecycleAction() for a new candidate,
       the new replaceConfiguration() for an existing device's re-sync).
       Every match carries a confidence tier (high/medium/low) and a
-      sources list with real url/title/snippet/fetchedAt provenance --
-      "high" requires a genuine citation, regardless of what the model's
-      own text claims, so an unverified guess can never present itself as
-      a verified match. Without a citation, confidence is capped at what
-      local discovery data alone justifies: "medium" when the device's own
-      Zigbee/MQTT handshake reported a vendor+model matching a recognized
-      vendor catalog (cabin-discovery/app/catalog.py), "low" otherwise.
+      sources list with real url/title/snippet/fetchedAt provenance.
+      "High" is never used by any provider today -- a single search
+      result earns "medium" at most, the same ceiling a locally-recognized
+      vendor+model gets from cabin-discovery/app/catalog.py without any
+      network call. D8's enrichment policy (never send friendly names or
+      other local identity externally) means only vendor+model are ever
+      sent to the search lookup -- a device known only by `description`
+      (e.g. an mDNS-discovered non-Zigbee find, which can carry a
+      person-chosen name) gets the local-only result, not a web search.
+      Revised 2026-09-14: replaced an earlier Anthropic-API-backed
+      provider -- device identification is a couple of cacheable
+      sentences, not a task judged to need an LLM or a paid vendor key.
     relationships:
       - target: device_candidate_lifecycle
         type: complements
@@ -1123,10 +1128,10 @@ elements:
       device-registry or database access of its own) specifically so a
       slow or flaky third-party AI dependency can never affect the
       safety-critical Java control path -- it only ever returns a
-      proposal for cabin-backend to persist. Not yet wired into the
-      frontend (that's the review overlay, still to come) -- this entity
-      documents the backend/service contract, which is already real and
-      testable on its own.
+      proposal for cabin-backend to persist. Wired into the frontend via
+      App.jsx's DeviceDiscoveryOverlay ("Recognize this device" / "Re-check
+      device info"), which triggers discovery/run, polls discovery/latest,
+      and calls discovery/apply once a person selects fields to keep.
 
   - id: device_workflow_affiliation
     entity_type: owl:DatatypeProperty

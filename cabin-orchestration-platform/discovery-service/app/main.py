@@ -7,7 +7,7 @@ source provenance on every claim.
 
 /discover tries providers in order, cheapest and most certain first:
 vendor_spec (Z2M's own exposes[], instant, free, no network call) before
-ever falling through to the slower Anthropic-backed lookup. Each
+ever falling through to the slower web-search-backed lookup. Each
 provider returns a Match or None -- None means "nothing to work with
 here", not "confirmed empty", so the chain keeps going.
 """
@@ -16,9 +16,9 @@ import logging
 
 from fastapi import FastAPI
 
-from .anthropic_lookup import run_discovery
 from .models import DiscoverRequest, DiscoverResponse
 from .vendor_spec import try_vendor_spec
+from .web_lookup import run_discovery
 
 logging.basicConfig(level=logging.INFO)
 
