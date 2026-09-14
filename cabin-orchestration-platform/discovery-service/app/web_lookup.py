@@ -5,14 +5,20 @@ device from a vendor+model string is a couple of cacheable sentences, not a
 task that needs an LLM in the loop, and it shouldn't need a paid/keyed
 vendor API either.
 
-Privacy (D8's enrichment policy, docs/ontology/DECISIONS.md): only vendor
-and model are ever sent externally -- never `description` or raw
-discoveryAttributes, since for a network-scanned (non-Zigbee) device those
-can carry an mDNS instance name a person chose themselves (a "friendly
-name" in D8's own terms). A device identified only by description (no
-vendor/model) gets the same local-only result it always did; this module
-does not search for it. That's a real, known gap, not an oversight -- see
-the D-decision this shipped under for the reasoning.
+Privacy (D8's enrichment policy, docs/ontology/DECISIONS.md): the query
+sent externally is built only from `vendor`+`model`, or -- when a device
+has neither, e.g. a network-scanned (non-Zigbee) find -- its `description`
+alone. Raw `discoveryAttributes` (IP, port, mDNS TXT records) is never
+sent regardless. `description` for a netscan device is the device's own
+mDNS-broadcast service name: already visible in cleartext to anything on
+the LAN, not a private Z2M-style `friendly_name` a person assigned inside
+this app, and it doesn't reveal occupancy or behavior -- the same
+public/gated line D14 already draws for device-inventory data (vendor,
+model, room name) versus an actual presence signal. Revised 2026-09-14
+after Nate confirmed directly he wants a real device (an LG webOS TV found
+by network scan, vendor/model both blank, only description populated) to
+get a genuine search result, not the "nothing safe to search for" local
+fallback the first version of this module gave it.
 
 Contract this must uphold (same as the module it replaces): never invent a
 source. A real citation is only ever a URL DuckDuckGo itself returned; if
@@ -60,11 +66,10 @@ TAG_RE = re.compile(r"<[^>]+>")
 
 
 def run_discovery(request: DiscoverRequest) -> list[Match]:
-    query = f"{request.vendor} {request.model}".strip()
+    query = f"{request.vendor} {request.model}".strip() or request.description.strip()
     if not query:
         return [_local_only_fallback(
-            request, reason="No vendor or model was reported by discovery -- nothing safe to search for "
-                             "(a description alone may contain a locally-chosen name, so it is never sent externally).")]
+            request, reason="No vendor, model, or description was reported by discovery -- nothing to search for.")]
 
     try:
         title, url, snippet = _search_duckduckgo(query)
