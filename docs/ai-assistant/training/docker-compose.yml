@@ -1,0 +1,10 @@
+services:
+  trainer:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - model-cache:/root/.cache/huggingface
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+volumes:
+  model-cache:
