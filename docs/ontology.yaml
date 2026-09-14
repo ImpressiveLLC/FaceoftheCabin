@@ -1109,13 +1109,20 @@ elements:
       result earns "medium" at most, the same ceiling a locally-recognized
       vendor+model gets from cabin-discovery/app/catalog.py without any
       network call. D8's enrichment policy (never send friendly names or
-      other local identity externally) means only vendor+model are ever
-      sent to the search lookup -- a device known only by `description`
-      (e.g. an mDNS-discovered non-Zigbee find, which can carry a
-      person-chosen name) gets the local-only result, not a web search.
-      Revised 2026-09-14: replaced an earlier Anthropic-API-backed
-      provider -- device identification is a couple of cacheable
-      sentences, not a task judged to need an LLM or a paid vendor key.
+      other local identity externally) governs the query: vendor+model
+      when present, else `description` alone for a device that has
+      neither (e.g. an mDNS-discovered non-Zigbee find) -- that
+      description is the device's own LAN-broadcast service name, not a
+      private friendly_name assigned inside this app, so it doesn't cross
+      D8's actual line. Raw discoveryAttributes (IP, port, mDNS TXT
+      records) is never sent regardless. Revised 2026-09-14 twice: first
+      replaced an earlier Anthropic-API-backed provider (device
+      identification is a couple of cacheable sentences, not a task
+      judged to need an LLM or a paid vendor key), then widened to search
+      description-only devices too after Nate confirmed directly he
+      wanted a real network-scanned device (an LG webOS TV) to get a
+      genuine result instead of the initial version's over-conservative
+      refusal.
     relationships:
       - target: device_candidate_lifecycle
         type: complements

@@ -2,7 +2,11 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+# Retry flags added 2026-09-14 after a real transient npm-registry timeout
+# failed a production deploy (exit 146, "npm error network") -- npm's own
+# default is zero retries on a network error. Cheap, standard mitigation;
+# does not touch anything about what gets installed.
+RUN npm install --fetch-retries=5 --fetch-retry-mintimeout=2000 --fetch-retry-maxtimeout=15000
 COPY . .
 # VITE_API_BASE is baked in at build time — override per deployment
 #
