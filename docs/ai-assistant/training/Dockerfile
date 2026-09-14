@@ -29,7 +29,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # CPU wheel of torch from PyTorch's own CPU index -- pinned to exactly
 # unsloth's documented upper bound (torch<=2.7.0,>=2.4.0) so pip's
-# resolver has nothing to backtrack over.
+# resolver has nothing to backtrack over during THIS layer.
+#
+# CONFIRMED on the real build (2026-09-14): this pin gets overridden
+# anyway -- unsloth 2025.7.8's own sub-dependencies (unsloth_zoo,
+# xformers, triton) require a newer torch than 2.7.0, so the final
+# `pip install unsloth` layer below uninstalls this 2.7.0+cpu and
+# installs torch-2.12.1 instead. That's fine functionally (still gated
+# by torch.cuda.is_available() at runtime, still CPU-only behavior) --
+# keeping this layer anyway because it still avoids the *initial*
+# resolver backtrack this fix was written for; the version that actually
+# ends up installed is whatever unsloth's own dependency chain needs.
 RUN pip install --no-cache-dir torch==2.7.0 --index-url https://download.pytorch.org/whl/cpu
 
 # unsloth pinned to a specific known release for the same reason. The
