@@ -23,14 +23,14 @@ def _mock_urlopen(html: str, status: int = 200):
     return response
 
 
-def test_no_vendor_or_model_never_calls_the_network():
+def test_nothing_reported_at_all_never_calls_the_network():
     with patch("app.web_lookup.urllib.request.urlopen") as mock_urlopen:
-        matches = run_discovery(DiscoverRequest(description="Living Room Router"))
+        matches = run_discovery(DiscoverRequest())
 
     mock_urlopen.assert_not_called()
     assert matches[0].confidence == "low"
     assert matches[0].sources == []
-    assert "nothing safe to search for" in matches[0].installGuide.content
+    assert "nothing to search for" in matches[0].installGuide.content
 
 
 def test_real_result_produces_a_medium_confidence_match_with_a_real_source():
@@ -67,11 +67,15 @@ def test_network_failure_falls_back_gracefully():
     assert "failed" in matches[0].installGuide.content.lower()
 
 
-def test_description_alone_is_never_sent_to_the_search_engine():
-    # Privacy contract (D8): an mDNS-derived description can carry a
-    # locally-chosen name, so it must never become part of the outbound
-    # query even when vendor/model are both blank.
-    with patch("app.web_lookup.urllib.request.urlopen") as mock_urlopen:
-        run_discovery(DiscoverRequest(description="Nates-Office-Router"))
+def test_description_alone_is_searched_when_vendor_and_model_are_both_blank():
+    # A network-scanned (non-Zigbee) device -- e.g. the LG webOS TV found
+    # by netscan -- reports only `description` (its own mDNS-broadcast
+    # service name), never vendor/model. Revised 2026-09-14: this is
+    # still searchable, since it's the device's own public LAN broadcast,
+    # not a private friendly_name assigned inside this app.
+    with patch("app.web_lookup.urllib.request.urlopen", return_value=_mock_urlopen(FAKE_RESULT_HTML)) as mock_urlopen:
+        matches = run_discovery(DiscoverRequest(description="LG webOS TV OLED42C5PUA"))
 
-    mock_urlopen.assert_not_called()
+    mock_urlopen.assert_called_once()
+    assert matches[0].confidence == "medium"
+    assert len(matches[0].sources) == 1
