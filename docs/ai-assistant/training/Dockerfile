@@ -36,14 +36,19 @@ RUN pip install --no-cache-dir torch==2.7.0 --index-url https://download.pytorch
 # rest are left unpinned -- transformers/trl/peft/datasets/accelerate
 # have much wider compatibility ranges and weren't part of the observed
 # backtracking explosion.
-RUN pip install --no-cache-dir \
-    unsloth==2025.7.8 \
-    trl \
-    peft \
-    transformers \
-    datasets \
-    accelerate \
-    bitsandbytes
+#
+# Split into separate RUN layers (not one combined install) and given a
+# longer pip timeout: found on the M920q that unsloth's dependency chain
+# unconditionally pulls several hundred MB of nvidia-*-cu13 CUDA wheels
+# even on this CPU-only box (they're just unused dead weight here, never
+# loaded since torch.cuda.is_available() is False) -- one of those
+# (nvidia_cufft, 214MB) hit a slow network patch and timed out at
+# 191/214MB. Splitting into layers means a retry doesn't have to re-fetch
+# everything that already succeeded.
+RUN pip install --no-cache-dir --default-timeout=300 transformers datasets accelerate peft
+RUN pip install --no-cache-dir --default-timeout=300 trl
+RUN pip install --no-cache-dir --default-timeout=300 bitsandbytes
+RUN pip install --no-cache-dir --default-timeout=300 unsloth==2025.7.8
 
 COPY export_grades_to_sft.py train_sft.py ./
 
