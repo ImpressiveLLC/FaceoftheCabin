@@ -1845,6 +1845,76 @@ below, and the matching Tiny Helpdesk KB entries (added the same day,
 recovery path is queryable locally through Ollama even with zero
 internet connectivity, not just written down here.
 
+### D19 -- cabin_event hot-tier backup, MVP (built 2026-09-14)
+
+The incident above was only recoverable because Zigbee2MQTT's own
+`docker logs` happened to retain the whole outage window -- a lucky side
+effect of a different service's log retention, not a designed recovery
+path, and it only covered Zigbee, not every topic `cabin-backend`
+consumes. `cabin_event`'s hot tier itself has exactly one copy
+(`cabin-postgres`, SSD-backed root filesystem) until a row ages 3+
+months into `TelemetryArchivalService`'s existing monthly archive. See
+the Cabin Platform Decisions artifact's D19 pin for the three options
+weighed; Nate's direction: ship A and B together now (both were
+reasonable effort), defer C (an onsite Android backup host, mirroring
+the Home-collector precedent) to the WSJF backlog since no second
+device exists for that role yet.
+
+**Option A -- `TelemetryArchivalService.exportIncremental()`, hourly,
+additive-only.** Appends every new `TELEMETRY` row written since the
+last run to a plain (non-gzipped, since it's appended-to rather than
+written once) JSONL file at `/storage/archives/cabin_event/incremental/
+incremental-YYYY-MM-DD.jsonl`, tracked by a watermark file
+(`.watermark`, the last exported row's timestamp) so a missed run never
+drops rows -- next run just covers the wider gap. Never deletes from
+the live table; this is a redundant copy, not a retention mechanism,
+and is completely independent of the existing monthly
+archive-and-delete job. **Explicitly a partial mitigation, not the fix
+for the traced incident**: it still depends on `cabin-backend` itself
+being alive to run its `@Scheduled` job, which is exactly what was NOT
+true during the outage above -- kept anyway because it's cheap, reuses
+existing export code, and helps for every *other* failure mode (a
+Postgres-side data problem, an accidental delete) where `cabin-backend`
+stays healthy.
+
+**Option B -- `infra/telemetry-backup-agent/`, a new standalone Docker
+container, the real redundancy.** A small Node.js side-car (same
+`mqtt` dependency and deployment shape as the Home `network-scan-agent`)
+that subscribes directly to mosquitto -- never to `cabin-backend` --
+on `cabin/#`, `home/#`, `zigbee2mqtt/#`, and `home_z2m/#`, and appends
+every message verbatim (`{receivedAt, topic, payload}` JSONL, one file
+per UTC day) to `/storage/telemetry-backup/`. Runs on the `cabin_default`
+Docker network only -- no `depends_on` on `cabin-backend`, postgres, or
+kafka, since the entire point is that this keeps recording even when
+`cabin-backend` doesn't, which is exactly the failure mode the incident
+above hit. Default 30-day retention (`RETENTION_DAYS`,
+`TELEMETRY_BACKUP_RETENTION_DAYS` in `.env`), pruned by the agent itself
+once a day by filename date, not file mtime. Deploy it the same way as
+every other service in `docker-compose.m920q.yml`:
+```
+docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d telemetry-backup-agent
+```
+
+**Option C -- deferred to the WSJF backlog, not built.** Nate's own
+onsite-Android-as-backup-host idea (a second, cheap, physically separate
+device with its own attached HDD) is the most resilient option -- it
+would survive a whole-M920q hardware failure, not just a `cabin-backend`
+code bug -- but there's no such device provisioned today. Tracked as a
+future WSJF item in the Cabin Platform Decisions artifact rather than
+built speculatively against hardware that doesn't exist yet.
+
+**Recovery procedure using either backup, when the live table has a
+gap:** both formats are the same shape as `TelemetryArchivalService`'s
+existing monthly export (Option A) or a raw `{receivedAt, topic,
+payload}` record (Option B) -- read the relevant day's file(s), filter
+to the gap window, and either replay through the same
+`AlertSeverityClassifier.classify()` logic the 2026-09-13 incident's
+manual recovery used, or restore Option A's rows directly (they're
+already in `cabin_event`'s own shape). Option B's raw MQTT capture is
+the fallback of last resort if `cabin-backend` itself was down long
+enough that even Option A has a gap -- exactly the scenario this was
+built for.
+
 ---
 
 ## Monitoring

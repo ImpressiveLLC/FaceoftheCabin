@@ -530,6 +530,42 @@ services:
     networks:
       - default
 
+  # ── telemetry-backup-agent: independent MQTT log-shipping side-car (D19 Option B) ──
+  # Found while recovering from the 2026-09-13 Zigbee mesh outage:
+  # cabin_event's hot tier has exactly one copy (cabin-postgres, SSD-backed
+  # root filesystem -- TelemetryArchivalService only ever archives rows
+  # already 3+ months old), and that incident's ~34-hour data gap was only
+  # recoverable because Zigbee2MQTT's own `docker logs` happened to retain
+  # the window -- a lucky side effect of a different service's log
+  # retention, not a designed recovery path. This container subscribes
+  # directly to mosquitto (never to cabin-backend) and appends every
+  # message on cabin/home/zigbee2mqtt's topics, verbatim, to /storage --
+  # deliberately independent of cabin-backend's own health, since
+  # cabin-backend itself was the thing silently failing in the incident
+  # this exists to answer. See docs/MAINTENANCE.md's D19 write-up.
+  #
+  # Off cabin_default's dependents entirely: no postgres/kafka, no
+  # depends_on cabin-backend -- the whole point is that this keeps
+  # recording even when cabin-backend doesn't.
+  telemetry-backup-agent:
+    build:
+      context: ./telemetry-backup-agent
+      dockerfile: Dockerfile
+    image: telemetry-backup-agent:${IMAGE_TAG:-latest}
+    container_name: telemetry-backup-agent
+    restart: unless-stopped
+    environment:
+      MQTT_URL: tcp://mosquitto:1883
+      OUT_DIR: /app/telemetry-backup
+      RETENTION_DAYS: ${TELEMETRY_BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      # Same /storage convention as TelemetryArchivalService's own archive
+      # mount above -- durable, inspectable, and survives independently of
+      # this container/image.
+      - /storage/telemetry-backup:/app/telemetry-backup
+    networks:
+      - cabin_default   # only needs mosquitto -- not on `default` at all
+
 volumes:
   ollama_data:
   openwebui_data:

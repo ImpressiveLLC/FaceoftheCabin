@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
@@ -50,6 +51,22 @@ import java.util.zip.GZIPOutputStream;
  * (~2,200 events/day) -- a 3-month hot window is on the order of a couple
  * hundred MB, trivial to keep live. This is why there's no need for
  * anything fancier than gzip + JSONL.
+ *
+ * D19 (Cabin Platform Decisions artifact), Option A -- added 2026-09-14
+ * after the 2026-09-13 Zigbee mesh outage found that the hot tier this
+ * class defers archiving on has exactly one copy, full stop, until a row
+ * ages 3+ months. {@link #exportIncremental()} is a second, hourly,
+ * additive-only pass: it appends newly-written TELEMETRY rows to a plain
+ * (non-gzipped -- see that method's own note) JSONL file, independent of
+ * the monthly archive-and-delete job above, and never deletes anything
+ * from the live table itself. This is explicitly a partial mitigation,
+ * not the fix for the traced incident: it still depends on this very
+ * process (cabin-backend) being alive to run its {@code @Scheduled} job,
+ * which is exactly what was NOT true during that outage. See
+ * {@code infra/telemetry-backup-agent/} (D19 Option B) for the
+ * cabin-backend-independent side-car that actually closes that gap; the
+ * two are complementary, not alternatives -- this one is cheap and reuses
+ * existing export code, that one is the real redundancy.
  */
 @Service
 public class TelemetryArchivalService {
@@ -95,6 +112,78 @@ public class TelemetryArchivalService {
         Timestamp earliest = jdbc.queryForObject(
             "SELECT min(time) FROM cabin_event WHERE event_type = ?", Timestamp.class, ARCHIVED_EVENT_TYPE);
         return earliest == null ? null : YearMonth.from(earliest.toInstant().atZone(ZoneOffset.UTC));
+    }
+
+    /**
+     * D19 Option A. Runs hourly, on the hour -- appends every TELEMETRY row
+     * written since the last run to a plain JSONL file (not gzipped: this
+     * file is appended-to incrementally, and gzip's own stream framing
+     * doesn't support that safely the way a flat text append does; the
+     * monthly job above already provides the compressed long-term copy).
+     * Purely additive -- never deletes from the live table, unlike
+     * {@link #archiveOldMonths()}, since the point here is a redundant
+     * *copy* of recent data, not a retention/cutoff mechanism.
+     *
+     * Watermark-based, not a fixed lookback window, so a missed run (a
+     * restart, a slow query) never drops rows -- the next run simply
+     * exports everything since the last row it actually wrote, however
+     * long that gap turns out to be.
+     */
+    @Scheduled(cron = "${cabin.telemetryArchival.incrementalCron:0 0 * * * *}")
+    public void exportIncremental() {
+        if (!enabled) return;
+        try {
+            Path dir = Path.of(archiveDir, "incremental");
+            Files.createDirectories(dir);
+            Path watermarkFile = dir.resolve(".watermark");
+            Instant since = readWatermark(watermarkFile);
+
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                """
+                SELECT event_id, time, device_id, event_type, severity, payload FROM cabin_event
+                WHERE event_type = ? AND time > ? ORDER BY time
+                """,
+                ARCHIVED_EVENT_TYPE, Timestamp.from(since));
+
+            if (rows.isEmpty()) return;
+
+            Path file = dir.resolve("incremental-" + LocalDate.now(ZoneOffset.UTC) + ".jsonl");
+            try (var writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND)) {
+                for (Map<String, Object> row : rows) {
+                    writer.write(mapper.writeValueAsString(rowToExportMap(row)));
+                    writer.write("\n");
+                }
+            }
+
+            Object lastTime = rows.get(rows.size() - 1).get("time");
+            Instant newWatermark = lastTime instanceof Timestamp t ? t.toInstant() : since;
+            writeWatermark(watermarkFile, newWatermark);
+
+            log.info("Incrementally exported {} {} row(s) to {} (watermark now {})",
+                rows.size(), ARCHIVED_EVENT_TYPE, file, newWatermark);
+        } catch (IOException e) {
+            log.error("Incremental telemetry export failed -- will retry from the same watermark next run", e);
+        }
+    }
+
+    private Instant readWatermark(Path watermarkFile) throws IOException {
+        if (!Files.exists(watermarkFile)) return Instant.EPOCH;
+        try {
+            return Instant.parse(Files.readString(watermarkFile, StandardCharsets.UTF_8).strip());
+        } catch (Exception e) {
+            log.warn("Watermark file {} unreadable ({}), falling back to Instant.EPOCH -- next run may re-export a wider range", watermarkFile, e.getMessage());
+            return Instant.EPOCH;
+        }
+    }
+
+    // Sibling-tmp + atomic move, same discipline as writeGzippedJsonl below --
+    // a crash mid-write must never leave a corrupt watermark that then
+    // silently skips real rows on the next run.
+    private void writeWatermark(Path watermarkFile, Instant value) throws IOException {
+        Path tmp = watermarkFile.resolveSibling(".watermark.tmp");
+        Files.writeString(tmp, value.toString(), StandardCharsets.UTF_8);
+        Files.move(tmp, watermarkFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
 
     /**
