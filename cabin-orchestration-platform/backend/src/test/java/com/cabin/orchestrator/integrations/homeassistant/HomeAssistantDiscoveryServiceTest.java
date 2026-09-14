@@ -90,6 +90,42 @@ class HomeAssistantDiscoveryServiceTest {
         assertThat(discovered.get(0).attributes()).containsEntry("value", "72.5");
     }
 
+    // 2026-09-14: found live that every HA-discovered candidate's self-
+    // discovery lookup silently reported "nothing to search for" -- HA's
+    // own per-entity attributes never included "vendor"/"model"/
+    // "description", the exact keys DeviceDiscoveryController forwards to
+    // cabin-discovery, unlike Zigbee2MqttAdapter's own attrs.
+    @Test
+    void descriptionIsPopulatedFromFriendlyNameAndDeviceClassSoDiscoveryHasSomethingToSearchFor() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "binary_sensor.motion_entry_occupancy", "off",
+                Map.of("friendly_name", "motion_entry Occupancy", "device_class", "occupancy"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        List<DeviceStatus> discovered = registry.byLocation("cabin");
+        assertThat(discovered).hasSize(1);
+        assertThat(discovered.get(0).attributes())
+            .containsEntry("description", "motion_entry Occupancy (occupancy)");
+    }
+
+    @Test
+    void descriptionFallsBackToJustFriendlyNameWhenNoDeviceClassIsReported() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "switch.smart_switch_breaker_box", "on",
+                Map.of("friendly_name", "Breaker Box Switch"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        List<DeviceStatus> discovered = registry.byLocation("cabin");
+        assertThat(discovered).hasSize(1);
+        assertThat(discovered.get(0).attributes()).containsEntry("description", "Breaker Box Switch");
+    }
+
     @Test
     void aNonSensorDomainEntityDoesNotGetAValueAttribute() {
         when(adapter.discover("cabin")).thenReturn(List.of(
