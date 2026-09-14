@@ -187,6 +187,7 @@ class TelemetryArchivalServiceTest {
         insertEvent(jdbc, "e2", "2026-09-14T08:05:00Z", "front_door", "DETECTION_NEW", "{\"label\": \"person\"}");
         TelemetryArchivalService service = new TelemetryArchivalService(jdbc);
         ReflectionTestUtils.setField(service, "archiveDir", tempDir.toString());
+        ReflectionTestUtils.setField(service, "enabled", true);
 
         service.exportIncremental();
 
@@ -209,6 +210,7 @@ class TelemetryArchivalServiceTest {
         insertEvent(jdbc, "e1", "2026-09-14T08:00:00Z", "z2m-temp_kitchen", "TELEMETRY", "{\"temperature\": 68}");
         TelemetryArchivalService service = new TelemetryArchivalService(jdbc);
         ReflectionTestUtils.setField(service, "archiveDir", tempDir.toString());
+        ReflectionTestUtils.setField(service, "enabled", true);
         service.exportIncremental();
 
         insertEvent(jdbc, "e2", "2026-09-14T08:10:00Z", "z2m-temp_kitchen", "TELEMETRY", "{\"temperature\": 69}");
@@ -240,6 +242,7 @@ class TelemetryArchivalServiceTest {
         JdbcTemplate jdbc = jdbc();
         TelemetryArchivalService service = new TelemetryArchivalService(jdbc);
         ReflectionTestUtils.setField(service, "archiveDir", tempDir.toString());
+        ReflectionTestUtils.setField(service, "enabled", true);
 
         assertDoesNotThrow(service::exportIncremental);
         Path expectedFile = tempDir.resolve("incremental")
