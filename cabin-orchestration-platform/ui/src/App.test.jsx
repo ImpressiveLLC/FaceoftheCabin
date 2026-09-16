@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -933,6 +933,72 @@ describe("CameraEventsPanel — live camera buttons work with CabinSession-only 
     await waitFor(() => {
       const urls = auth.authedFetch.mock.calls.map(c => c[0]);
       expect(urls.some(u => u.includes("/api/camera/list"))).toBe(true);
+    });
+  });
+
+  // Same bug class, found in the same investigation: this effect actually
+  // starts blinkbridge's on-demand liveview session server-side. Had its
+  // own separate `if (!auth.accessToken) return;` guard -- so even after
+  // the button-rendering fix above, clicking "Watch driveway live" would
+  // show the button and open CameraLiveView's <img>, but the underlying
+  // Blink liveview session would never actually start for a
+  // CabinSession-only user.
+  it("actually starts the liveview session when a live camera is selected, CabinSession-only", async () => {
+    const auth = mockAuthCabinSessionOnly();
+
+    render(
+      <AppContext.Provider value={{ locationCfg: { apiBase: "http://cabin-hub:8090" } }}>
+        <CameraEventsPanel auth={auth} />
+      </AppContext.Provider>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Watch driveway live/ }));
+
+    await waitFor(() => {
+      const urls = auth.authedFetch.mock.calls.map(c => c[0]);
+      expect(urls.some(u => u.includes("/api/camera/driveway/liveview/start"))).toBe(true);
+    });
+  });
+});
+
+// Same bug class as CameraEventsPanel above, found in the same
+// investigation: OpportunityCard's logAction()/setStatus() each had their
+// own `if (!auth.accessToken) return Promise.resolve();` guard -- the
+// "Worth exploring"/"Not for us"/etc. buttons render fine for a
+// CabinSession-only user (the surrounding render gate already correctly
+// checks auth.signedIn), but clicking them silently did nothing at all.
+describe("OpportunityCard — actions work with CabinSession-only auth", () => {
+  afterEach(cleanup);
+
+  function mockOpportunity() {
+    return {
+      id: "opp-1", findingType: "underutilized_capability", confidence: "high",
+      status: "new", summary: "Test opportunity", sources: [], relatedEntityIds: [],
+      actionable: null, checkedAt: new Date().toISOString(), provider: "test",
+    };
+  }
+
+  function mockAuthCabinSessionOnly() {
+    return {
+      configured: true, signedIn: true, sessionExpired: false, userEmail: "nate@example.com",
+      accessToken: null, cabinSessionToken: "cabin-session-tok",
+      authedFetch: vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }),
+    };
+  }
+
+  it("logs an action and updates status when 'Worth exploring' is clicked", async () => {
+    const auth = mockAuthCabinSessionOnly();
+    render(
+      <OpportunityCard apiBase="http://cabin-hub:8090" auth={auth}
+        opportunity={mockOpportunity()} entityLabels={{}} onChanged={() => {}} />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Worth exploring/ }));
+
+    await waitFor(() => {
+      const urls = auth.authedFetch.mock.calls.map(c => c[0]);
+      expect(urls.some(u => u.includes("/api/tech-id/findings/opp-1/actions"))).toBe(true);
+      expect(urls.some(u => u === "http://cabin-hub:8090/api/tech-id/findings/opp-1")).toBe(true);
     });
   });
 });
