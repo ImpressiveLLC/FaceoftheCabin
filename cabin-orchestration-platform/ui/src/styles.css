@@ -369,6 +369,12 @@ body {
 .automation-alert-none { border-left-color: var(--border); padding: 14px 18px; }
 .automation-alert-list .automation-alert-card { margin-bottom: 10px; }
 .automation-alert-list .automation-alert-card:last-child { margin-bottom: 16px; }
+.automation-alerts { margin-bottom: 12px; }
+.automation-alerts-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px; color: var(--text-dim); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em;
+}
 .active-conditions {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -380,10 +386,21 @@ body {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 14px; border-bottom: 1px solid var(--border);
 }
-.active-conditions-header span {
+/* Shared by every collapsible section header (device groups, alert cards,
+   the live event log, sidebar lists) so one caret idiom reads consistently
+   across the app instead of each list inventing its own. */
+.section-header-actions { display: flex; align-items: center; gap: 6px; }
+.section-count-badge {
   min-width: 20px; padding: 1px 6px; border-radius: 10px;
   background: var(--bg-tertiary); color: var(--text-dim); text-align: center; font-size: 11px;
 }
+.section-caret {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; margin: 0; border: none;
+  background: transparent; color: var(--text-dim); cursor: pointer;
+  border-radius: 4px; flex-shrink: 0;
+}
+.section-caret:hover { background: var(--bg-tertiary); color: var(--text); }
 .active-conditions-list { max-height: 176px; overflow-y: auto; }
 .active-condition { display: flex; gap: 8px; padding: 6px 14px; border-left: 3px solid var(--state-warning); }
 .active-condition + .active-condition { border-top: 1px solid var(--border); }
@@ -457,6 +474,7 @@ body {
   border-radius: 12px;
   padding: 14px;
 }
+.sidebar-card-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .kafka-topics { margin: 8px 0; }
 .kafka-topic { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8b949e; padding: 3px 0; font-family: monospace; }
 .topic-dot { color: #3fb950; font-size: 10px; }
@@ -576,6 +594,7 @@ body {
   overflow-y: auto;
 }
 .event-log-header {
+  display: flex; justify-content: space-between; align-items: center;
   padding: 8px 12px;
   font-size: 11px;
   color: #8b949e;

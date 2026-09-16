@@ -2305,6 +2305,14 @@ export function DeviceManagerPanel({ auth }) {
     `order.devices.${activeLocation}`,
     locDevices, groupBy, isAlarm, isIgnored
   );
+  // Collapse state is keyed per grouping dimension -- "collapsed by Room" and
+  // "collapsed by Type" are independent, since the group names themselves
+  // don't correspond between dimensions. Shared across See/Change so
+  // collapsing a group in one view keeps it collapsed in the other.
+  const { isCollapsed: isGroupCollapsed, toggle: toggleGroup, setAllCollapsed: setAllGroupsCollapsed } =
+    useCollapsedSections(`collapsed.deviceGroups.${activeLocation}.${groupBy}`);
+  const groupNames = useMemo(() => groups.map(([name]) => name), [groups]);
+  const allGroupsCollapsed = groupNames.length > 0 && groupNames.every(isGroupCollapsed);
 
   const refreshManagerDevices = useCallback(() => {
     refreshDevices();
@@ -2366,6 +2374,12 @@ export function DeviceManagerPanel({ auth }) {
                 title="Return Group and Show to their defaults">
                 Reset Filters
               </button>
+              {groupNames.length > 1 && (
+                <button className="btn-ghost" onClick={() => setAllGroupsCollapsed(groupNames, !allGroupsCollapsed)}
+                  title={allGroupsCollapsed ? "Expand every group" : "Collapse every group"}>
+                  {allGroupsCollapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>} {allGroupsCollapsed ? "Expand all" : "Collapse all"}
+                </button>
+              )}
               {view === "see" && (
                 <>
                   <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
@@ -2409,12 +2423,14 @@ export function DeviceManagerPanel({ auth }) {
         selected={selected} onSelect={setSelected}
         reorderMode={reorderMode} groupFlow={groupFlow}
         deviceFilter={effectiveDeviceFilter}
+        isGroupCollapsed={isGroupCollapsed} onToggleGroup={toggleGroup}
         onLifecycleAction={applyLifecycleAction}
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }}
         onManageWorkflows={() => setActivePanel("RULES_ENGINE")}
         onRefresh={refreshManagerDevices} workflows={workflows} auth={auth} />}
       {view === "change" && <DmChangeView groups={groups} deviceFilter={effectiveDeviceFilter} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
+        isGroupCollapsed={isGroupCollapsed} onToggleGroup={toggleGroup}
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
         onManageWorkflows={() => setActivePanel("RULES_ENGINE")}
         workflows={workflows} auth={auth} />}
@@ -2559,6 +2575,25 @@ function readStoredJson(key, fallback) {
   }
 }
 
+// Generic, localStorage-persisted collapse/expand state for any section or
+// group header keyed by an id (a group name, or "main" for a single-section
+// card). Nothing collapses by default -- a saved key only ever narrows the
+// view, matching the same "safe default" convention as the Show filter above.
+function useCollapsedSections(storageKey) {
+  const [collapsed, setCollapsed] = useState(() => readStoredJson(storageKey, {}));
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify(collapsed)); } catch {}
+  }, [storageKey, collapsed]);
+  const isCollapsed = useCallback(id => !!collapsed[id], [collapsed]);
+  const toggle = useCallback(id => setCollapsed(prev => ({ ...prev, [id]: !prev[id] })), []);
+  const setAllCollapsed = useCallback((ids, value) => setCollapsed(prev => {
+    const next = { ...prev };
+    ids.forEach(id => { next[id] = value; });
+    return next;
+  }), []);
+  return { isCollapsed, toggle, setAllCollapsed };
+}
+
 export function reorderIds(ids, fromId, toId) {
   if (fromId === toId) return ids;
   const fromIdx = ids.indexOf(fromId);
@@ -2682,7 +2717,7 @@ function useScrollSelectedIntoView(selected) {
   return ref;
 }
 
-function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, reorderMode, groupFlow, deviceFilter, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows, onManageWorkflows, auth }) {
+function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, reorderMode, groupFlow, deviceFilter, isGroupCollapsed, onToggleGroup, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows, onManageWorkflows, auth }) {
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
   const [overItem, setOverItem] = useState(null);
@@ -2767,9 +2802,19 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
               onDragEnd={reorderMode ? clearDrag : undefined}
               title={reorderMode ? "Drag to reorder this group" : undefined}>
               <span>{reorderMode && <GripVertical size={12} className="drag-handle"/>}{groupName}</span>
-              <span>{groupItems.length}</span>
+              <span>
+                {groupItems.length}
+                {!reorderMode && (
+                  <button type="button" className="section-caret"
+                    onClick={(e) => { e.stopPropagation(); onToggleGroup(groupName); }}
+                    aria-expanded={!isGroupCollapsed(groupName)}
+                    aria-label={isGroupCollapsed(groupName) ? `Expand ${groupName}` : `Collapse ${groupName}`}>
+                    {isGroupCollapsed(groupName) ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+                  </button>
+                )}
+              </span>
             </header>
-            {groupItems.map((d) => {
+            {(reorderMode || !isGroupCollapsed(groupName)) && groupItems.map((d) => {
           const ignored = deviceLifecycleState(d) === "IGNORED";
           const isPinned = isAlarm(d) || ignored;
           const isOver = reorderMode && overItem?.kind === "device"
@@ -2825,7 +2870,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
 // no drag props passed here, so there's no way for a Reorder control to
 // appear in Change even by accident. A saved See-mode order/grouping just
 // shows up identically, with no separate state to keep in sync.
-function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onOpenDiscovery, workflows, onManageWorkflows, auth }) {
+function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isGroupCollapsed, onToggleGroup, onOpenDiscovery, workflows, onManageWorkflows, auth }) {
   const visibleGroups = groups
     .map(([name, items]) => [name, filterDeviceManagerDevices(items, deviceFilter)])
     .filter(([, items]) => items.length > 0);
@@ -2839,8 +2884,19 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, onO
         <p className="dm-hint">Select a device to review its details or save an actual configuration change.</p>
         {visibleGroups.map(([groupName, groupItems]) => (
           <section className="dm-device-group" key={groupName}>
-            <header className="dm-device-group-header"><span>{groupName}</span><span>{groupItems.length}</span></header>
-            {groupItems.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
+            <header className="dm-device-group-header">
+              <span>{groupName}</span>
+              <span>
+                {groupItems.length}
+                <button type="button" className="section-caret"
+                  onClick={() => onToggleGroup(groupName)}
+                  aria-expanded={!isGroupCollapsed(groupName)}
+                  aria-label={isGroupCollapsed(groupName) ? `Expand ${groupName}` : `Collapse ${groupName}`}>
+                  {isGroupCollapsed(groupName) ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+                </button>
+              </span>
+            </header>
+            {!isGroupCollapsed(groupName) && groupItems.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
               ref={selected === d.deviceId ? selectedRowRef : undefined}
               onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} workflows={workflows} />)}
           </section>
@@ -4869,6 +4925,8 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
   const liveMessages = useLiveEventStream(active, locCfg.apiBase,
     { cabinSession: auth?.cabinSessionToken, accessToken: auth?.accessToken });
   const [tempUnit, toggleTempUnit] = useTempUnit();
+  const { isCollapsed: isLogCollapsed, toggle: toggleLog } = useCollapsedSections(`collapsed.eventLog.${locCfg.id}`);
+  const logCollapsed = isLogCollapsed("main");
 
   // D13/bug #4: curated Service Entity display_labels for single-service
   // tile types (CO_SENSOR, HUMIDITY_SENSOR) -- see kpiTileFor's own comment.
@@ -4937,16 +4995,27 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       <CameraHealthPanel locCfg={locCfg} />
 
       <div className="event-log">
-        <div className="event-log-header">Live Events — {locCfg.label}</div>
-        {liveMessages.length === 0 && (
-          <div className="event-log-empty">No live events yet from {locCfg.label}</div>
+        <div className="event-log-header">
+          <span>Live Events — {locCfg.label}</span>
+          <button type="button" className="section-caret" onClick={() => toggleLog("main")}
+            aria-expanded={!logCollapsed}
+            aria-label={logCollapsed ? "Expand live events" : "Collapse live events"}>
+            {logCollapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+          </button>
+        </div>
+        {!logCollapsed && (
+          <>
+            {liveMessages.length === 0 && (
+              <div className="event-log-empty">No live events yet from {locCfg.label}</div>
+            )}
+            {liveMessages.map((m, i) => (
+              <div key={i} className="event-row">
+                <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
+                <span className="event-body">{JSON.stringify(m)}</span>
+              </div>
+            ))}
+          </>
         )}
-        {liveMessages.map((m, i) => (
-          <div key={i} className="event-row">
-            <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
-            <span className="event-body">{JSON.stringify(m)}</span>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -5369,6 +5438,7 @@ function ActiveConditionsCard() {
   const {
     activeAlerts = [], activeAlertLocations = [], activeLocation = "cabin",
   } = useApp();
+  const { isCollapsed, toggle } = useCollapsedSections("collapsed.activeConditions");
   const locationAvailable = activeLocation === "both"
     ? activeAlertLocations.length > 0
     : activeAlertLocations.includes(activeLocation);
@@ -5379,12 +5449,22 @@ function ActiveConditionsCard() {
     : activeAlerts.filter(alert => alert.location === activeLocation);
   if (visibleAlerts.length === 0) return null;
 
+  const collapsed = isCollapsed("main");
+
   return (
     <section className="active-conditions" aria-label="Current active alert conditions">
       <div className="active-conditions-header">
         <strong>Current conditions</strong>
-        <span>{visibleAlerts.length}</span>
+        <span className="section-header-actions">
+          <span className="section-count-badge">{visibleAlerts.length}</span>
+          <button type="button" className="section-caret" onClick={() => toggle("main")}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand current conditions" : "Collapse current conditions"}>
+            {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+          </button>
+        </span>
       </div>
+      {!collapsed && (
       <div className="active-conditions-list">
         {visibleAlerts.map(alert => {
           const meta = `${alert.location} · ${alert.condition.replaceAll("_", " ").toLowerCase()}`;
@@ -5402,6 +5482,7 @@ function ActiveConditionsCard() {
           );
         })}
       </div>
+      )}
     </section>
   );
 }
@@ -5454,6 +5535,7 @@ function AutomationAlertCard({ auth }) {
   const doFetch = auth?.authedFetch || fetch;
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { isCollapsed, toggle } = useCollapsedSections("collapsed.automationAlerts");
 
   useEffect(() => {
     let cancelled = false;
@@ -5492,10 +5574,27 @@ function AutomationAlertCard({ auth }) {
     );
   }
 
+  const collapsed = isCollapsed("main");
+
   return (
-    <div className="automation-alert-list">
-      {alerts.map(alert => <AutomationAlertEntry key={alert.eventId} alert={alert} />)}
-    </div>
+    <section className="automation-alerts" aria-label="Automation alerts, last 24 hours">
+      <div className="automation-alerts-header">
+        <strong>Automation alerts</strong>
+        <span className="section-header-actions">
+          <span className="section-count-badge">{alerts.length}</span>
+          <button type="button" className="section-caret" onClick={() => toggle("main")}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand automation alerts" : "Collapse automation alerts"}>
+            {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+          </button>
+        </span>
+      </div>
+      {!collapsed && (
+        <div className="automation-alert-list">
+          {alerts.map(alert => <AutomationAlertEntry key={alert.eventId} alert={alert} />)}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -6111,6 +6210,7 @@ function WorkflowRow({ workflow, auth, devices = [], onChanged }) {
 function RecentExecutionsList({ workflows, activeLocation, auth }) {
   const [recent, setRecent] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { isCollapsed, toggle } = useCollapsedSections("collapsed.recentExecutions");
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -6141,12 +6241,23 @@ function RecentExecutionsList({ workflows, activeLocation, auth }) {
   };
 
   if (loading || recent.length === 0) return null;
+  const collapsed = isCollapsed("main");
 
   return (
     <div className="workflow-recent-executions">
-      <strong>Recent</strong>
+      <div className="sidebar-card-header">
+        <strong>Recent</strong>
+        <span className="section-header-actions">
+          <span className="section-count-badge">{recent.length}</span>
+          <button type="button" className="section-caret" onClick={() => toggle("main")}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand recent firings" : "Collapse recent firings"}>
+            {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+          </button>
+        </span>
+      </div>
       <p className="config-hint">Unviewed workflow firings.</p>
-      {recent.map((exec, idx) => {
+      {!collapsed && recent.map((exec, idx) => {
         const wf = workflows.find(w => w.workflowId === exec.workflowId);
         return (
           <div key={exec.executionId ?? idx} className="rule-row">
@@ -6167,13 +6278,27 @@ function RecentExecutionsList({ workflows, activeLocation, auth }) {
 
 export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultLocation = "cabin", activeLocation = "cabin", onChanged = () => {} }) {
   const [creating, setCreating] = useState(false);
+  const { isCollapsed, toggle } = useCollapsedSections("collapsed.workflowList");
+  const collapsed = isCollapsed("main");
   return (
     <div className="sidebar-card">
-      <strong>Workflows</strong>
+      <div className="sidebar-card-header">
+        <strong>Workflows</strong>
+        {workflows.length > 0 && (
+          <span className="section-header-actions">
+            <span className="section-count-badge">{workflows.length}</span>
+            <button type="button" className="section-caret" onClick={() => toggle("main")}
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? "Expand workflows" : "Collapse workflows"}>
+              {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+            </button>
+          </span>
+        )}
+      </div>
       <p className="config-hint">Real, persisted trigger → action rules (separate from the rules below and from Node-RED).</p>
       <RecentExecutionsList workflows={workflows} activeLocation={activeLocation} auth={auth} />
       {workflows.length === 0 && <p className="config-hint">No workflows configured yet.</p>}
-      {workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} devices={devices} onChanged={onChanged} />)}
+      {!collapsed && workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} devices={devices} onChanged={onChanged} />)}
       {!creating && (
         auth?.signedIn
           ? <button type="button" className="btn-secondary" onClick={() => setCreating(true)}>+ New Workflow</button>
