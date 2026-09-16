@@ -5385,16 +5385,23 @@ function ActiveConditionsCard() {
         <strong>Current conditions</strong>
         <span>{visibleAlerts.length}</span>
       </div>
-      {visibleAlerts.map(alert => (
-        <div className={`active-condition active-condition-${(alert.severity || "warn").toLowerCase()}`} key={alert.alertId}>
-          <AlertTriangle size={15} />
-          <div>
-            <strong>{alert.title}</strong>
-            <p>{alert.detail}</p>
-            <span>{alert.location} · {alert.condition.replaceAll("_", " ").toLowerCase()}</span>
-          </div>
-        </div>
-      ))}
+      <div className="active-conditions-list">
+        {visibleAlerts.map(alert => {
+          const meta = `${alert.location} · ${alert.condition.replaceAll("_", " ").toLowerCase()}`;
+          return (
+            <div className={`active-condition active-condition-${(alert.severity || "warn").toLowerCase()}`} key={alert.alertId}>
+              <AlertTriangle size={13} />
+              <div className="active-condition-body">
+                <div className="active-condition-title-row">
+                  <strong title={alert.title}>{alert.title}</strong>
+                  <span title={meta}>{meta}</span>
+                </div>
+                <p title={alert.detail}>{alert.detail}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
