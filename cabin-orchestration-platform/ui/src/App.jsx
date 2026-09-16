@@ -786,7 +786,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   // cleanup naturally covers every way this needs to stop: switching to
   // a different camera, clicking "Stop", or leaving this panel entirely.
   useEffect(() => {
-    if (!liveCamera || !auth.accessToken) return;
+    if (!liveCamera || !auth.signedIn) return;
     auth.authedFetch(`${apiBase}/api/camera/${liveCamera}/liveview/start`, { method: "POST" }).catch(() => {});
     return () => {
       auth.authedFetch(`${apiBase}/api/camera/${liveCamera}/liveview/stop`, { method: "POST" }).catch(() => {});
@@ -1058,7 +1058,7 @@ function useOntologyLabels(apiBase, ids) {
   return labels;
 }
 
-function OpportunityCard({ apiBase, auth, opportunity, entityLabels, onChanged }) {
+export function OpportunityCard({ apiBase, auth, opportunity, entityLabels, onChanged }) { // exported for src/App.test.jsx's CabinSession-only regression test
   const [expanded, setExpanded] = useState(false);
   const [choosingReason, setChoosingReason] = useState(false);
   const lineageIds = [opportunity.entityId, ...(opportunity.relatedEntityIds || [])].filter(Boolean);
@@ -1068,7 +1068,7 @@ function OpportunityCard({ apiBase, auth, opportunity, entityLabels, onChanged }
   // session clears and auth.sessionExpired flips, instead of this POST
   // just silently 401ing with no visible effect.
   const logAction = (actionType, detail) => {
-    if (!auth.accessToken) return Promise.resolve();
+    if (!auth.signedIn) return Promise.resolve();
     return auth.authedFetch(`${apiBase}/api/tech-id/findings/${opportunity.id}/actions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1077,7 +1077,7 @@ function OpportunityCard({ apiBase, auth, opportunity, entityLabels, onChanged }
   };
 
   const setStatus = (status) => {
-    if (!auth.accessToken) return Promise.resolve();
+    if (!auth.signedIn) return Promise.resolve();
     return auth.authedFetch(`${apiBase}/api/tech-id/findings/${opportunity.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
