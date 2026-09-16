@@ -880,6 +880,63 @@ describe("CameraEventsPanel — time range window", () => {
   });
 });
 
+// 2026-09-16 (user report): refreshCameraList() had its own
+// `if (!auth.accessToken) return;` guard, written 2026-08-16 -- 19 days
+// before CabinSession existed, when the raw ~1-hour Google token really
+// was the only auth mechanism. When CabinSession shipped 2026-09-04 as the
+// 30-day persistent login, every other data hook in this file (refresh()
+// in this same component included) was already just calling authedFetch()
+// directly, which prefers CabinSession automatically -- this one guard was
+// never revisited. Net effect: for ~11 days, anyone relying on CabinSession
+// (i.e. anyone whose accessToken had expired -- the normal state for any
+// session older than an hour) silently got zero "Watch live" buttons on
+// every location, with camera event history still working fine (refresh()
+// has no such guard) and no error surfaced anywhere. Zero prior test
+// coverage caught this -- these tests close that gap.
+describe("CameraEventsPanel — live camera buttons work with CabinSession-only auth", () => {
+  afterEach(cleanup);
+
+  function mockAuthCabinSessionOnly() {
+    return {
+      configured: true, signedIn: true, sessionExpired: false, userEmail: "nate@example.com",
+      signOut: vi.fn(), signIn: vi.fn(), accessToken: null, cabinSessionToken: "cabin-session-tok",
+      authedFetch: vi.fn((url) => Promise.resolve(
+        url.includes("/api/camera/list")
+          ? { ok: true, json: async () => [{ name: "driveway", enabled: true }, { name: "front_door", enabled: true }] }
+          : { ok: true, json: async () => [] }
+      )),
+    };
+  }
+
+  it("renders a Watch-live button per enabled camera when only a CabinSession is present (no accessToken)", async () => {
+    const auth = mockAuthCabinSessionOnly();
+
+    render(
+      <AppContext.Provider value={{ locationCfg: { apiBase: "http://cabin-hub:8090" } }}>
+        <CameraEventsPanel auth={auth} />
+      </AppContext.Provider>
+    );
+
+    expect(await screen.findByRole("button", { name: /Watch driveway live/ })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /Watch front_door live/ })).toBeTruthy();
+  });
+
+  it("still requests the camera list at all -- the actual regression was this call never firing", async () => {
+    const auth = mockAuthCabinSessionOnly();
+
+    render(
+      <AppContext.Provider value={{ locationCfg: { apiBase: "http://cabin-hub:8090" } }}>
+        <CameraEventsPanel auth={auth} />
+      </AppContext.Provider>
+    );
+
+    await waitFor(() => {
+      const urls = auth.authedFetch.mock.calls.map(c => c[0]);
+      expect(urls.some(u => u.includes("/api/camera/list"))).toBe(true);
+    });
+  });
+});
+
 // 2026-08-15: a location's devices (e.g. Home's AldrichFront, relayed
 // through the cabin M920q's own blinkbridge/Frigate) can exist before that
 // location has its own deployed backend. CameraEventsPanel falls back to
