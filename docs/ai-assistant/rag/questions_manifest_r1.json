@@ -39,6 +39,11 @@
         "id": "claude-code",
         "description": "Claude Code CLI session running directly on M920q — owns deploy, integration testing, fixture iteration",
         "owns_domains": ["deploy", "integration-test", "context-fixtures"]
+      },
+      {
+        "id": "cabin-assistant-poc1",
+        "description": "Not an acting agent -- represents the POC1 fine-tuned Ollama tag (docs/ai-assistant/training/) under evaluation. Registered so a Tier 2 comparison run against the trained tag has its own agent_id/round history, distinct from the tags production /api/helpdesk/ask actually serves from. Run with --questions all (owns no domains, so 'owned' would silently mean 'common only').",
+        "owns_domains": []
       }
     ]
   },
