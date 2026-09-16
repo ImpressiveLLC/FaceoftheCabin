@@ -189,6 +189,39 @@ whoever forks the repo — not bugs, just template points:
     configurable inventory groups), just needs your registration token and
     inventory values.
 
+### Scoping a minimal install (no cameras, no zone presence)
+
+*Added 2026-09-16, consolidated here rather than a new doc — see
+`docs/ai-assistant/rag/questions_manifest_r1.json`'s Q18, a
+safety-flagged question specifically about not under-scoping this
+answer.* If someone asks "I want an independent Family Hub/cabin system
+with no cameras and no zone presence — what inputs do I need," **do not
+answer with a short, fixed device list presented as definitive.** Either
+(a) give the complete inventory of clonable, non-camera, non-presence
+inputs and let them pick however many they actually want, or (b) ask
+what the system needs to *do* first and derive the minimum set from
+that. A partial list stated as complete is the failure mode this section
+exists to prevent — someone provisions exactly what's named, discovers
+later it's short, and now has to retrofit.
+
+**The core inputs, needed regardless of camera/presence scope**
+(everything else in this guide already explains how to stand these up):
+a Zigbee coordinator (this instance uses a SMLIGHT SLZB-MR5U; the
+Termux/Android bridge in §"Home Location" of `MAINTENANCE.md` is a
+validated alternative for a second property), an MQTT broker reachable
+from the backend, Postgres, Kafka, and the event pipeline that consumes
+them (`EventPublisher`/`EventConsumer`/`CabinEventService`, plus
+`TelemetryArchivalService` if you want cold-tier retention — see
+`MAINTENANCE.md`'s Database & Storage section).
+
+**Scope-dependent, skip if not wanted:** Frigate + cameras (only needed
+for camera recording/detection — explicitly excluded by this scenario,
+so leave it out entirely rather than including it "just in case"), zone/
+presence `zone:` blocks in Home Assistant (only needed for
+presence-based automation — see §4 step 5 above), and Home Assistant
+itself is only required if you're bridging additional smart-home device
+types beyond native Zigbee.
+
 ## 5. New Instance Acceptance Test
 
 A replica isn't "done" because containers are running — verify these
