@@ -843,7 +843,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   // auth.authedFetch so an expired token clears the session instead of
   // this request silently 401ing forever.
   const refreshCameraList = useCallback(() => {
-    if (!auth.accessToken) return;
+    if (!auth.signedIn) return;
     setCameraListError(null);
     const listUrl = eventsLocationFilter
       ? `${apiBase}/api/camera/list?location=${eventsLocationFilter}`
