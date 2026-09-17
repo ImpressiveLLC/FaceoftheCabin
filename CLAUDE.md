@@ -500,25 +500,29 @@ severity-tiering MVP scope — only the classifier + ntfy push shipped
 - **Monitoring** (`MonitoringPanel`) — KPI tiles + Grafana embed + live MQTT log
   (collapsible per location, 2026-09-16) — has **LocationSwitcher**
   (Cabin / Home / Both) in the toolbar
-- **Rules & Alerts** (`RulesPanel`) — two columns (`.rules-layout`,
-  2026-09-16, corrected same day): `.rules-main-col` stacks
-  `ActiveConditionsCard` (live `/api/alerts/active` conditions, every
-  card — including `AutomationAlertCard`'s empty state — capped at
-  `max-width: 520px` via `.automation-alert-card`/`.active-conditions`,
-  each row expandable via "See more" and linkable to its device via
-  "Open device" — `ActiveAlert.sourceDeviceId` + `pendingDeviceFocus`
-  context, consumed by `DeviceManagerPanel`), `AutomationAlertCard`
-  (last-24h automation alerts), then the Node-RED embed below them in the
-  **same column** (`flex: 1`, absorbs whatever height the compact alert
-  cards don't use). `.rules-sidebar` (`KafkaStatus`, `WorkflowRulesCard`,
-  `OptimizationOpportunitiesCard`, `BuiltinRules`) runs alongside that
-  whole column. Both alert cards are collapsible with the same
-  ALARM/CRITICAL force-expand floor as Device Manager. (An earlier
-  same-day attempt put alerts and sidebar in one flex-grow row above a
-  separate full-width Node-RED row — that left a dead gap between the
-  capped cards and the far-right sidebar, and idle vertical space below
-  the shorter alerts column; corrected to the one-column-with-Node-RED
-  shape described here.)
+- **Rules & Alerts** (`RulesPanel`, layout settled 2026-09-17 after three
+  same-week passes) — `.rules-cards-row` (`display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))`) holds
+  three responsive columns: `ActiveConditionsCard` (live
+  `/api/alerts/active` conditions, each row expandable via "See more" and
+  linkable to its device via "Open device" — `ActiveAlert.sourceDeviceId`
+  + `pendingDeviceFocus` context, consumed by `DeviceManagerPanel`) +
+  `AutomationAlertCard` (last-24h automation alerts); `KafkaStatus` +
+  `WorkflowRulesCard` (its workflow list capped at `max-height: 320px`
+  with internal scroll, `.workflow-rows-list`, same pattern as
+  `.active-conditions-list`); `OptimizationOpportunitiesCard` +
+  `BuiltinRules`. No per-card `max-width` anymore — the grid column is
+  the width constraint, so cards actually fill whatever space the
+  responsive column gives them instead of leaving a gap inside it. The
+  Node-RED embed renders full-width **below** this row (its own
+  `.rules-layout`/`.rules-nodered-single`/`-split`), not sharing a column
+  with anything, since it's the one thing that genuinely wants full width
+  once it's loaded. Both alert cards keep the ALARM/CRITICAL force-expand
+  floor. (Two earlier same-week layouts — alerts+sidebar in one flex-grow
+  row above full-width Node-RED, then Node-RED sharing the alerts'
+  column — each fixed one problem and left another; see
+  `docs/PRODUCT_NOTES.md`'s 2026-09-16/17 entries for why each didn't
+  hold up.)
 - **Camera Events** (`CameraEventsPanel`) — authenticated camera
   snapshots/clips/live view, DTM-stamped (Phase 7 §4b)
 - **Opportunities** (`OpportunityMapPanel`) — Tech ID Service findings as
@@ -620,6 +624,18 @@ All items below are **complete and pushed to GitHub**:
   `AutomationAlertCard`'s empty state, missed in the first width-cap
   pass. See `docs/PRODUCT_NOTES.md`'s 2026-09-16 entry for the full
   design reasoning; covered by new Vitest cases in `App.test.jsx`.
+- **Rules & Alerts layout, third and final pass** (2026-09-17) — replaced
+  the "Node-RED shares a column with the alerts" shape with
+  `.rules-cards-row`, a responsive 3-column grid holding every compact
+  card (alerts, Kafka+Workflows, Opportunities+Backend Rules); Node-RED
+  moved out to its own full-width section below. Direct user framing:
+  Current Conditions had already proven a compact, internally-scrolling
+  card works, so extend that to the rest instead of letting an unloaded
+  Node-RED placeholder's width sit empty next to a pushed-out sidebar.
+  Dropped the per-card `max-width: 520px` (the grid column is the
+  constraint now) and gave `WorkflowRulesCard`'s workflow list the same
+  capped-height/scroll treatment as `.active-conditions-list`. See
+  `docs/PRODUCT_NOTES.md`'s 2026-09-17 entry.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds

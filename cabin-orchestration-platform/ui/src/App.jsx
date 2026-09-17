@@ -5523,32 +5523,36 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>
       </div>
-      {/* 2026-09-16 (user report, corrected same day): the first attempt
-          put alerts and the sidebar in one row with the alerts column set
-          to flex-grow -- since the alert cards themselves cap their own
-          width, that left a dead gap between the (narrow) cards and the
-          (far-right) sidebar, and Node-RED still only started once the
-          whole row finished, leaving the shorter alerts column's own
-          leftover height empty too. Node-RED now lives in the SAME column
-          as the alerts (stacked below them, filling whatever height they
-          don't use) so nothing sits idle; the sidebar runs alongside that
-          whole column, same as the original layout, just with alerts
-          folded into the main column instead of spanning full-width above
-          the entire row. */}
-      <div className="rules-layout">
-        <div className="rules-main-col">
+      {/* 2026-09-17 (user report, third pass): Node-RED sharing a column
+          with the alerts fixed the earlier dead-gap bug, but that column
+          was full main-col width regardless -- an unloaded Node-RED embed
+          is just a small placeholder message, so most of that width sat
+          empty while the sidebar was pushed out past it. Current
+          conditions already proved the compact, internally-scrolling
+          card works well; this puts every compact card (alerts + the old
+          sidebar) into a responsive row of narrow columns that actually
+          uses the freed width, with Node-RED -- the one thing that
+          genuinely wants full width once it's actually loaded -- as its
+          own full-width section below all of them instead of sandwiched
+          between. */}
+      <div className="rules-cards-row">
+        <div className="rules-cards-col">
           <ActiveConditionsCard />
           <AutomationAlertCard auth={auth} />
-          <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
-            {locs.map(loc => <LocationRulesSection key={loc.id} locCfg={loc} />)}
-          </div>
         </div>
-        <div className="rules-sidebar">
+        <div className="rules-cards-col">
           <KafkaStatus location={activeLocation} />
           <WorkflowRulesCard workflows={workflows} auth={auth} devices={devices} activeLocation={activeLocation}
             defaultLocation={activeLocation !== "both" ? activeLocation : "cabin"} onChanged={refreshWorkflows} />
+        </div>
+        <div className="rules-cards-col">
           <OptimizationOpportunitiesCard auth={auth} devices={devices} />
           <BuiltinRules location={activeLocation} auth={auth} />
+        </div>
+      </div>
+      <div className="rules-layout">
+        <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
+          {locs.map(loc => <LocationRulesSection key={loc.id} locCfg={loc} />)}
         </div>
       </div>
     </div>
@@ -6461,7 +6465,11 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
       <p className="config-hint">Real, persisted trigger → action rules (separate from the rules below and from Node-RED).</p>
       <RecentExecutionsList workflows={workflows} activeLocation={activeLocation} auth={auth} />
       {workflows.length === 0 && <p className="config-hint">No workflows configured yet.</p>}
-      {!collapsed && workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} devices={devices} onChanged={onChanged} />)}
+      {!collapsed && workflows.length > 0 && (
+        <div className="workflow-rows-list">
+          {workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} devices={devices} onChanged={onChanged} />)}
+        </div>
+      )}
       {!creating && (
         auth?.signedIn
           ? <button type="button" className="btn-secondary" onClick={() => setCreating(true)}>+ New Workflow</button>

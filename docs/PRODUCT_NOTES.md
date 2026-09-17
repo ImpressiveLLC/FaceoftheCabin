@@ -903,4 +903,31 @@ full-width above the entire row. This is the version that actually holds
 up: no dead gap (the column is sized to its content, not force-grown),
 and no idle vertical space (Node-RED occupies it directly).
 
+**Next day: the third correction, and the one that actually stuck.** An
+annotated screenshot of the live site named the real remaining problem
+directly: Node-RED sharing a column with the alerts fixed the gap, but
+an *unloaded* Node-RED embed is just a small centered placeholder message
+— most of that column's width sat empty regardless, and the old sidebar
+was still pushed out past it. The user's own framing was the right one:
+Current Conditions had already proven a compact, internally-scrolling
+card works well, so extend that same pattern to everything that used to
+live in the sidebar, and let all of it — alerts and sidebar alike — share
+the freed horizontal space as a responsive row of columns, with Node-RED
+(the one thing that genuinely wants full width, once it's actually
+loaded) dropped below as its own section instead of sandwiched between.
+
+Landed as `.rules-cards-row` (`display: grid; grid-template-columns:
+repeat(auto-fit, minmax(280px, 1fr))`) holding three columns — alerts;
+Kafka + Workflows; Optimization Opportunities + Backend Rules — with
+Node-RED full-width below all of them. The per-card `max-width: 520px`
+from the earlier pass came out entirely: the grid column is now the
+width constraint, and keeping an independent cap on top of it would have
+reintroduced exactly the same "content narrower than its container"
+waste the whole exercise was trying to remove. `WorkflowRulesCard`'s
+workflow list also picked up the same `max-height` + internal-scroll
+treatment as `.active-conditions-list` (`.workflow-rows-list`,
+capped at 320px) — a handful of workflows is the one list in that column
+set with realistic room to grow past a screenful, and it's the one the
+screenshot actually showed doing so.
+
 ---
