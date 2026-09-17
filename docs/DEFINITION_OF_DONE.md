@@ -163,6 +163,30 @@
 archive. Resolved items get removed, not marked "done" and left to
 accumulate.*
 
+- **Rules & Alerts box resizing — explicitly deferred, 2026-09-17.** User
+  asked for box reorder (shipped, PR #76) "and if easily doable,"
+  resizing so boxes reflow the CSS layout dynamically. Reorder reuses
+  `FamilyHubPanel`'s existing `useDraggableOrder` pattern directly — real
+  resize-and-snap (drag handles, span calculation, snap-to-neighbor) is a
+  genuinely separate feature, not a small addition on top of that. Not
+  started; flagged rather than silently dropped.
+- **Kafka Topics box removed from Rules & Alerts, PR #76 — flagged for
+  confirmation, not a closed decision.** It never fetched anything real
+  (hardcoded topic list, hardcoded "localhost:9092" not matching the
+  actual configured broker `cabin-kafka:9092`). Recommended against
+  building live start/stop/reconfigure controls for it (message-bus
+  lifecycle control in a resident/admin panel is a much larger blast
+  radius than anything else this panel touches) and removed it from the
+  render list; component kept, unreferenced, one-line revert if that
+  call is wrong.
+- **Two orphaned localStorage keys after the Status Checks merge (PR
+  #76) — accepted, not migrated.** `collapsed.activeConditions` and
+  `collapsed.automationAlerts` are replaced by one shared
+  `collapsed.statusChecks` key; the old two are simply never read again.
+  No user-visible harm (a single fixed key name, not growing per-item),
+  and per this doc's own "wipe and reseed over a shim" guidance, not
+  worth a migration for a boolean collapse preference — noted here
+  rather than silently skipped.
 - **Monitoring panel can't group tiles, only reorder one flat list — real
   gap, found 2026-08-25, not started.** User wants their temp/humidity
   tiles visually grouped together, out of the general device-status
@@ -547,3 +571,29 @@ evidence either way. Removed the now-redundant "Monitoring runbook"
 item — `MAINTENANCE.md`'s own Monitoring section already documents what
 Kuma/Homepage check. See git log for the actual session-by-session
 record — that's the authoritative history now, not this file.
+
+**Session close-out, 2026-09-17.** Four independent PRs landed on `main`
+as one verified batch, per explicit user instruction to confirm they
+wouldn't conflict before merging rather than assume it: #73 (eval
+pipeline's auto-launched grader never passed `--criteria`, so every past
+grading round through the normal flow was missing its own rubric), #74
+(device-lifecycle facts consolidated into `MAINTENANCE.md`/
+`REPLICATION.md` instead of a new doc, correcting two stale claims found
+against live code — `registerPersistentCandidate()` already existed,
+the manifest still called it an open gap), #75 (an ontology design
+discussion, explicitly not ratified, revised after review rejected its
+first draft and left as a discussion artifact), #76 (Rules & Alerts:
+merged two separate alert boxes into one Status Checks card, added
+persisted box reorder, removed the non-functional Kafka Topics box).
+Verified responsibly, not assumed: a real local sequential dry-run merge
+of all four (`git merge --no-ff`, one at a time, each committed before
+the next) produced zero conflicts, confirmed again by GitHub's own
+`mergeStateStatus` after the real merges landed, and the frontend suite
+(331/331) was run against the actual combined `main`, not just each
+branch alone. `claude-code/poc1-local-finetuning-pipeline` (#64) was
+deliberately left out of this batch — it stays gated on the user's own
+review per an earlier, explicit boundary in this same session — and was
+separately confirmed (both by local dry-run and GitHub's real
+recomputed status) to still merge cleanly against the new `main`, so
+this batch doesn't block or complicate that decision whenever it's
+made.
