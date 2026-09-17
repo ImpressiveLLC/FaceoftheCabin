@@ -757,3 +757,91 @@ with no hard vendor/protocol assumption. It is *not* a claim that Home
 now works — zero real devices are deployed there, and the MQTT routing
 question above is still open. Any external-facing mention of this
 should read as "de-risked," never "Home is live."
+
+---
+
+## 2026-09-16 — Alert & Device-List Density: Collapsible Sections With a Safety Floor
+
+_Prompted by a live UI report: the Rules & Alerts "Current conditions" card
+was already consuming roughly a third of the viewport with six alerts and had
+no ceiling, and Device Manager's Group dropdown could section 100+ devices
+into many fully-expanded blocks with no way to collapse any of them._
+
+**A collapsed section is a user preference, not a safety statement.** Every
+disclosure caret added this session — Device Manager's group headers, both
+Rules & Alerts alert cards, the Monitoring live event log, and the Workflow/
+Recent-firings sidebar lists — persists to localStorage per section
+(`useCollapsedSections`), but a Device Manager group containing a device in
+`ALARM`/`CRITICAL` state, or an alert card holding a `critical`-severity
+item, force-expands regardless of that stored preference. The caret itself
+disables with a tooltip explaining why, rather than silently doing nothing on
+click. This mirrors the existing auto-pin-alarm-devices behavior in Device
+Manager's reorder mode — alarm state already overrides display convenience
+elsewhere in this codebase, and a dashboard whose entire purpose is
+surfacing exactly these conditions cannot let a density feature hide one.
+
+**Device Manager's toolbar had three controls with equal visual weight doing
+three different jobs.** Group (sectioning), Filter (row-level visibility
+within a section — previously labeled "Show," easy to misread as a second
+grouping control), and the horizontal/vertical layout toggle (previously bare
+"Groups ↔ / Groups ↕" arrow glyphs) sat in one undifferentiated row. Renamed
+Show → Filter with a hairline divider separating it from Group, and replaced
+the arrow toggle with explicit "Layout: Side-by-side" / "Layout: Stacked"
+text. The seven Group-by dimensions themselves were not reduced — Type/Room/
+Workflow/etc. are genuinely different mental models a user would want, not
+redundant options papering over one concept.
+
+**No new `docs/ontology.yaml` entity.** Collapse state is UI display
+convenience (same category as scroll position or panel width), not a domain
+concept with a value a user configures with intent the way `devices.groupBy`
+is — so it's documented here and in `CLAUDE.md`, not given its own ontology
+entry. Named explicitly rather than silently skipped, per this file's own
+"no silent scope narrowing" practice.
+
+**Verified against a mock 42-device backend, not just the existing suite.**
+Vitest's jsdom environment exercises the collapse/expand toggles and label
+text, but "does an ALARM-state device actually force its group open" needed
+a live render with real severity data to trust — confirmed live before this
+was called done, alongside the new Vitest coverage added in the same commit.
+
+**Same-day follow-up: Filter became two composable facets, and current
+conditions stopped claiming the full page width.** Live user feedback on
+the above named two more real gaps.
+
+*"Parent devices only" and "Candidates" were never actually the same kind
+of thing.* The single `deviceFilter` enum (`in_scope`/`parents_only`/
+`candidates`/`previous`) conflated a structural question (is this a
+top-level device or one of its services?) with a lifecycle/setup question
+(what state is it in?) as four mutually-exclusive presets — so "parent
+devices only, but not Candidate or Assigned" simply couldn't be expressed,
+a real, reasonable thing to want. Both facts were already plain per-device
+data (`attributes.parentDeviceId`, `deviceLifecycleState()`), so the fix
+needed no backend or ontology change — a first pitch of that scope (a
+first-class Devices/Services toggle, State pulled out of Group-by
+entirely) was explicitly rejected in favor of the smaller, MVP-correct
+version: **Parent devices only** stayed a simple toggle, and **State**
+became a real multi-select (Candidates/Available/Assigned/Saved for
+later/Ignored, any combination) behind one toolbar button rather than a
+native `<select multiple>` (needs a modifier key to multi-pick, no live
+count) or a row of always-visible chips (costs toolbar width whether or
+not each value is relevant right now). "Review previously exposed" stayed
+its own separate toggle rather than folding into State, since it triggers
+an actual data fetch (previously-exposed devices aren't part of the normal
+device/candidate fetches) rather than just filtering what's already
+loaded — matching its old exclusive-preset behavior, it still overrides
+Parent-only/State while checked. One latent inconsistency, fixed as a
+natural side effect rather than left alone: Lifecycle grouping's old
+force-override claimed to "always show both setup states" but actually
+still excluded Deferred/Ignored (an unreachable "all" string that matched
+no real branch) — it now genuinely shows all five states, so grouping by
+Lifecycle can no longer produce a "Saved for later"/"Ignored" section that
+silently never has anything in it.
+
+*The "Current conditions" card was using far more width than its content
+needed.* Direct visual feedback (an annotated screenshot) on the density
+pass above: the card already scrolls internally now, but it was still
+stretching to the full page width while its actual content — an icon,
+a truncated title, a short description — used a fraction of that space.
+Capped at `max-width: 520px`.
+
+---

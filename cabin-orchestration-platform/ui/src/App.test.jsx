@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -1483,18 +1483,23 @@ describe("Device Manager lifecycle visibility", () => {
       .toEqual(["assigned", "available", "candidate", "legacy"]);
   });
 
-  it("shows candidates only when Candidates is explicitly selected", () => {
-    expect(filterDeviceManagerDevices(devices, "candidates").map(d => d.deviceId)).toEqual(["candidate"]);
+  it("shows candidates only when Candidates is the only State checked", () => {
+    expect(filterDeviceManagerDevices(devices, { lifecycle: ["CANDIDATE"] }).map(d => d.deviceId)).toEqual(["candidate"]);
   });
 
-  it("keeps cached devices out of the default view until Previously exposed is explicitly selected", () => {
-    expect(filterDeviceManagerDevices(devices, "previous").map(d => d.deviceId))
+  it("shows deferred/ignored devices when their State boxes are checked -- the 'Review previously exposed' mode's own filter shape", () => {
+    expect(filterDeviceManagerDevices(devices, { lifecycle: ["DEFERRED", "IGNORED"] }).map(d => d.deviceId))
       .toEqual(["deferred", "ignored"]);
   });
 
-  it("the legacy 'all' filter value (no longer a selectable option) still resolves to the same default set", () => {
-    expect(filterDeviceManagerDevices(devices, "all").map(d => d.deviceId))
-      .toEqual(["assigned", "available", "candidate", "legacy"]);
+  // 2026-09-16: Parent-only and State used to be one mutually-exclusive
+  // enum (parents_only/candidates/previous/in_scope) -- a real, reasonable
+  // combination like "parent devices only, but not Candidate or Assigned"
+  // simply couldn't be expressed. Now they're independent facets on the
+  // same call.
+  it("combines Parent-only with an arbitrary State selection", () => {
+    expect(filterDeviceManagerDevices(devices, { parentOnly: true, lifecycle: ["AVAILABLE", "DEFERRED"] }).map(d => d.deviceId))
+      .toEqual(["available", "deferred"]);
   });
 
   // 2026-08-27 (user report): grouping by Type produced one enormous
@@ -1503,22 +1508,23 @@ describe("Device Manager lifecycle visibility", () => {
   // same parentDeviceId relationship the toolbar's device-count toggle
   // already reads (countParentDevices) as a real list filter so a person
   // can actually collapse down to just the physical devices.
-  it("shows only devices without a parentDeviceId when 'Parent devices only' is selected", () => {
+  it("shows only devices without a parentDeviceId when Parent devices only is on", () => {
     const child = { deviceId: "child", attributes: { deviceLifecycle: "ASSIGNED", parentDeviceId: "assigned" } };
     const withChild = [...devices, child];
-    expect(filterDeviceManagerDevices(withChild, "parents_only").map(d => d.deviceId))
+    expect(filterDeviceManagerDevices(withChild, { parentOnly: true }).map(d => d.deviceId))
       .toEqual(["assigned", "available", "candidate", "legacy"]);
   });
 
-  it("'Parent devices only' still excludes deferred/ignored devices, same as the default view", () => {
-    expect(filterDeviceManagerDevices(devices, "parents_only").map(d => d.deviceId))
+  it("Parent devices only still excludes deferred/ignored devices by default, same as the default view", () => {
+    expect(filterDeviceManagerDevices(devices, { parentOnly: true }).map(d => d.deviceId))
       .toEqual(["assigned", "available", "candidate", "legacy"]);
   });
 
-  it("always reconciles Lifecycle grouping to All active/review devices", () => {
-    expect(resolveDeviceManagerFilter("candidate", "in_scope")).toBe("all");
-    expect(resolveDeviceManagerFilter("candidate", "candidates")).toBe("all");
-    expect(resolveDeviceManagerFilter("workflow", "candidates")).toBe("candidates");
+  it("always reconciles Lifecycle grouping to every state, Parent-only ignored", () => {
+    expect(resolveDeviceManagerFilter("candidate", { parentOnly: true, lifecycle: ["CANDIDATE"] }))
+      .toEqual({ parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value) });
+    const saved = { parentOnly: true, lifecycle: ["CANDIDATE"] };
+    expect(resolveDeviceManagerFilter("workflow", saved)).toBe(saved);
   });
 
   it("derives legacy candidate booleans but prefers the lifecycle enum", () => {
@@ -3056,15 +3062,41 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     expect(screen.queryByText("Reorder")).toBeNull();
   });
 
-  it("Change mode offers the same Group/Filter controls as See", async () => {
+  it("force-expands a device group containing an active ALARM device, even if the user had collapsed it", async () => {
+    localStorage.setItem("collapsed.deviceGroups.cabin.type", JSON.stringify({ LOCK: true }));
+    const devices = [
+      { deviceId: "d1", name: "Device One", type: "LOCK", state: "ALARM", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED" } },
+      { deviceId: "d2", name: "Device Two", type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED" } },
+    ];
+    renderPanel({ devices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(screen.getByText("Device One")).toBeTruthy();
+    const caret = screen.getByLabelText(/lock has an active alarm and can't be collapsed/i);
+    expect(caret.disabled).toBe(true);
+  });
+
+  it("collapses and expands a device group with no active alarm via its caret", async () => {
+    renderPanel({ devices: twoDevices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(screen.getByText("Device One")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(/^collapse lock$/i));
+    expect(screen.queryByText("Device One")).toBeNull();
+    fireEvent.click(screen.getByLabelText(/^expand lock$/i));
+    expect(screen.getByText("Device One")).toBeTruthy();
+  });
+
+  it("Change mode offers the same Group/Parent-only/State controls as See", async () => {
     renderPanel({ devices: twoDevices });
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Change" }));
     expect(screen.getByLabelText(/^group$/i)).toBeTruthy();
-    expect(screen.getByLabelText(/^filter$/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Parent devices only" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^state/i })).toBeTruthy();
   });
 
-  it("Reset Filters snaps Group/Filter back to defaults without deselecting the current device", async () => {
+  it("Reset Filters snaps Group/Parent-only/State back to defaults without deselecting the current device", async () => {
     renderPanel({ devices: twoDevices });
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     fireEvent.click(screen.getByText("Device One"));
@@ -3073,15 +3105,33 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     let callsBefore = fetch.mock.calls.length;
     fireEvent.change(screen.getByLabelText(/^group$/i), { target: { value: "room" } });
     await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(callsBefore));
-    fireEvent.change(screen.getByLabelText(/^filter$/i), { target: { value: "candidates" } });
-    expect(screen.getByLabelText(/^filter$/i).value).toBe("candidates");
+
+    fireEvent.click(screen.getByRole("button", { name: "Parent devices only" }));
+    expect(screen.getByRole("button", { name: "Parent devices only" }).className).toMatch(/btn-ghost-active/);
+
+    fireEvent.click(screen.getByRole("button", { name: /^state/i }));
+    fireEvent.click(screen.getByLabelText("Candidates"));
+    expect(screen.getByRole("button", { name: /^state/i }).textContent).toMatch(/2 selected/);
 
     callsBefore = fetch.mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: /reset filters/i }));
     await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(callsBefore));
     expect(screen.getByLabelText(/^group$/i).value).toBe("type");
-    expect(screen.getByLabelText(/^filter$/i).value).toBe("in_scope");
+    expect(screen.getByRole("button", { name: "Parent devices only" }).className).not.toMatch(/btn-ghost-active/);
+    expect(screen.getByRole("button", { name: /^state/i }).textContent).toMatch(/3 selected/);
     expect(screen.getByText("d1")).toBeTruthy(); // dm-detail-id -- still selected
+  });
+
+  it("Review previously exposed overrides Parent-only/State while checked", async () => {
+    renderPanel({ devices: twoDevices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByLabelText(/review previously exposed/i));
+    expect(screen.getByRole("button", { name: "Parent devices only" }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /^state/i }).disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText(/review previously exposed/i));
+    expect(screen.getByRole("button", { name: "Parent devices only" }).disabled).toBe(false);
   });
 });
 
@@ -3229,6 +3279,50 @@ describe("current active alert projection", () => {
     expect(screen.queryByText("Reset alerts")).toBeNull();
   });
 
+  it("won't let a CRITICAL current condition be collapsed out of view", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{
+          alertId: "device:leak:alarm", location: "cabin", severity: "CRITICAL",
+          condition: "DEVICE_ALARM", title: "Basement leak reports an alarm",
+          detail: "The device's current runtime state is ALARM.",
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+
+    const caret = screen.getByLabelText(/critical condition is active and can't be collapsed/i);
+    expect(caret.disabled).toBe(true);
+    fireEvent.click(caret); // no-op: still can't collapse
+    expect(screen.getByText("Basement leak reports an alarm")).toBeTruthy();
+  });
+
+  it("lets a WARN-only current condition collapse normally via its caret", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{
+          alertId: "device:missed", location: "cabin", severity: "WARN",
+          condition: "MISSED_CHECKIN", title: "front_door missed its check-in window",
+          detail: "No report arrived during the grace window.",
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+
+    const caret = screen.getByLabelText(/^collapse current conditions$/i);
+    expect(caret.disabled).toBe(false);
+    fireEvent.click(caret);
+    expect(screen.queryByText("front_door missed its check-in window")).toBeNull();
+  });
+
   it("renders rule status from the backend catalog with honest ownership", async () => {
     vi.stubGlobal("fetch", vi.fn((url) => Promise.resolve({
       ok: true,
@@ -3283,6 +3377,29 @@ describe("AutomationAlertCard (via RulesPanel)", () => {
     expect(screen.getByText("UNEXPECTED USE")).toBeTruthy();
     expect(screen.getByText("No routine explains it")).toBeTruthy();
     expect(screen.getAllByText("Alert Nate").length).toBeGreaterThan(0);
+  });
+
+  it("won't let a CRITICAL automation alert be collapsed out of view", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{
+        eventId: "e-crit", sourceDeviceId: "psi_mech_room", eventType: "AUTOMATION_ALERT",
+        severity: "CRITICAL", timestamp: new Date().toISOString(),
+        payload: {
+          ruleId: "WATER_PRESSURE_LOW",
+          see: "Pressure dropped below the safe range.",
+          think: "The cabin is away and the mechanical room sensor reports 26.0 PSI.",
+          act: "Alert Nate", tags: [],
+        },
+      }],
+    }));
+
+    renderWith();
+
+    const caret = await screen.findByLabelText(/critical alert is active and can't be collapsed/i);
+    expect(caret.disabled).toBe(true);
+    fireEvent.click(caret); // no-op: still can't collapse
+    expect(screen.getByText("Pressure dropped below the safe range.")).toBeTruthy();
   });
 
   it("shows an honest empty state instead of a stale or fabricated alert when there's nothing to report", async () => {

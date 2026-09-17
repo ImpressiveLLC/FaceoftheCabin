@@ -2211,6 +2211,56 @@ const DM_VIEWS = [
   { id: "remove", label: "Remove", icon: Minus },
 ];
 
+// A composable checklist behind one toolbar button, rather than a native
+// <select multiple> (no modifier-click required, shows a live "N selected"
+// summary) or a row of always-visible chips (would cost toolbar width for
+// every value whether or not it's relevant right now).
+function LifecycleMultiSelect({ value, onChange, disabled, title }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocPointer = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false); };
+    const onKeyDown = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDocPointer);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocPointer);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const toggleValue = (v) => {
+    onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v]);
+  };
+
+  const summary = value.length === LIFECYCLE_FILTER_OPTIONS.length ? "All"
+    : value.length === 0 ? "None"
+    : value.length === 1 ? LIFECYCLE_FILTER_OPTIONS.find(o => o.value === value[0])?.label
+    : `${value.length} selected`;
+
+  return (
+    <div className={`dm-multiselect ${open ? "dm-multiselect-open" : ""}`} ref={rootRef}>
+      <button type="button" className="dm-toolbar-select-btn" disabled={disabled} title={title}
+        aria-haspopup="listbox" aria-expanded={open}
+        onClick={() => setOpen(o => !o)}>
+        <span className="dm-toolbar-select-btn-label">State</span> {summary} <ChevronDown size={12}/>
+      </button>
+      {open && (
+        <div className="dm-multiselect-menu" role="listbox" aria-label="State">
+          {LIFECYCLE_FILTER_OPTIONS.map(opt => (
+            <label key={opt.value} className="dm-multiselect-option">
+              <input type="checkbox" checked={value.includes(opt.value)} onChange={() => toggleValue(opt.value)} />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DeviceManagerPanel({ auth }) {
   const { devices, refreshDevices, activeLocation, workflows, setActivePanel } = useApp();
   const doFetch = auth?.authedFetch || fetch;
@@ -2219,13 +2269,17 @@ export function DeviceManagerPanel({ auth }) {
   const [reorderMode, setReorderMode] = useState(false);
   const [groupBy, setGroupBy] = useState(() => localStorage.getItem("devices.groupBy") || "type");
   const [groupFlow, setGroupFlow] = useState(() => localStorage.getItem("devices.groupFlow") || "horizontal");
-  const [deviceFilter, setDeviceFilter] = useState(() => {
-    const saved = localStorage.getItem("devices.filter") || "in_scope";
-    // "configured" was renamed to "in_scope"; "all" was folded into
-    // "in_scope"'s own default meaning (2026-08-25) and is no longer a
-    // separate selectable option -- both migrate the same way.
-    return (saved === "configured" || saved === "all") ? "in_scope" : saved;
-  });
+  // Replaces the old single "devices.filter" enum (2026-09-16) -- parent/
+  // service scope and lifecycle state are independent facets, so they're
+  // two independent, composable pieces of state now instead of one string.
+  // Not migrated from the old key: the old value can't be losslessly split
+  // back into the two facets it used to conflate, and both new keys have
+  // sensible defaults that match the old default view -- simplest correct
+  // answer per this project's own "wipe and reseed over compatibility
+  // shims" rule.
+  const [parentOnly, setParentOnly] = useState(() => localStorage.getItem("devices.parentOnly") === "true");
+  const [lifecycleFilter, setLifecycleFilter] = useState(() =>
+    readStoredJson("devices.lifecycleFilter", DEFAULT_LIFECYCLE_FILTER));
   const [candidateDevices, setCandidateDevices] = useState([]);
   const [previouslyExposed, setPreviouslyExposed] = useState([]);
   const [reviewingPrevious, setReviewingPrevious] = useState(false);
@@ -2236,7 +2290,8 @@ export function DeviceManagerPanel({ auth }) {
 
   useEffect(() => localStorage.setItem("devices.groupBy", groupBy), [groupBy]);
   useEffect(() => localStorage.setItem("devices.groupFlow", groupFlow), [groupFlow]);
-  useEffect(() => localStorage.setItem("devices.filter", deviceFilter), [deviceFilter]);
+  useEffect(() => localStorage.setItem("devices.parentOnly", String(parentOnly)), [parentOnly]);
+  useEffect(() => localStorage.setItem("devices.lifecycleFilter", JSON.stringify(lifecycleFilter)), [lifecycleFilter]);
 
   const reviewLocations = useMemo(() => activeLocation === "both"
     ? [LOCATIONS.cabin, LOCATIONS.home]
@@ -2263,11 +2318,6 @@ export function DeviceManagerPanel({ auth }) {
     return () => clearInterval(timer);
   }, [refreshReviewDevices]);
 
-  useEffect(() => {
-    if (deviceFilter !== "previous" || reviewingPrevious) return;
-    setReviewingPrevious(true);
-  }, [deviceFilter, reviewingPrevious]);
-
   const managerDevices = useMemo(() => {
     const byId = new Map();
     [...devices, ...candidateDevices, ...(reviewingPrevious ? previouslyExposed : [])]
@@ -2285,7 +2335,14 @@ export function DeviceManagerPanel({ auth }) {
   const locDevices = activeLocation === "both"
     ? managerDevices
     : managerDevices.filter(d => !d.location || d.location === activeLocation);
-  const effectiveDeviceFilter = resolveDeviceManagerFilter(groupBy, deviceFilter);
+  // "Review previously exposed" is its own mode, not one more lifecycle
+  // value to check -- it opts into fetching a different data source
+  // (previously-exposed devices, merged into managerDevices above) and,
+  // like the old exclusive "previous" filter value, overrides Parent-only/
+  // State while active rather than combining with them.
+  const effectiveDeviceFilter = reviewingPrevious
+    ? { parentOnly: false, lifecycle: ["DEFERRED", "IGNORED"] }
+    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter });
 
   // Hoisted up from DmSeeView (was local there) so See and Change render
   // the exact same saved grouping/order -- Change is a read-only consumer
@@ -2360,18 +2417,33 @@ export function DeviceManagerPanel({ auth }) {
                   <option value="workflow">Workflow</option>
                 </select>
               </label>
-              <label className="dm-toolbar-select dm-toolbar-filter">Filter
-                <select value={effectiveDeviceFilter} onChange={e => setDeviceFilter(e.target.value)}
-                  disabled={groupBy === "candidate"}
-                  title={groupBy === "candidate" ? "Candidate grouping always shows both setup states" : undefined}>
-                  <option value="in_scope">All In-Scope + Candidates</option>
-                  <option value="parents_only">Parent devices only</option>
-                  <option value="candidates">Candidates</option>
-                  <option value="previous">Review previously exposed</option>
-                </select>
-              </label>
-              <button className="btn-ghost" onClick={() => { setGroupBy("type"); setDeviceFilter("in_scope"); }}
-                title="Return Group and Filter to their defaults">
+              <span className="dm-toolbar-filter">
+                <button type="button" className={`btn-ghost ${parentOnly ? "btn-ghost-active" : ""}`}
+                  disabled={groupBy === "candidate" || reviewingPrevious}
+                  onClick={() => setParentOnly(p => !p)}
+                  title={groupBy === "candidate" ? "Candidate grouping always shows every device, parent or service"
+                    : reviewingPrevious ? "Reviewing previously exposed devices ignores this"
+                    : "Show only top-level devices, not their subordinate services"}>
+                  Parent devices only
+                </button>
+                <LifecycleMultiSelect
+                  value={effectiveDeviceFilter.lifecycle}
+                  onChange={setLifecycleFilter}
+                  disabled={groupBy === "candidate" || reviewingPrevious}
+                  title={groupBy === "candidate" ? "Candidate grouping always shows every state"
+                    : reviewingPrevious ? "Reviewing previously exposed devices ignores this"
+                    : undefined}
+                />
+                <label className="dm-toolbar-checkbox" title="Fetches devices no longer registered, for review">
+                  <input type="checkbox" checked={reviewingPrevious}
+                    onChange={e => setReviewingPrevious(e.target.checked)} />
+                  Review previously exposed
+                </label>
+              </span>
+              <button className="btn-ghost" onClick={() => {
+                setGroupBy("type"); setParentOnly(false);
+                setLifecycleFilter(DEFAULT_LIFECYCLE_FILTER); setReviewingPrevious(false);
+              }} title="Return Group, Parent scope, and State to their defaults">
                 Reset Filters
               </button>
               {groupNames.length > 1 && (
@@ -2523,29 +2595,30 @@ export function workflowsForDevice(workflows, deviceId) {
 // localStorage value saved as "all" before this change) now resolves
 // here too, so resolveDeviceManagerFilter's own forced "all" override
 // for Lifecycle grouping still works unchanged.
-export function filterDeviceManagerDevices(devices, filter = "in_scope") {
-  if (filter === "candidates") {
-    return devices.filter(d => deviceLifecycleState(d) === "CANDIDATE");
-  }
-  if (filter === "previous") {
-    return devices.filter(d => ["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
-  }
-  // 2026-08-27 (user report): grouping by Type (or anything else) had no
-  // way to fold a multi-service device's own entities under it -- a
-  // single vendor unit with 18 HA sub-entities (Kidde) showed as 18
-  // unrelated rows in whatever group each entity's own type happened to
-  // land in, and a Home Assistant instance with many such devices makes
-  // the "everything else" bucket (HOME_ASSISTANT_ENTITY) balloon to the
-  // point that reaching whatever comes after it means scrolling past
-  // a hundred-plus mostly-diagnostic rows. This doesn't merge/nest
-  // anything -- it's the same parentDeviceId relationship the "Belongs
-  // to" detail line and the toolbar's device-count toggle already read
-  // (see countParentDevices) -- just reused here as a real list filter,
-  // the same way "Candidates"/"Review previously exposed" already are.
-  if (filter === "parents_only") {
-    return devices.filter(d => !d.attributes?.parentDeviceId && !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
-  }
-  return devices.filter(d => !["DEFERRED", "IGNORED"].includes(deviceLifecycleState(d)));
+// 2026-09-16: replaced the four mutually-exclusive presets (in_scope/
+// parents_only/candidates/previous -- previous excluded) with two
+// independent, composable facets, per direct user request: "Parent
+// devices only" was a structural question (is this a top-level device or
+// one of its services?) bolted onto the same control as "Candidates,"
+// a lifecycle/setup-status question -- so "parent devices only AND not
+// Candidate AND not Assigned" (a real, reasonable thing to want) simply
+// couldn't be expressed. Both facets are already plain per-device data
+// (`attributes.parentDeviceId`, `deviceLifecycleState()`), so this needed
+// no backend/ontology change -- just a UI/filter-predicate split.
+export const LIFECYCLE_FILTER_OPTIONS = [
+  { value: "CANDIDATE", label: "Candidates" },
+  { value: "AVAILABLE", label: "Available" },
+  { value: "ASSIGNED", label: "Assigned" },
+  { value: "DEFERRED", label: "Saved for later" },
+  { value: "IGNORED", label: "Ignored" },
+];
+// Matches the old default ("in_scope"): everything except Deferred/Ignored.
+export const DEFAULT_LIFECYCLE_FILTER = ["CANDIDATE", "AVAILABLE", "ASSIGNED"];
+
+export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecycle = DEFAULT_LIFECYCLE_FILTER } = {}) {
+  return devices.filter(d =>
+    lifecycle.includes(deviceLifecycleState(d)) &&
+    (!parentOnly || !d.attributes?.parentDeviceId));
 }
 
 // 2026-08-25: the toolbar's device count used raw devices.length -- every
@@ -2562,8 +2635,17 @@ export function countParentDevices(devices) {
   return devices.filter(d => !d.attributes?.parentDeviceId).length;
 }
 
-export function resolveDeviceManagerFilter(groupBy, savedFilter = "in_scope") {
-  return groupBy === "candidate" ? "all" : savedFilter;
+export function resolveDeviceManagerFilter(groupBy, saved) {
+  // Lifecycle grouping needs every device sorted into its real bucket
+  // (including Saved-for-later/Ignored, which the parent-only/lifecycle
+  // facets would otherwise hide) -- same reasoning the old single-enum
+  // version's "all" override had, just correct now that "all" actually
+  // means all five lifecycle states instead of silently still excluding
+  // Deferred/Ignored the way the old string-based "all" fallthrough did.
+  if (groupBy === "candidate") {
+    return { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value) };
+  }
+  return saved;
 }
 
 function readStoredJson(key, fallback) {

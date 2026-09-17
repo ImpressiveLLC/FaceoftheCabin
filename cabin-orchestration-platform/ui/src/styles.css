@@ -230,7 +230,31 @@ body {
 .dm-toolbar-select select { min-width:92px; }
 /* Hairline break between Group (sectioning) and Filter (row visibility) --
    same toolbar row, different jobs, easy to read as one control otherwise. */
-.dm-toolbar-filter { padding-left: 10px; margin-left: 2px; border-left: 1px solid var(--border); }
+.dm-toolbar-filter {
+  display: flex; align-items: center; gap: 8px;
+  padding-left: 10px; margin-left: 2px; border-left: 1px solid var(--border);
+}
+.dm-toolbar-checkbox { display: flex; align-items: center; gap: 5px; color: var(--text-dim); font-size: 12px; white-space: nowrap; }
+.dm-toolbar-select-btn {
+  display: flex; align-items: center; gap: 4px;
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-dim); font-size: 12px; padding: 5px 9px; cursor: pointer; white-space: nowrap;
+}
+.dm-toolbar-select-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text-dim); }
+.dm-toolbar-select-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.dm-toolbar-select-btn-label { color: var(--text); font-weight: 600; }
+.dm-multiselect { position: relative; }
+.dm-multiselect-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
+  display: flex; flex-direction: column; gap: 2px; min-width: 160px;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px; box-shadow: 0 8px 24px -8px rgba(0,0,0,0.5);
+}
+.dm-multiselect-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px; border-radius: 5px; font-size: 12px; color: var(--text); cursor: pointer;
+}
+.dm-multiselect-option:hover { background: var(--bg-tertiary); }
 .dm-groups { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
 /* flex-basis widened from a flat 360px (2026-08-11 user report: cards were
    truncating device names like "TEMP_OUT..." with unused space around
@@ -384,6 +408,7 @@ body {
   border-radius: var(--radius-md);
   margin-bottom: 12px;
   overflow: hidden;
+  max-width: 520px;
 }
 .active-conditions-header {
   display: flex; justify-content: space-between; align-items: center;

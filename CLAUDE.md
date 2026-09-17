@@ -483,10 +483,28 @@ severity-tiering MVP scope — only the classifier + ntfy push shipped
   notification preferences, Remote Access, and Platform (both backed by
   real deploy-time config, `CABIN_INSTANCE_PLATFORM`/
   `CABIN_INSTANCE_REMOTE_ACCESS` — see `docs/REPLICATION.md`)
-- **Device Manager** (`DeviceManagerPanel`) — device grid, add/remove/command
+- **Device Manager** (`DeviceManagerPanel`) — device grid, add/remove/command.
+  Group-by sections (Type/Source/Room/Status/Lifecycle/Workflow) collapse
+  individually or via one "Collapse all" toolbar button (2026-09-16); a group
+  containing an ALARM/CRITICAL device force-expands and its caret disables,
+  regardless of the saved collapse preference. Filtering is two independent,
+  composable controls (2026-09-16) — a **Parent devices only** toggle
+  (structural: top-level device vs. one of its services) and a **State**
+  multi-select (`LIFECYCLE_FILTER_OPTIONS`: Candidates/Available/Assigned/
+  Saved for later/Ignored, any combination), replacing the old single
+  `in_scope`/`parents_only`/`candidates`/`previous` enum that couldn't
+  express "parent devices only AND not Candidate." **Review previously
+  exposed** stays its own toggle (it fetches a different data source) and
+  overrides both while checked. See `docs/PRODUCT_NOTES.md`'s 2026-09-16
+  entry for the full design reasoning.
 - **Monitoring** (`MonitoringPanel`) — KPI tiles + Grafana embed + live MQTT log
-  — has **LocationSwitcher** (Cabin / Home / Both) in the toolbar
-- **Rules & Alerts** (`RulesPanel`) — Node-RED embed + Kafka topic browser
+  (collapsible per location, 2026-09-16) — has **LocationSwitcher**
+  (Cabin / Home / Both) in the toolbar
+- **Rules & Alerts** (`RulesPanel`) — `ActiveConditionsCard` (live
+  `/api/alerts/active` conditions) + `AutomationAlertCard` (last-24h
+  automation alerts), both collapsible with the same ALARM/CRITICAL
+  force-expand floor as Device Manager, above a Node-RED embed + Kafka topic
+  browser + Workflows sidebar (also collapsible)
 - **Camera Events** (`CameraEventsPanel`) — authenticated camera
   snapshots/clips/live view, DTM-stamped (Phase 7 §4b)
 - **Opportunities** (`OpportunityMapPanel`) — Tech ID Service findings as
@@ -553,6 +571,29 @@ All items below are **complete and pushed to GitHub**:
   entity at all (checked both the live HA UI and `entity_registry`
   directly) — hard blocked until the integration itself exposes one, not
   a code gap on this side.
+- **Collapsible sections with an alarm/critical safety floor** (2026-09-16)
+  — Device Manager group headers, `ActiveConditionsCard`,
+  `AutomationAlertCard`, the Monitoring live event log, and the Rules &
+  Alerts sidebar's Workflows/Recent-firings lists all gained a
+  localStorage-persisted disclosure caret (`useCollapsedSections`,
+  `App.jsx`), prompted by a live report that six alerts alone were eating
+  roughly a third of the viewport with no ceiling, and Device Manager
+  offered no way to collapse a 100+-device Group-by section. A group or
+  card holding an active `ALARM`/`CRITICAL` item force-expands regardless
+  of the saved preference (mirrors the existing auto-pin-alarm-devices
+  behavior in Device Manager's reorder mode) — collapsing for density
+  must never be able to hide the exact condition this dashboard exists to
+  surface. Also renamed Device Manager's "Show" filter to "Filter" (was
+  easy to misread as a second grouping control next to "Group") and
+  replaced the "Groups ↔ / Groups ↕" arrow-glyph toggle with explicit
+  "Layout: Side-by-side" / "Layout: Stacked" text. Same-day follow-up:
+  Device Manager's Filter became two composable facets instead of one
+  enum (**Parent devices only** toggle + a **State** multi-select
+  dropdown, `LIFECYCLE_FILTER_OPTIONS`/`filterDeviceManagerDevices` in
+  `App.jsx`), and `ActiveConditionsCard` gained `max-width: 520px` after
+  direct feedback that it stretched full page width for content that
+  didn't need it. See `docs/PRODUCT_NOTES.md`'s 2026-09-16 entry for the
+  full design reasoning; covered by new Vitest cases in `App.test.jsx`.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
