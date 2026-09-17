@@ -390,6 +390,7 @@ body {
   background: var(--bg-secondary);
   padding: 16px 18px;
   margin-bottom: 16px;
+  max-width: 520px;
 }
 .automation-alert-critical { border-left-color: var(--state-alarm, #f85149); }
 .automation-alert-warn { border-left-color: var(--state-warning); }
@@ -485,13 +486,12 @@ body {
 .automation-alert-flow-step { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 140px; }
 .automation-alert-flow-num { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--text-dim); }
 .automation-alert-flow-step strong { font-size: 14px; }
-.rules-top-grid { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 16px; }
-.rules-top-alerts { flex: 1 1 320px; min-width: 280px; }
-@media (max-width: 900px) {
-  .rules-top-grid { flex-direction: column; }
-  .rules-top-grid .rules-sidebar { width: 100%; }
-}
 .rules-layout { display: flex; gap: 16px; height: calc(100vh - 140px); }
+/* Alerts sit above Node-RED in this one column so Node-RED's own
+   flex:1 (below) fills exactly whatever height the (now compact) alert
+   cards don't use, instead of that space sitting empty next to a
+   sidebar that runs the full column height regardless. */
+.rules-main-col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .rules-nodered { flex: 1; display: flex; flex-direction: column; }
 .rules-nodered .embed-frame { flex: 1; min-height: 0; }
 .nodered-lazy-placeholder {

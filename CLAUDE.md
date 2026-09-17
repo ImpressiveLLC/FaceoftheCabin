@@ -500,18 +500,25 @@ severity-tiering MVP scope — only the classifier + ntfy push shipped
 - **Monitoring** (`MonitoringPanel`) — KPI tiles + Grafana embed + live MQTT log
   (collapsible per location, 2026-09-16) — has **LocationSwitcher**
   (Cabin / Home / Both) in the toolbar
-- **Rules & Alerts** (`RulesPanel`) — a top grid (2026-09-16): left column
-  is `ActiveConditionsCard` (live `/api/alerts/active` conditions, capped
-  at `max-width: 520px`, each row expandable via "See more" and linkable
-  to its device via "Open device" — `ActiveAlert.sourceDeviceId` +
-  `pendingDeviceFocus` context, consumed by `DeviceManagerPanel`) +
-  `AutomationAlertCard` (last-24h automation alerts); right column is the
-  full sidebar (`KafkaStatus`, `WorkflowRulesCard`,
-  `OptimizationOpportunitiesCard`, `BuiltinRules`) pulled up beside the
-  alert cards instead of sitting below Node-RED. Both alert cards are
-  collapsible with the same ALARM/CRITICAL force-expand floor as Device
-  Manager. Node-RED embed renders full-width below the grid. Stacks to a
-  single column under 900px.
+- **Rules & Alerts** (`RulesPanel`) — two columns (`.rules-layout`,
+  2026-09-16, corrected same day): `.rules-main-col` stacks
+  `ActiveConditionsCard` (live `/api/alerts/active` conditions, every
+  card — including `AutomationAlertCard`'s empty state — capped at
+  `max-width: 520px` via `.automation-alert-card`/`.active-conditions`,
+  each row expandable via "See more" and linkable to its device via
+  "Open device" — `ActiveAlert.sourceDeviceId` + `pendingDeviceFocus`
+  context, consumed by `DeviceManagerPanel`), `AutomationAlertCard`
+  (last-24h automation alerts), then the Node-RED embed below them in the
+  **same column** (`flex: 1`, absorbs whatever height the compact alert
+  cards don't use). `.rules-sidebar` (`KafkaStatus`, `WorkflowRulesCard`,
+  `OptimizationOpportunitiesCard`, `BuiltinRules`) runs alongside that
+  whole column. Both alert cards are collapsible with the same
+  ALARM/CRITICAL force-expand floor as Device Manager. (An earlier
+  same-day attempt put alerts and sidebar in one flex-grow row above a
+  separate full-width Node-RED row — that left a dead gap between the
+  capped cards and the far-right sidebar, and idle vertical space below
+  the shorter alerts column; corrected to the one-column-with-Node-RED
+  shape described here.)
 - **Camera Events** (`CameraEventsPanel`) — authenticated camera
   snapshots/clips/live view, DTM-stamped (Phase 7 §4b)
 - **Opportunities** (`OpportunityMapPanel`) — Tech ID Service findings as
@@ -604,11 +611,15 @@ All items below are **complete and pushed to GitHub**:
   it (a `title` attribute is hover-only, not keyboard/touch-reachable) --
   replaced with a real "See more" expand toggle and an "Open device"
   action (`sourceDeviceId` + `pendingDeviceFocus`, see the Rules & Alerts
-  panel entry above). Then `RulesPanel`'s sidebar (Kafka/Workflows/
-  Opportunities/Backend Rules) was pulled up beside the narrower alert
-  cards instead of sitting empty-adjacent then buried below Node-RED.
-  See `docs/PRODUCT_NOTES.md`'s 2026-09-16 entry for the full design
-  reasoning; covered by new Vitest cases in `App.test.jsx`.
+  panel entry above). `RulesPanel`'s sidebar (Kafka/Workflows/
+  Opportunities/Backend Rules) then went through two shapes same day: a
+  flex-grow row beside the alerts (left a dead center gap and idle
+  vertical space -- wrong) corrected to Node-RED sharing the alerts'
+  own column, sidebar alongside the whole thing (see the Rules & Alerts
+  panel entry above for the shape that stuck). Also capped
+  `AutomationAlertCard`'s empty state, missed in the first width-cap
+  pass. See `docs/PRODUCT_NOTES.md`'s 2026-09-16 entry for the full
+  design reasoning; covered by new Vitest cases in `App.test.jsx`.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds

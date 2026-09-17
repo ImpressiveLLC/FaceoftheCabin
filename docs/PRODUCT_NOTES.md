@@ -876,4 +876,31 @@ readable) was already working and didn't need touching, so the new grid
 stacks back to a single column under 900px, matching how the cards
 already behaved there.
 
+**Same-day correction, again: the top-grid attempt traded one bad gap
+for another.** A follow-up annotated screenshot caught two real bugs in
+that restructure. First, `AutomationAlertCard`'s empty state was never
+actually capped — only `ActiveConditionsCard` got `max-width: 520px` in
+the first pass, so "No automation alerts..." kept stretching full page
+width regardless. Second, and more consequential: the alerts column was
+set to `flex: 1 1 320px` (grow to fill the row) while the cards inside
+it stayed capped at 520px — so the *column* stretched to consume all the
+space between the narrow cards and the fixed-width sidebar, which then
+landed at the far right edge of a very wide row instead of sitting
+next to the alerts. A dead gap in the exact center of the page, plus the
+sidebar's much taller content (Workflows especially) leaving the shorter
+alerts column's remaining height empty below it, since nothing else was
+in that column to use it.
+
+The actual fix: cap `.automation-alert-card` itself (covers both the
+empty state and every real entry, one rule instead of two). More
+importantly, stop treating "alerts beside sidebar" and "Node-RED beside
+sidebar" as two separate rows — put Node-RED **in the same column as the
+alerts**, stacked below them, so Node-RED's own `flex: 1` naturally fills
+whatever height the (now compact) alert cards don't use. The sidebar runs
+alongside that whole column, same shape as the pre-2026-09-16 original
+layout, just with alerts folded into the main column instead of spanning
+full-width above the entire row. This is the version that actually holds
+up: no dead gap (the column is sized to its content, not force-grown),
+and no idle vertical space (Node-RED occupies it directly).
+
 ---

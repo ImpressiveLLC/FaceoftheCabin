@@ -5523,15 +5523,25 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>
       </div>
-      {/* 2026-09-16 (user report): once Current conditions/Automation
-          alerts stopped stretching full-width, everything to their right
-          sat empty while Kafka/Workflows/Cabin Backend Rules were pushed
-          all the way below the Node-RED embed -- moved that whole sidebar
-          up to actually use the freed space instead of leaving it idle. */}
-      <div className="rules-top-grid">
-        <div className="rules-top-alerts">
+      {/* 2026-09-16 (user report, corrected same day): the first attempt
+          put alerts and the sidebar in one row with the alerts column set
+          to flex-grow -- since the alert cards themselves cap their own
+          width, that left a dead gap between the (narrow) cards and the
+          (far-right) sidebar, and Node-RED still only started once the
+          whole row finished, leaving the shorter alerts column's own
+          leftover height empty too. Node-RED now lives in the SAME column
+          as the alerts (stacked below them, filling whatever height they
+          don't use) so nothing sits idle; the sidebar runs alongside that
+          whole column, same as the original layout, just with alerts
+          folded into the main column instead of spanning full-width above
+          the entire row. */}
+      <div className="rules-layout">
+        <div className="rules-main-col">
           <ActiveConditionsCard />
           <AutomationAlertCard auth={auth} />
+          <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
+            {locs.map(loc => <LocationRulesSection key={loc.id} locCfg={loc} />)}
+          </div>
         </div>
         <div className="rules-sidebar">
           <KafkaStatus location={activeLocation} />
@@ -5539,11 +5549,6 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
             defaultLocation={activeLocation !== "both" ? activeLocation : "cabin"} onChanged={refreshWorkflows} />
           <OptimizationOpportunitiesCard auth={auth} devices={devices} />
           <BuiltinRules location={activeLocation} auth={auth} />
-        </div>
-      </div>
-      <div className="rules-layout">
-        <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
-          {locs.map(loc => <LocationRulesSection key={loc.id} locCfg={loc} />)}
         </div>
       </div>
     </div>
