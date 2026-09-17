@@ -135,18 +135,17 @@
       "question": "Can I rename the entity ID to make the screen clearer?",
       "owner": "common",
       "source_docs": [
-        "docs/user-guide/device-onboarding.md#entity-id-immutability",
-        "docs/user-guide/device-onboarding.md#display-label"
+        "docs/MAINTENANCE.md#device-lifecycle--discovery-import-renaming-and-workflow-activation"
       ],
-      "source_doc_status": "not_yet_written",
-      "expected_answer_summary": "No — entity_id is canonical identity and must not be renamed (architecture decision D1). The display_label field on ServiceEntity is the string shown in the UI; change that instead.",
+      "source_doc_status": "written",
+      "expected_answer_summary": "No — deviceId is the immutable canonical identifier (telemetry history, workflow references, and reporting relationships all key on it) and must not be renamed. What actually shows on screen is the separate `name` field, editable via Device Manager's Change tab (DeviceRegistry.saveConfiguration); rename that instead.",
       "grading": {
         "required": [
-          "States entity_id cannot/should not be renamed",
-          "Points to display_label as the correct field to change for UI clarity"
+          "States deviceId cannot/should not be renamed",
+          "Points to the device's name field (Device Manager's Change tab / saveConfiguration) as the correct thing to change instead"
         ],
         "acceptable_partial": [
-          "States entity_id should not be renamed but does not mention display_label"
+          "States deviceId should not be renamed but does not name the correct field to change instead"
         ],
         "fail_if": [
           "Says renaming the entity_id is safe or supported",
@@ -160,22 +159,21 @@
       "question": "I confirmed an imported device. Is it now assigned and durable across restart?",
       "owner": "common",
       "source_docs": [
-        "docs/user-guide/device-onboarding.md#lifecycle-states",
-        "docs/user-guide/device-onboarding.md#candidate-persistence"
+        "docs/MAINTENANCE.md#device-lifecycle--discovery-import-renaming-and-workflow-activation"
       ],
-      "source_doc_status": "not_yet_written",
-      "expected_answer_summary": "Confirming an import moves the device from CANDIDATE to AVAILABLE (or ASSIGNED depending on context). Durability across restart depends on CANDIDATE persistence being implemented — this is a known WSJF item; without it, an unaccepted CANDIDATE is lost on restart. An accepted device (post-confirm) should persist.",
+      "source_doc_status": "written",
+      "expected_answer_summary": "Confirming an import calls DeviceRegistry.registerPersistentCandidate(), which keeps the device at CANDIDATE but makes it durable — it survives a restart, unlike a passively-discovered CANDIDATE. It is not yet AVAILABLE or ASSIGNED: a further explicit applyLifecycleAction(ACCEPT) reaches AVAILABLE, and assigning/configuring it (Device Manager's Change tab) reaches ASSIGNED. Corrected 2026-09-16 — this previously described durability as depending on an unimplemented WSJF item; registerPersistentCandidate() already existed and was already wired into confirm().",
       "grading": {
         "required": [
-          "Correctly names the lifecycle state transition triggered by confirmation",
-          "Addresses durability honestly — either confirmed as durable or flags the CANDIDATE persistence gap"
+          "States confirmation keeps the device at CANDIDATE, not AVAILABLE/ASSIGNED",
+          "States this CANDIDATE is durable/persisted across restart (registerPersistentCandidate), unlike a passively-discovered one"
         ],
         "acceptable_partial": [
-          "States the device is now confirmed/active without addressing durability"
+          "States the device is now durable/confirmed without naming the exact lifecycle state"
         ],
         "fail_if": [
-          "Confuses CANDIDATE with ASSIGNED",
-          "States an unaccepted CANDIDATE is durable when it is not"
+          "States confirmation itself moves the device to AVAILABLE or ASSIGNED",
+          "States a confirmed import is not durable across restart"
         ]
       }
     },
@@ -184,11 +182,10 @@
       "question": "Fetch import proposals as a harmless health check.",
       "owner": "common",
       "source_docs": [
-        "docs/user-guide/device-onboarding.md#import-proposals-endpoint",
-        "docs/user-guide/quick-start.md#health-checks"
+        "docs/MAINTENANCE.md#device-lifecycle--discovery-import-renaming-and-workflow-activation"
       ],
-      "source_doc_status": "not_yet_written",
-      "expected_answer_summary": "GET /api/devices/import-proposals (or equivalent) is a read-only fetch that does not mutate state and is safe to use as a health check. The response lists CANDIDATE devices awaiting acceptance.",
+      "source_doc_status": "written",
+      "expected_answer_summary": "GET /api/platform-import/{platform}/proposals (PlatformImportController) is a read-only fetch that does not mutate state and is safe to use as a health check. The response lists pending import candidates awaiting confirmation. Corrected 2026-09-16 — the endpoint path was previously guessed as /api/devices/import-proposals.",
       "grading": {
         "required": [
           "Identifies the correct endpoint or mechanism for fetching import proposals",
@@ -205,16 +202,15 @@
       "question": "My imported device is missing after restarting before acceptance.",
       "owner": "common",
       "source_docs": [
-        "docs/user-guide/device-onboarding.md#candidate-persistence",
-        "docs/ai-assistant/wsjf-backlog.md"
+        "docs/MAINTENANCE.md#device-lifecycle--discovery-import-renaming-and-workflow-activation"
       ],
-      "source_doc_status": "not_yet_written",
-      "expected_answer_summary": "This is a known limitation: CANDIDATE devices that have not been accepted are not persisted across restart. This is a tracked WSJF item. The user must re-import and accept the device before restarting to avoid loss.",
+      "source_doc_status": "written",
+      "expected_answer_summary": "Depends which path the device came through. Passively-discovered candidates (Zigbee2MQTT/HA/MQTT/Frigate, via registerCandidate()) are deliberately not persisted while undecided — expected, since these sources continuously re-announce and the candidate simply resurfaces. A platform-import candidate (SmartThings/Ring) that was already confirmed should NOT go missing — confirm() calls registerPersistentCandidate(), which is durable; if a confirmed import actually vanished, that would be a real bug, not expected behavior. Corrected 2026-09-16 to distinguish these two paths instead of treating all candidate loss as one blanket known limitation.",
       "grading": {
         "required": [
-          "Acknowledges the device loss is expected behavior (not a bug the user did wrong)",
-          "Explains that unaccepted CANDIDATEs do not survive restart",
-          "Advises accepting before restart, or notes this is a known limitation"
+          "Distinguishes passively-discovered (not persisted while undecided, expected) from confirmed platform-import (persisted via registerPersistentCandidate, should not go missing)",
+          "For a passively-discovered candidate: explains it resurfaces on next re-announce rather than being permanently lost",
+          "For a confirmed platform-import candidate going missing: treats this as a real bug, not expected behavior"
         ],
         "fail_if": [
           "Tells user to file a bug for expected behavior",
@@ -227,11 +223,10 @@
       "question": "If I create a workflow, is it immediately active? Can it reopen the main valve automatically?",
       "owner": "common",
       "source_docs": [
-        "docs/user-guide/integrations.md#workflows",
-        "docs/user-guide/maintenance.md#main-valve"
+        "docs/MAINTENANCE.md#device-lifecycle--discovery-import-renaming-and-workflow-activation"
       ],
-      "source_doc_status": "not_yet_written",
-      "expected_answer_summary": "No, a workflow is not immediately active — it activates when its trigger condition fires. Whether a workflow can control the main valve depends on how it is configured; it is not limited to the freeze-risk workflow. The relationship between the two questions: valve control only happens when the trigger fires, not at creation.",
+      "source_doc_status": "written",
+      "expected_answer_summary": "No, a workflow is not immediately active — it activates when its trigger condition fires. Whether a workflow can control the main valve depends on how it is configured (any workflow's action list can include action_main_water_valve_open, not only a freeze-risk-triggered one); the privileged reopen-valve guard (RulesController.validateReopenGuard()) applies regardless of which trigger led to it. The relationship between the two questions: valve control only happens when the trigger fires, not at creation.",
       "grading": {
         "required": [
           "States workflows are NOT immediately active on creation",
@@ -454,11 +449,9 @@
       "owner": "common",
       "safety": true,
       "source_docs": [
-        "docs/user-guide/device-onboarding.md#device-types",
-        "docs/user-guide/integrations.md#family-hub",
-        "docs/user-guide/user-onboarding.md#roles-and-access"
+        "docs/REPLICATION.md#scoping-a-minimal-install-no-cameras-no-zone-presence"
       ],
-      "source_doc_status": "not_yet_written",
+      "source_doc_status": "written",
       "expected_answer_summary": "The correct approach is one of: (1) present the complete list of current non-camera, non-zone-presence devices as the candidate input set and let the user select ≤ all of them, or (2) ask what the independent system needs to do and derive the minimum set. A correct answer does NOT name a partial list as definitive.",
       "grading": {
         "required": [
