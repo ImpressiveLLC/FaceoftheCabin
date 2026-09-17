@@ -441,15 +441,26 @@ body {
 .active-condition-title-row { display: flex; align-items: baseline; gap: 6px; }
 .active-condition-title-row strong {
   flex: 1; min-width: 0; font-size: 12px; line-height: 1.3;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .active-condition-title-row span {
   flex-shrink: 0; color: var(--text-dim); font-size: 9px; text-transform: capitalize; white-space: nowrap;
 }
 .active-condition p {
   margin: 1px 0 0; color: var(--text-dim); font-size: 11px; line-height: 1.3;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Default row height stays predictable (2 lines) without hiding content
+   behind a hover-only title attribute -- "See more" (below) is the real,
+   focusable way to reach the rest. */
+.active-condition-clamp {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.active-condition-actions { display: flex; align-items: center; gap: 12px; margin-top: 3px; }
+.active-condition-link {
+  display: inline-flex; align-items: center; gap: 1px;
+  background: none; border: none; color: #58a6ff; font-size: 11px; cursor: pointer; padding: 0;
+}
+.active-condition-link:hover { text-decoration: underline; }
 @media (max-width: 520px) {
   .active-condition-title-row { flex-direction: column; align-items: flex-start; gap: 0; }
   .active-condition-title-row strong { width: 100%; }
@@ -474,6 +485,12 @@ body {
 .automation-alert-flow-step { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 140px; }
 .automation-alert-flow-num { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--text-dim); }
 .automation-alert-flow-step strong { font-size: 14px; }
+.rules-top-grid { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 16px; }
+.rules-top-alerts { flex: 1 1 320px; min-width: 280px; }
+@media (max-width: 900px) {
+  .rules-top-grid { flex-direction: column; }
+  .rules-top-grid .rules-sidebar { width: 100%; }
+}
 .rules-layout { display: flex; gap: 16px; height: calc(100vh - 140px); }
 .rules-nodered { flex: 1; display: flex; flex-direction: column; }
 .rules-nodered .embed-frame { flex: 1; min-height: 0; }

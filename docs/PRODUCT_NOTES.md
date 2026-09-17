@@ -844,4 +844,36 @@ stretching to the full page width while its actual content — an icon,
 a truncated title, a short description — used a fraction of that space.
 Capped at `max-width: 520px`.
 
+**Same-day correction: the width cap broke the thing it was supposed to
+protect.** Capping the card's width with single-line ellipsis truncation
+made real content unreadable, with no way to reach it — a `title`
+attribute is a hover-only affordance, not keyboard- or touch-reachable,
+so it never actually satisfied "I can read the full alert." Directly
+named against this platform's own See → Think → Act northstar (2026-07-26
+Foundational Session): a person could **See** a truncated warning icon
+but not **Think** through it (no way to read the rest) or **Act** on it
+(no path to the device that needed attention). Fixed with two per-row
+affordances instead of a tooltip: a real, focusable **"See more"**
+toggle (removes a 2-line clamp instead of truncating to one), and an
+**"Open device"** action using `ActiveAlert.sourceDeviceId` (a real field
+on the backend record, `ActiveAlert.java`) that jumps straight to that
+device in Device Manager via a new `pendingDeviceFocus` context slot —
+new plumbing, since nothing let one panel hand a target device to
+another before this. `AutomationAlertCard` didn't get the same width cap
+in the first place, so it didn't need this fix.
+
+**Then: the freed horizontal space needed something to do with itself.**
+An annotated screenshot showed Kafka Topics/Workflows/Cabin Backend Rules
+sitting empty to the right of the now-narrower alert cards, while those
+same cards were pushed all the way below the Node-RED embed — the width
+fix solved the density problem but created a *placement* one. Restructured
+`RulesPanel` into a top grid (alert cards left, the whole sidebar pulled
+up to sit beside them) with Node-RED alone, full-width, below — instead
+of the old arrangement (alert cards full-width on top, Node-RED+sidebar
+side by side underneath). Explicitly scoped to desktop/kiosk widths per
+direct instruction: the narrow-card mobile experience (scrollable,
+readable) was already working and didn't need touching, so the new grid
+stacks back to a single column under 900px, matching how the cards
+already behaved there.
+
 ---

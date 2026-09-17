@@ -3062,6 +3062,27 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     expect(screen.queryByText("Reorder")).toBeNull();
   });
 
+  // The other half of "Open device" (ActiveConditionsCard) -- Device
+  // Manager itself has to consume the pending target and clear it, or a
+  // later unrelated panel switch back here would re-select a stale device.
+  it("selects and clears a pendingDeviceFocus handed to it via context", async () => {
+    const setPendingDeviceFocus = vi.fn();
+    vi.stubGlobal("fetch", deviceManagerFetchMock());
+    render(
+      <AppContext.Provider value={{
+        devices: twoDevices, workflows: [], activeLocation: "cabin",
+        refreshDevices: vi.fn(), setActivePanel: vi.fn(),
+        pendingDeviceFocus: "d2", setPendingDeviceFocus,
+      }}>
+        <DeviceManagerPanel />
+      </AppContext.Provider>
+    );
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(screen.getByText("d2")).toBeTruthy(); // dm-detail-id -- the pending device is now selected
+    expect(setPendingDeviceFocus).toHaveBeenCalledWith(null);
+  });
+
   it("force-expands a device group containing an active ALARM device, even if the user had collapsed it", async () => {
     localStorage.setItem("collapsed.deviceGroups.cabin.type", JSON.stringify({ LOCK: true }));
     const devices = [
@@ -3277,6 +3298,80 @@ describe("current active alert projection", () => {
     expect(screen.getByText(/Critical — 1 current condition/)).toBeTruthy();
     expect(screen.queryByText("Enable")).toBeNull();
     expect(screen.queryByText("Reset alerts")).toBeNull();
+  });
+
+  // 2026-09-16 (user report): capping the card's width made single-line
+  // ellipsis truncation clip real content -- a title attribute is a
+  // hover-only affordance, not keyboard- or touch-reachable, so it didn't
+  // actually satisfy "I can read the full alert." "See more" is the real,
+  // focusable replacement; this only checks the clamp CSS class is
+  // removed on expand, since jsdom doesn't render -webkit-line-clamp
+  // itself -- the actual text node was always present in the DOM.
+  it("See more removes the line-clamp so the full title/detail are reachable, not just hinted at via hover", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const { container } = render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{
+          alertId: "a1", location: "cabin", severity: "WARN",
+          condition: "MISSED_CHECKIN", title: "front_door missed its check-in window",
+          detail: "No report arrived during the full grace window.",
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+
+    expect(container.querySelector(".active-condition-clamp")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+    expect(container.querySelector(".active-condition-clamp")).toBeNull();
+    expect(screen.getByRole("button", { name: "See less" })).toBeTruthy();
+  });
+
+  // The See -> Think -> Act northstar's "Act" step: a real path to the
+  // device that's actually causing the condition, not just more text.
+  it("Open device sends the alert's real sourceDeviceId to Device Manager instead of leaving the person to re-find it", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const setActivePanel = vi.fn();
+    const setPendingDeviceFocus = vi.fn();
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{
+          alertId: "a1", sourceDeviceId: "leak_mech_room", location: "cabin", severity: "WARN",
+          condition: "MISSED_CHECKIN", title: "Mech Room Leak missed its check-in window",
+          detail: "No report arrived during the full grace window.",
+        }],
+        setActivePanel, setPendingDeviceFocus,
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /open device/i }));
+    expect(setPendingDeviceFocus).toHaveBeenCalledWith("leak_mech_room");
+    expect(setActivePanel).toHaveBeenCalledWith("DEVICE_MANAGER");
+  });
+
+  it("doesn't offer Open device when an alert has no sourceDeviceId", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{
+          alertId: "a1", location: "cabin", severity: "WARN",
+          condition: "MISSED_CHECKIN", title: "front_door missed its check-in window",
+          detail: "No report arrived during the full grace window.",
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+
+    expect(screen.queryByRole("button", { name: /open device/i })).toBeNull();
   });
 
   it("won't let a CRITICAL current condition be collapsed out of view", async () => {

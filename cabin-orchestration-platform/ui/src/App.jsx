@@ -21,7 +21,7 @@ import { createRoot } from "react-dom/client";
 import { ThemeProvider, ThemeSwitcher, useTheme } from "./ThemeProvider.jsx";
 import {
   Home, Settings, Cpu, Activity, Zap,
-  ChevronDown, ChevronUp, Wifi, WifiOff,
+  ChevronDown, ChevronUp, ChevronRight, Wifi, WifiOff,
   Droplets, Thermometer, Camera, ShieldAlert, Lock, Unlock,
   RefreshCw, Plus, Trash2, ToggleLeft, ToggleRight,
   AlertTriangle, CheckCircle, Circle, ArrowLeft,
@@ -2262,11 +2262,21 @@ function LifecycleMultiSelect({ value, onChange, disabled, title }) {
 }
 
 export function DeviceManagerPanel({ auth }) {
-  const { devices, refreshDevices, activeLocation, workflows, setActivePanel } = useApp();
+  const { devices, refreshDevices, activeLocation, workflows, setActivePanel,
+    pendingDeviceFocus, setPendingDeviceFocus } = useApp();
   const doFetch = auth?.authedFetch || fetch;
   const [view, setView]             = useState("see");
   const [selected, setSelected]     = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
+
+  // Consume+clear immediately (not left for the next mount) so switching
+  // away and back to Device Manager later doesn't re-select a stale target.
+  useEffect(() => {
+    if (!pendingDeviceFocus) return;
+    setSelected(pendingDeviceFocus);
+    setView("see");
+    setPendingDeviceFocus(null);
+  }, [pendingDeviceFocus, setPendingDeviceFocus]);
   const [groupBy, setGroupBy] = useState(() => localStorage.getItem("devices.groupBy") || "type");
   const [groupFlow, setGroupFlow] = useState(() => localStorage.getItem("devices.groupFlow") || "horizontal");
   // Replaces the old single "devices.filter" enum (2026-09-16) -- parent/
@@ -5513,11 +5523,15 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>
       </div>
-      <ActiveConditionsCard />
-      <AutomationAlertCard auth={auth} />
-      <div className="rules-layout">
-        <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
-          {locs.map(loc => <LocationRulesSection key={loc.id} locCfg={loc} />)}
+      {/* 2026-09-16 (user report): once Current conditions/Automation
+          alerts stopped stretching full-width, everything to their right
+          sat empty while Kafka/Workflows/Cabin Backend Rules were pushed
+          all the way below the Node-RED embed -- moved that whole sidebar
+          up to actually use the freed space instead of leaving it idle. */}
+      <div className="rules-top-grid">
+        <div className="rules-top-alerts">
+          <ActiveConditionsCard />
+          <AutomationAlertCard auth={auth} />
         </div>
         <div className="rules-sidebar">
           <KafkaStatus location={activeLocation} />
@@ -5527,6 +5541,11 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
           <BuiltinRules location={activeLocation} auth={auth} />
         </div>
       </div>
+      <div className="rules-layout">
+        <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
+          {locs.map(loc => <LocationRulesSection key={loc.id} locCfg={loc} />)}
+        </div>
+      </div>
     </div>
   );
 }
@@ -5534,8 +5553,29 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
 function ActiveConditionsCard() {
   const {
     activeAlerts = [], activeAlertLocations = [], activeLocation = "cabin",
+    setActivePanel, setPendingDeviceFocus,
   } = useApp();
   const { isCollapsed, toggle } = useCollapsedSections("collapsed.activeConditions");
+  // 2026-09-16 (user report): capping the card's width made single-line
+  // ellipsis truncation clip real content with no way to read the rest --
+  // a title attribute only surfaces on hover, which isn't keyboard- or
+  // touch-reachable and isn't a real "read the full alert" affordance.
+  // Each row now clamps to 2 lines by default with an explicit, focusable
+  // "See more" toggle, and a separate "Open device" action using the
+  // alert's real sourceDeviceId (ActiveAlert.java) -- the See/Think/Act
+  // northstar's "Act" step needs a real path to the mitigating screen,
+  // not just more text.
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const toggleExpanded = (id) => setExpandedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const openDevice = (deviceId) => {
+    setPendingDeviceFocus?.(deviceId);
+    setActivePanel("DEVICE_MANAGER");
+  };
+
   const locationAvailable = activeLocation === "both"
     ? activeAlertLocations.length > 0
     : activeAlertLocations.includes(activeLocation);
@@ -5570,15 +5610,26 @@ function ActiveConditionsCard() {
       <div className="active-conditions-list">
         {visibleAlerts.map(alert => {
           const meta = `${alert.location} · ${alert.condition.replaceAll("_", " ").toLowerCase()}`;
+          const expanded = expandedIds.has(alert.alertId);
           return (
             <div className={`active-condition active-condition-${(alert.severity || "warn").toLowerCase()}`} key={alert.alertId}>
               <AlertTriangle size={13} />
               <div className="active-condition-body">
                 <div className="active-condition-title-row">
-                  <strong title={alert.title}>{alert.title}</strong>
-                  <span title={meta}>{meta}</span>
+                  <strong className={expanded ? "" : "active-condition-clamp"}>{alert.title}</strong>
+                  <span>{meta}</span>
                 </div>
-                <p title={alert.detail}>{alert.detail}</p>
+                <p className={expanded ? "" : "active-condition-clamp"}>{alert.detail}</p>
+                <div className="active-condition-actions">
+                  <button type="button" className="active-condition-link" onClick={() => toggleExpanded(alert.alertId)}>
+                    {expanded ? "See less" : "See more"}
+                  </button>
+                  {alert.sourceDeviceId && (
+                    <button type="button" className="active-condition-link" onClick={() => openDevice(alert.sourceDeviceId)}>
+                      Open device <ChevronRight size={11}/>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -7028,6 +7079,13 @@ function App() {
     const requested = new URLSearchParams(window.location.search).get("panel");
     return PANELS.some(p => p.id === requested) ? requested : "MONITORING";
   });
+  // Lets a click on an active alert's "Open device" action land on that
+  // exact device in Device Manager (the See -> Think -> Act path's "Act"
+  // step -- see the current-conditions cards) instead of just switching
+  // panels and leaving the person to re-find it. DeviceManagerPanel
+  // consumes and clears this itself once it applies the selection, so it
+  // never re-fires on an unrelated panel switch back to Device Manager.
+  const [pendingDeviceFocus, setPendingDeviceFocus] = useState(null);
   const [activeLocation, setActiveLocation] = useState("cabin");
   // 2026-08-25: toolbar device-count toggle -- see countParentDevices'
   // own comment for why "157 devices" alone was misleading (every HA
@@ -7179,6 +7237,7 @@ function App() {
       displayConfigs, refreshDisplayConfigs,
       lifecycleLabels,
       setActivePanel,
+      pendingDeviceFocus, setPendingDeviceFocus,
     }}>
       <div className="app-shell">
         <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />

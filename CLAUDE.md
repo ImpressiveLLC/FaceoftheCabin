@@ -500,11 +500,18 @@ severity-tiering MVP scope — only the classifier + ntfy push shipped
 - **Monitoring** (`MonitoringPanel`) — KPI tiles + Grafana embed + live MQTT log
   (collapsible per location, 2026-09-16) — has **LocationSwitcher**
   (Cabin / Home / Both) in the toolbar
-- **Rules & Alerts** (`RulesPanel`) — `ActiveConditionsCard` (live
-  `/api/alerts/active` conditions) + `AutomationAlertCard` (last-24h
-  automation alerts), both collapsible with the same ALARM/CRITICAL
-  force-expand floor as Device Manager, above a Node-RED embed + Kafka topic
-  browser + Workflows sidebar (also collapsible)
+- **Rules & Alerts** (`RulesPanel`) — a top grid (2026-09-16): left column
+  is `ActiveConditionsCard` (live `/api/alerts/active` conditions, capped
+  at `max-width: 520px`, each row expandable via "See more" and linkable
+  to its device via "Open device" — `ActiveAlert.sourceDeviceId` +
+  `pendingDeviceFocus` context, consumed by `DeviceManagerPanel`) +
+  `AutomationAlertCard` (last-24h automation alerts); right column is the
+  full sidebar (`KafkaStatus`, `WorkflowRulesCard`,
+  `OptimizationOpportunitiesCard`, `BuiltinRules`) pulled up beside the
+  alert cards instead of sitting below Node-RED. Both alert cards are
+  collapsible with the same ALARM/CRITICAL force-expand floor as Device
+  Manager. Node-RED embed renders full-width below the grid. Stacks to a
+  single column under 900px.
 - **Camera Events** (`CameraEventsPanel`) — authenticated camera
   snapshots/clips/live view, DTM-stamped (Phase 7 §4b)
 - **Opportunities** (`OpportunityMapPanel`) — Tech ID Service findings as
@@ -592,8 +599,16 @@ All items below are **complete and pushed to GitHub**:
   dropdown, `LIFECYCLE_FILTER_OPTIONS`/`filterDeviceManagerDevices` in
   `App.jsx`), and `ActiveConditionsCard` gained `max-width: 520px` after
   direct feedback that it stretched full page width for content that
-  didn't need it. See `docs/PRODUCT_NOTES.md`'s 2026-09-16 entry for the
-  full design reasoning; covered by new Vitest cases in `App.test.jsx`.
+  didn't need it. Second same-day correction: the width cap's single-line
+  ellipsis truncation made real content unreadable with no way to reach
+  it (a `title` attribute is hover-only, not keyboard/touch-reachable) --
+  replaced with a real "See more" expand toggle and an "Open device"
+  action (`sourceDeviceId` + `pendingDeviceFocus`, see the Rules & Alerts
+  panel entry above). Then `RulesPanel`'s sidebar (Kafka/Workflows/
+  Opportunities/Backend Rules) was pulled up beside the narrower alert
+  cards instead of sitting empty-adjacent then buried below Node-RED.
+  See `docs/PRODUCT_NOTES.md`'s 2026-09-16 entry for the full design
+  reasoning; covered by new Vitest cases in `App.test.jsx`.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
