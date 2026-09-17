@@ -3056,15 +3056,15 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     expect(screen.queryByText("Reorder")).toBeNull();
   });
 
-  it("Change mode offers the same Group/Show controls as See", async () => {
+  it("Change mode offers the same Group/Filter controls as See", async () => {
     renderPanel({ devices: twoDevices });
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Change" }));
     expect(screen.getByLabelText(/^group$/i)).toBeTruthy();
-    expect(screen.getByLabelText(/^show$/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^filter$/i)).toBeTruthy();
   });
 
-  it("Reset Filters snaps Group/Show back to defaults without deselecting the current device", async () => {
+  it("Reset Filters snaps Group/Filter back to defaults without deselecting the current device", async () => {
     renderPanel({ devices: twoDevices });
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     fireEvent.click(screen.getByText("Device One"));
@@ -3073,14 +3073,14 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     let callsBefore = fetch.mock.calls.length;
     fireEvent.change(screen.getByLabelText(/^group$/i), { target: { value: "room" } });
     await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(callsBefore));
-    fireEvent.change(screen.getByLabelText(/^show$/i), { target: { value: "candidates" } });
-    expect(screen.getByLabelText(/^show$/i).value).toBe("candidates");
+    fireEvent.change(screen.getByLabelText(/^filter$/i), { target: { value: "candidates" } });
+    expect(screen.getByLabelText(/^filter$/i).value).toBe("candidates");
 
     callsBefore = fetch.mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: /reset filters/i }));
     await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(callsBefore));
     expect(screen.getByLabelText(/^group$/i).value).toBe("type");
-    expect(screen.getByLabelText(/^show$/i).value).toBe("in_scope");
+    expect(screen.getByLabelText(/^filter$/i).value).toBe("in_scope");
     expect(screen.getByText("d1")).toBeTruthy(); // dm-detail-id -- still selected
   });
 });

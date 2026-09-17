@@ -2360,7 +2360,7 @@ export function DeviceManagerPanel({ auth }) {
                   <option value="workflow">Workflow</option>
                 </select>
               </label>
-              <label className="dm-toolbar-select">Show
+              <label className="dm-toolbar-select dm-toolbar-filter">Filter
                 <select value={effectiveDeviceFilter} onChange={e => setDeviceFilter(e.target.value)}
                   disabled={groupBy === "candidate"}
                   title={groupBy === "candidate" ? "Candidate grouping always shows both setup states" : undefined}>
@@ -2371,7 +2371,7 @@ export function DeviceManagerPanel({ auth }) {
                 </select>
               </label>
               <button className="btn-ghost" onClick={() => { setGroupBy("type"); setDeviceFilter("in_scope"); }}
-                title="Return Group and Show to their defaults">
+                title="Return Group and Filter to their defaults">
                 Reset Filters
               </button>
               {groupNames.length > 1 && (
@@ -2383,8 +2383,8 @@ export function DeviceManagerPanel({ auth }) {
               {view === "see" && (
                 <>
                   <button className="btn-ghost" onClick={() => setGroupFlow(f => f === "horizontal" ? "vertical" : "horizontal")}
-                    title="Choose whether groups flow across the screen or stack downward">
-                    {groupFlow === "horizontal" ? "Groups ↔" : "Groups ↕"}
+                    title={groupFlow === "horizontal" ? "Switch to a single stacked column" : "Switch to side-by-side columns"}>
+                    {groupFlow === "horizontal" ? "Layout: Side-by-side" : "Layout: Stacked"}
                   </button>
                   <button
                     className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
@@ -2791,7 +2791,10 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
           </div>
         )}
         <div className={`dm-groups dm-groups-${groupFlow}`}>
-        {visibleGroups.map(([groupName, groupItems]) => (
+        {visibleGroups.map(([groupName, groupItems]) => {
+          const groupHasAlarm = groupItems.some(isAlarm);
+          const groupOpen = reorderMode || groupHasAlarm || !isGroupCollapsed(groupName);
+          return (
           <section className={`dm-device-group ${reorderMode && overItem?.kind === "group" && overItem.groupName === groupName && dragItem?.groupName !== groupName ? "drag-over-group" : ""}`}
             key={groupName}
             onDragOver={reorderMode ? onGroupDragOver(groupName) : undefined}
@@ -2806,15 +2809,18 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
                 {groupItems.length}
                 {!reorderMode && (
                   <button type="button" className="section-caret"
+                    disabled={groupHasAlarm}
                     onClick={(e) => { e.stopPropagation(); onToggleGroup(groupName); }}
-                    aria-expanded={!isGroupCollapsed(groupName)}
-                    aria-label={isGroupCollapsed(groupName) ? `Expand ${groupName}` : `Collapse ${groupName}`}>
-                    {isGroupCollapsed(groupName) ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+                    aria-expanded={groupOpen}
+                    aria-label={groupHasAlarm ? `${groupName} has an active alarm and can't be collapsed`
+                      : (isGroupCollapsed(groupName) ? `Expand ${groupName}` : `Collapse ${groupName}`)}
+                    title={groupHasAlarm ? "Can't collapse — an active alarm needs attention here" : undefined}>
+                    {groupOpen ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
                   </button>
                 )}
               </span>
             </header>
-            {(reorderMode || !isGroupCollapsed(groupName)) && groupItems.map((d) => {
+            {groupOpen && groupItems.map((d) => {
           const ignored = deviceLifecycleState(d) === "IGNORED";
           const isPinned = isAlarm(d) || ignored;
           const isOver = reorderMode && overItem?.kind === "device"
@@ -2847,7 +2853,8 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
           );
         })}
           </section>
-        ))}
+          );
+        })}
         </div>
         {visibleDevices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/>
           <p>{totalDevices === 0 ? "No devices registered." : "No devices match this view."}</p></div>}
@@ -2871,6 +2878,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
 // appear in Change even by accident. A saved See-mode order/grouping just
 // shows up identically, with no separate state to keep in sync.
 function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isGroupCollapsed, onToggleGroup, onOpenDiscovery, workflows, onManageWorkflows, auth }) {
+  const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
   const visibleGroups = groups
     .map(([name, items]) => [name, filterDeviceManagerDevices(items, deviceFilter)])
     .filter(([, items]) => items.length > 0);
@@ -2882,25 +2890,32 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isG
     <div className="dm-layout">
       <div className="dm-list">
         <p className="dm-hint">Select a device to review its details or save an actual configuration change.</p>
-        {visibleGroups.map(([groupName, groupItems]) => (
+        {visibleGroups.map(([groupName, groupItems]) => {
+          const groupHasAlarm = groupItems.some(isAlarm);
+          const groupOpen = groupHasAlarm || !isGroupCollapsed(groupName);
+          return (
           <section className="dm-device-group" key={groupName}>
             <header className="dm-device-group-header">
               <span>{groupName}</span>
               <span>
                 {groupItems.length}
                 <button type="button" className="section-caret"
+                  disabled={groupHasAlarm}
                   onClick={() => onToggleGroup(groupName)}
-                  aria-expanded={!isGroupCollapsed(groupName)}
-                  aria-label={isGroupCollapsed(groupName) ? `Expand ${groupName}` : `Collapse ${groupName}`}>
-                  {isGroupCollapsed(groupName) ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+                  aria-expanded={groupOpen}
+                  aria-label={groupHasAlarm ? `${groupName} has an active alarm and can't be collapsed`
+                    : (isGroupCollapsed(groupName) ? `Expand ${groupName}` : `Collapse ${groupName}`)}
+                  title={groupHasAlarm ? "Can't collapse — an active alarm needs attention here" : undefined}>
+                  {groupOpen ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
                 </button>
               </span>
             </header>
-            {!isGroupCollapsed(groupName) && groupItems.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
+            {groupOpen && groupItems.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
               ref={selected === d.deviceId ? selectedRowRef : undefined}
               onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} workflows={workflows} />)}
           </section>
-        ))}
+          );
+        })}
         {visibleDevices.length === 0 && <div className="empty-state"><Cpu size={36} opacity={0.3}/>
           <p>{totalDevices === 0 ? "No devices registered." : "No devices match this view."}</p></div>}
       </div>
@@ -5449,7 +5464,8 @@ function ActiveConditionsCard() {
     : activeAlerts.filter(alert => alert.location === activeLocation);
   if (visibleAlerts.length === 0) return null;
 
-  const collapsed = isCollapsed("main");
+  const hasCritical = visibleAlerts.some(alert => (alert.severity || "").toLowerCase() === "critical");
+  const open = hasCritical || !isCollapsed("main");
 
   return (
     <section className="active-conditions" aria-label="Current active alert conditions">
@@ -5457,14 +5473,18 @@ function ActiveConditionsCard() {
         <strong>Current conditions</strong>
         <span className="section-header-actions">
           <span className="section-count-badge">{visibleAlerts.length}</span>
-          <button type="button" className="section-caret" onClick={() => toggle("main")}
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? "Expand current conditions" : "Collapse current conditions"}>
-            {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+          <button type="button" className="section-caret"
+            disabled={hasCritical}
+            onClick={() => toggle("main")}
+            aria-expanded={open}
+            aria-label={hasCritical ? "A critical condition is active and can't be collapsed"
+              : (open ? "Collapse current conditions" : "Expand current conditions")}
+            title={hasCritical ? "Can't collapse — a critical condition needs attention" : undefined}>
+            {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
           </button>
         </span>
       </div>
-      {!collapsed && (
+      {open && (
       <div className="active-conditions-list">
         {visibleAlerts.map(alert => {
           const meta = `${alert.location} · ${alert.condition.replaceAll("_", " ").toLowerCase()}`;
@@ -5574,7 +5594,8 @@ function AutomationAlertCard({ auth }) {
     );
   }
 
-  const collapsed = isCollapsed("main");
+  const hasCritical = alerts.some(alert => (alert.severity || "info").toLowerCase() === "critical");
+  const open = hasCritical || !isCollapsed("main");
 
   return (
     <section className="automation-alerts" aria-label="Automation alerts, last 24 hours">
@@ -5582,14 +5603,18 @@ function AutomationAlertCard({ auth }) {
         <strong>Automation alerts</strong>
         <span className="section-header-actions">
           <span className="section-count-badge">{alerts.length}</span>
-          <button type="button" className="section-caret" onClick={() => toggle("main")}
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? "Expand automation alerts" : "Collapse automation alerts"}>
-            {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+          <button type="button" className="section-caret"
+            disabled={hasCritical}
+            onClick={() => toggle("main")}
+            aria-expanded={open}
+            aria-label={hasCritical ? "A critical alert is active and can't be collapsed"
+              : (open ? "Collapse automation alerts" : "Expand automation alerts")}
+            title={hasCritical ? "Can't collapse — a critical alert needs attention" : undefined}>
+            {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
           </button>
         </span>
       </div>
-      {!collapsed && (
+      {open && (
         <div className="automation-alert-list">
           {alerts.map(alert => <AutomationAlertEntry key={alert.eventId} alert={alert} />)}
         </div>
