@@ -342,12 +342,22 @@ def main() -> None:
         grade_script = pathlib.Path(__file__).parent / "grade_pipeline.py"
         if grade_script.exists():
             print(f"\nLaunching grade_pipeline.py ...")
+            # --criteria is not optional here: without it the grader never
+            # sees each question's required[]/fail_if[] text, only the raw
+            # answer -- found 2026-09-16 after a POC1 Tier 2 grading pass
+            # scored several answers PASS that hit an explicit, named
+            # fail_if (e.g. Q04's "says renaming entity_id is safe" and
+            # Q16's own literal "only Kidde AQI" example) because the
+            # grader was working from question+answer+memory alone, with
+            # no rubric on screen. grade_pipeline.py's --criteria flag
+            # exists for exactly this and was simply never wired through.
             os.execv(sys.executable, [
                 sys.executable, str(grade_script),
                 "--agent-id", args.agent_id,
                 "--manifest", args.manifest,
                 "--jsonl", str(jsonl_path),
                 "--output-dir", str(args.output_dir),
+                "--criteria",
             ])
         else:
             print(f"\ngrade_pipeline.py not found at {grade_script}.")
