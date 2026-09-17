@@ -1,13 +1,42 @@
 # Discussion artifact: install-scoping dependencies in the ontology
 
-**Status: discussion artifact, not a ratification-ready proposal.**
-Revised 2026-09-16 after review (see "Review findings" below) rejected
-the original flat-field design on solid technical grounds. Authored by
-Claude Code; ontology changes are Cowork's owned domain per
-`docs/ai-assistant/rag/EVAL-ENVIRONMENTS.md` §3 and
-`questions_manifest_r1.json`'s `agent_registry`. This is a write-up only
-— nothing in `docs/ontology.yaml` has been touched, no schema change, no
-Ask behavior change, no checks added anywhere.
+**Status: discussion artifact, not a ratification-ready proposal, and
+NOT yet an actionable design.** Revised 2026-09-16 after review (see
+"Review findings" below) rejected the original flat-field design on
+solid technical grounds. Authored by Claude Code; ontology changes are
+Cowork's owned domain per `docs/ai-assistant/rag/EVAL-ENVIRONMENTS.md`
+§3 and `questions_manifest_r1.json`'s `agent_registry`. This is a
+write-up only — nothing in `docs/ontology.yaml` has been touched, no
+schema change, no Ask behavior change, no checks added anywhere.
+
+## Feasibility check, 2026-09-16 — not yet actionable, holding here
+
+Before attempting to turn the sketch below into a real design, tested it
+against an ontology-engineer and a data-engineer lens. Neither is
+convinced there's enough foundation yet — both objections are concrete,
+not just caution:
+
+- **Ontology engineer**: "capability" vs. "installation profile" as the
+  modeling unit is still an open question (see below) — you can't
+  enumerate a real capability/dependency inventory when you haven't
+  decided what a capability *is*. The one example driving this whole
+  effort (Q18) isn't enough to generalize a schema from safely.
+- **Data engineer**: verified directly that `TinyHelpdeskService`'s
+  retrieval is stopword-filtered keyword scoring against flat
+  `KnowledgeNode` rows (`MAX_CONTEXT_NODES = 5`), not anything that can
+  traverse a capability→dependency graph. Even a well-designed graph
+  shape has no path to what Ask actually retrieves without new,
+  unscoped retrieval logic — and "measurable" needs a coverage metric
+  that doesn't exist yet, computed from a modeling unit that isn't
+  decided yet, feeding a mechanism that can't consume it yet. Three
+  unresolved prerequisites stacked on each other, not one design task.
+
+**Conclusion: holding this as a discussion artifact, not proceeding to a
+design pass today.** Revisit once the modeling-unit question has an
+answer and the retrieval-integration path has at least a candidate
+shape — neither should be decided solo; both belong to whoever actually
+scopes this (Cowork for the ontology axis, likely a joint call with
+Nate on retrieval given it touches C1b territory).
 
 ## Where this came from
 
