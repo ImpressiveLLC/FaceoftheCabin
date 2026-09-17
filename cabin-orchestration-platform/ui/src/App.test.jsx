@@ -3264,7 +3264,13 @@ describe("automationAlertSteps", () => {
 });
 
 describe("current active alert projection", () => {
-  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+  // StatusChecksCard's collapse state persists to localStorage
+  // (collapsed.statusChecks) -- both this block and the automation-alerts
+  // block below share that key now that they're one merged component, so
+  // a collapse-toggle test here would otherwise leak into and break the
+  // other block's tests. Found via a real cross-block failure, not
+  // precautionary.
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
 
   it("uses backend severity directly instead of a browser duration timer", () => {
     expect(alertLevelFor([])).toBeNull();
@@ -3412,7 +3418,7 @@ describe("current active alert projection", () => {
       </AppContext.Provider>
     );
 
-    const caret = screen.getByLabelText(/^collapse current conditions$/i);
+    const caret = screen.getByLabelText(/^collapse status checks$/i);
     expect(caret.disabled).toBe(false);
     fireEvent.click(caret);
     expect(screen.queryByText("front_door missed its check-in window")).toBeNull();
@@ -3438,18 +3444,31 @@ describe("current active alert projection", () => {
   });
 });
 
-describe("AutomationAlertCard (via RulesPanel)", () => {
-  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+// 2026-09-18: AutomationAlertCard was merged into StatusChecksCard (same
+// box as device-condition alerts, see that component's own comment) --
+// these scenarios still apply, just against the merged card's compact-row
+// layout. Automation-sourced rows now start collapsed like every other
+// row; See/Think/Act content (and tags) only render once expanded, so
+// tests that need that content click "See more" first instead of finding
+// it always-visible.
+describe("StatusChecksCard — automation alerts (via RulesPanel)", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
 
-  function renderWith(activeLocation = "cabin") {
+  // activeAlertLocations defaults to whichever locations activeLocation
+  // implies -- StatusChecksCard deliberately won't claim "no status
+  // checks" while the device-alert side hasn't confirmed a location's
+  // status yet (same honesty rule the old ActiveConditionsCard already
+  // had), so a test asserting the real empty state needs to represent a
+  // location that's actually finished loading, not just omit it.
+  function renderWith(activeLocation = "cabin", activeAlertLocations = activeLocation === "both" ? ["cabin", "home"] : [activeLocation]) {
     return render(
-      <AppContext.Provider value={{ activeLocation }}>
+      <AppContext.Provider value={{ activeLocation, activeAlertLocations }}>
         <RulesPanel />
       </AppContext.Provider>
     );
   }
 
-  it("renders the See/Think/Act card from a real CRITICAL AUTOMATION_ALERT event, matching the marketing scenario", async () => {
+  it("renders the See/Think/Act flow from a real CRITICAL AUTOMATION_ALERT event, matching the marketing scenario", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [{
@@ -3469,7 +3488,7 @@ describe("AutomationAlertCard (via RulesPanel)", () => {
 
     expect(await screen.findByText("Pressure dropped below the safe range.")).toBeTruthy();
     expect(screen.getByText(/mechanical room sensor reports 26.0 PSI/)).toBeTruthy();
-    expect(screen.getByText("UNEXPECTED USE")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
     expect(screen.getByText("No routine explains it")).toBeTruthy();
     expect(screen.getAllByText("Alert Nate").length).toBeGreaterThan(0);
   });
@@ -3491,7 +3510,7 @@ describe("AutomationAlertCard (via RulesPanel)", () => {
 
     renderWith();
 
-    const caret = await screen.findByLabelText(/critical alert is active and can't be collapsed/i);
+    const caret = await screen.findByLabelText(/critical condition is active and can't be collapsed/i);
     expect(caret.disabled).toBe(true);
     fireEvent.click(caret); // no-op: still can't collapse
     expect(screen.getByText("Pressure dropped below the safe range.")).toBeTruthy();
@@ -3502,7 +3521,7 @@ describe("AutomationAlertCard (via RulesPanel)", () => {
 
     renderWith();
 
-    expect(await screen.findByText(/No automation alerts in the last 24 hours/)).toBeTruthy();
+    expect(await screen.findByText(/No status checks need attention/)).toBeTruthy();
   });
 
   it("degrades gracefully instead of crashing when the events fetch fails", async () => {
@@ -3510,7 +3529,7 @@ describe("AutomationAlertCard (via RulesPanel)", () => {
 
     renderWith();
 
-    expect(await screen.findByText(/No automation alerts in the last 24 hours/)).toBeTruthy();
+    expect(await screen.findByText(/No status checks need attention/)).toBeTruthy();
   });
 
   // 2026-08-21: WorkflowRuleService.publishNotification() reuses this
@@ -3519,7 +3538,7 @@ describe("AutomationAlertCard (via RulesPanel)", () => {
   // used to only query eventTypePrefix=AUTOMATION_ALERT -- every
   // workflow-engine-driven alert was silently invisible here. Covers the
   // fix: the broadened prefix list actually reaches the fetch call, and a
-  // WORKFLOW_ACTION event renders through the same narrative markup.
+  // WORKFLOW_ACTION event renders through the same merged-row markup.
   it("also surfaces WORKFLOW_ACTION events, not just AUTOMATION_ALERT ones", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -3537,13 +3556,11 @@ describe("AutomationAlertCard (via RulesPanel)", () => {
 
     renderWith();
 
-    expect(await screen.findByText("Water leak detected")).toBeTruthy();
-    // "WORKFLOW" itself renders twice by design here (the humanizeRuleId
-    // category badge AND the tags chip both read "WORKFLOW" for this
-    // payload) -- assert the category badge specifically rather than an
-    // ambiguous bare-text match.
-    expect(screen.getByText("Water leak detected").closest(".automation-alert-card")
-      .querySelector(".automation-alert-category").textContent).toBe("WORKFLOW");
+    // The row's meta line (title-row sibling <span>) carries the
+    // humanized rule category now, replacing the old dedicated
+    // .automation-alert-category badge.
+    const row = await screen.findByText("Water leak detected");
+    expect(row.closest(".active-condition-title-row").querySelector("span").textContent).toMatch(/^Workflow ·/);
     // Other RulesPanel siblings (WorkflowRulesCard's RecentExecutionsList,
     // BuiltinRules) also call fetch on mount -- assert by content, not by
     // call order, since effect ordering across sibling components isn't
