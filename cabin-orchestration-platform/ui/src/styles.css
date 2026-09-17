@@ -409,6 +409,13 @@ body {
   margin-bottom: 12px;
   overflow: hidden;
 }
+/* Empty state -- no device-health or automation alerts at all. */
+.active-conditions-none { padding: 14px 18px; }
+.active-conditions-none .config-desc { margin: 0; }
+/* Expand-to-see/think/act inside a merged Status Checks row -- reuses
+   .automation-alert-flow's own layout, just tighter to fit a compact
+   row instead of a full-size dedicated card. */
+.active-condition-flow { margin-top: 8px; padding-top: 10px; }
 .active-conditions-header {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 14px; border-bottom: 1px solid var(--border);
@@ -498,7 +505,13 @@ body {
   align-items: start;
   margin-bottom: 16px;
 }
-.rules-cards-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* 2026-09-18: each card is now a direct grid child (no .rules-cards-col
+   wrapper grouping 2 stacked cards per column) -- that grouping was
+   exactly why box tops didn't line up (see RulesPanel's own comment).
+   .rules-box-wrap stacks an optional drag handle above its card, same
+   pattern as .family-hub-card-wrap/.family-hub-drag-handle. */
+.rules-box-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rules-box-drag-handle { align-self: flex-end; margin-bottom: -4px; }
 .rules-layout { display: flex; gap: 16px; height: calc(100vh - 140px); }
 .rules-nodered { flex: 1; display: flex; flex-direction: column; }
 .rules-nodered .embed-frame { flex: 1; min-height: 0; }

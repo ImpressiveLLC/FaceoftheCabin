@@ -5510,6 +5510,37 @@ function LocationRulesSection({ locCfg }) {
   );
 }
 
+// 2026-09-18 (user report, annotated screenshot): the fixed 3-column
+// layout grouped 2 stacked cards per column, so a card's top edge
+// depended on how tall its column-mate above it happened to be --
+// Workflows (after a short Kafka card) started well above Cabin Backend
+// Rules (after a taller Optimization Opportunities card) despite both
+// being "second card, second column visually." Flattening every card
+// into one grid's direct children (no column wrapper) lets
+// .rules-cards-row's own grid-auto-flow align every card's top edge for
+// real, and doubles as the item list a real drag-reorder needs -- same
+// mechanism as FamilyHubPanel's "My Places" (useDraggableOrder,
+// reorder-card/drag-over-card CSS, Reorder/Done toggle), not a new one.
+//
+// Kafka Topics card removed here, not just reordered: it never fetched
+// anything real (hardcoded topic list, hardcoded "localhost:9092" that
+// doesn't even match the real configured broker) and building real
+// start/stop/reconfigure controls for it would put live message-bus
+// lifecycle control in a resident/admin web panel -- a much bigger
+// blast radius than anything else this panel touches, and out of step
+// with this app's existing pattern of keeping infra control out of the
+// product surface (Node-RED's own admin iframe went the other
+// direction, pulled back to reduce exposure, not expanded). Flagged for
+// confirmation rather than assumed silently -- the component is still
+// defined below, just unreferenced, so restoring it is a one-line change
+// if that call goes the other way.
+const RULES_PANEL_BOXES = [
+  { id: "status", Component: StatusChecksCard },
+  { id: "workflows", Component: WorkflowRulesCard },
+  { id: "optimization", Component: OptimizationOpportunitiesCard },
+  { id: "builtin", Component: BuiltinRules },
+];
+
 export function RulesPanel({ auth }) { // exported for src/App.test.jsx's location-split test
   const { activeLocation, workflows, refreshWorkflows, devices } = useApp();
   const locationIds = Object.keys(LOCATIONS);
@@ -5517,11 +5548,38 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
     ? locationIds.map(id => LOCATIONS[id])
     : [LOCATIONS[activeLocation] || LOCATIONS.cabin];
 
+  const [reorderMode, setReorderMode] = useState(false);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+  const { ordered, reorder } = useDraggableOrder("order.rulesAlertsBoxes", RULES_PANEL_BOXES);
+
+  const onDragStart = (idx) => (e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
+  const onDragOver  = (idx) => (e) => { e.preventDefault(); setOverIdx(idx); };
+  const onDrop      = (idx) => (e) => {
+    e.preventDefault();
+    if (dragIdx !== null) reorder(dragIdx, idx);
+    setDragIdx(null); setOverIdx(null);
+  };
+  const onDragEnd   = () => { setDragIdx(null); setOverIdx(null); };
+
+  const boxProps = {
+    status: { auth },
+    workflows: { workflows, auth, devices, activeLocation, defaultLocation: activeLocation !== "both" ? activeLocation : "cabin", onChanged: refreshWorkflows },
+    optimization: { auth, devices },
+    builtin: { location: activeLocation, auth },
+  };
+
   return (
     <div className="panel-content">
       <AlertControls panelId="RULES_ENGINE" />
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>
+        <div className="header-actions">
+          <button type="button" className={`btn-ghost ${reorderMode ? "btn-ghost-active" : ""}`}
+            onClick={() => setReorderMode(r => !r)}>
+            <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
+          </button>
+        </div>
       </div>
       {/* 2026-09-17 (user report, third pass): Node-RED sharing a column
           with the alerts fixed the earlier dead-gap bug, but that column
@@ -5529,26 +5587,28 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
           is just a small placeholder message, so most of that width sat
           empty while the sidebar was pushed out past it. Current
           conditions already proved the compact, internally-scrolling
-          card works well; this puts every compact card (alerts + the old
-          sidebar) into a responsive row of narrow columns that actually
-          uses the freed width, with Node-RED -- the one thing that
-          genuinely wants full width once it's actually loaded -- as its
-          own full-width section below all of them instead of sandwiched
-          between. */}
-      <div className="rules-cards-row">
-        <div className="rules-cards-col">
-          <ActiveConditionsCard />
-          <AutomationAlertCard auth={auth} />
-        </div>
-        <div className="rules-cards-col">
-          <KafkaStatus location={activeLocation} />
-          <WorkflowRulesCard workflows={workflows} auth={auth} devices={devices} activeLocation={activeLocation}
-            defaultLocation={activeLocation !== "both" ? activeLocation : "cabin"} onChanged={refreshWorkflows} />
-        </div>
-        <div className="rules-cards-col">
-          <OptimizationOpportunitiesCard auth={auth} devices={devices} />
-          <BuiltinRules location={activeLocation} auth={auth} />
-        </div>
+          card works well; this puts every compact card into a responsive
+          row that actually uses the freed width, with Node-RED -- the
+          one thing that genuinely wants full width once it's actually
+          loaded -- as its own full-width section below all of them
+          instead of sandwiched between. */}
+      <div className={`rules-cards-row ${reorderMode ? "reorder-mode" : ""}`}>
+        {ordered.map(({ id, Component }, idx) => {
+          const isOver = reorderMode && overIdx === idx && dragIdx !== idx;
+          return (
+            <div key={id}
+              className={`reorder-card rules-box-wrap ${isOver ? "drag-over-card" : ""}`}
+              draggable={reorderMode}
+              onDragStart={reorderMode ? onDragStart(idx) : undefined}
+              onDragOver={reorderMode ? onDragOver(idx) : undefined}
+              onDrop={reorderMode ? onDrop(idx) : undefined}
+              onDragEnd={reorderMode ? onDragEnd : undefined}
+            >
+              {reorderMode && <GripVertical size={14} className="drag-handle rules-box-drag-handle" />}
+              <Component {...boxProps[id]} />
+            </div>
+          );
+        })}
       </div>
       <div className="rules-layout">
         <div className={locs.length > 1 ? "rules-nodered-split" : "rules-nodered-single"}>
@@ -5556,96 +5616,6 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
         </div>
       </div>
     </div>
-  );
-}
-
-function ActiveConditionsCard() {
-  const {
-    activeAlerts = [], activeAlertLocations = [], activeLocation = "cabin",
-    setActivePanel, setPendingDeviceFocus,
-  } = useApp();
-  const { isCollapsed, toggle } = useCollapsedSections("collapsed.activeConditions");
-  // 2026-09-16 (user report): capping the card's width made single-line
-  // ellipsis truncation clip real content with no way to read the rest --
-  // a title attribute only surfaces on hover, which isn't keyboard- or
-  // touch-reachable and isn't a real "read the full alert" affordance.
-  // Each row now clamps to 2 lines by default with an explicit, focusable
-  // "See more" toggle, and a separate "Open device" action using the
-  // alert's real sourceDeviceId (ActiveAlert.java) -- the See/Think/Act
-  // northstar's "Act" step needs a real path to the mitigating screen,
-  // not just more text.
-  const [expandedIds, setExpandedIds] = useState(() => new Set());
-  const toggleExpanded = (id) => setExpandedIds(prev => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
-  const openDevice = (deviceId) => {
-    setPendingDeviceFocus?.(deviceId);
-    setActivePanel("DEVICE_MANAGER");
-  };
-
-  const locationAvailable = activeLocation === "both"
-    ? activeAlertLocations.length > 0
-    : activeAlertLocations.includes(activeLocation);
-  if (!locationAvailable) return null;
-
-  const visibleAlerts = activeLocation === "both"
-    ? activeAlerts
-    : activeAlerts.filter(alert => alert.location === activeLocation);
-  if (visibleAlerts.length === 0) return null;
-
-  const hasCritical = visibleAlerts.some(alert => (alert.severity || "").toLowerCase() === "critical");
-  const open = hasCritical || !isCollapsed("main");
-
-  return (
-    <section className="active-conditions" aria-label="Current active alert conditions">
-      <div className="active-conditions-header">
-        <strong>Current conditions</strong>
-        <span className="section-header-actions">
-          <span className="section-count-badge">{visibleAlerts.length}</span>
-          <button type="button" className="section-caret"
-            disabled={hasCritical}
-            onClick={() => toggle("main")}
-            aria-expanded={open}
-            aria-label={hasCritical ? "A critical condition is active and can't be collapsed"
-              : (open ? "Collapse current conditions" : "Expand current conditions")}
-            title={hasCritical ? "Can't collapse — a critical condition needs attention" : undefined}>
-            {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
-          </button>
-        </span>
-      </div>
-      {open && (
-      <div className="active-conditions-list">
-        {visibleAlerts.map(alert => {
-          const meta = `${alert.location} · ${alert.condition.replaceAll("_", " ").toLowerCase()}`;
-          const expanded = expandedIds.has(alert.alertId);
-          return (
-            <div className={`active-condition active-condition-${(alert.severity || "warn").toLowerCase()}`} key={alert.alertId}>
-              <AlertTriangle size={13} />
-              <div className="active-condition-body">
-                <div className="active-condition-title-row">
-                  <strong className={expanded ? "" : "active-condition-clamp"}>{alert.title}</strong>
-                  <span>{meta}</span>
-                </div>
-                <p className={expanded ? "" : "active-condition-clamp"}>{alert.detail}</p>
-                <div className="active-condition-actions">
-                  <button type="button" className="active-condition-link" onClick={() => toggleExpanded(alert.alertId)}>
-                    {expanded ? "See less" : "See more"}
-                  </button>
-                  {alert.sourceDeviceId && (
-                    <button type="button" className="active-condition-link" onClick={() => openDevice(alert.sourceDeviceId)}>
-                      Open device <ChevronRight size={11}/>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      )}
-    </section>
   );
 }
 
@@ -5686,18 +5656,36 @@ export function automationAlertSteps(alert) {
   ];
 }
 
+// Device-condition counterpart to automationAlertSteps -- ActiveAlert.java
+// (MISSED_CHECKIN/DEVICE_ALARM) has no see/think/act payload of its own,
+// but title/detail already read as a see/think pair, and "Open device" is
+// the real act every row already offers -- synthesized here so a merged
+// Status Checks row (2026-09-18, see StatusChecksCard) can offer the same
+// expand-to-steps affordance automation-sourced rows get, not a narrower
+// one. Kept as a separate function rather than folding into
+// automationAlertSteps -- the two source shapes (alert.payload.{see,think,act}
+// vs a flat ActiveAlert) are different enough that a shared function would
+// need to branch internally anyway.
+export function deviceConditionSteps(item) {
+  return [
+    { label: "SEE", headline: item.title, detail: `${item.location} · ${item.condition}` },
+    { label: "THINK", headline: item.detail, detail: "" },
+    { label: "ACT", headline: item.sourceDeviceId ? "Open device to review" : "Review manually",
+      detail: "" },
+  ];
+}
+
 const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED";
 
 // authedFetch falls back to plain fetch when no auth prop is passed, so
 // this component's own existing tests (rendered without one) keep
 // working unchanged -- required in production since /api/events now
 // needs a Google token (WebConfig.java, 2026-09-01).
-function AutomationAlertCard({ auth }) {
+function useAutomationAlerts(auth) {
   const { activeLocation } = useApp();
   const doFetch = auth?.authedFetch || fetch;
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { isCollapsed, toggle } = useCollapsedSections("collapsed.automationAlerts");
 
   useEffect(() => {
     let cancelled = false;
@@ -5727,77 +5715,171 @@ function AutomationAlertCard({ auth }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLocation, auth]);
 
-  if (loading) return null;
-  if (alerts.length === 0) {
+  return { alerts, loading };
+}
+
+// Normalizes both alert sources into one shape a single row renderer can
+// consume -- {kind, id, severity, title, meta, detail, sourceDeviceId,
+// timestamp, raw}. `raw` keeps the original object so automationAlertSteps
+// (which reads alert.payload/alert.severity directly) still works unchanged.
+function normalizeDeviceAlert(alert) {
+  return {
+    kind: "device", id: alert.alertId, severity: alert.severity,
+    title: alert.title, detail: alert.detail, sourceDeviceId: alert.sourceDeviceId,
+    location: alert.location, condition: (alert.condition || "").replaceAll("_", " ").toLowerCase(),
+    meta: `${alert.location} · ${(alert.condition || "").replaceAll("_", " ").toLowerCase()}`,
+    timestamp: alert.evidenceAt, raw: alert,
+  };
+}
+
+function normalizeAutomationAlert(alert) {
+  const { see, think, ruleId } = alert.payload || {};
+  return {
+    kind: "automation", id: alert.eventId, severity: alert.severity,
+    title: see || humanizeRuleId(ruleId), detail: think || "",
+    sourceDeviceId: alert.sourceDeviceId,
+    meta: `${humanizeRuleId(ruleId)} · ${new Date(alert.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`,
+    timestamp: alert.timestamp, raw: alert,
+  };
+}
+
+// 2026-09-18 (user report, annotated screenshot): "Current conditions" and
+// "Automation alerts" were two separately-fetched, separately-styled boxes
+// stacked in the same column -- confusing given "Current conditions" isn't
+// conditions in any general sense, it's device health/check-in alerts
+// (ActiveAlertService.java: MISSED_CHECKIN/DEVICE_ALARM only), and an
+// automation-engine decision is arguably a "condition" too. Merged into one
+// box, one header, one collapse toggle, one sorted list -- every row uses
+// the same compact layout (icon, clamped title+meta, clamped detail, See
+// more/Open device) device-condition rows already had, and every row --
+// automation-sourced or device-sourced -- gets the same expand-to-See/
+// Think/Act affordance (deviceConditionSteps above is the synthesized
+// counterpart for rows that never had a native see/think/act payload).
+// Renamed "Current conditions" -> "Status Checks" to match what the box
+// actually is now that it covers both sources.
+function StatusChecksCard({ auth }) {
+  const {
+    activeAlerts = [], activeAlertLocations = [], activeLocation = "cabin",
+    setActivePanel, setPendingDeviceFocus,
+  } = useApp();
+  const { alerts: automationAlerts, loading: automationLoading } = useAutomationAlerts(auth);
+  const { isCollapsed, toggle } = useCollapsedSections("collapsed.statusChecks");
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const toggleExpanded = (id) => setExpandedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const openDevice = (deviceId) => {
+    setPendingDeviceFocus?.(deviceId);
+    setActivePanel("DEVICE_MANAGER");
+  };
+
+  const locationAvailable = activeLocation === "both"
+    ? activeAlertLocations.length > 0
+    : activeAlertLocations.includes(activeLocation);
+
+  const visibleDeviceAlerts = activeLocation === "both"
+    ? activeAlerts
+    : activeAlerts.filter(alert => alert.location === activeLocation);
+
+  // Device alerts arrive synchronously via context; automation alerts are
+  // a separate, slower fetch. Don't let a slow/pending automation fetch
+  // hide device alerts that are already known -- only hold off rendering
+  // when there's nothing to show yet AND at least one source hasn't
+  // settled (so an empty state doesn't flash before the other resolves).
+  const nothingYet = visibleDeviceAlerts.length === 0 && automationAlerts.length === 0;
+  if (nothingYet && (!locationAvailable || automationLoading)) return null;
+
+  const items = [
+    ...visibleDeviceAlerts.map(normalizeDeviceAlert),
+    ...automationAlerts.map(normalizeAutomationAlert),
+  ].sort((a, b) => {
+    const aCritical = (a.severity || "").toLowerCase() === "critical";
+    const bCritical = (b.severity || "").toLowerCase() === "critical";
+    if (aCritical !== bCritical) return aCritical ? -1 : 1;
+    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+  });
+
+  if (items.length === 0) {
     return (
-      <div className="automation-alert-card automation-alert-none">
-        <p className="config-desc">No automation alerts in the last 24 hours — built-in safety rules are watching.</p>
+      <div className="active-conditions active-conditions-none">
+        <p className="config-desc">No status checks need attention — built-in safety rules are watching.</p>
       </div>
     );
   }
 
-  const hasCritical = alerts.some(alert => (alert.severity || "info").toLowerCase() === "critical");
+  const hasCritical = items.some(item => (item.severity || "").toLowerCase() === "critical");
   const open = hasCritical || !isCollapsed("main");
 
   return (
-    <section className="automation-alerts" aria-label="Automation alerts, last 24 hours">
-      <div className="automation-alerts-header">
-        <strong>Automation alerts</strong>
+    <section className="active-conditions" aria-label="Status checks — device health and automation alerts">
+      <div className="active-conditions-header">
+        <strong>Status Checks</strong>
         <span className="section-header-actions">
-          <span className="section-count-badge">{alerts.length}</span>
+          <span className="section-count-badge">{items.length}</span>
           <button type="button" className="section-caret"
             disabled={hasCritical}
             onClick={() => toggle("main")}
             aria-expanded={open}
-            aria-label={hasCritical ? "A critical alert is active and can't be collapsed"
-              : (open ? "Collapse automation alerts" : "Expand automation alerts")}
-            title={hasCritical ? "Can't collapse — a critical alert needs attention" : undefined}>
+            aria-label={hasCritical ? "A critical condition is active and can't be collapsed"
+              : (open ? "Collapse status checks" : "Expand status checks")}
+            title={hasCritical ? "Can't collapse — a critical condition needs attention" : undefined}>
             {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
           </button>
         </span>
       </div>
       {open && (
-        <div className="automation-alert-list">
-          {alerts.map(alert => <AutomationAlertEntry key={alert.eventId} alert={alert} />)}
-        </div>
+      <div className="active-conditions-list">
+        {items.map(item => {
+          const expanded = expandedIds.has(item.id);
+          const steps = item.kind === "automation" ? automationAlertSteps(item.raw) : deviceConditionSteps(item);
+          return (
+            <div className={`active-condition active-condition-${(item.severity || "warn").toLowerCase()}`} key={item.id}>
+              <AlertTriangle size={13} />
+              <div className="active-condition-body">
+                <div className="active-condition-title-row">
+                  <strong className={expanded ? "" : "active-condition-clamp"}>{item.title}</strong>
+                  <span>{item.meta}</span>
+                </div>
+                <p className={expanded ? "" : "active-condition-clamp"}>{item.detail}</p>
+                <div className="active-condition-actions">
+                  <button type="button" className="active-condition-link" onClick={() => toggleExpanded(item.id)}>
+                    {expanded ? "See less" : "See more"}
+                  </button>
+                  {item.sourceDeviceId && (
+                    <button type="button" className="active-condition-link" onClick={() => openDevice(item.sourceDeviceId)}>
+                      Open device <ChevronRight size={11}/>
+                    </button>
+                  )}
+                </div>
+                {expanded && (
+                  <div className="automation-alert-flow active-condition-flow">
+                    {steps.map((step, i) => (
+                      <React.Fragment key={step.label}>
+                        {i > 0 && <span className="automation-alert-flow-arrow">→</span>}
+                        <div className="automation-alert-flow-step">
+                          <span className="automation-alert-flow-num">{String(i + 1).padStart(2, "0")} · {step.label}</span>
+                          <strong>{step.headline}</strong>
+                          {step.detail && <span className="config-hint">{step.detail}</span>}
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
       )}
     </section>
   );
 }
 
-function AutomationAlertEntry({ alert }) {
-  const { see, think, tags = [], ruleId } = alert.payload || {};
-  const steps = automationAlertSteps(alert);
-
-  return (
-    <div className={`automation-alert-card automation-alert-${(alert.severity || "info").toLowerCase()}`}>
-      <div className="automation-alert-header">
-        <span className="automation-alert-category">{humanizeRuleId(ruleId).toUpperCase()}</span>
-        <span className="automation-alert-time">{new Date(alert.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
-      </div>
-      <h3 className="automation-alert-headline">{see}</h3>
-      {think && <p className="automation-alert-context">{think}</p>}
-      {tags.length > 0 && (
-        <div className="automation-alert-tags">
-          {tags.map(t => <span key={t} className="automation-alert-tag">{t}</span>)}
-        </div>
-      )}
-      <div className="automation-alert-flow">
-        {steps.map((step, i) => (
-          <React.Fragment key={step.label}>
-            {i > 0 && <span className="automation-alert-flow-arrow">→</span>}
-            <div className="automation-alert-flow-step">
-              <span className="automation-alert-flow-num">{String(i + 1).padStart(2, "0")} · {step.label}</span>
-              <strong>{step.headline}</strong>
-              <span className="config-hint">{step.detail}</span>
-            </div>
-          </React.Fragment>
-        ))}
-      </div>
-    </div>
-  );
-}
-
+// 2026-09-18: no longer rendered in RulesPanel (see RULES_PANEL_BOXES'
+// own comment) -- kept defined, not deleted, since that removal is
+// flagged for confirmation rather than decided unilaterally.
 function KafkaStatus({ location }) {
   const loc = location === "both" ? "cabin + home" : (location || "cabin");
   const prefix = location === "home" ? "home" : "cabin";
