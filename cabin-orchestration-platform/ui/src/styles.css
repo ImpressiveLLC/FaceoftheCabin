@@ -437,7 +437,6 @@ body {
 .section-caret:hover { background: var(--bg-tertiary); color: var(--text); }
 .section-caret:disabled { opacity: 0.4; cursor: not-allowed; }
 .section-caret:disabled:hover { background: transparent; color: var(--text-dim); }
-.active-conditions-list { max-height: 176px; overflow-y: auto; }
 .active-condition { display: flex; gap: 8px; padding: 6px 14px; border-left: 3px solid var(--state-warning); }
 .active-condition + .active-condition { border-top: 1px solid var(--border); }
 .active-condition-critical { border-left-color: var(--state-alarm, #f85149); }
@@ -512,6 +511,27 @@ body {
    pattern as .family-hub-card-wrap/.family-hub-drag-handle. */
 .rules-box-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .rules-box-drag-handle { align-self: flex-end; margin-bottom: -4px; }
+/* 2026-09-18 (user report, annotated screenshot, second pass): tops
+   already aligned (grid-auto-flow, see the comment above), but bottoms
+   still didn't -- a card's height was still just whatever its own
+   content needed, so Cabin Backend Rules' 6 static rows made it visibly
+   taller than Optimization Opportunities' one entry. Giving every card
+   in this row the same fixed height, scrolling internally past that,
+   aligns both edges regardless of content amount -- same "compact +
+   internally scrolling" convention already used elsewhere in this file
+   (see the Camera Health comment), just applied consistently across all
+   four boxes instead of one. Also answers "more than top-three alerts
+   visible" -- tall enough for ~6-7 compact rows before Status Checks'
+   own list needs to scroll within it.
+   :where() keeps this scoped to cards actually inside the Rules & Alerts
+   grid without raising .sidebar-card/.active-conditions' own specificity
+   -- both classes are used by unrelated cards elsewhere in the app that
+   must not get a fixed height forced on them. */
+:where(.rules-cards-row) .rules-box-wrap > .sidebar-card,
+:where(.rules-cards-row) .rules-box-wrap > .active-conditions {
+  height: 460px;
+  overflow-y: auto;
+}
 .rules-layout { display: flex; gap: 16px; height: calc(100vh - 140px); }
 .rules-nodered { flex: 1; display: flex; flex-direction: column; }
 .rules-nodered .embed-frame { flex: 1; min-height: 0; }
@@ -1321,6 +1341,17 @@ body {
 }
 .alert-ctrl span { flex: 1; }
 .alert-ctrl-btn { font-size: 11px; padding: 3px 8px; flex-shrink: 0; }
+/* 2026-09-18: the banner is a real <button> now (navigates to Rules &
+   Alerts) instead of a static <div> -- reset the browser's default
+   button chrome so it still reads as the same banner, not a form control. */
+.alert-ctrl-button {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.alert-ctrl-button:hover { filter: brightness(1.15); }
+.alert-ctrl-chevron { flex-shrink: 0; opacity: 0.6; }
 
 .alert-ctrl-unconfigured {
   background: var(--bg-secondary);

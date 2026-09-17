@@ -2155,16 +2155,37 @@ function ConfigCard({ title, icon: Icon, children }) {
 }
 
 // ─── Alert controls (rendered at top of each alertable panel) ─────────────
-function AlertControls({ panelId }) {
+// 2026-09-18 (user report, annotated screenshot): this banner showed a
+// count with no way to act on it -- the See/Think/Act "Act" step needs a
+// real path to the mitigating screen, same rule already applied to
+// individual alert rows (Open device). It also used to count only
+// activeAlerts (device health) while the merged Status Checks box below
+// counts device+automation -- two different numbers for what looked like
+// the same thing was the user's own next report. Now shares
+// mergeStatusCheckItems with StatusChecksCard (one total, can't drift
+// again) and is a real button that navigates to Rules & Alerts, where
+// that same merged list is what's waiting.
+export function AlertControls({ panelId }) { // exported for src/App.test.jsx -- tested directly, its click-to-navigate behavior isn't exercised through any other component's tests
   const {
     activeAlerts = [], activeAlertLocations = [], activeAlertUnavailableLocations = [],
-    activeLocation = "cabin",
+    activeLocation = "cabin", automationAlerts = [], automationAlertsLoading = false,
+    setActivePanel,
   } = useApp();
   const locationAvailable = activeLocation === "both"
     ? activeAlertLocations.length > 0
     : activeAlertLocations.includes(activeLocation);
+  const goReview = () => setActivePanel?.("RULES_ENGINE");
 
-  if (!locationAvailable) {
+  const visibleDeviceAlerts = activeLocation === "both"
+    ? activeAlerts
+    : activeAlerts.filter(alert => alert.location === activeLocation);
+  // Same "don't claim a confident zero before both sources have settled"
+  // rule StatusChecksCard already applies (see its own comment) -- only
+  // show "unavailable" when there's nothing to report from EITHER source
+  // AND at least one hasn't resolved yet; a real alert from either source
+  // is shown immediately regardless of the other's state.
+  const nothingYet = visibleDeviceAlerts.length === 0 && automationAlerts.length === 0;
+  if (nothingYet && (!locationAvailable || automationAlertsLoading)) {
     return (
       <div className="alert-ctrl alert-ctrl-unconfigured">
         <Circle size={12} className="alert-ctrl-dot"/>
@@ -2173,29 +2194,31 @@ function AlertControls({ panelId }) {
     );
   }
 
-  const visibleAlerts = activeLocation === "both"
-    ? activeAlerts
-    : activeAlerts.filter(alert => alert.location === activeLocation);
-  const level = alertLevelFor(visibleAlerts);
+  const items = mergeStatusCheckItems(activeAlerts, activeLocation, automationAlerts);
+  const level = alertLevelFor(items);
   const isCritical = level === "critical";
   const isWarn = level === "warn";
-  const label = visibleAlerts.length === 1 ? "condition" : "conditions";
+  const label = items.length === 1 ? "condition" : "conditions";
   const partialLocations = activeLocation === "both" ? activeAlertUnavailableLocations : [];
   const partialSuffix = partialLocations.length > 0
     ? ` Status unavailable for ${partialLocations.map(id => LOCATIONS[id]?.label || id).join(", ")}.`
     : "";
 
   return (
-    <div className={`alert-ctrl ${isCritical ? "alert-ctrl-critical" : isWarn ? "alert-ctrl-warn" : "alert-ctrl-ok"}`}>
+    <button type="button"
+      className={`alert-ctrl alert-ctrl-button ${isCritical ? "alert-ctrl-critical" : isWarn ? "alert-ctrl-warn" : "alert-ctrl-ok"}`}
+      onClick={goReview}
+      title="Open Rules & Alerts to review">
       {isCritical && <AlertTriangle size={12} className="alert-ctrl-dot"/>}
       {isWarn     && <AlertTriangle size={12} className="alert-ctrl-dot"/>}
       {!isCritical && !isWarn && <CheckCircle size={12} className="alert-ctrl-dot"/>}
       <span>
-        {isCritical && `Critical — ${visibleAlerts.length} current ${label}.${partialSuffix}`}
-        {isWarn && `Attention — ${visibleAlerts.length} current ${label}.${partialSuffix}`}
+        {isCritical && `Critical — ${items.length} current ${label}. Review in Rules & Alerts.${partialSuffix}`}
+        {isWarn && `Attention — ${items.length} current ${label}. Review in Rules & Alerts.${partialSuffix}`}
         {!isCritical && !isWarn && `Watching assigned, enabled devices — no current alert conditions from reporting locations.${partialSuffix}`}
       </span>
-    </div>
+      <ChevronRight size={12} className="alert-ctrl-chevron"/>
+    </button>
   );
 }
 
@@ -5563,7 +5586,7 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
   const onDragEnd   = () => { setDragIdx(null); setOverIdx(null); };
 
   const boxProps = {
-    status: { auth },
+    status: {},
     workflows: { workflows, auth, devices, activeLocation, defaultLocation: activeLocation !== "both" ? activeLocation : "cabin", onChanged: refreshWorkflows },
     optimization: { auth, devices },
     builtin: { location: activeLocation, auth },
@@ -5681,9 +5704,19 @@ const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFL
 // this component's own existing tests (rendered without one) keep
 // working unchanged -- required in production since /api/events now
 // needs a Google token (WebConfig.java, 2026-09-01).
-function useAutomationAlerts(auth) {
-  const { activeLocation } = useApp();
-  const doFetch = auth?.authedFetch || fetch;
+// 2026-09-18: lifted from RulesPanel's subtree up to root App() (see its
+// call site) so AlertControls' nav banner and StatusChecksCard read the
+// exact same fetched list -- they used to be two independent fetches
+// (this one local to RulesPanel, the banner not fetching this at all),
+// which is exactly why the banner's count and the merged Status Checks
+// count could disagree. Signature now matches useNavAlerts' own
+// (activeLocation, authedFetch) shape instead of an `auth` object, since
+// it's called alongside that hook at the same level. limit raised
+// 5->20 and the old client-side .slice(0,5) removed -- a badge/count
+// consumer needs the real total, not a display-sized page of it; the
+// row list itself now scrolls (see .active-conditions-list) instead of
+// silently truncating the data.
+export function useAutomationAlerts(activeLocation, authedFetch = fetch) { // exported for src/App.test.jsx -- tested directly, not just indirectly through a consumer
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -5693,27 +5726,26 @@ function useAutomationAlerts(auth) {
     // Same "cabin or both" / "home or both" attempt shape as
     // refreshWorkflows -- an unrecognized/missing activeLocation falls
     // back to cabin-only, matching RulesPanel's own LOCATIONS[activeLocation]
-    // || LOCATIONS.cabin default just above where this card is rendered.
+    // || LOCATIONS.cabin default.
     const loc = activeLocation === "both" ? "both" : (LOCATIONS[activeLocation] ? activeLocation : "cabin");
     const attempts = [];
     if (loc === "cabin" || loc === "both") {
-      attempts.push(doFetch(`${LOCATIONS.cabin.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=5&window=24h`)
+      attempts.push(authedFetch(`${LOCATIONS.cabin.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=20&window=24h`)
         .then(r => r.ok ? r.json() : []).catch(() => []));
     }
     if (loc === "home" || loc === "both") {
-      attempts.push(doFetch(`${LOCATIONS.home.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=5&window=24h`)
+      attempts.push(authedFetch(`${LOCATIONS.home.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=20&window=24h`)
         .then(r => r.ok ? r.json() : []).catch(() => []));
     }
     Promise.all(attempts)
       .then(results => {
         if (cancelled) return;
-        const merged = results.flat().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        setAlerts(merged.slice(0, 5));
+        setAlerts(results.flat().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLocation, auth]);
+  }, [activeLocation, authedFetch]);
 
   return { alerts, loading };
 }
@@ -5743,6 +5775,27 @@ function normalizeAutomationAlert(alert) {
   };
 }
 
+// 2026-09-18: shared by AlertControls (the nav banner) and StatusChecksCard
+// (the full list) so they can never independently disagree about the total
+// again -- that exact drift (banner counting device alerts only, the merged
+// box counting device+automation) was the user's own next report after the
+// original merge shipped. One function, one truth; both consumers just
+// render a different amount of the same array.
+export function mergeStatusCheckItems(activeAlerts, activeLocation, automationAlerts) {
+  const visibleDeviceAlerts = activeLocation === "both"
+    ? activeAlerts
+    : activeAlerts.filter(alert => alert.location === activeLocation);
+  return [
+    ...visibleDeviceAlerts.map(normalizeDeviceAlert),
+    ...automationAlerts.map(normalizeAutomationAlert),
+  ].sort((a, b) => {
+    const aCritical = (a.severity || "").toLowerCase() === "critical";
+    const bCritical = (b.severity || "").toLowerCase() === "critical";
+    if (aCritical !== bCritical) return aCritical ? -1 : 1;
+    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+  });
+}
+
 // 2026-09-18 (user report, annotated screenshot): "Current conditions" and
 // "Automation alerts" were two separately-fetched, separately-styled boxes
 // stacked in the same column -- confusing given "Current conditions" isn't
@@ -5757,12 +5810,12 @@ function normalizeAutomationAlert(alert) {
 // counterpart for rows that never had a native see/think/act payload).
 // Renamed "Current conditions" -> "Status Checks" to match what the box
 // actually is now that it covers both sources.
-function StatusChecksCard({ auth }) {
+function StatusChecksCard() {
   const {
     activeAlerts = [], activeAlertLocations = [], activeLocation = "cabin",
+    automationAlerts = [], automationAlertsLoading = false,
     setActivePanel, setPendingDeviceFocus,
   } = useApp();
-  const { alerts: automationAlerts, loading: automationLoading } = useAutomationAlerts(auth);
   const { isCollapsed, toggle } = useCollapsedSections("collapsed.statusChecks");
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const toggleExpanded = (id) => setExpandedIds(prev => {
@@ -5784,22 +5837,15 @@ function StatusChecksCard({ auth }) {
     : activeAlerts.filter(alert => alert.location === activeLocation);
 
   // Device alerts arrive synchronously via context; automation alerts are
-  // a separate, slower fetch. Don't let a slow/pending automation fetch
-  // hide device alerts that are already known -- only hold off rendering
-  // when there's nothing to show yet AND at least one source hasn't
-  // settled (so an empty state doesn't flash before the other resolves).
+  // a separate, slower fetch (lifted to root App(), see useAutomationAlerts'
+  // own comment). Don't let a slow/pending automation fetch hide device
+  // alerts that are already known -- only hold off rendering when there's
+  // nothing to show yet AND at least one source hasn't settled (so an
+  // empty state doesn't flash before the other resolves).
   const nothingYet = visibleDeviceAlerts.length === 0 && automationAlerts.length === 0;
-  if (nothingYet && (!locationAvailable || automationLoading)) return null;
+  if (nothingYet && (!locationAvailable || automationAlertsLoading)) return null;
 
-  const items = [
-    ...visibleDeviceAlerts.map(normalizeDeviceAlert),
-    ...automationAlerts.map(normalizeAutomationAlert),
-  ].sort((a, b) => {
-    const aCritical = (a.severity || "").toLowerCase() === "critical";
-    const bCritical = (b.severity || "").toLowerCase() === "critical";
-    if (aCritical !== bCritical) return aCritical ? -1 : 1;
-    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
-  });
+  const items = mergeStatusCheckItems(activeAlerts, activeLocation, automationAlerts);
 
   if (items.length === 0) {
     return (
@@ -7205,6 +7251,10 @@ function App() {
     unavailableLocations: activeAlertUnavailableLocations,
     generatedAt: activeAlertsGeneratedAt,
   } = useNavAlerts(cameraAuth.authedFetch);
+  // 2026-09-18: lifted from RulesPanel's subtree (see useAutomationAlerts'
+  // own comment) so AlertControls' nav banner and StatusChecksCard share
+  // one fetch/one truth for the total instead of computing it twice.
+  const { alerts: automationAlerts, loading: automationAlertsLoading } = useAutomationAlerts(activeLocation, cameraAuth.authedFetch);
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence(cameraAuth.authedFetch);
   const securityStates = useSecurityState(cameraAuth.authedFetch);
@@ -7327,6 +7377,7 @@ function App() {
       workflows, refreshWorkflows,
       activeLocation, locationCfg,
       activeAlerts, activeAlertLocations, activeAlertUnavailableLocations, activeAlertsGeneratedAt,
+      automationAlerts, automationAlertsLoading,
       activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
       securityStates,
       displayConfigs, refreshDisplayConfigs,

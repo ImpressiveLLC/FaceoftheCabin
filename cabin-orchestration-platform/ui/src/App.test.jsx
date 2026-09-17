@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -3444,6 +3444,67 @@ describe("current active alert projection", () => {
   });
 });
 
+// 2026-09-18 (user report, annotated screenshot): the banner showed a
+// count with no way to act on it, and counted device alerts only while
+// the merged Status Checks box below counted device+automation -- two
+// different numbers for what looked like the same thing. Covers both
+// fixes directly: the banner is a real, clickable button now, and its
+// count matches mergeStatusCheckItems' real total instead of just
+// activeAlerts.length.
+describe("AlertControls", () => {
+  afterEach(cleanup);
+
+  it("counts device AND automation alerts together, not just device ones", () => {
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{ alertId: "a1", location: "cabin", severity: "WARN", condition: "MISSED_CHECKIN", title: "x", detail: "y" }],
+        automationAlerts: [{ eventId: "e1", severity: "WARN", timestamp: new Date().toISOString(), payload: { ruleId: "FREEZE_RISK", see: "z" } }],
+        automationAlertsLoading: false,
+      }}>
+        <AlertControls panelId="RULES_ENGINE" />
+      </AppContext.Provider>
+    );
+
+    // 1 device + 1 automation = 2, not 1 -- the exact drift this fixes.
+    expect(screen.getByText(/Attention — 2 current conditions/)).toBeTruthy();
+  });
+
+  it("clicking the banner navigates to Rules & Alerts", () => {
+    const setActivePanel = vi.fn();
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{ alertId: "a1", location: "cabin", severity: "WARN", condition: "MISSED_CHECKIN", title: "x", detail: "y" }],
+        automationAlerts: [],
+        automationAlertsLoading: false,
+        setActivePanel,
+      }}>
+        <AlertControls panelId="DEVICE_MANAGER" />
+      </AppContext.Provider>
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    expect(setActivePanel).toHaveBeenCalledWith("RULES_ENGINE");
+  });
+
+  it("stays a plain, non-interactive banner when the location genuinely hasn't resolved yet", () => {
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: [], activeAlerts: [],
+        automationAlerts: [], automationAlertsLoading: true,
+      }}>
+        <AlertControls panelId="RULES_ENGINE" />
+      </AppContext.Provider>
+    );
+
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText(/Current alert status unavailable/)).toBeTruthy();
+  });
+});
+
 // 2026-09-18: AutomationAlertCard was merged into StatusChecksCard (same
 // box as device-condition alerts, see that component's own comment) --
 // these scenarios still apply, just against the merged card's compact-row
@@ -3454,140 +3515,140 @@ describe("current active alert projection", () => {
 describe("StatusChecksCard — automation alerts (via RulesPanel)", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
 
+  // 2026-09-18: useAutomationAlerts moved from RulesPanel's subtree up to
+  // root App() (see its own comment -- the fetch is now shared with
+  // AlertControls' nav banner, one source of truth for the total instead
+  // of two independently-drifting ones). StatusChecksCard reads it from
+  // context now, so these tests supply automationAlerts/
+  // automationAlertsLoading directly instead of mocking the fetch that
+  // used to happen inside this subtree. WorkflowRulesCard/
+  // OptimizationOpportunitiesCard/BuiltinRules (RulesPanel's other
+  // children) still fetch their own data on mount -- stub fetch with a
+  // permanently-pending promise so those calls don't hit real network or
+  // throw, same as "current active alert projection"'s own tests do.
+  //
   // activeAlertLocations defaults to whichever locations activeLocation
   // implies -- StatusChecksCard deliberately won't claim "no status
   // checks" while the device-alert side hasn't confirmed a location's
-  // status yet (same honesty rule the old ActiveConditionsCard already
-  // had), so a test asserting the real empty state needs to represent a
-  // location that's actually finished loading, not just omit it.
-  function renderWith(activeLocation = "cabin", activeAlertLocations = activeLocation === "both" ? ["cabin", "home"] : [activeLocation]) {
+  // status yet (same honesty rule as before), so a test asserting the
+  // real empty state needs to represent a location that's actually
+  // finished loading, not just omit it.
+  function renderWith(activeLocation, automationAlerts, extra = {}) {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const loc = activeLocation || "cabin";
+    const activeAlertLocations = loc === "both" ? ["cabin", "home"] : [loc];
     return render(
-      <AppContext.Provider value={{ activeLocation, activeAlertLocations }}>
+      <AppContext.Provider value={{ activeLocation: loc, activeAlertLocations, automationAlerts, automationAlertsLoading: false, ...extra }}>
         <RulesPanel />
       </AppContext.Provider>
     );
   }
 
-  it("renders the See/Think/Act flow from a real CRITICAL AUTOMATION_ALERT event, matching the marketing scenario", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => [{
-        eventId: "e1", sourceDeviceId: "psi_mech_room", eventType: "AUTOMATION_ALERT",
-        severity: "CRITICAL", timestamp: new Date().toISOString(),
-        payload: {
-          ruleId: "WATER_PRESSURE_LOW",
-          see: "Pressure dropped below the safe range.",
-          think: "The cabin is away, no fixture is expected to be running, and the mechanical room sensor reports 26.0 PSI.",
-          act: "Alert Nate",
-          tags: ["CABIN - AWAY", "26.0 PSI", "UNEXPECTED USE"],
-        },
-      }],
-    }));
+  it("renders the See/Think/Act flow from a real CRITICAL AUTOMATION_ALERT event, matching the marketing scenario", () => {
+    renderWith("cabin", [{
+      eventId: "e1", sourceDeviceId: "psi_mech_room", eventType: "AUTOMATION_ALERT",
+      severity: "CRITICAL", timestamp: new Date().toISOString(),
+      payload: {
+        ruleId: "WATER_PRESSURE_LOW",
+        see: "Pressure dropped below the safe range.",
+        think: "The cabin is away, no fixture is expected to be running, and the mechanical room sensor reports 26.0 PSI.",
+        act: "Alert Nate",
+        tags: ["CABIN - AWAY", "26.0 PSI", "UNEXPECTED USE"],
+      },
+    }]);
 
-    renderWith();
-
-    expect(await screen.findByText("Pressure dropped below the safe range.")).toBeTruthy();
+    expect(screen.getByText("Pressure dropped below the safe range.")).toBeTruthy();
     expect(screen.getByText(/mechanical room sensor reports 26.0 PSI/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "See more" }));
     expect(screen.getByText("No routine explains it")).toBeTruthy();
     expect(screen.getAllByText("Alert Nate").length).toBeGreaterThan(0);
   });
 
-  it("won't let a CRITICAL automation alert be collapsed out of view", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => [{
-        eventId: "e-crit", sourceDeviceId: "psi_mech_room", eventType: "AUTOMATION_ALERT",
-        severity: "CRITICAL", timestamp: new Date().toISOString(),
-        payload: {
-          ruleId: "WATER_PRESSURE_LOW",
-          see: "Pressure dropped below the safe range.",
-          think: "The cabin is away and the mechanical room sensor reports 26.0 PSI.",
-          act: "Alert Nate", tags: [],
-        },
-      }],
-    }));
+  it("won't let a CRITICAL automation alert be collapsed out of view", () => {
+    renderWith("cabin", [{
+      eventId: "e-crit", sourceDeviceId: "psi_mech_room", eventType: "AUTOMATION_ALERT",
+      severity: "CRITICAL", timestamp: new Date().toISOString(),
+      payload: {
+        ruleId: "WATER_PRESSURE_LOW",
+        see: "Pressure dropped below the safe range.",
+        think: "The cabin is away and the mechanical room sensor reports 26.0 PSI.",
+        act: "Alert Nate", tags: [],
+      },
+    }]);
 
-    renderWith();
-
-    const caret = await screen.findByLabelText(/critical condition is active and can't be collapsed/i);
+    const caret = screen.getByLabelText(/critical condition is active and can't be collapsed/i);
     expect(caret.disabled).toBe(true);
     fireEvent.click(caret); // no-op: still can't collapse
     expect(screen.getByText("Pressure dropped below the safe range.")).toBeTruthy();
   });
 
-  it("shows an honest empty state instead of a stale or fabricated alert when there's nothing to report", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+  it("shows an honest empty state instead of a stale or fabricated alert when there's nothing to report", () => {
+    renderWith("cabin", []);
 
-    renderWith();
-
-    expect(await screen.findByText(/No status checks need attention/)).toBeTruthy();
-  });
-
-  it("degrades gracefully instead of crashing when the events fetch fails", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
-
-    renderWith();
-
-    expect(await screen.findByText(/No status checks need attention/)).toBeTruthy();
+    expect(screen.getByText(/No status checks need attention/)).toBeTruthy();
   });
 
   // 2026-08-21: WorkflowRuleService.publishNotification() reuses this
   // card's exact {see,think,act,tags,ruleId} shape for WORKFLOW_ACTION
-  // events (docs/ontology.yaml's notify_critical entity), but this card
-  // used to only query eventTypePrefix=AUTOMATION_ALERT -- every
-  // workflow-engine-driven alert was silently invisible here. Covers the
-  // fix: the broadened prefix list actually reaches the fetch call, and a
-  // WORKFLOW_ACTION event renders through the same merged-row markup.
-  it("also surfaces WORKFLOW_ACTION events, not just AUTOMATION_ALERT ones", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => [{
-        eventId: "e2", sourceDeviceId: "z2m-leak_mech_room", eventType: "WORKFLOW_ACTION",
-        severity: "CRITICAL", timestamp: new Date().toISOString(),
-        payload: {
-          ruleId: "WORKFLOW_wf-leak-shutoff-1", see: "Water leak detected",
-          think: "Human-configured workflow 'Leak shutoff' matched this event",
-          act: "Shut off main water valve + Notify", tags: ["WORKFLOW"],
-        },
-      }],
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderWith();
+  // events (docs/ontology.yaml's notify_critical entity) -- covers that a
+  // WORKFLOW_ACTION event renders through the same merged-row markup as a
+  // plain AUTOMATION_ALERT one, not just the latter.
+  it("also surfaces WORKFLOW_ACTION events, not just AUTOMATION_ALERT ones", () => {
+    renderWith("cabin", [{
+      eventId: "e2", sourceDeviceId: "z2m-leak_mech_room", eventType: "WORKFLOW_ACTION",
+      severity: "CRITICAL", timestamp: new Date().toISOString(),
+      payload: {
+        ruleId: "WORKFLOW_wf-leak-shutoff-1", see: "Water leak detected",
+        think: "Human-configured workflow 'Leak shutoff' matched this event",
+        act: "Shut off main water valve + Notify", tags: ["WORKFLOW"],
+      },
+    }]);
 
     // The row's meta line (title-row sibling <span>) carries the
     // humanized rule category now, replacing the old dedicated
     // .automation-alert-category badge.
-    const row = await screen.findByText("Water leak detected");
+    const row = screen.getByText("Water leak detected");
     expect(row.closest(".active-condition-title-row").querySelector("span").textContent).toMatch(/^Workflow ·/);
-    // Other RulesPanel siblings (WorkflowRulesCard's RecentExecutionsList,
-    // BuiltinRules) also call fetch on mount -- assert by content, not by
-    // call order, since effect ordering across sibling components isn't
-    // this test's concern.
-    expect(fetchMock.mock.calls.some(([url]) =>
-      url.includes("eventTypePrefix=AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED"))).toBe(true);
   });
 
-  it("shows a real recent list (more than just the single latest alert)", async () => {
+  // useAutomationAlerts' own real fetch (URL shape, cabin/home/both
+  // attempts, the broadened eventTypePrefix list, sort order) is a
+  // separate concern from how StatusChecksCard renders whatever it's
+  // given -- covered directly against the hook's real behavior instead
+  // of through this describe block, which now only supplies pre-fetched
+  // data via context. See "useAutomationAlerts" below.
+
+  it("shows a real recent list (more than just the single latest alert)", () => {
     const now = Date.now();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => [
-        { eventId: "older", sourceDeviceId: "d1", eventType: "AUTOMATION_ALERT", severity: "WARN",
-          timestamp: new Date(now - 60_000).toISOString(), payload: { ruleId: "FREEZE_RISK", see: "Older alert" } },
-        { eventId: "newer", sourceDeviceId: "d2", eventType: "AUTOMATION_ALERT", severity: "CRITICAL",
-          timestamp: new Date(now).toISOString(), payload: { ruleId: "WATER_PRESSURE_LOW", see: "Newer alert" } },
-      ],
-    }));
+    renderWith("cabin", [
+      { eventId: "older", sourceDeviceId: "d1", eventType: "AUTOMATION_ALERT", severity: "WARN",
+        timestamp: new Date(now - 60_000).toISOString(), payload: { ruleId: "FREEZE_RISK", see: "Older alert" } },
+      { eventId: "newer", sourceDeviceId: "d2", eventType: "AUTOMATION_ALERT", severity: "CRITICAL",
+        timestamp: new Date(now).toISOString(), payload: { ruleId: "WATER_PRESSURE_LOW", see: "Newer alert" } },
+    ]);
 
-    renderWith();
-
-    expect(await screen.findByText("Newer alert")).toBeTruthy();
+    expect(screen.getByText("Newer alert")).toBeTruthy();
     expect(screen.getByText("Older alert")).toBeTruthy();
   });
 
-  it("queries both cabin and home when the location switcher is set to Both", async () => {
+});
+
+// 2026-09-18: useAutomationAlerts moved to root App() (see its own
+// comment) so AlertControls and StatusChecksCard share one fetch/one
+// total instead of two independently-drifting ones. Tested directly
+// against a tiny host component rather than indirectly through a large
+// consumer, matching this file's own stated preference for testing
+// extracted logic directly.
+describe("useAutomationAlerts", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  function Host({ activeLocation, authedFetch }) {
+    const { alerts, loading } = useAutomationAlerts(activeLocation, authedFetch);
+    if (loading) return <p>loading</p>;
+    return <ul>{alerts.map(a => <li key={a.eventId}>{a.payload.see}</li>)}</ul>;
+  }
+
+  it("queries both cabin and home when activeLocation is both", async () => {
     const fetchMock = vi.fn((url) => Promise.resolve({
       ok: true,
       json: async () => url.startsWith("http://home-hub:8080")
@@ -3596,12 +3657,20 @@ describe("StatusChecksCard — automation alerts (via RulesPanel)", () => {
         : [{ eventId: "cabin1", sourceDeviceId: "d4", eventType: "AUTOMATION_ALERT", severity: "WARN",
               timestamp: new Date().toISOString(), payload: { ruleId: "FREEZE_RISK", see: "Cabin alert" } }],
     }));
-    vi.stubGlobal("fetch", fetchMock);
 
-    renderWith("both");
+    render(<Host activeLocation="both" authedFetch={fetchMock} />);
 
     expect(await screen.findByText("Cabin alert")).toBeTruthy();
     expect(screen.getByText("Home alert")).toBeTruthy();
+  });
+
+  it("requests the broadened eventTypePrefix list, not just AUTOMATION_ALERT", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+
+    render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
+      url.includes("eventTypePrefix=AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED"))).toBe(true));
   });
 });
 
