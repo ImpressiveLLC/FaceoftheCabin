@@ -51,7 +51,13 @@ jobs:
 
           STACK_DIR="$DEPLOY_PATH/cabin-orchestration-platform/infra/production-stack"
           INFRA_DIR="$DEPLOY_PATH/cabin-orchestration-platform/infra"
-          LKG_DIR="$DEPLOY_PATH/.git/cabin-production-stack-lkg"
+          # In a linked worktree (docs/MAINTENANCE.md's "Two checkouts on the
+          # M920q") $DEPLOY_PATH/.git is a pointer FILE, not a directory, so
+          # mkdir under it fails. --git-common-dir is the shared .git both
+          # checkouts use -- in a plain clone it is just $DEPLOY_PATH/.git, so
+          # this is identical to before there, and on the M920q it resolves to
+          # the directory that already holds the last-known-good snapshot.
+          LKG_DIR="$(git -C "$DEPLOY_PATH" rev-parse --path-format=absolute --git-common-dir)/cabin-production-stack-lkg"
           SYNTHETIC_FRIENDLY="codex_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
           SYNTHETIC_DEVICE_ID="z2m-${SYNTHETIC_FRIENDLY}"
           SYNTHETIC_PUBLISHED=false

@@ -124,12 +124,39 @@ fail-closed preflight now (checks for a dirty tree or a checkout that
 isn't `deploy-main` and refuses to proceed instead of guessing) as
 defense-in-depth on top of that.
 
+**Host-only files stay owned by the interactive clone.** Three gitignored
+files exist only on the host — `cabin-orchestration-platform/.env`,
+`infra/.env`, `infra/production-stack/.env` — and Ansible's `secrets`
+role writes them into `repo_path` (`ansible/inventory.ini`, still
+`/home/nate/FaceoftheCabin`). The deploy worktree **symlinks** to those
+files rather than holding copies, so a rotation never leaves the deploy
+path with a stale secret. A fresh worktree has none of them, and deploying
+from it without them starts services with blank variables.
+
+**Two things that are shared, not duplicated**: the production-stack
+last-known-good snapshot lives in the *common* git dir
+(`git rev-parse --git-common-dir`, i.e. `/home/nate/FaceoftheCabin/.git`),
+because in a linked worktree `.git` is a pointer file; and Docker Compose
+project state (named volumes, project name `infra`) is identical from
+either path. The one visible effect of the switch: relative bind mounts of
+tracked config (`init-db`, `prometheus.yml`, grafana provisioning, `docs`)
+now resolve inside the deploy worktree, so the **first** backend deploy
+from it recreates `postgres`, `prometheus` and `cabin-grafana` once (a few
+seconds; all state is in named volumes or `/storage`, and the production
+stack — HA, Zigbee2MQTT, Frigate, Node-RED — shows no config-hash change).
+
 **If you ever need to repoint or rebuild the deploy worktree**:
 
 ```bash
 ssh nate@nates-little-m920q.tailb20f8b.ts.net
 cd /home/nate/FaceoftheCabin
 git worktree add -B deploy-main /home/nate/FaceoftheCabin-deploy origin/main
+for f in cabin-orchestration-platform/.env \
+         cabin-orchestration-platform/infra/.env \
+         cabin-orchestration-platform/infra/production-stack/.env; do
+  ln -s "/home/nate/FaceoftheCabin/$f" "/home/nate/FaceoftheCabin-deploy/$f"
+done
+git -C /home/nate/FaceoftheCabin-deploy status --porcelain --untracked-files=all   # expect no output
 ```
 
 `CABIN_REPO_PATH` (Settings → Secrets and variables → Actions →
