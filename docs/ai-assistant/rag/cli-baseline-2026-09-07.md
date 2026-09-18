@@ -1,5 +1,10 @@
 # M920q CLI baseline — 2026-09-07
 
+Historical setup snapshot below. Authenticated runs subsequently completed; the
+latest operator C1a record is [2/24 question PASS with 72 completed trials](eval-results/2026-09-07-c1a-review.md).
+Do not use this earlier pending status as the current evaluation state. The
+[r2 grading proposal](grading-r2.md) preserves question versus trial denominators.
+
 Status: harness installed and anonymous-denial smoke check passed. Authenticated
 answer trials are pending the operator's explicit choice of session reuse or
 secure session-file input. **0/72 answer trials executed; answer pass rate N/A.**
