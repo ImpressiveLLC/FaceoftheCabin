@@ -253,3 +253,18 @@ Next unblocked work: use the recovered answer set to prepare scoped baseline tri
 ## Proposal validation
 
 This PR is limited to this file, including the corpus coverage contract, revised scores, extended eval proposal and shared-governance target. Review checks: rounded CoD/WSJF arithmetic and allowed scales; operator-directed C2→C1→C3 order and C4 independence; no D13–D16 dependency; source-link targets; four unchanged pending Ratification entries; no implementation/config/production changes. Live status evidence is limited to the two HTTP checks from the initial review recorded above; no new runtime verification was performed for this scope correction. Source inspection and documentation checks do not establish any WSJF item as complete.
+
+## Optional HA Operations Console candidate — 2026-09-18
+
+[Standalone proposal](proposals/ha-operations-console.md): an exception-first, read-mostly presentation option for “How's the cabin?”, preserving See → Think → Act → Recover and upstream ontology, roles and orchestration. This is proposed backlog material, not an approved redesign or production change.
+
+| Candidate | Deliverable | Dependency | Score / ratification |
+|---|---|---|---|
+| HA-UX0 | Journey/state/permission mapping and HA compatibility inventory | None | Pending evidence review / pending |
+| HA-UX1 | Read-only operational console | HA-UX0 | Pending / pending |
+| HA-UX2 | Contextual details, navigation and recovery | HA-UX1 | Pending / pending |
+| HA-UX3 | Separately authorized governed action entry points | HA-UX2 + reviewed action contracts | Pending / pending |
+| HA-UX4 | Reusable configuration/templates and drift checks | HA-UX1 | Pending / pending |
+| HA-UX5 | Responsive/accessibility/comprehension validation | HA-UX1; revalidate later slices | Pending / pending |
+
+Apply the existing CoD/WSJF formula to each slice after mapping and baseline review; no invented numerical scores or changes to C1–C4 ordering. HA-UX0 precedes HA-UX1, and action work does not gate the read-only console. Basic accessibility applies throughout. The proposal contains acceptance criteria, governance boundaries and provenance limitations. The accompanying retro-theme changes are independently reviewable presentation updates, not implementation of HA-UX0–5.
