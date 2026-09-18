@@ -6,9 +6,11 @@ The Pac-Man and 80s Neon presets retain their existing IDs, query-parameter hand
 
 **Crackman:** supplied in the user's `crackman.zip`. `Crackman.otf` is copied unmodified into each independently deployed application's font directory, together with the original `license.txt` (Raymond Larabie, CC0). Front/Back variants are not needed. Both apps load the font from their own origin. Pac-Man headings/display text use Crackman; operational body/control text keeps the existing VT323 tier with a monospace fallback.
 
-**SF Atarian System:** the user's `sf-atarian-system.zip` contains the 1999 version 1.0. Its Readme permits installation on unlimited machines but says the package may not be included as part of another product and requires all fonts and original documentation for free website package distribution. This PR therefore does **not** bundle or convert its binaries. The general 80s font uses a local-only `@font-face` alias for SF Atarian System regular/bold, falling back to Arial/sans-serif when absent. A ZIP in Downloads does not install a font: install the original regular/bold files on each viewing device to enable this face. Repository/web embedding requires separate suitable permission before assets are added.
+**Baumans:** the neon general/body/control font, bundled unmodified from Google Fonts as `Baumans-Regular.ttf` (regular 400). Existing bold styling may use browser-synthesized bold because this family supplies only a regular face.
 
-The supplied font maps `@`, `#` and `*` to Atari logos. The local face excludes these code points so email addresses, identifiers and ordinary punctuation use the readable fallback instead. Missing glyphs also fall back. Monoton remains the neon display tier, while Orbitron is removed from general text. This is a requested aesthetic choice, not a claim that Atarian has been proven more accessible.
+**Oxanium:** the bundled fallback, provided as the original variable TTF with weights 200–800. The general font stack is `Baumans, Oxanium, sans-serif`. Both fonts are served from the app's own origin; neither requires installation on the viewing device or a Google Fonts network request. Monoton remains the existing neon display tier.
+
+Both fonts are licensed under SIL OFL 1.1; their original copyright/license files accompany each deployed copy. Sources are pinned to Google Fonts commit `b346dc3e18bed8b4ca602e00537eb35d76ed5025`: [Baumans](https://github.com/google/fonts/tree/b346dc3e18bed8b4ca602e00537eb35d76ed5025/ofl/baumans), [Oxanium](https://github.com/google/fonts/tree/b346dc3e18bed8b4ca602e00537eb35d76ed5025/ofl/oxanium). No font conversion, renaming or glyph modification was performed.
 
 ## Palette reference
 
@@ -16,6 +18,6 @@ The user's “RETRO 80'S” color-guide image supplies pale yellow `#FFFF66`, mi
 
 ## Packaging and review
 
-Both apps carry the same `fonts/retro-fonts.css` and Crackman bytes because they deploy independently. Vite copies Cabin UI's public assets; Family Hub's explicit Docker allowlist copies its font directory. Keep these copies synchronized when revising assets. No production installation or deployment occurs in this PR.
+Both apps carry the same `fonts/retro-fonts.css` and Crackman/Baumans/Oxanium bytes because they deploy independently. Vite copies Cabin UI's public assets; Family Hub's explicit Docker allowlist copies its font directory. Keep these copies synchronized when revising assets. No production installation or deployment occurs in this PR.
 
 Validate both applications' existing suites and the Cabin UI production build. Check actual font loading, fallback punctuation, theme switching, headings, menus and mobile widths in a browser. Local previews with mocked services are not live-service validation.

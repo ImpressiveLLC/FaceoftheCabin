@@ -267,7 +267,7 @@ export const THEMES = {
       "--warning":      "#ffff66",
       "--danger":       "#ff858a",
       "--font-display": "'Monoton', 'Chakra Petch', sans-serif",
-      "--font-ui":      "'Cabin Atarian', Arial, sans-serif",
+      "--font-ui":      "'Baumans', 'Oxanium', sans-serif",
       "--font-mono":    "ui-monospace, monospace",
       "--radius":       "2px",
       "--radius-sm":    "1px",

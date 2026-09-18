@@ -28,5 +28,5 @@ it("switches the reading tier separately from headings and restores the default 
     expect(root.getAttribute("data-theme")).toBe(id);
     expect(localStorage.getItem("cabin-theme")).toBe(id);
   }
-  expect(document.body.style.fontFamily).not.toMatch(/Crackman|Atarian|VT323/);
+  expect(document.body.style.fontFamily).not.toMatch(/Crackman|Baumans|Oxanium|VT323/);
 });
