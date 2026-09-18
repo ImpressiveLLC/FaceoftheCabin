@@ -113,6 +113,19 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         if (isKbRead) {
             return true;
         }
+        // /api/alerts/** reads (active conditions, backend rule catalog,
+        // currently-suppressed acknowledgments) stay open -- added
+        // 2026-09-18 alongside the new acknowledge/snooze write endpoints
+        // (AlertController), which DO need this gate. Does not reopen the
+        // 2026-09-04 D14 reversal (WebConfig's own comment): that decision
+        // was about reads not revealing occupancy, and none of these three
+        // GETs do. Only POST/DELETE .../acknowledgments require a real
+        // identity -- silencing a safety-relevant alert is a genuine
+        // action, unlike everything else this controller serves.
+        boolean isAlertsRead = path.startsWith(contextPath + "/api/alerts/") && "GET".equalsIgnoreCase(request.getMethod());
+        if (isAlertsRead) {
+            return true;
+        }
         // /api/events/telemetry-history and /api/events/reported-fields stay
         // open -- found 2026-09-04, same day /api/devices and /api/alerts
         // were ungated: these two are numeric sensor-history endpoints

@@ -118,6 +118,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * OpportunitiesController's own doc for why this is an operator surface,
  * not a glanceable one.
  *
+ * /api/alerts — added 2026-09-18, writes only (see GoogleAuthInterceptor's
+ * isAlertsRead GET carve-out), for the new acknowledge/snooze endpoints
+ * (AlertController). This does NOT reopen the 2026-09-04 D14 reversal
+ * above ("/api/devices and /api/alerts... ungated again") -- that decision
+ * was specifically about reads not revealing occupancy, and still holds:
+ * GET /api/alerts/active, .../rules, and .../acknowledgments all stay
+ * open. Silencing a leak/CO/security alert is a different category of
+ * action entirely (an anonymous caller must never be able to suppress a
+ * safety-relevant alert for someone else) -- same "GET stays open, writes
+ * don't" split already established for /api/rules/** above.
+ *
  * cabin.security.googleAuth.enabled defaults to true (secure by default —
  * absence of the property changes nothing). The only reason it exists is
  * local verification: there's no way to obtain a real Google access token
@@ -146,6 +157,6 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/events/**", "/api/access-tokens/**",
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
                 "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session",
-                "/api/presence/**", "/api/security/**", "/api/opportunities/**");
+                "/api/presence/**", "/api/security/**", "/api/opportunities/**", "/api/alerts/**");
     }
 }
