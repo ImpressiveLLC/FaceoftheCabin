@@ -45,10 +45,40 @@ jobs:
       - name: Pull latest
         run: |
           cd "$DEPLOY_PATH"
+
+          # Fail-closed preflight (2026-09-18, extending the guard
+          # deploy-production-stack.yml already added 2026-08-15 after a
+          # real uncommitted vault.yml edit sat in that clone for over a
+          # day -- the reset below is a hard discard and would have
+          # destroyed it with zero warning). Also catches the sibling
+          # failure mode found here the same day: a clean-but-WRONG
+          # branch checked out (no working-tree diff, so a dirty-tree
+          # check alone wouldn't catch it) -- this workflow fired while
+          # DEPLOY_PATH, then still the shared interactive-dev clone, was
+          # checked out on an unrelated branch. No real work was lost
+          # that time only because nothing had actually been committed
+          # there yet (confirmed via reflog after the fact) -- not
+          # something to rely on happening again. DEPLOY_PATH is now a
+          # dedicated, automation-only worktree (docs/MAINTENANCE.md's
+          # "Two checkouts on the M920q") that should always already be
+          # clean and on deploy-main -- if it's ever not, fail loudly
+          # instead of guessing.
+          DIRTY_STATUS=$(git status --porcelain --untracked-files=all)
+          CURRENT_BRANCH=$(git branch --show-current || echo "(detached)")
+          if [ -n "$DIRTY_STATUS" ] || [ "$CURRENT_BRANCH" != "deploy-main" ]; then
+            echo "::error::Deploy worktree at $DEPLOY_PATH isn't cleanly on deploy-main (branch: $CURRENT_BRANCH) -- refusing to fetch/reset/deploy. Investigate on the host, then re-run."
+            if [ -n "$DIRTY_STATUS" ]; then
+              printf '%s\n' "$DIRTY_STATUS" | while IFS= read -r line; do
+                echo "::error::  $line"
+              done
+            fi
+            exit 1
+          fi
+
           git fetch origin main
           git reset --hard origin/main
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       # Found 2026-08-07: docker-compose.m920q.yml holds cabin-backend's
       # real service definition, but it ALSO holds every other m920q
@@ -145,7 +175,7 @@ jobs:
           echo "relevant=false" >> "$GITHUB_OUTPUT"
           echo "Nothing backend-relevant in this push."
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       - name: Run tests (mvn test) -- deploy stops here on failure
         if: steps.guard.outputs.relevant == 'true'
@@ -217,7 +247,7 @@ jobs:
 
           exit $MVN_EXIT
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
           JDK_PATH: ${{ vars.CABIN_BACKEND_JDK_PATH || '/home/nate/.jdks/jdk-21.0.12+8' }}
 
       - name: Build, deploy, health-check, roll back on failure
@@ -293,7 +323,7 @@ jobs:
             exit 1
           fi
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       - name: Prune dangling (untagged) images only
         if: steps.guard.outputs.relevant == 'true'

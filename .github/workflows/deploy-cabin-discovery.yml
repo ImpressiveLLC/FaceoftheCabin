@@ -20,10 +20,28 @@ jobs:
       - name: Pull latest
         run: |
           cd "$DEPLOY_PATH"
+
+          # Fail-closed preflight -- see deploy-cabin-backend.yml's "Pull
+          # latest" step for the full incident history. DEPLOY_PATH is a
+          # dedicated, automation-only worktree (docs/MAINTENANCE.md's
+          # "Two checkouts on the M920q") that should always be clean and
+          # on deploy-main.
+          DIRTY_STATUS=$(git status --porcelain --untracked-files=all)
+          CURRENT_BRANCH=$(git branch --show-current || echo "(detached)")
+          if [ -n "$DIRTY_STATUS" ] || [ "$CURRENT_BRANCH" != "deploy-main" ]; then
+            echo "::error::Deploy worktree at $DEPLOY_PATH isn't cleanly on deploy-main (branch: $CURRENT_BRANCH) -- refusing to fetch/reset/deploy. Investigate on the host, then re-run."
+            if [ -n "$DIRTY_STATUS" ]; then
+              printf '%s\n' "$DIRTY_STATUS" | while IFS= read -r line; do
+                echo "::error::  $line"
+              done
+            fi
+            exit 1
+          fi
+
           git fetch origin main
           git reset --hard origin/main
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       - name: Validate cabin-discovery (pytest)
         run: |
@@ -57,7 +75,7 @@ jobs:
 
           exit $TEST_EXIT
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       - name: Rebuild and restart cabin-discovery
         run: |
@@ -65,7 +83,7 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.m920q.yml build cabin-discovery
           docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-discovery
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       - name: Prune old images
         run: docker image prune -f
