@@ -3680,6 +3680,155 @@ describe("StatusChecksCard — automation alerts (via RulesPanel)", () => {
 
 });
 
+// 2026-09-19 (user report, annotated screenshot): the same alert appeared as
+// separate rows -- one condition is one row, its repeats are history.
+describe("mergeStatusCheckItems — one row per condition", () => {
+  const deviceAlert = (deviceId, overrides = {}) => ({
+    alertId: `device:${deviceId}:missed-checkin`, sourceDeviceId: deviceId, location: "cabin",
+    severity: "WARN", condition: "MISSED_CHECKIN", title: "main_water_valve missed its check-in window",
+    detail: "No report arrived during the full grace window.", evidenceAt: "2026-09-18T05:22:00Z",
+    ...overrides,
+  });
+  const automationEvent = (eventId, timestamp, sourceDeviceId = "psi_mech_room") => ({
+    eventId, sourceDeviceId, eventType: "AUTOMATION_ALERT", severity: "WARN", timestamp,
+    payload: { ruleId: "WATER_PRESSURE_LOW", see: "Pressure dropped" },
+  });
+
+  it("collapses two device records with the same name/location/condition into one row", () => {
+    const items = mergeStatusCheckItems(
+      [deviceAlert("z2m-main_water_valve"), deviceAlert("ha-main_water_valve")], "cabin", []);
+    expect(items).toHaveLength(1);
+    expect(items[0].alertKeys.sort()).toEqual([
+      "device:ha-main_water_valve:missed-checkin", "device:z2m-main_water_valve:missed-checkin"]);
+  });
+
+  it("shows an identical instant once, not once per duplicate record", () => {
+    const [item] = mergeStatusCheckItems(
+      [deviceAlert("a"), deviceAlert("b")], "cabin", []);
+    expect(item.occurrences).toEqual(["2026-09-18T05:22:00Z"]);
+  });
+
+  it("keeps different conditions and different names as separate rows", () => {
+    const items = mergeStatusCheckItems([
+      deviceAlert("a"),
+      deviceAlert("b", { title: "Kidde detector missed its check-in window" }),
+      deviceAlert("c", { alertId: "device:c:alarm", condition: "DEVICE_ALARM", severity: "CRITICAL" }),
+    ], "cabin", []);
+    expect(items).toHaveLength(3);
+  });
+
+  it("collapses repeated firings of one automation rule on one device, newest as the representative", () => {
+    const items = mergeStatusCheckItems([], "cabin", [
+      automationEvent("old", "2026-09-18T01:00:00Z"),
+      automationEvent("new", "2026-09-18T03:00:00Z"),
+      automationEvent("mid", "2026-09-18T02:00:00Z"),
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0].raw.eventId).toBe("new");
+    expect(items[0].occurrences).toEqual(["2026-09-18T03:00:00Z", "2026-09-18T02:00:00Z", "2026-09-18T01:00:00Z"]);
+  });
+
+  it("keeps the same rule firing on two different devices as two rows", () => {
+    const items = mergeStatusCheckItems([], "cabin", [
+      automationEvent("e1", "2026-09-18T01:00:00Z", "psi_mech_room"),
+      automationEvent("e2", "2026-09-18T01:00:00Z", "psi_other_room"),
+    ]);
+    expect(items).toHaveLength(2);
+  });
+
+  it("gives a group a stable id that doesn't change when a newer occurrence arrives", () => {
+    const before = mergeStatusCheckItems([], "cabin", [automationEvent("e1", "2026-09-18T01:00:00Z")]);
+    const after = mergeStatusCheckItems([], "cabin", [
+      automationEvent("e1", "2026-09-18T01:00:00Z"), automationEvent("e2", "2026-09-18T02:00:00Z")]);
+    expect(after[0].id).toBe(before[0].id);
+  });
+
+  it("acknowledging every member's key removes the whole group", () => {
+    const items = mergeStatusCheckItems(
+      [deviceAlert("a"), deviceAlert("b")], "cabin", [],
+      [{ alertKey: "device:a:missed-checkin" }, { alertKey: "device:b:missed-checkin" }]);
+    expect(items).toHaveLength(0);
+  });
+});
+
+describe("StatusChecksCard — duplicates render as one row with history", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
+
+  function renderDuplicates(extra = {}) {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const dup = (deviceId, evidenceAt) => ({
+      alertId: `device:${deviceId}:missed-checkin`, sourceDeviceId: deviceId, location: "cabin",
+      severity: "WARN", condition: "MISSED_CHECKIN", title: "main_water_valve missed its check-in window",
+      detail: "No report arrived.", evidenceAt,
+    });
+    return render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"],
+        activeAlerts: [dup("z2m-main_water_valve", "2026-09-18T05:22:00Z"), dup("ha-main_water_valve", "2026-09-18T05:22:00Z")],
+        automationAlerts: [
+          { eventId: "e1", sourceDeviceId: "psi", eventType: "AUTOMATION_ALERT", severity: "WARN",
+            timestamp: "2026-09-18T01:00:00Z", payload: { ruleId: "FREEZE_RISK", see: "Freeze risk" } },
+          { eventId: "e2", sourceDeviceId: "psi", eventType: "AUTOMATION_ALERT", severity: "WARN",
+            timestamp: "2026-09-18T02:00:00Z", payload: { ruleId: "FREEZE_RISK", see: "Freeze risk" } },
+        ],
+        ...extra,
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+  }
+
+  it("shows each alert once, however many records or events sit behind it", () => {
+    renderDuplicates();
+    expect(screen.getAllByText("main_water_valve missed its check-in window")).toHaveLength(1);
+    expect(screen.getAllByText("Freeze risk")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "See more" })).toHaveLength(2);
+  });
+
+  it("expands exactly the row that was clicked, and lists every distinct occurrence under it", () => {
+    renderDuplicates();
+    const freezeRow = screen.getByText("Freeze risk").closest(".active-condition");
+    fireEvent.click(within(freezeRow).getByRole("button", { name: "See more" }));
+
+    expect(screen.getAllByRole("button", { name: "See less" })).toHaveLength(1);
+    expect(within(freezeRow).getByText("Seen 2 times")).toBeTruthy();
+    expect(within(freezeRow).getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("doesn't show an occurrence list when there's only one occurrence", () => {
+    renderDuplicates();
+    const valveRow = screen.getByText("main_water_valve missed its check-in window").closest(".active-condition");
+    fireEvent.click(within(valveRow).getByRole("button", { name: "See more" }));
+    expect(within(valveRow).queryByText(/Seen \d+ times/)).toBeNull();
+  });
+
+  it("Ignore for now acknowledges every record behind the row, so no twin reappears", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const authedFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"],
+        activeAlerts: ["a", "b"].map(id => ({
+          alertId: `device:${id}:missed-checkin`, sourceDeviceId: id, location: "cabin", severity: "WARN",
+          condition: "MISSED_CHECKIN", title: "Twin missed its check-in window", detail: "x",
+          evidenceAt: "2026-09-18T05:22:00Z" })),
+        alertAcknowledgments: [], refreshAlertAcknowledgments: vi.fn(),
+      }}>
+        <RulesPanel auth={{ authedFetch }} />
+      </AppContext.Provider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ignore for now" }));
+
+    await waitFor(() => {
+      const keys = authedFetch.mock.calls
+        .filter(([url]) => url.includes("/api/alerts/acknowledgments"))
+        .map(([, options]) => JSON.parse(options.body).alertKey);
+      expect(keys.sort()).toEqual(["device:a:missed-checkin", "device:b:missed-checkin"]);
+    });
+  });
+});
+
 describe("mergeStatusCheckItems — acknowledgment filtering", () => {
   it("filters out an item whose alertKey has an active acknowledgment", () => {
     const items = mergeStatusCheckItems(
