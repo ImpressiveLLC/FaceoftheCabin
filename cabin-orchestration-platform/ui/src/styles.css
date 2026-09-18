@@ -461,6 +461,7 @@ body {
   overflow: hidden;
 }
 .active-condition-actions { display: flex; align-items: center; gap: 12px; margin-top: 3px; }
+.active-condition-actions-expanded { margin-top: 10px; }
 .active-condition-link {
   display: inline-flex; align-items: center; gap: 1px;
   background: none; border: none; color: #58a6ff; font-size: 11px; cursor: pointer; padding: 0;

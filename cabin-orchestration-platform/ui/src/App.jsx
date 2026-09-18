@@ -5889,29 +5889,40 @@ function StatusChecksCard() {
                   <span>{item.meta}</span>
                 </div>
                 <p className={expanded ? "" : "active-condition-clamp"}>{item.detail}</p>
+                {/* 2026-09-18 (user directive): "Open device" no longer sits
+                    next to See more at the collapsed level -- a person
+                    should always go through See more (the real See/Think/
+                    Act detail) before a further, deliberate choice to leave
+                    the alert and drill into device config. Collapsed-row
+                    actions are alert-scoped only; device-scoped actions
+                    live inside the expanded detail below. */}
                 <div className="active-condition-actions">
                   <button type="button" className="active-condition-link" onClick={() => toggleExpanded(item.id)}>
                     {expanded ? "See less" : "See more"}
                   </button>
-                  {item.sourceDeviceId && (
-                    <button type="button" className="active-condition-link" onClick={() => openDevice(item.sourceDeviceId)}>
-                      Open device <ChevronRight size={11}/>
-                    </button>
-                  )}
                 </div>
                 {expanded && (
-                  <div className="automation-alert-flow active-condition-flow">
-                    {steps.map((step, i) => (
-                      <React.Fragment key={step.label}>
-                        {i > 0 && <span className="automation-alert-flow-arrow">→</span>}
-                        <div className="automation-alert-flow-step">
-                          <span className="automation-alert-flow-num">{String(i + 1).padStart(2, "0")} · {step.label}</span>
-                          <strong>{step.headline}</strong>
-                          {step.detail && <span className="config-hint">{step.detail}</span>}
-                        </div>
-                      </React.Fragment>
-                    ))}
-                  </div>
+                  <>
+                    <div className="automation-alert-flow active-condition-flow">
+                      {steps.map((step, i) => (
+                        <React.Fragment key={step.label}>
+                          {i > 0 && <span className="automation-alert-flow-arrow">→</span>}
+                          <div className="automation-alert-flow-step">
+                            <span className="automation-alert-flow-num">{String(i + 1).padStart(2, "0")} · {step.label}</span>
+                            <strong>{step.headline}</strong>
+                            {step.detail && <span className="config-hint">{step.detail}</span>}
+                          </div>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                    {item.sourceDeviceId && (
+                      <div className="active-condition-actions active-condition-actions-expanded">
+                        <button type="button" className="active-condition-link" onClick={() => openDevice(item.sourceDeviceId)}>
+                          Open device <ChevronRight size={11}/>
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
