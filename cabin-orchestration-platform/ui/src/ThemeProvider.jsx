@@ -256,18 +256,19 @@ export const THEMES = {
       "--bg-tertiary":  "#20114a",
       "--surface":      "#170a35",
       "--border":       "#4a2270",
-      "--border-focus": "#ff2dd4",
+      "--border-focus": "#add8e6",
       "--text":         "#f6f0ff",
       "--text-muted":   "#b9a0d9",
       "--text-dim":     "#7a5a9e",
       "--accent":       "#ff2dd4",
       "--accent-hover": "#ff5fe0",
-      "--accent-2":     "#00fff0",
-      "--success":      "#00fff0",
-      "--warning":      "#ff6b35",
-      "--danger":       "#ffe600",
+      "--accent-2":     "#add8e6",
+      "--success":      "#7fffd4",
+      "--warning":      "#ffff66",
+      "--danger":       "#ff858a",
       "--font-display": "'Monoton', 'Chakra Petch', sans-serif",
-      "--font-mono":    "'Orbitron', 'Chakra Petch', sans-serif",
+      "--font-ui":      "'Cabin Atarian', Arial, sans-serif",
+      "--font-mono":    "ui-monospace, monospace",
       "--radius":       "2px",
       "--radius-sm":    "1px",
       "--glow-neon":    "0 0 8px #ff2dd4, 0 0 24px #ff2dd440",
@@ -292,7 +293,8 @@ export const THEMES = {
       "--success":      "#00ffde",
       "--warning":      "#ffaa00",
       "--danger":       "#ff0000",
-      "--font-display": "'Bungee', 'Chakra Petch', sans-serif",
+      "--font-display": "'Crackman', system-ui, sans-serif",
+      "--font-ui":      "'VT323', monospace",
       "--font-mono":    "'VT323', 'Share Tech Mono', monospace",
       "--radius":       "16px",
       "--radius-sm":    "8px",
@@ -397,7 +399,9 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     const root = document.documentElement;
     Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
-    document.body.style.fontFamily = theme.vars["--font-display"];
+    const uiFont = theme.vars["--font-ui"] || theme.vars["--font-display"];
+    root.style.setProperty("--font-ui", uiFont);
+    document.body.style.fontFamily = uiFont;
     // Stamp data-theme so CSS selectors can apply theme-specific effects
     root.setAttribute("data-theme", themeId);
     localStorage.setItem(STORAGE_KEY, themeId);
@@ -414,11 +418,11 @@ export function ThemeProvider({ children }) {
       },
       neon80s: {
         id: "cabin-font-neon80s",
-        href: "https://fonts.googleapis.com/css2?family=Monoton&family=Orbitron:wght@400;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Monoton&display=swap",
       },
       pacman: {
         id: "cabin-font-pacman",
-        href: "https://fonts.googleapis.com/css2?family=Bungee&family=VT323&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=VT323&display=swap",
       },
       asteroidcity: {
         id: "cabin-font-asteroid",

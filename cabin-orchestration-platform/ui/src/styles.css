@@ -31,7 +31,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-ui, var(--font-display));
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
@@ -959,7 +959,7 @@ body {
   border: none;
   color: var(--text-muted);
   font-size: 12px;
-  font-family: var(--font-display);
+  font-family: var(--font-ui, var(--font-display));
   cursor: pointer;
   outline: none;
   appearance: none;
@@ -1339,7 +1339,7 @@ body {
   padding: 7px 10px; border-radius: var(--radius-sm);
   cursor: pointer; font-size: 13px; text-align: left;
   transition: background 0.12s, color 0.12s;
-  font-family: var(--font-display);
+  font-family: var(--font-ui, var(--font-display));
 }
 .theme-option:hover { background: var(--bg-tertiary); color: var(--text); }
 .theme-option-active { color: var(--text) !important; background: var(--bg-tertiary); }
@@ -1673,7 +1673,7 @@ body {
   --control-text:          var(--text);
 }
 
-button, select, input, textarea { font-family: var(--font-display); }
+button, select, input, textarea { font-family: var(--font-ui, var(--font-display)); }
 .platform-name { color: var(--text); }
 .toolbar-right { color: var(--text-muted); }
 .main-toolbar { border-bottom: 2px solid var(--border); }
@@ -2131,3 +2131,12 @@ select option { background: var(--bg-secondary); color: var(--text); }
   padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border);
   background: var(--bg-secondary); margin-bottom: 8px; font-size: 13px;
 }
+
+/* Retro display faces belong on headings; operational text stays readable. */
+[data-theme="pacman"] :is(h1, h2, h3, .platform-name),
+[data-theme="neon80s"] :is(h1, h2, h3, .platform-name) {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+[data-theme="neon80s"] .panel-header-bar { border-bottom: 1px solid var(--accent-2); padding-bottom: 12px; }
+[data-theme="neon80s"] .platform-name { color: var(--accent-2); }

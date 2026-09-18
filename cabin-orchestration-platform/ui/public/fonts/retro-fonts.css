@@ -1,0 +1,26 @@
+/* Crackman: user-provided, unmodified CC0 font. See crackman/license.txt.
+   Atarian: local installation only; no ShyFonts font binaries are distributed.
+   Exclude @, # and * because the supplied 1999 font substitutes Atari logos. */
+@font-face {
+  font-family: 'Crackman';
+  src: url('./crackman/Crackman.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Cabin Atarian';
+  src: local('SF Atarian System');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0020-0022, U+0024-0029, U+002B-003F, U+0041-007E, U+00A0-10FFFF;
+}
+@font-face {
+  font-family: 'Cabin Atarian';
+  src: local('SF Atarian System Bold');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0020-0022, U+0024-0029, U+002B-003F, U+0041-007E, U+00A0-10FFFF;
+}
