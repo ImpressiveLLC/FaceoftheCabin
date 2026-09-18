@@ -3337,6 +3337,32 @@ describe("current active alert projection", () => {
 
   // The See -> Think -> Act northstar's "Act" step: a real path to the
   // device that's actually causing the condition, not just more text.
+  // 2026-09-18 (user directive): Open device moved out of the collapsed
+  // row -- a person must go through See more (the real See/Think/Act
+  // detail) before the further, deliberate choice to leave the alert and
+  // drill into device config, rather than having a device-scoped action
+  // sitting right next to an alert-scoped one at the collapsed level.
+  it("Open device is not offered until the alert is expanded via See more", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{
+          alertId: "a1", sourceDeviceId: "leak_mech_room", location: "cabin", severity: "WARN",
+          condition: "MISSED_CHECKIN", title: "Mech Room Leak missed its check-in window",
+          detail: "No report arrived during the full grace window.",
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+
+    expect(screen.queryByRole("button", { name: /open device/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+    expect(screen.getByRole("button", { name: /open device/i })).toBeTruthy();
+  });
+
   it("Open device sends the alert's real sourceDeviceId to Device Manager instead of leaving the person to re-find it", async () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     const setActivePanel = vi.fn();
@@ -3356,12 +3382,13 @@ describe("current active alert projection", () => {
       </AppContext.Provider>
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
     fireEvent.click(screen.getByRole("button", { name: /open device/i }));
     expect(setPendingDeviceFocus).toHaveBeenCalledWith("leak_mech_room");
     expect(setActivePanel).toHaveBeenCalledWith("DEVICE_MANAGER");
   });
 
-  it("doesn't offer Open device when an alert has no sourceDeviceId", async () => {
+  it("doesn't offer Open device when an alert has no sourceDeviceId, even expanded", async () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     render(
       <AppContext.Provider value={{
@@ -3377,6 +3404,7 @@ describe("current active alert projection", () => {
       </AppContext.Provider>
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
     expect(screen.queryByRole("button", { name: /open device/i })).toBeNull();
   });
 
