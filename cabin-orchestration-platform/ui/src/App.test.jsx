@@ -3635,9 +3635,27 @@ describe("StatusChecksCard — automation alerts (via RulesPanel)", () => {
 
     // The row's meta line (title-row sibling <span>) carries the
     // humanized rule category now, replacing the old dedicated
-    // .automation-alert-category badge.
+    // .automation-alert-category badge. Date+time lives in its own
+    // sibling span (see "shows a dtm for every entry" below), not baked
+    // into this one anymore.
     const row = screen.getByText("Water leak detected");
-    expect(row.closest(".active-condition-title-row").querySelector("span").textContent).toMatch(/^Workflow ·/);
+    expect(row.closest(".active-condition-title-row").querySelector("span").textContent).toBe("Workflow");
+  });
+
+  // 2026-09-19 (user directive): "show dtm for each entry -- since historic
+  // context is the purpose of showing these entries, we need that."
+  it("shows a dtm (date+time, not just time-of-day) for every entry", () => {
+    const ts = new Date("2026-09-15T15:45:00Z").toISOString();
+    renderWith("cabin", [{
+      eventId: "e1", sourceDeviceId: "psi_mech_room", eventType: "AUTOMATION_ALERT",
+      severity: "WARN", timestamp: ts,
+      payload: { ruleId: "WATER_PRESSURE_LOW", see: "Pressure dropped" },
+    }]);
+
+    const row = screen.getByText("Pressure dropped");
+    const timestampSpan = row.closest(".active-condition-title-row").querySelector(".active-condition-timestamp");
+    expect(timestampSpan.textContent).toContain("Sep");
+    expect(timestampSpan.textContent).toContain("15");
   });
 
   // useAutomationAlerts' own real fetch (URL shape, cabin/home/both
@@ -3781,6 +3799,68 @@ describe("StatusChecksCard — ignore/snooze actions", () => {
     // equality against a second `Date.now()` call, which would be flaky.
     expect(snoozedUntilMs).toBeGreaterThan(before + 23 * 60 * 60 * 1000);
     expect(snoozedUntilMs).toBeLessThan(before + 25 * 60 * 60 * 1000);
+  });
+});
+
+// 2026-09-19 (user directive): "for each alert, only one expansion path
+// (drill-down path) can be open in the box" -- and clicking elsewhere in
+// the UI while one is open retracts it back to the plain list rather than
+// leaving a stale expanded row once attention has moved elsewhere.
+describe("StatusChecksCard — single-open drill-down", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  function renderTwoAlerts() {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    return render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"],
+        activeAlerts: [
+          { alertId: "a1", location: "cabin", severity: "WARN", condition: "MISSED_CHECKIN",
+            title: "First alert", detail: "First detail" },
+          { alertId: "a2", location: "cabin", severity: "WARN", condition: "MISSED_CHECKIN",
+            title: "Second alert", detail: "Second detail" },
+        ],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+  }
+
+  it("opening a second entry's See more closes whichever one was already open", () => {
+    renderTwoAlerts();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "See more" })[0]);
+    expect(screen.getAllByRole("button", { name: "See less" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "See more" })).toHaveLength(1);
+
+    // The one remaining "See more" belongs to the second entry -- opening
+    // it must close the first entry's drill-down, never leave both open.
+    fireEvent.click(screen.getAllByRole("button", { name: "See more" })[0]);
+    expect(screen.getAllByRole("button", { name: "See less" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "See more" })).toHaveLength(1);
+  });
+
+  it("clicking outside the box collapses whichever drill-down is open", () => {
+    renderTwoAlerts();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "See more" })[0]);
+    expect(screen.getByRole("button", { name: "See less" })).toBeTruthy();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole("button", { name: "See less" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "See more" })).toHaveLength(2);
+  });
+
+  it("a click inside the box (on the other entry's collapsed row) does not count as outside", () => {
+    renderTwoAlerts();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "See more" })[0]);
+    fireEvent.mouseDown(screen.getByText("Second alert"));
+
+    // Still expanded -- a click on unrelated content inside the same box
+    // isn't "elsewhere in the UI".
+    expect(screen.getByRole("button", { name: "See less" })).toBeTruthy();
   });
 });
 

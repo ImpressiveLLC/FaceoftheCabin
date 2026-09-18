@@ -450,6 +450,10 @@ body {
 .active-condition-title-row span {
   flex-shrink: 0; color: var(--text-dim); font-size: 9px; text-transform: capitalize; white-space: nowrap;
 }
+/* 2026-09-19 (user directive): a dtm on every entry, since historic context
+   is the whole point of this list -- pushed to the far right so it reads as
+   a timestamp column, distinct from the semantic meta label beside it. */
+.active-condition-timestamp { margin-left: auto; text-transform: none; }
 .active-condition p {
   margin: 1px 0 0; color: var(--text-dim); font-size: 11px; line-height: 1.3;
 }

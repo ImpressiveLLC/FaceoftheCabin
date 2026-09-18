@@ -5835,9 +5835,24 @@ function normalizeAutomationAlert(alert) {
     severity: alert.severity,
     title: see || humanizeRuleId(ruleId), detail: think || "",
     sourceDeviceId: alert.sourceDeviceId,
-    meta: `${humanizeRuleId(ruleId)} · ${new Date(alert.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`,
+    // Bare rule category now -- the row's own timestamp element (see
+    // formatAlertTimestamp) carries date+time uniformly for every item,
+    // device- or automation-sourced, so it doesn't need to be baked in here.
+    meta: humanizeRuleId(ruleId),
     timestamp: alert.timestamp, raw: alert,
   };
+}
+
+// 2026-09-19 (user directive): "show dtm for each entry -- since historic
+// context is the purpose of showing these entries, we need that." Full
+// date+time (not just time-of-day) since a status check can be from
+// yesterday or last week, not just earlier today -- a bare "3:45 PM" would
+// be ambiguous about which day.
+function formatAlertTimestamp(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 // 2026-09-18: shared by AlertControls (the nav banner) and StatusChecksCard
@@ -5891,14 +5906,34 @@ function StatusChecksCard({ auth }) {
     refreshAlertAcknowledgments, setActivePanel, setPendingDeviceFocus,
   } = useApp();
   const { isCollapsed, toggle } = useCollapsedSections("collapsed.statusChecks");
-  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  // 2026-09-19 (user directive): "only one expansion path can be open in
+  // the box" -- a single id, not a Set, so opening one entry's See more
+  // always closes whichever other one was open, instead of letting the
+  // box grow an arbitrary number of simultaneously-expanded rows.
+  const [expandedId, setExpandedId] = useState(null);
   const [snoozeOpenFor, setSnoozeOpenFor] = useState(null);
   const [ackError, setAckError] = useState(null);
-  const toggleExpanded = (id) => setExpandedIds(prev => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
+  const containerRef = useRef(null);
+  const toggleExpanded = (id) => {
+    setExpandedId(prev => (prev === id ? null : id));
+    setSnoozeOpenFor(null);
+  };
+  // 2026-09-19 (user directive): clicking anywhere outside the box while a
+  // drill-down is open retracts it back to the plain list -- "the original
+  // context of the alerting context/menu box" -- rather than leaving a
+  // stale expanded row behind once attention has moved elsewhere. Only
+  // attached while something is actually open.
+  useEffect(() => {
+    if (expandedId === null) return;
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setExpandedId(null);
+        setSnoozeOpenFor(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [expandedId]);
   const openDevice = (deviceId) => {
     setPendingDeviceFocus?.(deviceId);
     setActivePanel("DEVICE_MANAGER");
@@ -5951,7 +5986,7 @@ function StatusChecksCard({ auth }) {
   const open = hasCritical || !isCollapsed("main");
 
   return (
-    <section className="active-conditions" aria-label="Status checks — device health and automation alerts">
+    <section className="active-conditions" aria-label="Status checks — device health and automation alerts" ref={containerRef}>
       <div className="active-conditions-header">
         <strong>Status Checks</strong>
         <span className="section-header-actions">
@@ -5970,7 +6005,7 @@ function StatusChecksCard({ auth }) {
       {open && (
       <div className="active-conditions-list">
         {items.map(item => {
-          const expanded = expandedIds.has(item.id);
+          const expanded = expandedId === item.id;
           const steps = item.kind === "automation" ? automationAlertSteps(item.raw) : deviceConditionSteps(item);
           return (
             <div className={`active-condition active-condition-${(item.severity || "warn").toLowerCase()}`} key={item.id}>
@@ -5979,6 +6014,7 @@ function StatusChecksCard({ auth }) {
                 <div className="active-condition-title-row">
                   <strong className={expanded ? "" : "active-condition-clamp"}>{item.title}</strong>
                   <span>{item.meta}</span>
+                  <span className="active-condition-timestamp">{formatAlertTimestamp(item.timestamp)}</span>
                 </div>
                 <p className={expanded ? "" : "active-condition-clamp"}>{item.detail}</p>
                 {/* 2026-09-18 (user directive): "Open device" no longer sits
