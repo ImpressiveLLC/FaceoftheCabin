@@ -64,30 +64,27 @@ seeded (currently disabled) device inventory in `DeviceRegistry` — see
 
 ## Deployment
 
-### Automated (family-hub, cabin-ui)
+### Automated (family-hub, cabin-ui, cabin-backend, cabin-discovery, production-stack)
 
-A self-hosted GitHub Actions runner on the M920q polls for pushes to
-`main` and auto-deploys `family-hub` and `cabin-ui` when their paths
-change (`.github/workflows/deploy-family-hub.yml`). No inbound ports, no
-secrets stored in GitHub — the runner connects outbound over Tailscale.
-Setup/recovery instructions: [`../ansible/README.md`](../ansible/README.md).
+**This whole section used to say cabin-backend required a manual SSH
+deploy. That's stale — corrected 2026-09-18.** A self-hosted GitHub
+Actions runner on the M920q polls for pushes to `main` and auto-deploys
+every one of these when their paths change:
 
-### Manual (cabin-backend) — **do this every time you change the backend**
+| Service | Workflow | Contract |
+|---|---|---|
+| `family-hub`, `cabin-ui` | `deploy-family-hub.yml` | QA-validated, no explicit health gate |
+| `cabin-backend` | `deploy-cabin-backend.yml` | `mvn test` gates the build; new image health-checked against `/actuator/health` before promotion; auto-rolls back to the last-known-good image on failure |
+| `cabin-discovery` | `deploy-cabin-discovery.yml` | pytest-gated, same QA pattern as family-hub |
+| production-stack (Mosquitto, Frigate, Z2M, HA, Node-RED, ...) | `deploy-production-stack.yml` | Validates, smoke-tests over real MQTT, auto-rolls back the compose file + images on failure |
 
-`cabin-backend` is **deliberately excluded** from the automated workflow
-— it's stateful/sensitive enough to warrant a considered rollout, not a
-blanket rebuild on every push. After merging a backend change:
+No inbound ports, no secrets stored in GitHub — every runner connects
+outbound over Tailscale. Setup/recovery instructions:
+[`../ansible/README.md`](../ansible/README.md). To force a redeploy
+without a code change, use each workflow's `workflow_dispatch` button in
+the Actions tab.
 
-```bash
-ssh nate@nates-little-m920q.tailb20f8b.ts.net
-cd /home/nate/FaceoftheCabin
-git pull
-cd cabin-orchestration-platform/infra
-docker compose -f docker-compose.yml -f docker-compose.m920q.yml build cabin-backend
-docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-backend
-```
-
-**Always verify after deploying**, don't trust a green build alone:
+**Always verify after a deploy**, don't trust a green run alone:
 
 ```bash
 curl -s http://localhost:8090/actuator/health   # expect {"status":"UP",...}
@@ -97,6 +94,84 @@ A real, repeated lesson from this project: a passing build and a healthy
 container status are not proof the *feature* works. Verify against the
 actual live endpoint/response, not just process status — see "Known
 Issues" below for cases where everything *looked* fine and wasn't.
+
+### Two checkouts on the M920q
+
+There are **two, deliberately separate** clones of this repo on the
+M920q, sharing one Git object store as linked worktrees (`git worktree
+list` shows both). Neither is subordinate to the other — they exist for
+genuinely different purposes and both need to be kept working:
+
+| Path | Purpose | Who touches it |
+|---|---|---|
+| `/home/nate/FaceoftheCabin` | Interactive — real dev work, one-off config/vault edits, agent sessions checking out feature branches | Humans, Claude Code sessions |
+| `/home/nate/FaceoftheCabin-deploy` | Automation-only — every workflow in the table above reads its path from the `CABIN_REPO_PATH` repo variable, which points here | The self-hosted runner only, never by hand |
+
+**Why**: every workflow above does `git fetch origin main && git reset
+--hard origin/main` in `$DEPLOY_PATH` on every relevant push — a hard
+discard of whatever was there. Found live, 2026-09-18: a merge to `main`
+fired `deploy-cabin-backend.yml` while `CABIN_REPO_PATH` still pointed at
+the interactive clone, which happened to be checked out on an unrelated
+feature branch at the time. No work was actually lost (confirmed via
+`git reflog` after the fact — the branch had no local-only commits), but
+it was a real near-miss, and a near-identical incident had already
+happened once before and cost a real uncommitted `vault.yml` edit
+(2026-08-15, see `deploy-production-stack.yml`'s own preflight comment).
+Splitting the two uses onto separate worktrees removes the whole risk
+class structurally, rather than relying on everyone remembering not to
+work in the deploy path. Every deploy workflow also carries its own
+fail-closed preflight now (checks for a dirty tree or a checkout that
+isn't `deploy-main` and refuses to proceed instead of guessing) as
+defense-in-depth on top of that.
+
+**Host-only files stay owned by the interactive clone.** Three gitignored
+files exist only on the host — `cabin-orchestration-platform/.env`,
+`infra/.env`, `infra/production-stack/.env` — and Ansible's `secrets`
+role writes them into `repo_path` (`ansible/inventory.ini`, still
+`/home/nate/FaceoftheCabin`). The deploy worktree **symlinks** to those
+files rather than holding copies, so a rotation never leaves the deploy
+path with a stale secret. A fresh worktree has none of them, and deploying
+from it without them starts services with blank variables.
+
+**Two things that are shared, not duplicated**: the production-stack
+last-known-good snapshot lives in the *common* git dir
+(`git rev-parse --git-common-dir`, i.e. `/home/nate/FaceoftheCabin/.git`),
+because in a linked worktree `.git` is a pointer file; and Docker Compose
+project state (named volumes, project name `infra`) is identical from
+either path. The one visible effect of the switch: relative bind mounts of
+tracked config (`init-db`, `prometheus.yml`, grafana provisioning, `docs`)
+now resolve inside the deploy worktree. Compose recreates a container
+only when something brings it up, so this lands per service, not all at
+once: `cabin-backend` and `postgres` were recreated by the first deploy
+from the new path (observed 2026-09-18 18:48Z, when the PR #83 UI deploy
+ran against it — `cabin-ui` depends on `cabin-backend`, which depends on
+`postgres`; a few seconds, all state is in named volumes or `/storage`).
+`prometheus` and `cabin-grafana` still run from bind paths inside the
+*interactive* clone until they are next recreated — until then they read
+whatever branch that clone has checked out, so recreate them
+(`docker compose ... up -d prometheus cabin-grafana`) rather than leaving
+that coupling. The production stack — HA, Zigbee2MQTT, Frigate, Node-RED —
+shows no config-hash change.
+
+**If you ever need to repoint or rebuild the deploy worktree**:
+
+```bash
+ssh nate@nates-little-m920q.tailb20f8b.ts.net
+cd /home/nate/FaceoftheCabin
+git worktree add -B deploy-main /home/nate/FaceoftheCabin-deploy origin/main
+for f in cabin-orchestration-platform/.env \
+         cabin-orchestration-platform/infra/.env \
+         cabin-orchestration-platform/infra/production-stack/.env; do
+  ln -s "/home/nate/FaceoftheCabin/$f" "/home/nate/FaceoftheCabin-deploy/$f"
+done
+git -C /home/nate/FaceoftheCabin-deploy status --porcelain --untracked-files=all   # expect no output
+```
+
+`CABIN_REPO_PATH` (Settings → Secrets and variables → Actions →
+Variables on the GitHub repo) is the actual source of truth for every
+workflow's `$DEPLOY_PATH`; the `/home/nate/FaceoftheCabin-deploy`
+literal baked into each workflow file is only the fallback if that
+variable is ever unset.
 
 ---
 

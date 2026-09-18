@@ -27,6 +27,24 @@ jobs:
       - name: Pull latest
         run: |
           cd "$DEPLOY_PATH"
+
+          # Fail-closed preflight -- see deploy-cabin-backend.yml's "Pull
+          # latest" step for the full incident history. DEPLOY_PATH is a
+          # dedicated, automation-only worktree (docs/MAINTENANCE.md's
+          # "Two checkouts on the M920q") that should always be clean and
+          # on deploy-main.
+          DIRTY_STATUS=$(git status --porcelain --untracked-files=all)
+          CURRENT_BRANCH=$(git branch --show-current || echo "(detached)")
+          if [ -n "$DIRTY_STATUS" ] || [ "$CURRENT_BRANCH" != "deploy-main" ]; then
+            echo "::error::Deploy worktree at $DEPLOY_PATH isn't cleanly on deploy-main (branch: $CURRENT_BRANCH) -- refusing to fetch/reset/deploy. Investigate on the host, then re-run."
+            if [ -n "$DIRTY_STATUS" ]; then
+              printf '%s\n' "$DIRTY_STATUS" | while IFS= read -r line; do
+                echo "::error::  $line"
+              done
+            fi
+            exit 1
+          fi
+
           git fetch origin main
           git reset --hard origin/main
         env:
@@ -36,7 +54,7 @@ jobs:
           # variable (Settings -> Secrets and variables -> Actions ->
           # Variables) is the actual source of truth, this is only the
           # fallback if that's ever unset.
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       - name: Validate Family Hub desktop and mobile journeys
         run: |
@@ -84,7 +102,7 @@ jobs:
 
           exit $TEST_EXIT
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       # Added 2026-08-07 (Phase 7) alongside cabin-ui's first-ever test
       # suite (src/App.test.jsx, src/ThemeProvider.test.jsx) — same
@@ -147,7 +165,7 @@ jobs:
 
           exit $TEST_EXIT
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       - name: Rebuild and restart family-hub + cabin-ui
         run: |
@@ -164,9 +182,15 @@ jobs:
           # warrant their own considered rollout, not a blanket rebuild
           # every time anything under cabin-orchestration-platform/** changes.
           docker compose -f docker-compose.yml -f docker-compose.m920q.yml build family-hub cabin-ui
-          docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d family-hub cabin-ui
+          # --no-deps: cabin-ui depends_on cabin-backend, and without this
+          # `up` also converges (recreates, if its config drifted) that
+          # dependency -- an unplanned backend restart from a UI-only deploy,
+          # with none of deploy-cabin-backend.yml's health-check/rollback.
+          # This step's own comment above says it is scoped to these two
+          # services; --no-deps makes that true.
+          docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d --no-deps family-hub cabin-ui
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
       - name: Prune old images
         run: docker image prune -f

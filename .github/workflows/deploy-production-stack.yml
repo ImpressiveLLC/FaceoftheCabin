@@ -43,7 +43,7 @@ jobs:
       - name: Validate, deploy when relevant, smoke-test, and roll back on failure
         shell: bash
         env:
-          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin' }}
+          DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
           BACKEND_URL: ${{ vars.CABIN_BACKEND_URL || 'http://localhost:8090' }}
           LIVE_FRIGATE_CONFIG: ${{ vars.CABIN_FRIGATE_CONFIG_PATH || '/storage/services/frigate/config.yml' }}
         run: |
@@ -51,7 +51,13 @@ jobs:
 
           STACK_DIR="$DEPLOY_PATH/cabin-orchestration-platform/infra/production-stack"
           INFRA_DIR="$DEPLOY_PATH/cabin-orchestration-platform/infra"
-          LKG_DIR="$DEPLOY_PATH/.git/cabin-production-stack-lkg"
+          # In a linked worktree (docs/MAINTENANCE.md's "Two checkouts on the
+          # M920q") $DEPLOY_PATH/.git is a pointer FILE, not a directory, so
+          # mkdir under it fails. --git-common-dir is the shared .git both
+          # checkouts use -- in a plain clone it is just $DEPLOY_PATH/.git, so
+          # this is identical to before there, and on the M920q it resolves to
+          # the directory that already holds the last-known-good snapshot.
+          LKG_DIR="$(git -C "$DEPLOY_PATH" rev-parse --path-format=absolute --git-common-dir)/cabin-production-stack-lkg"
           SYNTHETIC_FRIENDLY="codex_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
           SYNTHETIC_DEVICE_ID="z2m-${SYNTHETIC_FRIENDLY}"
           SYNTHETIC_PUBLISHED=false
@@ -233,21 +239,33 @@ jobs:
 
           cd "$DEPLOY_PATH"
 
-          # Fail-closed dirty-worktree preflight (2026-08-15, required before
-          # merge): $DEPLOY_PATH is the same clone a human operator uses
-          # directly over SSH for one-off config/vault edits between deploys
-          # -- confirmed the hard way this session, when a real, legitimate
-          # vault.yml edit sat uncommitted in this exact clone for over a
-          # day. The reset below is a hard discard; running it against that
-          # state would have destroyed it with zero warning. Evaluate status
-          # before touching anything else so a dirty clone fails loudly
-          # instead of losing work silently.
+          # Fail-closed preflight (2026-08-15, required before merge):
+          # $DEPLOY_PATH used to be the same clone a human operator used
+          # directly over SSH for one-off config/vault edits between
+          # deploys -- confirmed the hard way that session, when a real,
+          # legitimate vault.yml edit sat uncommitted in this exact clone
+          # for over a day. The reset below is a hard discard; running it
+          # against that state would have destroyed it with zero warning.
+          #
+          # 2026-09-18: DEPLOY_PATH is now a dedicated, automation-only
+          # worktree (docs/MAINTENANCE.md's "Two checkouts on the M920q")
+          # -- a human doing a one-off config/vault edit should do it in
+          # the interactive clone and push it through normally instead,
+          # so this check should now rarely if ever fire. Kept anyway as
+          # defense-in-depth, and extended to also catch a clean-but-wrong
+          # branch checked out (found the same day: this exact failure
+          # mode doesn't touch the working tree, so the dirty-tree check
+          # alone wouldn't have caught it -- see deploy-cabin-backend.yml's
+          # "Pull latest" step for the full incident this generalizes from).
           DIRTY_STATUS=$(git status --porcelain --untracked-files=all)
-          if [ -n "$DIRTY_STATUS" ]; then
-            echo "::error::Deploy clone at $DEPLOY_PATH has uncommitted changes -- refusing to fetch/reset/deploy. Commit or stash them on the host, then re-run."
-            printf '%s\n' "$DIRTY_STATUS" | while IFS= read -r line; do
-              echo "::error::  $line"
-            done
+          CURRENT_BRANCH=$(git branch --show-current || echo "(detached)")
+          if [ -n "$DIRTY_STATUS" ] || [ "$CURRENT_BRANCH" != "deploy-main" ]; then
+            echo "::error::Deploy worktree at $DEPLOY_PATH isn't cleanly on deploy-main (branch: $CURRENT_BRANCH) -- refusing to fetch/reset/deploy. Investigate on the host, then re-run."
+            if [ -n "$DIRTY_STATUS" ]; then
+              printf '%s\n' "$DIRTY_STATUS" | while IFS= read -r line; do
+                echo "::error::  $line"
+              done
+            fi
             exit 1
           fi
 
