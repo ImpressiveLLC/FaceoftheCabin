@@ -140,10 +140,18 @@ because in a linked worktree `.git` is a pointer file; and Docker Compose
 project state (named volumes, project name `infra`) is identical from
 either path. The one visible effect of the switch: relative bind mounts of
 tracked config (`init-db`, `prometheus.yml`, grafana provisioning, `docs`)
-now resolve inside the deploy worktree, so the **first** backend deploy
-from it recreates `postgres`, `prometheus` and `cabin-grafana` once (a few
-seconds; all state is in named volumes or `/storage`, and the production
-stack — HA, Zigbee2MQTT, Frigate, Node-RED — shows no config-hash change).
+now resolve inside the deploy worktree. Compose recreates a container
+only when something brings it up, so this lands per service, not all at
+once: `cabin-backend` and `postgres` were recreated by the first deploy
+from the new path (observed 2026-09-18 18:48Z, when the PR #83 UI deploy
+ran against it — `cabin-ui` depends on `cabin-backend`, which depends on
+`postgres`; a few seconds, all state is in named volumes or `/storage`).
+`prometheus` and `cabin-grafana` still run from bind paths inside the
+*interactive* clone until they are next recreated — until then they read
+whatever branch that clone has checked out, so recreate them
+(`docker compose ... up -d prometheus cabin-grafana`) rather than leaving
+that coupling. The production stack — HA, Zigbee2MQTT, Frigate, Node-RED —
+shows no config-hash change.
 
 **If you ever need to repoint or rebuild the deploy worktree**:
 
