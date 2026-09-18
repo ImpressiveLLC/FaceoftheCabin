@@ -1,7 +1,8 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls } from "./App.jsx";
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
+mergeStatusCheckItems } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // Covers the actual reported bug this session ("Camera Events" showing
@@ -3659,6 +3660,128 @@ describe("StatusChecksCard — automation alerts (via RulesPanel)", () => {
     expect(screen.getByText("Older alert")).toBeTruthy();
   });
 
+});
+
+describe("mergeStatusCheckItems — acknowledgment filtering", () => {
+  it("filters out an item whose alertKey has an active acknowledgment", () => {
+    const items = mergeStatusCheckItems(
+      [{ alertId: "device:leak_mech_room:missed-checkin", location: "cabin", severity: "WARN",
+         condition: "MISSED_CHECKIN", title: "x", detail: "y" }],
+      "cabin", [],
+      [{ alertKey: "device:leak_mech_room:missed-checkin", mode: "IGNORED" }]
+    );
+    expect(items).toHaveLength(0);
+  });
+
+  it("leaves an item alone when its alertKey has no acknowledgment", () => {
+    const items = mergeStatusCheckItems(
+      [{ alertId: "device:leak_mech_room:missed-checkin", location: "cabin", severity: "WARN",
+         condition: "MISSED_CHECKIN", title: "x", detail: "y" }],
+      "cabin", [],
+      [{ alertKey: "device:some_other_device:missed-checkin", mode: "IGNORED" }]
+    );
+    expect(items).toHaveLength(1);
+  });
+
+  it("derives a stable automation alertKey from ruleId+sourceDeviceId, filterable the same way", () => {
+    const items = mergeStatusCheckItems([], "cabin",
+      [{ eventId: "e1", sourceDeviceId: "psi_mech_room", severity: "WARN",
+         timestamp: new Date().toISOString(), payload: { ruleId: "WATER_PRESSURE_LOW", see: "x" } }],
+      [{ alertKey: "automation:WATER_PRESSURE_LOW:psi_mech_room", mode: "IGNORED" }]
+    );
+    expect(items).toHaveLength(0);
+  });
+});
+
+// 2026-09-18 (user directive): "give the user the ability to a) ignore for
+// now, b) let me know if it happens again in the next hour/day/week/month."
+// Rendered through RulesPanel (not StatusChecksCard directly) since the
+// actions need auth threaded from its own prop, matching how Open device's
+// tests already work.
+describe("StatusChecksCard — ignore/snooze actions", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  function renderExpanded(alertOverrides = {}) {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const authedFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    const refreshAlertAcknowledgments = vi.fn();
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin",
+        activeAlertLocations: ["cabin"],
+        activeAlerts: [{
+          alertId: "device:leak_mech_room:missed-checkin", sourceDeviceId: "leak_mech_room",
+          location: "cabin", severity: "WARN", condition: "MISSED_CHECKIN",
+          title: "Mech Room Leak missed its check-in window",
+          detail: "No report arrived during the full grace window.",
+          ...alertOverrides,
+        }],
+        alertAcknowledgments: [], refreshAlertAcknowledgments,
+      }}>
+        <RulesPanel auth={{ authedFetch }} />
+      </AppContext.Provider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+    return { authedFetch, refreshAlertAcknowledgments };
+  }
+
+  it("offers Ignore for now and Remind me in only once expanded, not in the collapsed row", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"],
+        activeAlerts: [{ alertId: "a1", location: "cabin", severity: "WARN",
+          condition: "MISSED_CHECKIN", title: "x", detail: "y" }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+
+    expect(screen.queryByRole("button", { name: "Ignore for now" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+    expect(screen.getByRole("button", { name: "Ignore for now" })).toBeTruthy();
+  });
+
+  // RulesPanel's other children (WorkflowRulesCard, OptimizationOpportunitiesCard,
+  // BuiltinRules) also call authedFetch on mount through this same auth prop --
+  // find the acknowledgments call specifically rather than assuming call order.
+  function findAcknowledgmentCall(authedFetch) {
+    return authedFetch.mock.calls.find(([url]) => url.includes("/api/alerts/acknowledgments"));
+  }
+
+  it("Ignore for now POSTs mode IGNORED with the alert's real key, then refreshes", async () => {
+    const { authedFetch, refreshAlertAcknowledgments } = renderExpanded();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ignore for now" }));
+
+    await waitFor(() => expect(findAcknowledgmentCall(authedFetch)).toBeTruthy());
+    const [url, options] = findAcknowledgmentCall(authedFetch);
+    expect(url).toContain("/api/alerts/acknowledgments");
+    const body = JSON.parse(options.body);
+    expect(body).toEqual({ alertKey: "device:leak_mech_room:missed-checkin", mode: "IGNORED", snoozedUntil: null });
+    await waitFor(() => expect(refreshAlertAcknowledgments).toHaveBeenCalled());
+  });
+
+  it("Remind me in shows the four durations and snoozing POSTs a real future timestamp", async () => {
+    const { authedFetch } = renderExpanded();
+
+    fireEvent.click(screen.getByRole("button", { name: /remind me in/i }));
+    for (const label of ["1 hour", "1 day", "1 week", "1 month"]) {
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    }
+
+    const before = Date.now();
+    fireEvent.click(screen.getByRole("button", { name: "1 day" }));
+
+    await waitFor(() => expect(findAcknowledgmentCall(authedFetch)).toBeTruthy());
+    const body = JSON.parse(findAcknowledgmentCall(authedFetch)[1].body);
+    expect(body.mode).toBe("SNOOZED");
+    const snoozedUntilMs = new Date(body.snoozedUntil).getTime();
+    // Within a generous window of "now + 1 day" -- not asserting exact
+    // equality against a second `Date.now()` call, which would be flaky.
+    expect(snoozedUntilMs).toBeGreaterThan(before + 23 * 60 * 60 * 1000);
+    expect(snoozedUntilMs).toBeLessThan(before + 25 * 60 * 60 * 1000);
+  });
 });
 
 // 2026-09-18: useAutomationAlerts moved to root App() (see its own
