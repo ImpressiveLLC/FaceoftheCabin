@@ -417,6 +417,80 @@ example; the guard, not the trigger type, is what actually decides this.
 
 ---
 
+## Rules & Alerts — Status Checks, the alert banner, and their lineage
+
+*Added 2026-09-18, per explicit user directive: any attribute/UI element
+that derives a component or drives a click-through belongs in the
+ontology as a real class, with explicit source lineage and a named
+click-through destination — documented here in prose, with
+`docs/ontology.yaml` as the structured source of truth
+(`ui_status_check_item`, `nav_alert_summary_banner`, `ui_rules_panel`,
+`ui_device_manager_panel` — read those entries for the full
+relationships/cardinality, not repeated verbatim here.)*
+
+**What Status Checks actually is.** Not a new fact source — a client-side
+merge of two independently-fetched, independently-real things:
+`active_alert_condition` (device health — `MISSED_CHECKIN`/`DEVICE_ALARM`
+only, from `ActiveAlertService.java`) and `automation_alert_see_think_act`
+(automation-engine decisions — `AUTOMATION_ALERT`/`WORKFLOW_ACTION`/
+`WORKFLOW_UNCONFIRMED` events, from `AutomationRuleService`/
+`WorkflowRuleService`). `App.jsx`'s `mergeStatusCheckItems()` normalizes
+both into one shape and sorts them (critical first, then recency) — this
+function is the only place that merge happens; nothing server-side
+combines these two sources.
+
+**Where the count comes from, and why it used to be wrong.** The nav
+banner at the top of every alertable panel (`AlertControls`) and the
+Status Checks list itself (`StatusChecksCard`) both call
+`mergeStatusCheckItems()` against the *same* two fetches — `activeAlerts`
+(`useNavAlerts`, root `App()`) and `automationAlerts`
+(`useAutomationAlerts`, also lifted to root `App()` as of 2026-09-18).
+Before that lift, `useAutomationAlerts` was fetched only inside
+`RulesPanel`'s own subtree, so the banner — rendered on Device Manager
+and Monitoring too, not just Rules & Alerts — had no access to it and
+silently undercounted. Found by direct user comparison of the two numbers
+on screen, not by code review. If you're debugging a count that looks
+wrong again, check first whether something introduced a *third* place
+that fetches or filters these two sources independently — the fix here
+was specifically to make that structurally impossible (one function, two
+callers), not just to correct the number once.
+
+**Where a click actually goes.** This is the ontology's `relates_to.ui_components`
+field, but stated plainly here too: "Open device" (present when a source
+row carries a `sourceDeviceId`) navigates to Device Manager with that
+device pre-focused (`setPendingDeviceFocus` + `setActivePanel`), not a
+bare tab switch. The nav banner navigates to Rules & Alerts
+(`setActivePanel("RULES_ENGINE")`) on click, added 2026-09-18 — before
+that it was a static, unclickable summary, which was itself a
+user-reported gap ("the See/Think/Act 'Act' step needs a real path to
+the mitigating screen").
+
+**Box layout is a real preference, not a fixed screenshot.** Card order
+in the Rules & Alerts grid is drag-reordered and persisted
+(`localStorage` key `order.rulesAlertsBoxes`, `useDraggableOrder` — same
+mechanism as `FamilyHubPanel`'s "My Places"). Every card in that grid is
+a fixed 460px tall, scrolling internally past that, specifically so
+cards align at both top and bottom regardless of how much real content
+each one has — a card's height is not a signal about how much content
+exists behind it.
+
+**Traceability for Ask/Tiny Helpdesk, stated honestly.** The ontology
+entries above are the real, structured lineage a training/RAG corpus
+would need to answer "what feeds Status Checks" or "where does the alert
+banner take you" correctly. Writing them down does not by itself make
+Ask retrieve any of this: `OntologyLookupService` only does reverse
+id→display-name lookup (Opportunity Map lineage chips), not general Q&A,
+and `TinyHelpdeskService`'s real retrieval is stopword-filtered keyword
+scoring against `KnowledgeNode` rows / `context-fixtures-r1.json` (C1a),
+not a live reader of this file. Actually wiring this into what Ask can
+answer needs the same corpus-doc + C1a-fixture path already used for
+this file's own Device Lifecycle section above, or the graph-aware
+retrieval work discussed (and explicitly not started) in the ontology
+discussion artifact this session — noted here so this isn't mistaken for
+already-working.
+
+---
+
 ## Cameras (Frigate)
 
 Live config lives at `/storage/services/frigate/config.yml` on the
