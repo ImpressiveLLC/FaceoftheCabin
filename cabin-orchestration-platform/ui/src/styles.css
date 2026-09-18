@@ -471,6 +471,11 @@ body {
    block) since one changes the alert's own state and the other leaves it
    to drill into device config -- not peers of each other. */
 .active-condition-ack-actions { padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+/* 2026-09-19: when the same alert has appeared more than once, the repeats
+   live here (under See more) instead of as extra rows in the list. */
+.active-condition-history { margin-top: 10px; font-size: 11px; }
+.active-condition-history-label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.active-condition-history ul { margin: 3px 0 0; padding-left: 16px; color: var(--text-dim); }
 .active-condition-snooze { position: relative; display: inline-flex; }
 .active-condition-snooze-menu {
   position: absolute; top: 100%; left: 0; z-index: 5; margin-top: 4px;

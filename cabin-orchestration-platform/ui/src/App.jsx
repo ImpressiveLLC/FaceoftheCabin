@@ -5821,6 +5821,7 @@ export const SNOOZE_DURATIONS = [
 function normalizeDeviceAlert(alert) {
   return {
     kind: "device", id: alert.alertId, alertKey: alert.alertId, severity: alert.severity,
+    groupKey: `device|${alert.location}|${alert.condition}|${alert.title}`,
     title: alert.title, detail: alert.detail, sourceDeviceId: alert.sourceDeviceId,
     location: alert.location, condition: (alert.condition || "").replaceAll("_", " ").toLowerCase(),
     meta: `${alert.location} · ${(alert.condition || "").replaceAll("_", " ").toLowerCase()}`,
@@ -5830,8 +5831,9 @@ function normalizeDeviceAlert(alert) {
 
 function normalizeAutomationAlert(alert) {
   const { see, think, ruleId } = alert.payload || {};
+  const alertKey = `automation:${ruleId}:${alert.sourceDeviceId || "none"}`;
   return {
-    kind: "automation", id: alert.eventId, alertKey: `automation:${ruleId}:${alert.sourceDeviceId || "none"}`,
+    kind: "automation", id: alert.eventId, alertKey, groupKey: alertKey,
     severity: alert.severity,
     title: see || humanizeRuleId(ruleId), detail: think || "",
     sourceDeviceId: alert.sourceDeviceId,
@@ -5848,11 +5850,14 @@ function normalizeAutomationAlert(alert) {
 // date+time (not just time-of-day) since a status check can be from
 // yesterday or last week, not just earlier today -- a bare "3:45 PM" would
 // be ambiguous about which day.
-function formatAlertTimestamp(ts) {
+function formatAlertTimestamp(ts, withSeconds = false) {
   if (!ts) return "";
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return d.toLocaleString([], {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    ...(withSeconds ? { second: "2-digit" } : {}),
+  });
 }
 
 // 2026-09-18: shared by AlertControls (the nav banner) and StatusChecksCard
@@ -5872,17 +5877,52 @@ export function mergeStatusCheckItems(activeAlerts, activeLocation, automationAl
     ? activeAlerts
     : activeAlerts.filter(alert => alert.location === activeLocation);
   const suppressedKeys = new Set(acknowledgments.map(a => a.alertKey));
-  return [
+  const members = [
     ...visibleDeviceAlerts.map(normalizeDeviceAlert),
     ...automationAlerts.map(normalizeAutomationAlert),
-  ]
-    .filter(item => !suppressedKeys.has(item.alertKey))
-    .sort((a, b) => {
-      const aCritical = (a.severity || "").toLowerCase() === "critical";
-      const bCritical = (b.severity || "").toLowerCase() === "critical";
-      if (aCritical !== bCritical) return aCritical ? -1 : 1;
-      return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
-    });
+  ].filter(item => !suppressedKeys.has(item.alertKey));
+
+  // 2026-09-19 (user report, annotated screenshot): the same alert showed
+  // up as separate rows -- "an alert for ____ condition" can't be occurring
+  // multiple times at once, so one condition is one row and its repeats are
+  // history, not more rows. Two real sources of repeats: several events
+  // for the same automation rule+device (the event log keeps every firing),
+  // and several device records that read as the same thing (same name,
+  // location and condition -- e.g. one physical device discovered by both
+  // Zigbee2MQTT and Home Assistant). The most recent member represents the
+  // group; every member's timestamp is kept (deduped to the exact instant)
+  // so "See more" can show when it has appeared, and every member's
+  // alertKey is kept so ignoring/snoozing the row suppresses all of them
+  // rather than leaving a twin behind to reappear as a "new" alert.
+  const byGroup = new Map();
+  for (const item of members) {
+    if (!byGroup.has(item.groupKey)) byGroup.set(item.groupKey, []);
+    byGroup.get(item.groupKey).push(item);
+  }
+  const grouped = [...byGroup.entries()].map(([groupKey, group]) => {
+    const newestFirst = [...group].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+    const seen = new Set();
+    const occurrences = [];
+    for (const member of newestFirst) {
+      const ms = new Date(member.timestamp).getTime();
+      if (Number.isNaN(ms) || seen.has(ms)) continue;
+      seen.add(ms);
+      occurrences.push(member.timestamp);
+    }
+    return {
+      ...newestFirst[0],
+      id: groupKey,
+      alertKeys: [...new Set(group.map(member => member.alertKey))],
+      occurrences,
+    };
+  });
+
+  return grouped.sort((a, b) => {
+    const aCritical = (a.severity || "").toLowerCase() === "critical";
+    const bCritical = (b.severity || "").toLowerCase() === "critical";
+    if (aCritical !== bCritical) return aCritical ? -1 : 1;
+    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+  });
 }
 
 // 2026-09-18 (user report, annotated screenshot): "Current conditions" and
@@ -5939,18 +5979,19 @@ function StatusChecksCard({ auth }) {
     setActivePanel("DEVICE_MANAGER");
   };
   const doFetch = auth?.authedFetch || fetch;
-  const ignoreAlert = async (alertKey) => {
+  const ignoreAlert = async (alertKeys) => {
     setAckError(null);
     try {
-      await acknowledgeAlert(doFetch, alertKey, "IGNORED");
+      await Promise.all(alertKeys.map(key => acknowledgeAlert(doFetch, key, "IGNORED")));
       refreshAlertAcknowledgments?.();
     } catch (e) { setAckError(e.message); }
   };
-  const snoozeAlert = async (alertKey, ms) => {
+  const snoozeAlert = async (alertKeys, ms) => {
     setAckError(null);
     setSnoozeOpenFor(null);
     try {
-      await acknowledgeAlert(doFetch, alertKey, "SNOOZED", new Date(Date.now() + ms).toISOString());
+      const snoozedUntil = new Date(Date.now() + ms).toISOString();
+      await Promise.all(alertKeys.map(key => acknowledgeAlert(doFetch, key, "SNOOZED", snoozedUntil)));
       refreshAlertAcknowledgments?.();
     } catch (e) { setAckError(e.message); }
   };
@@ -6043,6 +6084,17 @@ function StatusChecksCard({ auth }) {
                         </React.Fragment>
                       ))}
                     </div>
+                    {/* 2026-09-19: repeats of this same alert are history here,
+                        never more rows in the list. Only shown when there is
+                        actually more than one distinct occurrence to show. */}
+                    {item.occurrences.length > 1 && (
+                      <div className="active-condition-history">
+                        <span className="active-condition-history-label">Seen {item.occurrences.length} times</span>
+                        <ul>
+                          {item.occurrences.map(ts => <li key={ts}>{formatAlertTimestamp(ts, true)}</li>)}
+                        </ul>
+                      </div>
+                    )}
                     {/* 2026-09-18 (user directive): the user should be able
                         to change the alert's own state -- ignore it, or ask
                         to be reminded after a chosen window -- without
@@ -6051,7 +6103,7 @@ function StatusChecksCard({ auth }) {
                         device below is a separate, deliberate escalation,
                         not a peer of these. */}
                     <div className="active-condition-actions active-condition-actions-expanded active-condition-ack-actions">
-                      <button type="button" className="active-condition-link" onClick={() => ignoreAlert(item.alertKey)}>
+                      <button type="button" className="active-condition-link" onClick={() => ignoreAlert(item.alertKeys)}>
                         Ignore for now
                       </button>
                       <span className="active-condition-snooze">
@@ -6063,7 +6115,7 @@ function StatusChecksCard({ auth }) {
                           <div className="active-condition-snooze-menu">
                             {SNOOZE_DURATIONS.map(d => (
                               <button key={d.label} type="button" className="active-condition-snooze-option"
-                                onClick={() => snoozeAlert(item.alertKey, d.ms)}>
+                                onClick={() => snoozeAlert(item.alertKeys, d.ms)}>
                                 {d.label}
                               </button>
                             ))}
