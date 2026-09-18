@@ -182,7 +182,13 @@ jobs:
           # warrant their own considered rollout, not a blanket rebuild
           # every time anything under cabin-orchestration-platform/** changes.
           docker compose -f docker-compose.yml -f docker-compose.m920q.yml build family-hub cabin-ui
-          docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d family-hub cabin-ui
+          # --no-deps: cabin-ui depends_on cabin-backend, and without this
+          # `up` also converges (recreates, if its config drifted) that
+          # dependency -- an unplanned backend restart from a UI-only deploy,
+          # with none of deploy-cabin-backend.yml's health-check/rollback.
+          # This step's own comment above says it is scoped to these two
+          # services; --no-deps makes that true.
+          docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d --no-deps family-hub cabin-ui
         env:
           DEPLOY_PATH: ${{ vars.CABIN_REPO_PATH || '/home/nate/FaceoftheCabin-deploy' }}
 
