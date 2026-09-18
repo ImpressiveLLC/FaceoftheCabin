@@ -2382,7 +2382,7 @@ elements:
       notification path at all.
     rendering:
       semantic: "Why did the system decide to alert me, and what did it do about it"
-      systems: "Rules & Alerts panel's top card (AutomationAlertCard); Built-in Safety sidebar (BuiltinRules)"
+      systems: "Status Checks list (StatusChecksCard, formerly the separate AutomationAlertCard, merged 2026-09-18); Built-in Safety sidebar (BuiltinRules)"
       technical: >
         EventConsumer.pollLoop() now calls AutomationRuleService.evaluate()
         for every persisted CabinEvent (previously never called at all).
@@ -2391,10 +2391,13 @@ elements:
         (safe: AUTOMATION_ALERT isn't itself a case in evaluate()'s switch,
         so no feedback loop), with payload.{see,think,act,tags,ruleId} --
         structured narrative fields, not just a log line. GET
-        /api/events?eventTypePrefix=AUTOMATION_ALERT (EventController's
-        existing generic prefix filter, no backend endpoint changes needed)
-        feeds AutomationAlertCard, which renders the narrative plus a
-        three-step SEE/THINK/ACT breakdown (App.jsx's automationAlertSteps).
+        /api/events?eventTypePrefix=AUTOMATION_ALERT,WORKFLOW_ACTION,
+        WORKFLOW_UNCONFIRMED (EventController's existing generic prefix
+        filter, no backend endpoint changes needed) feeds
+        useAutomationAlerts (App.jsx, lifted to root App() 2026-09-18),
+        rendered as one row per event in the merged Status Checks list
+        (ui_status_check_item) with an expand-to-reveal three-step
+        SEE/THINK/ACT breakdown (App.jsx's automationAlertSteps).
       compliance: "Built-in Safety Rules sidebar, Rules & Alerts panel"
     definition: >
       The flagship, fully-wired scenario is water-pressure-low: cabin
@@ -2417,6 +2420,9 @@ elements:
       - target: cabin_camera_overnight_alert
         type: related_to
         cardinality: "N:N"
+      - target: ui_status_check_item
+        type: produces
+        cardinality: "1:N"
     relates_to:
       ui_components: [ui_rules_panel]
       elements: []
@@ -8490,7 +8496,7 @@ elements:
       CabinEvent history.
     rendering:
       semantic: "A condition this person-controlled app is responsible for watching and that needs attention now"
-      systems: "navigation badges, alert status bars, Rules & Alerts current-conditions list"
+      systems: "navigation badges, nav_alert_summary_banner, Status Checks list (StatusChecksCard, formerly the separate ActiveConditionsCard/'Current conditions' card, merged 2026-09-18)"
       technical: "ActiveAlertService snapshot and ActiveAlertsSnapshot response"
       compliance: "Rules & Alerts and Monitoring surfaces"
     definition: >
@@ -8510,6 +8516,9 @@ elements:
       - target: automation_alert_see_think_act
         type: complements
         cardinality: "N:N"
+      - target: ui_status_check_item
+        type: produces
+        cardinality: "1:N"
     relates_to:
       ui_components: [ui_rules_panel]
       elements: []
@@ -8564,6 +8573,235 @@ elements:
       claimed when a notification channel is configured. An audited durable
       write model and adapters for external HA/Node-RED flow inventory remain
       separate open work.
+
+  # ─── Status Checks merge + alert banner, 2026-09-18 ──────────────────────
+  # User directive: any attribute/data element that derives a UI component
+  # or drives a click-through interaction belongs in the ontology as a real
+  # class -- data_class: derived, explicit relationships back to its source
+  # primitives, and an explicit relates_to.ui_components entry naming where
+  # a click actually lands -- with no ambiguity. Four entries below:
+  # ui_rules_panel and ui_device_manager_panel are the two UI-component
+  # *targets* App.jsx's StatusChecksCard/AlertControls navigate to, neither
+  # of which had a real defining entry despite being referenced by
+  # relates_to.ui_components in four places above (active_alert_condition,
+  # automation_alert_see_think_act x2, automation_rule_status) since
+  # 2026-08-14 -- a real, pre-existing dangling reference, not introduced by
+  # this change, fixed here because the next two entries need a real target
+  # to point at. ui_status_check_item and nav_alert_summary_banner are the
+  # new derived entities themselves.
+  #
+  # Also updated in place above: active_alert_condition and
+  # automation_alert_see_think_act's rendering.systems text and
+  # relationships, which still named the pre-merge components
+  # (AutomationAlertCard, "current-conditions list") this same change
+  # replaced with StatusChecksCard/"Status Checks".
+  #
+  # Traceability-for-Ask note (also the user's own ask): this documents the
+  # real, structured lineage a training/RAG corpus would need to answer
+  # "what feeds Status Checks" or "where does clicking the alert banner go"
+  # correctly. It does not by itself make Ask retrieve any of this --
+  # confirmed this session that OntologyLookupService only does reverse
+  # id->display-name lookup (Opportunity Map lineage chips), not general
+  # Q&A, and TinyHelpdeskService's real retrieval is stopword-filtered
+  # keyword scoring against KnowledgeNode rows / context-fixtures-r1.json
+  # (C1a), not a live ontology.yaml reader. Wiring this into what Ask can
+  # actually answer needs the same corpus-doc + C1a-fixture path already
+  # used for docs/MAINTENANCE.md's Device Lifecycle section, or the
+  # graph-aware retrieval work discussed and explicitly not started in
+  # PR #75 -- flagged here rather than implied as already working.
+
+  - id: ui_rules_panel
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.6.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-14"
+      ref: "App.jsx RulesPanel -- referenced by relates_to.ui_components since this date, never itself defined until now"
+    data_class: composite
+    data_type: owl:Class
+    ui_display_name: "Rules & Alerts panel"
+    source: "App.jsx's RulesPanel component, NavRail's RULES_ENGINE entry"
+    rendering:
+      semantic: "The screen that shows what's wrong right now and what automations/workflows are set up"
+      systems: "Cabin Control Hub main content area when RULES_ENGINE is the active panel"
+      technical: "RulesPanel -- StatusChecksCard, WorkflowRulesCard, OptimizationOpportunitiesCard, BuiltinRules, LocationRulesSection (Node-RED embed), rendered in a reorderable grid (order.rulesAlertsBoxes)"
+      compliance: "Rules & Alerts panel"
+    definition: >
+      The top-level UI panel identified by activePanel === "RULES_ENGINE".
+      A click-through destination other entities' relates_to.ui_components
+      point at, not itself derived from anything.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      Card order within this panel is a real, persisted preference
+      (localStorage key order.rulesAlertsBoxes, useDraggableOrder), not a
+      fixed layout -- a screenshot of this panel is not authoritative about
+      which card appears where.
+
+  - id: ui_device_manager_panel
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.6.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-14"
+      ref: "App.jsx DeviceManagerPanel -- referenced by relates_to.ui_components since this date (device_checkin_status and others), never itself defined until now"
+    data_class: composite
+    data_type: owl:Class
+    ui_display_name: "Device Manager panel"
+    source: "App.jsx's DeviceManagerPanel component, NavRail's DEVICE_MANAGER entry"
+    rendering:
+      semantic: "The screen where you review and configure individual devices"
+      systems: "Cabin Control Hub main content area when DEVICE_MANAGER is the active panel"
+      technical: "DeviceManagerPanel -- See/Change/Add/Remove views, opened with a specific device pre-focused via setPendingDeviceFocus when reached from an Open Device action elsewhere"
+      compliance: "Device Manager panel"
+    definition: >
+      The top-level UI panel identified by activePanel === "DEVICE_MANAGER".
+      A click-through destination other entities' relates_to.ui_components
+      point at (e.g. an alert row's "Open device" action), not itself
+      derived from anything.
+    relationships: []
+    relates_to:
+      ui_components: []
+      elements: []
+    notes: >
+      Reached from an alert row's "Open device" action with a specific
+      device pre-focused (setPendingDeviceFocus + setActivePanel), not just
+      a bare navigation -- the destination is a real, scoped view, not a
+      generic landing on this panel.
+
+  - id: ui_status_check_item
+    entity_type: owl:Class
+    layer: fullstack
+    primitive: false
+    schema_version: "0.6.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-09-18"
+      ref: "App.jsx mergeStatusCheckItems(), StatusChecksCard (merged the former ActiveConditionsCard + AutomationAlertCard)"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Status Check item"
+    source: >
+      Not fetched directly -- computed client-side by
+      mergeStatusCheckItems(activeAlerts, activeLocation, automationAlerts),
+      which normalizes and merges two independently-fetched sources: every
+      active_alert_condition visible for the current location, and every
+      automation_alert_see_think_act event from the last 24h
+      (useAutomationAlerts, GET /api/events?eventTypePrefix=
+      AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED&limit=20).
+    transformation: >
+      active_alert_condition[] --normalizeDeviceAlert()--> {kind:"device",...}
+      automation_alert_see_think_act[] --normalizeAutomationAlert()--> {kind:"automation",...}
+      both --sort by severity (CRITICAL first) then recency--> ui_status_check_item[]
+      Pure function, App.jsx; no server-side persistence of the merged shape.
+    rendering:
+      semantic: "One thing that needs your attention -- a device that's gone quiet, or a decision the automation engine made"
+      systems: "Status Checks list (StatusChecksCard), Rules & Alerts panel"
+      technical: >
+        One row in StatusChecksCard's .active-conditions-list. Renders
+        title/meta/detail (clamped, "See more" expands) plus an
+        expand-to-See/Think/Act flow -- automationAlertSteps() for
+        kind:"automation" rows (a real backend-provided narrative),
+        deviceConditionSteps() for kind:"device" rows (synthesized from
+        title/detail/sourceDeviceId, since ActiveAlertService has no native
+        see/think/act payload).
+      compliance: "Rules & Alerts panel"
+    definition: >
+      A single alert-shaped entry in the merged Status Checks list, sourced
+      from exactly one of active_alert_condition or
+      automation_alert_see_think_act, normalized to a common shape so both
+      render identically. Not a new fact -- a presentation-layer merge of
+      two existing, independently-sourced facts.
+    relationships:
+      - target: active_alert_condition
+        type: derived_from
+        cardinality: "N:1"
+      - target: automation_alert_see_think_act
+        type: derived_from
+        cardinality: "N:1"
+      - target: nav_alert_summary_banner
+        type: consumed_by
+        cardinality: "N:1"
+    relates_to:
+      ui_components: [ui_rules_panel, ui_device_manager_panel]
+      elements: []
+    notes: >
+      "Open device" (present when sourceDeviceId exists on either source
+      kind) navigates to ui_device_manager_panel with that device
+      pre-focused -- the ui_device_manager_panel relates_to entry above is
+      this specific action's target, not a general association. Superseded
+      "Current conditions" (device-only) and "Automation alerts" (event-
+      only) as two separate boxes, 2026-09-18, per direct user feedback
+      that the split was confusing without explaining why two counts
+      existed. Corrected the same day: both the top banner and this list
+      independently computed their own totals until they visibly
+      disagreed (banner counted active_alert_condition only) -- see
+      nav_alert_summary_banner's own notes.
+
+  - id: nav_alert_summary_banner
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    schema_version: "0.6.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-09-01"
+      ref: "App.jsx AlertControls -- made actionable and unified with ui_status_check_item's total 2026-09-18"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Alert summary banner"
+    source: >
+      Same two upstream fetches ui_status_check_item merges (activeAlerts
+      via useNavAlerts, automationAlerts via useAutomationAlerts) --
+      both lifted to root App() specifically so this banner and
+      StatusChecksCard share one fetch and one computed total instead of
+      two that can independently drift.
+    transformation: >
+      mergeStatusCheckItems() --> ui_status_check_item[] --alertLevelFor()--> level (critical|warn|null)
+      Rendered as: "{Critical|Attention} -- {items.length} current
+      condition(s). Review in Rules & Alerts." when level is non-null,
+      an honest "unavailable" state when neither source has resolved yet
+      and there's nothing to show, otherwise a plain "watching, nothing
+      current" state.
+    rendering:
+      semantic: "A quick glance at whether anything needs my attention, from any screen"
+      systems: "Rendered via AlertControls at the top of every alertable panel (Device Manager, Monitoring, Rules & Alerts)"
+      technical: "A real <button>, not a static banner -- onClick calls setActivePanel(\"RULES_ENGINE\")"
+      compliance: "Nav alert banner, all alertable panels"
+    definition: >
+      A single-line, panel-top summary of the same total ui_status_check_item
+      count, clickable to navigate to ui_rules_panel where the full list
+      lives. Answers "is anything wrong" without leaving the current panel;
+      answers "what, exactly" by taking you to where the full list is.
+    relationships:
+      - target: ui_status_check_item
+        type: derived_from
+        cardinality: "N:1"
+    relates_to:
+      ui_components: [ui_rules_panel]
+      elements: []
+    notes: >
+      Found and fixed 2026-09-18 (direct user report comparing the two
+      numbers on screen): before this fix, this banner counted
+      active_alert_condition only (via useNavAlerts alone) while
+      StatusChecksCard counted active_alert_condition +
+      automation_alert_see_think_act -- two different totals for what
+      looked like one thing, because useAutomationAlerts was fetched only
+      inside RulesPanel's own subtree and this banner (rendered on every
+      alertable panel, not just Rules & Alerts) had no access to it. Fixed
+      by lifting the fetch to root App() and extracting
+      mergeStatusCheckItems() as the one function both consumers call --
+      structurally can't drift apart again, not just corrected once.
 
   # ─── Known hardware backlog -- design-ahead candidates, 2026-08-21 ───────
   # CLAUDE.md's "Still pending hardware" list (entry light, deterrent plug,
