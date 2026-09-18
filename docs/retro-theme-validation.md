@@ -19,4 +19,3 @@ Scope: the optional HA Operations Console proposal and retro presentation change
 - At 390 pixels, Cabin UI's fixed toolbar/action rows visibly clip even though the document itself does not overflow. This PR does not certify a complete mobile layout; the theme work preserves the current navigation/layout structure. Family Hub's mobile journey suite passes.
 - Family Hub's Docker font-copy rule was inspected; no container build or deployment was run.
 - The proposal is reconstructed from recoverable prior-conversation decisions and current repository contracts; unavailable original downloadable artifacts were not represented as recovered verbatim. HA-UX0–5 remain unscored and unratified.
-
