@@ -2145,3 +2145,103 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 [data-theme="neon80s"] .panel-header-bar { border-bottom: 1px solid var(--accent-2); padding-bottom: 12px; }
 [data-theme="neon80s"] .platform-name { color: var(--accent-2); }
+
+/* ─── 80s Neon: three-layer surface system ────────────────────────────────
+   Before this, panels in this theme were three unrelated things: some used
+   theme tokens (--bg-secondary, purple), many used literal GitHub-dark hex
+   (#161b22 / #0d1117 / #010409) that ignores every theme, and none glowed.
+   Now every boxed surface belongs to exactly one layer, largest to smallest:
+
+     Layer 1  hot pink  (--accent)   page-level panels and cards
+     Layer 2  pale yellow #ffff66    mid-size objects nested in a panel
+     Layer 3  aquamarine  #7fffd4    the smallest tiles, chips and read-outs
+
+   Each layer is a fill + an edge + a limited glow. Text is NOT recolored:
+   fills stay dark, so the theme's light --text reads on all three (yellow and
+   aquamarine are used as edge/glow, never as a full fill behind text). To put
+   a new component in the system, add its class to the matching :is() list
+   below rather than styling it one-off. Scoped to neon80s; every other theme
+   is untouched. */
+[data-theme="neon80s"] {
+  --layer-1: var(--accent);
+  --layer-2: #ffff66;
+  --layer-3: #7fffd4;
+  --layer-1-fill: color-mix(in srgb, var(--layer-1) 9%, var(--bg-secondary));
+  --layer-2-fill: color-mix(in srgb, var(--layer-2) 5%, var(--bg));
+  --layer-3-fill: color-mix(in srgb, var(--layer-3) 7%, var(--bg));
+  --layer-1-edge: color-mix(in srgb, var(--layer-1) 62%, var(--border));
+  --layer-2-edge: color-mix(in srgb, var(--layer-2) 52%, var(--border));
+  --layer-3-edge: color-mix(in srgb, var(--layer-3) 58%, var(--border));
+  --layer-1-glow: 0 0 5px color-mix(in srgb, var(--layer-1) 42%, transparent),
+                  0 0 16px color-mix(in srgb, var(--layer-1) 15%, transparent);
+  --layer-2-glow: 0 0 4px color-mix(in srgb, var(--layer-2) 32%, transparent),
+                  0 0 11px color-mix(in srgb, var(--layer-2) 9%, transparent);
+  --layer-3-glow: 0 0 4px color-mix(in srgb, var(--layer-3) 36%, transparent);
+}
+[data-theme="neon80s"] :is(
+  .active-conditions, .sidebar-card, .config-card, .dm-device-group, .dm-detail,
+  .sensor-history-panel, .pairing-card, .family-hub-card, .modal, .event-log
+) {
+  background: var(--layer-1-fill);
+  border-color: var(--layer-1-edge);
+  box-shadow: var(--layer-1-glow);
+}
+[data-theme="neon80s"] :is(
+  .opportunity-card, .device-card, .dm-device-row, .dm-why-card, .dm-candidate-card,
+  .automation-alert-card, .camera-event-row, .camera-motion-row,
+  .guest-access-row, .guest-alert-row, .guest-device-row, .add-place-form, .dm-add-option
+) {
+  background: var(--layer-2-fill);
+  border-color: var(--layer-2-edge);
+  box-shadow: var(--layer-2-glow);
+}
+[data-theme="neon80s"] :is(
+  .kpi-tile, .camera-health-tile, .opportunity-detail, .workflow-execution-history,
+  .opportunity-lineage-chip, .section-count-badge, .code-block, .capability-chip,
+  .camera-clip-expanded, .camera-event-thumb
+) {
+  background: var(--layer-3-fill);
+  border-color: var(--layer-3-edge);
+  box-shadow: var(--layer-3-glow);
+}
+/* Interaction and semantic states stay legible on top of the layers. */
+[data-theme="neon80s"] :is(.device-card, .dm-device-row):hover {
+  border-color: var(--layer-2);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--layer-2) 55%, transparent),
+              0 0 16px color-mix(in srgb, var(--layer-2) 18%, transparent);
+}
+[data-theme="neon80s"] :is(.device-card.selected, .dm-row-selected) {
+  background: var(--layer-2-fill);
+  border-color: var(--layer-1);
+  box-shadow: var(--layer-1-glow);
+}
+[data-theme="neon80s"] :is(.sensor-history-topic-tab.active, .sensor-history-device-chip.selected) {
+  background: var(--layer-3-fill);
+  border-color: var(--layer-1);
+  box-shadow: var(--layer-1-glow);
+}
+[data-theme="neon80s"] :is(.nodered-lazy-placeholder, .embed-frame, .embed-frame-short) { border-color: var(--layer-1-edge); }
+[data-theme="neon80s"] .discovery-fields { border-color: var(--layer-2-edge); }
+/* Text inputs and selects inside modals/forms hard-coded #0d1117/#010409 with
+   grey borders; they're controls, so they follow the same control tokens as
+   every other dropdown in this theme rather than becoming a fourth style. */
+[data-theme="neon80s"] :is(
+  .modal input, .modal select, .dm-edit-form input, .dm-edit-form select,
+  .add-place-field input, .add-place-field select, .workflow-action-row select
+) {
+  background: var(--control-surface);
+  border-color: var(--control-border);
+}
+[data-theme="neon80s"] .automation-alert-card { border-left-color: var(--state-warning); }
+[data-theme="neon80s"] .kpi-tile.kpi-state-warn  { border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); }
+[data-theme="neon80s"] .kpi-tile.kpi-state-alarm { border-color: color-mix(in srgb, var(--danger) 75%, var(--border)); }
+[data-theme="neon80s"] .active-conditions-header,
+[data-theme="neon80s"] .active-condition + .active-condition { border-color: var(--layer-1-edge); }
+[data-theme="neon80s"] .rule-row { border-bottom-color: color-mix(in srgb, var(--layer-1) 20%, transparent); }
+/* Native scrollbars defaulted to bright white inside the dark panels. The
+   property inherits, so setting it once on the themed root covers every
+   scrolling list, card and log without touching each one. */
+[data-theme="neon80s"] {
+  scrollbar-color: color-mix(in srgb, var(--layer-1) 65%, var(--bg)) var(--bg);
+  scrollbar-width: thin;
+}
