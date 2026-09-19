@@ -7,6 +7,9 @@ import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceReportingRelationship;
 import com.cabin.orchestrator.devices.model.DeviceType;
+import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.events.OccupancyEdges;
+import com.cabin.orchestrator.events.OccupancyHistory;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.signalquality.SignalQualityRegistry;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
@@ -338,6 +341,120 @@ class Zigbee2MqttAdapterTest {
         assertTrue(saved.stream().allMatch(r -> r.confirmationSource() == ConfirmationSource.VENDOR_SPEC));
         assertTrue(saved.stream().map(DeviceReportingRelationship::semanticField).toList()
             .containsAll(List.of("temperature", "humidity")));
+    }
+
+    // Presence history needs transitions, not the repeated occupancy field:
+    // Z2M re-sends the whole state on every battery/linkquality report, and
+    // counting TELEMETRY rows overstated real activations about 2x (91 true
+    // rows for 43 real activations on Sep 15 2026). See OccupancyEdges.
+    private static final class CapturingPublisher extends EventPublisher {
+        final List<CabinEvent> events = new java.util.ArrayList<>();
+        @Override public void publish(CabinEvent event) { events.add(event); }
+        List<CabinEvent> edges() {
+            return events.stream().filter(e -> e.eventType().startsWith("OCCUPANCY_SENSOR_")).toList();
+        }
+    }
+
+    /** A fresh adapter that has seen bridge/devices itself -- knownFriendlyNames is per adapter instance. */
+    private Zigbee2MqttAdapter adapterCapturing(CapturingPublisher publisher, OccupancyHistory history) throws Exception {
+        Zigbee2MqttAdapter a = new Zigbee2MqttAdapter(registry, publisher, signalQualityRegistry,
+            new DeviceReportingRelationshipRepository() {
+                @Override public void upsert(DeviceReportingRelationship relationship) { }
+                @Override public List<DeviceReportingRelationship> findByDevice(String deviceId) { return List.of(); }
+                @Override public Map<String, List<DeviceReportingRelationship>> loadAll() { return Map.of(); }
+            }, history);
+        a.messageArrived("zigbee2mqtt/bridge/devices", new MqttMessage("""
+            [{"friendly_name":"motion_entry","type":"EndDevice","definition":{
+              "model":"SNZB-03PR2","description":"motion","vendor":"SONOFF","exposes":[]}}]
+            """.getBytes()));
+        return a;
+    }
+
+    private static void send(Zigbee2MqttAdapter a, String topic, String payload) throws Exception {
+        a.messageArrived(topic, new MqttMessage(payload.getBytes()));
+    }
+
+    @Test
+    void occupancyFalseToTrueToFalsePublishesOneActivatedAndOneCleared() throws Exception {
+        CapturingPublisher publisher = new CapturingPublisher();
+        Zigbee2MqttAdapter a = adapterCapturing(publisher, id -> java.util.Optional.empty());
+
+        send(a, "zigbee2mqtt/motion_entry", "{\"occupancy\": false, \"battery\": 100}");
+        send(a, "zigbee2mqtt/motion_entry", "{\"occupancy\": true}");
+        send(a, "zigbee2mqtt/motion_entry", "{\"occupancy\": false}");
+
+        List<CabinEvent> edges = publisher.edges();
+        assertEquals(2, edges.size(), "false->true and true->false; the opening false is not a transition");
+        assertEquals(OccupancyEdges.ACTIVATED, edges.get(0).eventType());
+        assertEquals(OccupancyEdges.CLEARED, edges.get(1).eventType());
+        assertEquals("z2m-motion_entry", edges.get(0).sourceDeviceId());
+    }
+
+    @Test
+    void aBatteryReportRepeatingOccupancyTrueIsNotANewActivation() throws Exception {
+        CapturingPublisher publisher = new CapturingPublisher();
+        Zigbee2MqttAdapter a = adapterCapturing(publisher, id -> java.util.Optional.empty());
+
+        send(a, "zigbee2mqtt/motion_entry", "{\"occupancy\": true}");
+        send(a, "zigbee2mqtt/motion_entry", "{\"battery\": 99}");              // merged state still says occupancy=true
+        send(a, "zigbee2mqtt/motion_entry", "{\"linkquality\": 120}");
+
+        assertEquals(1, publisher.edges().size());
+        assertEquals(3, publisher.events.stream().filter(e -> e.eventType().equals("TELEMETRY")).count(),
+            "the TELEMETRY stream is unchanged -- edges are additional events");
+    }
+
+    @Test
+    void theEdgeSharesItsTimestampAndIdWithTheTelemetryRow() throws Exception {
+        CapturingPublisher publisher = new CapturingPublisher();
+        Zigbee2MqttAdapter a = adapterCapturing(publisher, id -> java.util.Optional.empty());
+
+        send(a, "zigbee2mqtt/motion_entry", "{\"occupancy\": true}");
+
+        CabinEvent telemetry = publisher.events.stream().filter(e -> e.eventType().equals("TELEMETRY")).findFirst().orElseThrow();
+        CabinEvent edge = publisher.edges().get(0);
+        assertEquals(telemetry.timestamp(), edge.timestamp(),
+            "same instant, so PresenceActivityBackfill derives the identical event_id from the TELEMETRY row");
+        assertEquals(OccupancyEdges.eventId("z2m-motion_entry", telemetry.timestamp(), OccupancyEdges.ACTIVATED), edge.eventId());
+    }
+
+    @Test
+    void afterARestartTheStoredLastValueDecidesWhetherTrueIsANewActivation() throws Exception {
+
+        // Stored history says the sensor was already occupied: this 'true' is a continuation, not an edge.
+        CapturingPublisher wasTrue = new CapturingPublisher();
+        send(adapterCapturing(wasTrue, id -> java.util.Optional.of(true)), "zigbee2mqtt/motion_entry", "{\"occupancy\": true}");
+        assertTrue(wasTrue.edges().isEmpty());
+
+        // Stored history says it was clear: the same message is a fresh activation.
+        registry.update(new com.cabin.orchestrator.devices.model.DeviceStatus(
+            "z2m-motion_entry", registry.get("z2m-motion_entry").type(), registry.get("z2m-motion_entry").name(),
+            "ONLINE", java.time.Instant.now(), new LinkedHashMap<>(), registry.get("z2m-motion_entry").location()));
+        CapturingPublisher wasFalse = new CapturingPublisher();
+        send(adapterCapturing(wasFalse, id -> java.util.Optional.of(false)), "zigbee2mqtt/motion_entry", "{\"occupancy\": true}");
+        assertEquals(1, wasFalse.edges().size());
+    }
+
+    @Test
+    void aRetainedReplayPublishesNoEdge() throws Exception {
+        CapturingPublisher publisher = new CapturingPublisher();
+        Zigbee2MqttAdapter a = adapterCapturing(publisher, id -> java.util.Optional.empty());
+
+        MqttMessage replay = new MqttMessage("{\"occupancy\": true}".getBytes());
+        replay.setRetained(true);
+        a.messageArrived("zigbee2mqtt/motion_entry", replay);
+
+        assertTrue(publisher.events.isEmpty(), "a retained replay is the broker's cache, not something that just happened");
+    }
+
+    @Test
+    void aDeviceThatDoesNotReportOccupancyNeverPublishesEdges() throws Exception {
+        CapturingPublisher publisher = new CapturingPublisher();
+        Zigbee2MqttAdapter a = adapterCapturing(publisher, id -> java.util.Optional.empty());
+
+        send(a, "zigbee2mqtt/motion_entry", "{\"battery\": 100, \"temperature\": 70}");
+
+        assertTrue(publisher.edges().isEmpty());
     }
 
     private static final class RecordingReportingRelationshipRepository implements DeviceReportingRelationshipRepository {

@@ -1441,6 +1441,21 @@ elements:
       standing HDD backup, no log-shipping, no Logstash-equivalent process
       exists for it today. See telemetry_recovery_pipeline below for the
       concrete recovery route this forced when it mattered.
+      **Occupancy transitions (2026-09-19)**: Zigbee2MQTT re-sends a
+      sensor's whole state on every message, so `occupancy: true` repeats on
+      each battery/linkquality report and counting TELEMETRY rows overstated
+      real motion about 2x (91 true rows for 43 activations on 2026-09-15).
+      Zigbee2MqttAdapter therefore also publishes each false-to-true and
+      true-to-false change as its own discrete event,
+      `OCCUPANCY_SENSOR_ACTIVATED` / `OCCUPANCY_SENSOR_CLEARED` (OccupancyEdges),
+      with the deterministic id `occ:{deviceId}:{epochMillis}:{A|C}`.
+      Discrete events are outside TelemetryArchivalService's TELEMETRY-only
+      scope, so this is the durable per-day presence record; the types
+      deliberately avoid the `MOTION_` prefix the Camera Events panel claims.
+      PresenceActivityBackfill rebuilds the same events from existing
+      TELEMETRY on each start (same ids, ON CONFLICT DO NOTHING).
+      GET /api/presence/activity serves them, D14-gated (`/api/presence/**`
+      Google gate plus ADMINISTRATOR / ADULT_HOUSEHOLD_MEMBER role check).
 
   - id: zigbee2mqtt_bridge
     entity_type: owl:Class

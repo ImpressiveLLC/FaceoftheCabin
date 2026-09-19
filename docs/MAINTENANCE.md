@@ -369,6 +369,21 @@ network path to a Tailscale-only host. Full setup/recovery runbook:
   why each has a different retention story. To read an archived month:
   `zcat 2026-05.jsonl.gz | jq .` — one JSON object per line, same shape
   as `GET /api/events` returns.
+- **Motion history (Security & Presence)** — added 2026-09-19. A motion
+  sensor's TELEMETRY rows repeat `occupancy` on every battery/link report
+  (91 `true` rows for 43 real activations on 2026-09-15), so the archived
+  TELEMETRY can't answer "when was someone there". `Zigbee2MqttAdapter`
+  now also records each clear→motion / motion→clear change as its own
+  event (`OCCUPANCY_SENSOR_ACTIVATED` / `_CLEARED`, id
+  `occ:{device}:{epochMillis}:{A|C}`); being discrete events they are not
+  archived or deleted, so per-day history is permanent.
+  `PresenceActivityBackfill` rebuilds the same events from existing
+  TELEMETRY on every start (idempotent — safe to leave on; disable with
+  `cabin.presence.backfill.enabled=false`), which is how the ~44 days
+  that predate this were filled in. Served by `GET /api/presence/activity`
+  (signed-in adult/administrator only) and shown under Monitoring →
+  Sensor History → Security & Presence. Days and hours use
+  `cabin.timezone` (env `CABIN_TIMEZONE`, default `America/Chicago`).
 - **Viewing sensor history in the UI** — the Monitoring panel only ever
   showed the *current* value per device, no history. **2026-08-25: moved
   in-app**, replacing the earlier Grafana link-out entirely. A "Sensor

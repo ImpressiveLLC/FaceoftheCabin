@@ -699,6 +699,40 @@ body {
 .sensor-history-alert-title { color: var(--text); }
 .sensor-history-alert-detail { color: var(--text-dim); font-size: 11px; }
 
+/* Security & Presence: per-sensor motion history (PresenceActivityView).
+   A sensor is a row-card (layer 2) inside the panel (layer 1); the four stat
+   boxes are chip-tiles (layer 3). Layer colours are applied by the 80s Neon
+   block below (the only theme that defines layers on this branch). */
+.presence-sensor {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.presence-sensor-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-bottom: 8px; }
+.presence-sensor-name { font-weight: 600; color: var(--text); }
+.presence-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 0 0 10px; }
+.presence-stats > div {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.presence-stats dt { font-size: 11px; color: var(--text-dim); }
+.presence-stats dd { margin: 0; font-size: 18px; font-weight: 600; color: var(--text); }
+.presence-chart { display: flex; align-items: flex-end; gap: 2px; height: 90px; }
+.presence-bar-slot { flex: 1 1 0; min-width: 2px; height: 100%; display: flex; align-items: flex-end; }
+.presence-bar { width: 100%; background: var(--accent); border-radius: 2px 2px 0 0; }
+.presence-bar.zero { height: 2px; background: var(--border); }
+.presence-chart-axis { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-dim); margin: 4px 0 10px; }
+.presence-hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 22px; }
+.presence-hour { background: var(--accent); border-radius: 2px; }
+.presence-hours-axis { margin-bottom: 6px; }
+.presence-metric-toggle { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.presence-day-table summary { cursor: pointer; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+[data-theme="neon80s"] .presence-sensor { background: var(--layer-2-fill); border-color: var(--layer-2-edge); box-shadow: var(--layer-2-glow); }
+[data-theme="neon80s"] .presence-stats > div { background: var(--layer-3-fill); border-color: var(--layer-3-edge); box-shadow: var(--layer-3-glow); }
+
 /* ─── Event Log ─────────────────────────────────────────────────────────── */
 .event-log {
   background: #0d1117;

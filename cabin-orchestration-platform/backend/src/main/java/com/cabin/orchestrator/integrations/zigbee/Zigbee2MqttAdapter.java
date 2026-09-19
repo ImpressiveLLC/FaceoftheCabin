@@ -5,6 +5,8 @@ import com.cabin.orchestrator.devices.DeviceReportingRelationshipRepository;
 import com.cabin.orchestrator.devices.model.*;
 import com.cabin.orchestrator.events.AlertSeverityClassifier;
 import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.events.OccupancyEdges;
+import com.cabin.orchestrator.events.OccupancyHistory;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.signalquality.SignalQualityRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -108,6 +110,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     private final EventPublisher eventPublisher;
     private final SignalQualityRegistry signalQualityRegistry;
     private final DeviceReportingRelationshipRepository reportingRelationshipRepository;
+    private final OccupancyHistory occupancyHistory;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     // Bridge health is intentionally still a single, shared value across
@@ -138,11 +141,21 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     @Autowired
     public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher,
                                SignalQualityRegistry signalQualityRegistry,
-                               DeviceReportingRelationshipRepository reportingRelationshipRepository) {
+                               DeviceReportingRelationshipRepository reportingRelationshipRepository,
+                               OccupancyHistory occupancyHistory) {
         this.registry = registry;
         this.eventPublisher = eventPublisher;
         this.signalQualityRegistry = signalQualityRegistry;
         this.reportingRelationshipRepository = reportingRelationshipRepository;
+        this.occupancyHistory = occupancyHistory;
+    }
+
+    /** Convenience constructor for tests that don't need occupancy history to survive a restart. */
+    public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher,
+                               SignalQualityRegistry signalQualityRegistry,
+                               DeviceReportingRelationshipRepository reportingRelationshipRepository) {
+        this(registry, eventPublisher, signalQualityRegistry, reportingRelationshipRepository,
+            deviceId -> java.util.Optional.empty());
     }
 
     /** Convenience constructor for isolated unit tests that don't care about D7 persistence. */
@@ -446,6 +459,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             DeviceStatus existing = registry.get(deviceId);
             if (existing == null) return; // not registered yet; bridge/devices will handle it
 
+            Boolean previousOccupancy = existing.attributes().get("occupancy") instanceof Boolean b ? b : null;
             Map<String, Object> attrs = new LinkedHashMap<>(existing.attributes());
             node.fields().forEachRemaining(e -> attrs.put(e.getKey(), jsonNodeToValue(e.getValue())));
 
@@ -474,10 +488,22 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             // non-Zigbee devices — this adapter was updating DeviceRegistry
             // (live state) without ever writing to cabin_event, so Zigbee
             // motion/contact/etc. activity never showed up in event history.
+            Instant now = Instant.now();
             CabinEvent event = new CabinEvent(
                 UUID.randomUUID().toString(), deviceId, "TELEMETRY",
-                AlertSeverityClassifier.classify(attrs), Instant.now(), attrs);
+                AlertSeverityClassifier.classify(attrs), now, attrs);
             eventPublisher.publish(event);
+
+            // Z2M repeats the sensor's whole state -- occupancy included -- on
+            // every battery/linkquality report, so the TELEMETRY row above can't
+            // say when motion actually started. Publish the transition itself
+            // as its own durable event; see OccupancyEdges.
+            if (attrs.get("occupancy") instanceof Boolean current) {
+                Boolean previous = previousOccupancy;
+                if (previous == null) previous = occupancyHistory.lastKnown(deviceId).orElse(null);
+                OccupancyEdges.edge(deviceId, previous, current, now, existing.location())
+                    .ifPresent(eventPublisher::publish);
+            }
         } catch (Exception e) {
             log.warn("Failed to parse Z2M state for {}: {}", friendlyName, e.getMessage());
         }
