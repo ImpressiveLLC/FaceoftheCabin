@@ -6101,20 +6101,25 @@ elements:
       catalogs to 10 presets. The shared control CSS in both apps now derives
       dropdowns, banners, header actions, Close controls, and other buttons
       from each preset's semantic palette instead of fixed Modern-theme colors.
-      ADDED 2026-09-18 (cabin-ui only): 80s Neon surfaces are a three-layer
-      system in styles.css (`--layer-1/2/3` with -fill/-edge/-glow, scoped to
-      [data-theme="neon80s"]; other presets untouched). Largest objects
-      (panels/cards) are the pink primary, mid-size objects nested in them
-      are #ffff66, the smallest tiles/chips/read-outs are #7fffd4 — edge and
-      limited glow carry the color, fills stay dark so the theme's light text
-      is unchanged. A component joins the system by adding its class to the
-      matching :is() list, not by one-off styling; ThemeLayers.test.jsx pins
-      the palette, the class-to-layer map and the one-layer-per-component
-      rule. Reason: many surfaces hard-coded GitHub-dark hex (#161b22 etc.)
-      that ignored every preset, so sibling panels rendered as different
-      colors. Left-nav tabs share one fill; only the active tab (pink
-      outline/tint) and a tab with a notification (yellow dot + icon tint,
-      critical adds a red bar/label) differ, never a shaded background.
+      ADDED 2026-09-19 (cabin-ui AND family-hub): surfaces are a three-layer
+      system for every preset -- 1 panel, 2 row/card, 3 chip/tile -- derived per
+      preset by surfaceLayers.js (embedded byte-for-byte in family-hub.html,
+      drift-tested) from the palette plus three hue picks carried as theme data
+      (`layers.hues`). The derivation auto-strengthens any edge below 3:1 against
+      every surface it can sit on and backs fills off to keep text >= 4.5:1, so a
+      new preset needs only a palette and three hues; presets never restyle a
+      class. Spec (can/can't border, overlap, recolor text, use danger) and the
+      per-preset picks are in docs/UX_JOURNEY_STANDARD.md "Visual system";
+      SurfaceLayers.test.jsx / SurfaceLayersDrift.test.jsx / ThemeLayers.test.jsx
+      enforce it, including a guard against hard-coded component colors.
+      80s Neon = pink -> #add8e6 -> #ffff66 with limited glow, every tab #ffff66;
+      Asteroid City = hard shadows. Records in a panel are one row anatomy (framed
+      layer-2 row + layer-3 chips), tiles are for glanceable values. Tabs share one
+      color (--tab-color) in every state; a warn notification is a dot only.
+      Nav dots derive from the same merged list as the banner (navAlertLevelsFor).
+      Reason: ~20 surfaces and 128 text colors hard-coded the GitHub-dark palette
+      (fine in Modern, whose palette equals it) so sibling panels differed in every
+      other preset and Modern's panel edge was 1.24:1 against the page.
       KNOWN, not fixed: ThemeProvider sets each var with setProperty() but
       never clears the previous preset's, so switching presets in-session can
       leave stale values for variables the new preset does not define (seen:

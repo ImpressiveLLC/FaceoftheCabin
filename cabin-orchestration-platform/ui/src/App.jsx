@@ -6286,7 +6286,7 @@ function StatusChecksCard({ auth }) {
               <div className="active-condition-body">
                 <div className="active-condition-title-row">
                   <strong className={expanded ? "" : "active-condition-clamp"}>{item.title}</strong>
-                  <span>{item.meta}</span>
+                  {item.meta.split(" · ").filter(Boolean).map(part => <span key={part} className="meta-chip">{part}</span>)}
                   <span className="active-condition-timestamp">{formatAlertTimestamp(item.timestamp)}</span>
                 </div>
                 <p className={expanded ? "" : "active-condition-clamp"}>{item.detail}</p>
@@ -6807,6 +6807,20 @@ function WorkflowExecutionHistory({ workflow, apiBase, auth, onCleared }) {
 // structurally fine but a target device just hasn't checked in recently.
 // Only BROKEN gets a fix-it picker -- there's nothing to "replace" for a
 // device that's simply offline right now.
+// Small tags on a list row (owner, mode, location, status). Layer-3 objects in
+// the surface system (styles.css "Surface layers"): every record in a panel is a
+// framed row (layer 2) and its tags are chips (layer 3), so the same anatomy
+// reads the same in every box instead of some being plain text and some framed.
+function MetaChips({ items }) {
+  const chips = (items || []).filter(Boolean);
+  if (chips.length === 0) return null;
+  return (
+    <div className="meta-chips">
+      {chips.map(chip => <span key={chip} className="meta-chip">{chip}</span>)}
+    </div>
+  );
+}
+
 function WorkflowRow({ workflow, auth, devices = [], onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -6882,7 +6896,7 @@ function WorkflowRow({ workflow, auth, devices = [], onChanged }) {
             ? workflow.actions.map(a => a.targetDeviceId || a.actionDefinitionId).join(", ")
             : "no actions"}
         </div>
-        <div className="rule-source">{workflow.location} · {workflow.enabled ? "active" : "draft"}</div>
+        <MetaChips items={[workflow.location, workflow.enabled ? "active" : "draft"]} />
         {isBroken && auth?.signedIn && brokenActions.map(a => {
           const vocab = actionVocabulary.find(v => v.id === a.actionDefinitionId);
           const capableDevices = vocab?.requiresCapability
@@ -7160,7 +7174,7 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
       )}
       {actionError && <p className="action-result action-error">{actionError}</p>}
       {!error && visible.length === 0 && <p className="config-hint">No open opportunities — the cabin looks good.</p>}
-      <div className="guest-access-list">
+      <div className="rule-rows">
         {visible.map(o => {
           const device = devices.find(d => d.deviceId === o.deviceId);
           const area = device?.attributes?.area;
@@ -7168,22 +7182,22 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
           const watts = o.evidence?.currentPowerWatts;
           const hours = o.evidence?.continuousHours;
           return (
-            <div key={o.id} className="guest-access-row">
+            <div key={o.id} className="rule-row">
+              <span className="rule-dot rule-defined">●</span>
               <div>
-                <span className="opportunity-type-badge">{OPPORTUNITY_TYPE_LABELS[o.opportunityType] || o.opportunityType}</span>
-                <strong>{deviceLabel}</strong>
-                <p className="config-hint">
+                <div className="rule-name">{deviceLabel}</div>
+                <div className="rule-detail">
                   {watts != null && `Drawing ~${Number(watts).toFixed(0)}W`}
                   {hours != null && ` continuously for ${hours}h`}
                   {" · detected "}{new Date(o.detectedAt).toLocaleString()}
-                  {o.status === "ACKNOWLEDGED" && " · acknowledged"}
-                </p>
-              </div>
-              <div className="managed-users-row-actions">
-                {o.status === "OPEN" && (
-                  <button type="button" className="btn-ghost" onClick={() => setStatus(o.id, "ACKNOWLEDGED")}>Acknowledge</button>
-                )}
-                <button type="button" className="btn-secondary" onClick={() => setStatus(o.id, "RESOLVED")}>Resolve</button>
+                </div>
+                <MetaChips items={[OPPORTUNITY_TYPE_LABELS[o.opportunityType] || o.opportunityType, o.status === "ACKNOWLEDGED" && "acknowledged"]} />
+                <div className="workflow-row-actions">
+                  {o.status === "OPEN" && (
+                    <button type="button" className="btn-ghost" onClick={() => setStatus(o.id, "ACKNOWLEDGED")}>Acknowledge</button>
+                  )}
+                  <button type="button" className="btn-secondary" onClick={() => setStatus(o.id, "RESOLVED")}>Resolve</button>
+                </div>
               </div>
             </div>
           );
@@ -7224,7 +7238,7 @@ function BuiltinRules({ location, auth }) {
           <div>
             <div className="rule-name">{r.name}</div>
             <div className="rule-detail">{r.trigger} → {r.action}</div>
-            <div className="rule-source">{r.owner} · {r.configurationMode.replaceAll("_", " ").toLowerCase()} · read only</div>
+            <MetaChips items={[r.owner, r.configurationMode.replaceAll("_", " ").toLowerCase(), "read only"]} />
           </div>
         </div>
       ))}
