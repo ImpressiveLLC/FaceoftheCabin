@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
+PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 mergeStatusCheckItems } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
@@ -602,9 +603,9 @@ describe("SensorHistoryPanel", () => {
       render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
       await screen.findByRole("tab", { name: /comfort & air/i });
 
-      fireEvent.click(screen.getByRole("tab", { name: /security & presence/i }));
+      fireEvent.click(screen.getByRole("tab", { name: /energy/i }));
 
-      expect(await screen.findByText(/no chartable trend history yet for security & presence/i)).toBeTruthy();
+      expect(await screen.findByText(/no devices at this location report a field under this topic yet/i)).toBeTruthy();
       expect(screen.queryByLabelText(/^field$/i)).toBeNull();
     });
 
@@ -5157,6 +5158,199 @@ describe("PendingImportRow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm as Device" }));
 
     expect(await screen.findByText("Already confirmed")).toBeTruthy();
+  });
+});
+
+// Security & Presence topic: per-day motion history from
+// GET /api/presence/activity (OCCUPANCY_SENSOR_ACTIVATED/CLEARED edges).
+describe("formatActiveTime / formatDaysSince / formatPresenceDay", () => {
+  it("formats active time in whole minutes, then hours", () => {
+    expect(formatActiveTime(0)).toBe("0 min");
+    expect(formatActiveTime(0.4)).toBe("<1 min");
+    expect(formatActiveTime(12.4)).toBe("12 min");
+    expect(formatActiveTime(60)).toBe("1 h");
+    expect(formatActiveTime(125)).toBe("2 h 5 min");
+  });
+
+  it("phrases days since last activity", () => {
+    expect(formatDaysSince(0)).toBe("today");
+    expect(formatDaysSince(1)).toBe("yesterday");
+    expect(formatDaysSince(45)).toBe("45 days ago");
+  });
+
+  it("shows the server's calendar date whatever the browser zone is", () => {
+    expect(formatPresenceDay("2026-09-14")).toBe("Mon, Sep 14");
+    expect(formatPresenceDay("2026-09-01")).toBe("Tue, Sep 1");
+  });
+});
+
+describe("PresenceActivityView", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const hours = Array(24).fill(0);
+  hours[9] = 2; hours[10] = 1;
+  const payload = (over = {}) => ({
+    generatedAt: "2026-09-15T18:00:00Z", timezone: "America/Chicago", days: 3, visitGapMinutes: 30,
+    sensors: [{
+      deviceId: "z2m-motion_entry", name: "Entry Motion", location: "cabin", battery: 87,
+      lastSeen: "2026-09-15T17:59:00Z", lastActivation: "2026-09-15T15:00:00Z", daysSinceLastActivity: 0,
+      totals: { activations: 3, visits: 2, activeMinutes: 4, activeDays: 2, days: 3 },
+      byDay: [
+        { date: "2026-09-13", activations: 0, visits: 0, activeMinutes: 0, firstAt: null, lastAt: null },
+        { date: "2026-09-14", activations: 2, visits: 1, activeMinutes: 3, firstAt: "2026-09-14T14:00:00Z", lastAt: "2026-09-14T14:05:00Z" },
+        { date: "2026-09-15", activations: 1, visits: 1, activeMinutes: 1, firstAt: "2026-09-15T15:00:00Z", lastAt: "2026-09-15T15:00:00Z" },
+      ],
+      byHour: hours, recent: ["2026-09-15T15:00:00Z"],
+    }],
+    ...over,
+  });
+  const ok = (body) => vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body });
+
+  it("shows the sensor's totals, last activity and battery", async () => {
+    const { container } = render(<PresenceActivityView apiBase="http://cabin" authedFetch={ok(payload())} />);
+
+    await screen.findByText("Entry Motion");
+    const stats = container.querySelector(".presence-stats").textContent;
+    expect(stats).toContain("Visits2");
+    expect(stats).toContain("Activations3");
+    expect(stats).toContain("Active time4 min");
+    expect(stats).toContain("Days with activity2 of 3");
+    expect(screen.getByText(/Last activity today, 10:00\sAM · 87% battery/)).toBeTruthy();
+  });
+
+  it("draws one bar per day, zero days included, with the day's detail in the sensor's local time", async () => {
+    const { container } = render(<PresenceActivityView apiBase="http://cabin" authedFetch={ok(payload())} />);
+    await screen.findByText("Entry Motion");
+
+    const slots = container.querySelectorAll(".presence-bar-slot");
+    expect(slots).toHaveLength(3);
+    expect(slots[0].title).toBe("Sun, Sep 13: no activity");
+    expect(slots[1].title).toMatch(/^Mon, Sep 14: 1 visit · 2 activations · 3 min · 9:00\sAM–9:05\sAM$/);
+    expect(container.querySelectorAll(".presence-bar.zero")).toHaveLength(1);
+  });
+
+  it("switching the metric rescales the bars", async () => {
+    const { container } = render(<PresenceActivityView apiBase="http://cabin" authedFetch={ok(payload())} />);
+    await screen.findByText("Entry Motion");
+    const bars = () => container.querySelectorAll(".presence-bar");
+    expect(parseFloat(bars()[1].style.height)).toBeCloseTo(100);
+    expect(parseFloat(bars()[2].style.height)).toBeCloseTo(100);
+
+    fireEvent.click(screen.getByRole("button", { name: "Active time" }));
+
+    expect(screen.getByRole("button", { name: "Active time" }).getAttribute("aria-pressed")).toBe("true");
+    expect(parseFloat(bars()[1].style.height)).toBeCloseTo(100);
+    expect(parseFloat(bars()[2].style.height)).toBeCloseTo(33.33, 1);
+  });
+
+  it("lights the busiest hour fully and leaves empty hours nearly transparent", async () => {
+    const { container } = render(<PresenceActivityView apiBase="http://cabin" authedFetch={ok(payload())} />);
+    await screen.findByText("Entry Motion");
+
+    const cells = container.querySelectorAll(".presence-hour");
+    expect(cells).toHaveLength(24);
+    expect(parseFloat(cells[9].style.opacity)).toBeCloseTo(1);
+    expect(parseFloat(cells[3].style.opacity)).toBeLessThan(0.1);
+    expect(cells[9].title).toBe("9 AM: 2 activations");
+  });
+
+  it("re-fetches when the range changes", async () => {
+    const fetchMock = ok(payload());
+    render(<PresenceActivityView apiBase="http://cabin" authedFetch={fetchMock} />);
+    await screen.findByText("Entry Motion");
+    expect(fetchMock).toHaveBeenLastCalledWith("http://cabin/api/presence/activity?days=30");
+
+    fireEvent.change(screen.getByLabelText("Range"), { target: { value: "7" } });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith("http://cabin/api/presence/activity?days=7"));
+  });
+
+  it("lists every day in the day-by-day table, newest first", async () => {
+    const { container } = render(<PresenceActivityView apiBase="http://cabin" authedFetch={ok(payload())} />);
+    await screen.findByText("Entry Motion");
+
+    const rows = container.querySelectorAll(".presence-day-table tbody tr");
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain("Tue, Sep 15");
+    expect(rows[2].textContent).toContain("Sun, Sep 13");
+    expect(rows[2].textContent).toContain("—");
+  });
+
+  it.each([401, 403])("explains the restriction instead of an empty chart on %i", async (status) => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status, json: async () => ({}) });
+    render(<PresenceActivityView apiBase="http://cabin" authedFetch={authedFetch} />);
+
+    expect(await screen.findByText(/limited to signed-in adult household members/)).toBeTruthy();
+    expect(screen.queryByText("Entry Motion")).toBeNull();
+  });
+
+  it("says so when the request fails", async () => {
+    render(<PresenceActivityView apiBase="http://cabin" authedFetch={vi.fn().mockRejectedValue(new Error("down"))} />);
+
+    expect(await screen.findByText(/Could not load motion history/)).toBeTruthy();
+  });
+
+  it("says so when no sensor has any recorded activity", async () => {
+    render(<PresenceActivityView apiBase="http://cabin" authedFetch={ok(payload({ sensors: [] }))} />);
+
+    expect(await screen.findByText("No motion history recorded yet.")).toBeTruthy();
+  });
+
+  it("is what the Security & Presence topic tab of Sensor History shows", async () => {
+    const devices = [{ deviceId: "z2m-humid_mech", name: "Mech Room", type: "TEMPERATURE_SENSOR", state: "ONLINE",
+      location: "cabin", attributes: { enabled: true, reportsFields: ["humidity"] } }];
+    const authedFetch = vi.fn((url) => {
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ "z2m-humid_mech": ["humidity"] }) });
+      if (url.includes("/api/presence/activity")) return Promise.resolve({ ok: true, status: 200, json: async () => payload() });
+      return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+    });
+    render(<SensorHistoryPanel devices={devices} apiBase="http://cabin" tempUnit="F" authedFetch={authedFetch} />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Security & Presence" }));
+
+    expect(await screen.findByText("Entry Motion")).toBeTruthy();
+    expect(authedFetch).toHaveBeenCalledWith("http://cabin/api/presence/activity?days=30");
+  });
+});
+
+// One backend can serve several locations' sensors, so a location's Monitoring
+// view asks for only its own.
+describe("PresenceActivityView location scope", () => {
+  afterEach(() => cleanup());
+  const empty = { generatedAt: "2026-09-19T18:00:00Z", timezone: "America/Chicago", days: 30, visitGapMinutes: 30, sensors: [] };
+  const ok = () => vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => empty });
+
+  it("adds the location to the request when it has one", async () => {
+    const fetchMock = ok();
+    render(<PresenceActivityView apiBase="http://cabin" location="home" authedFetch={fetchMock} />);
+
+    await screen.findByText("No motion history recorded yet.");
+    expect(fetchMock).toHaveBeenLastCalledWith("http://cabin/api/presence/activity?days=30&location=home");
+  });
+
+  it("keeps the location on a range change", async () => {
+    const fetchMock = ok();
+    render(<PresenceActivityView apiBase="http://cabin" location="cabin" authedFetch={fetchMock} />);
+    await screen.findByText("No motion history recorded yet.");
+
+    fireEvent.change(screen.getByLabelText("Range"), { target: { value: "7" } });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith("http://cabin/api/presence/activity?days=7&location=cabin"));
+  });
+
+  it("is passed down from Sensor History's location", async () => {
+    const devices = [{ deviceId: "z2m-humid_mech", name: "Mech Room", type: "TEMPERATURE_SENSOR", state: "ONLINE",
+      location: "cabin", attributes: { enabled: true, reportsFields: ["humidity"] } }];
+    const authedFetch = vi.fn((url) => {
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ "z2m-humid_mech": ["humidity"] }) });
+      if (url.includes("/api/presence/activity")) return Promise.resolve({ ok: true, status: 200, json: async () => empty });
+      return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+    });
+    render(<SensorHistoryPanel devices={devices} apiBase="http://cabin" location="cabin" tempUnit="F" authedFetch={authedFetch} />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Security & Presence" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith("http://cabin/api/presence/activity?days=30&location=cabin"));
   });
 });
 

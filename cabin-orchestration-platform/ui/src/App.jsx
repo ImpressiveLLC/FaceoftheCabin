@@ -4667,6 +4667,188 @@ const REPORTING_TOPICS = [
   { id: "occupancy", label: "Occupancy", comingSoon: true },
 ];
 
+// "12 min", "2 h 5 min". Active time is a sum of short sensor-on periods, so
+// whole minutes are honest precision; sub-minute days read "<1 min", not "0".
+export function formatActiveTime(minutes) {
+  if (!minutes || minutes <= 0) return "0 min";
+  if (minutes < 1) return "<1 min";
+  const total = Math.round(minutes);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
+export function formatDaysSince(n) {
+  if (n === 0) return "today";
+  if (n === 1) return "yesterday";
+  return `${n} days ago`;
+}
+
+// "2026-09-14" -> "Mon Sep 14". Formatted in UTC from a noon timestamp so the
+// server's calendar date is what's shown regardless of the browser's zone.
+export function formatPresenceDay(isoDate) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-US",
+    { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+const PRESENCE_METRICS = [
+  { id: "visits", label: "Visits", unit: "visit", hint: "Separate times someone was there -- activations closer together than the visit gap count as one." },
+  { id: "activations", label: "Activations", unit: "activation", hint: "Every time the sensor went from clear to motion." },
+  { id: "activeMinutes", label: "Active time", unit: "min", hint: "How long the sensor reported motion." },
+];
+
+// Security & Presence topic: when each motion sensor was active, by day. Built
+// from GET /api/presence/activity, which reads the OCCUPANCY_SENSOR_ACTIVATED/
+// CLEARED events the Zigbee adapter records at ingest (OccupancyEdges.java) --
+// transitions, not the occupancy field repeated on every battery report.
+// Occupancy history is D14-protected, so the endpoint requires a signed-in
+// adult/administrator; anyone else sees an explanation instead of an empty chart.
+export function PresenceActivityView({ apiBase, location, authedFetch = fetch }) {
+  const [days, setDays] = useState(30);
+  const [metric, setMetric] = useState("visits");
+  const [state, setState] = useState({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading" });
+    // One backend can serve more than one location's sensors, so a
+    // location's Monitoring view asks for just its own.
+    const scope = location ? `&location=${encodeURIComponent(location)}` : "";
+    authedFetch(`${apiBase}/api/presence/activity?days=${days}${scope}`)
+      .then(async r => {
+        if (r.status === 401 || r.status === 403) return { status: "denied" };
+        if (!r.ok) return { status: "error" };
+        const data = await r.json();
+        return Array.isArray(data?.sensors) ? { status: "ok", data } : { status: "error" };
+      })
+      .catch(() => ({ status: "error" }))
+      .then(next => { if (!cancelled) setState(next); });
+    return () => { cancelled = true; };
+  }, [apiBase, location, days, authedFetch]);
+
+  if (state.status === "loading") return <p className="config-hint">Loading…</p>;
+  if (state.status === "denied") {
+    return <p className="config-hint">Motion history shows when rooms were in use, so it is limited to signed-in adult household members.</p>;
+  }
+  if (state.status === "error") return <p className="config-hint">Could not load motion history right now.</p>;
+
+  const { sensors, timezone, visitGapMinutes } = state.data;
+  const activeMetric = PRESENCE_METRICS.find(m => m.id === metric);
+  const timeIn = (iso) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: timezone });
+
+  return (
+    <div className="presence-activity">
+      <div className="sensor-history-controls">
+        <label className="dm-toolbar-select">Range
+          <select value={days} onChange={e => setDays(Number(e.target.value))}>
+            <option value={7}>7 days</option>
+            <option value={14}>14 days</option>
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+            <option value={90}>90 days</option>
+          </select>
+        </label>
+        <div className="presence-metric-toggle" role="group" aria-label="Chart metric">
+          {PRESENCE_METRICS.map(m => (
+            <button key={m.id} type="button" title={m.hint}
+              className={`sensor-history-device-chip${metric === m.id ? " selected" : ""}`}
+              aria-pressed={metric === m.id} onClick={() => setMetric(m.id)}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {sensors.length === 0 && (
+        <p className="config-hint">No motion history recorded yet.</p>
+      )}
+
+      {sensors.map(s => {
+        const values = s.byDay.map(d => d[metric]);
+        const max = Math.max(...values, 0);
+        const maxHour = Math.max(...s.byHour, 0);
+        return (
+          <section key={s.deviceId} className="presence-sensor" aria-label={s.name}>
+            <header className="presence-sensor-head">
+              <span className="presence-sensor-name">{s.name}</span>
+              <span className="config-hint">
+                Last activity {formatDaysSince(s.daysSinceLastActivity)}, {timeIn(s.lastActivation)}
+                {s.battery != null && ` · ${s.battery}% battery`}
+              </span>
+            </header>
+
+            <dl className="presence-stats">
+              <div><dt>Visits</dt><dd>{s.totals.visits}</dd></div>
+              <div><dt>Activations</dt><dd>{s.totals.activations}</dd></div>
+              <div><dt>Active time</dt><dd>{formatActiveTime(s.totals.activeMinutes)}</dd></div>
+              <div><dt>Days with activity</dt><dd>{s.totals.activeDays} of {s.totals.days}</dd></div>
+            </dl>
+
+            <div className="presence-chart" role="img"
+              aria-label={`${activeMetric.label} per day for ${s.name}, last ${s.totals.days} days`}>
+              {s.byDay.map(d => {
+                const v = d[metric];
+                const detail = d.activations === 0
+                  ? "no activity"
+                  : `${d.visits} visit${d.visits === 1 ? "" : "s"} · ${d.activations} activation${d.activations === 1 ? "" : "s"} · ${formatActiveTime(d.activeMinutes)} · ${timeIn(d.firstAt)}–${timeIn(d.lastAt)}`;
+                return (
+                  <div key={d.date} className="presence-bar-slot" title={`${formatPresenceDay(d.date)}: ${detail}`}>
+                    <div className={`presence-bar${v > 0 ? "" : " zero"}`}
+                      style={{ height: v > 0 && max > 0 ? `${Math.max(6, (v / max) * 100)}%` : undefined }} />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="presence-chart-axis">
+              <span>{formatPresenceDay(s.byDay[0].date)}</span>
+              <span>{activeMetric.label} per day · tallest {activeMetric.id === "activeMinutes" ? formatActiveTime(max) : max}</span>
+              <span>{formatPresenceDay(s.byDay[s.byDay.length - 1].date)}</span>
+            </div>
+
+            <div className="presence-hours" role="img" aria-label={`Activations by hour of day for ${s.name}`}>
+              {s.byHour.map((count, hour) => (
+                <div key={hour} className="presence-hour"
+                  title={`${hour % 12 === 0 ? 12 : hour % 12}${hour < 12 ? " AM" : " PM"}: ${count} activation${count === 1 ? "" : "s"}`}
+                  style={{ opacity: count > 0 && maxHour > 0 ? 0.2 + 0.8 * (count / maxHour) : 0.06 }} />
+              ))}
+            </div>
+            <div className="presence-chart-axis presence-hours-axis">
+              <span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>11p</span>
+            </div>
+
+            <details className="presence-day-table">
+              <summary>Day by day</summary>
+              <div className="sensor-history-table-wrap">
+                <table className="sensor-history-table">
+                  <thead><tr><th>Day</th><th>Visits</th><th>Activations</th><th>Active time</th><th>First</th><th>Last</th></tr></thead>
+                  <tbody>
+                    {[...s.byDay].reverse().map(d => (
+                      <tr key={d.date}>
+                        <td>{formatPresenceDay(d.date)}</td>
+                        <td>{d.visits}</td>
+                        <td>{d.activations}</td>
+                        <td>{d.activations === 0 ? "—" : formatActiveTime(d.activeMinutes)}</td>
+                        <td>{d.firstAt ? timeIn(d.firstAt) : "—"}</td>
+                        <td>{d.lastAt ? timeIn(d.lastAt) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </section>
+        );
+      })}
+
+      <p className="config-hint">
+        A visit is a run of activations less than {visitGapMinutes} minutes apart. Days and hours are {timezone} time.
+        Activity from before this view existed was reconstructed from the sensors' stored readings; these daily totals are kept permanently.
+      </p>
+    </div>
+  );
+}
+
 // 2026-08-27: redesigned from a single-device/single-field picker into a
 // field-first, multi-device chart -- the user's own two-step request: (1)
 // pick a field (e.g. Humidity) and see every device that actually reports
@@ -4700,7 +4882,7 @@ const REPORTING_TOPICS = [
 // (none of which pass one) keeps working unchanged -- production callers
 // (MonitoringPanel) pass the real auth.authedFetch, required since
 // /api/events/** now requires a Google token (WebConfig.java, 2026-09-01).
-export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = fetch }) {
+export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authedFetch = fetch }) {
   // null outside the app shell (direct-render tests); the Alert History link is simply omitted then.
   const setActivePanel = useApp()?.setActivePanel;
   const [reportedFields, setReportedFields] = useState({});
@@ -5011,13 +5193,11 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
         </>
       )}
 
-      {(topic === "comfort_air" || topic === "security_presence" || topic === "energy") && (
+      {topic === "security_presence" && <PresenceActivityView apiBase={apiBase} location={location} authedFetch={authedFetch} />}
+
+      {(topic === "comfort_air" || topic === "energy") && (
         availableFields.length === 0 ? (
-          <p className="config-hint">
-            {topic === "security_presence"
-              ? "No chartable trend history yet for Security & Presence — motion/contact/leak are binary state changes, not day-bucketed readings. Check Alert History for individual events."
-              : "No devices at this location report a field under this Topic yet."}
-          </p>
+          <p className="config-hint">No devices at this location report a field under this Topic yet.</p>
         ) : (
           <>
             <div className="sensor-history-controls">
@@ -5183,7 +5363,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       </div>
 
       <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
-        apiBase={locCfg.apiBase} tempUnit={tempUnit} authedFetch={auth?.authedFetch} />
+        apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch} />
 
       <CameraHealthPanel locCfg={locCfg} />
 
