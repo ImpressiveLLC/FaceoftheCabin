@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 mergeStatusCheckItems } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
@@ -3279,6 +3279,53 @@ describe("current active alert projection", () => {
     expect(alertLevelFor([{ severity: "WARN" }, { severity: "CRITICAL" }])).toBe("critical");
     expect(deriveNavAlertLevels([{ severity: "CRITICAL" }])).toEqual({
       DEVICE_MANAGER: "critical", MONITORING: "critical", RULES_ENGINE: "critical",
+    });
+  });
+
+  // 2026-09-19 (user report): tab dots stayed lit with nothing to review. Live
+  // data was 10 WARN device alerts, all 10 IGNORED, 7 of them for "home" while
+  // viewing cabin -- the banner and Status Checks list said "nothing needs
+  // attention" and the rail read the raw list anyway.
+  describe("nav tab dots follow the same list as the banner and Status Checks", () => {
+    const warn = (id, location = "cabin") => ({
+      alertId: `device:${id}:missed-checkin`, sourceDeviceId: id, location,
+      severity: "WARN", condition: "MISSED_CHECKIN", title: `${id} missed its check-in window`,
+      evidenceAt: "2026-09-18T05:22:00Z",
+    });
+    const noLevel = { DEVICE_MANAGER: null, MONITORING: null, RULES_ENGINE: null };
+
+    it("shows no dots once every alert has been ignored", () => {
+      const alerts = [warn("a"), warn("b"), warn("c")];
+      const acks = alerts.map(a => ({ alertKey: a.alertId, mode: "IGNORED" }));
+      expect(navAlertLevelsFor(alerts, "cabin", [], acks)).toEqual(noLevel);
+    });
+
+    it("shows no dots for alerts that belong to a location that isn't selected", () => {
+      expect(navAlertLevelsFor([warn("nas", "home"), warn("tv", "home")], "cabin", [])).toEqual(noLevel);
+    });
+
+    it("still shows a dot for an alert that hasn't been dealt with", () => {
+      const alerts = [warn("a"), warn("b")];
+      const acks = [{ alertKey: alerts[0].alertId, mode: "IGNORED" }];
+      expect(navAlertLevelsFor(alerts, "cabin", [], acks).RULES_ENGINE).toBe("warn");
+    });
+
+    it("counts automation alerts, which the rail never saw before", () => {
+      const event = { eventId: "e1", sourceDeviceId: "psi", eventType: "AUTOMATION_ALERT", severity: "CRITICAL",
+        timestamp: "2026-09-18T05:22:00Z", payload: { ruleId: "WATER_PRESSURE_LOW", see: "Pressure dropped" } };
+      expect(navAlertLevelsFor([], "cabin", [event]).DEVICE_MANAGER).toBe("critical");
+    });
+
+    it("agrees with the banner's own level for the same inputs", () => {
+      const alerts = [warn("a"), warn("b", "home")];
+      const acks = [{ alertKey: alerts[0].alertId, mode: "SNOOZED" }];
+      const bannerLevel = alertLevelFor(mergeStatusCheckItems(alerts, "cabin", [], acks));
+      expect(navAlertLevelsFor(alerts, "cabin", [], acks).RULES_ENGINE).toBe(bannerLevel);
+    });
+
+    it("treats severity case-insensitively", () => {
+      expect(alertLevelFor([{ severity: "critical" }])).toBe("critical");
+      expect(alertLevelFor([{ severity: "warn" }])).toBe("warn");
     });
   });
 

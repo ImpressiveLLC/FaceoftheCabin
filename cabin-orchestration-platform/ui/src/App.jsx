@@ -7006,14 +7006,31 @@ function BuiltinRules({ location, auth }) {
 const ALERT_PANELS   = ["DEVICE_MANAGER", "MONITORING", "RULES_ENGINE"];
 
 export function alertLevelFor(alerts = []) {
-  if (alerts.some(alert => alert.severity === "CRITICAL")) return "critical";
-  if (alerts.some(alert => alert.severity === "WARN")) return "warn";
+  const severityOf = alert => (alert.severity || "").toUpperCase();
+  if (alerts.some(alert => severityOf(alert) === "CRITICAL")) return "critical";
+  if (alerts.some(alert => severityOf(alert) === "WARN")) return "warn";
   return null;
 }
 
 export function deriveNavAlertLevels(alerts = []) {
   const level = alertLevelFor(alerts);
   return Object.fromEntries(ALERT_PANELS.map(panelId => [panelId, level]));
+}
+
+// 2026-09-19 (user report: dots on the Devices / Monitoring / Rules & Alerts
+// tabs with nothing left to look at): the rail read the RAW /api/alerts/active
+// list, so it kept counting alerts the banner and Status Checks list had
+// already dropped -- ignored/snoozed ones (all 10 live alerts were IGNORED and
+// the tabs still lit up), ones for a location that isn't selected (7 of those
+// 10 were "home" while viewing cabin), and it never saw automation alerts at
+// all. It was the one consumer never moved onto mergeStatusCheckItems when the
+// banner was ("drift made structurally impossible" -- it wasn't). The rail now
+// derives its dots from that same merged list, so a tab shows a dot exactly
+// when the banner says there is something to review.
+export function navAlertLevelsFor(activeAlerts, activeLocation, automationAlerts, acknowledgments = []) {
+  return deriveNavAlertLevels(
+    mergeStatusCheckItems(activeAlerts, activeLocation, automationAlerts, acknowledgments)
+  );
 }
 
 // authedFetch defaults to plain fetch (pre-sign-in / no auth wired) --
@@ -7058,7 +7075,6 @@ function useNavAlerts(authedFetch = fetch) {
   }, [authedFetch]);
 
   return {
-    levels: deriveNavAlertLevels(feed.alerts),
     alerts: feed.alerts,
     locations: feed.locations,
     unavailableLocations: feed.unavailableLocations,
@@ -7465,7 +7481,6 @@ function App() {
   // conditional).
   const cameraAuth = useGoogleAuth();
   const {
-    levels: alertLevels,
     alerts: activeAlerts,
     locations: activeAlertLocations,
     unavailableLocations: activeAlertUnavailableLocations,
@@ -7476,6 +7491,7 @@ function App() {
   // one fetch/one truth for the total instead of computing it twice.
   const { alerts: automationAlerts, loading: automationAlertsLoading } = useAutomationAlerts(activeLocation, cameraAuth.authedFetch);
   const { acknowledgments: alertAcknowledgments, refresh: refreshAlertAcknowledgments } = useAlertAcknowledgments(cameraAuth.authedFetch);
+  const alertLevels = navAlertLevelsFor(activeAlerts, activeLocation, automationAlerts, alertAcknowledgments);
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence(cameraAuth.authedFetch);
   const securityStates = useSecurityState(cameraAuth.authedFetch);
