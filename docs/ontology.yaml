@@ -6086,20 +6086,23 @@ elements:
       catalogs to 10 presets. The shared control CSS in both apps now derives
       dropdowns, banners, header actions, Close controls, and other buttons
       from each preset's semantic palette instead of fixed Modern-theme colors.
-      ADDED 2026-09-18 (cabin-ui only): 80s Neon surfaces are a three-layer
-      system in styles.css (`--layer-1/2/3` with -fill/-edge/-glow, scoped to
-      [data-theme="neon80s"]; other presets untouched). Largest objects
-      (panels/cards) are the pink primary, mid-size objects nested in them
-      are #ffff66, the smallest tiles/chips/read-outs are #7fffd4 — edge and
-      limited glow carry the color, fills stay dark so the theme's light text
-      is unchanged. A component joins the system by adding its class to the
-      matching :is() list, not by one-off styling; ThemeLayers.test.jsx pins
-      the palette, the class-to-layer map and the one-layer-per-component
-      rule. Reason: many surfaces hard-coded GitHub-dark hex (#161b22 etc.)
-      that ignored every preset, so sibling panels rendered as different
-      colors. Left-nav tabs share one fill; only the active tab (pink
-      outline/tint) and a tab with a notification (yellow dot + icon tint,
-      critical adds a red bar/label) differ, never a shaded background.
+      ADDED 2026-09-18/19 (cabin-ui only): surfaces are a three-layer system
+      for EVERY preset (styles.css "Surface layers"; rule and rationale in
+      docs/UX_JOURNEY_STANDARD.md "Visual system"). Layer 1 = page panels,
+      2 = mid-size cards nested in them, 3 = smallest tiles/chips; each is
+      `--layer-N-fill/-edge/-shadow/-border-width`, defaulting from the
+      preset's own --bg/--bg-secondary/--bg-tertiary/--border, so a preset is
+      consistent with no extra work. Presets override tokens, never classes:
+      80s Neon = pink (--accent) -> #ffff66 -> #7fffd4 with limited glow and
+      every tab #ffff66; Asteroid City = hard postcard shadows. Reason: ~20
+      surfaces hard-coded GitHub-dark hex (#161b22 etc.) that ignored every
+      preset, so sibling panels differed in all presets but Modern.
+      ThemeLayers.test.jsx pins the token defaults, class-to-layer map,
+      one-layer-per-component, no text recoloring, no hard-coded surface hex,
+      and tab-color uniformity. Tabs: one color (--tab-color) in every state;
+      a warn notification is a dot badge only (no icon tint), critical keeps
+      its red bar/label, the active tab is marked by outline/tint. Nav dots
+      derive from the same merged list as the banner (navAlertLevelsFor).
       KNOWN, not fixed: ThemeProvider sets each var with setProperty() but
       never clears the previous preset's, so switching presets in-session can
       leave stale values for variables the new preset does not define (seen:

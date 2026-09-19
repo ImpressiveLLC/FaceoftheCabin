@@ -214,7 +214,7 @@ body {
   transition: border-color 0.15s;
 }
 .device-card:hover { border-color: #388bfd; }
-.device-card.selected { border-color: #1f6feb; background: #131a24; }
+.device-card.selected { border-color: var(--layer-selected-edge); background: var(--layer-2-fill); }
 .device-card-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
 }
@@ -314,8 +314,8 @@ body {
   gap: 14px;
 }
 .config-card {
-  background: #161b22;
-  border: 1px solid #21262d;
+  background: var(--layer-1-fill);
+  border: 1px solid var(--layer-1-edge);
   border-radius: 12px;
   padding: 16px;
 }
@@ -348,8 +348,8 @@ body {
 }
 .code-block {
   display: block;
-  background: #0d1117;
-  border: 1px solid #21262d;
+  background: var(--layer-3-fill);
+  border: 1px solid var(--layer-3-edge);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12px;
@@ -373,7 +373,7 @@ body {
 .camera-health-tile {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 14px; border-radius: 10px;
-  border: 1px solid #21262d; background: #0d1117;
+  border: 1px solid var(--layer-3-edge); background: var(--layer-3-fill);
   font-size: 13px;
 }
 .camera-health-name { color: #f0f6fc; font-weight: 600; text-transform: capitalize; }
@@ -583,8 +583,8 @@ body {
   .rules-nodered-split { grid-template-columns: 1fr; }
 }
 .sidebar-card {
-  background: #161b22;
-  border: 1px solid #21262d;
+  background: var(--layer-1-fill);
+  border: 1px solid var(--layer-1-edge);
   border-radius: 12px;
   padding: 14px;
 }
@@ -664,7 +664,7 @@ body {
   font-size: 12px;
   cursor: pointer;
 }
-.sensor-history-device-chip.selected { border-color: #1f6feb; background: #131a24; color: var(--text); }
+.sensor-history-device-chip.selected { border-color: var(--layer-selected-edge); background: var(--layer-3-fill); color: var(--text); }
 /* D15/Sprint 5 Area pipe -- muted prefix ahead of the device name itself,
    which stays the curated display_label/device.name per the display-label
    rule; area is location context, never a replacement for the name. */
@@ -688,7 +688,7 @@ body {
   font-size: 12px;
   cursor: pointer;
 }
-.sensor-history-topic-tab.active { border-color: #1f6feb; background: #131a24; color: var(--text); }
+.sensor-history-topic-tab.active { border-color: var(--layer-selected-edge); background: var(--layer-3-fill); color: var(--text); }
 .sensor-history-topic-tab:disabled { color: var(--text-dim); opacity: 0.5; cursor: not-allowed; }
 .sensor-history-topic-soon { margin-left: 6px; font-size: 9px; vertical-align: middle; }
 .sensor-history-alert-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 6px; }
@@ -701,8 +701,8 @@ body {
 
 /* ─── Event Log ─────────────────────────────────────────────────────────── */
 .event-log {
-  background: #0d1117;
-  border: 1px solid #21262d;
+  background: var(--layer-1-fill);
+  border: 1px solid var(--layer-1-edge);
   border-radius: 10px;
   max-height: 200px;
   overflow-y: auto;
@@ -725,7 +725,7 @@ body {
 .camera-events-load-more { margin-top: 12px; width: 100%; justify-content: center; }
 .camera-event-row {
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px; background: #0d1117; border: 1px solid #21262d;
+  padding: 10px 14px; background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge);
   border-radius: 8px; color: #8b949e;
 }
 .camera-event-title { color: #e6edf3; font-size: 13px; }
@@ -737,7 +737,7 @@ body {
 
 .camera-event-thumb {
   width: 56px; height: 42px; flex-shrink: 0; object-fit: cover;
-  border-radius: 6px; background: #161b22;
+  border-radius: 6px; background: var(--layer-3-fill);
 }
 .camera-event-thumb-empty, .camera-event-thumb-loading {
   display: flex; align-items: center; justify-content: center;
@@ -754,8 +754,8 @@ body {
 }
 
 .camera-clip-expanded {
-  padding: 10px 14px 14px; background: #0d1117;
-  border: 1px solid #21262d; border-top: none;
+  padding: 10px 14px 14px; background: var(--layer-3-fill);
+  border: 1px solid var(--layer-3-edge); border-top: none;
   border-radius: 0 0 8px 8px; margin-top: -1px;
 }
 .camera-clip-player { width: 100%; max-height: 360px; border-radius: 6px; background: #000; }
@@ -766,7 +766,7 @@ body {
 .camera-motion-item { display: flex; flex-direction: column; }
 .camera-motion-row {
   display: flex; align-items: center; gap: 10px;
-  padding: 6px 14px; background: #0d1117; border: 1px solid #161b22;
+  padding: 6px 14px; background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge);
   border-radius: 6px; color: #6e7681; font-size: 12px;
 }
 /* Rows now expand into a clip-by-time attempt (see CameraEventsPanel /
@@ -798,7 +798,7 @@ body {
 .opportunity-list { display: flex; flex-direction: column; gap: 14px; }
 
 .opportunity-card {
-  background: #161b22; border: 1px solid #21262d; border-radius: 10px;
+  background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge); border-radius: 10px;
   padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
 }
 .opportunity-card.opportunity-dismissed { opacity: .5; }
@@ -830,7 +830,7 @@ body {
   font-size: 12px; cursor: pointer; padding: 0;
 }
 .opportunity-detail {
-  background: #0d1117; border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px;
+  background: var(--layer-3-fill); border: 1px solid var(--layer-3-edge); border-radius: 8px; padding: 10px 12px;
 }
 .opportunity-sources { margin: 0 0 8px; padding-left: 18px; font-size: 12px; }
 .opportunity-sources a { color: #58a6ff; word-break: break-all; }
@@ -854,8 +854,8 @@ body {
   display: flex; align-items: center; justify-content: center; z-index: 100;
 }
 .modal {
-  background: #161b22;
-  border: 1px solid #30363d;
+  background: var(--layer-1-fill);
+  border: 1px solid var(--layer-1-edge);
   border-radius: 14px;
   padding: 24px;
   width: 420px;
@@ -1122,12 +1122,12 @@ body {
 
 .dm-device-row {
   display: flex; align-items: center; gap: 10px;
-  background: #161b22; border: 1px solid #21262d;
+  background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge);
   border-radius: 10px; padding: 10px 12px; cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
 }
 .dm-device-row:hover { border-color: #388bfd; }
-.dm-row-selected { border-color: #1f6feb !important; background: #131a24; }
+.dm-row-selected { border-color: var(--layer-selected-edge) !important; background: var(--layer-2-fill); }
 .dm-row-icon { color: #8b949e; flex-shrink: 0; }
 .dm-row-info { flex: 1; min-width: 0; }
 .dm-row-name { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1151,7 +1151,7 @@ body {
 
 /* ─── Device detail pane ─────────────────────────────────────────────────── */
 .dm-detail {
-  background: #161b22; border: 1px solid #21262d; border-radius: 12px;
+  background: var(--layer-1-fill); border: 1px solid var(--layer-1-edge); border-radius: 12px;
   padding: 18px; overflow-y: auto; max-height: calc(100vh - 220px);
 }
 .dm-detail-inner { display: flex; flex-direction: column; gap: 8px; }
@@ -1166,7 +1166,7 @@ body {
    this is descriptive metadata, not a status or membership signal. */
 .category-badge { background: #2d2440; color: #a371f7; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
 .capability-chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
-.capability-chip { border: 1px solid #30363d; color: #8b949e; border-radius: 999px; padding: 1px 6px; font-size: 10px; }
+.capability-chip { border: 1px solid var(--layer-3-edge); color: #8b949e; border-radius: 999px; padding: 1px 6px; font-size: 10px; }
 .dm-detail-section { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; margin: 8px 0 4px; }
 
 /* ─── Health bar ─────────────────────────────────────────────────────────── */
@@ -1216,8 +1216,8 @@ body {
 
 /* ─── Add Place form (My Places) ────────────────────────────────────────── */
 .add-place-form {
-  margin: 12px 0 20px; padding: 16px; border: 1px solid #21262d;
-  border-radius: 10px; background: #0d1117;
+  margin: 12px 0 20px; padding: 16px; border: 1px solid var(--layer-2-edge);
+  border-radius: 10px; background: var(--layer-2-fill);
 }
 .add-place-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -1243,7 +1243,7 @@ body {
 .workflow-row-actions .btn-ghost { font-size: 11px; padding: 3px 9px; }
 .workflow-execution-history {
   margin-top: 6px; padding: 8px; border-radius: 6px;
-  background: #010409; border: 1px solid #21262d;
+  background: var(--layer-3-fill); border: 1px solid var(--layer-3-edge);
 }
 .workflow-execution-row + .workflow-execution-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid #21262d; }
 .workflow-execution-meta { display: flex; justify-content: space-between; font-size: 11px; color: #8b949e; }
@@ -1264,7 +1264,7 @@ body {
 .dm-add-options { display: flex; gap: 14px; margin-top: 12px; }
 .dm-add-option {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;
-  background: #161b22; border: 1px solid #21262d; border-radius: 12px;
+  background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge); border-radius: 12px;
   padding: 20px; cursor: pointer; text-align: center; color: #e6edf3;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -1276,7 +1276,7 @@ body {
 .pairing-container { max-width: 480px; }
 .dm-back { margin-bottom: 12px; }
 .pairing-card {
-  background: #161b22; border: 1px solid #21262d; border-radius: 14px;
+  background: var(--layer-1-fill); border: 1px solid var(--layer-1-edge); border-radius: 14px;
   padding: 28px; display: flex; flex-direction: column; align-items: center;
   gap: 12px; text-align: center;
 }
@@ -1414,8 +1414,7 @@ body {
   50%       { opacity: 0.55; }
 }
 
-/* Warn: orange icon tint + dot badge */
-.nav-warn .nav-alert-icon { color: var(--warning) !important; }
+/* Warn: dot badge only -- the icon keeps the same color as every other tab */
 
 /* Critical: red icon, slow pulse, whole button gets a left-edge bar */
 .nav-critical {
@@ -1955,22 +1954,8 @@ select option { background: var(--bg-secondary); color: var(--text); }
    sand as its own parent, no differentiation at all. --bg-tertiary is
    already cactus green (see ThemeProvider.jsx, matching Family Hub's own
    --glass-light), so this just applies it where nesting actually occurs. */
-[data-theme="asteroidcity"] .dm-device-group .device-card {
-  background: var(--bg-tertiary);
-  border-color: rgba(63, 113, 102, 0.65);
-}
-[data-theme="asteroidcity"] :is(
-  .kpi-tile,
-  .device-card,
-  .dm-device-group,
-  .dm-detail,
-  .family-hub-card,
-  .automation-alert-card,
-  .modal
-) {
-  border-width: 3px;
-  box-shadow: 6px 6px 0 var(--border);
-}
+/* .dm-device-group .device-card colors now come from --layer-2-* below. */
+/* Card border widths and hard shadows now come from --layer-N-* tokens below. */
 [data-theme="asteroidcity"] :is(
   .btn-primary,
   .btn-secondary,
@@ -2146,22 +2131,128 @@ select option { background: var(--bg-secondary); color: var(--text); }
 [data-theme="neon80s"] .panel-header-bar { border-bottom: 1px solid var(--accent-2); padding-bottom: 12px; }
 [data-theme="neon80s"] .platform-name { color: var(--accent-2); }
 
-/* ─── 80s Neon: three-layer surface system ────────────────────────────────
-   Before this, panels in this theme were three unrelated things: some used
-   theme tokens (--bg-secondary, purple), many used literal GitHub-dark hex
-   (#161b22 / #0d1117 / #010409) that ignores every theme, and none glowed.
-   Now every boxed surface belongs to exactly one layer, largest to smallest:
+/* ─── Surface layers: one system for every theme ──────────────────────────
+   Before this, "what does a panel look like" had no single answer. Some
+   surfaces used theme tokens, ~20 hard-coded GitHub-dark hex (#161b22,
+   #0d1117, #010409, #21262d ...) that ignore every preset, and a few themes
+   patched some classes (Asteroid City's card rule listed 7 of ~30). Sibling
+   panels on one page rendered as different colors in every theme but
+   Modern -- whose palette happens to BE those hex values. Every boxed
+   surface now belongs to exactly one layer, largest to smallest:
 
-     Layer 1  hot pink  (--accent)   page-level panels and cards
-     Layer 2  pale yellow #ffff66    mid-size objects nested in a panel
-     Layer 3  aquamarine  #7fffd4    the smallest tiles, chips and read-outs
+     Layer 1  panel  page-level panels and cards
+     Layer 2  card   mid-size objects nested inside a panel
+     Layer 3  tile   the smallest tiles, chips, wells and read-outs
 
-   Each layer is a fill + an edge + a limited glow. Text is NOT recolored:
-   fills stay dark, so the theme's light --text reads on all three (yellow and
-   aquamarine are used as edge/glow, never as a full fill behind text). To put
-   a new component in the system, add its class to the matching :is() list
-   below rather than styling it one-off. Scoped to neon80s; every other theme
-   is untouched. */
+   A layer is a fill + edge + edge width + shadow token. Defaults below derive
+   from each theme's own core palette, so a theme is consistent with no extra
+   work; a theme that wants more (80s Neon colored edges and glow, Asteroid
+   City hard shadows) overrides the tokens, never individual classes. To put
+   a component in the system, add its class to the matching :is() list -- do
+   not hard-code a background/border color on a surface. Text is never
+   recolored by a layer. See docs/UX_JOURNEY_STANDARD.md "Visual system". */
+:root {
+  --layer-1-fill:  var(--bg-secondary);
+  --layer-1-edge:  var(--border);
+  --layer-2-fill:  color-mix(in srgb, var(--bg-tertiary) 60%, var(--bg-secondary));
+  --layer-2-edge:  var(--border);
+  --layer-3-fill:  var(--bg);
+  --layer-3-edge:  var(--border);
+  --layer-1-shadow: none;
+  --layer-2-shadow: none;
+  --layer-3-shadow: none;
+  --layer-1-border-width: 1px;
+  --layer-2-border-width: 1px;
+  --layer-3-border-width: 1px;
+  --layer-hover-edge:   var(--accent);
+  --layer-hover-shadow: var(--layer-2-shadow);
+  --layer-selected-edge:   var(--accent);
+  --layer-selected-shadow: var(--layer-1-shadow);
+  /* Tab buttons (left nav rail, view tabs) share ONE color in every state. */
+  --tab-color:       var(--text-muted);
+  --tab-color-hover: var(--text);
+}
+:is(
+  .active-conditions, .sidebar-card, .config-card, .dm-device-group, .dm-detail,
+  .sensor-history-panel, .pairing-card, .family-hub-card, .modal, .event-log
+) {
+  background: var(--layer-1-fill);
+  border-color: var(--layer-1-edge);
+  border-width: var(--layer-1-border-width);
+  box-shadow: var(--layer-1-shadow);
+}
+:is(
+  .opportunity-card, .device-card, .dm-device-row, .dm-why-card, .dm-candidate-card,
+  .automation-alert-card, .camera-event-row, .camera-motion-row,
+  .guest-access-row, .guest-alert-row, .guest-device-row, .add-place-form, .dm-add-option
+) {
+  background: var(--layer-2-fill);
+  border-color: var(--layer-2-edge);
+  border-width: var(--layer-2-border-width);
+  box-shadow: var(--layer-2-shadow);
+}
+:is(
+  .kpi-tile, .camera-health-tile, .opportunity-detail, .workflow-execution-history,
+  .opportunity-lineage-chip, .section-count-badge, .code-block, .capability-chip,
+  .camera-clip-expanded, .camera-event-thumb
+) {
+  background: var(--layer-3-fill);
+  border-color: var(--layer-3-edge);
+  border-width: var(--layer-3-border-width);
+  box-shadow: var(--layer-3-shadow);
+}
+/* Interaction and semantic states sit on top of the layers, themed. */
+:is(.device-card, .dm-device-row):hover {
+  border-color: var(--layer-hover-edge);
+  box-shadow: var(--layer-hover-shadow);
+}
+:is(.device-card.selected, .dm-row-selected) {
+  background: var(--layer-2-fill);
+  border-color: var(--layer-selected-edge);
+  box-shadow: var(--layer-selected-shadow);
+}
+:is(.sensor-history-topic-tab.active, .sensor-history-device-chip.selected) {
+  background: var(--layer-3-fill);
+  border-color: var(--layer-selected-edge);
+}
+.automation-alert-card { border-width: 2px; border-left-color: var(--state-warning); }
+.kpi-tile.kpi-state-ok    { border-color: color-mix(in srgb, var(--success) 55%, var(--layer-3-edge)); }
+.kpi-tile.kpi-state-warn  { border-color: color-mix(in srgb, var(--warning) 60%, var(--layer-3-edge)); }
+.kpi-tile.kpi-state-alarm { border-color: color-mix(in srgb, var(--danger) 65%, var(--layer-3-edge)); }
+:is(.nodered-lazy-placeholder, .embed-frame, .embed-frame-short) { border-color: var(--layer-1-edge); }
+.discovery-fields { border-color: var(--layer-2-edge); }
+.rule-row { border-bottom-color: color-mix(in srgb, var(--layer-1-edge) 55%, transparent); }
+.active-conditions-header, .active-condition + .active-condition { border-color: var(--layer-1-edge); }
+/* Text inputs/selects in modals and forms hard-coded #0d1117/#010409 with grey
+   borders; they are controls, so they follow the control tokens like every
+   other dropdown rather than becoming another surface style. */
+:is(
+  .modal input, .modal select, .dm-edit-form input, .dm-edit-form select,
+  .add-place-field input, .add-place-field select, .workflow-action-row select
+) {
+  background: var(--control-surface);
+  border-color: var(--control-border);
+}
+
+/* ─── Tab buttons: one color, one indicator ───────────────────────────────
+   The rail tabs used to differ by state (icon tinted with --warning when a
+   tab had a notification, accent-colored when active), so a row of sibling
+   tabs never read as one set. Now every tab, active or not, is --tab-color; a
+   warn notification is the dot badge only, critical keeps its red
+   bar/label/pulse, and the active tab is marked by its outline/tint, not a
+   different color. (The accent as active-tab text was also 1.9-2.7:1 on
+   Monolith / Impressive / Bluefin.) The extra specificity beats the older
+   per-theme .nav-active color overrides so no theme can drift back. */
+.nav-item { color: var(--tab-color); }
+.nav-item:hover { color: var(--tab-color-hover); }
+.nav-rail .nav-item.nav-active { color: var(--tab-color) !important; }
+:is(.dm-l1-btn, .sensor-history-topic-tab) { color: var(--tab-color); }
+
+/* ─── 80s Neon: pink -> yellow -> aquamarine, limited glow ────────────────
+   Largest objects are the pink primary, mid-size objects #ffff66, the
+   smallest tiles #7fffd4 (the RETRO 80S palette the user chose). Edge and
+   glow carry the color; fills stay dark so the light text is unchanged. All
+   tab buttons are the same #ffff66. */
 [data-theme="neon80s"] {
   --layer-1: var(--accent);
   --layer-2: #ffff66;
@@ -2172,76 +2263,40 @@ select option { background: var(--bg-secondary); color: var(--text); }
   --layer-1-edge: color-mix(in srgb, var(--layer-1) 62%, var(--border));
   --layer-2-edge: color-mix(in srgb, var(--layer-2) 52%, var(--border));
   --layer-3-edge: color-mix(in srgb, var(--layer-3) 58%, var(--border));
-  --layer-1-glow: 0 0 5px color-mix(in srgb, var(--layer-1) 42%, transparent),
-                  0 0 16px color-mix(in srgb, var(--layer-1) 15%, transparent);
-  --layer-2-glow: 0 0 4px color-mix(in srgb, var(--layer-2) 32%, transparent),
-                  0 0 11px color-mix(in srgb, var(--layer-2) 9%, transparent);
-  --layer-3-glow: 0 0 4px color-mix(in srgb, var(--layer-3) 36%, transparent);
-}
-[data-theme="neon80s"] :is(
-  .active-conditions, .sidebar-card, .config-card, .dm-device-group, .dm-detail,
-  .sensor-history-panel, .pairing-card, .family-hub-card, .modal, .event-log
-) {
-  background: var(--layer-1-fill);
-  border-color: var(--layer-1-edge);
-  box-shadow: var(--layer-1-glow);
-}
-[data-theme="neon80s"] :is(
-  .opportunity-card, .device-card, .dm-device-row, .dm-why-card, .dm-candidate-card,
-  .automation-alert-card, .camera-event-row, .camera-motion-row,
-  .guest-access-row, .guest-alert-row, .guest-device-row, .add-place-form, .dm-add-option
-) {
-  background: var(--layer-2-fill);
-  border-color: var(--layer-2-edge);
-  box-shadow: var(--layer-2-glow);
-}
-[data-theme="neon80s"] :is(
-  .kpi-tile, .camera-health-tile, .opportunity-detail, .workflow-execution-history,
-  .opportunity-lineage-chip, .section-count-badge, .code-block, .capability-chip,
-  .camera-clip-expanded, .camera-event-thumb
-) {
-  background: var(--layer-3-fill);
-  border-color: var(--layer-3-edge);
-  box-shadow: var(--layer-3-glow);
-}
-/* Interaction and semantic states stay legible on top of the layers. */
-[data-theme="neon80s"] :is(.device-card, .dm-device-row):hover {
-  border-color: var(--layer-2);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--layer-2) 55%, transparent),
-              0 0 16px color-mix(in srgb, var(--layer-2) 18%, transparent);
-}
-[data-theme="neon80s"] :is(.device-card.selected, .dm-row-selected) {
-  background: var(--layer-2-fill);
-  border-color: var(--layer-1);
-  box-shadow: var(--layer-1-glow);
-}
-[data-theme="neon80s"] :is(.sensor-history-topic-tab.active, .sensor-history-device-chip.selected) {
-  background: var(--layer-3-fill);
-  border-color: var(--layer-1);
-  box-shadow: var(--layer-1-glow);
-}
-[data-theme="neon80s"] :is(.nodered-lazy-placeholder, .embed-frame, .embed-frame-short) { border-color: var(--layer-1-edge); }
-[data-theme="neon80s"] .discovery-fields { border-color: var(--layer-2-edge); }
-/* Text inputs and selects inside modals/forms hard-coded #0d1117/#010409 with
-   grey borders; they're controls, so they follow the same control tokens as
-   every other dropdown in this theme rather than becoming a fourth style. */
-[data-theme="neon80s"] :is(
-  .modal input, .modal select, .dm-edit-form input, .dm-edit-form select,
-  .add-place-field input, .add-place-field select, .workflow-action-row select
-) {
-  background: var(--control-surface);
-  border-color: var(--control-border);
-}
-[data-theme="neon80s"] .automation-alert-card { border-left-color: var(--state-warning); }
-[data-theme="neon80s"] .kpi-tile.kpi-state-warn  { border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); }
-[data-theme="neon80s"] .kpi-tile.kpi-state-alarm { border-color: color-mix(in srgb, var(--danger) 75%, var(--border)); }
-[data-theme="neon80s"] .active-conditions-header,
-[data-theme="neon80s"] .active-condition + .active-condition { border-color: var(--layer-1-edge); }
-[data-theme="neon80s"] .rule-row { border-bottom-color: color-mix(in srgb, var(--layer-1) 20%, transparent); }
-/* Native scrollbars defaulted to bright white inside the dark panels. The
-   property inherits, so setting it once on the themed root covers every
-   scrolling list, card and log without touching each one. */
-[data-theme="neon80s"] {
+  --layer-1-shadow: 0 0 5px color-mix(in srgb, var(--layer-1) 42%, transparent),
+                    0 0 16px color-mix(in srgb, var(--layer-1) 15%, transparent);
+  --layer-2-shadow: 0 0 4px color-mix(in srgb, var(--layer-2) 32%, transparent),
+                    0 0 11px color-mix(in srgb, var(--layer-2) 9%, transparent);
+  --layer-3-shadow: 0 0 4px color-mix(in srgb, var(--layer-3) 36%, transparent);
+  --layer-hover-edge:   var(--layer-2);
+  --layer-hover-shadow: 0 0 6px color-mix(in srgb, var(--layer-2) 55%, transparent),
+                        0 0 16px color-mix(in srgb, var(--layer-2) 18%, transparent);
+  --layer-selected-edge:   var(--layer-1);
+  --layer-selected-shadow: var(--layer-1-shadow);
+  --tab-color:       #ffff66;
+  --tab-color-hover: #ffffaa;
   scrollbar-color: color-mix(in srgb, var(--layer-1) 65%, var(--bg)) var(--bg);
   scrollbar-width: thin;
 }
+[data-theme="neon80s"] .nav-badge-warn {
+  background: var(--accent);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+/* ─── Asteroid City: hard postcard shadows on every layer ─────────────────
+   Its old rule listed 7 classes; the rest of the surfaces got neither the
+   shadow nor the thick border, so cards on one page disagreed. Now a token. */
+[data-theme="asteroidcity"] {
+  /* 40% cactus into sand: full cactus gave text 3.3:1 and muted 1.4:1. */
+  --layer-2-fill: color-mix(in srgb, var(--bg-tertiary) 40%, var(--bg-secondary));
+  --layer-2-edge: rgba(63, 113, 102, 0.65);
+  --layer-3-fill: color-mix(in srgb, var(--bg-secondary) 55%, #ffffff);
+  --layer-1-shadow: 6px 6px 0 var(--border);
+  --layer-2-shadow: 4px 4px 0 var(--border);
+  --layer-3-shadow: 3px 3px 0 var(--border);
+  --layer-1-border-width: 3px;
+  --layer-2-border-width: 3px;
+  --layer-3-border-width: 2px;
+  --layer-hover-shadow: 4px 4px 0 var(--accent);
+}
+[data-theme="asteroidcity"] .automation-alert-card { border-width: 3px; }

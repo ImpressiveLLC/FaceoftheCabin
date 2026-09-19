@@ -68,6 +68,56 @@ retry, settings, a safe alternative, or relevant documentation.
 - Focus, labels, headings, state text, and keyboard order must convey the same
   meaning as the visual presentation.
 
+## Visual system — surfaces, tabs and themes (Cabin UI)
+
+Added 2026-09-19. Until then there was no written standard, and it showed:
+about 20 surfaces hard-coded GitHub-dark hex (`#161b22`, `#0d1117`, `#010409`)
+that ignore every theme, so sibling panels on one page were different colors in
+every preset except Modern (whose palette happens to be those values). The
+source of truth is `styles.css` ("Surface layers"); this section is the rule.
+
+**Every boxed surface belongs to exactly one layer, largest to smallest:**
+
+| Layer | Role | Examples |
+|---|---|---|
+| 1 — panel | page-level panel or card | Status Checks, Workflows, Backend Rules, config cards, device groups, device detail, sensor history, modals, event log |
+| 2 — card | mid-size object nested in a panel | device cards/rows, opportunity cards, camera event rows, add-place and add-option cards |
+| 3 — tile | smallest tile, chip, well or read-out | KPI tiles, camera health tiles, capability/lineage chips, count badges, code blocks |
+
+- A layer is four tokens: `--layer-N-fill`, `-edge`, `-shadow`, `-border-width`.
+  Defaults derive from each theme's own `--bg / --bg-secondary / --bg-tertiary /
+  --border`, so a theme is consistent without extra work.
+- A theme that wants more overrides **tokens**, never individual classes: 80s Neon
+  makes the layers pink (`--accent`) → `#ffff66` → `#7fffd4` with limited glow;
+  Asteroid City makes them hard postcard shadows.
+- To add a component: add its class to the matching `:is()` list in `styles.css`.
+  Never hard-code a background or border color on a surface — a guard test
+  (`ThemeLayers.test.jsx`) fails the build if one comes back.
+- A layer never recolors text. Fills stay dark/derived, so each theme's own text
+  color reads; contrast was checked per theme (text ≥ 7:1 on all three layers in
+  80s Neon; the only sub-4.5:1 pairs are themes' own muted-text colors, e.g.
+  Monolith).
+- Selected/hover/status states sit on top of the layers via tokens
+  (`--layer-selected-edge`, `--layer-hover-edge`, KPI ok/warn/alarm edges).
+- Controls (buttons, dropdowns, inputs) are not surfaces; they use the
+  `--control-*` tokens.
+
+**Tab buttons** (left nav rail, view tabs) are one color per theme
+(`--tab-color`) in every state. A tab with a warn notification shows a dot badge
+only — its icon is never tinted; a critical tab keeps its red bar, label and
+pulse; the active tab is marked by its outline and tint, not by a different
+text color. 80s Neon: every tab is `#ffff66`.
+
+**Notification dots must follow the same list as the banner.** The rail, the
+attention banner and the Status Checks list all derive from
+`mergeStatusCheckItems()` (via `navAlertLevelsFor()`), so ignored/snoozed alerts,
+other locations and automation alerts count identically everywhere.
+
+**Semantic colors vs structural colors.** In 80s Neon yellow and aquamarine are
+structural (layers, tabs); status is carried by the icon, wording and badge shape,
+and danger stays pink-red. See `docs/retro-theme-fonts.md` for the earlier
+semantic assignment this supersedes for surfaces.
+
 ## Automated evidence
 
 The Family Hub browser suite must cover phone and desktop viewports and verify:
