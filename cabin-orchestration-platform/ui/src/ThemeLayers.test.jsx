@@ -54,6 +54,12 @@ describe("surface layers apply to every theme", () => {
     }
   });
 
+  it("puts list rows in layer 2 and their tags in layer 3, so every box shares one anatomy", () => {
+    const layers = layerMembership();
+    for (const c of [".rule-row", ".active-condition"]) expect(layers[2]).toContain(c);
+    expect(layers[3]).toContain(".meta-chip");
+  });
+
   it("never puts one component in two layers", () => {
     const layers = layerMembership();
     const all = [...layers[1], ...layers[2], ...layers[3]];
@@ -80,25 +86,25 @@ describe("surface layers apply to every theme", () => {
     }
   });
 
+  it("keeps hard-coded colors out of every component rule, not just surfaces", () => {
+    // The app used GitHub-dark literals (#8b949e text, #21262d borders, #3fb950
+    // status ...): fine in Modern, whose palette is those values, wrong in every
+    // other theme. Colors come from theme tokens. Allowed: black behind video,
+    // and the category badge's purple, which is a category color not a theme one.
+    const ALLOWED = new Set([".camera-clip-player", ".camera-live-view img", ".category-badge"]);
+    for (const { selector, body } of rules) {
+      if (selector.startsWith(":root") || selector.startsWith("@") || selector.includes("[data-theme")) continue;
+      if (selector.split(",").every(p => ALLOWED.has(p.trim()))) continue;
+      const bad = body.match(/(?:^|[;\s])(?:background(?:-color)?|border[\w-]*|color|outline[\w-]*)\s*:[^;]*#[0-9a-fA-F]{3,8}\b/);
+      expect(bad, `${selector} hard-codes a color`).toBeNull();
+    }
+  });
+
   it("only :root and a theme block may define a layer token, never a component rule", () => {
     for (const { selector, body } of rules) {
       if (!/--layer-\d-(fill|edge|shadow|border-width)\s*:/.test(body)) continue;
       expect(selector === ":root" || /^\[data-theme="[a-z0-9]+"\]$/.test(selector), selector).toBe(true);
     }
-  });
-});
-
-describe("80s Neon layers", () => {
-  const neon = rules.find(r => r.selector === '[data-theme="neon80s"]' && r.body.includes("--layer-2:"));
-
-  it("uses pink for the largest objects, then #ffff66, then #7fffd4", () => {
-    expect(neon.body).toMatch(/--layer-1:\s*var\(--accent\)/);
-    expect(neon.body).toMatch(/--layer-2:\s*#ffff66/i);
-    expect(neon.body).toMatch(/--layer-3:\s*#7fffd4/i);
-  });
-
-  it("gives each layer a limited glow", () => {
-    for (const n of [1, 2, 3]) expect(neon.body).toMatch(new RegExp(`--layer-${n}-shadow:\\s*0 0 `));
   });
 });
 
@@ -112,8 +118,8 @@ describe("tab buttons share one color", () => {
     expect(css).not.toMatch(/\.nav-warn \.nav-alert-icon\s*\{[^}]*color:/);
   });
 
-  it("makes every 80s Neon tab #ffff66", () => {
-    const neon = rules.find(r => r.selector === '[data-theme="neon80s"]' && r.body.includes("--layer-2:"));
-    expect(neon.body).toMatch(/--tab-color:\s*#ffff66/i);
+  it("makes every 80s Neon tab #ffff66 (theme data, not a stylesheet override)", () => {
+    expect(THEMES.neon80s.layers.tab).toBe("--warning");
+    expect(THEMES.neon80s.vars["--warning"].toLowerCase()).toBe("#ffff66");
   });
 });

@@ -79,7 +79,7 @@ body {
   transition: background 0.15s, color 0.15s;
 }
 .nav-item:hover { background: var(--bg-tertiary); color: var(--text); }
-.nav-active { background: #1f3a5f !important; color: #58a6ff !important; }
+.nav-active { background: color-mix(in srgb, var(--accent) 22%, var(--bg-secondary)) !important; color: var(--link) !important; }
 .nav-label { font-size: 10px; text-align: center; line-height: 1.2; }
 
 /* ─── Main Area ────────────────────────────────────────────────────────── */
@@ -99,8 +99,8 @@ body {
   border-bottom: 1px solid var(--border);
   height: 48px;
 }
-.platform-name { font-weight: 600; color: #f0f6fc; letter-spacing: 0.02em; }
-.toolbar-right { display: flex; align-items: center; gap: 14px; color: #8b949e; font-size: 12px; }
+.platform-name { font-weight: 600; color: var(--text); letter-spacing: 0.02em; }
+.toolbar-right { display: flex; align-items: center; gap: 14px; color: var(--text-muted); font-size: 12px; }
 
 .api-status {
   display: flex; align-items: center; gap: 4px; text-decoration: none;
@@ -108,8 +108,8 @@ body {
      (diagnostic link) -- reset button chrome so both render identically. */
   background: none; border: none; padding: 0; font: inherit;
 }
-.api-ok { color: #3fb950; }
-.api-err { color: #f85149; cursor: pointer; }
+.api-ok { color: var(--success); }
+.api-err { color: var(--danger); cursor: pointer; }
 .api-err:hover { text-decoration: underline; }
 
 /* ─── Security badge (armed/disarmed) ───────────────────────────────────── */
@@ -117,9 +117,9 @@ body {
    comment on why conflating "no signal yet" with "disarmed" is exactly
    the kind of ambiguity this feature exists to remove. */
 .security-badge { display: flex; align-items: center; gap: 4px; }
-.security-armed { color: #f85149; }
-.security-disarmed { color: #8b949e; }
-.security-unknown { color: #6e7681; font-style: italic; }
+.security-armed { color: var(--danger); }
+.security-disarmed { color: var(--text-muted); }
+.security-unknown { color: var(--text-dim); font-style: italic; }
 
 .panel-area { flex: 1; overflow-y: auto; }
 
@@ -137,45 +137,45 @@ body {
 
 /* ─── Buttons ───────────────────────────────────────────────────────────── */
 .btn-primary {
-  background: #1f6feb; color: #fff; border: none;
+  background: var(--accent); color: var(--on-accent); border: none;
   padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
   display: flex; align-items: center; gap: 4px;
   transition: background 0.15s;
 }
-.btn-primary:hover { background: #388bfd; }
+.btn-primary:hover { background: var(--accent-hover); }
 .btn-secondary {
-  background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+  background: var(--bg-tertiary); color: var(--text); border: 1px solid var(--border);
   padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
 }
-.btn-secondary:hover { background: #30363d; }
+.btn-secondary:hover { background: var(--bg-tertiary); }
 .btn-ghost {
-  background: none; color: #8b949e; border: none;
+  background: none; color: var(--text-muted); border: none;
   padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px;
   display: flex; align-items: center; gap: 4px;
 }
-.btn-ghost:hover { color: #e6edf3; background: #21262d; }
+.btn-ghost:hover { color: var(--text); background: var(--bg-tertiary); }
 .btn-danger {
-  background: #3d1f1f; color: #f85149; border: 1px solid #3d1f1f;
+  background: color-mix(in srgb, var(--danger) 22%, var(--bg-secondary)); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
   padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
   display: flex; align-items: center; gap: 4px;
 }
-.btn-danger:hover { background: #5a2020; }
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 30%, var(--bg-secondary)); }
 
 /* ─── State Badges ─────────────────────────────────────────────────────── */
 .state-badge {
   display: inline-flex; align-items: center;
   padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;
 }
-.state-ok      { background: #1a3a2a; color: #3fb950; }
-.state-alarm   { background: #4a1010; color: #f85149; }
-.state-offline { background: #2a2020; color: #8b949e; }
-.state-unknown { background: #2a2620; color: #d29922; }
-.state-warn    { background: #2a2010; color: var(--warning); }
+.state-ok      { background: color-mix(in srgb, var(--success) 20%, var(--bg-secondary)); color: var(--success); }
+.state-alarm   { background: color-mix(in srgb, var(--danger) 22%, var(--bg-secondary)); color: var(--danger); }
+.state-offline { background: color-mix(in srgb, var(--text-muted) 14%, var(--bg-secondary)); color: var(--text-muted); }
+.state-unknown { background: color-mix(in srgb, var(--text-muted) 12%, var(--bg-secondary)); color: var(--warning); }
+.state-warn    { background: color-mix(in srgb, var(--warning) 18%, var(--bg-secondary)); color: var(--warning); }
 /* checkinStatus overrides — "off schedule" is a grace tier, not a claim
    the device is actually broken, so it gets its own tone distinct from
    the confirmed-unreachable .state-offline look. */
-.state-late           { background: #2a2010; color: var(--warning); }
-.state-not-configured { background: #20242a; color: #6e7681; }
+.state-late           { background: color-mix(in srgb, var(--warning) 18%, var(--bg-secondary)); color: var(--warning); }
+.state-not-configured { background: color-mix(in srgb, var(--text-muted) 12%, var(--bg-secondary)); color: var(--text-dim); }
 
 /* ─── KPI Tiles ────────────────────────────────────────────────────────── */
 .kpi-grid {
@@ -193,11 +193,11 @@ body {
   flex-direction: column;
   gap: 6px;
 }
-.kpi-state-ok    { border-color: #1a3a2a; }
-.kpi-state-alarm { border-color: #4a1010; }
-.kpi-state-warn  { border-color: #3a2810; }
-.kpi-label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
-.kpi-value { font-size: 22px; font-weight: 700; color: #f0f6fc; }
+.kpi-state-ok    { border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+.kpi-state-alarm { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.kpi-state-warn  { border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); }
+.kpi-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.kpi-value { font-size: 22px; font-weight: 700; color: var(--text); }
 
 /* ─── Device Grid ──────────────────────────────────────────────────────── */
 .device-grid {
@@ -213,18 +213,18 @@ body {
   cursor: pointer;
   transition: border-color 0.15s;
 }
-.device-card:hover { border-color: #388bfd; }
+.device-card:hover { border-color: var(--accent-hover); }
 .device-card.selected { border-color: var(--layer-selected-edge); background: var(--layer-2-fill); }
 .device-card-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
 }
 .device-name { flex: 1; font-weight: 500; font-size: 13px; }
-.device-type { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.04em; }
-.device-lastseen { font-size: 11px; color: #6e7681; margin-top: 4px; }
-.device-attrs { margin-top: 10px; border-top: 1px solid #21262d; padding-top: 10px; }
+.device-type { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.device-lastseen { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.device-attrs { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
 .attr-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; }
-.attr-key { color: #8b949e; }
-.attr-val { color: #e6edf3; font-family: monospace; }
+.attr-key { color: var(--text-muted); }
+.attr-val { color: var(--text); font-family: monospace; }
 .device-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .dm-toolbar-select { display:flex; align-items:center; gap:6px; color:var(--text-dim); font-size:12px; }
 .dm-toolbar-select select { min-width:92px; }
@@ -280,7 +280,7 @@ body {
    --accent, so it never reads as a lifecycle/status signal. Shows real
    WorkflowRule membership (see workflowsForDevice), not the cosmetic
    WORKFLOW_BY_TYPE groupBy bucket. */
-.workflow-badge { border:1px solid #79c0ff; color:#79c0ff; border-radius:999px; padding:2px 7px; font-size:10px; flex-shrink:0; white-space:nowrap; }
+.workflow-badge { border:1px solid var(--link-hover); color:var(--link-hover); border-radius:999px; padding:2px 7px; font-size:10px; flex-shrink:0; white-space:nowrap; }
 .dm-why-card,.dm-candidate-card { display:flex; flex-direction:column; gap:6px; margin-top:12px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); font-size:12px; }
 .dm-why-card small { color:var(--text-dim); }
 /* Platform import (Sprint 5 WSJF #3) -- reuses .dm-candidate-card's own
@@ -320,14 +320,14 @@ body {
   padding: 16px;
 }
 .config-card-header {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: #f0f6fc;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--text);
 }
-.config-desc { color: #8b949e; margin: 0 0 10px 0; font-size: 13px; }
-.config-hint { color: #6e7681; font-size: 12px; margin: 6px 0 0 0; }
-.auth-gate-hint { color: #6e7681; font-size: 12px; margin: 10px 0 0 0; }
+.config-desc { color: var(--text-muted); margin: 0 0 10px 0; font-size: 13px; }
+.config-hint { color: var(--text-dim); font-size: 12px; margin: 6px 0 0 0; }
+.auth-gate-hint { color: var(--text-dim); font-size: 12px; margin: 10px 0 0 0; }
 .tailscale-hint {
   display: flex; align-items: center; gap: 5px;
-  color: #6e7681; font-size: 11px; margin: 6px 0 0 0;
+  color: var(--text-dim); font-size: 11px; margin: 6px 0 0 0;
 }
 .platform-info-table {
   width: 100%;
@@ -337,11 +337,11 @@ body {
 }
 .platform-info-table td {
   padding: 3px 0;
-  border-bottom: 1px solid #21262d;
-  color: #8b949e;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
 }
 .platform-info-table td:first-child {
-  color: #f0f6fc;
+  color: var(--text);
   font-weight: 500;
   padding-right: 10px;
   white-space: nowrap;
@@ -353,7 +353,7 @@ body {
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12px;
-  color: #79c0ff;
+  color: var(--link-hover);
   margin-top: 8px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -361,12 +361,12 @@ body {
 
 /* ─── Embeds ────────────────────────────────────────────────────────────── */
 .embed-section { margin-bottom: 20px; }
-.embed-label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.embed-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
 .embed-frame {
-  width: 100%; border: 1px solid #21262d; border-radius: 10px;
+  width: 100%; border: 1px solid var(--border); border-radius: 10px;
   background: white; min-height: 520px;
 }
-.embed-frame-short { width: 100%; border: 1px solid #21262d; border-radius: 10px; background: white; height: 320px; }
+.embed-frame-short { width: 100%; border: 1px solid var(--border); border-radius: 10px; background: white; height: 320px; }
 
 /* ─── Camera health (replaced the Grafana iframe, 2026-08-08) ───────────── */
 .camera-health-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
@@ -376,11 +376,11 @@ body {
   border: 1px solid var(--layer-3-edge); background: var(--layer-3-fill);
   font-size: 13px;
 }
-.camera-health-name { color: #f0f6fc; font-weight: 600; text-transform: capitalize; }
+.camera-health-name { color: var(--text); font-weight: 600; text-transform: capitalize; }
 .camera-health-value { margin-left: auto; padding-left: 12px; }
-.camera-health-ok .camera-health-value { color: #3fb950; }
-.camera-health-down .camera-health-value { color: #f85149; }
-.camera-health-unknown .camera-health-value { color: #6e7681; font-style: italic; }
+.camera-health-ok .camera-health-value { color: var(--success); }
+.camera-health-down .camera-health-value { color: var(--danger); }
+.camera-health-unknown .camera-health-value { color: var(--text-dim); font-style: italic; }
 
 /* ─── Rules Panel ───────────────────────────────────────────────────────── */
 .automation-alert-card {
@@ -391,7 +391,7 @@ body {
   padding: 16px 18px;
   margin-bottom: 16px;
 }
-.automation-alert-critical { border-left-color: var(--state-alarm, #f85149); }
+.automation-alert-critical { border-left-color: var(--state-alarm, var(--danger)); }
 .automation-alert-warn { border-left-color: var(--state-warning); }
 .automation-alert-none { border-left-color: var(--border); padding: 14px 18px; }
 .automation-alert-list .automation-alert-card { margin-bottom: 10px; }
@@ -437,11 +437,14 @@ body {
 .section-caret:hover { background: var(--bg-tertiary); color: var(--text); }
 .section-caret:disabled { opacity: 0.4; cursor: not-allowed; }
 .section-caret:disabled:hover { background: transparent; color: var(--text-dim); }
-.active-condition { display: flex; gap: 8px; padding: 6px 14px; border-left: 3px solid var(--state-warning); }
-.active-condition + .active-condition { border-top: 1px solid var(--border); }
-.active-condition-critical { border-left-color: var(--state-alarm, #f85149); }
+.active-conditions-list { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+.active-condition {
+  display: flex; gap: 8px; padding: 8px 10px; border: 1px solid var(--layer-2-edge);
+  border-left: 3px solid var(--state-warning); border-radius: var(--radius);
+}
+.active-condition-critical { border-left-color: var(--state-alarm, var(--danger)); }
 .active-condition svg { flex-shrink: 0; margin-top: 3px; color: var(--state-warning); }
-.active-condition-critical svg { color: var(--state-alarm, #f85149); }
+.active-condition-critical svg { color: var(--state-alarm, var(--danger)); }
 .active-condition-body { flex: 1; min-width: 0; }
 .active-condition-title-row { display: flex; align-items: baseline; gap: 6px; }
 .active-condition-title-row strong {
@@ -490,7 +493,7 @@ body {
 .active-condition-snooze-option:hover { background: var(--bg-tertiary); }
 .active-condition-link {
   display: inline-flex; align-items: center; gap: 1px;
-  background: none; border: none; color: #58a6ff; font-size: 11px; cursor: pointer; padding: 0;
+  background: none; border: none; color: var(--link); font-size: 11px; cursor: pointer; padding: 0;
 }
 .active-condition-link:hover { text-decoration: underline; }
 @media (max-width: 520px) {
@@ -565,7 +568,7 @@ body {
 .nodered-lazy-placeholder {
   flex: 1; min-height: 200px; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px; text-align: center;
-  border: 1px dashed #21262d; border-radius: 10px; padding: 20px;
+  border: 1px dashed var(--border); border-radius: 10px; padding: 20px;
 }
 /* Single active location: the one section fills the available space. */
 .rules-nodered-single { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
@@ -590,16 +593,26 @@ body {
 }
 .sidebar-card-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .kafka-topics { margin: 8px 0; }
-.kafka-topic { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8b949e; padding: 3px 0; font-family: monospace; }
-.topic-dot { color: #3fb950; font-size: 10px; }
-.rule-row { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; border-bottom: 1px solid #21262d; }
+.kafka-topic { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); padding: 3px 0; font-family: monospace; }
+.topic-dot { color: var(--success); font-size: 10px; }
+.rule-rows { display: flex; flex-direction: column; }
+.rule-row {
+  display: flex; align-items: flex-start; gap: 8px; margin-top: 6px; padding: 8px 10px;
+  border: 1px solid var(--layer-2-edge); border-radius: var(--radius);
+}
+.rule-row > div { min-width: 0; flex: 1; }
 .rule-dot { font-size: 10px; padding-top: 4px; }
-.rule-active { color: #3fb950; }
-.rule-defined { color: #58a6ff; }
-.rule-inactive { color: #6e7681; }
+.rule-active { color: var(--success); }
+.rule-defined { color: var(--link); }
+.rule-inactive { color: var(--text-dim); }
 .rule-name { font-size: 12px; font-weight: 500; }
-.rule-detail { font-size: 11px; color: #8b949e; }
-.rule-source { margin-top: 2px; font-size: 9px; color: #6e7681; text-transform: uppercase; letter-spacing: .03em; }
+.rule-detail { font-size: 11px; color: var(--text-muted); }
+.meta-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.meta-chip {
+  display: inline-flex; align-items: center; padding: 1px 7px; border: 1px solid var(--layer-3-edge);
+  border-radius: 999px; font-size: 9px; line-height: 1.5; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .03em; white-space: nowrap;
+}
 
 /* ─── Sensor History (in-app, replaces the Grafana link-out) ───────────── */
 .sensor-history-panel {
@@ -693,8 +706,8 @@ body {
 .sensor-history-topic-soon { margin-left: 6px; font-size: 9px; vertical-align: middle; }
 .sensor-history-alert-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 6px; }
 .sensor-history-alert-item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
-.sensor-history-alert-item.severity-critical { border-color: #f85149; }
-.sensor-history-alert-item.severity-warn { border-color: #d29922; }
+.sensor-history-alert-item.severity-critical { border-color: var(--danger); }
+.sensor-history-alert-item.severity-warn { border-color: var(--warning); }
 .sensor-history-alert-severity { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); }
 .sensor-history-alert-title { color: var(--text); }
 .sensor-history-alert-detail { color: var(--text-dim); font-size: 11px; }
@@ -711,29 +724,29 @@ body {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 12px;
   font-size: 11px;
-  color: #8b949e;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid #21262d;
+  border-bottom: 1px solid var(--border);
 }
-.event-log-empty { padding: 16px 12px; color: #6e7681; font-size: 12px; }
-.event-row { display: flex; gap: 10px; padding: 4px 12px; border-bottom: 1px solid #161b22; font-size: 12px; }
-.event-ts { color: #8b949e; flex-shrink: 0; font-family: monospace; }
-.event-body { color: #79c0ff; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-log-empty { padding: 16px 12px; color: var(--text-dim); font-size: 12px; }
+.event-row { display: flex; gap: 10px; padding: 4px 12px; border-bottom: 1px solid var(--bg-secondary); font-size: 12px; }
+.event-ts { color: var(--text-muted); flex-shrink: 0; font-family: monospace; }
+.event-body { color: var(--link-hover); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .camera-events-list { display: flex; flex-direction: column; gap: 1px; margin-top: 12px; }
 .camera-events-load-more { margin-top: 12px; width: 100%; justify-content: center; }
 .camera-event-row {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px; background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge);
-  border-radius: 8px; color: #8b949e;
+  border-radius: 8px; color: var(--text-muted);
 }
-.camera-event-title { color: #e6edf3; font-size: 13px; }
-.camera-event-time { color: #6e7681; font-size: 11px; margin-top: 2px; }
+.camera-event-title { color: var(--text); font-size: 13px; }
+.camera-event-time { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
 
 .camera-event-item { display: flex; flex-direction: column; }
 .camera-event-row.clickable { cursor: pointer; }
-.camera-event-row.clickable:hover { border-color: #388bfd; }
+.camera-event-row.clickable:hover { border-color: var(--accent-hover); }
 
 .camera-event-thumb {
   width: 56px; height: 42px; flex-shrink: 0; object-fit: cover;
@@ -741,13 +754,13 @@ body {
 }
 .camera-event-thumb-empty, .camera-event-thumb-loading {
   display: flex; align-items: center; justify-content: center;
-  color: #6e7681;
+  color: var(--text-dim);
 }
 .camera-event-thumb-wrap { position: relative; width: 56px; height: 42px; flex-shrink: 0; }
 .camera-event-thumb-wrap .camera-event-thumb { width: 100%; height: 100%; }
 .camera-event-thumb-dtm {
   position: absolute; left: 2px; bottom: 2px; right: 2px;
-  font-size: 7px; line-height: 1.2; color: #e6edf3;
+  font-size: 7px; line-height: 1.2; color: var(--text);
   background: rgba(0, 0, 0, 0.6); border-radius: 3px;
   padding: 1px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   pointer-events: none;
@@ -767,31 +780,31 @@ body {
 .camera-motion-row {
   display: flex; align-items: center; gap: 10px;
   padding: 6px 14px; background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge);
-  border-radius: 6px; color: #6e7681; font-size: 12px;
+  border-radius: 6px; color: var(--text-dim); font-size: 12px;
 }
 /* Rows now expand into a clip-by-time attempt (see CameraEventsPanel /
    CameraMediaController.clipByTime) instead of being flat, unclickable
    summary text -- same clickable affordance as .camera-event-row.clickable. */
 .camera-motion-row.clickable { cursor: pointer; }
-.camera-motion-row.clickable:hover { border-color: #388bfd; }
-.camera-motion-camera { color: #8b949e; }
-.camera-motion-state { color: #6e7681; }
+.camera-motion-row.clickable:hover { border-color: var(--accent-hover); }
+.camera-motion-camera { color: var(--text-muted); }
+.camera-motion-state { color: var(--text-dim); }
 
 .camera-live-section {
-  margin-top: 12px; padding-bottom: 12px; border-bottom: 1px solid #21262d;
+  margin-top: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
 }
 .camera-live-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
-.camera-live-buttons .btn-secondary.active { border-color: #388bfd; color: #79c0ff; }
+.camera-live-buttons .btn-secondary.active { border-color: var(--accent-hover); color: var(--link-hover); }
 /* Each camera's live-view button paired with its own CameraNotifyToggle -- see App.jsx. */
 .camera-live-row { display: flex; align-items: center; gap: 6px; }
-.camera-notify-toggle.active { border-color: #79c0ff; color: #79c0ff; }
+.camera-notify-toggle.active { border-color: var(--link-hover); color: var(--link-hover); }
 .camera-live-view { margin-top: 10px; }
 .camera-live-view img {
   width: 100%; max-height: 400px; object-fit: contain;
-  border-radius: 8px; background: #000; border: 1px solid #21262d;
+  border-radius: 8px; background: #000; border: 1px solid var(--border);
 }
 .camera-live-status { margin-top: 8px; }
-.camera-live-error { color: #f85149; }
+.camera-live-error { color: var(--danger); }
 
 /* ─── Opportunity Map ───────────────────────────────────────────────────── */
 .opportunity-show-dismissed { display: flex; align-items: center; gap: 6px; cursor: pointer; }
@@ -805,38 +818,38 @@ body {
 
 .opportunity-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .opportunity-type-badge {
-  background: #1f6feb; color: #fff; font-size: 11px; font-weight: 600;
+  background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 600;
   padding: 2px 8px; border-radius: 999px;
 }
 .opportunity-confidence { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
-.opportunity-confidence-high   { background: rgba(63,185,80,.15);  color: #3fb950; }
-.opportunity-confidence-medium { background: rgba(210,153,34,.15); color: #d29922; }
-.opportunity-confidence-low    { background: rgba(139,148,158,.15); color: #8b949e; }
+.opportunity-confidence-high   { background: rgba(63,185,80,.15);  color: var(--success); }
+.opportunity-confidence-medium { background: rgba(210,153,34,.15); color: var(--warning); }
+.opportunity-confidence-low    { background: rgba(139,148,158,.15); color: var(--text-muted); }
 .opportunity-status {
-  font-size: 11px; color: #8b949e; text-transform: capitalize;
-  border: 1px solid #21262d; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; color: var(--text-muted); text-transform: capitalize;
+  border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px;
 }
 
 .opportunity-summary { margin: 0; font-size: 14px; line-height: 1.5; }
 
 .opportunity-lineage { display: flex; gap: 6px; flex-wrap: wrap; }
 .opportunity-lineage-chip {
-  font-size: 11px; color: #79c0ff; background: rgba(56,139,253,.12);
+  font-size: 11px; color: var(--link-hover); background: rgba(56,139,253,.12);
   border: 1px solid rgba(56,139,253,.3); padding: 2px 8px; border-radius: 999px;
 }
 
 .opportunity-see-more {
-  align-self: flex-start; background: none; border: none; color: #58a6ff;
+  align-self: flex-start; background: none; border: none; color: var(--link);
   font-size: 12px; cursor: pointer; padding: 0;
 }
 .opportunity-detail {
   background: var(--layer-3-fill); border: 1px solid var(--layer-3-edge); border-radius: 8px; padding: 10px 12px;
 }
 .opportunity-sources { margin: 0 0 8px; padding-left: 18px; font-size: 12px; }
-.opportunity-sources a { color: #58a6ff; word-break: break-all; }
+.opportunity-sources a { color: var(--link); word-break: break-all; }
 
 .opportunity-think-row, .opportunity-act-row {
-  display: flex; gap: 8px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid #21262d;
+  display: flex; gap: 8px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--border);
 }
 .opportunity-self-serve-detail { margin: 0; }
 
@@ -845,8 +858,8 @@ body {
   display: flex; align-items: center; gap: 4px;
   font-size: 12px; padding: 3px 8px; border-radius: 12px;
 }
-.ws-live  { background: #1a3a2a; color: #3fb950; }
-.ws-off   { background: #21262d; color: #8b949e; }
+.ws-live  { background: color-mix(in srgb, var(--success) 20%, var(--bg-secondary)); color: var(--success); }
+.ws-off   { background: var(--bg-tertiary); color: var(--text-muted); }
 
 /* ─── Modal ─────────────────────────────────────────────────────────────── */
 .modal-overlay {
@@ -865,10 +878,10 @@ body {
   gap: 10px;
 }
 .modal h3 { margin: 0 0 4px 0; }
-.modal label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #8b949e; }
+.modal label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-muted); }
 .modal input, .modal select {
-  background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
-  color: #e6edf3; padding: 7px 10px; font-size: 13px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 7px 10px; font-size: 13px;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
@@ -883,10 +896,10 @@ body {
 .discovery-result { display: flex; flex-direction: column; gap: 10px; }
 .discovery-match-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .discovery-summary { font-size: 13px; line-height: 1.5; color: var(--text); }
-.discovery-fields { display: flex; flex-direction: column; gap: 6px; border: 1px solid #30363d; border-radius: 8px; padding: 8px 10px; }
+.discovery-fields { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .discovery-field-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.discovery-field-label { color: #8b949e; min-width: 90px; }
-.discovery-field-current { color: #8b949e; text-decoration: line-through; }
+.discovery-field-label { color: var(--text-muted); min-width: 90px; }
+.discovery-field-current { color: var(--text-muted); text-decoration: line-through; }
 .discovery-field-value { color: var(--text); font-weight: 500; }
 .discovery-sources { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .discovery-source-link { display: flex; align-items: center; gap: 4px; color: var(--accent); text-decoration: none; }
@@ -899,7 +912,7 @@ body {
 /* ─── Empty State ───────────────────────────────────────────────────────── */
 .empty-state {
   display: flex; flex-direction: column; align-items: center;
-  gap: 12px; padding: 48px; color: #6e7681; text-align: center;
+  gap: 12px; padding: 48px; color: var(--text-dim); text-align: center;
 }
 
 /* ─── Location Switcher ─────────────────────────────────────────────────── */
@@ -979,7 +992,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #3fb950;
+  background: var(--success);
   flex-shrink: 0;
 }
 
@@ -1023,15 +1036,15 @@ body {
 .location-switcher {
   display: flex;
   gap: 2px;
-  background: #0d1117;
-  border: 1px solid #30363d;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 3px;
 }
 .loc-btn {
   background: none;
   border: none;
-  color: #8b949e;
+  color: var(--text-muted);
   padding: 3px 12px;
   border-radius: 6px;
   cursor: pointer;
@@ -1040,8 +1053,8 @@ body {
   transition: background 0.12s, color 0.12s;
   white-space: nowrap;
 }
-.loc-btn:hover { background: #21262d; color: #e6edf3; }
-.loc-active { background: #1f3a5f !important; color: #58a6ff !important; }
+.loc-btn:hover { background: var(--bg-tertiary); color: var(--text); }
+.loc-active { background: color-mix(in srgb, var(--accent) 22%, var(--bg-secondary)) !important; color: var(--link) !important; }
 
 /* ─── Monitoring split (Both mode) ─────────────────────────────────────── */
 .monitoring-split {
@@ -1060,22 +1073,22 @@ body {
   align-items: center;
   margin-bottom: 18px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #21262d;
+  border-bottom: 1px solid var(--border);
 }
 .dm-l1-btn {
   display: flex; align-items: center; gap: 6px;
-  background: #161b22; border: 1px solid #21262d;
-  color: #8b949e; padding: 7px 16px; border-radius: 8px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  color: var(--text-muted); padding: 7px 16px; border-radius: 8px;
   cursor: pointer; font-size: 13px; font-weight: 500;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.dm-l1-btn:hover { background: #21262d; color: #e6edf3; border-color: #30363d; }
-.dm-l1-active { background: #1f3a5f !important; color: #58a6ff !important; border-color: #1f6feb !important; }
+.dm-l1-btn:hover { background: var(--bg-tertiary); color: var(--text); border-color: var(--border); }
+.dm-l1-active { background: color-mix(in srgb, var(--accent) 22%, var(--bg-secondary)) !important; color: var(--link) !important; border-color: var(--accent) !important; }
 .dm-advanced-link {
   margin-left: auto; display: flex; align-items: center; gap: 4px;
-  color: #6e7681; font-size: 12px; text-decoration: none;
+  color: var(--text-dim); font-size: 12px; text-decoration: none;
 }
-.dm-advanced-link:hover { color: #8b949e; }
+.dm-advanced-link:hover { color: var(--text-muted); }
 
 /* ─── Device Manager layout ─────────────────────────────────────────────── */
 /* Found 2026-08-12 (user report): .dm-list (the actual device browsing
@@ -1118,7 +1131,7 @@ body {
 @media (min-width: 901px) {
   .dm-list { overflow-y: auto; max-height: calc(100vh - 220px); }
 }
-.dm-hint { color: #6e7681; font-size: 12px; margin: 0 0 12px 0; }
+.dm-hint { color: var(--text-dim); font-size: 12px; margin: 0 0 12px 0; }
 
 .dm-device-row {
   display: flex; align-items: center; gap: 10px;
@@ -1126,12 +1139,12 @@ body {
   border-radius: 10px; padding: 10px 12px; cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
 }
-.dm-device-row:hover { border-color: #388bfd; }
+.dm-device-row:hover { border-color: var(--accent-hover); }
 .dm-row-selected { border-color: var(--layer-selected-edge) !important; background: var(--layer-2-fill); }
-.dm-row-icon { color: #8b949e; flex-shrink: 0; }
+.dm-row-icon { color: var(--text-muted); flex-shrink: 0; }
 .dm-row-info { flex: 1; min-width: 0; }
 .dm-row-name { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dm-row-meta { display: block; font-size: 11px; color: #6e7681; }
+.dm-row-meta { display: block; font-size: 11px; color: var(--text-dim); }
 /* Found 2026-08-12 (user report): neither badge had flex-shrink:0 (unlike
    .dm-row-icon, which correctly does), so in a tight row they compressed
    under flexbox's default shrink behavior instead of holding their own
@@ -1155,19 +1168,19 @@ body {
   padding: 18px; overflow-y: auto; max-height: calc(100vh - 220px);
 }
 .dm-detail-inner { display: flex; flex-direction: column; gap: 8px; }
-.dm-detail-name { font-size: 16px; font-weight: 600; color: #f0f6fc; }
-.dm-detail-id   { font-size: 11px; color: #6e7681; font-family: monospace; margin-bottom: 4px; }
+.dm-detail-name { font-size: 16px; font-weight: 600; color: var(--text); }
+.dm-detail-id   { font-size: 11px; color: var(--text-dim); font-family: monospace; margin-bottom: 4px; }
 .dm-detail-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-.dm-detail-row  { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid #21262d; }
-.dm-detail-row span:first-child { color: #8b949e; }
+.dm-detail-row  { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.dm-detail-row span:first-child { color: var(--text-muted); }
 /* Real ontology data (DeviceType.category(), DeviceDescriptor.capabilities())
    -- see DeviceRegistry.withOntologyMetadata(). Purple/gray, deliberately
    distinct from state-badge's semantic colors and workflow-badge's blue:
    this is descriptive metadata, not a status or membership signal. */
 .category-badge { background: #2d2440; color: #a371f7; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
 .capability-chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
-.capability-chip { border: 1px solid var(--layer-3-edge); color: #8b949e; border-radius: 999px; padding: 1px 6px; font-size: 10px; }
-.dm-detail-section { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; margin: 8px 0 4px; }
+.capability-chip { border: 1px solid var(--layer-3-edge); color: var(--text-muted); border-radius: 999px; padding: 1px 6px; font-size: 10px; }
+.dm-detail-section { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 8px 0 4px; }
 
 /* ─── Health bar ─────────────────────────────────────────────────────────── */
 .dm-health-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -1175,10 +1188,10 @@ body {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; padding: 3px 8px; border-radius: 10px; font-weight: 500;
 }
-.health-ok      { background: #1a3a2a; color: #3fb950; }
-.health-offline { background: #2a2020; color: #8b949e; }
-.health-alarm   { background: #4a1010; color: #f85149; }
-.health-z2m     { background: #1a2a3a; color: #79c0ff; }
+.health-ok      { background: color-mix(in srgb, var(--success) 20%, var(--bg-secondary)); color: var(--success); }
+.health-offline { background: color-mix(in srgb, var(--text-muted) 14%, var(--bg-secondary)); color: var(--text-muted); }
+.health-alarm   { background: color-mix(in srgb, var(--danger) 22%, var(--bg-secondary)); color: var(--danger); }
+.health-z2m     { background: color-mix(in srgb, var(--accent) 18%, var(--bg-secondary)); color: var(--link-hover); }
 
 /* ─── Edit form ──────────────────────────────────────────────────────────── */
 .dm-edit-form {
@@ -1186,22 +1199,22 @@ body {
 }
 .dm-edit-form label {
   display: flex; flex-direction: column; gap: 5px;
-  font-size: 12px; color: #8b949e;
+  font-size: 12px; color: var(--text-muted);
 }
 .dm-edit-form input, .dm-edit-form select {
-  background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
-  color: #e6edf3; padding: 7px 10px; font-size: 13px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 7px 10px; font-size: 13px;
 }
 .dm-toggle-row { flex-direction: row !important; align-items: center; justify-content: space-between; }
-.toggle-on  { color: #3fb950; }
-.toggle-off { color: #6e7681; }
-.save-ok { display: flex; align-items: center; gap: 4px; color: #3fb950; font-size: 12px; }
+.toggle-on  { color: var(--success); }
+.toggle-off { color: var(--text-dim); }
+.save-ok { display: flex; align-items: center; gap: 4px; color: var(--success); font-size: 12px; }
 /* D15/Sprint 5 Area pipe -- .dm-row-area is a small tag ahead of the usual
    type/location meta line (Device Manager row); .dm-area-editor pairs the
    input with its own atomic Save button (separate backend write path from
    the rest of DmEditForm, see DmAreaEditor's own comment). */
-.dm-row-area { color: #58a6ff; font-weight: 500; }
-.dm-row-area::after { content: " · "; color: #6e7681; font-weight: 400; }
+.dm-row-area { color: var(--link); font-weight: 500; }
+.dm-row-area::after { content: " · "; color: var(--text-dim); font-weight: 400; }
 .dm-area-editor { display: flex; gap: 6px; align-items: center; }
 .dm-area-editor input { flex: 1; }
 
@@ -1209,10 +1222,10 @@ body {
 .dm-remove-panel {
   display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
 }
-.dm-remove-device-name { font-size: 15px; font-weight: 600; color: #f0f6fc; }
-.dm-remove-device-id   { font-size: 11px; color: #6e7681; font-family: monospace; }
+.dm-remove-device-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.dm-remove-device-id   { font-size: 11px; color: var(--text-dim); font-family: monospace; }
 .dm-remove-confirm-btn { margin-top: 4px; }
-.remove-warn-icon { color: #d29922; }
+.remove-warn-icon { color: var(--warning); }
 
 /* ─── Add Place form (My Places) ────────────────────────────────────────── */
 .add-place-form {
@@ -1223,20 +1236,20 @@ body {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
 }
-.add-place-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #8b949e; }
+.add-place-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-muted); }
 .add-place-field input, .add-place-field select {
-  background: #010409; border: 1px solid #30363d; border-radius: 6px;
-  color: #e6edf3; padding: 7px 10px; font-size: 13px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 7px 10px; font-size: 13px;
 }
-.add-place-error { color: #f85149; font-size: 12px; margin-top: 10px; }
+.add-place-error { color: var(--danger); font-size: 12px; margin-top: 10px; }
 .add-place-actions { display: flex; gap: 10px; margin-top: 14px; }
 
 /* ─── Workflow create form (Rules & Alerts sidebar) ─────────────────────── */
 .workflow-actions-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .workflow-action-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .workflow-action-row select {
-  background: #010409; border: 1px solid #30363d; border-radius: 6px;
-  color: #e6edf3; padding: 6px 9px; font-size: 12px; flex: 1; min-width: 160px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 6px 9px; font-size: 12px; flex: 1; min-width: 160px;
 }
 .workflow-action-locked-device { white-space: nowrap; }
 .workflow-row-actions { display: flex; gap: 8px; margin-top: 6px; }
@@ -1245,14 +1258,13 @@ body {
   margin-top: 6px; padding: 8px; border-radius: 6px;
   background: var(--layer-3-fill); border: 1px solid var(--layer-3-edge);
 }
-.workflow-execution-row + .workflow-execution-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid #21262d; }
-.workflow-execution-meta { display: flex; justify-content: space-between; font-size: 11px; color: #8b949e; }
-.workflow-execution-active { color: #58a6ff; font-weight: 600; }
-.workflow-execution-cleared { color: #6e7681; }
-.workflow-execution-actions { margin: 4px 0 0; padding-left: 16px; font-size: 11px; color: #8b949e; }
+.workflow-execution-row + .workflow-execution-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.workflow-execution-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
+.workflow-execution-active { color: var(--link); font-weight: 600; }
+.workflow-execution-cleared { color: var(--text-dim); }
+.workflow-execution-actions { margin: 4px 0 0; padding-left: 16px; font-size: 11px; color: var(--text-muted); }
 .workflow-execution-history .btn-ghost { font-size: 11px; padding: 2px 8px; margin-top: 4px; }
-.workflow-recent-executions { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #21262d; }
-.workflow-recent-executions .rule-row:last-child { border-bottom: none; }
+.workflow-recent-executions { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 /* Same "compact + internally scrolling" treatment as .active-conditions-list
    -- a handful of workflows shouldn't be able to make this card (and the
    column it sits in) grow indefinitely. */
@@ -1265,12 +1277,12 @@ body {
 .dm-add-option {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;
   background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge); border-radius: 12px;
-  padding: 20px; cursor: pointer; text-align: center; color: #e6edf3;
+  padding: 20px; cursor: pointer; text-align: center; color: var(--text);
   transition: border-color 0.15s, background 0.15s;
 }
-.dm-add-option:hover { border-color: #1f6feb; background: #131a24; }
+.dm-add-option:hover { border-color: var(--accent); background: var(--layer-2-fill); }
 .dm-add-option strong { font-size: 14px; }
-.dm-add-option span { font-size: 12px; color: #8b949e; }
+.dm-add-option span { font-size: 12px; color: var(--text-muted); }
 
 /* ─── Zigbee pairing ─────────────────────────────────────────────────────── */
 .pairing-container { max-width: 480px; }
@@ -1281,23 +1293,23 @@ body {
   gap: 12px; text-align: center;
 }
 .pairing-card h3 { margin: 0; font-size: 16px; }
-.pairing-card p  { margin: 0; font-size: 13px; color: #8b949e; max-width: 360px; }
-.pairing-icon { color: #8b949e; }
-.pairing-success { color: #3fb950 !important; }
-.pairing-active { border-color: #3fb950; }
+.pairing-card p  { margin: 0; font-size: 13px; color: var(--text-muted); max-width: 360px; }
+.pairing-icon { color: var(--text-muted); }
+.pairing-success { color: var(--success) !important; }
+.pairing-active { border-color: var(--success); }
 .pairing-countdown {
   font-size: 56px; font-weight: 700; font-family: monospace;
-  color: #3fb950; letter-spacing: 0.05em;
+  color: var(--success); letter-spacing: 0.05em;
 }
-.pairing-status { font-size: 13px; color: #8b949e; }
+.pairing-status { font-size: 13px; color: var(--text-muted); }
 .pairing-start-btn { margin-top: 8px; padding: 10px 24px; font-size: 14px; }
 .pairing-found {
-  background: #1a3a2a; border: 1px solid #1e4a30; border-radius: 10px;
+  background: color-mix(in srgb, var(--success) 20%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, var(--success) 40%, var(--border)); border-radius: 10px;
   padding: 12px 16px; width: 100%; text-align: left; font-size: 13px;
 }
-.pairing-found strong { display: block; margin-bottom: 6px; color: #3fb950; }
+.pairing-found strong { display: block; margin-bottom: 6px; color: var(--success); }
 .pairing-found-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
-.found-check { color: #3fb950; flex-shrink: 0; }
+.found-check { color: var(--success); flex-shrink: 0; }
 .pairing-choices { display: flex; gap: 10px; justify-content: center; margin-top: 4px; }
 
 /* ─── Location section header ───────────────────────────────────────────── */
@@ -1387,22 +1399,22 @@ body {
 .alert-ctrl-unconfigured .alert-ctrl-dot { color: var(--text-dim); }
 
 .alert-ctrl-ok {
-  background: #0d1f0d;
-  border-color: #1a3a1a;
+  background: color-mix(in srgb, var(--success) 12%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border));
   color: var(--success);
 }
 .alert-ctrl-ok .alert-ctrl-dot { color: var(--success); }
 
 .alert-ctrl-warn {
-  background: #1f1a0a;
-  border-color: #3a2e0a;
+  background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
   color: var(--warning);
 }
 .alert-ctrl-warn .alert-ctrl-dot { color: var(--warning); }
 
 .alert-ctrl-critical {
-  background: #1f0a0a;
-  border-color: #3a1010;
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
   color: var(--danger);
 }
 .alert-ctrl-critical .alert-ctrl-dot { color: var(--danger); }
@@ -1645,7 +1657,7 @@ body {
 }
 .fh-launch-btn:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .fh-quick-link {
   display: flex;
@@ -1691,7 +1703,7 @@ button, select, input, textarea { font-family: var(--font-ui, var(--font-display
 
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: 2px solid var(--accent);
 }
 .btn-primary:hover {
@@ -2021,7 +2033,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 .helpdesk-user .helpdesk-bubble {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-bottom-right-radius: 4px;
 }
 .helpdesk-assistant .helpdesk-bubble {
@@ -2105,7 +2117,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .opportunity-type-badge {
   display: inline-flex; align-items: center;
   padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;
-  background: rgba(31, 111, 235, 0.15); color: #58a6ff; margin-right: 8px;
+  background: rgba(31, 111, 235, 0.15); color: var(--link); margin-right: 8px;
 }
 
 /* ─── Guest view (/view/{token}) ────────────────────────────────────────── */
@@ -2144,13 +2156,13 @@ select option { background: var(--bg-secondary); color: var(--text); }
      Layer 2  card   mid-size objects nested inside a panel
      Layer 3  tile   the smallest tiles, chips, wells and read-outs
 
-   A layer is a fill + edge + edge width + shadow token. Defaults below derive
-   from each theme's own core palette, so a theme is consistent with no extra
-   work; a theme that wants more (80s Neon colored edges and glow, Asteroid
-   City hard shadows) overrides the tokens, never individual classes. To put
-   a component in the system, add its class to the matching :is() list -- do
-   not hard-code a background/border color on a surface. Text is never
-   recolored by a layer. See docs/UX_JOURNEY_STANDARD.md "Visual system". */
+   A layer is a fill + edge + edge width + shadow token. ThemeProvider derives
+   them per theme (surfaceLayers.js) from the palette and three hue picks and
+   guarantees edge separation; the values below are only the pre-JS fallback so
+   nothing flashes unstyled. To put a component in the system, add its class to
+   the matching :is() list -- do not hard-code a background/border color on a
+   surface. Text is never recolored by a layer. See docs/UX_JOURNEY_STANDARD.md
+   "Visual system". */
 :root {
   --layer-1-fill:  var(--bg-secondary);
   --layer-1-edge:  var(--border);
@@ -2171,6 +2183,12 @@ select option { background: var(--bg-secondary); color: var(--text); }
   /* Tab buttons (left nav rail, view tabs) share ONE color in every state. */
   --tab-color:       var(--text-muted);
   --tab-color-hover: var(--text);
+  /* Links and text on an accent fill derive from the theme instead of the
+     GitHub-dark #58a6ff / #fff literals they replaced. --on-accent is set per
+     theme by surfaceLayers.js (black or white, whichever reads on the accent). */
+  --link:       color-mix(in srgb, var(--accent) 60%, var(--text));
+  --link-hover: color-mix(in srgb, var(--accent) 40%, var(--text));
+  --on-accent:  #ffffff;
 }
 :is(
   .active-conditions, .sidebar-card, .config-card, .dm-device-group, .dm-detail,
@@ -2183,7 +2201,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 :is(
   .opportunity-card, .device-card, .dm-device-row, .dm-why-card, .dm-candidate-card,
-  .automation-alert-card, .camera-event-row, .camera-motion-row,
+  .rule-row, .active-condition, .automation-alert-card, .camera-event-row, .camera-motion-row,
   .guest-access-row, .guest-alert-row, .guest-device-row, .add-place-form, .dm-add-option
 ) {
   background: var(--layer-2-fill);
@@ -2193,7 +2211,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 :is(
   .kpi-tile, .camera-health-tile, .opportunity-detail, .workflow-execution-history,
-  .opportunity-lineage-chip, .section-count-badge, .code-block, .capability-chip,
+  .opportunity-lineage-chip, .section-count-badge, .code-block, .capability-chip, .meta-chip,
   .camera-clip-expanded, .camera-event-thumb
 ) {
   background: var(--layer-3-fill);
@@ -2221,8 +2239,12 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .kpi-tile.kpi-state-alarm { border-color: color-mix(in srgb, var(--danger) 65%, var(--layer-3-edge)); }
 :is(.nodered-lazy-placeholder, .embed-frame, .embed-frame-short) { border-color: var(--layer-1-edge); }
 .discovery-fields { border-color: var(--layer-2-edge); }
-.rule-row { border-bottom-color: color-mix(in srgb, var(--layer-1-edge) 55%, transparent); }
-.active-conditions-header, .active-condition + .active-condition { border-color: var(--layer-1-edge); }
+.active-conditions-header { border-color: var(--layer-1-edge); }
+/* The layer rule sets border-color/-width on every side; a status row keeps its
+   3px severity edge on the left. */
+.active-condition { border-left-width: 3px; border-left-color: var(--state-warning); }
+.active-condition-critical { border-left-color: var(--state-alarm, var(--danger)); }
+.active-condition-title-row .meta-chip { text-transform: uppercase; }
 /* Text inputs/selects in modals and forms hard-coded #0d1117/#010409 with grey
    borders; they are controls, so they follow the control tokens like every
    other dropdown rather than becoming another surface style. */
@@ -2248,55 +2270,21 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .nav-rail .nav-item.nav-active { color: var(--tab-color) !important; }
 :is(.dm-l1-btn, .sensor-history-topic-tab) { color: var(--tab-color); }
 
-/* ─── 80s Neon: pink -> yellow -> aquamarine, limited glow ────────────────
-   Largest objects are the pink primary, mid-size objects #ffff66, the
-   smallest tiles #7fffd4 (the RETRO 80S palette the user chose). Edge and
-   glow carry the color; fills stay dark so the light text is unchanged. All
-   tab buttons are the same #ffff66. */
-[data-theme="neon80s"] {
-  --layer-1: var(--accent);
-  --layer-2: #ffff66;
-  --layer-3: #7fffd4;
-  --layer-1-fill: color-mix(in srgb, var(--layer-1) 9%, var(--bg-secondary));
-  --layer-2-fill: color-mix(in srgb, var(--layer-2) 5%, var(--bg));
-  --layer-3-fill: color-mix(in srgb, var(--layer-3) 7%, var(--bg));
-  --layer-1-edge: color-mix(in srgb, var(--layer-1) 62%, var(--border));
-  --layer-2-edge: color-mix(in srgb, var(--layer-2) 52%, var(--border));
-  --layer-3-edge: color-mix(in srgb, var(--layer-3) 58%, var(--border));
-  --layer-1-shadow: 0 0 5px color-mix(in srgb, var(--layer-1) 42%, transparent),
-                    0 0 16px color-mix(in srgb, var(--layer-1) 15%, transparent);
-  --layer-2-shadow: 0 0 4px color-mix(in srgb, var(--layer-2) 32%, transparent),
-                    0 0 11px color-mix(in srgb, var(--layer-2) 9%, transparent);
-  --layer-3-shadow: 0 0 4px color-mix(in srgb, var(--layer-3) 36%, transparent);
-  --layer-hover-edge:   var(--layer-2);
-  --layer-hover-shadow: 0 0 6px color-mix(in srgb, var(--layer-2) 55%, transparent),
-                        0 0 16px color-mix(in srgb, var(--layer-2) 18%, transparent);
-  --layer-selected-edge:   var(--layer-1);
-  --layer-selected-shadow: var(--layer-1-shadow);
-  --tab-color:       #ffff66;
-  --tab-color-hover: #ffffaa;
+/* Native scrollbars defaulted to bright white inside dark panels in every dark
+   theme. The property inherits, so one rule on the root themes every scrolling
+   list, card and log from the theme's own layer-1 hue. */
+:root {
   scrollbar-color: color-mix(in srgb, var(--layer-1) 65%, var(--bg)) var(--bg);
   scrollbar-width: thin;
 }
+
+/* ─── Theme-specific exceptions (everything else is data in ThemeProvider) ──
+   Layer colors, glow, hard shadows and the tab color are derived per theme by
+   surfaceLayers.js from that theme's palette and three hue picks -- none of it
+   is styled here. The only exception: a warn dot must contrast with the tab
+   color it sits on, and 80s Neon's tabs are yellow like --warning. */
 [data-theme="neon80s"] .nav-badge-warn {
   background: var(--accent);
   box-shadow: 0 0 5px color-mix(in srgb, var(--accent) 70%, transparent);
-}
-
-/* ─── Asteroid City: hard postcard shadows on every layer ─────────────────
-   Its old rule listed 7 classes; the rest of the surfaces got neither the
-   shadow nor the thick border, so cards on one page disagreed. Now a token. */
-[data-theme="asteroidcity"] {
-  /* 40% cactus into sand: full cactus gave text 3.3:1 and muted 1.4:1. */
-  --layer-2-fill: color-mix(in srgb, var(--bg-tertiary) 40%, var(--bg-secondary));
-  --layer-2-edge: rgba(63, 113, 102, 0.65);
-  --layer-3-fill: color-mix(in srgb, var(--bg-secondary) 55%, #ffffff);
-  --layer-1-shadow: 6px 6px 0 var(--border);
-  --layer-2-shadow: 4px 4px 0 var(--border);
-  --layer-3-shadow: 3px 3px 0 var(--border);
-  --layer-1-border-width: 3px;
-  --layer-2-border-width: 3px;
-  --layer-3-border-width: 2px;
-  --layer-hover-shadow: 4px 4px 0 var(--accent);
 }
 [data-theme="asteroidcity"] .automation-alert-card { border-width: 3px; }

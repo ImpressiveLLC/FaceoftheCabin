@@ -18,6 +18,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { surfaceLayerVars } from "./surfaceLayers.js";
 import { Palette } from "lucide-react";
 
 // ─── Theme definitions ──────────────────────────────────────────────────────
@@ -45,6 +46,8 @@ export const THEMES = {
       "--radius":       "10px",
       "--radius-sm":    "6px",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent-hover', '--text', '--success'] },
   },
 
   // Matches impressive.llc's actual live palette (2026-08-21, sampled
@@ -79,6 +82,8 @@ export const THEMES = {
       "--radius":       "10px",
       "--radius-sm":    "6px",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent-hover', '--text-muted', '--text'] },
   },
 
   lcars: {
@@ -104,6 +109,8 @@ export const THEMES = {
       "--radius":       "18px",
       "--radius-sm":    "4px",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent', '--border-focus', '--success'] },
   },
 
   monolith: {
@@ -129,6 +136,8 @@ export const THEMES = {
       "--radius":       "2px",
       "--radius-sm":    "1px",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--text-muted', '--text', '--success'] },
   },
 
   retrocrt: {
@@ -154,6 +163,8 @@ export const THEMES = {
       "--radius":       "0px",
       "--radius-sm":    "0px",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent', '--warning', '--success'] },
   },
 
   bluefin: {
@@ -179,6 +190,8 @@ export const THEMES = {
       "--radius":       "6px",
       "--radius-sm":    "3px",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent-hover', '--text', '--success'] },
   },
 
   madscience: {
@@ -207,6 +220,8 @@ export const THEMES = {
       "--glow-green":   "0 0 8px #39ff14, 0 0 20px #39ff1440",
       "--glow-purple":  "0 0 8px #bf00ff, 0 0 20px #bf00ff40",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent', '--accent-2', '--warning'] },
   },
 
   deepspace: {
@@ -234,6 +249,8 @@ export const THEMES = {
       "--glow-hal":     "0 0 8px #ff2d55, 0 0 24px #ff2d5540",
       "--glow-cyan":    "0 0 8px #00a3ff, 0 0 20px #00a3ff40",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent', '--warning', '--text'] },
   },
 
   // neon80s and pacman added 2026-08-07 -- FOUND that session (see
@@ -273,6 +290,8 @@ export const THEMES = {
       "--radius-sm":    "1px",
       "--glow-neon":    "0 0 8px #ff2dd4, 0 0 24px #ff2dd440",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent', '--accent-2', '--warning'], shadow: 'glow', tab: '--warning' },
   },
 
   pacman: {
@@ -299,6 +318,8 @@ export const THEMES = {
       "--radius":       "16px",
       "--radius-sm":    "8px",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent', '--success', '--warning'] },
   },
 
   // Reworked 2026-08-19 (user report, with screenshot + the film's own
@@ -365,6 +386,8 @@ export const THEMES = {
       "--logo-highlight": "#a1c19b",
       "--logo-shadow":    "rgba(36, 85, 72, 0.34)",
     },
+    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent', '--success', '#ffffff'], shadow: 'hard', edgeHue: 0, widths: ['3px', '3px', '2px'], tints: [0, 0.4, 0.5] },
   },
 };
 
@@ -385,6 +408,17 @@ export function resolveInitialThemeId(searchParams, storedThemeId, themes = THEM
 }
 
 // ─── Context ────────────────────────────────────────────────────────────────
+// Every theme resolves ALL layer variables, so switching themes can never
+// leave a previous theme's layer value behind (the plain `vars` leak that way).
+export function layerVarsFor(theme) {
+  const v = theme.vars, L = theme.layers;
+  const pick = (role) => (role.startsWith("--") ? v[role] : role);
+  return surfaceLayerVars(
+    { page: v["--bg"], panel: v["--bg-secondary"], border: v["--border"], text: v["--text"], muted: v["--text-muted"], accent: v["--accent"] },
+    { hues: L.hues.map(pick), shadow: L.shadow, widths: L.widths, edgeHue: L.edgeHue, tints: L.tints, tab: L.tab && pick(L.tab) },
+  );
+}
+
 const ThemeContext = createContext(null);
 export function useTheme() { return useContext(ThemeContext); }
 
@@ -399,6 +433,7 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     const root = document.documentElement;
     Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+    Object.entries(layerVarsFor(theme)).forEach(([k, v]) => root.style.setProperty(k, v));
     const uiFont = theme.vars["--font-ui"] || theme.vars["--font-display"];
     root.style.setProperty("--font-ui", uiFont);
     document.body.style.fontFamily = uiFont;
