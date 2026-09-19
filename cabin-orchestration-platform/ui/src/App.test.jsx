@@ -5353,3 +5353,43 @@ describe("PresenceActivityView location scope", () => {
     await waitFor(() => expect(authedFetch).toHaveBeenCalledWith("http://cabin/api/presence/activity?days=30&location=cabin"));
   });
 });
+
+// Alert History only lists what is active right now; the closest thing to a
+// history screen is Status Checks (Rules & Alerts), so the tab points there.
+describe("SensorHistoryPanel Alert History link", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const devices = [{ deviceId: "z2m-humid_mech", name: "Mech Room", type: "TEMPERATURE_SENSOR", state: "ONLINE",
+    location: "cabin", attributes: { enabled: true, reportsFields: ["humidity"] } }];
+  const stubFetch = () => vi.stubGlobal("fetch", vi.fn((url) => {
+    if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => ({ "z2m-humid_mech": ["humidity"] }) });
+    if (url.includes("/alerts/active")) return Promise.resolve({ ok: true, json: async () => ({ alerts: [] }) });
+    return Promise.resolve({ ok: true, json: async () => ({}) });
+  }));
+
+  it("sends you to Rules & Alerts, where Status Checks lives, and says what that covers", async () => {
+    stubFetch();
+    const setActivePanel = vi.fn();
+    render(
+      <AppContext.Provider value={{ setActivePanel }}>
+        <SensorHistoryPanel devices={devices} apiBase="http://cabin" tempUnit="F" />
+      </AppContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole("tab", { name: /alert history/i }));
+
+    expect(await screen.findByText(/last 24 hours of alerts and automation actions/i)).toBeTruthy();
+    expect(screen.getByText(/full historical log is not built yet/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /open status checks/i }));
+
+    expect(setActivePanel).toHaveBeenCalledWith("RULES_ENGINE");
+  });
+
+  it("shows no link where there is no app shell to navigate", async () => {
+    stubFetch();
+    render(<SensorHistoryPanel devices={devices} apiBase="http://cabin" tempUnit="F" />);
+    fireEvent.click(await screen.findByRole("tab", { name: /alert history/i }));
+
+    await screen.findByText(/full historical log is not built yet/i);
+    expect(screen.queryByRole("button", { name: /open status checks/i })).toBeNull();
+  });
+});
