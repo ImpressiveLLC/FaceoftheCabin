@@ -380,7 +380,7 @@ network path to a Tailscale-only host. Full setup/recovery runbook:
   `PresenceActivityBackfill` rebuilds the same events from existing
   TELEMETRY on every start (idempotent — safe to leave on; disable with
   `cabin.presence.backfill.enabled=false`), which is how the ~44 days
-  that predate this were filled in. Served by `GET /api/presence/activity`
+  that predate this were filled in. Served by `GET /api/presence/activity` (optional `location=` limits it to one site's sensors)
   (signed-in adult/administrator only) and shown under Monitoring →
   Sensor History → Security & Presence. Days and hours use
   `cabin.timezone` (env `CABIN_TIMEZONE`, default `America/Chicago`).

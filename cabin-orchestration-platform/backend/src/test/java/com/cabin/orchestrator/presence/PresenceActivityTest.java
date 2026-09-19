@@ -134,7 +134,7 @@ class PresenceActivityTest {
         edge("2026-09-14T14:05:00Z", true);  edge("2026-09-14T14:07:00Z", false);
         edge("2026-09-15T15:00:00Z", true);  edge("2026-09-15T15:01:00Z", false);
 
-        Map<String, Object> body = service().activity(null, 7, 30, NOW);
+        Map<String, Object> body = service().activity(null, null, 7, 30, NOW);
 
         assertEquals("America/Chicago", body.get("timezone"));
         assertEquals(7, body.get("days"));
@@ -170,7 +170,7 @@ class PresenceActivityTest {
         edge("2026-08-01T14:01:00Z", false);
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> s = ((List<Map<String, Object>>) service().activity(null, 7, 30, NOW).get("sensors")).get(0);
+        Map<String, Object> s = ((List<Map<String, Object>>) service().activity(null, null, 7, 30, NOW).get("sensors")).get(0);
 
         assertEquals(45, s.get("daysSinceLastActivity"), "Aug 1 -> Sep 15, though the 7-day window is empty");
         @SuppressWarnings("unchecked")
@@ -185,13 +185,60 @@ class PresenceActivityTest {
             INSERT INTO cabin_event (event_id, time, device_id, event_type, severity, payload)
             VALUES ('x1', '2026-09-14T14:00:00Z', 'z2m-motion_other', ?, 'INFO', '{}'::jsonb)""", OccupancyEdges.ACTIVATED);
 
-        assertEquals(2, ((List<?>) service().activity(null, 7, 30, NOW).get("sensors")).size());
-        assertEquals(1, ((List<?>) service().activity(SENSOR, 7, 30, NOW).get("sensors")).size());
+        assertEquals(2, ((List<?>) service().activity(null, null, 7, 30, NOW).get("sensors")).size());
+        assertEquals(1, ((List<?>) service().activity(SENSOR, null, 7, 30, NOW).get("sensors")).size());
+    }
+
+    // One backend can hold both Cabin's and Home's Zigbee sensors (Zigbee2MqttAdapter
+    // serves both bridges), so a location's Monitoring view must get only its own.
+    private void sensorEdgeFor(String deviceId, String eventId) {
+        jdbc.update("""
+            INSERT INTO cabin_event (event_id, time, device_id, event_type, severity, payload)
+            VALUES (?, '2026-09-14T14:00:00Z', ?, ?, 'INFO', '{}'::jsonb)""", eventId, deviceId, OccupancyEdges.ACTIVATED);
+    }
+
+    private PresenceActivityService serviceWithSensorsAt(Map<String, String> locationByDevice) {
+        DeviceRegistry registry = new DeviceRegistry(List.of());
+        locationByDevice.forEach((id, location) -> registry.register(new com.cabin.orchestrator.devices.model.DeviceStatus(
+            id, com.cabin.orchestrator.devices.model.DeviceType.MOTION_SENSOR, id, "ONLINE",
+            Instant.parse("2026-09-15T17:00:00Z"), new java.util.LinkedHashMap<>(), location)));
+        return new PresenceActivityService(jdbc, registry, "America/Chicago");
+    }
+
+    private static List<String> sensorIds(Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> sensors = (List<Map<String, Object>>) body.get("sensors");
+        return sensors.stream().map(s -> (String) s.get("deviceId")).toList();
+    }
+
+    @Test
+    void aLocationFilterReturnsOnlyThatLocationsSensors() {
+        sensorEdgeFor("z2m-motion_entry", "e1");
+        sensorEdgeFor("z2m-home_motion_hall", "e2");
+        PresenceActivityService service = serviceWithSensorsAt(
+            Map.of("z2m-motion_entry", "cabin", "z2m-home_motion_hall", "home"));
+
+        assertEquals(List.of("z2m-motion_entry"), sensorIds(service.activity(null, "cabin", 7, 30, NOW)));
+        assertEquals(List.of("z2m-home_motion_hall"), sensorIds(service.activity(null, "home", 7, 30, NOW)));
+        assertEquals(List.of(), sensorIds(service.activity(null, "shed", 7, 30, NOW)));
+    }
+
+    @Test
+    void noLocationFilterKeepsEverySensorIncludingOnesTheRegistryNoLongerKnows() {
+        sensorEdgeFor("z2m-motion_entry", "e1");
+        sensorEdgeFor("z2m-retired_sensor", "e2");
+        PresenceActivityService service = serviceWithSensorsAt(Map.of("z2m-motion_entry", "cabin"));
+
+        assertEquals(List.of("z2m-motion_entry", "z2m-retired_sensor"), sensorIds(service.activity(null, null, 7, 30, NOW)));
+        assertEquals(List.of("z2m-motion_entry", "z2m-retired_sensor"), sensorIds(service.activity(null, "  ", 7, 30, NOW)),
+            "a blank location is no filter");
+        assertEquals(List.of("z2m-motion_entry"), sensorIds(service.activity(null, "cabin", 7, 30, NOW)),
+            "scoped to a location, a sensor with no registry entry is left out, not guessed into it");
     }
 
     @Test
     void outOfRangeParametersAreClamped() {
-        Map<String, Object> body = service().activity(null, 100000, 0, NOW);
+        Map<String, Object> body = service().activity(null, null, 100000, 0, NOW);
 
         assertEquals(365, body.get("days"));
         assertEquals(1, body.get("visitGapMinutes"));
@@ -210,11 +257,11 @@ class PresenceActivityTest {
         PresenceActivityController controller = new PresenceActivityController(service());
 
         for (HouseholdRole denied : new HouseholdRole[] { HouseholdRole.CHILD, HouseholdRole.KIOSK_DISPLAY, null }) {
-            ResponseEntity<?> r = controller.activity(requestWithRole(denied), null, null, null);
+            ResponseEntity<?> r = controller.activity(requestWithRole(denied), null, null, null, null);
             assertEquals(HttpStatus.FORBIDDEN, r.getStatusCode(), "role " + denied);
         }
         for (HouseholdRole allowed : new HouseholdRole[] { HouseholdRole.ADMINISTRATOR, HouseholdRole.ADULT_HOUSEHOLD_MEMBER }) {
-            ResponseEntity<?> r = controller.activity(requestWithRole(allowed), null, null, null);
+            ResponseEntity<?> r = controller.activity(requestWithRole(allowed), null, null, null, null);
             assertEquals(HttpStatus.OK, r.getStatusCode(), "role " + allowed);
         }
     }

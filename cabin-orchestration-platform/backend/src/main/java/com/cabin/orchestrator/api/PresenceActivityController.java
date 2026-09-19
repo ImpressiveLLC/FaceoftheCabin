@@ -39,6 +39,7 @@ public class PresenceActivityController {
     @GetMapping("/activity")
     public ResponseEntity<?> activity(HttpServletRequest request,
                                       @RequestParam(required = false) String deviceId,
+                                      @RequestParam(required = false) String location,
                                       @RequestParam(required = false) Integer days,
                                       @RequestParam(required = false) Integer visitGapMinutes) {
         HouseholdRole role = (HouseholdRole) request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE);
@@ -46,6 +47,6 @@ public class PresenceActivityController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(Map.of("error", "This role cannot view presence history"));
         }
-        return ResponseEntity.ok(service.activity(deviceId, days, visitGapMinutes, Instant.now()));
+        return ResponseEntity.ok(service.activity(deviceId, location, days, visitGapMinutes, Instant.now()));
     }
 }

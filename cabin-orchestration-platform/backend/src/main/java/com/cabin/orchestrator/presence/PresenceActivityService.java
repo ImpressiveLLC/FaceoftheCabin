@@ -19,6 +19,8 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Reads OCCUPANCY_SENSOR_ACTIVATED/CLEARED events (see OccupancyEdges) and
@@ -46,7 +48,14 @@ public class PresenceActivityService {
         this.zone = ZoneId.of(timezone);
     }
 
-    public Map<String, Object> activity(String deviceId, Integer daysParam, Integer visitGapMinutesParam, Instant now) {
+    /**
+     * @param location optional; when given, only sensors the device registry places in that location. Events carry no
+     *                 location column of their own, so this joins against the registry the same way
+     *                 EventController's location filter does -- a sensor the registry no longer knows about is
+     *                 left out of a location-scoped answer rather than guessed into one.
+     */
+    public Map<String, Object> activity(String deviceId, String location, Integer daysParam,
+                                        Integer visitGapMinutesParam, Instant now) {
         int days = clamp(daysParam, DEFAULT_DAYS, 1, MAX_DAYS);
         int gapMinutes = clamp(visitGapMinutesParam, DEFAULT_VISIT_GAP_MINUTES, 1, 24 * 60);
         LocalDate today = now.atZone(zone).toLocalDate();
@@ -60,6 +69,11 @@ public class PresenceActivityService {
             GROUP BY device_id ORDER BY device_id""",
             rs -> { lastEver.put(rs.getString("device_id"), rs.getTimestamp("last_at").toInstant()); },
             OccupancyEdges.ACTIVATED, deviceId, deviceId);
+        if (location != null && !location.isBlank()) {
+            Set<String> inLocation = registry.byLocation(location).stream()
+                .map(DeviceStatus::deviceId).collect(Collectors.toSet());
+            lastEver.keySet().retainAll(inLocation);
+        }
 
         Map<String, List<PresenceActivityCalculator.Edge>> edgesBySensor = new LinkedHashMap<>();
         jdbc.query("""

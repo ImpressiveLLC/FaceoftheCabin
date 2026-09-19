@@ -5307,3 +5307,44 @@ describe("PresenceActivityView", () => {
     expect(authedFetch).toHaveBeenCalledWith("http://cabin/api/presence/activity?days=30");
   });
 });
+
+// One backend can serve several locations' sensors, so a location's Monitoring
+// view asks for only its own.
+describe("PresenceActivityView location scope", () => {
+  afterEach(() => cleanup());
+  const empty = { generatedAt: "2026-09-19T18:00:00Z", timezone: "America/Chicago", days: 30, visitGapMinutes: 30, sensors: [] };
+  const ok = () => vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => empty });
+
+  it("adds the location to the request when it has one", async () => {
+    const fetchMock = ok();
+    render(<PresenceActivityView apiBase="http://cabin" location="home" authedFetch={fetchMock} />);
+
+    await screen.findByText("No motion history recorded yet.");
+    expect(fetchMock).toHaveBeenLastCalledWith("http://cabin/api/presence/activity?days=30&location=home");
+  });
+
+  it("keeps the location on a range change", async () => {
+    const fetchMock = ok();
+    render(<PresenceActivityView apiBase="http://cabin" location="cabin" authedFetch={fetchMock} />);
+    await screen.findByText("No motion history recorded yet.");
+
+    fireEvent.change(screen.getByLabelText("Range"), { target: { value: "7" } });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith("http://cabin/api/presence/activity?days=7&location=cabin"));
+  });
+
+  it("is passed down from Sensor History's location", async () => {
+    const devices = [{ deviceId: "z2m-humid_mech", name: "Mech Room", type: "TEMPERATURE_SENSOR", state: "ONLINE",
+      location: "cabin", attributes: { enabled: true, reportsFields: ["humidity"] } }];
+    const authedFetch = vi.fn((url) => {
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ "z2m-humid_mech": ["humidity"] }) });
+      if (url.includes("/api/presence/activity")) return Promise.resolve({ ok: true, status: 200, json: async () => empty });
+      return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+    });
+    render(<SensorHistoryPanel devices={devices} apiBase="http://cabin" location="cabin" tempUnit="F" authedFetch={authedFetch} />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Security & Presence" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith("http://cabin/api/presence/activity?days=30&location=cabin"));
+  });
+});

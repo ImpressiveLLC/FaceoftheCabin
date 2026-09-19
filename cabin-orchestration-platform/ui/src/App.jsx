@@ -4704,7 +4704,7 @@ const PRESENCE_METRICS = [
 // transitions, not the occupancy field repeated on every battery report.
 // Occupancy history is D14-protected, so the endpoint requires a signed-in
 // adult/administrator; anyone else sees an explanation instead of an empty chart.
-export function PresenceActivityView({ apiBase, authedFetch = fetch }) {
+export function PresenceActivityView({ apiBase, location, authedFetch = fetch }) {
   const [days, setDays] = useState(30);
   const [metric, setMetric] = useState("visits");
   const [state, setState] = useState({ status: "loading" });
@@ -4712,7 +4712,10 @@ export function PresenceActivityView({ apiBase, authedFetch = fetch }) {
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
-    authedFetch(`${apiBase}/api/presence/activity?days=${days}`)
+    // One backend can serve more than one location's sensors, so a
+    // location's Monitoring view asks for just its own.
+    const scope = location ? `&location=${encodeURIComponent(location)}` : "";
+    authedFetch(`${apiBase}/api/presence/activity?days=${days}${scope}`)
       .then(async r => {
         if (r.status === 401 || r.status === 403) return { status: "denied" };
         if (!r.ok) return { status: "error" };
@@ -4722,7 +4725,7 @@ export function PresenceActivityView({ apiBase, authedFetch = fetch }) {
       .catch(() => ({ status: "error" }))
       .then(next => { if (!cancelled) setState(next); });
     return () => { cancelled = true; };
-  }, [apiBase, days, authedFetch]);
+  }, [apiBase, location, days, authedFetch]);
 
   if (state.status === "loading") return <p className="config-hint">Loading…</p>;
   if (state.status === "denied") {
@@ -4879,7 +4882,7 @@ export function PresenceActivityView({ apiBase, authedFetch = fetch }) {
 // (none of which pass one) keeps working unchanged -- production callers
 // (MonitoringPanel) pass the real auth.authedFetch, required since
 // /api/events/** now requires a Google token (WebConfig.java, 2026-09-01).
-export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = fetch }) {
+export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authedFetch = fetch }) {
   const [reportedFields, setReportedFields] = useState({});
   useEffect(() => {
     if (devices.length === 0) return; // nothing to look up yet
@@ -5179,7 +5182,7 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
         </>
       )}
 
-      {topic === "security_presence" && <PresenceActivityView apiBase={apiBase} authedFetch={authedFetch} />}
+      {topic === "security_presence" && <PresenceActivityView apiBase={apiBase} location={location} authedFetch={authedFetch} />}
 
       {(topic === "comfort_air" || topic === "energy") && (
         availableFields.length === 0 ? (
@@ -5349,7 +5352,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       </div>
 
       <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
-        apiBase={locCfg.apiBase} tempUnit={tempUnit} authedFetch={auth?.authedFetch} />
+        apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch} />
 
       <CameraHealthPanel locCfg={locCfg} />
 
