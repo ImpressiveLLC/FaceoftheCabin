@@ -318,6 +318,11 @@ body {
   border: 1px solid var(--layer-1-edge);
   border-radius: 12px;
   padding: 16px;
+  /* A grid item won't shrink below its content by default, so one long
+     unbroken value (a commit hash, a firmware string) pushed the card's
+     content past its own border. Let the card shrink and long values wrap. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .config-card-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--text);
@@ -339,12 +344,14 @@ body {
   padding: 3px 0;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 .platform-info-table td:first-child {
   color: var(--text);
   font-weight: 500;
   padding-right: 10px;
-  white-space: nowrap;
+  width: 38%;
 }
 .code-block {
   display: block;
@@ -1765,6 +1772,22 @@ button, select, input, textarea { font-family: var(--font-ui, var(--font-display
 .btn-danger:hover {
   background: color-mix(in srgb, var(--danger) 28%, var(--bg-secondary));
 }
+/* A link styled as a button. An <a> is inline by default, and an inline box's
+   padding and border don't take part in line layout: when the label wrapped,
+   the frame was drawn over the paragraph above it and cut through its own
+   text. Make it a real box so it grows to fit its label. */
+a.btn-primary, a.btn-secondary, a.btn-ghost, a.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  text-align: center;
+  text-decoration: none;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.config-card a.btn-secondary { margin-top: 10px; }
 .btn-ghost-active {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
@@ -2256,14 +2279,18 @@ select option { background: var(--bg-secondary); color: var(--text); }
   border-color: var(--layer-hover-edge);
   box-shadow: var(--layer-hover-shadow);
 }
+/* A theme may define --selected-glow (Deep Space, Pac-Man, Impressive): the same
+   back-lit glow Deep Space puts behind its active tab, on whatever data is
+   selected. Themes that don't define it keep the layer shadow they had. */
 :is(.device-card.selected, .dm-row-selected) {
   background: var(--layer-2-fill);
   border-color: var(--layer-selected-edge);
-  box-shadow: var(--layer-selected-shadow);
+  box-shadow: var(--selected-glow, var(--layer-selected-shadow));
 }
 :is(.sensor-history-topic-tab.active, .sensor-history-device-chip.selected) {
   background: var(--layer-3-fill);
   border-color: var(--layer-selected-edge);
+  box-shadow: var(--selected-glow, none);
 }
 .automation-alert-card { border-width: 2px; border-left-color: var(--state-warning); }
 .kpi-tile.kpi-state-ok    { border-color: color-mix(in srgb, var(--success) 55%, var(--layer-3-edge)); }

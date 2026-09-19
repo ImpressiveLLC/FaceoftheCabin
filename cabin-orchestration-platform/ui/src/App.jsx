@@ -1801,7 +1801,7 @@ export function FamilyConfigPanel({ auth }) {
             signed into Google in this browser is tracked as a roadmap item, not yet supported here.
           </p>
           <a href={`${haUrl}/config/integrations`} target="_blank" rel="noreferrer" className="btn-secondary">
-            Manage Home Assistant's Google integration ↗
+            Manage Home Assistant's Google integration&nbsp;↗
           </a>
           <div className="tailscale-hint">
             <Lock size={11} /> Won't load off Tailscale — Home Assistant admin is cabin-network-only.

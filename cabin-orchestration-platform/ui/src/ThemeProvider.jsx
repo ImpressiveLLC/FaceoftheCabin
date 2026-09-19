@@ -17,7 +17,7 @@
  *   CSS custom properties are stamped on <html> — use var(--bg) etc. in styles.
  */
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { surfaceLayerVars } from "./surfaceLayers.js";
 import { Palette } from "lucide-react";
 
@@ -81,6 +81,8 @@ export const THEMES = {
       "--font-mono":    "'JetBrains Mono', 'Fira Code', monospace",
       "--radius":       "10px",
       "--radius-sm":    "6px",
+      // Deep Space's tab back-lit glow recipe, in this theme's electric blue.
+      "--selected-glow": "0 0 8px #3d3dff, 0 0 24px #3d3dff40",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent-hover', '--text-muted', '--text'] },
@@ -94,13 +96,19 @@ export const THEMES = {
       "--bg-secondary": "#0a0a1a",
       "--bg-tertiary":  "#111130",
       "--surface":      "#0d0d28",
-      "--border":       "#cc6600",
-      "--border-focus": "#ff9900",
-      "--text":         "#ff9900",
-      "--text-muted":   "#cc7700",
-      "--text-dim":     "#885500",
-      "--accent":       "#cc6600",
-      "--accent-hover": "#ff9900",
+      // Okudagrams "complete set" colors. Orange stays the primary (accent,
+      // active tab, buttons, panels); reading text is peach and the rest comes
+      // from the set's lavender / periwinkle / blue so a screen is no longer
+      // orange on black end to end.
+      "--border":       "#646dcc",   // periwinkle: structure lines
+      "--border-focus": "#ff9c00",
+      "--text":         "#ffcc99",   // peach
+      "--text-muted":   "#cc99cc",   // lavender
+      "--text-dim":     "#9c9cff",   // light periwinkle
+      "--accent":       "#ff9c00",   // LCARS orange
+      "--accent-hover": "#f7bd5a",   // gold
+      "--accent-2":     "#cc99cc",   // lavender: second layer
+      "--accent-3":     "#99ccff",   // light blue: third layer
       "--success":      "#99cc00",
       "--warning":      "#ffcc00",
       "--danger":       "#cc0000",
@@ -110,7 +118,8 @@ export const THEMES = {
       "--radius-sm":    "4px",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
-    layers: { hues: ['--accent', '--border-focus', '--success'] },
+    // Panels orange, cards lavender, tiles light blue; tabs stay orange.
+    layers: { hues: ['--accent', '--accent-2', '--accent-3'], tab: '--accent', edgeHue: 0.9 },
   },
 
   monolith: {
@@ -248,6 +257,8 @@ export const THEMES = {
       "--radius-sm":    "0px",
       "--glow-hal":     "0 0 8px #ff2d55, 0 0 24px #ff2d5540",
       "--glow-cyan":    "0 0 8px #00a3ff, 0 0 20px #00a3ff40",
+      // Same back-lit glow as the active tab (--glow-hal), on selected data.
+      "--selected-glow": "0 0 8px #ff2d55, 0 0 24px #ff2d5540",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent', '--warning', '--text'] },
@@ -317,6 +328,8 @@ export const THEMES = {
       "--font-mono":    "'VT323', 'Share Tech Mono', monospace",
       "--radius":       "16px",
       "--radius-sm":    "8px",
+      // Deep Space's tab back-lit glow recipe, in this theme's yellow.
+      "--selected-glow": "0 0 8px #ffff00, 0 0 24px #ffff0040",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent', '--success', '--warning'] },
@@ -429,11 +442,18 @@ export function ThemeProvider({ children }) {
   );
 
   const theme = THEMES[themeId] || THEMES.modern;
+  // Custom properties the previous theme stamped on <html>. A theme only lists
+  // the variables it needs (Deep Space's --glow-hal, --selected-glow ...), so
+  // without this a value set by one theme stayed on the page after switching to
+  // a theme that doesn't define it.
+  const appliedVars = useRef(new Set());
 
   useEffect(() => {
     const root = document.documentElement;
-    Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
-    Object.entries(layerVarsFor(theme)).forEach(([k, v]) => root.style.setProperty(k, v));
+    const next = { ...theme.vars, ...layerVarsFor(theme) };
+    appliedVars.current.forEach(k => { if (!(k in next)) root.style.removeProperty(k); });
+    Object.entries(next).forEach(([k, v]) => root.style.setProperty(k, v));
+    appliedVars.current = new Set(Object.keys(next));
     const uiFont = theme.vars["--font-ui"] || theme.vars["--font-display"];
     root.style.setProperty("--font-ui", uiFont);
     document.body.style.fontFamily = uiFont;

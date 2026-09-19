@@ -6035,19 +6035,21 @@ const THEMES = {
   lcars: {
     label: 'LCARS', id: 'lcars',
     vars: {
-      '--night':'#000000', '--glass':'rgba(10,10,26,0.88)', '--glass-light':'rgba(255,153,0,0.04)',
-      '--glass-border':'rgba(204,102,0,0.45)', '--shadow':'0 10px 60px rgba(0,0,0,.95)',
-      '--gold':'#ff9900', '--gold-glow':'rgba(255,153,0,0.28)', '--gold-faint':'rgba(255,153,0,0.10)',
+      /* Okudagrams "complete set" colors, same as cabin-ui's LCARS: orange stays
+         the primary; text is peach and the rest is lavender / periwinkle / blue. */
+      '--night':'#000000', '--glass':'rgba(10,10,26,0.88)', '--glass-light':'rgba(255,156,0,0.04)',
+      '--glass-border':'rgba(100,109,204,0.55)', '--shadow':'0 10px 60px rgba(0,0,0,.95)',
+      '--gold':'#ff9c00', '--gold-glow':'rgba(255,156,0,0.28)', '--gold-faint':'rgba(255,156,0,0.10)',
       '--teal':'#99cc00', '--teal-glow':'rgba(153,204,0,0.18)',
       '--rose':'#cc0000', '--rose-glow':'rgba(204,0,0,0.18)',
-      '--cream':'#ffcc66', '--cream-dim':'rgba(204,119,0,0.85)', '--cream-ghost':'rgba(136,85,0,0.85)',
+      '--cream':'#ffcc99', '--cream-dim':'rgba(204,153,204,0.92)', '--cream-ghost':'rgba(156,156,255,0.85)',
       '--radius':'18px', '--font-display':"'Michroma','Arial',sans-serif", '--font-ui':"'Titillium Web','Arial',sans-serif",
     },
     /* Antonio (condensed) was hard to read at speed. Michroma is the same
        wide, blocky sci-fi-console letterform LCARS is going for, without
        the narrow squeeze; Titillium Web is a normal-width companion for
        body/label text so small sizes stay legible. */
-    layers: { hues: ['#cc6600', '#ff9900', '#99cc00'] },
+    layers: { hues: ['#ff9c00', '#cc99cc', '#99ccff'], tab: '#ff9c00', edgeHue: 0.9 },
     fonts: [{ id:'fh-font-lcars', href:'https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap' }],
   },
   monolith: {
