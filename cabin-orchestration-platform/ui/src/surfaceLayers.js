@@ -14,8 +14,9 @@
 //               tints:[t1,t2,t3] (share of the hue in each fill), tab: '#rrggbb' }
 //
 // CAN / CAN'T (enforced by the tests over every theme):
-//   - a layer's edge is >= EDGE_CONTRAST against the surface it sits on
-//     (L1 vs the page, L2 vs L1's fill, L3 vs L2's and L1's fill);
+//   - a layer's edge is >= EDGE_CONTRAST against every surface it can sit on
+//     (L1 vs the page; L2 vs L1's fill and the page; L3 vs L2's fill, L1's
+//     fill and the page);
 //   - adjacent layers never share a hue (no pink-on-pink): hues differ by >=
 //     30deg, or by >= 1.6:1 luminance for neutral hues;
 //   - --text reads >= TEXT_CONTRAST on every fill and layers never recolor text;
@@ -77,8 +78,10 @@ export function deriveSurfaceLayers(palette, opts) {
   const fill2 = fitFill(hues[1], light ? toRgb(fill1) : P, tint[1], text);
   const fill3 = fitFill(hues[2], light ? toRgb(fill2) : P, tint[2], text);
   const edge1 = fitEdge(hues[0], B, T, [page], hueShare);
-  const edge2 = fitEdge(hues[1], B, T, [fill1], hueShare);
-  const edge3 = fitEdge(hues[2], B, T, [fill2, fill1], hueShare);
+  // A nested item may sit inside its panel OR straight on the page (a tile row
+  // with no panel around it), so its edge must separate from both.
+  const edge2 = fitEdge(hues[1], B, T, [fill1, page], hueShare);
+  const edge3 = fitEdge(hues[2], B, T, [fill2, fill1, page], hueShare);
 
   const shape = opts.shadow || 'none';
   const shadows = shape === 'glow'

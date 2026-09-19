@@ -32,6 +32,9 @@ describe.each(Object.entries(THEMES))("%s palette spec", (id, theme) => {
     expect(contrastRatio(e2, f1), "L2 edge vs L1 fill").toBeGreaterThanOrEqual(EDGE);
     expect(contrastRatio(e3, f2), "L3 edge vs L2 fill").toBeGreaterThanOrEqual(EDGE);
     expect(contrastRatio(e3, f1), "L3 edge vs L1 fill").toBeGreaterThanOrEqual(EDGE);
+    // ...and a nested item can sit straight on the page with no panel around it.
+    expect(contrastRatio(e2, palette.page), "L2 edge vs page").toBeGreaterThanOrEqual(EDGE);
+    expect(contrastRatio(e3, palette.page), "L3 edge vs page").toBeGreaterThanOrEqual(EDGE);
   });
 
   it("CAN'T overlap: adjacent layers never share a hue (no pink-on-pink)", () => {

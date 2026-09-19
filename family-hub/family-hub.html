@@ -1790,27 +1790,6 @@
        (--glass-light, the same cactus green as the schedule/legend
        above) so a card-within-a-card is unmistakably a different tier,
        not the same fill twice. */
-    [data-theme="asteroidcity"] .dash-card {
-      background:var(--glass-light);
-      border-color:rgba(63,113,102,0.65);
-    }
-    [data-theme="asteroidcity"] .kid-sel-btn {
-      background:var(--glass-light);
-    }
-    /* Landing (.glass-card: Upcoming/Birthdays/Today's Chores etc.) and
-       Dashboard tabs (.dash-card) read as two different colors under this
-       theme -- .glass-card fell through to the base --glass (opaque tan,
-       tuned for #settings-panel's solid slide-out surface), while
-       .dash-card already got its own --glass-light (cactus green) override
-       above. Matching landing to the tab treatment so both read as the
-       same "box" regardless of which surface they're on. */
-    [data-theme="asteroidcity"] .glass-card {
-      background:var(--glass-light);
-      /* border intentionally left alone -- .glass-card's base rule already
-         uses var(--glass-border), the same variable #settings-panel's own
-         border derives from, so they already matched before this override
-         and a hardcoded border-color here would only break that. */
-    }
     /* Found live 2026-08-20: Edit/Delete on a Family Member row (and any
        other .profile-card, e.g. the Holidays list) were unreadable --
        cream text at 60% opacity over this theme's pale, near-white card
@@ -1873,7 +1852,7 @@
        gold-derived (the app's default primary-action color); overridden
        here so the active tab reads as calm/informational teal instead. */
     [data-theme="asteroidcity"] .d-tab.active {
-      background:var(--teal-glow); color:var(--teal); border-bottom-color:var(--teal);
+      background:var(--teal-glow); border-bottom-color:var(--teal);
     }
     [data-theme="asteroidcity"] .d-tab:hover { border-color:var(--teal); }
 
@@ -1888,30 +1867,54 @@
        cream already used for the poster-gradient overlay above), so each
        row reads as its own card the way .dash-card and the schedule tiles
        already do. */
-    [data-theme="asteroidcity"] :is(
-      .location-link,
-      .cabin-activity-row,
-      .chore-day-block,
-      .chore-full-row,
-      .reward-tile,
-      .reward-rule-card,
-      .kid-reward-row,
-      .profile-card,
-      .profiles-form-col,
-      .avatar-search,
-      .theme-pill,
-      .upcoming-holiday-card,
-      .np-author-pill,
-      #chore-manage-body select,
-      #chore-tracker-body select
-    ) {
-      background:rgba(249,245,235,.9);
-      border-color:rgba(63,113,102,.4);
-    }
-    [data-theme="asteroidcity"] :is(.chore-full-row:hover, .location-link-disabled:hover) {
-      background:rgba(249,245,235,.72);
-    }
 
+
+    /* ═══ Surface layers: one system for every theme ═════════════════════════
+       Mirrors cabin-ui (docs/UX_JOURNEY_STANDARD.md "Visual system"). Every
+       boxed surface is exactly one layer -- 1 panel, 2 nested item, 3 chip --
+       and applyTheme() derives each theme's fill/edge/shadow/width from its
+       palette and three hue picks (hubLayerVars, the same function cabin-ui
+       uses), auto-strengthening any edge below 3:1. Themes never restyle a
+       class; to add a component, add it to the matching list. Values here are
+       only the pre-JS fallback. */
+    :root {
+      --layer-1-fill: var(--glass);        --layer-1-edge: var(--glass-border);
+      --layer-2-fill: var(--glass-light);  --layer-2-edge: var(--glass-border);
+      --layer-3-fill: var(--glass-light);  --layer-3-edge: var(--glass-border);
+      --layer-1-shadow: 0 0 0 0 transparent; --layer-2-shadow: 0 0 0 0 transparent; --layer-3-shadow: 0 0 0 0 transparent;
+      --layer-1-border-width: 1px; --layer-2-border-width: 1px; --layer-3-border-width: 1px;
+      --layer-hover-edge: var(--gold); --layer-hover-shadow: 0 0 0 0 transparent;
+      --layer-selected-edge: var(--gold); --layer-selected-shadow: 0 0 0 0 transparent;
+      --tab-color: var(--cream-dim); --tab-color-hover: var(--cream); --on-accent: #ffffff;
+    }
+    :is(.glass-card, .dash-card, #notepad-panel, .actor-picker-card) {
+      background: var(--layer-1-fill);
+      border-color: var(--layer-1-edge);
+      border-width: var(--layer-1-border-width);
+      box-shadow: var(--layer-1-shadow), var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
+    }
+    :is(.bday-item, .reward-strip, .location-link, .cabin-activity-row, .chore-day-block,
+        .kid-reward-row, .reward-tile, .reward-rule-card, .profile-card, .profiles-form-col,
+        .upcoming-holiday-card) {
+      background: var(--layer-2-fill);
+      border-color: var(--layer-2-edge);
+      border-width: var(--layer-2-border-width);
+      box-shadow: var(--layer-2-shadow);
+    }
+    :is(.sched-day-chip, .np-author-pill, .theme-pill, .kid-sel-btn, .actor-btn, .avatar-search) {
+      background: var(--layer-3-fill);
+      border-color: var(--layer-3-edge);
+      border-width: var(--layer-3-border-width);
+      box-shadow: var(--layer-3-shadow);
+    }
+    :is(.location-link:not(.location-link-disabled), .upcoming-holiday-card):hover {
+      border-color: var(--layer-hover-edge);
+      box-shadow: var(--layer-hover-shadow);
+    }
+    /* Tab buttons: one color in every state; the active tab is marked by its
+       underline, not a different text color. */
+    .d-tab, .d-tab:hover, .d-tab.active { color: var(--tab-color); }
+    .d-tab:hover { color: var(--tab-color-hover); }
   [data-theme="neon80s"] .card-label { color: #add8e6; }
     [data-theme="neon80s"] :is(button, input, select, textarea):focus-visible { outline: 2px solid #add8e6; outline-offset: 2px; }
     </style>
@@ -5842,6 +5845,139 @@ const THEME_KEY = 'cabin-theme';
 // on-screen order follows this object's key order, so listing modern first
 // here is what makes it "top of the list" in the UI too, not just the
 // silent default.
+// Shared with cabin-ui/src/surfaceLayers.js -- SurfaceLayersDrift.test.jsx fails the
+// build if this copy and that file ever differ.
+// <surface-layers>
+// One place that decides what a panel / card / tile looks like in ANY theme.
+// A theme supplies its palette plus three hues (largest object -> smallest);
+// this derives fills, edges, shadows and widths and guarantees separation, so
+// a low-visibility palette fixes itself and a new theme needs no per-class
+// tuning. The same function is embedded, byte-for-byte between these markers,
+// in family-hub/family-hub.html (SurfaceLayersDrift.test.jsx fails the build if
+// the two copies differ). Spec and rationale: docs/UX_JOURNEY_STANDARD.md
+// "Visual system".
+//
+//   palette = { page, panel, border, text, muted, accent } (all #rrggbb)
+//   opts    = { hues:[h1,h2,h3], shadow:'glow'|'hard'|'none',
+//               widths:[w1,w2,w3], edgeHue: 0..1 (share of the hue in edges),
+//               tints:[t1,t2,t3] (share of the hue in each fill), tab: '#rrggbb' }
+//
+// CAN / CAN'T (enforced by the tests over every theme):
+//   - a layer's edge is >= EDGE_CONTRAST against every surface it can sit on
+//     (L1 vs the page; L2 vs L1's fill and the page; L3 vs L2's fill, L1's
+//     fill and the page);
+//   - adjacent layers never share a hue (no pink-on-pink): hues differ by >=
+//     30deg, or by >= 1.6:1 luminance for neutral hues;
+//   - --text reads >= TEXT_CONTRAST on every fill and layers never recolor text;
+//   - a layer hue may not be the theme's danger color.
+const EDGE_CONTRAST = 3.0;
+const TEXT_CONTRAST = 4.5;
+
+const toRgb = (hex) => { const x = hex.replace('#', ''); return [0, 2, 4].map(i => parseInt(x.slice(i, i + 2), 16)); };
+const toHex = (rgb) => '#' + rgb.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+const mix = (a, b, share) => a.map((v, i) => v * share + b[i] * (1 - share)); // share = amount of a
+const channel = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+const luminance = (rgb) => 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+function contrastRatio(a, b) {
+  const [hi, lo] = [luminance(toRgb(a)), luminance(toRgb(b))].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+function hueAngle(hex) {
+  const [r, g, b] = toRgb(hex).map(v => v / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (d === 0) return { h: 0, s: 0 };
+  let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = (h * 60 + 360) % 360;
+  const l = (max + min) / 2;
+  return { h, s: d / (1 - Math.abs(2 * l - 1)) };
+}
+function huesAreDistinct(a, b) {
+  const A = hueAngle(a), B = hueAngle(b);
+  const diff = Math.min(Math.abs(A.h - B.h), 360 - Math.abs(A.h - B.h));
+  return (A.s > 0.15 && B.s > 0.15 && diff >= 30) || contrastRatio(a, b) >= 1.6;
+}
+
+// Fill: a tint of the hue over its base, backed off until text still reads.
+function fitFill(hue, base, tint, text) {
+  let t = tint, fill = mix(hue, base, t);
+  while (t > 0 && contrastRatio(toHex(fill), text) < TEXT_CONTRAST) { t = Math.max(0, t - 0.02); fill = mix(hue, base, t); }
+  return toHex(fill);
+}
+// Edge: the hue (blended toward the border for a softer line), strengthened
+// toward the hue itself and then toward the text color until it separates.
+function fitEdge(hue, border, text, against, hueShare) {
+  const ok = (c) => against.every(s => contrastRatio(toHex(c), s) >= EDGE_CONTRAST);
+  let edge = mix(hue, border, hueShare);
+  if (ok(edge)) return toHex(edge);
+  for (let s = hueShare; s <= 1.001; s += 0.08) { edge = mix(hue, border, Math.min(1, s)); if (ok(edge)) return toHex(edge); }
+  for (let u = 0.1; u <= 1.001; u += 0.1) { edge = mix(text, hue, u); if (ok(edge)) return toHex(edge); }
+  return toHex(edge);
+}
+const withAlpha = (hex, a) => { const [r, g, b] = toRgb(hex); return `rgba(${r}, ${g}, ${b}, ${a})`; };
+
+function deriveSurfaceLayers(palette, opts) {
+  const { page, panel, border, text, muted } = palette;
+  const hues = opts.hues.map(toRgb);
+  const light = luminance(toRgb(panel)) > 0.4;
+  const tint = opts.tints || (light ? [0.32, 0.26, 0.2] : [0.09, 0.06, 0.08]);
+  const hueShare = opts.edgeHue ?? 0.62;
+  const P = toRgb(page), B = toRgb(border), T = toRgb(text);
+
+  const fill1 = fitFill(hues[0], toRgb(panel), tint[0], text);
+  const fill2 = fitFill(hues[1], light ? toRgb(fill1) : P, tint[1], text);
+  const fill3 = fitFill(hues[2], light ? toRgb(fill2) : P, tint[2], text);
+  const edge1 = fitEdge(hues[0], B, T, [page], hueShare);
+  // A nested item may sit inside its panel OR straight on the page (a tile row
+  // with no panel around it), so its edge must separate from both.
+  const edge2 = fitEdge(hues[1], B, T, [fill1, page], hueShare);
+  const edge3 = fitEdge(hues[2], B, T, [fill2, fill1, page], hueShare);
+
+  const shape = opts.shadow || 'none';
+  const shadows = shape === 'glow'
+    ? [`0 0 5px ${withAlpha(edge1, 0.42)}, 0 0 16px ${withAlpha(edge1, 0.15)}`,
+       `0 0 4px ${withAlpha(edge2, 0.32)}, 0 0 11px ${withAlpha(edge2, 0.09)}`,
+       `0 0 4px ${withAlpha(edge3, 0.36)}`]
+    : shape === 'hard'
+      ? [`6px 6px 0 ${border}`, `4px 4px 0 ${border}`, `3px 3px 0 ${border}`]
+      : ['none', 'none', 'none'];
+
+  return {
+    fills: [fill1, fill2, fill3],
+    edges: [edge1, edge2, edge3],
+    shadows,
+    widths: opts.widths || ['1px', '1px', '1px'],
+    hues: opts.hues,
+    hoverEdge: opts.hues[1],
+    selectedEdge: opts.hues[0],
+    tab: opts.tab || muted,
+    tabHover: text,
+  };
+}
+
+// The CSS custom properties the stylesheet reads. Every theme sets ALL of them,
+// so switching themes can never leave a previous theme's value behind.
+function surfaceLayerVars(palette, opts) {
+  const d = deriveSurfaceLayers(palette, opts);
+  const v = {};
+  [1, 2, 3].forEach((n, i) => {
+    v[`--layer-${n}`] = d.hues[i];
+    v[`--layer-${n}-fill`] = d.fills[i];
+    v[`--layer-${n}-edge`] = d.edges[i];
+    v[`--layer-${n}-shadow`] = d.shadows[i];
+    v[`--layer-${n}-border-width`] = d.widths[i];
+  });
+  v['--layer-hover-edge'] = d.hoverEdge;
+  v['--layer-hover-shadow'] = d.shadows[1];
+  v['--layer-selected-edge'] = d.selectedEdge;
+  v['--layer-selected-shadow'] = d.shadows[0];
+  v['--tab-color'] = d.tab;
+  v['--tab-color-hover'] = d.tabHover;
+  // Text on an accent fill: whichever of white/black reads better on the accent.
+  v['--on-accent'] = contrastRatio(palette.accent, '#ffffff') >= contrastRatio(palette.accent, '#000000') ? '#ffffff' : '#000000';
+  return v;
+}
+// </surface-layers>
+
 const THEMES = {
   modern: {
     label: 'Modern', id: 'modern',
@@ -5854,6 +5990,7 @@ const THEMES = {
       '--cream':'#e6edf3', '--cream-dim':'rgba(230,237,243,0.62)', '--cream-ghost':'rgba(230,237,243,0.28)',
       '--radius':'10px', '--font-display':"'Inter',system-ui,sans-serif", '--font-ui':"'Inter',system-ui,sans-serif",
     },
+    layers: { hues: ['#388bfd', '#e6edf3', '#3fb950'] },
     fonts: [],
   },
   // Matches impressive.llc's actual live palette (2026-08-21, sampled
@@ -5878,6 +6015,7 @@ const THEMES = {
       '--cream':'#eff0ec', '--cream-dim':'rgba(239,240,236,0.62)', '--cream-ghost':'rgba(239,240,236,0.28)',
       '--radius':'10px', '--font-display':"-apple-system,system-ui,sans-serif", '--font-ui':"-apple-system,system-ui,sans-serif",
     },
+    layers: { hues: ['#3d3dff', '#989d9e', '#eff0ec'] },
     fonts: [],
   },
   deepspace: {
@@ -5891,6 +6029,7 @@ const THEMES = {
       '--cream':'#ffffff', '--cream-dim':'rgba(255,255,255,0.62)', '--cream-ghost':'rgba(255,255,255,0.28)',
       '--radius':'0px', '--font-display':"'Chakra Petch','Helvetica Neue',sans-serif", '--font-ui':"'Chakra Petch','Helvetica Neue',sans-serif",
     },
+    layers: { hues: ['#00a3ff', '#ff9500', '#ffffff'] },
     fonts: [{ id:'fh-font-deepspace', href:'https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Share+Tech+Mono&display=swap' }],
   },
   lcars: {
@@ -5908,6 +6047,7 @@ const THEMES = {
        wide, blocky sci-fi-console letterform LCARS is going for, without
        the narrow squeeze; Titillium Web is a normal-width companion for
        body/label text so small sizes stay legible. */
+    layers: { hues: ['#cc6600', '#ff9900', '#99cc00'] },
     fonts: [{ id:'fh-font-lcars', href:'https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap' }],
   },
   monolith: {
@@ -5921,6 +6061,7 @@ const THEMES = {
       '--cream':'#cccccc', '--cream-dim':'rgba(204,204,204,0.62)', '--cream-ghost':'rgba(204,204,204,0.28)',
       '--radius':'2px', '--font-display':"'IBM Plex Mono','Courier New',monospace", '--font-ui':"'IBM Plex Mono','Courier New',monospace",
     },
+    layers: { hues: ['#666666', '#cccccc', '#448844'] },
     fonts: [{ id:'fh-font-monolith', href:'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap' }],
   },
   retrocrt: {
@@ -5938,6 +6079,7 @@ const THEMES = {
        Tech Mono is still an unmistakably terminal/CRT monospace but with
        clean vector strokes, so headings stay readable; VT323 keeps doing
        the gritty-terminal texture at the smaller UI sizes where it works. */
+    layers: { hues: ['#00cc33', '#ffcc00', '#00ff41'] },
     fonts: [{ id:'fh-font-retrocrt', href:'https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap' }],
   },
   bluefin: {
@@ -5951,6 +6093,7 @@ const THEMES = {
       '--cream':'#a0c8f0', '--cream-dim':'rgba(160,200,240,0.62)', '--cream-ghost':'rgba(160,200,240,0.28)',
       '--radius':'6px', '--font-display':"'Roboto Mono','JetBrains Mono',monospace", '--font-ui':"'Roboto Mono','JetBrains Mono',monospace",
     },
+    layers: { hues: ['#4080c0', '#a0c8f0', '#40a080'] },
     fonts: [{ id:'fh-font-bluefin', href:'https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;600&display=swap' }],
   },
   madscience: {
@@ -5964,6 +6107,7 @@ const THEMES = {
       '--cream':'#c8ffb0', '--cream-dim':'rgba(200,255,176,0.62)', '--cream-ghost':'rgba(200,255,176,0.28)',
       '--radius':'2px', '--font-display':"'Share Tech Mono','Courier New',monospace", '--font-ui':"'Share Tech Mono','Courier New',monospace",
     },
+    layers: { hues: ['#39ff14', '#bf00ff', '#f5f500'] },
     fonts: [{ id:'fh-font-madscience', href:'https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap' }],
   },
   neon80s: {
@@ -5977,6 +6121,7 @@ const THEMES = {
       '--cream':'#f6f0ff', '--cream-dim':'rgba(246,240,255,0.68)', '--cream-ghost':'rgba(246,240,255,0.30)',
       '--radius':'2px', '--font-display':"'Monoton','Chakra Petch',sans-serif", '--font-ui':"'Baumans','Oxanium',sans-serif",
     },
+    layers: { hues: ['#ff2dd4', '#add8e6', '#ffff66'], shadow: 'glow', tab: '#ffff66' },
     fonts: [{ id:'fh-font-neon80s', href:'https://fonts.googleapis.com/css2?family=Monoton&display=swap' }],
   },
   pacman: {
@@ -5991,6 +6136,7 @@ const THEMES = {
       '--radius':'16px', '--font-display':"'Crackman',system-ui,sans-serif", '--font-ui':"'VT323','Share Tech Mono',monospace",
     },
     /* User-provided CC0 Crackman supplies the arcade display tier. */
+    layers: { hues: ['#ffff00', '#00ffde', '#ffaa00'] },
     fonts: [{ id:'fh-font-pacman', href:'https://fonts.googleapis.com/css2?family=VT323&display=swap' }],
   },
   // Reworked 2026-08-19, second pass (user report, with two screenshots):
@@ -6056,6 +6202,7 @@ const THEMES = {
       // here as the documented source of truth for those exact values.
       '--logo-fg':'#245548', '--logo-fill':'#608c4a', '--logo-highlight':'#a1c19b', '--logo-shadow':'rgba(36,85,72,0.34)',
     },
+    layers: { hues: ['#e34e24', '#608c4a', '#ffffff'], shadow: 'hard', widths: ['3px', '3px', '2px'], edgeHue: 0, tints: [0, 0.4, 0.5] },
     fonts: [{ id:'fh-font-asteroid', href:'https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;500;700&family=Montserrat:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap' }],
   },
 
@@ -6070,11 +6217,35 @@ const THEMES = {
 const THEME_FROM_URL = new URLSearchParams(window.location.search).get('theme');
 let activeThemeId = (THEME_FROM_URL && THEMES[THEME_FROM_URL]) ? THEME_FROM_URL : (localStorage.getItem(THEME_KEY) || 'modern');
 
+// This app's palette names differ from cabin-ui's (--night = page, --gold =
+// accent, --cream = text, and the glass variables are translucent), so they are
+// flattened over the page color before deriving the same three layers. Fills
+// keep the glass see-through so the scene still shows behind a card.
+function hubLayerVars(t) {
+  const v = t.vars, page = v['--night'];
+  const rgba = (c) => { const m = c.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?/); return m ? { c: [+m[1], +m[2], +m[3]], a: m[4] === undefined ? 1 : +m[4] } : null; };
+  const hex = (n) => n.map(x => Math.round(x).toString(16).padStart(2, '0')).join('');
+  const hexRgb = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const over = (color, base) => { const p = rgba(color); if (!p) return color; const b = hexRgb(base); return '#' + hex(p.c.map((x, i) => x * p.a + b[i] * (1 - p.a))); };
+  const palette = { page, panel: over(v['--glass'], page), border: over(v['--glass-border'], page), text: v['--cream'], muted: over(v['--cream-dim'], page), accent: v['--gold'] };
+  const vars = surfaceLayerVars(palette, t.layers);
+  const glass = Math.max(0.72, (rgba(v['--glass']) || { a: 1 }).a);
+  [1, 2, 3].forEach((n, i) => {
+    const [r, g, b] = hexRgb(vars['--layer-' + n + '-fill']);
+    vars['--layer-' + n + '-fill'] = 'rgba(' + r + ', ' + g + ', ' + b + ', ' + (i === 0 ? glass : 0.86) + ')';
+    if (vars['--layer-' + n + '-shadow'] === 'none') vars['--layer-' + n + '-shadow'] = '0 0 0 0 transparent';
+  });
+  if (vars['--layer-hover-shadow'] === 'none') vars['--layer-hover-shadow'] = '0 0 0 0 transparent';
+  if (vars['--layer-selected-shadow'] === 'none') vars['--layer-selected-shadow'] = '0 0 0 0 transparent';
+  return vars;
+}
+
 function applyTheme(id) {
   const t = THEMES[id] || THEMES.deepspace;
   activeThemeId = t.id;
   const root = document.documentElement;
   Object.entries(t.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+  Object.entries(hubLayerVars(t)).forEach(([k, v]) => root.style.setProperty(k, v));
   root.setAttribute('data-theme', t.id);
   localStorage.setItem(THEME_KEY, t.id);
   // Font loading — add needed, remove unneeded
