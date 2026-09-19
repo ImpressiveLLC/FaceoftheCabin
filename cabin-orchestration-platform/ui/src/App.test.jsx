@@ -2213,11 +2213,13 @@ describe("WorkflowRulesCard", () => {
 
     expect(screen.getByText("Leak shutoff")).toBeTruthy();
     expect(screen.getByText(/z2m-leak_mech_room.*z2m-main_water_valve/)).toBeTruthy();
-    expect(screen.getByText(/cabin.*active/)).toBeTruthy();
+    // Location and status are separate layer-3 chips now (was one joined string).
+    expect(screen.getByText("active")).toBeTruthy();
 
     expect(screen.getByText("Draft alert")).toBeTruthy();
     expect(screen.getByText(/no actions/i)).toBeTruthy();
-    expect(screen.getByText(/cabin.*draft/)).toBeTruthy();
+    expect(screen.getByText("draft")).toBeTruthy();
+    expect(screen.getAllByText("cabin")).toHaveLength(2);
   });
 
   it("prompts to sign in instead of offering workflow creation when not signed in", () => {
@@ -3516,7 +3518,10 @@ describe("current active alert projection", () => {
     );
 
     expect(await screen.findByText("Freeze Risk")).toBeTruthy();
-    expect(screen.getByText(/CABIN_BACKEND · deploy time · read only/)).toBeTruthy();
+    // Each fact is its own layer-3 chip now (was one joined string).
+    for (const chip of ["CABIN_BACKEND", "deploy time", "read only"]) {
+      expect(screen.getAllByText(chip).length).toBeGreaterThan(0);
+    }
   });
 });
 
