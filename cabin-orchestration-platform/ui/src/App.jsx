@@ -4701,6 +4701,8 @@ const REPORTING_TOPICS = [
 // (MonitoringPanel) pass the real auth.authedFetch, required since
 // /api/events/** now requires a Google token (WebConfig.java, 2026-09-01).
 export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = fetch }) {
+  // null outside the app shell (direct-render tests); the Alert History link is simply omitted then.
+  const setActivePanel = useApp()?.setActivePanel;
   const [reportedFields, setReportedFields] = useState({});
   useEffect(() => {
     if (devices.length === 0) return; // nothing to look up yet
@@ -4996,7 +4998,16 @@ export function SensorHistoryPanel({ devices, apiBase, tempUnit, authedFetch = f
               ))}
             </ul>
           )}
-          <p className="config-hint">Showing currently active alerts, not a full historical log — a dedicated alert-history view is future work under this same Topic.</p>
+          <p className="config-hint">
+            This list is only what is active right now. The last 24 hours of alerts and automation actions, with each
+            repeat listed by time, are under Rules &amp; Alerts → Status Checks. A full historical log is not built yet:
+            older alerts are kept but have no screen.
+          </p>
+          {setActivePanel && (
+            <button type="button" className="btn-ghost" onClick={() => setActivePanel("RULES_ENGINE")}>
+              Open Status Checks (last 24 hours)
+            </button>
+          )}
         </>
       )}
 
