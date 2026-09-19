@@ -89,7 +89,63 @@ describe("kpiTileFor", () => {
   });
 
   it("returns null for a device type with no KPI tile -- unchanged from before this fix", () => {
-    expect(kpiTileFor({ deviceId: "x", type: "MOTION_SENSOR", state: "ONLINE" }, "F")).toBeNull();
+    expect(kpiTileFor({ deviceId: "x", type: "ROUTER", state: "ONLINE" }, "F")).toBeNull();
+  });
+
+  // 2026-09-19 (user: put z2m-motion_entry on the Monitoring dashboard): motion,
+  // door-contact and water-leak sensors never had a tile. Shapes below are the
+  // real inventory (z2m-motion_entry, z2m-door_front_contact, z2m-leak_alarm_*).
+  describe("safety sensors (motion, door contact, water leak)", () => {
+    const motion = (attrs = {}, extra = {}) => ({ deviceId: "z2m-motion_entry", name: "motion_entry_movement_detect",
+      type: "MOTION_SENSOR", state: "ONLINE", location: "cabin", attributes: { occupancy: false, battery: 100, ...attrs }, ...extra });
+    const contact = (attrs = {}) => ({ deviceId: "z2m-door_front_contact", name: "door_front_contact",
+      type: "CONTACT_SENSOR", state: "ONLINE", location: "cabin", attributes: { contact: false, battery: 87, ...attrs } });
+    const leak = (attrs = {}, extra = {}) => ({ deviceId: "z2m-leak_alarm_bathroom", name: "leak_alarm_bathroom",
+      type: "WATER_LEAK_SENSOR", state: "ONLINE", location: "cabin", attributes: { water_leak: false, ...attrs }, ...extra });
+
+    it("shows a signed-in viewer Clear / Motion", () => {
+      expect(kpiTileFor(motion(), "F", {}, { signedIn: true })).toMatchObject({ label: "motion_entry_movement_detect", value: "Clear", state: "ONLINE" });
+      expect(kpiTileFor(motion({ occupancy: true }), "F", {}, { signedIn: true }).value).toBe("Motion");
+    });
+
+    it("shows a signed-out viewer only that the sensor is online and its battery -- never the reading", () => {
+      for (const occupancy of [true, false]) {
+        const tile = kpiTileFor(motion({ occupancy }), "F");
+        expect(tile.value).toBe("100% battery");
+        expect(JSON.stringify(tile)).not.toMatch(/motion"|clear/i);
+      }
+      expect(kpiTileFor(motion({ battery: undefined }), "F").value).toBe("Online");
+    });
+
+    it("treats a door contact the same way: Open/Closed only when signed in, and the icon follows the state", () => {
+      expect(kpiTileFor(contact({ contact: false }), "F", {}, { signedIn: true })).toMatchObject({ value: "Open" });
+      expect(kpiTileFor(contact({ contact: true }), "F", {}, { signedIn: true })).toMatchObject({ value: "Closed" });
+      expect(kpiTileFor(contact(), "F").value).toBe("87% battery");
+    });
+
+    it("shows a leak reading to everyone, and raises ALARM only when wet", () => {
+      expect(kpiTileFor(leak(), "F")).toMatchObject({ value: "Dry", state: "ONLINE" });
+      expect(kpiTileFor(leak({ water_leak: true }), "F")).toMatchObject({ value: "Wet", state: "ALARM" });
+    });
+
+    it("shows unknown, not Dry, for a leak sensor that has never reported (Zigbee2MQTT sends null)", () => {
+      expect(kpiTileFor(leak({ water_leak: "null" }), "F").value).toBe("—");
+      expect(kpiTileFor(leak({ water_leak: null }), "F").value).toBe("—");
+    });
+
+    it("gives no tile to a candidate, ignored or deferred device", () => {
+      for (const deviceLifecycle of ["CANDIDATE", "IGNORED", "DEFERRED"]) {
+        expect(kpiTileFor(motion({ deviceLifecycle }), "F", {}, { signedIn: true })).toBeNull();
+        expect(kpiTileFor(leak({ deviceLifecycle }), "F")).toBeNull();
+      }
+    });
+
+    it("gives no tile to a Home Assistant duplicate that carries none of the Zigbee fields", () => {
+      const duplicate = { deviceId: "ha-cabin-binary-sensor-motion-entry-occu", name: "motion entry occupancy", type: "MOTION_SENSOR",
+        state: "ONLINE", location: "cabin", attributes: { enabled: true } };
+      expect(kpiTileFor(duplicate, "F", {}, { signedIn: true })).toBeNull();
+      expect(kpiTileFor({ ...duplicate, type: "WATER_LEAK_SENSOR" }, "F")).toBeNull();
+    });
   });
 
   // 2026-08-27 (user report): these four types were added for Sensor
@@ -660,6 +716,26 @@ describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)",
     const kpiGrid = container.querySelector(".kpi-grid");
     expect(within(kpiGrid).queryByText("Temp C")).toBeNull();
     expect(within(kpiGrid).getByText("Temp A")).toBeTruthy();
+  });
+
+  it("puts the motion sensor on the dashboard, revealing the reading only to a signed-in viewer", () => {
+    const motion = { deviceId: "z2m-motion_entry", name: "motion_entry_movement_detect", type: "MOTION_SENSOR",
+      state: "ONLINE", location: "cabin", attributes: { occupancy: true, battery: 100 } };
+    const renderWith = (auth) => render(
+      <AppContext.Provider value={{ displayConfigs: {} }}>
+        <MnSeeView devices={[tempA, motion]} activeLocation="cabin" active={false} reorderMode={false} auth={auth} />
+      </AppContext.Provider>
+    );
+
+    const out = renderWith({ signedIn: false });
+    const gridOut = out.container.querySelector(".kpi-grid");
+    expect(within(gridOut).getByText("motion_entry_movement_detect")).toBeTruthy();
+    expect(within(gridOut).getByText("100% battery")).toBeTruthy();
+    expect(within(gridOut).queryByText("Motion")).toBeNull();
+    cleanup();
+
+    const inn = renderWith({ signedIn: true });
+    expect(within(inn.container.querySelector(".kpi-grid")).getByText("Motion")).toBeTruthy();
   });
 
   it("renders tiles in the saved order, not the old fixed type-bucket order", () => {

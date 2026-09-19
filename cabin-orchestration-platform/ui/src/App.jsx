@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle, Link2, Info, Cloud
+  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed
 } from "lucide-react";
 import "./styles.css";
 
@@ -4453,7 +4453,7 @@ function CameraHealthPanel({ locCfg }) {
 // whole tile -- TEMPERATURE_SENSOR's combined temp+humidity tile is
 // legitimately device-level, not a single Service Entity, so it's
 // deliberately left on device.name.
-export function kpiTileFor(device, tempUnit, reportingRelationships = {}) { // exported for src/App.test.jsx's Monitoring reorder tests
+export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { signedIn = false } = {}) { // exported for src/App.test.jsx's Monitoring reorder tests
   const curatedLabel = (semanticField) =>
     (reportingRelationships[device.deviceId] || []).find(r => r.semanticField === semanticField)?.displayLabel;
   switch (device.type) {
@@ -4516,9 +4516,61 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}) { // e
       return { icon: Lock, label: device.name, deviceId: device.deviceId, value: device.state, state: device.state };
     case "CAMERA":
       return { icon: Camera, label: device.name, deviceId: device.deviceId, value: device.state, state: device.state };
+    // 2026-09-19 (user: "I want this on the monitoring dashboard live"): the
+    // three safety-sensor types never had a tile, so a motion, door-contact or
+    // water-leak sensor could be paired, reporting and alerting yet never appear
+    // on this view. Only devices in active use get one (the same rule the alert
+    // service applies) -- candidates/ignored/deferred stay off the dashboard.
+    //
+    // Motion and door contact are occupancy signals ("is anyone at the cabin"),
+    // the one thing D14 protects (/api/presence, /api/events are gated for that
+    // reason), and this dashboard is public. A signed-out viewer therefore sees
+    // only that the sensor is online and its battery; the reading itself needs
+    // sign-in. A leak reading is a hazard, not an occupancy signal, so it is
+    // shown to everyone.
+    case "MOTION_SENSOR":
+    case "CONTACT_SENSOR": {
+      const isMotion = device.type === "MOTION_SENSOR";
+      if (!deviceIsInActiveUse(device) || !reportsField(device, isMotion ? "occupancy" : "contact")) return null;
+      const icon = isMotion ? Activity : (device.attributes?.contact === false ? DoorOpen : DoorClosed);
+      if (!signedIn) {
+        const battery = device.attributes?.battery;
+        return { icon, label: device.name, deviceId: device.deviceId,
+          value: battery != null ? `${battery}% battery` : "Online", state: device.state };
+      }
+      const raw = isMotion ? device.attributes.occupancy : device.attributes.contact;
+      const value = raw !== true && raw !== false ? "—"
+        : isMotion ? (raw ? "Motion" : "Clear")
+        : (raw ? "Closed" : "Open");
+      return { icon, label: device.name, deviceId: device.deviceId, value, state: device.state };
+    }
+    case "WATER_LEAK_SENSOR": {
+      if (!deviceIsInActiveUse(device) || !reportsField(device, "water_leak")) return null;
+      const leak = device.attributes.water_leak;
+      // Zigbee2MQTT publishes null (stored as the string "null") until a sensor
+      // has ever reported -- unknown, not dry.
+      const known = leak === true || leak === false;
+      return { icon: Droplets, label: device.name, deviceId: device.deviceId,
+        value: !known ? "—" : (leak ? "Wet" : "Dry"),
+        state: leak === true ? "ALARM" : device.state };
+    }
     default:
       return null;
   }
+}
+
+// Same rule ActiveAlertService applies (lifecycleState().allowsActiveUse()):
+// a candidate, ignored or deferred device is not something to watch.
+function deviceIsInActiveUse(device) {
+  return !["CANDIDATE", "IGNORED", "DEFERRED"].includes(deviceLifecycleState(device));
+}
+
+// A device only gets a safety-sensor tile if it actually carries the reading.
+// Home Assistant re-discovers the same physical Zigbee sensors as separate
+// enabled records (e.g. ha-cabin-binary-sensor-motion-entry-occu) with none of
+// the Zigbee fields; without this check each one would add a second, empty tile.
+function reportsField(device, field) {
+  return Object.prototype.hasOwnProperty.call(device.attributes || {}, field);
 }
 
 // 2026-08-25: real in-app historical trend view, replacing the Grafana
@@ -5090,7 +5142,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
     .map((d, globalIdx) => ({ d, globalIdx }))
     .filter(({ d }) => !d.location || d.location === locCfg.id)
     .filter(({ d }) => d.attributes?.enabled !== false)
-    .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit, reportingRelationships) }))
+    .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit, reportingRelationships, { signedIn: !!auth?.signedIn }) }))
     .filter(({ tile }) => tile !== null);
 
   return (
