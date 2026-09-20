@@ -1197,6 +1197,12 @@ body {
 @media (min-width: 901px) {
   .dm-list { overflow-y: auto; max-height: calc(100vh - 220px); }
 }
+/* .dm-list is a column flex box, and a device group is overflow:hidden, which lets a
+   flex item shrink below its content. With the list capped at max-height, every group
+   was squashed to fit (rows cut off inside it) and the list itself never became taller
+   than its box, so nothing could scroll: the bottom of a long list and the groups below
+   it were unreachable. Children keep their natural height; the list scrolls instead. */
+.dm-list > * { flex-shrink: 0; }
 .dm-hint { color: var(--text-dim); font-size: 12px; margin: 0 0 12px 0; }
 
 .dm-device-row {
