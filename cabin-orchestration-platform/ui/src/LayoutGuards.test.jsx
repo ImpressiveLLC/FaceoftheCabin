@@ -42,3 +42,19 @@ describe("config cards contain long values", () => {
     expect(bodyOf(".platform-info-table td:first-child")).not.toMatch(/white-space:\s*nowrap/);
   });
 });
+
+// Reported 2026-09-20: in Devices > Change the bottom of a long list, and the
+// groups below the first, couldn't be reached. Measured in a browser with 120
+// devices in 6 groups: the list's scrollHeight equalled its clientHeight (580px)
+// because every group had been squashed to fit; after the fix it is 7242px and
+// scrolls to the last row.
+describe("the device list scrolls instead of squashing its groups", () => {
+  it("keeps each child of the capped, scrolling list at its natural height", () => {
+    expect(bodyOf(".dm-list")).toMatch(/display:\s*flex/);
+    expect(bodyOf(".dm-list > *")).toMatch(/flex-shrink:\s*0/);
+  });
+
+  it("a group is overflow:hidden, which is exactly why it needs that", () => {
+    expect(bodyOf(".dm-device-group")).toMatch(/overflow:\s*hidden/);
+  });
+});
