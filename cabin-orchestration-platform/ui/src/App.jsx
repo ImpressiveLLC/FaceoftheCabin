@@ -1771,6 +1771,59 @@ export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder te
   );
 }
 
+// What each way in is for, in one line. Anything configured that isn't listed
+// (WireGuard, ZeroTier ...) still shows as a chip, just without a note. The SSH
+// test runs first so "SSH via Tailscale" gets the SSH note, not Tailscale's.
+const REMOTE_ACCESS_NOTES = [
+  { test: /ssh/i, note: "Shell access over the private network: ssh <user>@<tailscale-name>. No SSH port is opened to the internet." },
+  { test: /tailscale/i, note: "Private network for the app, SSH and admin tools. Nothing is exposed to the internet." },
+  { test: /cloudflare/i, note: "Public HTTPS address for chosen pages (sign-in, share links) through an outbound tunnel. No open ports." },
+];
+
+// The ways into this instance, and what a new clone needs before it can be
+// reached the same way. The same steps live in docs/REPLICATION.md (section 4).
+export function RemoteAccessCard({ methods }) {
+  return (
+    <>
+      <MetaChips items={methods} />
+      <ul className="remote-access-notes">
+        {methods.map(m => {
+          const found = REMOTE_ACCESS_NOTES.find(n => n.test.test(m));
+          return found ? <li key={m}><strong>{m}</strong> — {found.note}</li> : null;
+        })}
+      </ul>
+      <details className="remote-access-clone">
+        <summary>Connect a new clone</summary>
+        <h4 className="platform-section-title">Before you start</h4>
+        <ul className="remote-access-steps">
+          <li>An always-on Linux host with Docker, running the app (docs/REPLICATION.md).</li>
+          <li>A Tailscale account (the free tier is enough) with MagicDNS on, and your phone or laptop signed in to the same tailnet.</li>
+          <li>The clone's LAN subnet (<code>ip route</code>), different from every other site's: two sites can't both advertise 192.168.1.0/24. Only needed to reach other LAN devices such as cameras; the hub itself is reachable by name without it.</li>
+          <li>Optional, for a public address: a domain on Cloudflare and a tunnel token.</li>
+        </ul>
+        <h4 className="platform-section-title">Run on the clone's host</h4>
+        <code className="code-block code-block-scroll">{`curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --ssh --accept-routes \\
+  --hostname=<site>-hub \\
+  --advertise-routes=<subnet>/24`}</code>
+        <h4 className="platform-section-title">Change before running</h4>
+        <ul className="remote-access-steps">
+          <li><code>{"<site>-hub"}</code>: the clone's own name, for example <code>home-hub</code>. The app reaches a site at that name (<code>VITE_&lt;SITE&gt;_API_BASE</code>, for example <code>http://home-hub:8080</code>).</li>
+          <li><code>{"<subnet>/24"}</code>: the clone's LAN, for example <code>192.168.4.0/24</code>. Delete that line if you don't need LAN devices.</li>
+          <li><code>--ssh</code> turns on <code>{"ssh <user>@<site>-hub"}</code>. Remove it to keep SSH off Tailscale.</li>
+        </ul>
+        <h4 className="platform-section-title">Then</h4>
+        <ol className="remote-access-steps">
+          <li>Open the sign-in link the command prints.</li>
+          <li>In the Tailscale admin console, approve the advertised route (Machines → the host → Edit route settings).</li>
+          <li>Run <code>tailscale status</code>, then open the clone's app by its name from a device on the tailnet.</li>
+          <li>Set <code>CABIN_INSTANCE_REMOTE_ACCESS=Tailscale</code> (add <code>,Cloudflare Tunnel</code> if you use one) in the clone's <code>.env</code> and redeploy, so this card lists it.</li>
+        </ol>
+      </details>
+    </>
+  );
+}
+
 // ─── Panel: Config ──────────────────────────────────────────────────────
 // Exported for src/App.test.jsx's rename/dynamic-config-fields test.
 export function FamilyConfigPanel({ auth }) {
@@ -1816,16 +1869,7 @@ export function FamilyConfigPanel({ auth }) {
           </p>
         </ConfigCard>
         <ConfigCard title="Remote Access" icon={Wifi}>
-          <p className="config-desc">{remoteAccessMethods.join(", ")}</p>
-          <p className="config-hint">
-            New template clones default to Tailscale — set CABIN_INSTANCE_REMOTE_ACCESS
-            (comma-separated) once a method is configured, and it appears here.
-          </p>
-          <code className="code-block">tailscale up --advertise-routes=192.168.1.0/24 --hostname=home-hub</code>
-        </ConfigCard>
-        <ConfigCard title="Platform" icon={Cpu}>
-          <p className="config-desc">{config?.platformName || "Orchestration Platform"}</p>
-          <p className="config-hint">{config?.platform || "Not configured — set CABIN_INSTANCE_PLATFORM"}</p>
+          <RemoteAccessCard methods={remoteAccessMethods} />
         </ConfigCard>
         <ConfigCard title="Guest Access" icon={Link2}>
           <GuestAccessCard auth={auth} />
@@ -1833,7 +1877,9 @@ export function FamilyConfigPanel({ auth }) {
         <ConfigCard title="Managed Users" icon={UserPlus}>
           <ManagedUsersCard auth={auth} />
         </ConfigCard>
-        <ConfigCard title="Platform Info" icon={Info}>
+        <ConfigCard title="Platform" icon={Cpu} wide>
+          <p className="config-desc">{config?.platformName || "Orchestration Platform"}</p>
+          <p className="config-hint">{config?.platform || "Not configured — set CABIN_INSTANCE_PLATFORM"}</p>
           <PlatformInfoCard auth={auth} />
         </ConfigCard>
       </div>
@@ -1867,7 +1913,7 @@ function PlatformInfoCard({ auth }) {
   }, [doFetch, apiBase]);
 
   if (forbidden) {
-    return <p className="config-desc">Admin access required to view platform details.</p>;
+    return <p className="config-desc">Admin access required to view versions and hardware.</p>;
   }
   if (error) {
     return <p className="config-desc">Couldn't load platform info: {error}</p>;
@@ -1877,29 +1923,35 @@ function PlatformInfoCard({ auth }) {
   }
 
   return (
-    <>
-      <p className="config-desc">Live integration versions, cabin hardware, and AI-inference disclosure.</p>
-      <table className="platform-info-table">
-        <tbody>
-          {Object.entries(info.versions || {}).map(([key, value]) => (
-            <tr key={key}><td>{VERSION_LABELS[key] || key}</td><td>{value}</td></tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="config-hint" style={{ marginTop: "0.75rem" }}>Hardware</p>
-      <table className="platform-info-table">
-        <tbody>
-          {(info.hardware || []).map(row => (
-            <tr key={row.category}><td>{row.category}</td><td>{row.description}</td></tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="platform-sections">
+      <section aria-label="Software">
+        <h4 className="platform-section-title">Software</h4>
+        <table className="platform-info-table">
+          <tbody>
+            {Object.entries(info.versions || {}).map(([key, value]) => (
+              <tr key={key}><td>{VERSION_LABELS[key] || key}</td><td>{value}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section aria-label="Hardware">
+        <h4 className="platform-section-title">Hardware</h4>
+        <table className="platform-info-table">
+          <tbody>
+            {(info.hardware || []).map(row => (
+              <tr key={row.category}><td>{row.category}</td><td>{row.description}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
       {info.aiDisclosure && (
-        <div className="tailscale-hint" style={{ marginTop: "0.75rem" }}>
-          <Info size={11} /> AI inference: {info.aiDisclosure.model} — {info.aiDisclosure.hostedWhere}, {info.aiDisclosure.networkExposure}. {info.aiDisclosure.dataHandling}
-        </div>
+        <section className="platform-section-wide" aria-label="AI inference">
+          <div className="tailscale-hint">
+            <Info size={11} /> AI inference: {info.aiDisclosure.model} — {info.aiDisclosure.hostedWhere}, {info.aiDisclosure.networkExposure}. {info.aiDisclosure.dataHandling}
+          </div>
+        </section>
       )}
-    </>
+    </div>
   );
 }
 
@@ -2145,9 +2197,9 @@ function ManagedUsersCard({ auth }) {
   );
 }
 
-function ConfigCard({ title, icon: Icon, children }) {
+function ConfigCard({ title, icon: Icon, wide = false, children }) {
   return (
-    <div className="config-card">
+    <div className={`config-card${wide ? " config-card-wide" : ""}`}>
       <div className="config-card-header"><Icon size={18} /><strong>{title}</strong></div>
       {children}
     </div>
@@ -6959,7 +7011,8 @@ function WorkflowRow({ workflow, auth, devices = [], onChanged }) {
             <button type="button" className="btn-ghost" disabled={busy} onClick={() => act("", "DELETE")}>Delete</button>
           </div>
         )}
-        <button type="button" className="btn-ghost" style={{ marginTop: 4 }} onClick={() => setShowHistory(v => !v)}>
+        <button type="button" className={`btn-ghost${showHistory ? " btn-ghost-active" : ""}`} style={{ marginTop: 4 }}
+          aria-expanded={showHistory} onClick={() => setShowHistory(v => !v)}>
           {showHistory ? "Hide history" : "History"}
         </button>
         {showHistory && (

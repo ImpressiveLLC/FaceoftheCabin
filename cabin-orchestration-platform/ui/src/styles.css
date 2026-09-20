@@ -353,6 +353,34 @@ body {
   padding-right: 10px;
   width: 38%;
 }
+/* The merged Platform card takes the whole row, and its sections flow into as
+   many columns as fit: side by side on a kiosk, stacked on a phone. */
+.config-card-wide { grid-column: 1 / -1; }
+.platform-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 12px 28px;
+  margin-top: 10px;
+}
+.platform-section-wide { grid-column: 1 / -1; }
+.platform-section-title {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.platform-sections .platform-section-title { margin-top: 0; }
+.remote-access-notes { margin: 8px 0 0; padding-left: 16px; font-size: 12px; color: var(--text-muted); }
+.remote-access-notes li + li { margin-top: 4px; }
+.remote-access-clone { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+.remote-access-clone summary { cursor: pointer; color: var(--link); }
+.remote-access-steps { margin: 4px 0 0; padding-left: 18px; }
+.remote-access-steps li + li { margin-top: 4px; }
+.remote-access-clone code { font-size: 11px; color: var(--link-hover); }
+/* A command is copied exactly, so it scrolls sideways instead of wrapping mid-flag. */
+.code-block.code-block-scroll { white-space: pre; word-break: normal; overflow-x: auto; }
 .code-block {
   display: block;
   background: var(--layer-3-fill);
@@ -1178,7 +1206,7 @@ body {
   transition: border-color 0.12s, background 0.12s;
 }
 .dm-device-row:hover { border-color: var(--accent-hover); }
-.dm-row-selected { border-color: var(--layer-selected-edge) !important; background: var(--layer-2-fill); }
+.dm-row-selected { border-color: var(--selected-color, var(--layer-selected-edge)) !important; background: var(--layer-2-fill); }
 .dm-row-icon { color: var(--text-muted); flex-shrink: 0; }
 .dm-row-info { flex: 1; min-width: 0; }
 .dm-row-name { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1553,6 +1581,9 @@ body {
   border-left: 2px solid var(--danger) !important;
   box-shadow: var(--glow-hal);
 }
+
+/* Cards are bold gray here, so hovering one lights its edge in the data-cyan. */
+[data-theme="deepspace"] :is(.device-card, .dm-device-row):hover { border-color: var(--accent); }
 
 /* State badges */
 [data-theme="deepspace"] .state-badge {
@@ -2279,17 +2310,26 @@ select option { background: var(--bg-secondary); color: var(--text); }
   border-color: var(--layer-hover-edge);
   box-shadow: var(--layer-hover-shadow);
 }
-/* A theme may define --selected-glow (Deep Space, Pac-Man, Impressive): the same
-   back-lit glow Deep Space puts behind its active tab, on whatever data is
-   selected. Themes that don't define it keep the layer shadow they had. */
+/* The selected item has to be unmistakable in every theme, so a selected card or
+   row gets three cues that don't depend on the theme having a glow: a full-color
+   edge, a thick bar down its left side, and a tint of the same color behind it.
+   A theme that defines --selected-glow (Deep Space, Pac-Man, Impressive) adds the
+   back-light Deep Space puts behind its active tab; --selected-color is the color
+   of all of it (Deep Space: the tab's HAL red). */
 :is(.device-card.selected, .dm-row-selected) {
-  background: var(--layer-2-fill);
-  border-color: var(--layer-selected-edge);
-  box-shadow: var(--selected-glow, var(--layer-selected-shadow));
+  background: color-mix(in srgb, var(--selected-color, var(--layer-selected-edge)) 16%, var(--layer-2-fill));
+  border-color: var(--selected-color, var(--layer-selected-edge));
+  box-shadow: var(--selected-glow, var(--layer-selected-shadow)), inset 5px 0 0 var(--selected-color, var(--layer-selected-edge));
 }
 :is(.sensor-history-topic-tab.active, .sensor-history-device-chip.selected) {
-  background: var(--layer-3-fill);
-  border-color: var(--layer-selected-edge);
+  background: color-mix(in srgb, var(--selected-color, var(--layer-selected-edge)) 22%, var(--layer-3-fill));
+  border-color: var(--selected-color, var(--layer-selected-edge));
+  box-shadow: var(--selected-glow, none);
+}
+/* A control that is switched on, open or pressed (a workflow's History while its
+   list is showing, reorder mode, live-camera choice, pressed toggles) carries the
+   same selection glow -- in Deep Space, the active tab's back-light. */
+:is(.btn-ghost-active, .btn-secondary.active, .camera-notify-toggle.active, button[aria-pressed="true"]) {
   box-shadow: var(--selected-glow, none);
 }
 .automation-alert-card { border-width: 2px; border-left-color: var(--state-warning); }

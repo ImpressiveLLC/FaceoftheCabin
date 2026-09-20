@@ -83,6 +83,7 @@ export const THEMES = {
       "--radius-sm":    "6px",
       // Deep Space's tab back-lit glow recipe, in this theme's electric blue.
       "--selected-glow": "0 0 8px #3d3dff, 0 0 24px #3d3dff40",
+      "--selected-color": "#3d3dff",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent-hover', '--text-muted', '--text'] },
@@ -264,11 +265,13 @@ export const THEMES = {
       "--radius-sm":    "0px",
       "--glow-hal":     "0 0 8px #ff2d55, 0 0 24px #ff2d5540",
       "--glow-cyan":    "0 0 8px #00a3ff, 0 0 20px #00a3ff40",
-      // Same back-lit glow as the active tab (--glow-hal), on selected data.
+      // Same back-lit glow and HAL red as the active tab, on selected data.
       "--selected-glow": "0 0 8px #ff2d55, 0 0 24px #ff2d5540",
+      "--selected-color": "#ff2d55",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
-    layers: { hues: ['--accent', '--warning', '--text'] },
+    // Cards are a bold dark gray, not amber: no orange or brown edge in Deep Space.
+    layers: { hues: ['--accent', '--text-dim', '--text'], widths: ['1px', '2px', '1px'] },
   },
 
   // neon80s and pacman added 2026-08-07 -- FOUND that session (see
@@ -337,6 +340,7 @@ export const THEMES = {
       "--radius-sm":    "8px",
       // Deep Space's tab back-lit glow recipe, in this theme's yellow.
       "--selected-glow": "0 0 8px #ffff00, 0 0 24px #ffff0040",
+      "--selected-color": "#ffff00",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent', '--success', '--warning'] },
@@ -433,10 +437,15 @@ export function resolveInitialThemeId(searchParams, storedThemeId, themes = THEM
 export function layerVarsFor(theme) {
   const v = theme.vars, L = theme.layers;
   const pick = (role) => (role.startsWith("--") ? v[role] : role);
-  return surfaceLayerVars(
+  const vars = surfaceLayerVars(
     { page: v["--bg"], panel: v["--bg-secondary"], border: v["--border"], text: v["--text"], muted: v["--text-muted"], accent: v["--accent"] },
     { hues: L.hues.map(pick), shadow: L.shadow, widths: L.widths, edgeHue: L.edgeHue, tints: L.tints, tab: L.tab && pick(L.tab) },
   );
+  // "none" can't sit in a list with another shadow (a selected row layers its
+  // edge bar on top of the layer shadow), so themes without one get a
+  // shadow that draws nothing.
+  for (const k of Object.keys(vars)) if (k.endsWith("-shadow") && vars[k] === "none") vars[k] = "0 0 0 0 transparent";
+  return vars;
 }
 
 const ThemeContext = createContext(null);
