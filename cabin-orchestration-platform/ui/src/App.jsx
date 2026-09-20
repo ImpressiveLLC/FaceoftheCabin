@@ -1923,17 +1923,22 @@ function PlatformInfoCard({ auth }) {
   }
 
   return (
-    <div className="platform-sections">
-      <section aria-label="Software">
-        <h4 className="platform-section-title">Software</h4>
-        <table className="platform-info-table">
-          <tbody>
-            {Object.entries(info.versions || {}).map(([key, value]) => (
-              <tr key={key}><td>{VERSION_LABELS[key] || key}</td><td>{value}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+    <>
+      {info.specs && <PlatformSpecsSummary specs={info.specs} />}
+      <div className="platform-sections">
+      {info.specs ? info.specs.groups.map(group => <PlatformSpecGroup key={group.id} group={group} />) : (
+        // A backend that predates the full specs (mid-deploy) still sends the five live versions.
+        <section aria-label="Software">
+          <h4 className="platform-section-title">Software</h4>
+          <table className="platform-info-table">
+            <tbody>
+              {Object.entries(info.versions || {}).map(([key, value]) => (
+                <tr key={key}><td>{VERSION_LABELS[key] || key}</td><td>{value}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
       <section aria-label="Hardware">
         <h4 className="platform-section-title">Hardware</h4>
         <table className="platform-info-table">
@@ -1951,7 +1956,65 @@ function PlatformInfoCard({ auth }) {
           </div>
         </section>
       )}
+      </div>
+    </>
+  );
+}
+
+// How firmly each version is fixed. Pinned needs no flag; the rest are what may need
+// maintenance, so they are the ones that say so.
+const SPEC_TRACKS = {
+  series: { label: "patches float", title: "Only the major or minor version is fixed; patch releases arrive on their own." },
+  floating: { label: "floats", title: "Follows latest, stable or main: what runs depends on when it was last pulled." },
+  unmanaged: { label: "not in Git", title: "Installed on the host by hand and not pinned anywhere in the repo." },
+};
+
+// Everything versioned that the platform is built from or runs on: platform-specs.yaml in the
+// backend, kept in step with the repo by PlatformSpecsGuardTest. Server-side data, so this only
+// lays it out.
+function PlatformSpecsSummary({ specs }) {
+  const c = specs.counts || {};
+  return (
+    <div className="spec-summary meta-chips" aria-label="Version summary">
+      <span className="meta-chip">{specs.total} components</span>
+      <span className="meta-chip">{c.pinned || 0} pinned</span>
+      <span className="meta-chip">{c.series || 0} patches float</span>
+      <span className={`meta-chip${c.floating ? " spec-chip-warn" : ""}`}>{c.floating || 0} float on latest</span>
+      <span className="meta-chip">{c.unmanaged || 0} not pinned in Git</span>
     </div>
+  );
+}
+
+function PlatformSpecGroup({ group }) {
+  return (
+    <details className="spec-group" open>
+      <summary className="platform-section-title">{group.label} <span className="spec-count">{group.items.length}</span></summary>
+      <table className="platform-info-table spec-table">
+        <tbody>
+          {group.items.map(item => {
+            const track = SPEC_TRACKS[item.track];
+            const shown = item.running || item.declared;
+            return (
+              <tr key={item.id} className={`spec-row spec-${item.track}`}>
+                <td>
+                  <div className="spec-name">{item.name}</div>
+                  {item.note && <div className="spec-note">{item.note}</div>}
+                </td>
+                <td className="spec-version">
+                  <div className="spec-shown">{shown}</div>
+                  {item.running && item.running !== item.declared && <div className="spec-sub">declared {item.declared}</div>}
+                  {!item.running && item.liveProbe && <div className="spec-sub">not reachable now</div>}
+                  {item.locked && <div className="spec-sub">locked at {item.locked}</div>}
+                </td>
+                <td className="spec-track">
+                  {track && <span className={`meta-chip spec-chip-${item.track}`} title={track.title}>{track.label}</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </details>
   );
 }
 
