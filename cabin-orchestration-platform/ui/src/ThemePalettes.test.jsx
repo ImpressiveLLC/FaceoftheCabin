@@ -19,13 +19,53 @@ describe("LCARS uses more than orange", () => {
   const lcars = THEMES.lcars;
   const hueOf = (hex) => hueAngle(hex).h;
 
-  it("keeps orange as the primary: accent, focus and tabs", () => {
+  it("keeps orange as the primary: accent, focus, and the tab outline", () => {
     for (const hex of [lcars.vars["--accent"], lcars.vars["--border-focus"]]) {
       expect(hueOf(hex)).toBeGreaterThan(25);
       expect(hueOf(hex)).toBeLessThan(45);
     }
-    expect(resolve(lcars, lcars.layers.tab)).toBe(lcars.vars["--accent"]);
-    expect(layerVarsFor(lcars)["--tab-color"]).toBe(lcars.vars["--accent"]);
+    // The active tab's outline is drawn from --accent whatever color its label is.
+    const outline = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter(([, sel, body]) => sel.trim() === ".nav-active" && /border-color:\s*var\(--accent\)/.test(body));
+    expect(outline.length).toBeGreaterThan(0);
+  });
+
+  // Reported 2026-09-20: page titles and tab labels share one non-orange color;
+  // table headers take a fourth; panels are black like the real control panels.
+  it("colors page titles and tab labels the same, in a hue that isn't the primary", () => {
+    const title = lcars.vars["--title-color"];
+    expect(resolve(lcars, lcars.layers.tab)).toBe(title);
+    expect(layerVarsFor(lcars)["--tab-color"]).toBe(title);
+    expect(huesAreDistinct(title, lcars.vars["--accent"])).toBe(true);
+    expect(contrastRatio(title, lcars.vars["--bg"])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("gives table headers a fourth color, distinct from the primary, the title and the muted text", () => {
+    const head = lcars.vars["--table-head"];
+    for (const other of [lcars.vars["--accent"], lcars.vars["--title-color"], lcars.vars["--text-muted"], lcars.vars["--text"]]) {
+      expect(huesAreDistinct(head, other)).toBe(true);
+    }
+    expect(contrastRatio(head, lcars.vars["--bg"])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("uses the token for titles and table headers, with a fallback so other themes are unchanged", () => {
+    const rule = (sel) => [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].find(([, s]) => s.trim() === sel)?.[2] ?? "";
+    expect(rule(".panel-header-bar h2")).toContain("color: var(--title-color, var(--text))");
+    expect(rule(".sensor-history-table th")).toContain("color: var(--table-head, var(--text-dim))");
+    expect(rule(".platform-info-table td:first-child")).toContain("color: var(--table-head, var(--text))");
+    for (const [id, theme] of Object.entries(THEMES)) {
+      if (id !== "lcars") { expect(theme.vars["--title-color"]).toBeUndefined(); expect(theme.vars["--table-head"]).toBeUndefined(); }
+    }
+  });
+
+  it("puts panels, cards and tiles on the default black, told apart by their colored edges", () => {
+    expect(lcars.vars["--bg-secondary"]).toBe(lcars.vars["--bg"]);
+    expect(lcars.vars["--surface"]).toBe(lcars.vars["--bg"]);
+    const v = layerVarsFor(lcars);
+    for (const n of [1, 2, 3]) expect(v[`--layer-${n}-fill`]).toBe("#000000");
+    // The only other background is the hover shade, and it is a neutral grey rather than another hue.
+    const [r, g, b] = [1, 3, 5].map(i => parseInt(lcars.vars["--bg-tertiary"].slice(i, i + 2), 16));
+    expect(r === g && g === b).toBe(true);
   });
 
   it("gives panels, cards and tiles three different hues, largest first orange", () => {
@@ -54,11 +94,13 @@ describe("LCARS uses more than orange", () => {
     }
   });
 
-  it("Family Hub's LCARS uses the same three layer hues and orange tabs", () => {
+  it("Family Hub's LCARS uses the same layer hues, tab label color and black panels", () => {
     const block = hub.match(/\r?\n  lcars: \{[\s\S]*?\r?\n  \},\r?\n/)?.[0] ?? "";
     const hues = block.match(/layers:\s*\{\s*hues:\s*\[([^\]]*)\]/)?.[1].match(/#[0-9a-fA-F]{6}/g);
     expect(hues).toEqual(lcars.layers.hues.map(r => resolve(lcars, r)));
-    expect(block).toContain(`tab: '${lcars.vars["--accent"]}'`);
+    expect(block).toContain(`tab: '${lcars.vars["--title-color"]}'`);
+    expect(block).toContain("tints: [0, 0, 0]");
+    expect(block).toMatch(/'--glass':'rgba\(0,0,0,/);
   });
 });
 

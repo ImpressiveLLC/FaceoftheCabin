@@ -131,7 +131,7 @@ body {
   justify-content: space-between;
   margin-bottom: 18px;
 }
-.panel-header-bar h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.panel-header-bar h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--title-color, var(--text)); }
 .header-actions { display: flex; gap: 8px; }
 .panel-header-title { display: flex; align-items: baseline; gap: 10px; }
 
@@ -348,7 +348,7 @@ body {
   overflow-wrap: anywhere;
 }
 .platform-info-table td:first-child {
-  color: var(--text);
+  color: var(--table-head, var(--text));
   font-weight: 500;
   padding-right: 10px;
   width: 38%;
@@ -664,7 +664,7 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .sensor-history-table th {
-  color: var(--text-dim);
+  color: var(--table-head, var(--text-dim));
   font-weight: 600;
   position: sticky;
   top: 0;

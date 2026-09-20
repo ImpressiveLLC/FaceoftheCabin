@@ -92,14 +92,20 @@ export const THEMES = {
     id: "lcars",
     label: "LCARS",
     vars: {
+      // Black all the way down, like the control panels themselves: page,
+      // panels and cards share the default background and are told apart by
+      // their colored edges. --bg-tertiary is only the hover / pressed shade
+      // (a neutral grey, so it adds no color of its own).
       "--bg":           "#000000",
-      "--bg-secondary": "#0a0a1a",
-      "--bg-tertiary":  "#111130",
-      "--surface":      "#0d0d28",
+      "--bg-secondary": "#000000",
+      "--bg-tertiary":  "#1a1a1a",
+      "--surface":      "#000000",
       // Okudagrams "complete set" colors. Orange stays the primary (accent,
-      // active tab, buttons, panels); reading text is peach and the rest comes
-      // from the set's lavender / periwinkle / blue so a screen is no longer
-      // orange on black end to end.
+      // active tab outline, buttons, panel edges); reading text is peach and the
+      // rest comes from the set's lavender / periwinkle / blue / yellow so a
+      // screen is no longer orange on black end to end.
+      "--title-color":  "#99ccff",   // light blue: page titles AND tab labels
+      "--table-head":   "#ffff9c",   // pale yellow: table header cells
       "--border":       "#646dcc",   // periwinkle: structure lines
       "--border-focus": "#ff9c00",
       "--text":         "#ffcc99",   // peach
@@ -118,8 +124,9 @@ export const THEMES = {
       "--radius-sm":    "4px",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
-    // Panels orange, cards lavender, tiles light blue; tabs stay orange.
-    layers: { hues: ['--accent', '--accent-2', '--accent-3'], tab: '--accent', edgeHue: 0.9 },
+    // Panels orange, cards lavender, tiles light blue, all on black (no fill
+    // tint); tab labels take the title color, their outline stays orange.
+    layers: { hues: ['--accent', '--accent-2', '--accent-3'], tab: '--title-color', edgeHue: 0.9, tints: [0, 0, 0] },
   },
 
   monolith: {
