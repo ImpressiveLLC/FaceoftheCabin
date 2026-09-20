@@ -4220,15 +4220,68 @@ describe("FamilyConfigPanel", () => {
     expect(screen.getByText("Sign in with Google")).toBeTruthy();
   });
 
-  it("displays the configured platform and remote access from real backend config", () => {
+  const remoteCard = () => screen.getByText("Remote Access").closest(".config-card");
+
+  it("displays the configured platform from real backend config", () => {
     renderPanel({ config: { platformName: "Test Platform", platform: "A test VM", remoteAccess: "Tailscale,WireGuard" } });
     expect(screen.getByText("A test VM")).toBeTruthy();
-    expect(screen.getByText("Tailscale, WireGuard")).toBeTruthy();
+    expect(screen.getByText("Test Platform")).toBeTruthy();
+  });
+
+  it("lists each configured way in as a chip, with a one-line note for the ones it knows", () => {
+    renderPanel({ config: { remoteAccess: "Tailscale,SSH via Tailscale,Cloudflare Tunnel,WireGuard" } });
+    const card = within(remoteCard());
+    for (const chip of ["Tailscale", "SSH via Tailscale", "Cloudflare Tunnel", "WireGuard"]) {
+      expect(card.getAllByText(chip).some(el => el.className === "meta-chip")).toBe(true);
+    }
+    expect(card.getByText(/Private network for the app, SSH and admin tools/)).toBeTruthy();
+    expect(card.getByText(/Shell access over the private network/)).toBeTruthy();
+    expect(card.getByText(/Public HTTPS address for chosen pages/)).toBeTruthy();
+    // WireGuard is shown but has no note (not a path this app documents).
+    expect(remoteCard().querySelectorAll(".remote-access-notes li")).toHaveLength(3);
   });
 
   it("defaults remote access to Tailscale when config hasn't loaded yet", () => {
     renderPanel({ config: {} });
-    expect(screen.getByText("Tailscale")).toBeTruthy();
+    expect(within(remoteCard()).getAllByText("Tailscale").some(el => el.className === "meta-chip")).toBe(true);
+  });
+
+  // Reported 2026-09-20: the card showed a bare command with no explanation of
+  // what a clone needs, what to change in it, or how to run it.
+  it("explains how to connect a new clone: what it needs, what to change, how to run it", () => {
+    renderPanel({ config: {} });
+    const clone = remoteCard().querySelector("details.remote-access-clone");
+    expect(clone).toBeTruthy();
+    expect(within(clone).getByText("Connect a new clone")).toBeTruthy();
+    const text = clone.textContent;
+    // needs
+    expect(text).toMatch(/Tailscale account/);
+    expect(text).toMatch(/LAN subnet/);
+    expect(text).toMatch(/two sites can't both advertise 192\.168\.1\.0\/24/);
+    // the command, with the parts to change as placeholders rather than one site's real values
+    const command = clone.querySelector("code.code-block").textContent;
+    expect(command).toContain("tailscale up --ssh --accept-routes");
+    expect(command).toContain("--hostname=<site>-hub");
+    expect(command).toContain("--advertise-routes=<subnet>/24");
+    expect(command).not.toContain("home-hub");
+    expect(command.split("\n").length).toBe(4);   // install line + three-line command, not collapsed onto one line
+    // what to change, and what to do after
+    expect(text).toMatch(/the clone's own name/);
+    expect(text).toMatch(/approve the advertised route/);
+    expect(text).toMatch(/CABIN_INSTANCE_REMOTE_ACCESS/);
+  });
+
+  it("is collapsed until asked for, so the card stays short on a phone", () => {
+    renderPanel({ config: {} });
+    expect(remoteCard().querySelector("details.remote-access-clone").hasAttribute("open")).toBe(false);
+  });
+
+  it("shows one Platform card, wide, instead of a Platform box and a separate Platform Info box", () => {
+    renderPanel({ config: { platformName: "Test Platform", platform: "A test VM" } });
+    expect(screen.queryByText("Platform Info")).toBeNull();
+    const platform = screen.getByText("Platform").closest(".config-card");
+    expect(platform.className).toContain("config-card-wide");
+    expect(within(platform).getByText("A test VM")).toBeTruthy();
   });
 });
 
@@ -5391,5 +5444,30 @@ describe("SensorHistoryPanel Alert History link", () => {
 
     await screen.findByText(/full historical log is not built yet/i);
     expect(screen.queryByRole("button", { name: /open status checks/i })).toBeNull();
+  });
+});
+
+// A control that is open or on carries the theme's selection glow, so the open
+// History toggle has to say it is open (class for the glow, aria for readers).
+describe("workflow History toggle shows when it is open", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  it("is not marked open until pressed, and is marked open while the list shows", async () => {
+    render(<WorkflowRulesCard workflows={[
+      { workflowId: "wf-1", name: "Leak shutoff", location: "cabin", enabled: true,
+        triggerDeviceId: "z2m-leak_mech_room", actions: [{ targetDeviceId: "z2m-main_water_valve" }] },
+    ]} />);
+    const toggle = screen.getByRole("button", { name: "History" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.className).not.toContain("btn-ghost-active");
+
+    fireEvent.click(toggle);
+
+    const open = await screen.findByRole("button", { name: "Hide history" });
+    expect(open.getAttribute("aria-expanded")).toBe("true");
+    expect(open.className).toContain("btn-ghost-active");
   });
 });

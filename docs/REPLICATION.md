@@ -152,9 +152,41 @@ whoever forks the repo — not bugs, just template points:
    hosted hardware, a cloud VM, a specific provider) and
    `CABIN_INSTANCE_REMOTE_ACCESS` (comma-separated; defaults to `Tailscale`
    if unset, matching this guide's §3 mesh-VPN recommendation) in your
-   compose environment. Both display verbatim in the Config panel's
-   Platform / Remote Access cards — see `DashboardController`'s
-   `/api/dashboard/config`.
+   compose environment. Both display in the Config panel's
+   Platform / Remote Access cards (the platform description on the
+   Platform card, each remote-access method as a chip on the Remote
+   Access card) — see `DashboardController`'s `/api/dashboard/config`.
+   The Remote Access card also carries the steps below under "Connect a
+   new clone"; keep the two in step.
+
+   **Connecting a new clone remotely (Tailscale, with SSH)**
+   - *Before you start:* an always-on Linux host running the app; a
+     Tailscale account (free tier is enough) with MagicDNS on and your
+     phone/laptop signed in to the same tailnet; the clone's LAN subnet
+     (`ip route`), different from every other site's (two sites can't
+     both advertise 192.168.1.0/24; the subnet is only needed to reach
+     other LAN devices such as cameras, the hub itself is reachable by
+     name without it); optionally a Cloudflare domain and tunnel token
+     for a public address.
+   - *Run on the clone's host:*
+     ```bash
+     curl -fsSL https://tailscale.com/install.sh | sh
+     sudo tailscale up --ssh --accept-routes \
+       --hostname=<site>-hub \
+       --advertise-routes=<subnet>/24
+     ```
+   - *Change before running:* `<site>-hub` is the clone's own name (for
+     example `home-hub`; the app reaches a site at that name through
+     `VITE_<SITE>_API_BASE`, e.g. `http://home-hub:8080`); `<subnet>/24` is
+     the clone's LAN (drop the line if you don't need LAN devices);
+     `--ssh` enables `ssh <user>@<site>-hub` (remove it to keep SSH off
+     Tailscale).
+   - *Then:* open the sign-in link it prints; approve the advertised
+     route in the Tailscale admin console (Machines → the host → Edit
+     route settings); check `tailscale status` and open the clone's app
+     by its name from a device on the tailnet; set
+     `CABIN_INSTANCE_REMOTE_ACCESS=Tailscale` (add `,Cloudflare Tunnel` if
+     used) in the clone's `.env` and redeploy so the card lists it.
 5. **Home/cabin GPS coordinates** (see §3): gather the real latitude/
    longitude for every physical location you want zone-based presence
    detection at, at the same time you're gathering your other setup

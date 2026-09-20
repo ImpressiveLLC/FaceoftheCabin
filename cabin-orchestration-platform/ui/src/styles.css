@@ -131,7 +131,7 @@ body {
   justify-content: space-between;
   margin-bottom: 18px;
 }
-.panel-header-bar h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.panel-header-bar h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--title-color, var(--text)); }
 .header-actions { display: flex; gap: 8px; }
 .panel-header-title { display: flex; align-items: baseline; gap: 10px; }
 
@@ -318,6 +318,11 @@ body {
   border: 1px solid var(--layer-1-edge);
   border-radius: 12px;
   padding: 16px;
+  /* A grid item won't shrink below its content by default, so one long
+     unbroken value (a commit hash, a firmware string) pushed the card's
+     content past its own border. Let the card shrink and long values wrap. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .config-card-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--text);
@@ -339,13 +344,43 @@ body {
   padding: 3px 0;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 .platform-info-table td:first-child {
-  color: var(--text);
+  color: var(--table-head, var(--text));
   font-weight: 500;
   padding-right: 10px;
-  white-space: nowrap;
+  width: 38%;
 }
+/* The merged Platform card takes the whole row, and its sections flow into as
+   many columns as fit: side by side on a kiosk, stacked on a phone. */
+.config-card-wide { grid-column: 1 / -1; }
+.platform-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 12px 28px;
+  margin-top: 10px;
+}
+.platform-section-wide { grid-column: 1 / -1; }
+.platform-section-title {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.platform-sections .platform-section-title { margin-top: 0; }
+.remote-access-notes { margin: 8px 0 0; padding-left: 16px; font-size: 12px; color: var(--text-muted); }
+.remote-access-notes li + li { margin-top: 4px; }
+.remote-access-clone { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+.remote-access-clone summary { cursor: pointer; color: var(--link); }
+.remote-access-steps { margin: 4px 0 0; padding-left: 18px; }
+.remote-access-steps li + li { margin-top: 4px; }
+.remote-access-clone code { font-size: 11px; color: var(--link-hover); }
+/* A command is copied exactly, so it scrolls sideways instead of wrapping mid-flag. */
+.code-block.code-block-scroll { white-space: pre; word-break: normal; overflow-x: auto; }
 .code-block {
   display: block;
   background: var(--layer-3-fill);
@@ -657,7 +692,7 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .sensor-history-table th {
-  color: var(--text-dim);
+  color: var(--table-head, var(--text-dim));
   font-weight: 600;
   position: sticky;
   top: 0;
@@ -1171,7 +1206,7 @@ body {
   transition: border-color 0.12s, background 0.12s;
 }
 .dm-device-row:hover { border-color: var(--accent-hover); }
-.dm-row-selected { border-color: var(--layer-selected-edge) !important; background: var(--layer-2-fill); }
+.dm-row-selected { border-color: var(--selected-color, var(--layer-selected-edge)) !important; background: var(--layer-2-fill); }
 .dm-row-icon { color: var(--text-muted); flex-shrink: 0; }
 .dm-row-info { flex: 1; min-width: 0; }
 .dm-row-name { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1547,6 +1582,9 @@ body {
   box-shadow: var(--glow-hal);
 }
 
+/* Cards are bold gray here, so hovering one lights its edge in the data-cyan. */
+[data-theme="deepspace"] :is(.device-card, .dm-device-row):hover { border-color: var(--accent); }
+
 /* State badges */
 [data-theme="deepspace"] .state-badge {
   text-shadow: var(--glow-cyan);
@@ -1765,6 +1803,22 @@ button, select, input, textarea { font-family: var(--font-ui, var(--font-display
 .btn-danger:hover {
   background: color-mix(in srgb, var(--danger) 28%, var(--bg-secondary));
 }
+/* A link styled as a button. An <a> is inline by default, and an inline box's
+   padding and border don't take part in line layout: when the label wrapped,
+   the frame was drawn over the paragraph above it and cut through its own
+   text. Make it a real box so it grows to fit its label. */
+a.btn-primary, a.btn-secondary, a.btn-ghost, a.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  text-align: center;
+  text-decoration: none;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.config-card a.btn-secondary { margin-top: 10px; }
 .btn-ghost-active {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
@@ -2256,14 +2310,27 @@ select option { background: var(--bg-secondary); color: var(--text); }
   border-color: var(--layer-hover-edge);
   box-shadow: var(--layer-hover-shadow);
 }
+/* The selected item has to be unmistakable in every theme, so a selected card or
+   row gets three cues that don't depend on the theme having a glow: a full-color
+   edge, a thick bar down its left side, and a tint of the same color behind it.
+   A theme that defines --selected-glow (Deep Space, Pac-Man, Impressive) adds the
+   back-light Deep Space puts behind its active tab; --selected-color is the color
+   of all of it (Deep Space: the tab's HAL red). */
 :is(.device-card.selected, .dm-row-selected) {
-  background: var(--layer-2-fill);
-  border-color: var(--layer-selected-edge);
-  box-shadow: var(--layer-selected-shadow);
+  background: color-mix(in srgb, var(--selected-color, var(--layer-selected-edge)) 16%, var(--layer-2-fill));
+  border-color: var(--selected-color, var(--layer-selected-edge));
+  box-shadow: var(--selected-glow, var(--layer-selected-shadow)), inset 5px 0 0 var(--selected-color, var(--layer-selected-edge));
 }
 :is(.sensor-history-topic-tab.active, .sensor-history-device-chip.selected) {
-  background: var(--layer-3-fill);
-  border-color: var(--layer-selected-edge);
+  background: color-mix(in srgb, var(--selected-color, var(--layer-selected-edge)) 22%, var(--layer-3-fill));
+  border-color: var(--selected-color, var(--layer-selected-edge));
+  box-shadow: var(--selected-glow, none);
+}
+/* A control that is switched on, open or pressed (a workflow's History while its
+   list is showing, reorder mode, live-camera choice, pressed toggles) carries the
+   same selection glow -- in Deep Space, the active tab's back-light. */
+:is(.btn-ghost-active, .btn-secondary.active, .camera-notify-toggle.active, button[aria-pressed="true"]) {
+  box-shadow: var(--selected-glow, none);
 }
 .automation-alert-card { border-width: 2px; border-left-color: var(--state-warning); }
 .kpi-tile.kpi-state-ok    { border-color: color-mix(in srgb, var(--success) 55%, var(--layer-3-edge)); }

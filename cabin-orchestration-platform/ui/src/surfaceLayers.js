@@ -84,10 +84,12 @@ export function deriveSurfaceLayers(palette, opts) {
   const edge3 = fitEdge(hues[2], B, T, [fill2, fill1, page], hueShare);
 
   const shape = opts.shadow || 'none';
+  // Neon glow: a tight bright halo, a wide one, and a far bloom, so a box
+  // visibly lights up its surroundings instead of just sitting in a faint haze.
   const shadows = shape === 'glow'
-    ? [`0 0 5px ${withAlpha(edge1, 0.42)}, 0 0 16px ${withAlpha(edge1, 0.15)}`,
-       `0 0 4px ${withAlpha(edge2, 0.32)}, 0 0 11px ${withAlpha(edge2, 0.09)}`,
-       `0 0 4px ${withAlpha(edge3, 0.36)}`]
+    ? [`0 0 6px ${withAlpha(edge1, 0.85)}, 0 0 18px ${withAlpha(edge1, 0.5)}, 0 0 40px ${withAlpha(edge1, 0.25)}`,
+       `0 0 5px ${withAlpha(edge2, 0.7)}, 0 0 14px ${withAlpha(edge2, 0.4)}, 0 0 28px ${withAlpha(edge2, 0.16)}`,
+       `0 0 4px ${withAlpha(edge3, 0.65)}, 0 0 12px ${withAlpha(edge3, 0.32)}`]
     : shape === 'hard'
       ? [`6px 6px 0 ${border}`, `4px 4px 0 ${border}`, `3px 3px 0 ${border}`]
       : ['none', 'none', 'none'];
