@@ -98,4 +98,69 @@ class PlatformInfoServiceTest {
         assertTrue(((String) disclosure.get("networkExposure")).contains("Tailscale"));
         assertTrue(((String) disclosure.get("dataHandling")).contains("is ever sent to an external AI service"));
     }
+
+    // 2026-09-20: Config > Platform must list everything versioned (backend, Kafka,
+    // Java, Node, Node-RED ...), not just five integrations.
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Map<String, Object>> specItemsById(Map<String, Object> result) {
+        Map<String, Object> specs = (Map<String, Object>) result.get("specs");
+        Map<String, Map<String, Object>> byId = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> group : (java.util.List<Map<String, Object>>) specs.get("groups")) {
+            for (Map<String, Object> item : (java.util.List<Map<String, Object>>) group.get("items")) byId.put((String) item.get("id"), item);
+        }
+        return byId;
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void specsListTheBackendKafkaJavaNodeNodeRedAndTheRestOfTheStack() {
+        Map<String, Object> result = newService(prompt -> Optional.empty()).get();
+
+        Map<String, Map<String, Object>> items = specItemsById(result);
+        for (String id : java.util.List.of("app.cabin-backend", "rt.java", "rt.node", "be.spring-boot", "be.kafka-clients", "svc.kafka",
+                "svc.postgres", "svc.node-red", "svc.home-assistant", "svc.zigbee2mqtt", "svc.grafana", "svc.ollama", "host.docker")) {
+            assertTrue(items.containsKey(id), "platform specs should list " + id);
+        }
+        assertEquals("21", items.get("rt.java").get("declared"));
+        assertEquals("3.3.5", items.get("be.spring-boot").get("declared"));
+        assertEquals("7.6.1", items.get("svc.kafka").get("declared"));
+        assertEquals("floating", items.get("svc.node-red").get("track"));
+        assertEquals("pinned", items.get("svc.kafka").get("track"));
+        Map<String, Object> specs = (Map<String, Object>) result.get("specs");
+        Map<String, Integer> counts = (Map<String, Integer>) specs.get("counts");
+        assertEquals(items.size(), specs.get("total"));
+        assertEquals(items.size(), counts.values().stream().mapToInt(Integer::intValue).sum(), "every entry is counted under exactly one track");
+        assertTrue(counts.get("floating") > 0, "the floating tags are what needs maintenance attention, so they must be counted");
+    }
+
+    @Test
+    void runningVersionsAreFilledInWhereTheBackendCanAskAndNullWhereItCannot() {
+        OllamaClient reachable = new OllamaClient() {
+            @Override public Optional<String> generate(String prompt) { return Optional.empty(); }
+            @Override public Optional<String> fetchVersion() { return Optional.of("0.3.12"); }
+        };
+
+        Map<String, Map<String, Object>> items = specItemsById(newService(reachable).get());
+
+        assertEquals(Runtime.version().toString(), items.get("rt.java").get("running"));
+        assertEquals(org.springframework.boot.SpringBootVersion.getVersion(), items.get("be.spring-boot").get("running"));
+        assertEquals("0.3.12", items.get("svc.ollama").get("running"));
+        // Asked and got nothing back: an explicit "not known", never an invented value.
+        assertEquals(null, items.get("svc.home-assistant").get("running"));
+        assertEquals(true, items.get("svc.home-assistant").get("liveProbe"));
+        assertEquals(null, items.get("svc.postgres").get("running"), "no database in this unit test");
+        // Nothing to ask (a floating third-party image with no probe): no running value and no probe.
+        assertEquals(null, items.get("svc.grafana").get("running"));
+        assertEquals(false, items.get("svc.grafana").get("liveProbe"));
+    }
+
+    @Test
+    void npmEntriesCarryTheLockedVersionAndFloatingOnesSaySo() {
+        Map<String, Map<String, Object>> items = specItemsById(newService(prompt -> Optional.empty()).get());
+
+        assertEquals("latest", items.get("fe.react").get("declared"));
+        assertEquals("floating", items.get("fe.react").get("track"));
+        assertTrue(items.get("fe.react").get("locked") != null, "the version package-lock.json actually builds is shown next to the floating range");
+    }
 }

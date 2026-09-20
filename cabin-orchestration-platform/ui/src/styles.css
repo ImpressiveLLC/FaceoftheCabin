@@ -363,6 +363,31 @@ body {
   margin-top: 10px;
 }
 .platform-section-wide { grid-column: 1 / -1; }
+.spec-group summary { cursor: pointer; }
+.spec-count { margin-left: 6px; color: var(--text-dim); font-weight: 400; }
+.spec-table td:first-child { width: 56%; }
+.spec-name { color: var(--text); font-weight: 500; }
+.spec-note { margin-top: 2px; font-size: 11px; font-weight: 400; color: var(--text-dim); }
+.spec-version { font-variant-numeric: tabular-nums; }
+.spec-shown { color: var(--text); }
+.spec-sub { font-size: 11px; color: var(--text-dim); }
+.spec-track { text-align: right; white-space: nowrap; }
+.spec-summary { margin: 8px 0 4px; }
+/* The chips that flag what may need maintenance: a floating tag is the one that matters most. */
+.meta-chip.spec-chip-warn, .meta-chip.spec-chip-floating { color: var(--warning); border-color: var(--warning); }
+.meta-chip.spec-chip-series { color: var(--text-muted); }
+.meta-chip.spec-chip-unmanaged { color: var(--text-dim); font-style: italic; }
+/* On a phone the three columns leave the version a few characters wide, so each row stacks:
+   name and flag on top, the version underneath at full width. */
+@media (max-width: 700px) {
+  .spec-table, .spec-table tbody { display: block; }
+  .spec-table tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .spec-table td { display: block; padding: 0; border: 0; }
+  .spec-table td:first-child { width: auto; }
+  .spec-table .spec-version { grid-column: 1 / -1; }
+  .spec-table .spec-track { grid-column: 2; grid-row: 1; }
+  .spec-shown { overflow-wrap: anywhere; }
+}
 .platform-section-title {
   margin: 10px 0 4px;
   font-size: 11px;

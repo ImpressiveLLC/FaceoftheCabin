@@ -507,6 +507,42 @@ example; the guard, not the trigger type, is what actually decides this.
 
 ---
 
+## Platform specs — every version we depend on
+
+Config > Platform (admin only) lists everything versioned that the platform
+is built from or runs on: the application releases, languages and base
+images, backend (Maven), UI (npm) and discovery-service (pip) libraries, the
+container services (PostgreSQL/TimescaleDB, Kafka, Mosquitto, Home
+Assistant, Zigbee2MQTT, Node-RED, Frigate, Grafana, Ollama and the rest), and
+the host software that is not pinned in Git. Source of truth:
+`cabin-orchestration-platform/backend/src/main/resources/platform-specs.yaml`,
+served by `GET /api/system/platform-info` as `specs`.
+
+- **How firmly each one is fixed** (`track`): *pinned* is an exact version;
+  *series* fixes only the major/minor, so patch releases arrive on their own;
+  *floating* follows `latest` / `stable` / `main` (or an untagged base), so
+  what runs depends on when it was last pulled; *unmanaged* is host software
+  installed by hand. Floating and unmanaged entries are the maintenance
+  list. The card counts them and flags each.
+- **Running version:** where the backend can ask (Java, Spring Boot, the
+  backend release, PostgreSQL + TimescaleDB, Home Assistant, Zigbee2MQTT,
+  Ollama) the running version is shown next to what Git declares. A floating
+  tag with no probe shows only the tag; to see what is actually running on
+  the host, `docker image inspect <image> --format '{{.Created}}'` and the
+  image's version label. The backend deliberately has no Docker socket, so it
+  cannot list running containers.
+- **Adding or changing a version** anywhere in `cabin-orchestration-platform/`
+  or `family-hub/` means editing `platform-specs.yaml` in the same commit.
+  `PlatformSpecsGuardTest` (no Docker needed) reads every compose `image:`,
+  Dockerfile `FROM`, `pom.xml`, `package.json` / `package-lock.json` and
+  `requirements*.txt` and fails the build when a pin is missing from the
+  file, an entry no longer matches its source, an npm `locked` value differs
+  from `package-lock.json`, or a `track` is wrong. Out of scope until it is
+  deployed: `docs/ai-assistant/training` (the POC1 fine-tuning image).
+- **Host software** (Ubuntu, Docker Engine, Compose, Tailscale, the Actions
+  runner, Ansible) has no pin in Git, so its entry says so and carries the
+  command that reports the real version.
+
 ## Rules & Alerts — Status Checks, the alert banner, and their lineage
 
 *Added 2026-09-18, per explicit user directive: any attribute/UI element

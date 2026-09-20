@@ -41,6 +41,14 @@
       concept, matching the real storage keys/functions in code.
 - [ ] Docs written *about* a change ship in the *same* commit as the
       change.
+- [ ] Any version added or changed anywhere in the repo (container image
+      tag, base image, Maven / npm / pip pin, language runtime) is in
+      `cabin-orchestration-platform/backend/src/main/resources/platform-specs.yaml`
+      (what Config > Platform shows) in the same commit.
+      `PlatformSpecsGuardTest` fails the build if it is missing, differs
+      from its source, or is labelled with the wrong `track`. Software
+      installed on the host by hand (Docker, Tailscale, the runner) is
+      listed there too, as "not pinned in Git".
 
 ## 4. Local storage is optimized — no accumulating cruft
 

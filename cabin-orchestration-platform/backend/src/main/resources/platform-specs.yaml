@@ -1,0 +1,530 @@
+# Platform specs: every versioned thing this platform is built from or runs on.
+#
+# Shown under Config > Platform. Git is the source of truth for code, so this file
+# is checked in and CI-gated: PlatformSpecsGuardTest reads every image tag, base
+# image, Maven / npm / pip pin, and lockfile in the repo and FAILS if one is missing
+# here, if an entry no longer matches its source, or if `track` is wrong. Adding or
+# changing a version anywhere in the repo means changing this file in the same
+# commit (docs/DEFINITION_OF_DONE.md, section 3).
+#
+# Scope: everything that ships or runs in CI, i.e. cabin-orchestration-platform/ and
+# family-hub/. docs/ai-assistant/training (the POC1 fine-tuning image) is not deployed or
+# run yet, so it is out of scope until it is.
+#
+# Fields
+#   id        stable id (unique)
+#   name      what people call it
+#   kind      image | maven-property | maven | npm | pip | project | build-step | host
+#   keys      what to look for in the sources: the full image ref, the property /
+#             artifactId / package name; for a build-step, the whole RUN command that
+#             installs something unpinned in a Dockerfile (host entries: none)
+#   declared  the version part exactly as written in the source
+#   track     pinned    an exact version; changes only when someone changes it
+#             series    only the major / minor is fixed; patch releases arrive on their own
+#             floating  latest / stable / main / an untagged base: what runs depends on
+#                       when it was last pulled
+#             unmanaged not pinned anywhere in Git (host software)
+#   sources   repo-relative files that carry the pin
+#   locked    npm only: the version package-lock.json actually resolves
+#   live      key of a running-version probe in PlatformInfoService, when the backend can ask
+#   note      what to do to update it, or what to watch
+version: 1
+groups:
+  - id: application
+    label: Application
+    items:
+      - id: app.cabin-backend
+        name: Cabin backend
+        kind: project
+        keys: [orchestrator]
+        declared: "0.1.0"
+        track: pinned
+        sources: [cabin-orchestration-platform/backend/pom.xml]
+        live: cabin-backend
+        note: Spring Boot service; released by merging to main (deploy-cabin-backend.yml).
+      - id: app.cabin-ui
+        name: Cabin UI
+        kind: project
+        keys: [cabin-orchestration-ui]
+        declared: "0.1.0"
+        track: pinned
+        sources: [cabin-orchestration-platform/ui/package.json]
+        note: React app served by nginx; released by merging to main (deploy-family-hub.yml).
+      - id: app.telemetry-backup-agent
+        name: Telemetry backup agent
+        kind: project
+        keys: [telemetry-backup-agent]
+        declared: "1.0.0"
+        track: pinned
+        sources: [cabin-orchestration-platform/infra/telemetry-backup-agent/package.json]
+      - id: app.network-scan-agent
+        name: Network scan agent (Home)
+        kind: project
+        keys: [network-scan-agent]
+        declared: "1.0.0"
+        track: pinned
+        sources: [cabin-orchestration-platform/home-collector/network-scan-agent/package.json]
+        note: Runs on the Home Termux phone, not on the M920q; updated by hand there.
+
+  - id: runtimes
+    label: Languages, runtimes and base images
+    items:
+      - id: rt.java
+        name: Java
+        kind: maven-property
+        keys: [java.version]
+        declared: "21"
+        track: series
+        sources: [cabin-orchestration-platform/backend/pom.xml]
+        live: java
+        note: Compiler level. The build image and the runtime image below carry the 21 series.
+      - id: rt.java-runtime-image
+        name: Java runtime image
+        kind: image
+        keys: ["eclipse-temurin:21-jre-alpine"]
+        declared: 21-jre-alpine
+        track: series
+        sources: [cabin-orchestration-platform/backend/Dockerfile]
+        note: Patch releases arrive on the next backend build.
+      - id: rt.maven-build-image
+        name: Maven build image
+        kind: image
+        keys: ["maven:3.9-eclipse-temurin-21-alpine"]
+        declared: 3.9-eclipse-temurin-21-alpine
+        track: series
+        sources: [cabin-orchestration-platform/backend/Dockerfile]
+      - id: rt.node
+        name: Node.js
+        kind: image
+        keys: ["node:20-alpine"]
+        declared: 20-alpine
+        track: series
+        sources:
+          - cabin-orchestration-platform/ui/Dockerfile
+          - cabin-orchestration-platform/ui/test/Dockerfile
+          - cabin-orchestration-platform/infra/telemetry-backup-agent/Dockerfile
+        note: Node 20 reached end of life in April 2026; move the UI and agent images to a current LTS.
+      - id: rt.nginx
+        name: nginx (serves the UI)
+        kind: image
+        keys: ["nginx:alpine"]
+        declared: alpine
+        track: floating
+        sources:
+          - cabin-orchestration-platform/ui/Dockerfile
+          - family-hub/Dockerfile
+        note: Untagged, so whatever alpine's newest nginx is at build time. Serves both the UI and the Family Hub.
+      - id: rt.python
+        name: Python
+        kind: image
+        keys: ["python:3.12-slim"]
+        declared: 3.12-slim
+        track: series
+        sources:
+          - cabin-orchestration-platform/discovery-service/Dockerfile
+          - cabin-orchestration-platform/discovery-service/test/Dockerfile
+          - cabin-orchestration-platform/infra/docker-compose.yml
+          - cabin-orchestration-platform/locations/home/docker-compose.yml
+      - id: rt.backend-image-tools
+        name: Node.js, npm and the Bitwarden CLI inside the backend image
+        kind: build-step
+        keys: ["apk add --no-cache nodejs npm && npm install -g @bitwarden/cli"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/backend/Dockerfile]
+        note: Installed at image build time from Alpine and npm, so every backend build can pick up a newer one. The Vaultwarden credential store shells out to it.
+      - id: rt.playwright-image
+        name: Playwright test image (Family Hub journeys)
+        kind: image
+        keys: ["mcr.microsoft.com/playwright:v1.62.0-noble"]
+        declared: v1.62.0-noble
+        track: pinned
+        sources: [family-hub/test/Dockerfile]
+        note: Keep in step with the playwright package below.
+
+  - id: backend-libs
+    label: Backend libraries (Maven)
+    items:
+      - id: be.spring-boot
+        name: Spring Boot
+        kind: maven-property
+        keys: [spring.boot.version]
+        declared: "3.3.5"
+        track: pinned
+        sources: [cabin-orchestration-platform/backend/pom.xml]
+        live: spring-boot
+        note: Also fixes the versions of Jackson, the PostgreSQL driver and the other starters. The 3.3 line left open-source support in mid-2025; plan a move to a supported line.
+      - id: be.kafka-clients
+        name: Kafka client
+        kind: maven
+        keys: [kafka-clients]
+        declared: "3.7.0"
+        track: pinned
+        sources: [cabin-orchestration-platform/backend/pom.xml]
+        note: Keep within one minor of the Kafka broker (see Services).
+      - id: be.paho
+        name: Eclipse Paho MQTT client
+        kind: maven
+        keys: [org.eclipse.paho.client.mqttv3]
+        declared: "1.2.5"
+        track: pinned
+        sources: [cabin-orchestration-platform/backend/pom.xml]
+      - id: be.docker-java
+        name: docker-java
+        kind: maven
+        keys: [docker-java-api, docker-java-transport, docker-java-transport-zerodep]
+        declared: "3.7.1"
+        track: pinned
+        sources: [cabin-orchestration-platform/backend/pom.xml]
+      - id: be.testcontainers
+        name: Testcontainers (tests)
+        kind: maven-property
+        keys: [testcontainers.version]
+        declared: "1.21.4"
+        track: pinned
+        sources: [cabin-orchestration-platform/backend/pom.xml]
+      - id: be.surefire
+        name: Maven Surefire (tests)
+        kind: maven
+        keys: [maven-surefire-plugin]
+        declared: "3.2.5"
+        track: pinned
+        sources: [cabin-orchestration-platform/backend/pom.xml]
+
+  - id: frontend-libs
+    label: UI libraries (npm)
+    items:
+      - id: fe.react
+        name: React
+        kind: npm
+        keys: [react]
+        declared: latest
+        locked: "19.2.8"
+        track: floating
+        sources: [cabin-orchestration-platform/ui/package.json]
+        note: package.json says latest; package-lock.json holds the version that builds. Pin the range so an upgrade is a decision.
+      - id: fe.react-dom
+        name: React DOM
+        kind: npm
+        keys: [react-dom]
+        declared: latest
+        locked: "19.2.8"
+        track: floating
+        sources: [cabin-orchestration-platform/ui/package.json]
+      - id: fe.vite
+        name: Vite
+        kind: npm
+        keys: [vite]
+        declared: latest
+        locked: "8.1.5"
+        track: floating
+        sources: [cabin-orchestration-platform/ui/package.json]
+      - id: fe.plugin-react
+        name: Vite React plugin
+        kind: npm
+        keys: ["@vitejs/plugin-react"]
+        declared: latest
+        locked: "6.0.4"
+        track: floating
+        sources: [cabin-orchestration-platform/ui/package.json]
+      - id: fe.lucide
+        name: Lucide icons
+        kind: npm
+        keys: [lucide-react]
+        declared: latest
+        locked: "1.26.0"
+        track: floating
+        sources: [cabin-orchestration-platform/ui/package.json]
+      - id: fe.vitest
+        name: Vitest (tests)
+        kind: npm
+        keys: [vitest]
+        declared: "^3"
+        locked: "3.2.7"
+        track: series
+        sources: [cabin-orchestration-platform/ui/package.json]
+      - id: fe.jsdom
+        name: jsdom (tests)
+        kind: npm
+        keys: [jsdom]
+        declared: "^25"
+        locked: "25.0.1"
+        track: series
+        sources: [cabin-orchestration-platform/ui/package.json]
+      - id: fe.testing-library-react
+        name: Testing Library React (tests)
+        kind: npm
+        keys: ["@testing-library/react"]
+        declared: "^16"
+        locked: "16.3.2"
+        track: series
+        sources: [cabin-orchestration-platform/ui/package.json]
+      - id: fe.jest-dom
+        name: jest-dom (tests)
+        kind: npm
+        keys: ["@testing-library/jest-dom"]
+        declared: "^6"
+        locked: "6.9.1"
+        track: series
+        sources: [cabin-orchestration-platform/ui/package.json]
+      - id: fe.mqtt
+        name: MQTT.js (telemetry backup and network scan agents)
+        kind: npm
+        keys: [mqtt]
+        declared: "^5.10.0"
+        track: series
+        sources:
+          - cabin-orchestration-platform/infra/telemetry-backup-agent/package.json
+          - cabin-orchestration-platform/home-collector/network-scan-agent/package.json
+        note: No lockfile in either place, so each install picks the newest 5.x.
+      - id: fe.multicast-dns
+        name: multicast-dns (network scan agent)
+        kind: npm
+        keys: [multicast-dns]
+        declared: "^7.2.5"
+        track: series
+        sources: [cabin-orchestration-platform/home-collector/network-scan-agent/package.json]
+      - id: fe.playwright
+        name: Playwright (Family Hub journeys)
+        kind: npm
+        keys: [playwright]
+        declared: "1.62.0"
+        locked: "1.62.0"
+        track: pinned
+        sources: [family-hub/package.json]
+
+  - id: discovery-libs
+    label: Discovery service libraries (pip)
+    items:
+      - id: py.fastapi
+        name: FastAPI
+        kind: pip
+        keys: [fastapi]
+        declared: "0.115.6"
+        track: pinned
+        sources: [cabin-orchestration-platform/discovery-service/requirements.txt]
+      - id: py.uvicorn
+        name: Uvicorn
+        kind: pip
+        keys: [uvicorn]
+        declared: "0.34.0"
+        track: pinned
+        sources: [cabin-orchestration-platform/discovery-service/requirements.txt]
+      - id: py.pydantic
+        name: Pydantic
+        kind: pip
+        keys: [pydantic]
+        declared: "2.10.4"
+        track: pinned
+        sources: [cabin-orchestration-platform/discovery-service/requirements.txt]
+      - id: py.pytest
+        name: pytest (tests)
+        kind: pip
+        keys: [pytest]
+        declared: "8.3.4"
+        track: pinned
+        sources: [cabin-orchestration-platform/discovery-service/requirements-dev.txt]
+      - id: py.httpx
+        name: httpx (tests)
+        kind: pip
+        keys: [httpx]
+        declared: "0.28.1"
+        track: pinned
+        sources: [cabin-orchestration-platform/discovery-service/requirements-dev.txt]
+
+  - id: services
+    label: Services (containers)
+    items:
+      - id: svc.postgres
+        name: PostgreSQL with TimescaleDB
+        kind: image
+        keys: ["timescale/timescaledb:latest-pg16"]
+        declared: latest-pg16
+        track: floating
+        sources:
+          - cabin-orchestration-platform/infra/docker-compose.yml
+          - cabin-orchestration-platform/locations/home/docker-compose.yml
+        live: postgres
+        note: PostgreSQL 16 is fixed; the TimescaleDB release moves with the tag. Back up before pulling.
+      - id: svc.kafka
+        name: Apache Kafka (Confluent Platform)
+        kind: image
+        keys: ["confluentinc/cp-kafka:7.6.1"]
+        declared: "7.6.1"
+        track: pinned
+        sources:
+          - cabin-orchestration-platform/infra/docker-compose.yml
+          - cabin-orchestration-platform/locations/home/docker-compose.yml
+        note: Confluent Platform 7.6.x ships Apache Kafka 3.6.x.
+      - id: svc.mosquitto-stack
+        name: Mosquitto MQTT broker (production stack)
+        kind: image
+        keys: ["eclipse-mosquitto:latest"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/infra/production-stack/docker-compose.yml]
+        note: The base compose and Home use eclipse-mosquitto:2; the running broker's version isn't exposed over MQTT.
+      - id: svc.mosquitto-base
+        name: Mosquitto MQTT broker (base compose, Home)
+        kind: image
+        keys: ["eclipse-mosquitto:2"]
+        declared: "2"
+        track: series
+        sources:
+          - cabin-orchestration-platform/infra/docker-compose.yml
+          - cabin-orchestration-platform/locations/home/docker-compose.yml
+      - id: svc.home-assistant
+        name: Home Assistant
+        kind: image
+        keys: ["ghcr.io/home-assistant/home-assistant:stable"]
+        declared: stable
+        track: floating
+        sources:
+          - cabin-orchestration-platform/infra/docker-compose.yml
+          - cabin-orchestration-platform/infra/production-stack/docker-compose.yml
+          - cabin-orchestration-platform/locations/home/docker-compose.yml
+        live: home-assistant
+        note: Read the release notes before pulling; integrations (Kidde, Liebherr) break across releases.
+      - id: svc.zigbee2mqtt
+        name: Zigbee2MQTT
+        kind: image
+        keys: ["koenkk/zigbee2mqtt:latest"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/infra/production-stack/docker-compose.yml]
+        live: zigbee2mqtt
+      - id: svc.node-red
+        name: Node-RED
+        kind: image
+        keys: ["nodered/node-red:latest"]
+        declared: latest
+        track: floating
+        sources:
+          - cabin-orchestration-platform/infra/docker-compose.yml
+          - cabin-orchestration-platform/infra/production-stack/docker-compose.yml
+          - cabin-orchestration-platform/locations/home/docker-compose.yml
+        note: Flows are versioned in Git; the Node-RED release itself floats.
+      - id: svc.frigate
+        name: Frigate NVR
+        kind: image
+        keys: ["ghcr.io/blakeblackshear/frigate:stable"]
+        declared: stable
+        track: floating
+        sources:
+          - cabin-orchestration-platform/infra/docker-compose.yml
+          - cabin-orchestration-platform/infra/production-stack/docker-compose.yml
+          - cabin-orchestration-platform/locations/home/docker-compose.yml
+      - id: svc.mediamtx
+        name: MediaMTX (RTSP relay)
+        kind: image
+        keys: ["bluenviron/mediamtx:latest"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/infra/production-stack/docker-compose.yml]
+      - id: svc.uptime-kuma
+        name: Uptime Kuma
+        kind: image
+        keys: ["louislam/uptime-kuma:2.5.0"]
+        declared: "2.5.0"
+        track: pinned
+        sources: [cabin-orchestration-platform/infra/production-stack/docker-compose.yml]
+      - id: svc.homepage
+        name: Homepage dashboard
+        kind: image
+        keys: ["ghcr.io/gethomepage/homepage:latest"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/infra/production-stack/docker-compose.yml]
+      - id: svc.grafana
+        name: Grafana
+        kind: image
+        keys: ["grafana/grafana:latest"]
+        declared: latest
+        track: floating
+        sources:
+          - cabin-orchestration-platform/infra/docker-compose.m920q.yml
+          - cabin-orchestration-platform/infra/docker-compose.yml
+          - cabin-orchestration-platform/locations/home/docker-compose.yml
+      - id: svc.prometheus
+        name: Prometheus
+        kind: image
+        keys: ["prom/prometheus:latest"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/infra/docker-compose.yml]
+      - id: svc.ollama
+        name: Ollama
+        kind: image
+        keys: ["ollama/ollama:latest"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/infra/docker-compose.m920q.yml]
+        live: ollama
+        note: The model (llama3.2:3b) is versioned separately from the server.
+      - id: svc.open-webui
+        name: Open WebUI
+        kind: image
+        keys: ["ghcr.io/open-webui/open-webui:main"]
+        declared: main
+        track: floating
+        sources: [cabin-orchestration-platform/infra/docker-compose.m920q.yml]
+      - id: svc.vaultwarden
+        name: Vaultwarden
+        kind: image
+        keys: ["vaultwarden/server:latest"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/infra/docker-compose.m920q.yml]
+        note: Holds credentials; update deliberately and keep a backup of its data first.
+
+  - id: host
+    label: Host and tooling (not pinned in Git)
+    items:
+      - id: host.os
+        name: Ubuntu
+        kind: host
+        keys: []
+        declared: not pinned in Git
+        track: unmanaged
+        sources: []
+        note: "Documented as Ubuntu 24.04 LTS. Check with: lsb_release -d. Security updates come from unattended upgrades."
+      - id: host.docker
+        name: Docker Engine
+        kind: host
+        keys: []
+        declared: not pinned in Git
+        track: unmanaged
+        sources: []
+        note: "Check with: docker version --format '{{.Server.Version}}'."
+      - id: host.compose
+        name: Docker Compose
+        kind: host
+        keys: []
+        declared: not pinned in Git
+        track: unmanaged
+        sources: []
+        note: "Check with: docker compose version."
+      - id: host.tailscale
+        name: Tailscale
+        kind: host
+        keys: []
+        declared: not pinned in Git
+        track: unmanaged
+        sources: []
+        note: "Check with: tailscale version. Client updates are manual unless auto-update is on."
+      - id: host.runner
+        name: GitHub Actions self-hosted runner
+        kind: host
+        keys: []
+        declared: not pinned in Git
+        track: unmanaged
+        sources: []
+        note: The runner updates itself; check its version under the repository's Settings, Actions, Runners.
+      - id: host.ansible
+        name: Ansible
+        kind: host
+        keys: []
+        declared: not pinned in Git
+        track: unmanaged
+        sources: []
+        note: "Runs from an operator machine. Check with: ansible --version."

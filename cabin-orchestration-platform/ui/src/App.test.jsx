@@ -5471,3 +5471,124 @@ describe("workflow History toggle shows when it is open", () => {
     expect(open.className).toContain("btn-ghost-active");
   });
 });
+
+// Config > Platform lists everything versioned (platform-specs.yaml, served by
+// GET /api/system/platform-info as `specs`), not just five live integrations.
+describe("FamilyConfigPanel — Platform specs", () => {
+  afterEach(cleanup);
+
+  const specs = {
+    total: 6,
+    counts: { pinned: 2, series: 1, floating: 2, unmanaged: 1 },
+    groups: [
+      { id: "runtimes", label: "Languages, runtimes and base images", items: [
+        { id: "rt.java", name: "Java", declared: "21", track: "series", running: "21.0.11+10-LTS", liveProbe: true, locked: null, sources: [], note: "Compiler level." },
+        { id: "rt.node", name: "Node.js", declared: "20-alpine", track: "series", running: null, liveProbe: false, locked: null, sources: [], note: "Node 20 reached end of life in April 2026." },
+      ] },
+      { id: "services", label: "Services (containers)", items: [
+        { id: "svc.kafka", name: "Apache Kafka (Confluent Platform)", declared: "7.6.1", track: "pinned", running: null, liveProbe: false, locked: null, sources: [], note: null },
+        { id: "svc.node-red", name: "Node-RED", declared: "latest", track: "floating", running: null, liveProbe: false, locked: null, sources: [], note: null },
+        { id: "svc.home-assistant", name: "Home Assistant", declared: "stable", track: "floating", running: null, liveProbe: true, locked: null, sources: [], note: null },
+      ] },
+      { id: "frontend-libs", label: "UI libraries (npm)", items: [
+        { id: "fe.react", name: "React", declared: "latest", track: "floating", running: null, liveProbe: false, locked: "19.2.8", sources: [], note: null },
+      ] },
+      { id: "host", label: "Host and tooling (not pinned in Git)", items: [
+        { id: "host.docker", name: "Docker Engine", declared: "not pinned in Git", track: "unmanaged", running: null, liveProbe: false, locked: null, sources: [], note: "Check with: docker version." },
+      ] },
+    ],
+  };
+
+  function renderPanel(body) {
+    const authedFetch = vi.fn((url) => url.includes("/api/system/platform-info")
+      ? Promise.resolve({ ok: true, json: async () => body })
+      : Promise.resolve({ ok: true, json: async () => [] }));
+    return render(
+      <AppContext.Provider value={{ config: {}, locationCfg: { haUrl: "http://cabin-hub:8123" } }}>
+        <FamilyConfigPanel auth={{ authedFetch }} />
+      </AppContext.Provider>
+    );
+  }
+  const withSpecs = { versions: {}, specs, hardware: [], aiDisclosure: null };
+
+  it("lists the backend's languages, runtimes, services and host tooling under their own headings", async () => {
+    renderPanel(withSpecs);
+
+    expect(await screen.findByText("Apache Kafka (Confluent Platform)")).toBeTruthy();
+    for (const heading of ["Languages, runtimes and base images", "Services (containers)", "UI libraries (npm)", "Host and tooling (not pinned in Git)"]) {
+      expect(screen.getByText(heading)).toBeTruthy();
+    }
+    expect(screen.getByText("Node.js")).toBeTruthy();
+    expect(screen.getByText("Node-RED")).toBeTruthy();
+    expect(screen.getByText("Docker Engine")).toBeTruthy();
+  });
+
+  it("shows the running version when the backend could ask, with what is declared beside it, and says so when it could not", async () => {
+    renderPanel(withSpecs);
+    await screen.findByText("Java");
+
+    const java = screen.getByText("Java").closest("tr");
+    expect(within(java).getByText("21.0.11+10-LTS")).toBeTruthy();
+    expect(within(java).getByText("declared 21")).toBeTruthy();
+    // Asked (a probe exists) and got nothing back:
+    expect(within(screen.getByText("Home Assistant").closest("tr")).getByText("not reachable now")).toBeTruthy();
+    // Nothing to ask: just what Git declares, no "not reachable" claim.
+    const kafka = screen.getByText("Apache Kafka (Confluent Platform)").closest("tr");
+    expect(within(kafka).getByText("7.6.1")).toBeTruthy();
+    expect(within(kafka).queryByText(/not reachable/)).toBeNull();
+  });
+
+  it("flags what may need maintenance: floating tags, floating series and host software, but not pinned versions", async () => {
+    renderPanel(withSpecs);
+    await screen.findByText("Node-RED");
+
+    expect(within(screen.getByText("Node-RED").closest("tr")).getByText("floats")).toBeTruthy();
+    expect(within(screen.getByText("Node.js").closest("tr")).getByText("patches float")).toBeTruthy();
+    expect(within(screen.getByText("Docker Engine").closest("tr")).getByText("not in Git")).toBeTruthy();
+    const kafka = screen.getByText("Apache Kafka (Confluent Platform)").closest("tr");
+    expect(kafka.querySelector(".meta-chip")).toBeNull();
+  });
+
+  it("shows what package-lock.json locks next to a floating npm range", async () => {
+    renderPanel(withSpecs);
+    const react = (await screen.findByText("React")).closest("tr");
+
+    expect(within(react).getByText("latest")).toBeTruthy();
+    expect(within(react).getByText("locked at 19.2.8")).toBeTruthy();
+  });
+
+  it("carries the maintenance note under the component name", async () => {
+    renderPanel(withSpecs);
+    expect(await screen.findByText(/Node 20 reached end of life in April 2026/)).toBeTruthy();
+  });
+
+  it("summarises how many components there are and how many float, highlighting the floating count", async () => {
+    const { container } = renderPanel(withSpecs);
+    await screen.findByText("Node-RED");
+
+    const summary = container.querySelector(".spec-summary");
+    expect(summary.textContent).toContain("6 components");
+    expect(summary.textContent).toContain("2 pinned");
+    expect(summary.textContent).toContain("1 patches float");
+    expect(summary.textContent).toContain("2 float on latest");
+    expect(summary.textContent).toContain("1 not pinned in Git");
+    expect(within(summary).getByText("2 float on latest").className).toContain("spec-chip-warn");
+  });
+
+  it("puts each category in a section that can be collapsed, open by default", async () => {
+    const { container } = renderPanel(withSpecs);
+    await screen.findByText("Node-RED");
+
+    const groups = container.querySelectorAll("details.spec-group");
+    expect(groups).toHaveLength(4);
+    groups.forEach(g => expect(g.hasAttribute("open")).toBe(true));
+  });
+
+  it("still shows the five live versions when the backend predates the full specs", async () => {
+    renderPanel({ versions: { homeAssistant: "2026.9.1", ollama: "0.3.12" }, hardware: [], aiDisclosure: null });
+
+    expect(await screen.findByText("2026.9.1")).toBeTruthy();
+    expect(screen.getByText("Ollama")).toBeTruthy();
+    expect(document.querySelector(".spec-summary")).toBeNull();
+  });
+});
