@@ -48,6 +48,10 @@ Configuration (both optional): `ask.context.docs-root` (default `/app/docs`), `a
 - **Not done:** an ontology entry for the three `ask.context.*` properties (operator-only Spring properties, no UI; DoD §3 asks for user-facing configurable concepts, so I judged this out of scope but did not verify that judgment with you).
 - **POC1 interaction:** `cabin-assistant-poc1` was evaluated on 2026-09-16 through the r1 context path (see [round history](eval-results/round-history-2026-09-20.md)). Any comparison against it needs the same fixtures, question set and rubric, and a check that its training examples do not overlap the evaluation questions; I did not verify that overlap.
 
+## Baseline (captured 2026-09-21, ungraded)
+
+The pre-change baseline on the deployed r1 context path is recorded in [eval-results/2026-09-21-v2-baseline-r1-context.md](eval-results/2026-09-21-v2-baseline-r1-context.md): 72 of 72 trials executed with the v2 question file, admin role, image `cabin-backend:4bcbd4d`. **It has no pass rate; all 72 trials await grading.** It had to be captured before this change deploys, since afterwards the r1 context path is gone.
+
 ## To evaluate (after review, merge and deploy; each needs an explicit go-ahead)
 
 ```sh
