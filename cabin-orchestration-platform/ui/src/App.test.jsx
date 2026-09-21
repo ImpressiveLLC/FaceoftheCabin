@@ -5037,6 +5037,29 @@ describe("HelpdeskPanel", () => {
     expect(screen.queryByText(/✓ Verified/)).toBeNull();
   });
 
+  it("labels a reviewed-document source as such, not as Verified or Auto-generated", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        answer: "An empty card is not proof nobody was there.",
+        sources: [{
+          entityRef: "doc:ai-assistant/user-guide/operations.md#capability-map", chunkType: "DESCRIPTION",
+          content: "## Capability map", source: "REVIEWED_DOCUMENT",
+        }],
+        answeredByModel: true,
+      }),
+    }));
+    renderPanel();
+
+    fireEvent.change(screen.getByPlaceholderText("Ask a question…"), { target: { value: "Camera card empty?" } });
+    fireEvent.click(screen.getByRole("button", { name: /Ask/ }));
+
+    expect(await screen.findByText(/Reviewed doc/)).toBeTruthy();
+    expect(screen.getByText(/operations\.md#capability-map/)).toBeTruthy();
+    expect(screen.queryByText(/✓ Verified/)).toBeNull();
+    expect(screen.queryByText(/Auto-generated/)).toBeNull();
+  });
+
   it("shows the fallback note when Ollama wasn't reachable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,

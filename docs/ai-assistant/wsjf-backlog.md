@@ -166,7 +166,7 @@ Current first-PR scope and pending implementation ratification remain recorded b
 
 ## [POC1] Local SFT fine-tuning pipeline (core product tier)
 
-**Status:** proposed 2026-09-14, contributed by Claude Code. Code exists at `docs/ai-assistant/training/` but has not been executed even once — see that directory's own README for the honest list of what's unverified.
+**Status:** proposed 2026-09-14, contributed by Claude Code. Code exists at `docs/ai-assistant/training/`. *Correction 2026-09-20: this line originally said the code had never been executed. Per that directory's README and a read-only inspection of the M920q, Tier 1 (build) ran on 2026-09-14/15 and a Tier 2 evaluation ran on 2026-09-16 — see [round history](rag/eval-results/round-history-2026-09-20.md). Ratification remains pending and no result is adopted.*
 
 **WSJF score:** 6.400
 
@@ -266,6 +266,18 @@ Corpus foundation r1 is available for review in [PR #35](https://github.com/Impr
 Cowork requested component and loss semantics before this finding can enter the backlog. The component is [Family Hub `family-hub.html`](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/acc17b2/family-hub/family-hub.html), specifically `sendNote()`, `saveNotes()` and `refreshNotesFromServer()` using the `smrekar_family_notes` local cache. A failed or offline send is initially retained locally, so the first failure degrades gracefully. If the note is not present on the server, a later successful `refreshNotesFromServer()` replaces that local cache with the server list; the local-only note can then be silently lost. This is a data-loss path under that sequence, not merely degraded availability. The current PR records preservation/check/resend guidance in Q02. No offline-note recovery WSJF entry or implementation authorization is created until Cowork confirms the desired scope.
 
 Next unblocked work: use the recovered answer set to prepare scoped baseline trials under the existing implementation/ratification rules, while expanding consumer-backed configuration semantics and capability coverage iteratively. A complete corpus is not a prerequisite for testing already supported answers. Installation/recovery dependencies stay visible here without freezing that work. No D13–D16 dependency is introduced. If resolution requires new implementation, propose its scope/score here before building it; recording a dependency does not grant production authorization.
+
+## Status reconciliation — 2026-09-20
+
+Checked before starting the next iteration, read-only, against GitHub `main` (`4bcbd4d`), every local and remote branch and open PR, the M920q (clone, `~/eval-results`, running containers, production `knowledge_node` identity columns) — because earlier work had been started from a status that did not match reality. This section corrects status text only. It changes no Ratification field, score or order, and grants no authorization.
+
+| Item | What the repo said | What was verified | Where recorded |
+|---|---|---|---|
+| POC1 | "has not been executed even once"; training README: Tier 2 "not yet run" | Tier 1 built 2026-09-14/15; Tier 2 runs on 2026-09-16 (9 / 25 by the grader's own tally, gate logic known defective, train/eval overlap not verified). Nothing ratified. | POC1 status line above; [round history](rag/eval-results/round-history-2026-09-20.md) |
+| C1a | 2 / 24 on 2026-09-07 | Later graded rounds exist only on the M920q (claude-code r2 2 / 24, r3 3 / 24 on 2026-09-08). Production still runs `context-fixtures-r1.json`; only the Home-collector pair of fixture-designated KnowledgeNodes exists in the database. | [round history](rag/eval-results/round-history-2026-09-20.md) |
+| C1 next step | listed in the C1a review's "Iteration and gaps"; not started | Implemented on branch `claude-code/c1a-routing-and-reviewed-docs`: whole-word scored routing plus role-gated reviewed-document context. Unit-tested; **not merged, deployed or evaluated.** | [c1a-iteration-2.md](rag/c1a-iteration-2.md) |
+| Eval question manifest | `questions_manifest_r1.json` `source_doc_status`: 13 `not_yet_written` | Its `source_docs` name files that do not exist (`quick-start`, `tokens-security`, `credential-management`, `user-onboarding`, `integrations`); the corpus is the five files under `docs/ai-assistant/user-guide/`, which `cli-questions-r1.json`'s oracles point to. The manifest's status is stale. Not edited here: its owner should decide how it maps to the consolidated guides. | this section |
+| Operator tooling | referenced by the grading runbook | `docs/ai-assistant/rag/grading-runbook.md` and `rag/scripts/run_iteration.py` were untracked on the M920q, so they existed nowhere else. Its clone `~/FaceoftheCabin` was on `claude-code/poc1-local-finetuning-pipeline`, 60 commits behind `origin/main`, with no commits missing from the remote; `~/repos/FaceoftheCabin` was a stale `main` from 2026-09-05. | this section (to be committed by whoever owns them) |
 
 ## Proposal validation
 

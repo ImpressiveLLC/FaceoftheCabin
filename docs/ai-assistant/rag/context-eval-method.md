@@ -29,6 +29,8 @@ Freeze all of the following before a paired comparison run:
 
 Never adjust fixtures or expected outcomes between a baseline and its paired improvement run.
 
+**r2 (2026-09-20) is a new intervention, not an adjustment.** `context-fixtures-r1.json` stays frozen as the record of what the 2026-09-07 and later r1 runs used; `context-fixtures-r2.json` is loaded from the r2 deploy onward, together with the routing and document-context code changes described in [c1a-iteration-2.md](c1a-iteration-2.md). A comparison of an r1-era run against an r2-era run measures that whole change and must say so (see the D template's identity table).
+
 ---
 
 ## Invocation

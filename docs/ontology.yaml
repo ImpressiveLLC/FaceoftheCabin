@@ -8642,7 +8642,7 @@ elements:
   # confirmed this session that OntologyLookupService only does reverse
   # id->display-name lookup (Opportunity Map lineage chips), not general
   # Q&A, and TinyHelpdeskService's real retrieval is stopword-filtered
-  # keyword scoring against KnowledgeNode rows / context-fixtures-r1.json
+  # keyword scoring against KnowledgeNode rows / context-fixtures-r2.json
   # (C1a), not a live ontology.yaml reader. Wiring this into what Ask can
   # actually answer needs the same corpus-doc + C1a-fixture path already
   # used for docs/MAINTENANCE.md's Device Lifecycle section, or the
@@ -10347,3 +10347,12 @@ elements:
       exactly the case this entity's own relationships list already
       couldn't fully express — derives_from device_descriptor is the
       common case, not a universal constraint.
+      Status implemented — awaiting ratification (C1a r2, 2026-09-20,
+      not yet merged or deployed): the KnowledgeSource enum gained a
+      third value, REVIEWED_DOCUMENT. It exists only on Ask responses —
+      AskContextBuilder builds it in memory from a named section of an
+      allowlisted repository Markdown file (entityRef doc:<path>#<section>)
+      and never writes it to knowledge_node — so it is not a third row
+      class, does not change the bimodal data_class rule above, and is
+      deliberately not MANUALLY_CURATED. See
+      docs/ai-assistant/rag/c1a-iteration-2.md.
