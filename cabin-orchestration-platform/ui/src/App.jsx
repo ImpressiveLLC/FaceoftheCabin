@@ -2428,6 +2428,7 @@ export function DeviceManagerPanel({ auth }) {
   const [parentOnly, setParentOnly] = useState(() => localStorage.getItem("devices.parentOnly") === "true");
   const [lifecycleFilter, setLifecycleFilter] = useState(() =>
     readStoredJson("devices.lifecycleFilter", DEFAULT_LIFECYCLE_FILTER));
+  const [importedFromFilter, setImportedFromFilter] = useState(() => localStorage.getItem("devices.importedFrom") || "");
   const [candidateDevices, setCandidateDevices] = useState([]);
   const [previouslyExposed, setPreviouslyExposed] = useState([]);
   const [reviewingPrevious, setReviewingPrevious] = useState(false);
@@ -2440,6 +2441,7 @@ export function DeviceManagerPanel({ auth }) {
   useEffect(() => localStorage.setItem("devices.groupFlow", groupFlow), [groupFlow]);
   useEffect(() => localStorage.setItem("devices.parentOnly", String(parentOnly)), [parentOnly]);
   useEffect(() => localStorage.setItem("devices.lifecycleFilter", JSON.stringify(lifecycleFilter)), [lifecycleFilter]);
+  useEffect(() => localStorage.setItem("devices.importedFrom", importedFromFilter), [importedFromFilter]);
 
   const reviewLocations = useMemo(() => activeLocation === "both"
     ? [LOCATIONS.cabin, LOCATIONS.home]
@@ -2488,9 +2490,14 @@ export function DeviceManagerPanel({ auth }) {
   // (previously-exposed devices, merged into managerDevices above) and,
   // like the old exclusive "previous" filter value, overrides Parent-only/
   // State while active rather than combining with them.
+  // A saved platform no device carries any more (all its devices removed or
+  // ignored out of the list) must not silently hide everything behind a
+  // control that is no longer shown -- it falls back to "All".
+  const importOptions = useMemo(() => importedFromOptions(managerDevices), [managerDevices]);
+  const activeImportedFrom = importOptions.includes(importedFromFilter) ? importedFromFilter : "";
   const effectiveDeviceFilter = reviewingPrevious
-    ? { parentOnly: false, lifecycle: ["DEFERRED", "IGNORED"] }
-    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter });
+    ? { parentOnly: false, lifecycle: ["DEFERRED", "IGNORED"], importedFrom: "" }
+    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter, importedFrom: activeImportedFrom });
 
   // Hoisted up from DmSeeView (was local there) so See and Change render
   // the exact same saved grouping/order -- Change is a read-only consumer
@@ -2582,6 +2589,17 @@ export function DeviceManagerPanel({ auth }) {
                     : reviewingPrevious ? "Reviewing previously exposed devices ignores this"
                     : undefined}
                 />
+                {importOptions.length > 0 && (
+                  <label className="dm-toolbar-select">Imported from
+                    <select value={activeImportedFrom} disabled={reviewingPrevious}
+                      onChange={e => setImportedFromFilter(e.target.value)}
+                      title={reviewingPrevious ? "Reviewing previously exposed devices ignores this"
+                        : "Show only devices imported from one platform"}>
+                      <option value="">All</option>
+                      {importOptions.map(p => <option key={p} value={p}>{importedFromLabel(p)}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label className="dm-toolbar-checkbox" title="Fetches devices no longer registered, for review">
                   <input type="checkbox" checked={reviewingPrevious}
                     onChange={e => setReviewingPrevious(e.target.checked)} />
@@ -2590,7 +2608,7 @@ export function DeviceManagerPanel({ auth }) {
               </span>
               <button className="btn-ghost" onClick={() => {
                 setGroupBy("type"); setParentOnly(false);
-                setLifecycleFilter(DEFAULT_LIFECYCLE_FILTER); setReviewingPrevious(false);
+                setLifecycleFilter(DEFAULT_LIFECYCLE_FILTER); setImportedFromFilter(""); setReviewingPrevious(false);
               }} title="Return Group, Parent scope, and State to their defaults">
                 Reset Filters
               </button>
@@ -2763,10 +2781,29 @@ export const LIFECYCLE_FILTER_OPTIONS = [
 // Matches the old default ("in_scope"): everything except Deferred/Ignored.
 export const DEFAULT_LIFECYCLE_FILTER = ["CANDIDATE", "AVAILABLE", "ASSIGNED"];
 
-export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecycle = DEFAULT_LIFECYCLE_FILTER } = {}) {
+// 2026-09-20 (WSJF Code Sprint 6 #1, r8 checklist): a platform-imported
+// device carries durable provenance in its lifecycle record's
+// extraAttributes -- importedFrom (the platform), originalId (that
+// platform's own id for it) and registeredAt (when a person confirmed it) --
+// so it survives a restart (PR #46 added importedFrom; registeredAt and
+// originalId came with this change). A third composable facet next to
+// Parent-only and State: "which platform did this come from," a plain
+// per-device attribute, so no backend/ontology change was needed for it.
+const IMPORT_PLATFORM_LABELS = { smartthings: "SmartThings", ring: "Ring" };
+export function importedFromLabel(platform) {
+  return IMPORT_PLATFORM_LABELS[platform] || platform;
+}
+// Only platforms that actually have a device in the list -- a filter value
+// nothing can match would just hide everything.
+export function importedFromOptions(devices) {
+  return [...new Set(devices.map(d => d.attributes?.importedFrom).filter(Boolean))].sort();
+}
+
+export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecycle = DEFAULT_LIFECYCLE_FILTER, importedFrom = "" } = {}) {
   return devices.filter(d =>
     lifecycle.includes(deviceLifecycleState(d)) &&
-    (!parentOnly || !d.attributes?.parentDeviceId));
+    (!parentOnly || !d.attributes?.parentDeviceId) &&
+    (!importedFrom || d.attributes?.importedFrom === importedFrom));
 }
 
 // 2026-08-25: the toolbar's device count used raw devices.length -- every
@@ -2790,8 +2827,10 @@ export function resolveDeviceManagerFilter(groupBy, saved) {
   // version's "all" override had, just correct now that "all" actually
   // means all five lifecycle states instead of silently still excluding
   // Deferred/Ignored the way the old string-based "all" fallthrough did.
+  // The source-platform facet is kept here on purpose: Lifecycle grouping is where
+  // candidates are reviewed, and "just the SmartThings ones" is the point of it.
   if (groupBy === "candidate") {
-    return { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value) };
+    return { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value), importedFrom: saved.importedFrom };
   }
   return saved;
 }
@@ -3906,6 +3945,15 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
             <span>{parentDevice ? parentDevice.name : parentDeviceId}</span>
           </div>
         )}
+        {device.attributes?.importedFrom && (
+          <div className="dm-detail-row"><span>Imported from</span>
+            <span>
+              {importedFromLabel(device.attributes.importedFrom)}
+              {device.attributes.originalId && <> · id {device.attributes.originalId}</>}
+              {device.attributes.registeredAt && <> · confirmed {new Date(device.attributes.registeredAt).toLocaleString()}</>}
+            </span>
+          </div>
+        )}
         <div className="dm-detail-row"><span>Location</span><span>{device.location}</span></div>
         <div className="dm-detail-row"><span>State</span>
           <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
@@ -3922,7 +3970,9 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       )}
       {lifecycle === "CANDIDATE" && (
         <div className="dm-candidate-card"><strong>New device candidate</strong>
-          <span>Discovered from {device.attributes.discoveredFrom || device.attributes.source || "an integration"}. Looking at it or closing this view leaves it a candidate.</span>
+          <span>Discovered from {device.attributes.discoveredFrom
+            || (device.attributes.importedFrom && importedFromLabel(device.attributes.importedFrom))
+            || device.attributes.source || "an integration"}. Looking at it or closing this view leaves it a candidate.</span>
           {device.attributes.discoverySuggested && (
             <div className="discovery-suggested-banner">
               <Search size={13}/> New device — want to look it up before deciding?
@@ -3971,9 +4021,12 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
               rows above (real ontology data / resolved names, not
               free-form) -- shown there only, not duplicated here as raw
               key/value text. lifecycleUpdatedAt is shown, formatted, in the
-              "Previously exposed device" card above instead. */}
+              "Previously exposed device" card above instead. The three import
+              provenance keys have the "Imported from" row above -- only when
+              importedFrom is set, so an unrelated originalId is never hidden. */}
           {Object.entries(device.attributes)
             .filter(([k]) => !["category", "capabilities", "parentDeviceId", "lifecycleUpdatedAt"].includes(k))
+            .filter(([k]) => !(device.attributes.importedFrom && ["importedFrom", "originalId", "registeredAt"].includes(k)))
             .map(([k, v]) => v != null && (
               <div key={k} className="attr-row">
                 <span className="attr-key">{k}</span>

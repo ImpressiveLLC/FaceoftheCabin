@@ -226,6 +226,31 @@ class PlatformImportControllerTest {
             "D10 provenance tag must be durable, not just the ephemeral runtime attribute it used to be");
     }
 
+    @Test
+    void confirmedCandidateKeepsItsOriginalIdAndRegistrationTimeAcrossARestart() {
+        RecordingLifecycleStore store = new RecordingLifecycleStore();
+        DeviceRegistry registry = new DeviceRegistry(List.of(), store);
+        PlatformImportController controller = new PlatformImportController(
+            List.of(fakeProvider("smartthings"), fakeProvider("ring")),
+            new PlatformImportTranslationService(), recordRepository = new FakeRecordRepository(), registry);
+        recordRepository.seed("ring", "doorbell-7");
+        java.time.Instant before = java.time.Instant.now();
+
+        controller.confirm("ring",
+            confirmBody("doorbell-7", "ring-front_doorbell", "Front Doorbell", "CAMERA", "cabin"),
+            requestWithRole(HouseholdRole.ADMINISTRATOR));
+
+        java.time.Instant after = java.time.Instant.now();
+        DeviceRegistry restarted = new DeviceRegistry(List.of(), store);
+        Map<String, Object> attributes = restarted.get("ring-front_doorbell").attributes();
+        assertEquals("ring", attributes.get("importedFrom"));
+        assertEquals("doorbell-7", attributes.get("originalId"),
+            "the source platform's own id is what lets a person match this row back to the vendor app");
+        java.time.Instant registeredAt = java.time.Instant.parse(String.valueOf(attributes.get("registeredAt")));
+        assertTrue(!registeredAt.isBefore(before) && !registeredAt.isAfter(after),
+            "registeredAt is the moment of confirmation, recorded once and not rewritten by a restart");
+    }
+
     /** In-memory stand-in for JdbcDeviceLifecycleStore, shared across two DeviceRegistry instances to simulate a restart. */
     private static final class RecordingLifecycleStore implements DeviceLifecycleStore {
         private final Map<String, DeviceLifecycleRecord> records = new HashMap<>();
