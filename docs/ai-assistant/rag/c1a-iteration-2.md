@@ -42,7 +42,7 @@ Configuration (both optional): `ask.context.docs-root` (default `/app/docs`), `a
 
 - **Routing is a heuristic.** A miss falls back to the r1 word-overlap behavior; a false positive supplies irrelevant context. The 24 frozen questions all route correctly by construction of the patterns, which proves nothing about unseen phrasings. Grading r2's round 2 (held-out paraphrases, multi-intent and negative cases) is still owed and must be a separate suite version.
 - **Context and oracle share an author.** The user-guide sections were written alongside the frozen questions. A gain from this change measures routing plus document quality on these questions, not generalization.
-- **Q21's frozen expectation is now stale in one respect.** It expects "no Markdown ingestion installed"; after this change the accurate answer is "merging alone does not make Ask know a guide; only sections listed in the reviewed map are supplied." [ask-and-helpdesk.md](../user-guide/ask-and-helpdesk.md) was updated to say exactly that. Changing the frozen expectation starts a new question-set version and is for Nate/Cowork to decide.
+- **Q21's r1 expectation was stale in one respect, so there is now a v2 question file.** r1 expects "no Markdown ingestion installed"; after this change the accurate answer is "merging alone does not make Ask know a guide; only sections listed in the reviewed map are supplied." Nate authorized the change (relaying Cowork, 2026-09-20). [cli-questions-r2.json](cli-questions-r2.json) changes only Q21's `expected`, worded to be true of **both** the r1 and r2 deployments so the baseline is not graded against behavior it does not have; question texts, ids and order are unchanged, so the requests sent are identical. `cli-questions-r1.json` stays frozen (its committed bytes still hash to `be2c8d5a…`). `grade_ask.py compare` rejects runs whose question file differs, so the 2026-09-07 run cannot be compared with r2-file runs; the fresh baseline below exists for that reason. [ask-and-helpdesk.md](../user-guide/ask-and-helpdesk.md) was updated to match.
 - **Docs-only merges do not redeploy the backend** (`deploy-cabin-backend.yml` triggers on `backend/**` and compose files), so a documentation edit reaches Ask at the next backend deploy or a manual `workflow_dispatch`.
 - **Fixture nodes still reference missing KnowledgeNodes** and log a warning per lookup; left as is, because curating them is a separate authorized act.
 - **Not done:** an ontology entry for the three `ask.context.*` properties (operator-only Spring properties, no UI; DoD §3 asks for user-facing configurable concepts, so I judged this out of scope but did not verify that judgment with you).
@@ -53,7 +53,7 @@ Configuration (both optional): `ask.context.docs-root` (default `/app/docs`), `a
 ```sh
 cd ~/FaceoftheCabin        # on a checkout at the deployed commit
 python3 scripts/ask_eval.py --endpoint http://127.0.0.1:8090 \
-  --questions docs/ai-assistant/rag/cli-questions-r1.json --repeats 3 \
+  --questions docs/ai-assistant/rag/cli-questions-r2.json --repeats 3 \
   --record-runtime --resident-admin-session \
   --output ~/eval-c1a-r2-$(date +%Y%m%d).jsonl
 python3 scripts/grade_ask.py init ~/eval-c1a-r2-<date>.jsonl ~/eval-c1a-r2-<date>-grades-r2.json
