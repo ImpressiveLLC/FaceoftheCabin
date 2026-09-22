@@ -1,9 +1,10 @@
 # C1a iteration 2 — routing repair and reviewed-document context
 
-Date: 2026-09-20. **Status: implemented and unit-tested; not merged, not deployed, not
-evaluated.** No answer-quality improvement is claimed. This entry proposes no C1b, model,
-safety-procedure or database change, and grants no authorization; Cowork's Ratification
-fields in [wsjf-backlog.md](../wsjf-backlog.md) are untouched.
+Date: 2026-09-20, merged/deployed 2026-09-22 ([PR #94](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/94),
+`cabin-backend:e0c8713`). **Status: implemented, unit-tested, deployed; paired before/after
+runs captured, both still ungraded — no answer-quality improvement is claimed.** This entry
+proposes no C1b, model, safety-procedure or database change, and grants no authorization;
+Cowork's Ratification fields in [wsjf-backlog.md](../wsjf-backlog.md) are untouched.
 
 This is the next unblocked C1 step recorded in the [C1a run review](eval-results/2026-09-07-c1a-review.md)
 ("Iteration and gaps") and step 1 of [grading r2 "Next rounds"](grading-r2.md#next-rounds).
@@ -48,19 +49,31 @@ Configuration (both optional): `ask.context.docs-root` (default `/app/docs`), `a
 - **Not done:** an ontology entry for the three `ask.context.*` properties (operator-only Spring properties, no UI; DoD §3 asks for user-facing configurable concepts, so I judged this out of scope but did not verify that judgment with you).
 - **POC1 interaction:** `cabin-assistant-poc1` was evaluated on 2026-09-16 through the r1 context path (see [round history](eval-results/round-history-2026-09-20.md)). Any comparison against it needs the same fixtures, question set and rubric, and a check that its training examples do not overlap the evaluation questions; I did not verify that overlap.
 
-## Baseline (captured 2026-09-21, ungraded)
+## Status: merged, deployed, both runs captured — grading is the remaining step
 
-The pre-change baseline on the deployed r1 context path is recorded in [eval-results/2026-09-21-v2-baseline-r1-context.md](eval-results/2026-09-21-v2-baseline-r1-context.md): 72 of 72 trials executed with the v2 question file, admin role, image `cabin-backend:4bcbd4d`. **It has no pass rate; all 72 trials await grading.** It had to be captured before this change deploys, since afterwards the r1 context path is gone.
+PR #94 merged and deployed as `cabin-backend:e0c8713` on 2026-09-22 (`mvn test` gate green, health-checked, no rollback). Two paired 72-trial runs exist, both with Nate's explicit approval, both **ungraded**:
 
-## To evaluate (after review, merge and deploy; each needs an explicit go-ahead)
+- **Pre-change baseline** on the r1 context path (before this PR): [eval-results/2026-09-21-v2-baseline-r1-context.md](eval-results/2026-09-21-v2-baseline-r1-context.md), image `cabin-backend:4bcbd4d`. Had to be captured before deploy, since the r1 context path is gone afterwards.
+- **Post-deploy run** on the r2 context path: [eval-results/2026-09-22-postdeploy-r2.md](eval-results/2026-09-22-postdeploy-r2.md), image `cabin-backend:e0c8713`. Same question file, harness, role and repeats as the baseline — `grade_ask.py compare` confirms `"incompatible": []`, so this is a valid pair once graded. Aggregate signal (not a grade): all 72 trials came back model-backed (vs. 69/72 in the r1 baseline; the 3 that didn't were all Q01), and 102 `doc:` sources appeared where the r1 run had zero.
+
+**Neither run has a pass rate.** All 144 trials across the two sidecars are `UNREVIEWED`.
+
+## Remaining step: grade, then compare
+
+Grade both sidecars under [grading r2](grading-r2.md) — same reviewer/judge, same rubric, ideally in one sitting:
 
 ```sh
-cd ~/FaceoftheCabin        # on a checkout at the deployed commit
-python3 scripts/ask_eval.py --endpoint http://127.0.0.1:8090 \
-  --questions docs/ai-assistant/rag/cli-questions-r2.json --repeats 3 \
-  --record-runtime --resident-admin-session \
-  --output ~/eval-c1a-r2-$(date +%Y%m%d).jsonl
-python3 scripts/grade_ask.py init ~/eval-c1a-r2-<date>.jsonl ~/eval-c1a-r2-<date>-grades-r2.json
+cd ~/repos/FaceoftheCabin   # or ~/FaceoftheCabin, either clone on the M920q
+python3 scripts/grade_ask.py grade --criteria \
+  ~/eval-c1a-r1ctx-v2-baseline-20260921-grades-r2.json    # or the postdeploy one
 ```
 
-Do not pass `--use-context` (a client probe, not the deployed path). Grade all 72 trials under [grading r2](grading-r2.md), regrade the retained r1 run as a separate sidecar, fill the [delta template](delta-analysis-template.md) with the deployed image and model digest, and report per-question transitions including any lost pass. Any safety, credential or fabricated-citation failure blocks regardless of aggregate movement; C1b stays blocked until Cowork records a decision.
+Needs a real interactive terminal (`grade` prompts per question; it will hang or fail over a non-interactive SSH command). Then:
+
+```sh
+python3 scripts/grade_ask.py compare \
+  ~/eval-c1a-r1ctx-v2-baseline-20260921-grades-r2.json \
+  ~/eval-c1a-r2ctx-postdeploy-20260922-grades-r2.json
+```
+
+This reports the real `pass_rate` delta, per-trial `changes`, and a `judgment` (improvement / regression / no change) once both sides are `complete`. Fill the [delta template](delta-analysis-template.md) with the result. Any safety, credential or fabricated-citation failure blocks regardless of aggregate movement; C1b stays blocked until Cowork records a decision in [wsjf-backlog.md](wsjf-backlog.md).
