@@ -1241,7 +1241,10 @@ function OpportunityMapPanel({ auth }) {
 // only. D5 (docs/ontology/DECISIONS.md) requires each answer's source
 // provenance be visible, not just used internally -- the badge under each
 // answer shows "Verified" (manually_curated) vs "Auto-generated" per
-// source, exactly the distinction that decision exists to preserve.
+// source, exactly the distinction that decision exists to preserve. A
+// REVIEWED_DOCUMENT source (an allowlisted repo Markdown section supplied as
+// context, C1a r2) is its own third label -- neither person-curated nor
+// machine-generated, so it must not borrow either of the other two.
 // Found 2026-09-04 (direct user report -- 401 on every question): this
 // panel has used a plain fetch() with no Authorization header at all since
 // /api/helpdesk/** was gated for WSJF #8 (2026-09-03) -- not something
@@ -1335,7 +1338,9 @@ export function HelpdeskPanel({ auth }) { // exported for src/App.test.jsx
                       className={`helpdesk-source-badge helpdesk-source-${(s.source || "").toLowerCase()}`}
                       title={s.content}
                     >
-                      {s.source === "MANUALLY_CURATED" ? "✓ Verified" : "Auto-generated"} · {s.entityRef}
+                      {s.source === "MANUALLY_CURATED" ? "✓ Verified"
+                        : s.source === "REVIEWED_DOCUMENT" ? "Reviewed doc"
+                        : "Auto-generated"} · {s.entityRef}
                     </span>
                   ))}
                 </div>

@@ -132,12 +132,16 @@ Do not modify. Reference only.
 ### Context fixtures (C1a)
 
 ```
-/home/nate/FaceoftheCabin/docs/ai-assistant/rag/context-fixtures-r1.json
+/home/nate/FaceoftheCabin/docs/ai-assistant/rag/context-fixtures-r2.json   # current (2026-09-20)
+/home/nate/FaceoftheCabin/docs/ai-assistant/rag/context-fixtures-r1.json   # frozen baseline record, not loaded
 ```
 
-The deterministic keyword-to-KnowledgeNode mapping. Edit to improve C1a retrieval.
-Must be placed at `src/main/resources/rag/context-fixtures-r1.json` in the
-backend classpath (synced via PR → CI deploy).
+The deterministic keyword-to-context mapping (KnowledgeNodes plus reviewed
+documentation sections). Edit to improve C1a retrieval. The docs copy must be
+byte-identical to `src/main/resources/rag/context-fixtures-r2.json` in the
+backend classpath (synced via PR → CI deploy; `AskContextBuilderTest` fails
+if they differ or a listed section heading no longer exists). See
+[c1a-iteration-2.md](c1a-iteration-2.md) for the r2 rules.
 
 ### Eval results (per-agent, per-round)
 
@@ -213,16 +217,16 @@ and rules for authorship. Each doc must:
   and codebase — never invented
 - Be referenced by at least one question's `source_docs` field in the manifest
 - Be ingested by `ingest.py` before it affects Ask answers (C1b only;
-  C1a uses `context-fixtures-r1.json` for deterministic lookup)
+  C1a uses `context-fixtures-r2.json` for deterministic lookup)
 
-### Adding a corpus doc to context-fixtures-r1.json (C1a path)
+### Adding a corpus doc to context-fixtures-r2.json (C1a path)
 
 For a question to benefit from C1a injection before C1b ships:
 
-1. Write the corpus doc
-2. Identify the keyword(s) in the question that identify its category
-3. Add a category entry to `context-fixtures-r1.json` pointing to the relevant KnowledgeNodes
-4. Redeploy the backend (`--no-cache`) and re-run the eval to verify
+1. Write the corpus doc under `docs/ai-assistant/user-guide/` (or `docs/ai-assistant/contributing.md`) -- other paths are refused by `ReviewedDocumentSource`
+2. Identify the whole word(s) or phrase(s) in the question that identify its category
+3. Add or extend a category in `context-fixtures-r2.json` (both copies) with a `contextDocuments` entry `{path, section, audience}`; `section` is the heading's GitHub anchor. Leave `audience` off (administrator-only) unless the section is safe for every role
+4. Run `mvn test -Dtest=AskContextBuilderTest` (checks routing, copies and heading references), merge, and redeploy the backend (a docs-only merge does not retrigger the deploy) and re-run the eval to verify
 
 ---
 

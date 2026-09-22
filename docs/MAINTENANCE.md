@@ -607,8 +607,10 @@ banner take you" correctly. Writing them down does not by itself make
 Ask retrieve any of this: `OntologyLookupService` only does reverse
 id→display-name lookup (Opportunity Map lineage chips), not general Q&A,
 and `TinyHelpdeskService`'s real retrieval is stopword-filtered keyword
-scoring against `KnowledgeNode` rows / `context-fixtures-r1.json` (C1a),
-not a live reader of this file. Actually wiring this into what Ask can
+scoring against `KnowledgeNode` rows / `context-fixtures-r2.json` (C1a,
+which can also supply named sections of `docs/ai-assistant/user-guide/` and
+`docs/ai-assistant/contributing.md` -- nothing else under `docs/`), not a
+live reader of this file. Actually wiring this into what Ask can
 answer needs the same corpus-doc + C1a-fixture path already used for
 this file's own Device Lifecycle section above, or the graph-aware
 retrieval work discussed (and explicitly not started) in the ontology
