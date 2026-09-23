@@ -621,10 +621,22 @@ already-working.
 
 ## Cameras (Frigate)
 
-Live config lives at `/storage/services/frigate/config.yml` on the
-M920q — **this file has zero git history** (a known, real gap; the file
-predates this project's git tracking and hasn't been retrofitted in).
-**Always back it up before editing**:
+**Corrected 2026-09-23 — the paragraph below was stale.** Since
+`deploy-production-stack.yml` was added, the live config at
+`/storage/services/frigate/config.yml` on the M920q **is** deployed from
+this repo's git-tracked `cabin-orchestration-platform/infra/production-stack/frigate/config.yml`
+automatically on push to `main` (validated, then copied over the live
+path, health-checked, auto-rolled-back on failure — same contract as
+`deploy-cabin-backend.yml`). "Zero git history" and "always manually
+back up and `scp` it over" were true before that workflow existed; they
+are no longer the deploy path for changes going through this repo. The
+scp/manual-backup procedure below still applies only to an **out-of-band
+edit made directly on the M920q**, outside a PR — not to a config change
+that lands via git and this workflow, which already snapshots the prior
+live file into its own last-known-good directory before touching
+anything.
+
+For an out-of-band edit only, back it up first:
 
 ```bash
 cp /storage/services/frigate/config.yml /storage/services/frigate/config.yml.bak-$(date +%Y%m%d-%H%M%S)
