@@ -11,3 +11,4 @@ The traceability root. Every backlog item, PR and sign-off names at least one UC
 | UC-5 | A guest-link viewer who reaches something outside their access sees that it is limited by design, not that the system failed | External viewer | Nate, 2026-09-23 | D12 (requirement R-GD) |
 | UC-6 | Every agent and human finds each governed fact in exactly one place, changed only by reviewed PR | Nate, Cowork, Code, Codex | Nate, 2026-09-23 | D4 |
 | UC-7 | Frigate records the motion events the cameras' own detection sees, so claim-relevant activity is not missing from the record | Administrator | Nate, 2026-09-23 | D18 (proposed) |
+| UC-8 | Any camera-authorized user can pin a clip for indefinite retention and review, with notification | Camera-authorized user | Nate, 2026-09-23 | D18 (proposed) |
