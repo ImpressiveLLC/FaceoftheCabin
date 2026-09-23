@@ -962,7 +962,7 @@ describe("CameraEventsPanel — time range window", () => {
 // download them locally, named so they're identifiable without opening
 // them, no pivot to Frigate needed.
 describe("cameraClipFilename", () => {
-  it("names a cabin camera clip cabin_<camera>_<local-DTM>.mp4", () => {
+  it("names a cabin camera clip cabin_<camera>_<local-DTM><offset>.mp4 (C-BC-1)", () => {
     // Local components deliberately, not toISOString() (always UTC) --
     // matches every on-screen timestamp in this panel, all rendered via
     // toLocaleString(). Fixed via explicit local Date components so this
@@ -974,7 +974,11 @@ describe("cameraClipFilename", () => {
     const iso = d.toISOString();
     const expected = new Date(iso);
     const pad = (n) => String(n).padStart(2, "0");
-    const want = `cabin_driveway_${expected.getFullYear()}-${pad(expected.getMonth() + 1)}-${pad(expected.getDate())}_${pad(expected.getHours())}-${pad(expected.getMinutes())}-${pad(expected.getSeconds())}.mp4`;
+    const offsetMinutes = -expected.getTimezoneOffset();
+    const offsetSign = offsetMinutes < 0 ? "-" : "+";
+    const offsetAbs = Math.abs(offsetMinutes);
+    const offset = `${offsetSign}${pad(Math.floor(offsetAbs / 60))}${pad(offsetAbs % 60)}`;
+    const want = `cabin_driveway_${expected.getFullYear()}-${pad(expected.getMonth() + 1)}-${pad(expected.getDate())}T${pad(expected.getHours())}${pad(expected.getMinutes())}${pad(expected.getSeconds())}${offset}.mp4`;
     expect(cameraClipFilename("driveway", iso)).toBe(want);
   });
 
@@ -988,6 +992,11 @@ describe("cameraClipFilename", () => {
     const name = cameraClipFilename("front_door", "2026-09-22T19:30:05.000Z");
     expect(name).not.toContain(":");
     expect(name.endsWith(".mp4")).toBe(true);
+  });
+
+  it("sanitizes to [A-Za-z0-9_.+-] (C-BC-1) even with an unexpected sourceDeviceId", () => {
+    const name = cameraClipFilename("front door!", "2026-09-22T19:30:05.000Z");
+    expect(name).toMatch(/^[A-Za-z0-9_.+-]+$/);
   });
 });
 
@@ -1114,6 +1123,9 @@ describe("CameraEventsPanel — bulk clip download", () => {
 
     expect(await screen.findByText(/Downloaded 1 of 2/)).toBeTruthy();
     expect(createObjectURL).toHaveBeenCalledTimes(1);
+    // C-BC-2: the miss is named, not just tallied.
+    const unavailableItem = await screen.findByText(/not available — outside recording retention/);
+    expect(unavailableItem.textContent).toContain("driveway");
   });
 });
 

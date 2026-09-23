@@ -833,6 +833,8 @@ body {
   background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge); border-radius: 8px;
 }
 .camera-event-select { flex-shrink: 0; cursor: pointer; }
+.camera-events-unavailable-list { margin: 4px 0 0; padding-left: 18px; }
+.camera-events-unavailable-list li { list-style: disc; font-family: monospace; font-size: 12px; }
 .camera-event-row {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px; background: var(--layer-2-fill); border: 1px solid var(--layer-2-edge);

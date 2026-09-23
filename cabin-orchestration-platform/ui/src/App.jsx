@@ -640,14 +640,30 @@ export function cameraEventsWindowLabel(window) {
 // convention (MqttBridgeService.deriveCameraLocation(), DeviceRegistry's
 // touchCameraDevice()) -- stripped from the camera-name portion so a Home
 // camera doesn't end up "home_home_aldrich_front".
+// C-BC-1 (SO-2026-09-23-r1 §2.3): the offset is required, not cosmetic --
+// a clip downloaded on the viewer's own device (a browser far from either
+// cabin) is meaningless to reconcile against Frigate's own timeline
+// without knowing which UTC offset its local-time components are in.
+// Local Date components are kept (not toISOString(), always UTC) so the
+// filename still matches what this panel shows on screen everywhere else,
+// with the offset appended to make that local time unambiguous.
 export function cameraClipFilename(sourceDeviceId, timestampIso) {
   const isHome = (sourceDeviceId || "").startsWith("home_");
   const location = isHome ? "home" : "cabin";
   const cameraName = isHome ? sourceDeviceId.slice(5) : (sourceDeviceId || "camera");
   const d = new Date(timestampIso);
   const pad = (n) => String(n).padStart(2, "0");
-  const dtm = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-  return `${location}_${cameraName}_${dtm}.mp4`;
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  // getTimezoneOffset() is UTC-minus-local in minutes (positive when local
+  // is behind UTC) -- the opposite sign convention from a displayed
+  // local-relative-to-UTC offset like "-0500", hence the negation.
+  const offsetMinutes = -d.getTimezoneOffset();
+  const offsetSign = offsetMinutes < 0 ? "-" : "+";
+  const offsetAbs = Math.abs(offsetMinutes);
+  const offset = `${offsetSign}${pad(Math.floor(offsetAbs / 60))}${pad(offsetAbs % 60)}`;
+  const raw = `${location}_${cameraName}_${date}T${time}${offset}.mp4`;
+  return raw.replace(/[^A-Za-z0-9_.+-]/g, "_");
 }
 
 // Which endpoint (if any) actually has a clip for this event, and what to
@@ -858,6 +874,15 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
     setDownloadResult(null);
     setDownloadProgress({ done: 0, total: targets.length });
     let succeeded = 0;
+    // C-BC-2 (SO-2026-09-23-r1 §2.3): named per file, not just tallied --
+    // both /clip (a detection's clip aged out of Frigate) and
+    // /clip-by-time (the requested moment fell outside continuous
+    // recording, 5 days on front_door) fail the same way, a plain fetch
+    // miss, and from here they're indistinguishable from each other or
+    // from a camera that was briefly down. Retention expiry is the
+    // realistic cause in every one of those cases for this flow
+    // specifically, so it's named rather than left as a generic error.
+    const unavailable = [];
     for (let i = 0; i < targets.length; i++) {
       const { url, filename } = targets[i].target;
       try {
@@ -872,14 +897,14 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
         URL.revokeObjectURL(objectUrl);
         succeeded++;
       } catch {
-        // Per-file miss (expired retention, camera was down) -- continue
-        // the batch and report it in the final tally rather than aborting
-        // everyone else's downloads over one clip.
+        // Per-file miss -- continue the batch and report it by name rather
+        // than aborting everyone else's downloads over one clip.
+        unavailable.push(filename);
       }
       setDownloadProgress({ done: i + 1, total: targets.length });
     }
     setDownloadProgress(null);
-    setDownloadResult({ succeeded, total: targets.length });
+    setDownloadResult({ succeeded, total: targets.length, unavailable });
     setSelectedEventIds(new Set());
   }, [detections, motionEvents, selectedEventIds, apiBase, auth]);
 
@@ -1050,7 +1075,14 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
             <span className="config-hint">
               {downloadResult.succeeded === downloadResult.total
                 ? `Downloaded ${downloadResult.total} clip${downloadResult.total === 1 ? "" : "s"}.`
-                : `Downloaded ${downloadResult.succeeded} of ${downloadResult.total} — the rest had no clip available (expired or never recorded).`}
+                : `Downloaded ${downloadResult.succeeded} of ${downloadResult.total}.`}
+              {downloadResult.unavailable?.length > 0 && (
+                <ul className="camera-events-unavailable-list">
+                  {downloadResult.unavailable.map(filename => (
+                    <li key={filename}>{filename}: not available — outside recording retention.</li>
+                  ))}
+                </ul>
+              )}
             </span>
           )}
         </div>
