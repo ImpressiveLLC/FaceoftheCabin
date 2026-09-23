@@ -535,7 +535,7 @@ The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detecti
 
 | ID | Question | Owner |
 |---|---|---|
-| Q-DM-1 | Confirm `location = home` entities are fully redacted in demo mode (conservative default in R-DM-6) or shown as cabin entities are. | Nate |
+| Q-DM-1 | Confirm `location = home` entities are fully redacted in demo mode (conservative default in R-DM-6) or shown as cabin entities are. Note: R-DM-6 relies on each device's `location` field. Phone entities (battery, charger, Wi-Fi presence) currently list as `cabin` and ONLINE while the owner may be elsewhere, so they are redacted by the phone/person rule, not the `home` rule. Whether `location` should track where a roaming phone actually is is a separate question, not part of D22. | Nate |
 | Q-DM-2 | Present day only is the default. Purpose (c) (months of sustained humidity above threshold) needs a longer window. Set `cabin.demo.max-history-days` to the desired value after the first demo review. | Nate |
 | Q-DM-3 | Redaction applies to demo-token responses only. Under D14 the same device list is readable by anyone with no token at all ([DL-2026-09-23-10](../discrepancy-log.md)). Until Nate rules on that, the label is a preview affordance and must not be described to the recipient as privacy protection. | Nate |
 
