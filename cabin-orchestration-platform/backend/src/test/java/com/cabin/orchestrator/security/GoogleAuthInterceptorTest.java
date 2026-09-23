@@ -596,4 +596,137 @@ class GoogleAuthInterceptorTest {
         assertFalse(interceptor.preHandle(request, response, new Object()));
         assertEquals(401, response.getStatus());
     }
+
+    // ── W-2 (SO-2026-09-23-r1 §3.2): an all-scopes guest token must still be
+    // denied on every route outside the four D12 scopes. Real finding while
+    // writing these: WebConfig's own doc comment on /api/helpdesk claimed "a
+    // Tier 1 guest token may ask a question" -- false. handleGuestToken()'s
+    // read-only check rejects the POST before the scope-coverage check is
+    // ever reached, and even if it were GET, "helpdesk" was never a
+    // SCOPE_PATH_PREFIXES entry. Comment corrected in WebConfig.java in the
+    // same change as these tests, per this doc's own "documentation drift
+    // gets corrected directly" rule -- not a design question, a stale claim. ──
+
+    private CabinAccessToken allScopesGuestToken() {
+        return accessTokens.create("W-2 all-scopes test token",
+            List.of("dashboard", "device_states", "alerts_read", "observations_read"), null, "nate@example.com");
+    }
+
+    @Test
+    void anAllScopesGuestTokenIsDeniedOnHelpdesk() throws Exception {
+        CabinAccessToken token = allScopesGuestToken();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/helpdesk/ask");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(403, response.getStatus(),
+            "not one of the four D12 scopes -- denied as read-only (POST) before scope coverage is even checked");
+    }
+
+    @Test
+    void anAllScopesGuestTokenIsDeniedOnKnowledgeBaseCuration() throws Exception {
+        // GET /api/kb/nodes itself is publicly open to everyone (see
+        // getOnKbNodesPassesThroughWithoutAToken above) -- redaction of
+        // CREDENTIAL_POINTER content happens inside the response body based
+        // on HouseholdRole, not at this gate, and a guest token never gets a
+        // HouseholdRole (REQUEST_ATTR_HOUSEHOLD_ROLE stays unset for it, same
+        // as an anonymous caller). What a guest token IS denied is the write
+        // path, same as any other unauthenticated-by-Google caller.
+        CabinAccessToken token = allScopesGuestToken();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/kb/curate");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void anAllScopesGuestTokenIsDeniedOnPresence() throws Exception {
+        CabinAccessToken token = allScopesGuestToken();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/presence");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(403, response.getStatus(),
+            "D14 gates /api/presence as an occupancy-revealing signal -- none of the four D12 scopes cover it");
+    }
+
+    @Test
+    void anAllScopesGuestTokenIsDeniedOnCameraRoutes() throws Exception {
+        CabinAccessToken token = allScopesGuestToken();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/camera/list");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(403, response.getStatus(),
+            "camera/motion is the one signal D14 says is worth protecting -- deliberately outside every guest scope");
+    }
+
+    @Test
+    void anAllScopesGuestTokenIsDeniedOnManagedUsersAdministration() throws Exception {
+        CabinAccessToken token = allScopesGuestToken();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/managed-users");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void anAllScopesGuestTokenIsDeniedOnPlatformInfo() throws Exception {
+        CabinAccessToken token = allScopesGuestToken();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/system/platform-info");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void anAllScopesGuestTokenIsDeniedOnAccessTokenAdministration() throws Exception {
+        // Same assertion as aGuestTokenCanNeverReachAccessTokenAdministrationItself
+        // above, repeated here with all four scopes granted (not just two) --
+        // the "access-link routes" case from W-2's own route list.
+        CabinAccessToken token = allScopesGuestToken();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/access-tokens");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void anAllScopesGuestTokenStillCannotWriteOnAnInScopeRoute() throws Exception {
+        CabinAccessToken token = allScopesGuestToken();
+        MockHttpServletRequest request = new MockHttpServletRequest("DELETE", "/api/alerts/acknowledgments/some-key");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void anExpiredAllScopesGuestTokenIs401NotDeniedByScope() throws Exception {
+        // Distinguishes the two guest-token failure modes W-2 asks for:
+        // 401 means the credential itself is bad (this test); 403 (the
+        // several tests above) means the credential is fine but the route
+        // isn't covered.
+        CabinAccessToken token = accessTokens.create("W-2 expired test token",
+            List.of("dashboard", "device_states", "alerts_read", "observations_read"),
+            Duration.ofDays(-1), "nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
 }
