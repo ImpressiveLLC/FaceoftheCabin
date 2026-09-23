@@ -207,10 +207,14 @@ Runs automatically monthly via `.github/workflows/rotate-secrets.yml`.
 mechanics needed (Grafana's admin API, HA's own token UI), still a manual
 `ansible-vault edit` + matching account-side change.
 
-**If running Ansible directly on the M920q** (as opposed to from a
-separate machine with SSH access), self-targeting via its own Tailscale
-hostname doesn't work — it's a hairpin routing limitation, not a bug in
-the playbook. Use `-c local -e ansible_become=false` in that case.
+**If running Ansible directly on the M920q** (SSH'd in, running the command *from* the host itself), use the dedicated `apply-secrets.yml` entrypoint with `--connection=local` — `site.yml --tags secrets`'s first play requires `sudo`/`become` even for untagged tasks, and SSH-loopback self-targeting fails (`Permission denied`). Use:
+
+```bash
+cd ~/FaceoftheCabin/ansible
+ansible-playbook -i inventory.ini apply-secrets.yml --limit cabin --connection=local --vault-password-file ~/.ansible_vault_pass
+```
+
+From a separate control machine with real SSH access, the `site.yml --tags secrets` form works as documented. The `rotate-secrets.yml` GitHub Actions scheduled workflow uses SSH and is currently broken (runner key not authorized on target — known open issue).
 
 **Never diff a secret by its raw value.** Compare by presence/absence, a
 hash, or a boolean the script prints — never `diff <(grep KEY old)
@@ -1920,6 +1924,19 @@ Ansible bug.
 ### Never diff secrets by raw value (found 2026-08-03)
 
 See "Secrets" above.
+
+### Silent template gap caused live credential loss (found 2026-09-03)
+
+`BLINK_MOTION_WEBHOOK_API_KEY` existed in `.env` (hand-set before the Ansible pipeline existed) but was never in `ansible/roles/secrets/templates/env.j2`. Every routine `--tags secrets` run silently regenerated `.env` without it — no error, because `BlinkMotionWebhookController` degrades gracefully with a `503` instead of crashing. Caught only because the webhook response code was compared before and after the secrets run.
+
+**The fix**: add any missing var to `env.j2` and the vault in the same commit. Run this sweep any time you touch the secrets pipeline to catch this class of gap before it causes a silent regression:
+
+```bash
+cd ~/FaceoftheCabin
+diff <(grep -oE '^[A-Z_]+=' cabin-orchestration-platform/infra/.env | sort -u) \
+     <(grep -oE '^[A-Z_]+=' ansible/roles/secrets/templates/env.j2 | sort -u)
+```
+Anything on the left (`<`) but not the right (`>`) is live but not templated — it will be silently dropped on the next regeneration.
 
 ### Manual MQTT test publishes leave permanent fake events behind (found 2026-08-03)
 
