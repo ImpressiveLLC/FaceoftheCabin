@@ -29,6 +29,11 @@ public class CabinAccessTokenService {
     }
 
     public CabinAccessToken create(String label, List<String> scope, Duration ttl, String createdBy) {
+        // D22 R-DM-1: a demo token holds "demo" and nothing else, and always expires.
+        if (scope != null && scope.contains("demo")) {
+            if (scope.size() != 1) throw new IllegalArgumentException("a demo link holds the demo scope only");
+            if (ttl == null) ttl = Duration.ofDays(30);
+        }
         Instant now = Instant.now();
         CabinAccessToken token = new CabinAccessToken(
             UUID.randomUUID().toString(),
@@ -46,6 +51,11 @@ public class CabinAccessTokenService {
 
     public void revoke(String id) {
         store.revoke(id, Instant.now());
+    }
+
+    /** The link a raw bearer token maps to, whether or not it is still active -- lets DemoAccessFilter tell an expired demo link (401 GUEST_LINK_INACTIVE) from a non-demo token it should leave alone. */
+    public Optional<CabinAccessToken> lookup(String rawToken) {
+        return store.findByToken(rawToken);
     }
 
     /** Empty unless the raw bearer token maps to a link that's genuinely active right now (not expired, not revoked). */

@@ -1840,7 +1840,7 @@ export function FamilyConfigPanel({ auth }) {
     <div className="panel-content">
       <div className="panel-header-bar"><h2>Configuration</h2></div>
       <div className="config-grid">
-        <ConfigCard title="Google Account" icon={Home}>
+        {!auth?.demo && <ConfigCard title="Google Account" icon={Home}>
           {auth?.userEmail ? (
             <>
               <p className="config-desc">Signed in as {auth.userEmail}.</p>
@@ -1864,7 +1864,7 @@ export function FamilyConfigPanel({ auth }) {
           <div className="tailscale-hint">
             <Lock size={11} /> Won't load off Tailscale — Home Assistant admin is cabin-network-only.
           </div>
-        </ConfigCard>
+        </ConfigCard>}
         <ConfigCard title="Notification Preferences" icon={AlertTriangle}>
           <p className="config-desc">Backend CRITICAL events use the configured notification channel.</p>
           <p className="config-hint">
@@ -1876,12 +1876,12 @@ export function FamilyConfigPanel({ auth }) {
         <ConfigCard title="Remote Access" icon={Wifi}>
           <RemoteAccessCard methods={remoteAccessMethods} />
         </ConfigCard>
-        <ConfigCard title="Guest Access" icon={Link2}>
+        {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2}>
           <GuestAccessCard auth={auth} />
-        </ConfigCard>
-        <ConfigCard title="Managed Users" icon={UserPlus}>
+        </ConfigCard>}
+        {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus}>
           <ManagedUsersCard auth={auth} />
-        </ConfigCard>
+        </ConfigCard>}
         <ConfigCard title="Platform" icon={Cpu} wide>
           <p className="config-desc">{config?.platformName || "Orchestration Platform"}</p>
           <p className="config-hint">{config?.platform || "Not configured — set CABIN_INSTANCE_PLATFORM"}</p>
@@ -2065,12 +2065,14 @@ function GuestAccessCard({ auth }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const create = async () => {
+  // D22 R-DM-11: a demo link holds the "demo" scope only (the backend
+  // rejects a mix) and always expires -- 30 days when the field is blank.
+  const create = async (asDemo = false) => {
     if (!label.trim()) return;
     setCreating(true);
     setError(null);
     setNewLink(null);
-    const selectedScope = Object.entries(scope).filter(([, v]) => v).map(([k]) => k);
+    const selectedScope = asDemo ? ["demo"] : Object.entries(scope).filter(([, v]) => v).map(([k]) => k);
     try {
       const response = await doFetch(`${apiBase}/api/access-tokens`, {
         method: "POST",
@@ -2078,12 +2080,12 @@ function GuestAccessCard({ auth }) {
         body: JSON.stringify({
           label: label.trim(),
           scope: selectedScope,
-          expiresInDays: expiresInDays.trim() ? Number(expiresInDays) : null,
+          expiresInDays: expiresInDays.trim() ? Number(expiresInDays) : (asDemo ? 30 : null),
         }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || body.error || `HTTP ${response.status}`);
-      setNewLink(`${window.location.origin}/view/${body.token}`);
+      setNewLink(`${window.location.origin}/${asDemo ? "demo" : "view"}/${body.token}`);
       setLabel("");
       refresh();
     } catch (err) {
@@ -2115,8 +2117,12 @@ function GuestAccessCard({ auth }) {
         <label className="guest-access-expiry">
           Expires in <input type="number" min="1" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} /> days (blank = never)
         </label>
-        <button className="btn-primary" onClick={create} disabled={creating || !label.trim()}>
+        <button className="btn-primary" onClick={() => create(false)} disabled={creating || !label.trim()}>
           {creating ? "Creating…" : "Create link"}
+        </button>
+        <button className="btn-secondary" onClick={() => create(true)} disabled={creating || !label.trim()}
+          title="Full app, read-only. Cameras, locks and other presence devices show as 'hidden for Demo viewers'. Scope checkboxes don't apply.">
+          Create demo link
         </button>
         {error && <p className="action-result action-error">Not created: {error}</p>}
       </div>
@@ -2135,6 +2141,7 @@ function GuestAccessCard({ auth }) {
           <div key={t.id} className={`guest-access-row ${t.revokedAt ? "guest-access-revoked" : ""}`}>
             <div>
               <strong>{t.label}</strong>
+              {t.scope?.includes("demo") && <span className="state-badge demo-badge">Demo</span>}
               <span className="config-hint">
                 {t.scope.join(", ")}
                 {t.expiresAt ? ` · expires ${new Date(t.expiresAt).toLocaleDateString()}` : " · no expiry"}
@@ -5538,7 +5545,9 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
         apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch} />
 
-      <CameraHealthPanel locCfg={locCfg} />
+      {auth?.demo
+        ? <DemoCameraCards devices={devices.filter(d => !d.location || d.location === locCfg.id)} title={`Camera Health — ${locCfg.label}`} />
+        : <CameraHealthPanel locCfg={locCfg} />}
 
       <div className="event-log">
         <div className="event-log-header">
@@ -7879,7 +7888,7 @@ function NavRail({ active, onSelect, alertLevels }) {
 }
 
 // ─── Root App ──────────────────────────────────────────────────────────────
-function App() {
+export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.test.jsx
   // ?panel=CAMERA_EVENTS in the URL opens directly to that panel — lets
   // Family Hub's "How's the cabin?" link-out jump straight to camera
   // activity instead of always landing on the default Monitoring panel.
@@ -7910,7 +7919,10 @@ function App() {
   // token as of this same change. Purely a reordering of two independent
   // hook calls, safe under React's rules (neither's presence/count is
   // conditional).
-  const cameraAuth = useGoogleAuth();
+  const googleAuth = useGoogleAuth();
+  const demoAuth = useDemoAuth(demoToken);
+  const cameraAuth = demoToken ? demoAuth : googleAuth;
+  const isDemo = !!demoToken;
   const {
     alerts: activeAlerts,
     locations: activeAlertLocations,
@@ -8039,6 +8051,8 @@ function App() {
     ? devices
     : devices.filter(d => !d.location || d.location === activeLocation);
 
+  if (isDemo && cameraAuth.demoInactive) return <DemoInactive />;
+
   return (
     <AppContext.Provider value={{
       devices, config, refreshDevices,
@@ -8057,12 +8071,13 @@ function App() {
       <div className="app-shell">
         <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />
         <main className="main-area">
+          {isDemo && <DemoBanner />}
           <div className="main-toolbar">
             <span className="platform-name">{locationLabel} — Orchestration Hub</span>
             <div className="toolbar-right">
               <LocationSwitcher active={activeLocation} onChange={setActiveLocation} />
-              <PresenceToggle />
-              <SecurityBadge />
+              {!isDemo && <PresenceToggle />}
+              {!isDemo && <SecurityBadge />}
               <ThemeSwitcher />
               {connected ? (
                 <span className="api-status api-ok">
@@ -8114,18 +8129,142 @@ function App() {
             </div>
           </div>
           <div className="panel-area">
-            {activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
+            {isDemo && DEMO_HIDDEN_PANELS.has(activePanel) && (
+              <DemoHiddenPanel title={PANELS.find(p => p.id === activePanel)?.label} />
+            )}
+            {isDemo && activePanel === "CAMERA_EVENTS" && (
+              <div className="panel-content">
+                <div className="panel-header-bar"><h2>Camera Events</h2></div>
+                <DemoCameraCards devices={toolbarDevices} />
+              </div>
+            )}
+            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
             {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel auth={cameraAuth} />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} auth={cameraAuth} />}
             {activePanel === "RULES_ENGINE"   && <RulesPanel auth={cameraAuth} />}
-            {activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
-            {activePanel === "OPPORTUNITY_MAP" && <OpportunityMapPanel auth={cameraAuth} />}
-            {activePanel === "HELPDESK"       && <HelpdeskPanel auth={cameraAuth} />}
+            {!isDemo && activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
+            {!isDemo && activePanel === "OPPORTUNITY_MAP" && <OpportunityMapPanel auth={cameraAuth} />}
+            {!isDemo && activePanel === "HELPDESK"       && <HelpdeskPanel auth={cameraAuth} />}
           </div>
         </main>
       </div>
     </AppContext.Provider>
+  );
+}
+
+// ─── Demo Access (D22) ─────────────────────────────────────────────────────
+// /demo/{token}: the full <App/>, read-only, for a prospective partner or
+// on-site party with no account (UC-9). The backend does the real work --
+// DemoAccessFilter denies by default and DemoRedactor rewrites presence-
+// class devices to "hidden for Demo viewers" -- so this side only has to
+// (a) send the token as a header on every request, never as ?t= (R-DM-2),
+// (b) show the banner, and (c) render placeholders where a panel's data
+// is denied outright (cameras, family, opportunities, Ask).
+export const HIDDEN_FOR_DEMO = "hidden for Demo viewers";
+export const DEMO_BANNER_TEXT = "Demo view: read-only. Items marked 'hidden for Demo viewers' are working in the live system but not viewable while previewing.";
+const DEMO_CAMERA_BODY = "hidden for Demo viewers: working in the live system, not viewable while previewing.";
+const DEMO_INACTIVE_TEXT = "This link is no longer active. Access links are time-limited by design. Contact the person who shared it if you still need access.";
+// Panels whose every route is DENY for a demo token (DemoAccessPolicy).
+export const DEMO_HIDDEN_PANELS = new Set(["FAMILY_HUB", "OPPORTUNITY_MAP", "HELPDESK"]);
+
+function isOwnApiUrl(url) {
+  const u = typeof url === "string" ? url : url?.url;
+  if (!u) return false;
+  return Object.values(LOCATIONS).some(loc => loc?.apiBase && u.startsWith(loc.apiBase)) || u.startsWith("/api/");
+}
+
+// Some existing callers use a bare fetch() for open (D14) routes -- dashboard
+// config, rules/workflows, frigate-metrics. In demo mode every call to this
+// app's own API must carry the demo token so it is classified and redacted
+// server-side, not served as an anonymous caller's unredacted response.
+// Installed once, before <App/> mounts, and only on /demo/*.
+export function installDemoFetch(token) {
+  if (window.__cabinDemoFetchInstalled) return;
+  const original = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    if (!isOwnApiUrl(input)) return original(input, init);
+    const headers = new Headers(init.headers || (typeof input !== "string" ? input.headers : undefined) || {});
+    headers.set("Authorization", `CabinToken ${token}`);
+    return original(input, { ...init, headers });
+  };
+  window.__cabinDemoFetchInstalled = true;
+}
+
+// Same shape useGoogleAuth() returns, so every panel works unchanged:
+// signedIn is true (panels render their content rather than a SignInGate),
+// signIn is absent (no sign-in control anywhere), and authedFetch sends
+// `Authorization: CabinToken {token}`.
+export function useDemoAuth(token) {
+  const [inactive, setInactive] = useState(false);
+  const authedFetch = useCallback((url, options = {}) => {
+    const headers = { ...(options.headers || {}), Authorization: `CabinToken ${token}` };
+    return fetch(url, { ...options, headers }).then(res => {
+      if (res.status === 401) setInactive(true);
+      return res;
+    });
+  }, [token]);
+  return useMemo(() => ({
+    demo: true, demoInactive: inactive,
+    accessToken: null, cabinSessionToken: null, userEmail: null,
+    signedIn: !!token, managedUserRole: "VIEWER", sessionExpired: false,
+    signIn: undefined, signOut: () => {}, authedFetch, configured: false,
+  }), [token, inactive, authedFetch]);
+}
+
+export function DemoBanner() {
+  return (
+    <div className="demo-banner" role="status">
+      <Eye size={14} /> {DEMO_BANNER_TEXT}
+    </div>
+  );
+}
+
+// R-DM-7: one card per camera in its normal position -- status badge from
+// the (redacted) device row, no name, no <img>/<video>.
+export function DemoCameraCards({ devices, title = "Cameras" }) {
+  const cameras = (devices || []).filter(d => d.type === "CAMERA");
+  return (
+    <div className="embed-section demo-camera-section">
+      <div className="embed-label">{title}</div>
+      <div className="camera-health-grid">
+        {cameras.length === 0 ? (
+          <div className="camera-health-tile demo-camera-card">
+            <Camera size={16} />
+            <span className="camera-health-name">{HIDDEN_FOR_DEMO}</span>
+            <span className="config-hint">{DEMO_CAMERA_BODY}</span>
+          </div>
+        ) : cameras.map(c => (
+          <div key={c.deviceId} className="camera-health-tile demo-camera-card">
+            <Camera size={16} />
+            <span className="camera-health-name">{HIDDEN_FOR_DEMO}</span>
+            <span className={`state-badge ${stateColor(c.state)}`}>{c.state}</span>
+            <span className="config-hint">{DEMO_CAMERA_BODY}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function DemoHiddenPanel({ title }) {
+  return (
+    <div className="panel-content">
+      <div className="panel-header-bar"><h2>{title}</h2></div>
+      <div className="demo-hidden-panel">
+        <Lock size={16} />
+        <p className="config-desc">Hidden for Demo viewers. Working in the live system, not viewable while previewing.</p>
+      </div>
+    </div>
+  );
+}
+
+function DemoInactive() {
+  return (
+    <div className="guest-view">
+      <h1>Demo link</h1>
+      <p>{DEMO_INACTIVE_TEXT}</p>
+    </div>
   );
 }
 
@@ -8322,10 +8461,13 @@ export function MagicLinkLanding({ token }) { // exported for src/App.test.jsx
 const rootEl = document.getElementById("root");
 if (rootEl) {
   const guestMatch = window.location.pathname.match(/^\/view\/([^/]+)/);
+  const demoMatch = window.location.pathname.match(/^\/demo\/([^/]+)/);
+  if (demoMatch) installDemoFetch(decodeURIComponent(demoMatch[1]));
   const magicMatch = window.location.pathname.match(/^\/auth\/magic\/([^/]+)/);
   createRoot(rootEl).render(
     <ThemeProvider>
       {guestMatch ? <GuestDashboard token={guestMatch[1]} />
+        : demoMatch ? <App demoToken={decodeURIComponent(demoMatch[1])} />
         : magicMatch ? <MagicLinkLanding token={magicMatch[1]} />
         : <App />}
     </ThemeProvider>

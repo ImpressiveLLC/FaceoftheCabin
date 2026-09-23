@@ -72,6 +72,16 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
+        // D22 Demo Access -- DemoAccessFilter has already validated the demo
+        // token, refused every non-GET and every DENY route, and set this
+        // attribute only for a GET it classified ALLOW or ALLOW_REDACT.
+        // Without this pass-through a gated ALLOW route (e.g.
+        // /api/system/platform-info) would fall into handleGuestToken(),
+        // where "demo" has no SCOPE_PATH_PREFIXES entry, and 403.
+        if (request.getAttribute(com.cabin.orchestrator.security.demo.DemoAccessFilter.REQUEST_ATTR_DEMO_TOKEN_ID) != null
+                && "GET".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
         // The exact /api/tech-id/findings collection endpoint carries its
         // own, method-specific gating (TechIdController): POST there checks
         // a shared-secret API key since submitters are automated providers,
