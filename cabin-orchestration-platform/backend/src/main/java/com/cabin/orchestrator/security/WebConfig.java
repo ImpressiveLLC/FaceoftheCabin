@@ -78,7 +78,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * unreachable rather than merely permissive. Any Google token, managed
  * session, or CabinSession may ask a question — the household-role-specific
  * redaction happens inside the answer itself, not at this gate. Corrected
- * 2026-09-23 (W-2, DL-2026-09-23-08): a Tier 1 guest token may NOT, despite
+ * 2026-09-23 (W-2): a Tier 1 guest token may NOT, despite
  * this comment previously claiming otherwise — "helpdesk" was never a
  * SCOPE_PATH_PREFIXES entry, and POST /api/helpdesk/ask fails
  * GoogleAuthInterceptor's read-only check before scope coverage is even
