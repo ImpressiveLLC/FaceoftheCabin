@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 mergeStatusCheckItems } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
@@ -955,6 +955,165 @@ describe("CameraEventsPanel — time range window", () => {
 
     await waitFor(() => expect(auth2.authedFetch).toHaveBeenCalled());
     expect(auth2.authedFetch.mock.calls[0][0]).toContain("window=72h");
+  });
+});
+
+// 2026-09-22 (user request): bulk-select clips from Camera Events and
+// download them locally, named so they're identifiable without opening
+// them, no pivot to Frigate needed.
+describe("cameraClipFilename", () => {
+  it("names a cabin camera clip cabin_<camera>_<local-DTM>.mp4", () => {
+    // Local components deliberately, not toISOString() (always UTC) --
+    // matches every on-screen timestamp in this panel, all rendered via
+    // toLocaleString(). Fixed via explicit local Date components so this
+    // test itself isn't timezone-dependent.
+    // toISOString() renders in UTC, so build the input the same way the
+    // real event payload does -- an ISO string -- but assert against the
+    // local Date the component itself will construct from it.
+    const d = new Date(2026, 8, 22, 14, 5, 9); // months are 0-based: September
+    const iso = d.toISOString();
+    const expected = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    const want = `cabin_driveway_${expected.getFullYear()}-${pad(expected.getMonth() + 1)}-${pad(expected.getDate())}_${pad(expected.getHours())}-${pad(expected.getMinutes())}-${pad(expected.getSeconds())}.mp4`;
+    expect(cameraClipFilename("driveway", iso)).toBe(want);
+  });
+
+  it("strips the home_ prefix from the camera name so it isn't duplicated", () => {
+    const name = cameraClipFilename("home_aldrich_front", "2026-09-22T19:30:05.000Z");
+    expect(name.startsWith("home_aldrich_front_")).toBe(true);
+    expect(name).not.toContain("home_home_");
+  });
+
+  it("is filesystem-safe -- no colons from the time portion", () => {
+    const name = cameraClipFilename("front_door", "2026-09-22T19:30:05.000Z");
+    expect(name).not.toContain(":");
+    expect(name.endsWith(".mp4")).toBe(true);
+  });
+});
+
+describe("cameraClipDownloadTarget", () => {
+  const apiBase = "http://cabin-hub:8090";
+
+  it("a detection with a native Frigate clip downloads via /clip", () => {
+    const event = { eventId: "e1", eventType: "DETECTION_UPDATE", sourceDeviceId: "front_door",
+      timestamp: "2026-09-22T19:30:05.000Z", payload: { frigateEventId: "frigate-1", hasClip: true } };
+    const target = cameraClipDownloadTarget(apiBase, event);
+    expect(target.url).toBe(`${apiBase}/api/camera/events/frigate-1/clip`);
+    expect(target.filename).toContain("front_door");
+  });
+
+  it("a detection with no clip has no download target", () => {
+    const event = { eventId: "e2", eventType: "DETECTION_UPDATE", sourceDeviceId: "front_door",
+      timestamp: "2026-09-22T19:30:05.000Z", payload: { frigateEventId: "frigate-2", hasClip: false } };
+    expect(cameraClipDownloadTarget(apiBase, event)).toBeNull();
+  });
+
+  it("a motion-only event always gets a clip-by-time target -- availability isn't known until fetched", () => {
+    const event = { eventId: "cabin-event-9", eventType: "MOTION_ON", sourceDeviceId: "driveway",
+      timestamp: "2026-09-22T19:30:05.000Z", payload: {} };
+    const target = cameraClipDownloadTarget(apiBase, event);
+    expect(target.url).toBe(`${apiBase}/api/camera/events/cabin-event-9/clip-by-time`);
+  });
+});
+
+describe("CameraEventsPanel — bulk clip download", () => {
+  afterEach(() => { cleanup(); localStorage.removeItem("cameraEvents.window"); });
+
+  const detectionWithClip = { eventId: "e1", eventType: "DETECTION_UPDATE", sourceDeviceId: "front_door",
+    timestamp: "2026-09-22T19:30:05.000Z", payload: { frigateEventId: "frigate-1", hasClip: true, hasSnapshot: false, label: "person", score: 0.9 } };
+  const detectionNoClip = { eventId: "e2", eventType: "DETECTION_UPDATE", sourceDeviceId: "front_door",
+    timestamp: "2026-09-22T19:31:00.000Z", payload: { frigateEventId: "frigate-2", hasClip: false, hasSnapshot: false, label: "person", score: 0.6 } };
+  const motionOn = { eventId: "cabin-event-9", eventType: "MOTION_ON", sourceDeviceId: "driveway",
+    timestamp: "2026-09-22T19:32:00.000Z", payload: {} };
+
+  function mockAuth(events) {
+    return {
+      configured: true, signedIn: true, sessionExpired: false, userEmail: "nate@example.com",
+      signOut: vi.fn(), signIn: vi.fn(), accessToken: "tok",
+      authedFetch: vi.fn((url) => {
+        if (url.includes("/api/camera/list")) return Promise.resolve({ ok: true, json: async () => [] });
+        if (url.includes("/api/events")) return Promise.resolve({ ok: true, json: async () => events });
+        // Any clip/clip-by-time fetch.
+        return Promise.resolve({ ok: true, blob: async () => new Blob(["fake video bytes"], { type: "video/mp4" }) });
+      }),
+    };
+  }
+
+  function renderPanel(auth) {
+    return render(
+      <AppContext.Provider value={{ locationCfg: { apiBase: "http://cabin-hub:8090" } }}>
+        <CameraEventsPanel auth={auth} />
+      </AppContext.Provider>
+    );
+  }
+
+  it("shows a checkbox only for rows with an actual clip to fetch", async () => {
+    const auth = mockAuth([detectionWithClip, detectionNoClip]);
+    renderPanel(auth);
+
+    expect(await screen.findByLabelText("Select front_door clip for download")).toBeTruthy();
+    // Two rows share the same accessible name -- only the clip-having one renders a checkbox at all.
+    expect(screen.getAllByLabelText("Select front_door clip for download")).toHaveLength(1);
+  });
+
+  it("the download button is disabled until something is selected", async () => {
+    const auth = mockAuth([detectionWithClip]);
+    renderPanel(auth);
+    await screen.findByLabelText("Select front_door clip for download");
+
+    expect(screen.getByRole("button", { name: /Download selected/ }).disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("Select front_door clip for download"));
+    expect(screen.getByRole("button", { name: /Download selected \(1\)/ }).disabled).toBe(false);
+  });
+
+  it("downloads every selected clip (detection and motion-only) with the expected filenames, one at a time", async () => {
+    const createObjectURL = vi.fn().mockReturnValue("blob:mock");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+    const auth = mockAuth([detectionWithClip, motionOn]);
+    renderPanel(auth);
+    await screen.findByLabelText("Select front_door clip for download");
+    // Motion is collapsed by default -- expand it to reach its checkbox, same as a real user would.
+    fireEvent.click(screen.getByText(/motion event/));
+
+    fireEvent.click(screen.getByLabelText("Select front_door clip for download"));
+    fireEvent.click(await screen.findByLabelText("Select driveway clip for download"));
+    fireEvent.click(screen.getByRole("button", { name: /Download selected \(2\)/ }));
+
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2));
+    expect(revokeObjectURL).toHaveBeenCalledTimes(2);
+    const fetchedUrls = auth.authedFetch.mock.calls.map(c => c[0]);
+    expect(fetchedUrls).toContain("http://cabin-hub:8090/api/camera/events/frigate-1/clip");
+    expect(fetchedUrls).toContain("http://cabin-hub:8090/api/camera/events/cabin-event-9/clip-by-time");
+    expect(await screen.findByText("Downloaded 2 clips.")).toBeTruthy();
+    // Selection clears after a completed batch.
+    expect(screen.getByRole("button", { name: /Download selected$/ }).disabled).toBe(true);
+  });
+
+  it("a 404 on one clip doesn't abort the rest of the batch, and is reported honestly", async () => {
+    const createObjectURL = vi.fn().mockReturnValue("blob:mock");
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+    const flaky = { eventId: "e3", eventType: "DETECTION_UPDATE", sourceDeviceId: "driveway",
+      timestamp: "2026-09-22T19:33:00.000Z", payload: { frigateEventId: "frigate-3", hasClip: true } };
+    const auth = {
+      configured: true, signedIn: true, sessionExpired: false, userEmail: "nate@example.com",
+      signOut: vi.fn(), signIn: vi.fn(), accessToken: "tok",
+      authedFetch: vi.fn((url) => {
+        if (url.includes("/api/camera/list")) return Promise.resolve({ ok: true, json: async () => [] });
+        if (url.includes("/api/events")) return Promise.resolve({ ok: true, json: async () => [detectionWithClip, flaky] });
+        if (url.includes("frigate-3")) return Promise.resolve({ ok: false, status: 404 });
+        return Promise.resolve({ ok: true, blob: async () => new Blob(["ok"], { type: "video/mp4" }) });
+      }),
+    };
+    renderPanel(auth);
+    await screen.findByLabelText("Select front_door clip for download");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all with a clip" }));
+    fireEvent.click(screen.getByRole("button", { name: /Download selected \(2\)/ }));
+
+    expect(await screen.findByText(/Downloaded 1 of 2/)).toBeTruthy();
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
   });
 });
 
