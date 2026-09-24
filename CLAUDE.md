@@ -493,8 +493,11 @@ severity-tiering MVP scope — only the classifier + ntfy push shipped
   multi-select (`LIFECYCLE_FILTER_OPTIONS`: Candidates/Available/Assigned/
   Saved for later/Ignored, any combination), replacing the old single
   `in_scope`/`parents_only`/`candidates`/`previous` enum that couldn't
-  express "parent devices only AND not Candidate." **Review previously
-  exposed** stays its own toggle (it fetches a different data source) and
+  express "parent devices only AND not Candidate." A third composable facet,
+  **Imported from** (2026-09-20), appears only while at least one
+  platform-imported device (SmartThings/Ring, D10) is listed; it filters on the
+  durable `importedFrom` attribute and, like Parent-only/State, is ignored by
+  **Review previously exposed**. **Review previously exposed** stays its own toggle (it fetches a different data source) and
   overrides both while checked. See `docs/PRODUCT_NOTES.md`'s 2026-09-16
   entry for the full design reasoning.
 - **Monitoring** (`MonitoringPanel`) — KPI tiles + Grafana embed + live MQTT log

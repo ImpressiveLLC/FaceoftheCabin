@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 mergeStatusCheckItems } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
@@ -1643,6 +1643,29 @@ describe("DmDeviceWorkflows drill-down (See + Change)", () => {
     triggerDeviceId: "z2m-leak_mech_room", actions: [] };
   const workflows = [activeWorkflow, draftWorkflow];
 
+  it("See mode (DmDeviceDetail): shows where an imported candidate came from, its original id and when it was confirmed", () => {
+    const imported = { deviceId: "smartthings-kitchen_temp", name: "Kitchen Temp", type: "TEMPERATURE_SENSOR",
+      state: "UNKNOWN", location: "cabin",
+      attributes: { deviceLifecycle: "CANDIDATE", importedFrom: "smartthings", originalId: "st-abc-123",
+        registeredAt: "2026-09-20T15:00:00Z" } };
+    render(<DmDeviceDetail device={imported} workflows={[]} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+
+    expect(screen.getByText("Imported from")).toBeTruthy();
+    expect(screen.getByText(/SmartThings · id st-abc-123 · confirmed /)).toBeTruthy();
+    expect(screen.getByText(/Discovered from SmartThings\./)).toBeTruthy();
+    // shown in its own row, not repeated as raw key/value attributes
+    expect(screen.queryByText("registeredAt")).toBeNull();
+    expect(screen.queryByText("importedFrom")).toBeNull();
+  });
+
+  it("See mode (DmDeviceDetail): a device not imported from a platform shows no Imported-from row and keeps an unrelated originalId attribute", () => {
+    const native = { ...device, attributes: { deviceLifecycle: "ASSIGNED", originalId: "keep-me" } };
+    render(<DmDeviceDetail device={native} workflows={[]} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+
+    expect(screen.queryByText("Imported from")).toBeNull();
+    expect(screen.getByText("originalId")).toBeTruthy();
+  });
+
   it("See mode (DmDeviceDetail): shows an honest empty state for a device in no workflow", () => {
     render(<DmDeviceDetail device={device} workflows={[]} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
     expect(screen.getByText("Workflows (0)")).toBeTruthy();
@@ -1774,6 +1797,42 @@ describe("Device Manager lifecycle visibility", () => {
       .toEqual({ parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value) });
     const saved = { parentOnly: true, lifecycle: ["CANDIDATE"] };
     expect(resolveDeviceManagerFilter("workflow", saved)).toBe(saved);
+  });
+
+  // r8 (Code Sprint 6 #1): "Device Manager CANDIDATE listing can filter by original_platform."
+  describe("source-platform facet (importedFrom)", () => {
+    const stCandidate = { deviceId: "st-1", attributes: { deviceLifecycle: "CANDIDATE", importedFrom: "smartthings" } };
+    const ringCandidate = { deviceId: "ring-1", attributes: { deviceLifecycle: "CANDIDATE", importedFrom: "ring" } };
+    const stAssigned = { deviceId: "st-2", attributes: { deviceLifecycle: "ASSIGNED", importedFrom: "smartthings" } };
+    const mixed = [...devices, stCandidate, ringCandidate, stAssigned];
+
+    it("lists only the platforms that actually have a device, sorted", () => {
+      expect(importedFromOptions(mixed)).toEqual(["ring", "smartthings"]);
+      expect(importedFromOptions(devices)).toEqual([]);
+    });
+
+    it("labels known platforms and passes an unknown one through unchanged", () => {
+      expect(importedFromLabel("smartthings")).toBe("SmartThings");
+      expect(importedFromLabel("ring")).toBe("Ring");
+      expect(importedFromLabel("matter")).toBe("matter");
+    });
+
+    it("narrows to one platform and composes with the State facet", () => {
+      expect(filterDeviceManagerDevices(mixed, { importedFrom: "smartthings" }).map(d => d.deviceId))
+        .toEqual(["st-1", "st-2"]);
+      expect(filterDeviceManagerDevices(mixed, { importedFrom: "smartthings", lifecycle: ["CANDIDATE"] }).map(d => d.deviceId))
+        .toEqual(["st-1"]);
+    });
+
+    it("no platform selected leaves the list exactly as before", () => {
+      expect(filterDeviceManagerDevices(mixed, { importedFrom: "" }).map(d => d.deviceId))
+        .toEqual(filterDeviceManagerDevices(mixed).map(d => d.deviceId));
+    });
+
+    it("Lifecycle grouping still applies the platform choice while showing every state", () => {
+      expect(resolveDeviceManagerFilter("candidate", { parentOnly: true, lifecycle: ["CANDIDATE"], importedFrom: "ring" }))
+        .toEqual({ parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value), importedFrom: "ring" });
+    });
   });
 
   it("derives legacy candidate booleans but prefers the lifecycle enum", () => {

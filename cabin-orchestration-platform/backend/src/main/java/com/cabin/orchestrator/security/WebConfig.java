@@ -75,10 +75,14 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * resolved for a real signed-in caller at all — without this, a Tiny
  * Helpdesk question could never distinguish an administrator from anyone
  * else, making the CREDENTIAL_POINTER role gate in TinyHelpdeskService
- * unreachable rather than merely permissive. Any authenticated caller
- * (Google token, managed session, or Tier 1 guest token) may ask a
- * question — the household-role-specific redaction happens inside the
- * answer itself, not at this gate.
+ * unreachable rather than merely permissive. Any Google token, managed
+ * session, or CabinSession may ask a question — the household-role-specific
+ * redaction happens inside the answer itself, not at this gate. Corrected
+ * 2026-09-23 (W-2): a Tier 1 guest token may NOT, despite
+ * this comment previously claiming otherwise — "helpdesk" was never a
+ * SCOPE_PATH_PREFIXES entry, and POST /api/helpdesk/ask fails
+ * GoogleAuthInterceptor's read-only check before scope coverage is even
+ * reached. See GoogleAuthInterceptorTest's anAllScopesGuestTokenIsDeniedOnHelpdesk.
  *
  * /api/platform-import — added 2026-09-03 (WSJF #9). GET .../records is
  * ADMINISTRATOR/ADULT_HOUSEHOLD_MEMBER (read-only, no live platform call);

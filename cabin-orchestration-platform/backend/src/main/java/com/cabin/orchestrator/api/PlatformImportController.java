@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -198,9 +199,14 @@ public class PlatformImportController {
         // JdbcDeviceLifecycleStore's JSONB config column (the same plumbing
         // "room" already established), not a new column, and unlike before
         // it now survives a restart rather than being a runtime-only stand-in.
+        // "originalId" and "registeredAt" (r8's original_id / registered_at) ride the same
+        // durable slot: which platform record this device came from, and when a person
+        // confirmed it -- what a Pending Import row needs to be recognizable after a restart.
         deviceRegistry.registerPersistentCandidate(descriptor, Map.of(
             "vendor", platformDisplayName(platform),
-            "importedFrom", platform));
+            "importedFrom", platform,
+            "originalId", originalId,
+            "registeredAt", Instant.now().toString()));
         recordRepository.markConfirmed(platform, originalId, entityId);
 
         return ResponseEntity.ok(Map.of(

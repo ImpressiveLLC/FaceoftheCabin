@@ -465,7 +465,12 @@ through `DeviceLifecycleStore` — because platform imports have no
 ongoing rediscovery loop of their own, an unaccepted confirmation would
 otherwise silently vanish on the next deploy with no way to get it back.
 Confirming an import moves it to a **durable `CANDIDATE`** — durable,
-but not yet `AVAILABLE`/`ASSIGNED`. A further explicit
+but not yet `AVAILABLE`/`ASSIGNED`. Its provenance is durable with it:
+`importedFrom` (the platform), `originalId` (that platform's own id) and
+`registeredAt` (when it was confirmed) ride the lifecycle record's
+`extraAttributes`, shown in Device Manager's device detail as "Imported
+from", and filterable with the toolbar's **Imported from** select (which
+appears only while at least one imported device is listed). A further explicit
 `applyLifecycleAction(ACCEPT)` moves it to `AVAILABLE`; assigning/
 configuring it (Device Manager's Change tab) moves it to `ASSIGNED`.
 

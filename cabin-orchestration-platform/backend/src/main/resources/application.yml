@@ -11,6 +11,10 @@ spring:
     driver-class-name: org.postgresql.Driver
 
 cabin:
+  # D22 Demo Access -- history window a demo-link viewer can chart (R-DM-8).
+  # Present day only by default (Q-DM-2); raise it here, no code change.
+  demo:
+    max-history-days: ${CABIN_DEMO_MAX_HISTORY_DAYS:1}
   name: Cumberland Cabin
   mqtt:
     brokerUrl: ${MQTT_URL:tcp://localhost:1883}

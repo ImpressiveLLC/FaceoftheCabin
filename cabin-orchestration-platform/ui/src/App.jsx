@@ -2021,7 +2021,7 @@ export function FamilyConfigPanel({ auth }) {
     <div className="panel-content">
       <div className="panel-header-bar"><h2>Configuration</h2></div>
       <div className="config-grid">
-        <ConfigCard title="Google Account" icon={Home}>
+        {!auth?.demo && <ConfigCard title="Google Account" icon={Home}>
           {auth?.userEmail ? (
             <>
               <p className="config-desc">Signed in as {auth.userEmail}.</p>
@@ -2045,7 +2045,7 @@ export function FamilyConfigPanel({ auth }) {
           <div className="tailscale-hint">
             <Lock size={11} /> Won't load off Tailscale — Home Assistant admin is cabin-network-only.
           </div>
-        </ConfigCard>
+        </ConfigCard>}
         <ConfigCard title="Notification Preferences" icon={AlertTriangle}>
           <p className="config-desc">Backend CRITICAL events use the configured notification channel.</p>
           <p className="config-hint">
@@ -2057,12 +2057,12 @@ export function FamilyConfigPanel({ auth }) {
         <ConfigCard title="Remote Access" icon={Wifi}>
           <RemoteAccessCard methods={remoteAccessMethods} />
         </ConfigCard>
-        <ConfigCard title="Guest Access" icon={Link2}>
+        {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2}>
           <GuestAccessCard auth={auth} />
-        </ConfigCard>
-        <ConfigCard title="Managed Users" icon={UserPlus}>
+        </ConfigCard>}
+        {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus}>
           <ManagedUsersCard auth={auth} />
-        </ConfigCard>
+        </ConfigCard>}
         <ConfigCard title="Platform" icon={Cpu} wide>
           <p className="config-desc">{config?.platformName || "Orchestration Platform"}</p>
           <p className="config-hint">{config?.platform || "Not configured — set CABIN_INSTANCE_PLATFORM"}</p>
@@ -2281,6 +2281,9 @@ function GuestAccessCard({ auth }) {
 
   return (
     <>
+      <DemoLinkSection doFetch={doFetch} apiBase={apiBase} onCreated={refresh} />
+
+      <h4 className="guest-access-subhead">Other share links</h4>
       <p className="config-desc">Read-only links for people without a Google account — an insurance adjuster, a contractor.</p>
       <div className="guest-access-form">
         <input value={label} placeholder="Label, e.g. Insurance Claim Sep 2026"
@@ -2312,22 +2315,136 @@ function GuestAccessCard({ auth }) {
 
       <div className="guest-access-list">
         {tokens.length === 0 && <p className="config-hint">No share links yet.</p>}
-        {tokens.map(t => (
-          <div key={t.id} className={`guest-access-row ${t.revokedAt ? "guest-access-revoked" : ""}`}>
-            <div>
-              <strong>{t.label}</strong>
-              <span className="config-hint">
-                {t.scope.join(", ")}
-                {t.expiresAt ? ` · expires ${new Date(t.expiresAt).toLocaleDateString()}` : " · no expiry"}
-              </span>
+        {tokens.map(t => {
+          const status = shareLinkStatus(t);
+          return (
+            <div key={t.id} className={`guest-access-row ${status.active ? "" : "guest-access-revoked"}`}>
+              <div>
+                <strong>{t.label}</strong>
+                {t.scope?.includes("demo") && <span className="state-badge demo-badge">Demo</span>}
+                <span className="config-hint">
+                  {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
+                </span>
+              </div>
+              {status.active
+                ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
+                : <span className="config-hint">{status.badge}</span>}
             </div>
-            {t.revokedAt
-              ? <span className="config-hint">Revoked</span>
-              : <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </>
+  );
+}
+
+// Exact local date and time, with the time zone, so whoever creates a link
+// knows the precise moment it stops working rather than just a day.
+export function formatStopTime(value) { // exported for src/DemoAccess.test.jsx
+  return new Date(value).toLocaleString(undefined, {
+    weekday: "short", year: "numeric", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  });
+}
+
+export function shareLinkStatus(token, now = Date.now()) { // exported for src/DemoAccess.test.jsx
+  if (token.revokedAt) {
+    return { active: false, badge: "Revoked", text: `revoked ${formatStopTime(token.revokedAt)}` };
+  }
+  if (!token.expiresAt) return { active: true, text: "no expiry" };
+  const at = new Date(token.expiresAt).getTime();
+  return at <= now
+    ? { active: false, badge: "Expired", text: `stopped working ${formatStopTime(at)}` }
+    : { active: true, text: `stops working ${formatStopTime(at)}` };
+}
+
+export const DEMO_LINK_DEFAULT_DAYS = 30;
+
+// D22 / UC-9: the one place an admin creates a link for someone evaluating
+// the product. A demo link holds the "demo" scope only (the backend rejects
+// a mix) and always has an end time: the lifetime field is required here,
+// and the exact moment the link stops working is shown before creating,
+// right after creating (from the server's own expiresAt), and in the list.
+export function DemoLinkSection({ doFetch, apiBase, onCreated }) { // exported for src/DemoAccess.test.jsx
+  const [label, setLabel] = useState("");
+  const [days, setDays] = useState(String(DEMO_LINK_DEFAULT_DAYS));
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState(null); // { link, expiresAt }
+  const [error, setError] = useState(null);
+
+  const dayCount = Number(days);
+  const daysValid = Number.isInteger(dayCount) && dayCount >= 1;
+  const previewStop = daysValid ? formatStopTime(Date.now() + dayCount * 24 * 60 * 60 * 1000) : null;
+
+  const create = async () => {
+    if (!label.trim() || !daysValid) return;
+    setCreating(true);
+    setError(null);
+    setCreated(null);
+    try {
+      const response = await doFetch(`${apiBase}/api/access-tokens`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label.trim(), scope: ["demo"], expiresInDays: dayCount }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+      setCreated({ link: `${window.location.origin}/demo/${body.token}`, expiresAt: body.expiresAt });
+      setLabel("");
+      onCreated?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="demo-link-section">
+      <h4 className="guest-access-subhead">Demo link for product evaluation</h4>
+      <p className="config-desc">
+        Give someone who is evaluating the product (a prospective user, an insurance agent, a contractor)
+        the real app, read-only, with no account or sign-in. Cameras, locks, motion and door sensors, and
+        phones show as "{HIDDEN_FOR_DEMO}". Monitoring, alerts, automations and today's history show as they do for you.
+        Any signed-in admin can create and revoke these links.
+      </p>
+      <ol className="demo-link-steps">
+        <li>Name the link after the person and why they're looking, for example "Agent evaluation – Jane Doe".</li>
+        <li>Choose how many days it lives. It stops working automatically at the time shown below; nobody has to remember to turn it off.</li>
+        <li>Create it and copy the link straight away. It's shown only once.</li>
+        <li>Send it. To end it before the scheduled time, press Revoke in the list below.</li>
+      </ol>
+      <div className="guest-access-form">
+        <input value={label} placeholder="Who and why, e.g. Agent evaluation – Jane Doe"
+          aria-label="Demo link label" onChange={e => setLabel(e.target.value)} />
+        <label className="guest-access-expiry">
+          Lives for <input type="number" min="1" step="1" required aria-label="Demo link lifetime in days"
+            value={days} onChange={e => setDays(e.target.value)} /> days
+        </label>
+        <p className="config-hint demo-link-stop" data-testid="demo-stop-preview">
+          {daysValid
+            ? <>If created now, it stops working on <strong>{previewStop}</strong>.</>
+            : "Enter a whole number of days, 1 or more. A demo link always has an end date."}
+        </p>
+        <button className="btn-primary" onClick={create} disabled={creating || !label.trim() || !daysValid}>
+          {creating ? "Creating…" : "Create demo link"}
+        </button>
+        {error && <p className="action-result action-error">Not created: {error}</p>}
+      </div>
+
+      {created && (
+        <div className="guest-access-new-link">
+          <strong>Demo link created — copy it now, it won't be shown again:</strong>
+          <code>{created.link}</code>
+          <button className="btn-ghost" onClick={() => navigator.clipboard?.writeText(created.link)}>Copy</button>
+          {created.expiresAt && (
+            <p className="config-hint" data-testid="demo-created-stop">
+              It stops working on <strong>{formatStopTime(created.expiresAt)}</strong>. After that, anyone opening
+              it sees "This link is no longer active." It stays in the list below, marked Expired, as a record.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2614,6 +2731,7 @@ export function DeviceManagerPanel({ auth }) {
   const [parentOnly, setParentOnly] = useState(() => localStorage.getItem("devices.parentOnly") === "true");
   const [lifecycleFilter, setLifecycleFilter] = useState(() =>
     readStoredJson("devices.lifecycleFilter", DEFAULT_LIFECYCLE_FILTER));
+  const [importedFromFilter, setImportedFromFilter] = useState(() => localStorage.getItem("devices.importedFrom") || "");
   const [candidateDevices, setCandidateDevices] = useState([]);
   const [previouslyExposed, setPreviouslyExposed] = useState([]);
   const [reviewingPrevious, setReviewingPrevious] = useState(false);
@@ -2626,6 +2744,7 @@ export function DeviceManagerPanel({ auth }) {
   useEffect(() => localStorage.setItem("devices.groupFlow", groupFlow), [groupFlow]);
   useEffect(() => localStorage.setItem("devices.parentOnly", String(parentOnly)), [parentOnly]);
   useEffect(() => localStorage.setItem("devices.lifecycleFilter", JSON.stringify(lifecycleFilter)), [lifecycleFilter]);
+  useEffect(() => localStorage.setItem("devices.importedFrom", importedFromFilter), [importedFromFilter]);
 
   const reviewLocations = useMemo(() => activeLocation === "both"
     ? [LOCATIONS.cabin, LOCATIONS.home]
@@ -2674,9 +2793,14 @@ export function DeviceManagerPanel({ auth }) {
   // (previously-exposed devices, merged into managerDevices above) and,
   // like the old exclusive "previous" filter value, overrides Parent-only/
   // State while active rather than combining with them.
+  // A saved platform no device carries any more (all its devices removed or
+  // ignored out of the list) must not silently hide everything behind a
+  // control that is no longer shown -- it falls back to "All".
+  const importOptions = useMemo(() => importedFromOptions(managerDevices), [managerDevices]);
+  const activeImportedFrom = importOptions.includes(importedFromFilter) ? importedFromFilter : "";
   const effectiveDeviceFilter = reviewingPrevious
-    ? { parentOnly: false, lifecycle: ["DEFERRED", "IGNORED"] }
-    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter });
+    ? { parentOnly: false, lifecycle: ["DEFERRED", "IGNORED"], importedFrom: "" }
+    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter, importedFrom: activeImportedFrom });
 
   // Hoisted up from DmSeeView (was local there) so See and Change render
   // the exact same saved grouping/order -- Change is a read-only consumer
@@ -2768,6 +2892,17 @@ export function DeviceManagerPanel({ auth }) {
                     : reviewingPrevious ? "Reviewing previously exposed devices ignores this"
                     : undefined}
                 />
+                {importOptions.length > 0 && (
+                  <label className="dm-toolbar-select">Imported from
+                    <select value={activeImportedFrom} disabled={reviewingPrevious}
+                      onChange={e => setImportedFromFilter(e.target.value)}
+                      title={reviewingPrevious ? "Reviewing previously exposed devices ignores this"
+                        : "Show only devices imported from one platform"}>
+                      <option value="">All</option>
+                      {importOptions.map(p => <option key={p} value={p}>{importedFromLabel(p)}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label className="dm-toolbar-checkbox" title="Fetches devices no longer registered, for review">
                   <input type="checkbox" checked={reviewingPrevious}
                     onChange={e => setReviewingPrevious(e.target.checked)} />
@@ -2776,7 +2911,7 @@ export function DeviceManagerPanel({ auth }) {
               </span>
               <button className="btn-ghost" onClick={() => {
                 setGroupBy("type"); setParentOnly(false);
-                setLifecycleFilter(DEFAULT_LIFECYCLE_FILTER); setReviewingPrevious(false);
+                setLifecycleFilter(DEFAULT_LIFECYCLE_FILTER); setImportedFromFilter(""); setReviewingPrevious(false);
               }} title="Return Group, Parent scope, and State to their defaults">
                 Reset Filters
               </button>
@@ -2949,10 +3084,29 @@ export const LIFECYCLE_FILTER_OPTIONS = [
 // Matches the old default ("in_scope"): everything except Deferred/Ignored.
 export const DEFAULT_LIFECYCLE_FILTER = ["CANDIDATE", "AVAILABLE", "ASSIGNED"];
 
-export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecycle = DEFAULT_LIFECYCLE_FILTER } = {}) {
+// 2026-09-20 (WSJF Code Sprint 6 #1, r8 checklist): a platform-imported
+// device carries durable provenance in its lifecycle record's
+// extraAttributes -- importedFrom (the platform), originalId (that
+// platform's own id for it) and registeredAt (when a person confirmed it) --
+// so it survives a restart (PR #46 added importedFrom; registeredAt and
+// originalId came with this change). A third composable facet next to
+// Parent-only and State: "which platform did this come from," a plain
+// per-device attribute, so no backend/ontology change was needed for it.
+const IMPORT_PLATFORM_LABELS = { smartthings: "SmartThings", ring: "Ring" };
+export function importedFromLabel(platform) {
+  return IMPORT_PLATFORM_LABELS[platform] || platform;
+}
+// Only platforms that actually have a device in the list -- a filter value
+// nothing can match would just hide everything.
+export function importedFromOptions(devices) {
+  return [...new Set(devices.map(d => d.attributes?.importedFrom).filter(Boolean))].sort();
+}
+
+export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecycle = DEFAULT_LIFECYCLE_FILTER, importedFrom = "" } = {}) {
   return devices.filter(d =>
     lifecycle.includes(deviceLifecycleState(d)) &&
-    (!parentOnly || !d.attributes?.parentDeviceId));
+    (!parentOnly || !d.attributes?.parentDeviceId) &&
+    (!importedFrom || d.attributes?.importedFrom === importedFrom));
 }
 
 // 2026-08-25: the toolbar's device count used raw devices.length -- every
@@ -2976,8 +3130,10 @@ export function resolveDeviceManagerFilter(groupBy, saved) {
   // version's "all" override had, just correct now that "all" actually
   // means all five lifecycle states instead of silently still excluding
   // Deferred/Ignored the way the old string-based "all" fallthrough did.
+  // The source-platform facet is kept here on purpose: Lifecycle grouping is where
+  // candidates are reviewed, and "just the SmartThings ones" is the point of it.
   if (groupBy === "candidate") {
-    return { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value) };
+    return { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value), importedFrom: saved.importedFrom };
   }
   return saved;
 }
@@ -4092,6 +4248,15 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
             <span>{parentDevice ? parentDevice.name : parentDeviceId}</span>
           </div>
         )}
+        {device.attributes?.importedFrom && (
+          <div className="dm-detail-row"><span>Imported from</span>
+            <span>
+              {importedFromLabel(device.attributes.importedFrom)}
+              {device.attributes.originalId && <> · id {device.attributes.originalId}</>}
+              {device.attributes.registeredAt && <> · confirmed {new Date(device.attributes.registeredAt).toLocaleString()}</>}
+            </span>
+          </div>
+        )}
         <div className="dm-detail-row"><span>Location</span><span>{device.location}</span></div>
         <div className="dm-detail-row"><span>State</span>
           <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
@@ -4108,7 +4273,9 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
       )}
       {lifecycle === "CANDIDATE" && (
         <div className="dm-candidate-card"><strong>New device candidate</strong>
-          <span>Discovered from {device.attributes.discoveredFrom || device.attributes.source || "an integration"}. Looking at it or closing this view leaves it a candidate.</span>
+          <span>Discovered from {device.attributes.discoveredFrom
+            || (device.attributes.importedFrom && importedFromLabel(device.attributes.importedFrom))
+            || device.attributes.source || "an integration"}. Looking at it or closing this view leaves it a candidate.</span>
           {device.attributes.discoverySuggested && (
             <div className="discovery-suggested-banner">
               <Search size={13}/> New device — want to look it up before deciding?
@@ -4157,9 +4324,12 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
               rows above (real ontology data / resolved names, not
               free-form) -- shown there only, not duplicated here as raw
               key/value text. lifecycleUpdatedAt is shown, formatted, in the
-              "Previously exposed device" card above instead. */}
+              "Previously exposed device" card above instead. The three import
+              provenance keys have the "Imported from" row above -- only when
+              importedFrom is set, so an unrelated originalId is never hidden. */}
           {Object.entries(device.attributes)
             .filter(([k]) => !["category", "capabilities", "parentDeviceId", "lifecycleUpdatedAt"].includes(k))
+            .filter(([k]) => !(device.attributes.importedFrom && ["importedFrom", "originalId", "registeredAt"].includes(k)))
             .map(([k, v]) => v != null && (
               <div key={k} className="attr-row">
                 <span className="attr-key">{k}</span>
@@ -5666,7 +5836,9 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
         apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch} />
 
-      <CameraHealthPanel locCfg={locCfg} />
+      {auth?.demo
+        ? <DemoCameraCards devices={devices.filter(d => !d.location || d.location === locCfg.id)} title={`Camera Health — ${locCfg.label}`} />
+        : <CameraHealthPanel locCfg={locCfg} />}
 
       <div className="event-log">
         <div className="event-log-header">
@@ -8007,7 +8179,7 @@ function NavRail({ active, onSelect, alertLevels }) {
 }
 
 // ─── Root App ──────────────────────────────────────────────────────────────
-function App() {
+export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.test.jsx
   // ?panel=CAMERA_EVENTS in the URL opens directly to that panel — lets
   // Family Hub's "How's the cabin?" link-out jump straight to camera
   // activity instead of always landing on the default Monitoring panel.
@@ -8038,7 +8210,10 @@ function App() {
   // token as of this same change. Purely a reordering of two independent
   // hook calls, safe under React's rules (neither's presence/count is
   // conditional).
-  const cameraAuth = useGoogleAuth();
+  const googleAuth = useGoogleAuth();
+  const demoAuth = useDemoAuth(demoToken);
+  const cameraAuth = demoToken ? demoAuth : googleAuth;
+  const isDemo = !!demoToken;
   const {
     alerts: activeAlerts,
     locations: activeAlertLocations,
@@ -8167,6 +8342,8 @@ function App() {
     ? devices
     : devices.filter(d => !d.location || d.location === activeLocation);
 
+  if (isDemo && cameraAuth.demoInactive) return <DemoInactive />;
+
   return (
     <AppContext.Provider value={{
       devices, config, refreshDevices,
@@ -8185,12 +8362,13 @@ function App() {
       <div className="app-shell">
         <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />
         <main className="main-area">
+          {isDemo && <DemoBanner />}
           <div className="main-toolbar">
             <span className="platform-name">{locationLabel} — Orchestration Hub</span>
             <div className="toolbar-right">
               <LocationSwitcher active={activeLocation} onChange={setActiveLocation} />
-              <PresenceToggle />
-              <SecurityBadge />
+              {!isDemo && <PresenceToggle />}
+              {!isDemo && <SecurityBadge />}
               <ThemeSwitcher />
               {connected ? (
                 <span className="api-status api-ok">
@@ -8242,18 +8420,142 @@ function App() {
             </div>
           </div>
           <div className="panel-area">
-            {activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
+            {isDemo && DEMO_HIDDEN_PANELS.has(activePanel) && (
+              <DemoHiddenPanel title={PANELS.find(p => p.id === activePanel)?.label} />
+            )}
+            {isDemo && activePanel === "CAMERA_EVENTS" && (
+              <div className="panel-content">
+                <div className="panel-header-bar"><h2>Camera Events</h2></div>
+                <DemoCameraCards devices={toolbarDevices} />
+              </div>
+            )}
+            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
             {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel auth={cameraAuth} />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} auth={cameraAuth} />}
             {activePanel === "RULES_ENGINE"   && <RulesPanel auth={cameraAuth} />}
-            {activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
-            {activePanel === "OPPORTUNITY_MAP" && <OpportunityMapPanel auth={cameraAuth} />}
-            {activePanel === "HELPDESK"       && <HelpdeskPanel auth={cameraAuth} />}
+            {!isDemo && activePanel === "CAMERA_EVENTS"  && <CameraEventsPanel auth={cameraAuth} />}
+            {!isDemo && activePanel === "OPPORTUNITY_MAP" && <OpportunityMapPanel auth={cameraAuth} />}
+            {!isDemo && activePanel === "HELPDESK"       && <HelpdeskPanel auth={cameraAuth} />}
           </div>
         </main>
       </div>
     </AppContext.Provider>
+  );
+}
+
+// ─── Demo Access (D22) ─────────────────────────────────────────────────────
+// /demo/{token}: the full <App/>, read-only, for a prospective partner or
+// on-site party with no account (UC-9). The backend does the real work --
+// DemoAccessFilter denies by default and DemoRedactor rewrites presence-
+// class devices to "hidden for Demo viewers" -- so this side only has to
+// (a) send the token as a header on every request, never as ?t= (R-DM-2),
+// (b) show the banner, and (c) render placeholders where a panel's data
+// is denied outright (cameras, family, opportunities, Ask).
+export const HIDDEN_FOR_DEMO = "hidden for Demo viewers";
+export const DEMO_BANNER_TEXT = "Demo view: read-only. Items marked 'hidden for Demo viewers' are working in the live system but not viewable while previewing.";
+const DEMO_CAMERA_BODY = "hidden for Demo viewers: working in the live system, not viewable while previewing.";
+const DEMO_INACTIVE_TEXT = "This link is no longer active. Access links are time-limited by design. Contact the person who shared it if you still need access.";
+// Panels whose every route is DENY for a demo token (DemoAccessPolicy).
+export const DEMO_HIDDEN_PANELS = new Set(["FAMILY_HUB", "OPPORTUNITY_MAP", "HELPDESK"]);
+
+function isOwnApiUrl(url) {
+  const u = typeof url === "string" ? url : url?.url;
+  if (!u) return false;
+  return Object.values(LOCATIONS).some(loc => loc?.apiBase && u.startsWith(loc.apiBase)) || u.startsWith("/api/");
+}
+
+// Some existing callers use a bare fetch() for open (D14) routes -- dashboard
+// config, rules/workflows, frigate-metrics. In demo mode every call to this
+// app's own API must carry the demo token so it is classified and redacted
+// server-side, not served as an anonymous caller's unredacted response.
+// Installed once, before <App/> mounts, and only on /demo/*.
+export function installDemoFetch(token) {
+  if (window.__cabinDemoFetchInstalled) return;
+  const original = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    if (!isOwnApiUrl(input)) return original(input, init);
+    const headers = new Headers(init.headers || (typeof input !== "string" ? input.headers : undefined) || {});
+    headers.set("Authorization", `CabinToken ${token}`);
+    return original(input, { ...init, headers });
+  };
+  window.__cabinDemoFetchInstalled = true;
+}
+
+// Same shape useGoogleAuth() returns, so every panel works unchanged:
+// signedIn is true (panels render their content rather than a SignInGate),
+// signIn is absent (no sign-in control anywhere), and authedFetch sends
+// `Authorization: CabinToken {token}`.
+export function useDemoAuth(token) {
+  const [inactive, setInactive] = useState(false);
+  const authedFetch = useCallback((url, options = {}) => {
+    const headers = { ...(options.headers || {}), Authorization: `CabinToken ${token}` };
+    return fetch(url, { ...options, headers }).then(res => {
+      if (res.status === 401) setInactive(true);
+      return res;
+    });
+  }, [token]);
+  return useMemo(() => ({
+    demo: true, demoInactive: inactive,
+    accessToken: null, cabinSessionToken: null, userEmail: null,
+    signedIn: !!token, managedUserRole: "VIEWER", sessionExpired: false,
+    signIn: undefined, signOut: () => {}, authedFetch, configured: false,
+  }), [token, inactive, authedFetch]);
+}
+
+export function DemoBanner() {
+  return (
+    <div className="demo-banner" role="status">
+      <Eye size={14} /> {DEMO_BANNER_TEXT}
+    </div>
+  );
+}
+
+// R-DM-7: one card per camera in its normal position -- status badge from
+// the (redacted) device row, no name, no <img>/<video>.
+export function DemoCameraCards({ devices, title = "Cameras" }) {
+  const cameras = (devices || []).filter(d => d.type === "CAMERA");
+  return (
+    <div className="embed-section demo-camera-section">
+      <div className="embed-label">{title}</div>
+      <div className="camera-health-grid">
+        {cameras.length === 0 ? (
+          <div className="camera-health-tile demo-camera-card">
+            <Camera size={16} />
+            <span className="camera-health-name">{HIDDEN_FOR_DEMO}</span>
+            <span className="config-hint">{DEMO_CAMERA_BODY}</span>
+          </div>
+        ) : cameras.map(c => (
+          <div key={c.deviceId} className="camera-health-tile demo-camera-card">
+            <Camera size={16} />
+            <span className="camera-health-name">{HIDDEN_FOR_DEMO}</span>
+            <span className={`state-badge ${stateColor(c.state)}`}>{c.state}</span>
+            <span className="config-hint">{DEMO_CAMERA_BODY}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function DemoHiddenPanel({ title }) {
+  return (
+    <div className="panel-content">
+      <div className="panel-header-bar"><h2>{title}</h2></div>
+      <div className="demo-hidden-panel">
+        <Lock size={16} />
+        <p className="config-desc">Hidden for Demo viewers. Working in the live system, not viewable while previewing.</p>
+      </div>
+    </div>
+  );
+}
+
+function DemoInactive() {
+  return (
+    <div className="guest-view">
+      <h1>Demo link</h1>
+      <p>{DEMO_INACTIVE_TEXT}</p>
+    </div>
   );
 }
 
@@ -8450,10 +8752,13 @@ export function MagicLinkLanding({ token }) { // exported for src/App.test.jsx
 const rootEl = document.getElementById("root");
 if (rootEl) {
   const guestMatch = window.location.pathname.match(/^\/view\/([^/]+)/);
+  const demoMatch = window.location.pathname.match(/^\/demo\/([^/]+)/);
+  if (demoMatch) installDemoFetch(decodeURIComponent(demoMatch[1]));
   const magicMatch = window.location.pathname.match(/^\/auth\/magic\/([^/]+)/);
   createRoot(rootEl).render(
     <ThemeProvider>
       {guestMatch ? <GuestDashboard token={guestMatch[1]} />
+        : demoMatch ? <App demoToken={decodeURIComponent(demoMatch[1])} />
         : magicMatch ? <MagicLinkLanding token={magicMatch[1]} />
         : <App />}
     </ThemeProvider>
