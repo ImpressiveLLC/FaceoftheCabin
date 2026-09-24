@@ -12,8 +12,8 @@ for another family, another property, or another team's use case. See
 takes.
 
 ---
-> **📖 Living Ontology** — The authoritative guide to what this system models, why, and how every decision was made.
-> [Read the Living Ontology →](https://claude.ai/code/artifact/a9c467c8-9958-4b17-95e5-f28b7af6e68f)
+> **📖 Platform governance** — decisions (D1–D21), backlog, Definition of Done, sign-offs and iteration plans live in [`docs/governance/`](docs/governance/README.md). Git is the canonical record.
+> The [Living Ontology](https://claude.ai/code/artifact/a9c467c8-9958-4b17-95e5-f28b7af6e68f) is a read-only rendered view of it.
 
 ## Northstar Goals
 
@@ -129,9 +129,10 @@ finer-grained permission tier for video vs. the rest of cabin-ui today.
 | **Ontology Contract** | [`docs/ontology.yaml`](docs/ontology.yaml) | Technical | Canonical entity definitions, device registry, naming contract |
 | **Platform README** | [`cabin-orchestration-platform/README.md`](cabin-orchestration-platform/README.md) | Technical | Backend/UI architecture, Docker Compose reference |
 | **QA / Testing** | [`docs/QA.md`](docs/QA.md) | Technical | Per-feature test coverage, automated + manual checklists |
-| **Definition of Done** | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md) | Internal (session process) | Per-session exit checklist — not a product or architecture doc |
+| **Definition of Done** | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md) | Internal (session process) | Per-session exit checklist (§1–10). Iteration and product DoD levels: [`docs/governance/definition-of-done.md`](docs/governance/definition-of-done.md) |
 | **Replicating This Template** | [`docs/REPLICATION.md`](docs/REPLICATION.md) | Standing up a fully independent instance — own accounts, domain, host, repo |
-| **Living Ontology** | [Living Artifact](https://claude.ai/code/artifact/a9c467c8-9958-4b17-95e5-f28b7af6e68f) | All | Canonical knowledge model — entities, relationships, decision log (WSJF Priority Order + Discrepancy Log — the D-decisions backlog) |
+| **Platform Governance** | [`docs/governance/`](docs/governance/README.md) | All | Canonical record: D-decisions, discrepancy log, use cases, WSJF backlog, Definition of Done, sign-offs, iteration plans |
+| **Living Ontology** | [Living Artifact](https://claude.ai/code/artifact/a9c467c8-9958-4b17-95e5-f28b7af6e68f) | All | Read-only rendered view of `docs/governance/decisions/` — not edited directly |
 | **AI Assistant Backlog** | [`docs/ai-assistant/wsjf-backlog.md`](docs/ai-assistant/wsjf-backlog.md) | All | Separate WSJF track (C1–C4) for the Ollama/`llama3.2:3b` corpus/RAG/Tiny-Helpdesk work — scored independently of the Living Ontology's own backlog above; see `docs/ai-assistant/corpus/coverage.md` for the gap register |
 | **Session Run Logs** | `docs/RUNLOG_*.md`, `docs/POC_*.md`, `docs/HANDOFF_*.md` | Technical | Dated, literal, replayable session logs for specific bring-ups/investigations (e.g. the Home/Termux collector POC) — not summarized elsewhere; check by filename pattern, not a single index page |
 
