@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed
+  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download
 } from "lucide-react";
 import "./styles.css";
 
@@ -631,6 +631,62 @@ export function cameraEventsWindowLabel(window) {
 // always-visible list and motion becomes a separate, collapsed-by-default
 // summary instead of disappearing outright. Exported so
 // src/App.test.jsx can test the split without rendering the panel.
+// 2026-09-22 (user request): a filesystem-safe "location_camera_dtm" name
+// so a downloaded clip is identifiable without opening it. Uses the
+// viewer's own local time/timezone, matching every on-screen timestamp in
+// this panel (all rendered via toLocaleString()) rather than UTC -- the
+// point is "what I'd search my downloads folder for," not a machine-
+// comparable format. home_ is this codebase's own existing location-tag
+// convention (MqttBridgeService.deriveCameraLocation(), DeviceRegistry's
+// touchCameraDevice()) -- stripped from the camera-name portion so a Home
+// camera doesn't end up "home_home_aldrich_front".
+// C-BC-1 (SO-2026-09-23-r1 §2.3): the offset is required, not cosmetic --
+// a clip downloaded on the viewer's own device (a browser far from either
+// cabin) is meaningless to reconcile against Frigate's own timeline
+// without knowing which UTC offset its local-time components are in.
+// Local Date components are kept (not toISOString(), always UTC) so the
+// filename still matches what this panel shows on screen everywhere else,
+// with the offset appended to make that local time unambiguous.
+export function cameraClipFilename(sourceDeviceId, timestampIso) {
+  const isHome = (sourceDeviceId || "").startsWith("home_");
+  const location = isHome ? "home" : "cabin";
+  const cameraName = isHome ? sourceDeviceId.slice(5) : (sourceDeviceId || "camera");
+  const d = new Date(timestampIso);
+  const pad = (n) => String(n).padStart(2, "0");
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  // getTimezoneOffset() is UTC-minus-local in minutes (positive when local
+  // is behind UTC) -- the opposite sign convention from a displayed
+  // local-relative-to-UTC offset like "-0500", hence the negation.
+  const offsetMinutes = -d.getTimezoneOffset();
+  const offsetSign = offsetMinutes < 0 ? "-" : "+";
+  const offsetAbs = Math.abs(offsetMinutes);
+  const offset = `${offsetSign}${pad(Math.floor(offsetAbs / 60))}${pad(offsetAbs % 60)}`;
+  const raw = `${location}_${cameraName}_${date}T${time}${offset}.mp4`;
+  return raw.replace(/[^A-Za-z0-9_.+-]/g, "_");
+}
+
+// Which endpoint (if any) actually has a clip for this event, and what to
+// name it once downloaded. A detection with no frigateEventId/hasClip has
+// nothing to fetch -- same "canExpand" gate the inline preview already
+// uses, so "selectable for bulk download" and "clickable to preview" never
+// disagree about the same row. A motion-only event always gets a target:
+// clip-by-time (CameraMediaController.clipByTime) exports straight from
+// Frigate's continuous recording keyed to the event's own timestamp, and
+// whether footage still exists there isn't knowable without fetching --
+// the same risk the existing "tap to try the recording" flow already
+// accepts, so bulk download just reports it per-file rather than
+// pre-filtering optimistically.
+export function cameraClipDownloadTarget(apiBase, event) {
+  const isDetection = (event?.eventType || "").startsWith("DETECTION_");
+  const frigateEventId = event?.payload?.frigateEventId;
+  const url = isDetection
+    ? (frigateEventId && event.payload?.hasClip ? `${apiBase}/api/camera/events/${frigateEventId}/clip` : null)
+    : `${apiBase}/api/camera/events/${event.eventId}/clip-by-time`;
+  if (!url) return null;
+  return { url, filename: cameraClipFilename(event.sourceDeviceId, event.timestamp) };
+}
+
 export function groupCameraEvents(events) {
   const detections = [];
   const motionEvents = [];
@@ -776,7 +832,81 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   const [cameras, setCameras] = useState([]);
   const [cameraListError, setCameraListError] = useState(null);
   const [showMotion, setShowMotion] = useState(false);
+  const [selectedEventIds, setSelectedEventIds] = useState(() => new Set());
+  const [downloadProgress, setDownloadProgress] = useState(null); // null | { done, total }
+  const [downloadResult, setDownloadResult] = useState(null);
   const { detections, motionEvents } = useMemo(() => groupCameraEvents(events), [events]);
+  // Only rows a download target actually exists for -- keeps "select all"
+  // and the selected count from ever counting a row with nothing to fetch.
+  // Selection is by eventId against the live event list, not a separate
+  // id set to reconcile, so a stale id from a prior window/poll simply
+  // stops matching anything rather than needing explicit invalidation.
+  const downloadableEvents = useMemo(
+    () => [...detections, ...motionEvents].filter(e => cameraClipDownloadTarget(apiBase, e)),
+    [detections, motionEvents, apiBase]
+  );
+  const allDownloadableSelected = downloadableEvents.length > 0
+    && downloadableEvents.every(e => selectedEventIds.has(e.eventId));
+
+  const toggleSelected = useCallback((eventId) => {
+    setSelectedEventIds(prev => {
+      const next = new Set(prev);
+      if (next.has(eventId)) next.delete(eventId); else next.add(eventId);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedEventIds(allDownloadableSelected ? new Set() : new Set(downloadableEvents.map(e => e.eventId)));
+  }, [allDownloadableSelected, downloadableEvents]);
+
+  // Sequential, not Promise.all: clips can run tens of MB each, and firing
+  // a browser's file-save dialog/download for several files at once is
+  // exactly the pattern Chrome's own "site wants to download multiple
+  // files" guard exists to interrupt. One at a time also means a real
+  // per-file progress count is honest, not a fake spinner.
+  const downloadSelected = useCallback(async () => {
+    const targets = [...detections, ...motionEvents]
+      .filter(e => selectedEventIds.has(e.eventId))
+      .map(e => ({ event: e, target: cameraClipDownloadTarget(apiBase, e) }))
+      .filter(t => t.target);
+    if (targets.length === 0) return;
+    setDownloadResult(null);
+    setDownloadProgress({ done: 0, total: targets.length });
+    let succeeded = 0;
+    // C-BC-2 (SO-2026-09-23-r1 §2.3): named per file, not just tallied --
+    // both /clip (a detection's clip aged out of Frigate) and
+    // /clip-by-time (the requested moment fell outside continuous
+    // recording, 5 days on front_door) fail the same way, a plain fetch
+    // miss, and from here they're indistinguishable from each other or
+    // from a camera that was briefly down. Retention expiry is the
+    // realistic cause in every one of those cases for this flow
+    // specifically, so it's named rather than left as a generic error.
+    const unavailable = [];
+    for (let i = 0; i < targets.length; i++) {
+      const { url, filename } = targets[i].target;
+      try {
+        const res = await auth.authedFetch(url);
+        if (!res.ok) throw new Error(String(res.status));
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(objectUrl);
+        succeeded++;
+      } catch {
+        // Per-file miss -- continue the batch and report it by name rather
+        // than aborting everyone else's downloads over one clip.
+        unavailable.push(filename);
+      }
+      setDownloadProgress({ done: i + 1, total: targets.length });
+    }
+    setDownloadProgress(null);
+    setDownloadResult({ succeeded, total: targets.length, unavailable });
+    setSelectedEventIds(new Set());
+  }, [detections, motionEvents, selectedEventIds, apiBase, auth]);
 
   // Triggers/ends a real on-demand liveview session for Blink-backed
   // cameras (a no-op server-side for the Reolink, which is already
@@ -925,6 +1055,39 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
         </div>
       )}
 
+      {downloadableEvents.length > 0 && (
+        <div className="camera-events-bulk-actions">
+          <label className="dm-toolbar-checkbox">
+            <input type="checkbox" checked={allDownloadableSelected} onChange={toggleSelectAll} />
+            Select all with a clip
+          </label>
+          <button
+            className="btn-secondary"
+            disabled={selectedEventIds.size === 0 || !!downloadProgress}
+            onClick={downloadSelected}
+          >
+            <Download size={14} />
+            {downloadProgress
+              ? `Downloading ${downloadProgress.done}/${downloadProgress.total}…`
+              : `Download selected${selectedEventIds.size > 0 ? ` (${selectedEventIds.size})` : ""}`}
+          </button>
+          {downloadResult && (
+            <span className="config-hint">
+              {downloadResult.succeeded === downloadResult.total
+                ? `Downloaded ${downloadResult.total} clip${downloadResult.total === 1 ? "" : "s"}.`
+                : `Downloaded ${downloadResult.succeeded} of ${downloadResult.total}.`}
+              {downloadResult.unavailable?.length > 0 && (
+                <ul className="camera-events-unavailable-list">
+                  {downloadResult.unavailable.map(filename => (
+                    <li key={filename}>{filename}: not available — outside recording retention.</li>
+                  ))}
+                </ul>
+              )}
+            </span>
+          )}
+        </div>
+      )}
+
       {loading && events.length === 0 && <p className="config-desc">Loading…</p>}
       {!loading && events.length === 0 && <p className="config-desc">No camera activity in {cameraEventsWindowLabel(window_).toLowerCase()}.</p>}
       <div className="camera-events-list">
@@ -938,6 +1101,16 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
                 className={`camera-event-row${canExpand ? " clickable" : ""}`}
                 onClick={() => canExpand && setExpandedEventId(isExpanded ? null : e.eventId)}
               >
+                {canExpand && (
+                  <input
+                    type="checkbox"
+                    className="camera-event-select"
+                    checked={selectedEventIds.has(e.eventId)}
+                    onClick={(evt) => evt.stopPropagation()}
+                    onChange={() => toggleSelected(e.eventId)}
+                    aria-label={`Select ${e.sourceDeviceId} clip for download`}
+                  />
+                )}
                 <CameraEventThumbnail apiBase={apiBase} authedFetch={auth.authedFetch} frigateEventId={e.payload?.hasSnapshot ? frigateEventId : null} timestamp={e.timestamp} />
                 <div>
                   <div className="camera-event-title">
@@ -981,6 +1154,14 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
                       className="camera-motion-row clickable"
                       onClick={() => setExpandedMotionId(isMotionExpanded ? null : e.eventId)}
                     >
+                      <input
+                        type="checkbox"
+                        className="camera-event-select"
+                        checked={selectedEventIds.has(e.eventId)}
+                        onClick={(evt) => evt.stopPropagation()}
+                        onChange={() => toggleSelected(e.eventId)}
+                        aria-label={`Select ${e.sourceDeviceId} clip for download`}
+                      />
                       <span className="camera-motion-camera">{e.sourceDeviceId}</span>
                       <span className="camera-motion-state">{e.eventType === "MOTION_ON" ? "motion started" : "motion ended"}</span>
                       <span className="camera-event-time">{new Date(e.timestamp).toLocaleString()}</span>
