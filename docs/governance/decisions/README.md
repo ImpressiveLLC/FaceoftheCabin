@@ -39,6 +39,7 @@ Each decision carries exactly one status. These are the only allowed values.
 | D19 | Local telemetry backup / log-shipping for `cabin_event` hot tier | implemented — awaiting ratification (A+B deployed 2026-09-14) | [Open Pins](ontology-decisions.md#open-pins) |
 | D20 | Live MQTT tile: read-only SSE relay | implemented — awaiting ratification (deployed 2026-09-14) | [Open Pins](ontology-decisions.md#open-pins) |
 | D21 | Device self-discovery lookup: keyless web search | ratified | [Open Pins](ontology-decisions.md#open-pins) |
+| D22 | Demo Access: full-app read-only preview link with presence-class redaction | proposed | [link](ontology-decisions.md#d22--demo-access--full-app-read-only-preview) |
 
 D-numbering note: the retired claude.ai project copy (`ontology/cabin-ontology-decisions.md`, 2026-09-05) numbers Energy as D14 and Reporting Topics as D15. This record is authoritative: D14 is Kiosk Auth, D15 Energy, D16 Reporting Topics. Logged as [DL-2026-09-23-03](../discrepancy-log.md).
 

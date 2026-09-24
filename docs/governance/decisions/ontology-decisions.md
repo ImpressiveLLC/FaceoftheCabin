@@ -482,6 +482,67 @@ Each motion trigger and contact state change is already an observation in the ob
 
 ------------------------------------------------------------------------
 
+## D22 — Demo Access — full-app read-only preview
+
+**Status:** proposed 2026-09-23 (Cowork, from Nate's stated design). **Use case:** [UC-9](../use-cases.md). **Work:** [W-13](../backlog.md). **Builds on:** D12 (token tiers), D14 (public read tier), R-GD (denial contract, [SO-2026-09-23-r1](../signoffs/SO-2026-09-23-r1.md) §3.2).
+
+**Problem.** The Tier 1 link (`/view/{token}`) renders `GuestDashboard`, a flat list of devices and alerts. It shows none of what the product does (automations, reporting, configuration), so it cannot serve UC-9. Nate's design, stated 2026-09-23:
+
+1. Demo access.
+2. Presence devices are overwritten on load for a demo-link user with the text "hidden for Demo viewers".
+3. Anything viewable in the public repository may be shown. Anything questionable loads in its current rendered state (online, offline, on, off, any value the card normally shows) with the language from (2) where content is withheld. No app or card behavior changes.
+4. All real reporting shows, present-day history included. Longer windows can be revisited.
+
+### Requirements
+
+| ID | Requirement |
+|---|---|
+| R-DM-1 | **Token.** A new scope `demo` on the existing `cabin_access_tokens` table. No new table. A demo token holds `demo` and no other scope; creation rejects a mix. Role stays `VIEWER`. Label and expiry are required (default 30 days). |
+| R-DM-2 | **Route and rendering.** `/demo/{token}` mounts the full `<App/>` in a demo mode with a synthetic auth object: no Google sign-in prompt, no sign-in UI. `authedFetch` sends `Authorization: CabinToken {token}` as a header, never `?t=`. `/view/{token}` and `GuestDashboard` are unchanged. |
+| R-DM-3 | **Banner.** A fixed, non-dismissable banner on every demo page: "Demo view: read-only. Items marked 'hidden for Demo viewers' are working in the live system but not viewable while previewing." |
+| R-DM-4 | **Route policy, deny by default.** One class, `DemoAccessPolicy`, classifies every GET route as `ALLOW`, `ALLOW_REDACT` or `DENY`. A route with no entry is `DENY`. A test enumerates every mapped GET handler and fails when one has no entry, so future routes must be classified when they are added. Any non-GET returns 403 `GUEST_READ_ONLY`. Initial table below. |
+| R-DM-5 | **Redaction.** `DemoRedactor` runs as response advice on `ALLOW_REDACT` routes for demo-token callers only. The constant is `HIDDEN_FOR_DEMO = "hidden for Demo viewers"`. For a presence-class device it replaces `name`, every value in `attributes`, and `lastSeen` (set to null). It keeps `deviceId`, `type`, `state` and `location`, so the card layout and the online/offline/on/off badge render as today. Free text that names a redacted device (alert messages, rule names, workflow execution rows) is redacted by the same pass. |
+| R-DM-6 | **Presence class.** A device is presence-class when any of these holds: `type` is `CAMERA`, `LOCK`, `MOTION_SENSOR` or `CONTACT_SENSOR`; its ontology `reports_to` includes `security_presence` or `occupancy` (D16); it is a phone, person or device-tracker entity (companion-app battery, charger, Wi-Fi presence); or its `location` is `home` (the residence — whole-device redaction for every type; see Q-DM-1). Leak sensors, the main water valve, smoke and CO alarms, climate, air quality, power, network and platform entities are not presence-class and show as they do today. |
+| R-DM-7 | **Camera and media panels.** `/api/camera/**` and `/api/frigate-metrics` are `DENY`. In demo mode the camera panels render one card in their normal position: camera name hidden, status badge shown from the device row, body "hidden for Demo viewers: working in the live system, not viewable while previewing." No broken image. |
+| R-DM-8 | **History and reporting.** `telemetry-history` and `reported-fields` are `ALLOW_REDACT`: normal series for non-presence devices, empty series for presence-class devices, never a client error. `days` is clamped to `cabin.demo.max-history-days`, default **1** (present day, per Nate). Raising it is a config change, not code (see Q-DM-2). |
+| R-DM-9 | **Denials.** Denied routes return the R-GD shape (W-3). For demo tokens the scope-denial copy is: "Hidden for Demo viewers. Working in the live system, not viewable while previewing." |
+| R-DM-10 | **Logging and headers.** Every demo request logs at INFO with token id, route, policy class and count of redacted fields. It is excluded from error alerting. The token is never logged: it travels in a header, and nginx must mask the token segment of `/demo/*` and `/view/*` paths in its access log (see [DL-2026-09-23-11](../discrepancy-log.md)). `/demo/*` responses carry `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`. |
+| R-DM-11 | **Admin UI.** Settings → Access Links gains a "Create demo link" preset (label, expiry, copy URL, revoke) and a "Demo" badge on such tokens. |
+| R-DM-12 | **Grafana.** Demo mode does not create a Grafana login and does not expose Grafana admin. If the app embeds Grafana panels that need their own credential, demo mode shows the in-app history panels instead and the PR states which it did (deviation logged). |
+
+### Initial route table (Code verifies each against the real response body before allowing; any doubt is `DENY` plus a discrepancy entry)
+
+| Class | Routes |
+|---|---|
+| `ALLOW` | `GET /api/dashboard/config`, `/api/locations`, `/api/system/health`, `/api/system/platform-info`, `/api/ontology/entities`, `/api/context/cabin-context.jsonld`, `/api/devices/meta/types`, `/api/devices/meta/lifecycle`, `/api/devices/display-config`, `/api/rules/vocabulary/triggers`, `/api/rules/vocabulary/actions` |
+| `ALLOW_REDACT` | `/api/devices`, `/api/devices/{id}`, `/api/devices/reporting-relationships`, `/api/devices/checkin-status`, `/api/devices/checkin-details`, `/api/devices/{id}/display-config`, `/api/alerts/active`, `/api/alerts/rules`, `/api/alerts/acknowledgments`, `/api/events/telemetry-history`, `/api/events/reported-fields`, `/api/rules/workflows`, `/api/rules/workflows/{id}`, `/api/rules/workflows/{id}/executions`, `/api/rules/executions/recent`, `/api/signal-quality` |
+| `DENY` | `/api/events` (bare collection), `/api/events/live`, `/api/camera/**`, `/api/frigate-metrics`, `/api/security`, `/api/presence/**`, `/api/kb/**`, `/api/helpdesk/**`, `/api/opportunities`, `/api/cross-domain/**`, `/api/platform-import/**`, `/api/tech-id/**`, `/api/managed-users/**`, `/api/access-tokens/**`, `/api/auth/**`, `/api/webhooks/**`, `/api/devices/candidates`, `/api/devices/previously-exposed`, `/api/devices/{id}/config`, `/api/devices/{id}/discovery/latest`, `/api/devices/{id}/jsonld`, and every family route (`/api/profiles`, `/api/chores/**`, `/api/notes`, `/api/schedule/**`) |
+
+The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detection triggering an automatic valve shutoff is the core of UC-9 purposes (a) and (c).
+
+### Required tests
+
+1. Every mapped GET handler has a `DemoAccessPolicy` entry (fails on a new unclassified route).
+2. A demo token gets 403 `GUEST_READ_ONLY` on POST, PUT, PATCH and DELETE to every route that has one.
+3. A demo token gets 403 with the R-GD body on each `DENY` route in the table.
+4. A demo token on `/api/devices` gets `name == "hidden for Demo viewers"`, null `lastSeen` and unchanged `state` for one device of each presence-class rule in R-DM-6, and unmodified rows for a leak sensor and a climate sensor.
+5. `telemetry-history` for a presence-class id returns an empty series with 200; `days=90` is clamped to the configured maximum.
+6. A demo token is rejected when combined with another scope at creation.
+7. Expired and revoked demo tokens return 401 `GUEST_LINK_INACTIVE`.
+8. UI (Vitest): demo mode shows the banner, renders no sign-in control, and renders the camera card placeholder with no `<img>` or `<video>`.
+
+### Open questions
+
+| ID | Question | Owner |
+|---|---|---|
+| Q-DM-1 | Confirm `location = home` entities are fully redacted in demo mode (conservative default in R-DM-6) or shown as cabin entities are. Note: R-DM-6 relies on each device's `location` field. Phone entities (battery, charger, Wi-Fi presence) currently list as `cabin` and ONLINE while the owner may be elsewhere, so they are redacted by the phone/person rule, not the `home` rule. Whether `location` should track where a roaming phone actually is is a separate question, not part of D22. | Nate |
+| Q-DM-2 | Present day only is the default. Purpose (c) (months of sustained humidity above threshold) needs a longer window. Set `cabin.demo.max-history-days` to the desired value after the first demo review. | Nate |
+| Q-DM-3 | Redaction applies to demo-token responses only. Under D14 the same device list is readable by anyone with no token at all ([DL-2026-09-23-10](../discrepancy-log.md)). Until Nate rules on that, the label is a preview affordance and must not be described to the recipient as privacy protection. | Nate |
+
+**What this is not.** Not a security boundary beyond the existing token model (D12). Not a change to D14's public read tier. Not a new role, table or write path. Not a Grafana login.
+
+---
+
 ## PR — WSJF Priority Order
 
 01Identity scheme done28.0
