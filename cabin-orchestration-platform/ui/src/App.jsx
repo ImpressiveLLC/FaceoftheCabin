@@ -2065,14 +2065,12 @@ function GuestAccessCard({ auth }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // D22 R-DM-11: a demo link holds the "demo" scope only (the backend
-  // rejects a mix) and always expires -- 30 days when the field is blank.
-  const create = async (asDemo = false) => {
+  const create = async () => {
     if (!label.trim()) return;
     setCreating(true);
     setError(null);
     setNewLink(null);
-    const selectedScope = asDemo ? ["demo"] : Object.entries(scope).filter(([, v]) => v).map(([k]) => k);
+    const selectedScope = Object.entries(scope).filter(([, v]) => v).map(([k]) => k);
     try {
       const response = await doFetch(`${apiBase}/api/access-tokens`, {
         method: "POST",
@@ -2080,12 +2078,12 @@ function GuestAccessCard({ auth }) {
         body: JSON.stringify({
           label: label.trim(),
           scope: selectedScope,
-          expiresInDays: expiresInDays.trim() ? Number(expiresInDays) : (asDemo ? 30 : null),
+          expiresInDays: expiresInDays.trim() ? Number(expiresInDays) : null,
         }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || body.error || `HTTP ${response.status}`);
-      setNewLink(`${window.location.origin}/${asDemo ? "demo" : "view"}/${body.token}`);
+      setNewLink(`${window.location.origin}/view/${body.token}`);
       setLabel("");
       refresh();
     } catch (err) {
@@ -2102,6 +2100,9 @@ function GuestAccessCard({ auth }) {
 
   return (
     <>
+      <DemoLinkSection doFetch={doFetch} apiBase={apiBase} onCreated={refresh} />
+
+      <h4 className="guest-access-subhead">Other share links</h4>
       <p className="config-desc">Read-only links for people without a Google account — an insurance adjuster, a contractor.</p>
       <div className="guest-access-form">
         <input value={label} placeholder="Label, e.g. Insurance Claim Sep 2026"
@@ -2117,12 +2118,8 @@ function GuestAccessCard({ auth }) {
         <label className="guest-access-expiry">
           Expires in <input type="number" min="1" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} /> days (blank = never)
         </label>
-        <button className="btn-primary" onClick={() => create(false)} disabled={creating || !label.trim()}>
+        <button className="btn-primary" onClick={create} disabled={creating || !label.trim()}>
           {creating ? "Creating…" : "Create link"}
-        </button>
-        <button className="btn-secondary" onClick={() => create(true)} disabled={creating || !label.trim()}
-          title="Full app, read-only. Cameras, locks and other presence devices show as 'hidden for Demo viewers'. Scope checkboxes don't apply.">
-          Create demo link
         </button>
         {error && <p className="action-result action-error">Not created: {error}</p>}
       </div>
@@ -2137,23 +2134,136 @@ function GuestAccessCard({ auth }) {
 
       <div className="guest-access-list">
         {tokens.length === 0 && <p className="config-hint">No share links yet.</p>}
-        {tokens.map(t => (
-          <div key={t.id} className={`guest-access-row ${t.revokedAt ? "guest-access-revoked" : ""}`}>
-            <div>
-              <strong>{t.label}</strong>
-              {t.scope?.includes("demo") && <span className="state-badge demo-badge">Demo</span>}
-              <span className="config-hint">
-                {t.scope.join(", ")}
-                {t.expiresAt ? ` · expires ${new Date(t.expiresAt).toLocaleDateString()}` : " · no expiry"}
-              </span>
+        {tokens.map(t => {
+          const status = shareLinkStatus(t);
+          return (
+            <div key={t.id} className={`guest-access-row ${status.active ? "" : "guest-access-revoked"}`}>
+              <div>
+                <strong>{t.label}</strong>
+                {t.scope?.includes("demo") && <span className="state-badge demo-badge">Demo</span>}
+                <span className="config-hint">
+                  {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
+                </span>
+              </div>
+              {status.active
+                ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
+                : <span className="config-hint">{status.badge}</span>}
             </div>
-            {t.revokedAt
-              ? <span className="config-hint">Revoked</span>
-              : <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </>
+  );
+}
+
+// Exact local date and time, with the time zone, so whoever creates a link
+// knows the precise moment it stops working rather than just a day.
+export function formatStopTime(value) { // exported for src/DemoAccess.test.jsx
+  return new Date(value).toLocaleString(undefined, {
+    weekday: "short", year: "numeric", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  });
+}
+
+export function shareLinkStatus(token, now = Date.now()) { // exported for src/DemoAccess.test.jsx
+  if (token.revokedAt) {
+    return { active: false, badge: "Revoked", text: `revoked ${formatStopTime(token.revokedAt)}` };
+  }
+  if (!token.expiresAt) return { active: true, text: "no expiry" };
+  const at = new Date(token.expiresAt).getTime();
+  return at <= now
+    ? { active: false, badge: "Expired", text: `stopped working ${formatStopTime(at)}` }
+    : { active: true, text: `stops working ${formatStopTime(at)}` };
+}
+
+export const DEMO_LINK_DEFAULT_DAYS = 30;
+
+// D22 / UC-9: the one place an admin creates a link for someone evaluating
+// the product. A demo link holds the "demo" scope only (the backend rejects
+// a mix) and always has an end time: the lifetime field is required here,
+// and the exact moment the link stops working is shown before creating,
+// right after creating (from the server's own expiresAt), and in the list.
+export function DemoLinkSection({ doFetch, apiBase, onCreated }) { // exported for src/DemoAccess.test.jsx
+  const [label, setLabel] = useState("");
+  const [days, setDays] = useState(String(DEMO_LINK_DEFAULT_DAYS));
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState(null); // { link, expiresAt }
+  const [error, setError] = useState(null);
+
+  const dayCount = Number(days);
+  const daysValid = Number.isInteger(dayCount) && dayCount >= 1;
+  const previewStop = daysValid ? formatStopTime(Date.now() + dayCount * 24 * 60 * 60 * 1000) : null;
+
+  const create = async () => {
+    if (!label.trim() || !daysValid) return;
+    setCreating(true);
+    setError(null);
+    setCreated(null);
+    try {
+      const response = await doFetch(`${apiBase}/api/access-tokens`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label.trim(), scope: ["demo"], expiresInDays: dayCount }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || body.error || `HTTP ${response.status}`);
+      setCreated({ link: `${window.location.origin}/demo/${body.token}`, expiresAt: body.expiresAt });
+      setLabel("");
+      onCreated?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="demo-link-section">
+      <h4 className="guest-access-subhead">Demo link for product evaluation</h4>
+      <p className="config-desc">
+        Give someone who is evaluating the product (a prospective user, an insurance agent, a contractor)
+        the real app, read-only, with no account or sign-in. Cameras, locks, motion and door sensors, and
+        phones show as "{HIDDEN_FOR_DEMO}". Monitoring, alerts, automations and today's history show as they do for you.
+        Any signed-in admin can create and revoke these links.
+      </p>
+      <ol className="demo-link-steps">
+        <li>Name the link after the person and why they're looking, for example "Agent evaluation – Jane Doe".</li>
+        <li>Choose how many days it lives. It stops working automatically at the time shown below; nobody has to remember to turn it off.</li>
+        <li>Create it and copy the link straight away. It's shown only once.</li>
+        <li>Send it. To end it before the scheduled time, press Revoke in the list below.</li>
+      </ol>
+      <div className="guest-access-form">
+        <input value={label} placeholder="Who and why, e.g. Agent evaluation – Jane Doe"
+          aria-label="Demo link label" onChange={e => setLabel(e.target.value)} />
+        <label className="guest-access-expiry">
+          Lives for <input type="number" min="1" step="1" required aria-label="Demo link lifetime in days"
+            value={days} onChange={e => setDays(e.target.value)} /> days
+        </label>
+        <p className="config-hint demo-link-stop" data-testid="demo-stop-preview">
+          {daysValid
+            ? <>If created now, it stops working on <strong>{previewStop}</strong>.</>
+            : "Enter a whole number of days, 1 or more. A demo link always has an end date."}
+        </p>
+        <button className="btn-primary" onClick={create} disabled={creating || !label.trim() || !daysValid}>
+          {creating ? "Creating…" : "Create demo link"}
+        </button>
+        {error && <p className="action-result action-error">Not created: {error}</p>}
+      </div>
+
+      {created && (
+        <div className="guest-access-new-link">
+          <strong>Demo link created — copy it now, it won't be shown again:</strong>
+          <code>{created.link}</code>
+          <button className="btn-ghost" onClick={() => navigator.clipboard?.writeText(created.link)}>Copy</button>
+          {created.expiresAt && (
+            <p className="config-hint" data-testid="demo-created-stop">
+              It stops working on <strong>{formatStopTime(created.expiresAt)}</strong>. After that, anyone opening
+              it sees "This link is no longer active." It stays in the list below, marked Expired, as a record.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
