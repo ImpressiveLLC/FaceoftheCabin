@@ -25,6 +25,42 @@ UC-n (use-cases.md) → D-n or R-ID (decisions/) → W-n / DOC-n (backlog.md, WS
   → PR → SO-date-rN (signoffs/) → ITER-date (iterations/)
 ```
 
+## ID allocation
+
+Every record ID is allocated once, by the PR that introduces the record, and never reused.
+
+| Prefix | Record | Home | Form |
+|---|---|---|---|
+| `UC-n` | Use case | [`use-cases.md`](use-cases.md) | Integer sequence |
+| `D-n` | Decision | [`decisions/`](decisions/README.md) | Integer sequence |
+| `R-XX-n` | Requirement inside a decision | That decision's section | Prefix chosen by the decision (for example `R-DM-` in D22); integers restart per prefix |
+| `Q-XX-n` | Open question inside a decision | That decision's section | Same prefix as its requirements |
+| `W-n` | Code work item | [`backlog.md`](backlog.md) | Integer sequence. A letter suffix (`W-2b`) only splits an existing item; it never starts a new one |
+| `DOC-n` | Documentation work item | [`backlog.md`](backlog.md) | Integer sequence |
+| `CW-n` | Cowork work item | [`iterations/`](iterations/) | Integer sequence |
+| `DL-YYYY-MM-DD-NN` | Discrepancy | [`discrepancy-log.md`](discrepancy-log.md) | Two-digit sequence per date |
+| `SO-YYYY-MM-DD-rN` | Sign-off | [`signoffs/`](signoffs/) | Revision per date |
+| `ITER-YYYY-MM-DD` | Iteration plan | [`iterations/`](iterations/) | One per start date |
+
+**The next free ID is one past the highest in use on `main` or in any open PR.** An ID in an open PR is taken even though it has not merged: two PRs that each read only `main` will pick the same number. Before allocating, check both:
+
+```bash
+git fetch origin
+git show origin/main:docs/governance/backlog.md | grep -oE '^\| W-[0-9]+' | sort -t- -k2 -n | tail -1
+for pr in $(gh pr list --state open --json number -q '.[].number'); do
+  echo "#$pr: $(gh pr diff "$pr" | grep -E '^\+\| W-[0-9]+' | grep -oE 'W-[0-9]+[a-z]?' | sort -u | xargs)"
+done
+```
+
+Swap `W-` and the file for any other sequence.
+
+Rules:
+
+1. **Never reuse.** An item that is dropped keeps its ID with status `dropped`; a closed-unmerged PR releases its IDs only if nothing else cites them.
+2. **Cite only allocated IDs.** Do not reference an ID in a commit, PR, or chat before the PR that introduces it exists.
+3. **Collisions: the later merge renumbers.** If two PRs claim the same ID, the one that merges second renumbers before merging. If the losing ID was already cited elsewhere, log a discrepancy entry mapping old to new.
+4. **Moving a record keeps its ID.** When a record moves between open PRs (for example out of a spec PR into its own), it keeps the ID and is removed from the source PR in the same change.
+
 ## Ownership
 
 | File | Writes | Ratifies |
