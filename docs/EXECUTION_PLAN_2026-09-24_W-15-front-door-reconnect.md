@@ -9,7 +9,7 @@ Backlog: [W-15](governance/backlog.md). Blocks [#97](https://github.com/Impressi
 1. **Does the M920q have a usable Wi-Fi interface?** Yes, exactly one, and it is already the box's only uplink. `wlo1` (Intel CNVi, `iwlwifi`) carries the whole LAN, the default route and the Tailscale path. The Ethernet port `eno2` has no carrier.
 2. **It can hold only one Wi-Fi client connection at a time.** `iw list` reports `#{ managed } <= 1` in every valid interface combination. The radio cannot sit on the current network *and* the camera's network at once, so a second virtual interface is not possible on this hardware.
 3. **Consequence for option A.** Joining the camera's Wi-Fi means leaving the current LAN for as long as the join lasts. With `never-default` (no default route via the joined network) the box also has no internet path during that time. Option A is therefore a **time-boxed test window**, not a durable fix. A durable connection to both networks needs a second radio or a different path, which is Nate's decision after the window.
-4. **Do Step 0 first.** It needs no network change and may make the window unnecessary.
+4. **Step 0 has been run (2026-09-24, read-only): the camera is not reachable from the M920q.** Its current address is `192.168.1.121`, on a different subnet from the M920q's `192.168.2.0/24`. Ping and every camera port time out, and a hop trace shows the gateway answering and nothing beyond it. Step 1 is therefore the candidate, pending Nate's approval.
 
 ## What is known, and how
 
@@ -21,7 +21,9 @@ Backlog: [W-15](governance/backlog.md). Blocks [#97](https://github.com/Impressi
 | One managed interface at a time on this radio. | Code, `iw list` interface combinations. |
 | A saved Wi-Fi profile for a 2.4 GHz network exists, has never been activated (`connection.timestamp` 0, `autoconnect no`), has its credential stored with the profile (`psk-flags 0`), and the network is in range, strong, channel 11. | Code, `nmcli` non-secret fields and cached scan (no new scan). The secret was never read. |
 | Frigate `front_door`: 0.0 fps, 1,260 "No route to host" lines in 30 minutes, ARP `INCOMPLETE` for `192.168.2.200`. | Code, Frigate `/api/stats`, container log, `ip neigh`. |
-| The camera's *current* address is recorded nowhere in this repo or on the host. Frigate still holds the old one. | Code, repo search and Frigate config. |
+| The camera's current address is `192.168.1.121` (MAC held by Nate, not recorded here). Before this, it was recorded nowhere in this repo or on the host; Frigate still holds the old `192.168.2.200`. | Nate, 2026-09-24; Code, repo search and Frigate config. |
+| Step 0 result: from the M920q, `192.168.1.121` routes via gateway `192.168.2.1`; ping 3/3 lost; TCP 554, 80, 443, 8000, 9000 all time out (not refused); `tracepath` shows hop 1 (`192.168.2.1`) answering and hops 2–6 silent. | Code, read-only probes, 2026-09-24. |
+| `ffprobe` is not on the Frigate container's PATH. The builds are `/usr/lib/ffmpeg/5.0/bin/ffprobe` and `/usr/lib/ffmpeg/7.0/bin/ffprobe`; the 7.0 build runs, and `FRIGATE_RTSP_PASSWORD` is present in the container environment. | Code, `docker exec`, 2026-09-24. |
 | No passwordless `sudo`; every `nmcli` network-control action needs authentication from an SSH session. Code cannot change networking remotely even if permitted. | Code, `sudo -n`, `nmcli general permissions`. |
 | The wireless regulatory domain is unset (`country 00`), which limits 5 GHz DFS channels and power. | Code, `iw reg get`. |
 | Tailscale rides `wlo1`: no exit node, no accepted subnet routes. | Code, `tailscale debug prefs`. |
@@ -30,26 +32,28 @@ Backlog: [W-15](governance/backlog.md). Blocks [#97](https://github.com/Impressi
 
 ## The gap Step 0 closes
 
-`No route to host` for `192.168.2.200` proves that nothing owns that address. It would look the same on a network where the camera is reachable at a different address. The reported band split is a plausible cause of a real isolation problem, but it has not been *tested*, because nobody has probed the camera's current address from the M920q. If the two bands are one LAN (or the router routes between them), Frigate only needs a new address.
+`No route to host` for `192.168.2.200` proves that nothing owns that address. It would look the same on a network where the camera is reachable at a different address. The reported band split is a plausible cause of a real isolation problem, but it has not been *tested*, because nobody has probed the camera's current address from the M920q. If the two bands are one LAN (or the router routes between them), Frigate only needs a new address. **Outcome: Step 0 was run and the camera is not reachable, so the split is real and not only a stale address.**
 
 ## Step 0 — probe the camera's current address (no network change)
 
-Needs one input from Nate: the camera's current IP, from the Reolink app (device settings, network information) or the Starlink app's device list. Then, on the M920q (read-only probes):
+Needs one input from Nate: the camera's current IP, from the Reolink app (device settings, network information) or the Starlink app's device list. Nate supplied `192.168.1.121`. On the M920q, read-only probes:
 
 ```bash
-ip route get <CAMERA_IP>
-ping -c3 -W2 <CAMERA_IP>
-nc -zv -w3 <CAMERA_IP> 554
-# The password expands inside the container's shell and is never printed:
-docker exec frigate sh -c 'timeout 15 ffprobe -v error -rtsp_transport tcp \
-  -show_entries stream=codec_name,width,height -of default=nw=1 \
-  "rtsp://admin:${FRIGATE_RTSP_PASSWORD}@<CAMERA_IP>:554/h264Preview_01_sub"'
+ip route get 192.168.1.121
+ping -c3 -W2 192.168.1.121
+nc -zv -w3 192.168.1.121 554
+# Only worth running if the two above succeed. ffprobe is not on PATH in the
+# container, so the full path is required. The password expands inside the
+# container's shell and is never printed:
+docker exec frigate sh -c 'timeout 15 /usr/lib/ffmpeg/7.0/bin/ffprobe -v error \
+  -rtsp_transport tcp -show_entries stream=codec_name,width,height -of default=nw=1 \
+  "rtsp://admin:${FRIGATE_RTSP_PASSWORD}@192.168.1.121:554/h264Preview_01_sub"'
 ```
 
 | Result | Meaning | Next |
 |---|---|---|
 | Ping and port 554 answer, `ffprobe` prints a codec and size | The split is not blocking the M920q. Only the address in Frigate is stale. | A config PR changing `front_door`'s two inputs to `<CAMERA_IP>` (`cabin-orchestration-platform/infra/production-stack/frigate/config.yml`, deployed by `deploy-production-stack.yml` with auto-rollback). Remaining risk: the address changing again on a DHCP lease renewal. Nate decides how to pin it. W-15 shrinks. |
-| No answer | The networks are not reachable from each other as configured. Step 1 becomes worth its risk. | Step 1. |
+| No answer **(this is what happened, 2026-09-24)** | The networks are not reachable from each other as configured. Step 1 becomes worth its risk. | Step 1, pending Nate's approval. |
 
 ## Step 1 — option A: time-boxed join (only if Step 0 fails)
 
@@ -77,7 +81,7 @@ The join is the risky part, because Nate is not on site and a failed revert stra
 - [ ] No eval or training running on the M920q. Ollama's container is present; check the host for `ask_eval` / `eval_pipeline` processes.
 - [ ] Record as-found state: `ip -br addr`, `ip route`, `ip -6 route show default`, `resolvectl status`, `tailscale status | head`.
 - [ ] Record the as-found values of every profile field this plan changes (below), so the change can be undone exactly.
-- [ ] Nate confirms which saved profile is the camera's network and its subnet.
+- [ ] Nate confirms which saved profile is the camera's network (the only 2.4 GHz network in the radio's cached scan is the never-used saved one, but that is inference, not confirmation) and gives the camera's MAC from the Reolink app for `<CAMERA_MAC>`.
 - [ ] Decide on the optional reboot backstop.
 - [ ] Consider `sudo iw reg set US` first (a runtime setting, lost on reboot). The unset domain restricts channels and may affect the join.
 
@@ -105,7 +109,8 @@ sudo systemd-run --unit=w15-window --collect /bin/bash /var/tmp/w15-window.sh
 #!/usr/bin/env bash
 # DRAFT, untested. Run as root on the M920q with Nate present.
 set -u
-LAN="<LAN_PROFILE>"; ALT="<STARLINK_2G_PROFILE>"; CAM="<CAMERA_IP>"
+LAN="<LAN_PROFILE>"; ALT="<STARLINK_2G_PROFILE>"; CAM="192.168.1.121"
+CAM_MAC="<CAMERA_MAC>"   # from the Reolink app; compared below before any credential is sent
 LOG=/var/tmp/w15-window-$(date +%F-%H%M%S).log
 exec > >(tee -a "$LOG") 2>&1
 
@@ -126,9 +131,16 @@ echo "== camera tests =="
 ip route get "$CAM"
 ping -c3 -W2 "$CAM"
 nc -zv -w3 "$CAM" 554
-docker exec frigate sh -c "timeout 15 ffprobe -v error -rtsp_transport tcp \
-  -show_entries stream=codec_name,width,height -of default=nw=1 \
-  \"rtsp://admin:\${FRIGATE_RTSP_PASSWORD}@${CAM}:554/h264Preview_01_sub\""
+# Identity gate: only send the RTSP password to the device whose MAC matches.
+SEEN=$(ip neigh show "$CAM" | awk '{print tolower($5)}')
+echo "camera MAC seen: ${SEEN:-none}"
+if [ -n "$SEEN" ] && [ "$SEEN" = "$(echo "$CAM_MAC" | tr A-Z a-z)" ]; then
+  docker exec frigate sh -c "timeout 15 /usr/lib/ffmpeg/7.0/bin/ffprobe -v error \
+    -rtsp_transport tcp -show_entries stream=codec_name,width,height -of default=nw=1 \
+    \"rtsp://admin:\${FRIGATE_RTSP_PASSWORD}@${CAM}:554/h264Preview_01_sub\""
+else
+  echo "MAC MISMATCH or not seen -- credentials NOT sent"
+fi
 
 echo "== revert now =="
 nmcli --wait 30 connection up "$LAN"
