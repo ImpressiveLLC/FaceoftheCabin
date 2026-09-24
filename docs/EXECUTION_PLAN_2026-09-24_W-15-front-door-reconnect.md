@@ -19,7 +19,10 @@ Backlog: [W-15](governance/backlog.md). Blocks [#97](https://github.com/Impressi
 | The camera's address cannot be changed remotely. It needs someone on site with a cable. | Nate, 2026-09-24. |
 | `wlo1` is the only uplink: 5 GHz, channel 161, −49 dBm, DHCP `192.168.2.46/24`, default route via `192.168.2.1`; `eno2` is `NO-CARRIER`. | Code, read-only `ip`, `iw`. |
 | One managed interface at a time on this radio. | Code, `iw list` interface combinations. |
-| A saved Wi-Fi profile for a 2.4 GHz network exists, has never been activated (`connection.timestamp` 0, `autoconnect no`), has its credential stored with the profile (`psk-flags 0`), and the network is in range, strong, channel 11. | Code, `nmcli` non-secret fields and cached scan (no new scan). The secret was never read. |
+| A second saved Wi-Fi profile exists on the M920q. It has never been activated (`connection.timestamp` 0, `autoconnect no`) and has its credential stored with the profile (`psk-flags 0`). Its network name is in range on **2.4 GHz (ch 11) and on both 5 GHz channels**, so it is not a 2.4 GHz-only network. | Code, `nmcli` non-secret fields and cached scan (no new scan). The secret was never read. |
+| The cached scan holds six APs. Five carry the two names the M920q knows: the saved one on 2.4 GHz and both 5 GHz channels, the current LAN's on both 5 GHz channels. The sixth is a **different, unsaved name on 2.4 GHz ch 11 with the strongest signal in the scan**, most likely the 2.4 GHz counterpart of the current LAN's network. So the 2.4 GHz band carries two names at the cabin, not one. Hardware vendor could not be determined (all BSSIDs are locally administered). | Code, cached scan, 2026-09-24. |
+| The same network name as the saved profile is also used at the home property, and variations of it exist at both. A name therefore does **not** identify the camera's network. | Nate, 2026-09-24. |
+| The 2.4 GHz side carries other IoT devices (fridge, Kidde detector, older devices). No other camera is expected there. | Nate, 2026-09-24. Reported, not verified. |
 | Frigate `front_door`: 0.0 fps, 1,260 "No route to host" lines in 30 minutes, ARP `INCOMPLETE` for `192.168.2.200`. | Code, Frigate `/api/stats`, container log, `ip neigh`. |
 | The camera's current address is `192.168.1.121` (MAC held by Nate, not recorded here). Before this, it was recorded nowhere in this repo or on the host; Frigate still holds the old `192.168.2.200`. | Nate, 2026-09-24; Code, repo search and Frigate config. |
 | Step 0 result: from the M920q, `192.168.1.121` routes via gateway `192.168.2.1`; ping 3/3 lost; TCP 554, 80, 443, 8000, 9000 all time out (not refused); `tracepath` shows hop 1 (`192.168.2.1`) answering and hops 2–6 silent. | Code, read-only probes, 2026-09-24. |
@@ -81,9 +84,20 @@ The join is the risky part, because Nate is not on site and a failed revert stra
 - [ ] No eval or training running on the M920q. Ollama's container is present; check the host for `ask_eval` / `eval_pipeline` processes.
 - [ ] Record as-found state: `ip -br addr`, `ip route`, `ip -6 route show default`, `resolvectl status`, `tailscale status | head`.
 - [ ] Record the as-found values of every profile field this plan changes (below), so the change can be undone exactly.
-- [ ] Nate confirms which saved profile is the camera's network (the only 2.4 GHz network in the radio's cached scan is the never-used saved one, but that is inference, not confirmation) and gives the camera's MAC from the Reolink app for `<CAMERA_MAC>`.
+- [ ] **Identify the camera's network by evidence, not by name.** Nate reads the network the camera is joined to (Reolink app, Wi-Fi settings) and confirms in the Starlink app's client list whether the camera appears there, and under which name the Starlink router broadcasts. If that is not the saved profile's name, the window needs a *different* profile: a second persistent config change, with its credential typed on the box by Nate and never written to this repo.
+- [ ] Nate gives the camera's MAC from the Reolink app for `<CAMERA_MAC>`.
 - [ ] Decide on the optional reboot backstop.
 - [ ] Consider `sudo iw reg set US` first (a runtime setting, lost on reboot). The unset domain restricts channels and may affect the join.
+
+### Joining the wrong network, or failing to join
+
+Because names are reused across properties and the saved name is broadcast on three access points, three outcomes are possible, and all are safe by design:
+
+| Outcome | Why it is safe |
+|---|---|
+| The saved credential does not match the cabin's network (for example it belongs to the home network of the same name). | Authentication fails, NetworkManager falls back to the LAN profile, and the timers are still armed. |
+| It joins a different network from the camera's. | The camera is not reachable, and the MAC gate in the script stops the RTSP password from being sent to whatever answers at that address. |
+| It joins the right name but on the other band. | Both bands of one name are expected to share a LAN. The window's `ip neigh` MAC check is the proof, not the band. |
 
 ### The profile change (a persistent NetworkManager edit, so done only with Nate present)
 
