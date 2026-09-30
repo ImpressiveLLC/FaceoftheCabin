@@ -5495,6 +5495,13 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   const [days, setDays] = useState(30);
   const [seriesByDevice, setSeriesByDevice] = useState({});
   const [loading, setLoading] = useState(false);
+  // W-21: the server's own answer to "how much of what you asked for did
+  // you actually get" (TelemetryHistoryResponse), not derived from `days`
+  // itself -- a demo token's own ceiling (or a future divergence from the
+  // normal view's cabin.history.max-days) can clamp below what the Range
+  // dropdown shows as selected, and that must never render silently as if
+  // the full requested window came back.
+  const [rangeInfo, setRangeInfo] = useState(null);
 
   // Alert History (D16): "a view over the alert event log (all types)" --
   // Cowork-ratified 2026-09-05 as a pure computed view, not a per-service
@@ -5525,16 +5532,27 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
     // then also skips setLoading(false) because of that same flag, and
     // this early-return branch never touched loading at all. Must reset
     // it explicitly here, not just the series.
-    if (selectedIds.length === 0) { setSeriesByDevice({}); setLoading(false); return; }
+    if (selectedIds.length === 0) { setSeriesByDevice({}); setLoading(false); setRangeInfo(null); return; }
     let cancelled = false;
     setLoading(true);
     Promise.all(selectedIds.map(id =>
       authedFetch(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(id)}&field=${field}&days=${days}`)
         .then(r => r.json())
-        .then(data => [id, Array.isArray(data) ? data : []])
-        .catch(() => [id, []])
-    )).then(entries => { if (!cancelled) setSeriesByDevice(Object.fromEntries(entries)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+        .then(data => [id, data])
+        .catch(() => [id, null])
+    )).then(entries => {
+      if (cancelled) return;
+      setSeriesByDevice(Object.fromEntries(entries.map(([id, data]) =>
+        [id, Array.isArray(data?.points) ? data.points : []])));
+      // Every selected device was asked for the same `days` against the same
+      // viewer's ceiling, so any response that actually came back describes
+      // the same effective range -- take the first one rather than reconciling
+      // disagreement that architecturally can't happen.
+      const withRange = entries.map(([, data]) => data).find(d => d && typeof d.effectiveDays === "number");
+      setRangeInfo(withRange
+        ? { requestedDays: withRange.requestedDays, effectiveDays: withRange.effectiveDays, clamped: withRange.clamped }
+        : null);
+    }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // `field` deliberately omitted -- a field change always cascades through
     // the reset effect above into a `selectedIds` update in the very next
@@ -5567,6 +5585,10 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   // multiple lines/columns line up and compare on one chart/table instead
   // of each device silently keeping its own independent scale.
   const allDates = [...new Set(selectedIds.flatMap(id => (seriesByDevice[id] || []).map(p => p.day)))].sort();
+  // W-21: every selected device queries the same window, so a day the
+  // backend flags partial for one device is partial for all of them --
+  // this is just which of allDates that ever was, not a per-device fact.
+  const partialDates = new Set(selectedIds.flatMap(id => (seriesByDevice[id] || []).filter(p => p.partial).map(p => p.day)));
   const allDisplayValues = selectedIds.flatMap(id =>
     (seriesByDevice[id] || []).filter(p => p.avg != null).map(p => toDisplay(p.avg)));
   const chartMin = allDisplayValues.length ? Math.min(...allDisplayValues) : 0;
@@ -5596,13 +5618,13 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   // "don't fabricate a value that isn't real" reasoning as the on-screen
   // table's "—" cells -- a pivot built on this can trust every row.
   const downloadCsv = () => {
-    const header = "date,device,avg,count\n";
+    const header = "date,device,avg,count,partial\n";
     const rows = [];
     for (const day of allDates) {
       for (const id of selectedIds) {
         const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
         if (p?.avg == null) continue;
-        rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount].join(","));
+        rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount, p.partial ? "yes" : "no"].join(","));
       }
     }
     const blob = new Blob([header + rows.join("\n")], { type: "text/csv" });
@@ -5678,15 +5700,24 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                 </select>
               </label>
               <label className="dm-toolbar-select">Range
+                {/* W-21: capped at the shared 60-day platform ceiling
+                    (cabin.history.max-days / cabin.demo.max-history-days,
+                    D22 Q-DM-2) -- offering 90 here when nothing ever honors
+                    it past that ceiling is exactly the "chart defect" this
+                    fixes. */}
                 <select value={days} onChange={e => setDays(Number(e.target.value))}>
                   <option value={7}>7 days</option>
                   <option value={30}>30 days</option>
                   <option value={60}>60 days</option>
-                  <option value={90}>90 days</option>
                 </select>
               </label>
               <button className="btn-ghost" onClick={downloadCsv} disabled={selectedIds.length === 0 || allDates.length === 0}>Download CSV</button>
             </div>
+            {rangeInfo?.clamped && (
+              <p className="config-hint sensor-history-clamp-note">
+                Showing last {rangeInfo.effectiveDays} days — this view's history is limited to {rangeInfo.effectiveDays} days, less than the {rangeInfo.requestedDays} requested.
+              </p>
+            )}
             <div className="sensor-history-device-picker">
               <button className="btn-ghost" onClick={selectAll} disabled={selectedIds.length === fieldDevices.length}>Select all</button>
               <button className="btn-ghost" onClick={selectNone} disabled={selectedIds.length === 0}>Clear</button>
@@ -5704,7 +5735,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
               <p className="config-hint">Select at least one device above to chart {SENSOR_FIELD_LABELS[field] || field}.</p>
             )}
             {!loading && selectedIds.length > 0 && allDates.length === 0 && (
-              <p className="config-hint">No {field} history for the selected devices in the last {days} days.</p>
+              <p className="config-hint">No {field} history for the selected devices in the last {rangeInfo?.effectiveDays ?? days} days.</p>
             )}
             {!loading && allDates.length > 0 && (
               <>
@@ -5727,6 +5758,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                 )}
                 <p className="config-hint sensor-history-count-note">
                   Each value is that day's average; (n=…) is how many individual readings were averaged into it — the CSV export has the count as its own column.
+                  {partialDates.size > 0 && " A day marked (partial) covers less than a full 24 hours -- its average is over fewer hours than the other rows, not a stronger or weaker reading."}
                 </p>
                 <div className="sensor-history-table-wrap">
                   <table className="sensor-history-table">
@@ -5734,7 +5766,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                     <tbody>
                       {[...allDates].reverse().map(day => (
                         <tr key={day}>
-                          <td>{new Date(day).toLocaleDateString()}</td>
+                          <td>{new Date(day).toLocaleDateString()}{partialDates.has(day) ? " (partial)" : ""}</td>
                           {selectedIds.map(id => {
                             const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
                             // Sample count matters for credibility, not just decoration --
@@ -8606,8 +8638,9 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
       const entries = Object.entries(fields).filter(([, f]) => f.length > 0).slice(0, 5);
       const points = await Promise.all(entries.map(async ([deviceId, deviceFields]) => {
         const field = deviceFields[0];
-        const data = await fetchScoped(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(deviceId)}&field=${encodeURIComponent(field)}&days=7`);
-        return data ? { deviceId, field, data } : null;
+        const response = await fetchScoped(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(deviceId)}&field=${encodeURIComponent(field)}&days=7`);
+        const data = response?.points;
+        return Array.isArray(data) ? { deviceId, field, data } : null;
       }));
       setTelemetryHistory(points.filter(Boolean));
     };

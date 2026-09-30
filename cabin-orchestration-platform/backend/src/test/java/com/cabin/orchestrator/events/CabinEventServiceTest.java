@@ -255,6 +255,25 @@ class CabinEventServiceTest {
         assertThat(points).isEmpty();
     }
 
+    // W-21: `since` ("N days ago from right now") almost never lands on an
+    // exact UTC midnight, so the earliest day a window can return only has
+    // partial coverage -- a reading placed exactly at `since` should land
+    // in that boundary day and be flagged, while a reading from today
+    // (comfortably inside the window, not the boundary day) should not.
+    @Test
+    void marksOnlyTheEarliestDayInTheWindowAsPartial() {
+        Instant now = Instant.now();
+        Instant since = now.minus(java.time.Duration.ofDays(7));
+        saveTelemetry("boundary", "z2m-humid_mech", since, Map.of("humidity", 50));
+        saveTelemetry("recent", "z2m-humid_mech", now, Map.of("humidity", 90));
+
+        List<TelemetryDailyPoint> points = service.dailyAggregates("z2m-humid_mech", "humidity", 7);
+
+        assertThat(points).hasSize(2);
+        assertThat(points.get(0).partial()).isTrue();
+        assertThat(points.get(points.size() - 1).partial()).isFalse();
+    }
+
     // 2026-08-27: reportedFieldsByDevice() -- the real, observed-data
     // ground truth for the field/device picker, replacing
     // DeviceType.telemetryFields()'s static per-type guess (see its own
