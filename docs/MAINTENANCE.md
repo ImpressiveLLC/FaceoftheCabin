@@ -207,6 +207,59 @@ Runs automatically monthly via `.github/workflows/rotate-secrets.yml`.
 mechanics needed (Grafana's admin API, HA's own token UI), still a manual
 `ansible-vault edit` + matching account-side change.
 
+**2026-10-01 incident — half-finished rotation, and how to recover from
+one.** The first scheduled rotation to get past SSH (the 2026-09-01 run
+died at `Permission denied (publickey)` before touching anything) ran
+`ALTER USER` on the live DB, re-encrypted the vault and templated
+`infra/.env`, then crashed rendering production-stack `.env`
+(`'vault_blink_username' is undefined`) — so `cabin-backend` was never
+recreated and kept the old password: `/actuator/health` DOWN, `password
+authentication failed for user "cabin"`. The playbook now preflights and
+rolls back (see `ansible/README.md`'s "Automatic rotation"), but if you
+ever face a DB/`.env` password mismatch again, these are the traps found
+recovering from this one:
+
+- **`docker exec cabin-postgres printenv POSTGRES_PASSWORD` is not the live
+  password.** It's whatever the container was created with; only `ALTER
+  USER` changes the real one. Copying it into `.env` points `.env` at a
+  stale value.
+- **`docker restart` does not re-read `.env`** — it reuses the container's
+  existing environment. Recreate with `docker compose -f docker-compose.yml
+  -f docker-compose.m920q.yml up -d --no-deps cabin-backend` (both `-f`
+  files — the overlay alone fails with `service "prometheus" has neither an
+  image nor a build context`).
+- **Fastest fix: make the DB match `.env`, not the other way round** —
+  `ALTER USER` via the container's local socket needs no old password:
+  `PW=$(grep -m1 '^POSTGRES_PASSWORD=' .env | cut -d= -f2-); printf
+  "ALTER USER cabin WITH PASSWORD '%s';\n" "$PW" | docker exec -i
+  cabin-postgres psql -U cabin -d cabin; unset PW`. Check `.env` matches
+  the committed vault by hash first, so all three end up agreeing.
+- **Health still DOWN with the DB fixed → check `HA_TOKEN`.**
+  `HaTokenCabinHealthIndicator` reports DOWN on a blank token, and
+  `show-details: never` hides which indicator failed — `docker logs
+  cabin-backend` is the only way to tell. The 2026-10-01 rotation's
+  templating blanked it because `vault_ha_token` was empty in the vault
+  (restored from the top-level `cabin-orchestration-platform/.env`, which
+  still had it).
+- **Undo a stray vault edit in the deploy worktree**
+  (`git -C /home/nate/FaceoftheCabin-deploy checkout --
+  ansible/group_vars/cabin/vault.yml`) or every deploy workflow's
+  clean-worktree preflight will refuse to run.
+- **Verify a vault edit by decrypting and hash-comparing *before*
+  committing — a successful re-encrypt proves nothing.** Two commits that
+  day (`bb1a971`, `8348458`) claimed to restore `vault_ha_token` but were
+  re-encryptions of unchanged plaintext: the patch script's `python3 -
+  <<'PY' && \` line continuation swallowed the heredoc's first line, Python
+  died, and the unchained encrypt step ran anyway. The follow-up script's
+  abort guard was dead too (`ok=0` set inside `$(...)`, a subshell). Fixed
+  for real at `5bbc751` (and the also-blank `vault_camera_password` at
+  `989fb07`), both hash-verified against live. Put patch code in a
+  file, never behind a `\` continuation, and keep abort flags out of
+  command substitutions.
+- **Commit vault fixes to `main` from a temp worktree** (`git worktree add
+  /tmp/vault-fix origin/main --detach`), not from whatever branch the
+  interactive clone happens to be on.
+
 **If running Ansible directly on the M920q** (as opposed to from a
 separate machine with SSH access), self-targeting via its own Tailscale
 hostname doesn't work — it's a hairpin routing limitation, not a bug in
