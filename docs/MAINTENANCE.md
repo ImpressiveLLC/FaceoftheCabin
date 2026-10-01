@@ -245,6 +245,16 @@ recovering from this one:
   (`git -C /home/nate/FaceoftheCabin-deploy checkout --
   ansible/group_vars/cabin/vault.yml`) or every deploy workflow's
   clean-worktree preflight will refuse to run.
+- **Verify a vault edit by decrypting and hash-comparing *before*
+  committing — a successful re-encrypt proves nothing.** Two commits that
+  day (`bb1a971`, `8348458`) claimed to restore `vault_ha_token` but were
+  re-encryptions of unchanged plaintext: the patch script's `python3 -
+  <<'PY' && \` line continuation swallowed the heredoc's first line, Python
+  died, and the unchained encrypt step ran anyway. The follow-up script's
+  abort guard was dead too (`ok=0` set inside `$(...)`, a subshell). Fixed
+  for real at `5bbc751`, hash-verified against live. Put patch code in a
+  file, never behind a `\` continuation, and keep abort flags out of
+  command substitutions.
 - **Commit vault fixes to `main` from a temp worktree** (`git worktree add
   /tmp/vault-fix origin/main --detach`), not from whatever branch the
   interactive clone happens to be on.

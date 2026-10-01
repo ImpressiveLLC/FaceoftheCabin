@@ -167,6 +167,28 @@
 
 ## Next Session — Open Items
 
+- **2026-10-01 — `vault_camera_password` is blank in the vault; fill it
+  before any secrets-role run.** Found during the 2026-10-01 rotation
+  incident recovery (`docs/MAINTENANCE.md`, Secrets). Live
+  `infra/production-stack/.env` has a real `CAMERA_PASSWORD` (length 14
+  per the 2026-08-14 Frigate entry; it feeds `FRIGATE_RTSP_PASSWORD`), so
+  `site.yml --tags secrets` or a rotation would blank Frigate's camera auth.
+  **Decision (made from the repo's record — Nate didn't recall otherwise,
+  2026-10-01):** CAMERA_PASSWORD stays *out of rotation* (`ontology.yaml`'s
+  `platform_secret` scope notes), but the vault must hold its real value —
+  the secrets role's own comment forbids rendering blank over a working
+  credential. If the actual intent was "vault blank, production-stack .env
+  hand-managed", the fix is to stop templating `CAMERA_PASSWORD`, not to
+  blank it. **Enforced either way** by PR #109's preflight: rotation
+  refuses (naming only the key) while any vault value would blank a live
+  one. **Fix (on the M920q):** copy live → vault with the same
+  hash-verified, temp-worktree method used for `vault_ha_token` at
+  `5bbc751` — source `production-stack/.env` `CAMERA_PASSWORD` → vault key
+  `vault_camera_password`; verify vault hash == live hash and non-empty
+  before committing to `main`. `vault_home_ha_token` blank is expected
+  (home hub not deployed) and the preflight allows it while the live value
+  is blank too. **Until fixed:** keep the "Rotate cabin-postgres password"
+  workflow disabled.
 - **2026-09-18 — PR #83 scheduling handoff:** [Retro theme refresh and optional HA console proposal](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/83) is authorized by Nate for merge. The implemented work is **aesthetic/presentation only**: Pac-Man Crackman display fonts, neon Baumans with bundled Oxanium fallback, and pink/mint/blue/yellow palette in both apps. No backend, orchestration, safety logic or device-control behavior is added. **HA-UX0–5 remain proposed, unscored, unratified and unscheduled**; do not start or mark the HA Operations Console complete from this merge. Preserve existing scheduling priorities; use [the WSJF references](ai-assistant/wsjf-backlog.md#optional-ha-operations-console-candidate--2026-09-18) for later explicit prioritization. Deployment/live verification is separate from merge; see [validation limits](retro-theme-validation.md).
 
 *Kept short and current on purpose — this is a live punch list, not an

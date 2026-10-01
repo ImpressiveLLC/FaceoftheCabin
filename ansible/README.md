@@ -209,8 +209,11 @@ incident). `playbooks/rotate-secrets.yml` now:
 1. **Preflights before touching anything live**: asserts
    `vault_postgres_password`, `vault_ha_token`, `vault_blink_username` and
    `vault_blink_password` are non-blank, dry-renders both env templates (any
-   undefined var fails here, not after the `ALTER`), checks the vault file
-   has no uncommitted edits, and checks the runner can push to `main`.
+   undefined var fails here, not after the `ALTER`), **refuses if any key
+   would render blank where the live `.env`/`production-stack/.env` has a
+   value** (prints key names only — this is the general rule; the named
+   list above is just the known-critical floor), checks the vault file has
+   no uncommitted edits, and checks the runner can push to `main`.
 2. **Rolls back on any failure after the `ALTER`**: old password back on the
    live DB, vault file restored, `POSTGRES_PASSWORD` line in `infra/.env`
    restored, dependents recreated, then fails loudly with the failing task's
