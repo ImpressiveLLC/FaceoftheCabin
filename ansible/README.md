@@ -125,8 +125,11 @@ re-encrypts on save/exit. Which editor opens depends entirely on `$EDITOR`:
   Set `EDITOR=nano` for just this one command (doesn't change anything
   permanently, doesn't touch any config file):
   ```bash
-  EDITOR=nano ansible-vault create group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass
+  export EDITOR=nano
+  ansible-vault create group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass
   ```
+  **Why two lines instead of `EDITOR=nano ansible-vault ... ` on one line:** if the inline prefix silently fails to take effect you land in `vi` with no warning. With the export form, you always get `nano`. If you ever do land in `vi` by accident: press `Esc`, type `:q!` Enter — discards the edit entirely, leaves the real encrypted file untouched.
+
   Type/paste normally, then **`Ctrl+O`** (write out) → Enter to confirm the
   filename → **`Ctrl+X`** to exit. This is the recommended default for
   routine credential edits — reach for it any time the instructions below
@@ -178,9 +181,28 @@ future change adds a new one, add it here (both to this list and to
 that's how this checklist stays trustworthy for a from-scratch clone
 instead of silently drifting out of date.
 
+### Checking for silent template gaps
+
+The `BLINK_MOTION_WEBHOOK_API_KEY` incident (2026-09-03) happened because a real live value existed directly in `.env` but was never added to the template that regenerates it — so every routine `--tags secrets` run silently dropped it, with zero error. Run this sweep any time you touch the secrets pipeline:
+
+```bash
+cd ~/FaceoftheCabin
+diff <(grep -oE '^[A-Z_]+=' cabin-orchestration-platform/infra/.env | sort -u) \
+     <(grep -oE '^[A-Z_]+=' ansible/roles/secrets/templates/env.j2 | sort -u)
+```
+Anything showing up on the left (`<`) but not the right (`>`) exists in the live file but isn't templated — it will be silently lost on the next regeneration. Fix it by adding the variable to `env.j2` **and** to the vault/vars, in the same commit.
+
 To edit later: `ansible-vault edit group_vars/cabin/vault.yml --vault-password-file ~/.ansible_vault_pass` (add `EDITOR=nano` in front for the friendlier editor, same as above) — never hand-edit the encrypted file directly.
 
 ### Applying / rotating
+
+**When running Ansible directly on the M920q itself** (SSH'd into the host, not from a separate control machine), use the dedicated entrypoint with `--connection=local` instead of `site.yml --tags secrets`:
+```bash
+# Preferred when running ON the target host itself — avoids the sudo/become deadlock
+# and the SSH-loopback failure that site.yml's first play triggers on self-targeting:
+ansible-playbook -i inventory.ini apply-secrets.yml --limit cabin --connection=local --vault-password-file ~/.ansible_vault_pass
+```
+**Expect the `production-stack` .env template task to fail** with `'vault_blink_username' is undefined` if that hasn't been populated — this is a known, pre-existing separate gap that doesn't affect the `cabin-backend`/`family-hub` .env. Confirm the first task said `changed`, not `failed`, before moving on.
 
 ```bash
 # Templates BOTH infra/.env (app-level: cabin-backend/cabin-ui/family-hub)

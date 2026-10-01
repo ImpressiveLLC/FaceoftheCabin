@@ -256,6 +256,23 @@ open it and it then asks you to log in, that's expected too as of
 
 ---
 
+## Configuration & credentials
+
+This app never asks you to hand-edit a config file. Every credential and setting lives in one encrypted file (`ansible/group_vars/cabin/vault.yml`) and is *generated into* the real environment file the app actually reads — you never touch that generated file directly. If you ever find yourself about to edit `.env` by hand over SSH, stop and use the vault instead: a hand-edit that isn't also recorded in the vault gets silently overwritten back to blank the next time anyone runs routine maintenance. This has already happened twice in this project's history to two different real credentials.
+
+**If a feature seems disabled or is returning "not configured" or a `503`**, the answer is almost always "an optional credential for that feature was never set" — not a bug. Optional features stay completely inert (but never crash) while their credential is unset. See [`REPLICATION.md`](REPLICATION.md)'s step 8 for the complete, current list of what's optional versus required, and what each feature does while unset.
+
+**Verification after any credential change**: "the file has a value" is necessary but not sufficient. Confirm the service actually behaves differently — a webhook that returns `503` when its key is absent should return `401` (not `503`) once a value is present, even before testing the correct key. That response-code change is the real signal the credential was recognized by the running container, not just written to a file.
+
+**Never print or paste a secret's raw value**, including into an AI assistant's chat. Compare by presence or a short prefix only:
+
+```bash
+grep -c '^THE_VAR_NAME=' ~/FaceoftheCabin/cabin-orchestration-platform/infra/.env  # should print 1
+docker exec cabin-backend printenv THE_VAR_NAME | cut -c1-15                       # confirms container has it
+```
+
+For anything below this — adding a credential, rotating a password, adding a new camera — see [`MAINTENANCE.md`](MAINTENANCE.md) and [`REPLICATION.md`](REPLICATION.md).
+
 ## Who to ask
 
 For anything below the day-to-day feature level — adding a new camera,

@@ -205,6 +205,35 @@ whoever forks the repo — not bugs, just template points:
    `GOOGLE_CLIENT_ID`/`ADMIN_EMAILS` from step 3 in
    `group_vars/cabin/vars.yml`). Your vault password is a brand-new secret
    for this instance — never reuse the original instance's.
+
+   **Complete variable reference** — reconciled against `docker-compose.m920q.yml`'s
+   actual `environment:` blocks as of commit `da54eaf`, cross-checked against
+   `ansible/roles/secrets/templates/env.j2`. If a future variable is added to
+   any compose file, add it here and to the template in the same commit — this
+   table becomes exactly the kind of stale reference that caused the
+   2026-09-03 `BLINK_MOTION_WEBHOOK_API_KEY` silent-drop incident if it drifts.
+
+   | Variable (in `.env`) | Vault key | Required? | While unset |
+   |---|---|---|---|
+   | `POSTGRES_PASSWORD` | `vault_postgres_password` | **Required** | Postgres/backend won't start — fails loudly |
+   | `GRAFANA_PASSWORD` | `vault_grafana_password` | **Required** | Grafana login broken |
+   | `CAMERA_PASSWORD` | `vault_camera_password` | **Required** | Reolink/Frigate camera auth fails |
+   | `BLINK_USERNAME` / `BLINK_PASSWORD` | `vault_blink_username` / `vault_blink_password` | **Required** (if using Blink) | blinkbridge can't reach Blink cloud at all |
+   | `HA_TOKEN` | `vault_ha_token` | Optional | Entire HA discovery returns zero candidates — not per-device, the whole integration looks unconfigured. Already cost real debugging time once. |
+   | `HOME_HA_TOKEN` / `HOME_HA_URL` | `vault_home_ha_token` / (plain in `vars.yml`) | Optional | Same, for the second ("home") location |
+   | `GOOGLE_CLIENT_SECRET` | `vault_google_client_secret` | Optional | Grafana's own Google-login flow disabled (client-side sign-in elsewhere unaffected) |
+   | `TECH_ID_API_KEY` | `vault_tech_id_api_key` | Optional | Tech ID Service submissions return `503` until set |
+   | `ANTHROPIC_API_KEY` | `vault_anthropic_api_key` | Optional | cabin-discovery stays local-catalog-only, no external calls |
+   | `ANTHROPIC_WORKSPACE_ID` | `vault_anthropic_workspace_id` | Optional, paired with the above | Only needed for workspace-owned key type — a standard personal/team API key doesn't need this |
+   | `CABIN_ALERT_NTFY_TOPIC` | `vault_cabin_alert_ntfy_topic` | Optional | CRITICAL events persist/show in-app, just no phone push. Treat the topic name as a shared secret — ntfy topics aren't access-controlled by default |
+   | `RESEND_API_KEY` | `vault_resend_api_key` | Optional | Tier 2 managed-user magic-link invites fail loudly with a clear error until set. Tier 1 guest links and Google sign-in need nothing here |
+   | `BLINK_MOTION_WEBHOOK_API_KEY` | `vault_blink_motion_webhook_api_key` | Optional | Phone-side motion webhook returns `503` until set. **If this instance already has Blink cameras with phone notifications working, check `grep -c 'BLINK_MOTION_WEBHOOK_API_KEY' .env` first — copy that live value into the vault rather than generating a new one** |
+   | `UPTIME_KUMA_USERNAME` / `_PASSWORD` | `vault_uptime_kuma_username` / `_password` | Optional | Vault-stored for not-yet-built Kuma config-as-code reconciler only |
+   | `NODERED_ADMIN_USERNAME` / `_PASSWORD` | `vault_nodered_admin_username` / `_password` | Optional | Node-RED editor stays completely unauthenticated until set — real exposure: anyone who can reach the URL gets full edit access to live automations |
+   | `CLOUDFLARE_TUNNEL_TOKEN` | `vault_cloudflare_tunnel_token` | Optional | Backup/reference only — cloudflared is outside this repo's Ansible management |
+   | `ADMIN_EMAILS`, `FAMILY_HUB_URL`, `CABIN_API_URL`, `GOOGLE_CLIENT_ID` | *(plain in `vars.yml`, not vaulted)* | N/A | Set once in `vars.yml`; Google Client ID is intentionally public (client-side by design) |
+   | `BLINK_CAMERA_MAP`, `CABIN_INSTANCE_PLATFORM`, `CABIN_INSTANCE_REMOTE_ACCESS` | *(inline defaults in `docker-compose.m920q.yml`)* | N/A | Non-secret, instance-specific; override directly in the compose file |
+   | `IMAGE_TAG` | *(deploy-time only)* | N/A | Set automatically to the git short SHA per deploy — never set manually |
 9. **Bring up the stack**: `docker compose -f docker-compose.yml -f
    docker-compose.m920q.yml up -d --build` — or write your own override
    file (copy `docker-compose.m920q.yml` as a starting point) if your host
@@ -253,6 +282,15 @@ presence `zone:` blocks in Home Assistant (only needed for
 presence-based automation — see §4 step 5 above), and Home Assistant
 itself is only required if you're bridging additional smart-home device
 types beyond native Zigbee.
+
+## 4.1 Known gaps to be aware of before standing up a new instance
+
+These are pre-existing issues in the reference instance, documented so a clone doesn't silently inherit them:
+
+- **The scheduled `rotate-secrets.yml` GitHub Actions workflow fails immediately** (`Permission denied`) — the runner's SSH key was never authorized on the target host. Automated credential rotation doesn't actually work yet despite existing as a scheduled workflow. Don't assume it does without independently confirming it.
+- **The repo deploy path convention** is `/home/<deploy-user>/<RepoName>` (directly in the deploy user's home) — not `~/repos/...`, not `/opt/...` (needs root). Confirm `ansible/inventory.ini`'s `repo_path` and every GitHub Actions workflow's `DEPLOY_PATH` default agree on this before first deploy.
+- **`production-stack`'s deploy pipeline refuses to run** if there are any uncommitted/untracked files in the repo checkout on the target host — stricter than the `cabin-backend`/`family-hub` pipelines. Decide whether that strictness is intentional before cloning the pattern.
+- **`nodered_auth`'s Ansible role supports first-time enablement only, not rotation** — once auth is live, the regex it matches is no longer present and re-running the playbook silently no-ops. A real rotation needs the manual sequence in the `cabin-credential-lifecycle` skill, not just 'run the playbook again.'
 
 ## 5. New Instance Acceptance Test
 
