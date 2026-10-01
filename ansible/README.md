@@ -201,6 +201,30 @@ Grafana/HA-side change, then re-run the `site.yml --tags secrets` step above.
 
 ### Automatic rotation
 
+**Rotation is fail-safe as of 2026-10-01** (after the first scheduled run to
+get past SSH half-rotated the live password and took `cabin-backend`'s DB
+connection down — see `docs/MAINTENANCE.md`'s Secrets section for the
+incident). `playbooks/rotate-secrets.yml` now:
+
+1. **Preflights before touching anything live**: asserts
+   `vault_postgres_password`, `vault_ha_token`, `vault_blink_username` and
+   `vault_blink_password` are non-blank, dry-renders both env templates (any
+   undefined var fails here, not after the `ALTER`), checks the vault file
+   has no uncommitted edits, and checks the runner can push to `main`.
+2. **Rolls back on any failure after the `ALTER`**: old password back on the
+   live DB, vault file restored, `POSTGRES_PASSWORD` line in `infra/.env`
+   restored, dependents recreated, then fails loudly with the failing task's
+   name and whether the rollback came back `UP`.
+3. **Validates on the aggregate `/actuator/health` status** — component
+   details are hidden (`show-details: never`), so the old
+   `components.db.status` check could never pass.
+4. **Commits and pushes the re-encrypted vault to `main`** as one commit
+   built directly on `origin/main` (vault file only — safe from any branch),
+   then resets the `deploy-main` worktree to it. Previously the new vault was
+   never committed, so the next `git reset --hard origin/main` discarded it.
+   **The runner's git credentials need push access to `main`** — the
+   preflight fails cleanly if they don't.
+
 `.github/workflows/rotate-secrets.yml` runs the rotation playbook monthly
 on the self-hosted runner (plus a manual `workflow_dispatch` trigger for
 "rotate now"). Requires Ansible and `~/.ansible_vault_pass` to already
