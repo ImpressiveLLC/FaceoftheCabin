@@ -252,7 +252,8 @@ recovering from this one:
   <<'PY' && \` line continuation swallowed the heredoc's first line, Python
   died, and the unchained encrypt step ran anyway. The follow-up script's
   abort guard was dead too (`ok=0` set inside `$(...)`, a subshell). Fixed
-  for real at `5bbc751`, hash-verified against live. Put patch code in a
+  for real at `5bbc751` (and the also-blank `vault_camera_password` at
+  `989fb07`), both hash-verified against live. Put patch code in a
   file, never behind a `\` continuation, and keep abort flags out of
   command substitutions.
 - **Commit vault fixes to `main` from a temp worktree** (`git worktree add
