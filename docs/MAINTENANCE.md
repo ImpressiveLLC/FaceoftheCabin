@@ -1473,6 +1473,20 @@ changed.
 
 ## Home Location — Android/Termux Collector Bring-Up
 
+**Decision, 2026-10-01: the M920q is the head for both locations.** Home
+Assistant runs only on the M920q; Home is a collector (Termux Zigbee2MQTT
+under `home_z2m/...`, plus the phone-side network-scan agent), reporting
+over MQTT/Tailscale. There is **no Home Assistant at Home**, so
+`HOME_HA_URL`/`HOME_HA_TOKEN`/`vault_home_ha_token` stay blank and
+`HOME_HUB_DEPLOYED=false` on purpose — despite the name, that flag only
+means "a separate HA instance exists at Home for cabin-backend to call,"
+not "Home is live." `HaTokenHomeHealthIndicator` reports `OUT_OF_SERVICE`
+for it by design, and the rotation preflight allows the blank because the
+live value is blank too. A Home HA gets stood up only if a Home-only
+integration ever needs one; then: token in the vault (hash-verified, same
+method as `989fb07`), `HOME_HA_URL` as a Tailscale IP (Termux/MagicDNS
+gotcha below), `HOME_HUB_DEPLOYED=true`.
+
 *Home is a second physical property, distinct from Cabin. Per `ROADMAP.md`'s
 Phase 8 (Accessible Hardware Program), Home is designed as a lightweight
 **collector**, not a second full stack: whatever runs there (currently a
