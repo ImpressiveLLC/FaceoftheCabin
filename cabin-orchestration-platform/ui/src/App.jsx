@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download
+  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download, Power, Car
 } from "lucide-react";
 import "./styles.css";
 
@@ -2936,6 +2936,7 @@ export function DeviceManagerPanel({ auth }) {
               )}
             </>
           )}
+          <OnTheWayButton auth={auth} devices={devices} />
           <button className="btn-ghost" onClick={refreshManagerDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
       </div>
@@ -3012,6 +3013,57 @@ export function deviceLifecycleState(device) {
   const explicit = device?.attributes?.deviceLifecycle;
   if (explicit) return String(explicit).toUpperCase();
   return device?.attributes?.candidate === true ? "CANDIDATE" : "ASSIGNED";
+}
+
+// ─── Home Assistant service calls (W-27/W-28, 2026-10-02) ────────────────
+// Both go through POST /api/ha/services: signed-in only, and the backend
+// allowlists switch/input_boolean on/off and refuses valves and locks
+// (HaServiceController). The M920q is the head for both locations and runs
+// the one HA, so these always target the cabin backend.
+
+/**
+ * W-27: the HA switch entity a Device Manager row can power on/off, or null.
+ * Needs a real reported on/off ("state": "ON"/"OFF" -- Zigbee2MQTT's own
+ * payload, or HA discovery's for switch.* entities). Zigbee devices map to
+ * switch.<friendly_name>, Zigbee2MQTT's default HA discovery entity id.
+ * Cabin only: Home's collector devices aren't in the cabin HA. Valves and
+ * locks never get a toggle (same rule the backend enforces).
+ */
+export function powerToggleTarget(device) {
+  const attrs = device?.attributes || {};
+  const state = String(attrs.state ?? "").toUpperCase();
+  if (state !== "ON" && state !== "OFF") return null;
+  if (device.location && device.location !== "cabin") return null;
+  if (!["ASSIGNED", "AVAILABLE"].includes(deviceLifecycleState(device))) return null;
+  let entityId = null;
+  if (typeof attrs.entityId === "string" && attrs.entityId.startsWith("switch.")) {
+    entityId = attrs.entityId;
+  } else if (device.deviceId?.startsWith("z2m-")) {
+    entityId = `switch.${device.deviceId.slice(4)}`;
+  }
+  if (!entityId || !/^switch\.[a-z0-9_]+$/.test(entityId) || /valve|lock/.test(entityId)) return null;
+  return { entityId, isOn: state === "ON" };
+}
+
+export async function callHaService(doFetch, domain, service, entityId) {
+  const response = await doFetch(`${LOCATIONS.cabin.apiBase}/api/ha/services`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ domain, service, entity_id: entityId }),
+  });
+  if (response.status === 401) throw new Error("Sign in to control devices");
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.accepted === false) {
+    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command" : `HTTP ${response.status}`));
+  }
+  return body;
+}
+
+/** W-28: the mech room temperature (°C, as reported) for the "On the Way" confirmation, or null. */
+export function mechRoomTemperature(devices) {
+  const d = (devices || []).find(x => /temp_mech_room/.test(x.deviceId || "")
+    && typeof x.attributes?.temperature === "number");
+  return d ? d.attributes.temperature : null;
 }
 
 const LIFECYCLE_LABELS = {
@@ -4142,6 +4194,94 @@ function DmRowEnableToggle({ device, onToggled, auth }) {
   );
 }
 
+// W-27: on/off for switch-like devices. Optimistic: flips immediately, then
+// the next poll's real reported state wins (or the guess is dropped after
+// 60s if the device never reports back). On failure it snaps back and the
+// reason is in the tooltip.
+function DmPowerToggle({ device, auth }) {
+  const target = powerToggleTarget(device);
+  const [optimistic, setOptimistic] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const reported = device.attributes?.state;
+  useEffect(() => { setOptimistic(null); }, [reported]);
+  useEffect(() => {
+    if (optimistic === null) return undefined;
+    const t = setTimeout(() => setOptimistic(null), 60000);
+    return () => clearTimeout(t);
+  }, [optimistic]);
+  if (!target) return null;
+  const isOn = optimistic ?? target.isOn;
+
+  const toggle = async (e) => {
+    e.stopPropagation(); // don't also select the row
+    const next = !isOn;
+    setOptimistic(next);
+    setBusy(true);
+    setError(null);
+    try {
+      await callHaService(auth?.authedFetch || fetch, "switch", next ? "turn_on" : "turn_off", target.entityId);
+    } catch (err) {
+      setOptimistic(null);
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      className={`btn-ghost dm-power-toggle ${isOn ? "dm-power-on" : "dm-power-off"}`}
+      onClick={toggle}
+      disabled={busy}
+      aria-pressed={isOn}
+      aria-label={`${device.name}: turn ${isOn ? "off" : "on"}`}
+      title={error ? `Not changed: ${error}` : `Turn ${isOn ? "off" : "on"} (${target.entityId})`}
+    >
+      <Power size={14}/> {isOn ? "On" : "Off"}
+    </button>
+  );
+}
+
+// W-28: one tap tells HA we're heading up; HA's own preheat automation
+// (input_boolean.on_the_way_to_cabin) decides what to turn on and sends the
+// push notification -- no heater logic lives here (CLAUDE.md: don't
+// duplicate HA automations).
+export function OnTheWayButton({ auth, devices }) {
+  const [tempUnit] = useTempUnit();
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const t = setTimeout(() => setToast(null), 8000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const go = async () => {
+    setBusy(true);
+    try {
+      await callHaService(auth?.authedFetch || fetch, "input_boolean", "turn_on", "input_boolean.on_the_way_to_cabin");
+      const temp = mechRoomTemperature(devices);
+      setToast({ ok: true, text: `Preheat started. Mech room is ${temp == null ? "not reporting" : fmtTemp(temp, tempUnit)}.` });
+    } catch (err) {
+      setToast({ ok: false, text: `Couldn't start preheat: ${err.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="on-the-way">
+      <button className="btn-ghost" onClick={go} disabled={busy} title="Tell the cabin you're on the way (starts preheat)">
+        <Car size={14}/> {busy ? "Sending…" : "On the Way"}
+      </button>
+      {toast && (
+        <span role="status" className={`on-the-way-toast ${toast.ok ? "toast-ok" : "toast-err"}`}>{toast.text}</span>
+      )}
+    </span>
+  );
+}
+
 // forwardRef (2026-08-27, user report): switching L1 tabs (See<->Change)
 // unmounts and remounts whichever view isn't active, so a selection that
 // correctly carries over via the shared `selected` state (2026-08-25 fix)
@@ -4184,6 +4324,7 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
+      {auth && <DmPowerToggle device={device} auth={auth} />}
       {onToggled && <DmRowEnableToggle device={device} onToggled={onToggled} auth={auth} />}
     </div>
   );
