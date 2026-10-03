@@ -136,6 +136,21 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         if (isAlertsRead) {
             return true;
         }
+        // /api/devices/** reads (inventory, status, meta, config, display
+        // config, reporting relationships) stay open per D14's 2026-09-04
+        // reversal -- a kiosk/wall display must work with no sign-in, and none
+        // of these GETs can act on a device. Every other method (command,
+        // create/update/delete, lifecycle, permit-join, network-scan,
+        // discovery run/apply, config/area/display-config writes) falls
+        // through to the credential checks below: W-31 (P0, 2026-10-03)
+        // found POST /api/devices/{id}/command reachable anonymously because
+        // this prefix was missing from WebConfig altogether. HEAD is a read
+        // too (Spring routes it to the GET handler) and monitors may use it.
+        boolean isDevicesRead = (path.equals(contextPath + "/api/devices") || path.startsWith(contextPath + "/api/devices/"))
+            && ("GET".equalsIgnoreCase(request.getMethod()) || "HEAD".equalsIgnoreCase(request.getMethod()));
+        if (isDevicesRead) {
+            return true;
+        }
         // /api/events/telemetry-history and /api/events/reported-fields stay
         // open -- found 2026-09-04, same day /api/devices and /api/alerts
         // were ungated: these two are numeric sensor-history endpoints
