@@ -47,6 +47,16 @@ automation:
         entity_id: binary_sensor.nate_phone_on_wifi
         to: "off"
         for: "00:03:00"
+    # W-23: the WiFi check is now the BACKUP signal; the Cabin-zone GPS
+    # automation below is primary. A WiFi "off" (not_home) must never override
+    # a phone that GPS says is inside the Cabin zone: the phone can drop off
+    # WiFi to sleep while still at the cabin, and a false "away" is the
+    # dangerous direction for the siren gate. "on" is always published.
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.to_state.state == 'on'
+             or 'zone.cabin' not in (state_attr('device_tracker.nates_s23', 'in_zones') or []) }}
     actions:
       - action: shell_command.cabin_security_publish
         data:
@@ -64,4 +74,115 @@ automation:
       - action: shell_command.cabin_security_publish
         data:
           topic: cabin/presence/nate
-          payload: "{{ 'home' if is_state('binary_sensor.nate_phone_on_wifi', 'on') else 'not_home' }}"
+          # W-23: home if the phone is on the cabin WiFi OR GPS has it inside the
+          # Cabin zone. Before this, a restart republished "not_home" over a
+          # correct GPS "home".
+          payload: >-
+            {{ 'home' if (is_state('binary_sensor.nate_phone_on_wifi', 'on')
+                          or 'zone.cabin' in (state_attr('device_tracker.nates_s23', 'in_zones') or []))
+               else 'not_home' }}
+
+  # W-23 (scope C, Cowork 2026-10-04): Cabin-zone GPS publisher, a copy of
+  # home_presence.yaml's House automation keyed to zone.cabin. Nothing
+  # published "home" for the cabin from GPS before this: the person-based
+  # automation in cabin_security.yaml only publishes when person.natecabin is
+  # exactly "home" or "not_home", but inside the Cabin zone the person's state
+  # is the zone NAME ("Cabin"), so it never fired. (The cabin signal had been
+  # "home" 0 times out of 190 recorded readings.)
+  #
+  # Same asymmetric debounce as the House automation: "home" publishes
+  # immediately, "not_home" needs 3 continuous minutes away (the zone trigger
+  # has no `for:`, so the leave branch delays, and mode: restart cancels that
+  # pending publish if a fresh "enter" arrives first).
+  - id: cabin_presence_publish_nate_presence_from_phone_gps
+    alias: Cabin Presence - Publish Nate Presence From Phone GPS Zone
+    mode: restart
+    triggers:
+      - trigger: zone
+        entity_id: device_tracker.nates_s23
+        zone: zone.cabin
+        event: enter
+        id: entered
+      - trigger: zone
+        entity_id: device_tracker.nates_s23
+        zone: zone.cabin
+        event: leave
+        id: left
+    actions:
+      - if:
+          - condition: trigger
+            id: left
+        then:
+          - delay: "00:03:00"
+      - action: shell_command.cabin_security_publish
+        data:
+          topic: cabin/presence/nate
+          payload: "{{ 'home' if trigger.id == 'entered' else 'not_home' }}"
+
+  # W-23 / W-33 / W-34: phone "last seen" heartbeat. Publishes the time the
+  # phone's Companion app last REPORTED to Home Assistant, retained, as
+  # cabin/presence/nate/last_seen. The siren gate (W-33) and the hub badge
+  # (W-34) use it to tell a stale signal from a current one: presence is only
+  # published on change, so the retained value can be days old and still right.
+  #
+  # Why it polls instead of reacting to the phone (found by simulating this in a
+  # real Home Assistant, 2026.7.4):
+  #  - Home Assistant refuses automation triggers on `state_reported`
+  #    ("Can't listen to state_reported in event trigger"), and template
+  #    sensors do not re-render when a sensor re-reports an unchanged value.
+  #    A plain state trigger would miss every report where the value did not
+  #    change (a phone on a charger at 100% for a night), which would make a
+  #    healthy phone look dead.
+  #  - So every 5 minutes this reads `last_reported` of the phone's battery
+  #    sensor, which the Companion app rewrites on every sensor update.
+  #
+  # Restart guard: after a Home Assistant restart every restored sensor is
+  # rewritten with the restart time, which would make a dead phone look freshly
+  # seen. The start-noting automation below records each start in its own
+  # `last_triggered`; a heartbeat counts only if last_reported is NEWER than
+  # that. After a restart nothing is published until the phone genuinely
+  # reports, and the broker keeps the last real timestamp meanwhile. If the
+  # noting automation exists but has never run (added by a reload, not a
+  # restart) there is no restart to guard against and the check passes.
+  #
+  # The guard reads the noting automation by its ENTITY id,
+  # automation.cabin_presence_note_home_assistant_start, which Home Assistant
+  # derives from its ALIAS (not from `id:`). A first version used the `id:` as
+  # if it were the entity id; the lookup found nothing and the guard silently
+  # let every restart-noise heartbeat through (caught by the simulation). So
+  # the guard now FAILS CLOSED: if that entity is missing (e.g. the alias is
+  # renamed), no heartbeat is published and the rule shows "unknown age"
+  # rather than a falsely fresh one.
+  #
+  # What is published is the phone's own last_reported time, not "now", so a
+  # silent phone's heartbeat does not advance and ages out.
+  - id: cabin_presence_note_ha_start
+    alias: Cabin Presence - Note Home Assistant Start
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    actions:
+      - event: cabin_presence_ha_started
+
+  - id: cabin_presence_publish_nate_last_seen
+    alias: Cabin Presence - Publish Phone Last-Seen Heartbeat
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+    conditions:
+      - condition: template
+        value_template: >-
+          {% set phone = states.sensor.nates_s23_battery_level %}
+          {% set note = states.automation.cabin_presence_note_home_assistant_start %}
+          {{ phone is not none
+             and note is not none
+             and phone.state not in ['unavailable', 'unknown']
+             and (note.attributes.last_triggered is none
+                  or phone.last_reported > note.attributes.last_triggered) }}
+    actions:
+      - action: shell_command.cabin_security_publish
+        data:
+          topic: cabin/presence/nate/last_seen
+          payload: "{{ states.sensor.nates_s23_battery_level.last_reported.strftime('%Y-%m-%dT%H:%M:%SZ') }}"
