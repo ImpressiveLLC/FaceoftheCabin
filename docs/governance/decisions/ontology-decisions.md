@@ -544,6 +544,40 @@ The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detecti
 
 ---
 
+## D23 — The M920q is the head for both locations; there is no Home Assistant at Home
+
+**Status:** proposed 2026-10-03 (Code drafts from Nate's 2026-10-01 statement as recorded in [`docs/MAINTENANCE.md`](../../MAINTENANCE.md#home-location--androidtermux-collector-bring-up) and [PR #110](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/110); Cowork to ratify, Nate final). **Use case:** none assigned yet. **Work:** none. **Builds on:** D6 (multi-location), [`ROADMAP.md`](../../../ROADMAP.md) Phase 8 (local collector hubs).
+
+**Problem.** On 2026-10-01 two sessions concluded "Home isn't live" from a comment in `ansible/roles/secrets/templates/env.j2` ("Home hub (not yet deployed — leave blank)"), because `HOME_HA_URL`, `HOME_HA_TOKEN` and `vault_home_ha_token` are blank and `HOME_HUB_DEPLOYED=false`. Home is live and collecting. What does not exist is a Home Assistant at Home. The decision was written into `MAINTENANCE.md` by #110 but never entered the decision record, and two older documents still describe a second full hub (see "Conflicts to resolve").
+
+**Decision (Nate, 2026-10-01).** The M920q at the cabin runs the only Home Assistant and is the head, the one "main brain", for both Cabin and Home. Home is a collector: Termux Zigbee2MQTT publishing under `home_z2m/...` and the phone-side network-scan agent, both reporting over MQTT/Tailscale to the M920q. A Home Assistant is added at Home only if a Home-only integration ever needs one.
+
+### Requirements
+
+| ID | Requirement |
+|---|---|
+| R-HD-1 | **One head.** Home Assistant runs only on the M920q. Home devices reach the platform through the M920q's MQTT broker and HA, never through a Home HA. |
+| R-HD-2 | **Home is a collector, not a second stack.** Whatever runs at Home (today: Termux Zigbee2MQTT and the network-scan agent) publishes to the M920q. It does not run its own Postgres, Kafka, cabin-backend or Home Assistant. |
+| R-HD-3 | **Blank is correct.** `HOME_HA_URL`, `HOME_HA_TOKEN` and `vault_home_ha_token` stay blank and `HOME_HUB_DEPLOYED=false`. Despite its name, `HOME_HUB_DEPLOYED` means only "a separate HA instance exists at Home for cabin-backend to call", never "Home is live". Tooling must treat the blank as expected: `HaTokenHomeHealthIndicator` reports `OUT_OF_SERVICE` by design and the secret-rotation preflight allows the blank. |
+| R-HD-4 | **Adding a Home HA is a new decision.** If a Home-only integration ever needs one: the token goes in the vault (hash-verified, the method used for `989fb07`), `HOME_HA_URL` is a Tailscale IP, `HOME_HUB_DEPLOYED=true`, and this decision is superseded in the same change. |
+
+### Conflicts to resolve if this is ratified (found while drafting; none changed by this PR)
+
+1. [`CLAUDE.md`](../../../CLAUDE.md) "Two locations, two hubs" presents a Home hub (`home-hub`, its own HA, Grafana, Frigate, Node-RED and Spring Boot API on a 16 GB M920q). That contradicts R-HD-1 and R-HD-2. Its env-var table also lists `HOME_HA_URL` (default `http://home-hub:8123`) and `HOME_HA_TOKEN` without saying blank is intended.
+2. `cabin-orchestration-platform/locations/home/` (`docker-compose.yml`, `frigate.yml`, `application-home.yml`) is a full independent stack overlay. `MAINTENANCE.md` already says it predates the collector model; it has never been deployed.
+3. These are spec-versus-reality mismatches and belong in [`discrepancy-log.md`](../discrepancy-log.md); a DL entry was not added here to avoid colliding with the entries open in #114.
+
+### Open questions
+
+| ID | Question | Owner |
+|---|---|---|
+| Q-HD-1 | Retire `locations/home/` and the CLAUDE.md "Home hub" column, or keep them as a labelled non-default reference for a future Home HA? | Nate |
+| Q-HD-2 | `HOME_HUB_DEPLOYED` already misled two sessions. Rename it to say what it means (a Home HA exists), or leave it and rely on the note? | Nate / Cowork |
+
+**What this is not.** Not a statement that Home will never have its own stack (R-HD-4 keeps that door open). Not a change to the MQTT topic contract, to D6's location model, or to any running configuration.
+
+---
+
 ## PR — WSJF Priority Order
 
 01Identity scheme done28.0
