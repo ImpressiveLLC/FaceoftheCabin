@@ -679,33 +679,85 @@ already-working.
 
 ## Cameras (Frigate)
 
-Live config lives at `/storage/services/frigate/config.yml` on the
-M920q — **this file has zero git history** (a known, real gap; the file
-predates this project's git tracking and hasn't been retrofitted in).
-**Always back it up before editing**:
+**Where the config lives, and how it changes.** The live file is
+`/storage/services/frigate/config.yml` on the M920q. Its git copy is
+`cabin-orchestration-platform/infra/production-stack/frigate/config.yml`.
+`deploy-production-stack.yml` (validated, smoke-tested, rolled back on
+failure) copies the git file over the live one **whenever a merge to
+`main` touches that file, `production-stack/docker-compose.yml` or the
+workflow itself, and on every manual run.** Change cameras by pull
+request: a hand edit of the live file lasts only until the next such
+deploy, then silently reverts. (This section used to say the file had
+"zero git history" and should be edited by hand and copied over with
+`scp`. That was true before the workflow existed, and it made the
+2026-09-30 drift below easy to cause. Corrected 2026-10-03.)
+
+If you must hand-edit the live file in an emergency, back it up first,
+validate it, and open the pull request that brings git in line **the same
+day**:
 
 ```bash
 cp /storage/services/frigate/config.yml /storage/services/frigate/config.yml.bak-$(date +%Y%m%d-%H%M%S)
+python3 -c "import yaml; yaml.safe_load(open('config.yml'))"   # validate before copying it over
 ```
 
-Edit locally, validate with `python3 -c "import yaml; yaml.safe_load(open('config.yml'))"`
-*before* copying it to the host — a YAML syntax error in a live config
-will prevent Frigate from starting cleanly. Never build the file inline
-inside a quoted SSH command on a Windows/Git Bash client — backticks and
-certain special characters get expanded by the *local* shell before
-transmission, which has genuinely corrupted this file once already. Write
-the file locally, `scp` it over, then apply.
+Write the edited file locally and `scp` it over. Never build it inline
+inside a quoted SSH command from Git Bash: the local shell expands
+backticks and special characters first, which has corrupted this file once
+already.
 
-**Current cameras**: `front_door` (Reolink RLC-820A, 4K record / 640×480
-detect, currently off-network — physical/WiFi issue, needs on-site
-checking) and `driveway` (a Blink camera bridged via `blinkbridge` +
-`mediamtx`, no true continuous stream — only "live" when Blink's own
-cloud has already detected motion, so its detection is a second,
-finer-grained pass on top of Blink's own trigger, not a replacement for
-it). Both physically cover the same front-door/driveway area from
-different angles — the names describe available semantic slots, not
-fixed device identities; one is expected to eventually relocate to cover
-the building's rear.
+**Never put the camera password in the file.** Use the
+`{FRIGATE_RTSP_PASSWORD}` placeholder (Frigate only expands environment
+variables whose names start with `FRIGATE_`). A literal password in the
+live file is invisible to the vault and to git, so a later rotation or
+deploy breaks the camera with no warning. To compare credentials, compare
+length or equality and never print the value (see [Secrets](#secrets) and
+[Never diff secrets by raw value](#never-diff-secrets-by-raw-value-found-2026-08-03)).
+
+**Current cameras (2026-10-03).**
+- `cabin_outside_reolink` — the Reolink RLC-820A (the unit earlier
+  configured as `front_door`), renamed in the live config on 2026-09-30.
+  Native RTSP at `192.168.1.121`, reached through the M920q's Ethernet
+  port `eno2`. 4K record stream, 640×480 detect stream. Continuous
+  recording works. **Object detection is not enabled** (see the state
+  table).
+- `driveway` — a Blink camera bridged via `blinkbridge` + `mediamtx`. No
+  true continuous stream: it is only "live" when Blink's own cloud has
+  already detected motion, so Frigate's detection is a second, finer pass
+  on top of Blink's trigger, not a replacement for it.
+- `home_aldrich_front` — the Home-location Blink camera, same relay
+  pattern; `enabled: false` in the live config.
+
+The Reolink and `driveway` physically cover the same front-door/driveway
+area from different angles. The names describe available semantic slots,
+not fixed device identities; one is expected to eventually relocate to
+cover the building's rear.
+
+**State on 2026-10-03 (verified read-only against the live host).** Live
+and git disagree. The Frigate config was edited by hand on 2026-09-30
+02:46, with no pull request.
+
+| Item | Live (M920q) | Git (`production-stack/frigate/config.yml`) |
+|---|---|---|
+| The Reolink | key `cabin_outside_reolink`, `192.168.1.121` | key `front_door`, `192.168.2.200` |
+| Camera password | literal in both RTSP URLs, and different from `FRIGATE_RTSP_PASSWORD` | `{FRIGATE_RTSP_PASSWORD}` placeholder |
+| Object detection (Frigate's effective config) | `detect.enabled` **False**, `objects.track` `['person']`; `detection_fps` 0.0 | `detect.enabled: true`, eight classes |
+| `home_aldrich_front` | `enabled: false` | `enabled: true` |
+| Person On Foot classification | lists `animal` and `car` as well | `person` only |
+| Default route | `eno2` via `192.168.1.1` (metric 100) ahead of Wi-Fi (600) | not in git |
+
+Working: `camera_fps` about 5 for `cabin_outside_reolink`, and recordings on
+each day from 2026-09-29 to 2026-10-03. Tracked as W.1 to W.3 in
+`docs/governance/backlog.md`. **Until W.1 lands, do not merge #97 or
+anything else that touches `production-stack/frigate/config.yml` or
+`production-stack/docker-compose.yml`.** The deploy would copy git's
+`front_door` block over the live file and the camera would go dark again.
+Its smoke test checks Frigate's availability topic, not each camera, so it
+would pass.
+
+**A camera that is not delivering frames, or sits on another network**:
+see [A camera on a different network than the M920q](#a-camera-on-a-different-network-than-the-m920q),
+below.
 
 Restart after any config change: `docker restart frigate`, then verify:
 ```bash
@@ -742,7 +794,7 @@ anything downstream (MQTT, Kafka, Postgres were all healthy and
 correctly wired the whole time). Two independent causes:
 - `front_door` (Reolink, 192.168.2.200): `ffmpeg` logs showed `No route
   to host` — the existing, already-documented off-network issue above,
-  unrelated to this incident, still needs on-site checking.
+  unrelated to this incident. (Resolved 2026-09-29/30; see "A camera on a different network than the M920q", above.)
 - `driveway` (Blink): `blinkbridge`'s logs showed a transient failure
   reaching Blink's own cloud API (`rest-e003.immedia-semi.com`, "Cannot
   connect to host") around 05:17 UTC that morning, after which
@@ -836,6 +888,128 @@ correctly wired the whole time). Two independent causes:
 
   **Part 2 — the decouple-from-RTSP-relay question — is still open,**
   deliberately not bundled into this fix. See the note above.
+
+### A camera on a different network than the M920q
+
+*Added 2026-10-03 after the Reolink was reconnected. "Verified" means read
+from the live host that day; everything else was reported by Nate. The
+earlier plan for this (never run) is in closed PR [#105](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/105).*
+
+**When this applies.** Frigate shows `camera_fps: 0.0` for a camera whose
+address you believe is right; its log says `No route to host`;
+`ip neigh show <ip>` says `INCOMPLETE`; a port scan shows ports
+**filtered** (silently dropped), not refused. That pattern means "nothing
+on this network answers at that address". It does not mean the camera is
+off.
+
+**What is true at this site**, so nobody re-derives it:
+- **One Starlink router hosts two subnets.** Its 5 GHz band is
+  `192.168.2.0/24`, where the M920q's Wi-Fi sits. Its 2.4 GHz band is
+  `192.168.1.0/24`, where the camera, the fridge's Wi-Fi module, the Nest
+  Connect and the Blink sync module sit, because older devices only speak
+  2.4 GHz (root cause confirmed by Nate 2026-08-07; see the
+  `camera_role_front_door` notes in `docs/ontology.yaml`). The two do not
+  route to each other. A cable into the `192.168.1.0/24` side puts a host
+  on the camera's subnet (verified: the M920q's `eno2` leased
+  `192.168.1.155` from `192.168.1.1`, and the camera answers ARP on it).
+- **A network name does not identify a network.** Names are reused at the
+  cabin and at Home and appear on several bands, and the M920q's saved
+  Wi-Fi entry shares a name with more than one access point. Identify a
+  network by the gateway and subnet a device reports, or by the router's
+  client list.
+- **The M920q has one Wi-Fi radio, and it can hold one client connection**
+  (verified, `iw list`: `#{ managed } <= 1` in every valid interface
+  combination). Joining another Wi-Fi network means *leaving* its own, and
+  with it the LAN, Tailscale and the internet. It also has one wired port,
+  `eno2`, which is what made the 2026-09-29 fix possible.
+
+**Step 0 — find the camera's real address and probe it. Changes nothing.**
+1. Get the camera's current address from its own app (device settings,
+   network information) or the router's client list. Frigate's address may
+   be stale: git held `192.168.2.200` for weeks after the camera had moved.
+2. On the M920q:
+   ```bash
+   ip route get <CAMERA_IP>
+   ping -c3 -W2 <CAMERA_IP>
+   nc -zv -w3 <CAMERA_IP> 554
+   ip neigh show <CAMERA_IP>
+   ```
+
+| Result | Meaning | Next |
+|---|---|---|
+| Route leaves via the Wi-Fi gateway (`via 192.168.2.1`), ping lost, port 554 times out, ARP `INCOMPLETE` | The camera is on a network the M920q is not on | Choose a connection option below |
+| Route is `dev <nic>` with no gateway; ping and 554 answer | The M920q is on the camera's network; the address, stream path or password in Frigate is wrong | Test the stream (step 3) |
+| Ping answers, 554 refused | Camera reachable, RTSP off or on another port | Check the camera's own settings |
+
+3. If 554 answers, test the stream from inside the Frigate container. The
+   password expands there and is never printed. `ffprobe` is not on that
+   container's `PATH`, so use the full path:
+   ```bash
+   docker exec frigate sh -c 'timeout 15 /usr/lib/ffmpeg/7.0/bin/ffprobe -v error \
+     -rtsp_transport tcp -show_entries stream=codec_name,width,height -of default=nw=1 \
+     "rtsp://admin:${FRIGATE_RTSP_PASSWORD}@<CAMERA_IP>:554/<STREAM_PATH>"'
+   ```
+   Stream paths vary by firmware: this camera answers at `Preview_01_sub`
+   (sub) and `h264Preview_01_main` (main), where older config used
+   `h264Preview_01_sub`. Try a wrong password once, never in a loop;
+   repeated failures may lock a camera's account.
+
+**Ways to connect the camera's network to the M920q, in the order to try them**
+
+| # | Option | Needs | Notes |
+|---|---|---|---|
+| 1 | **Wire it.** A cable from the M920q's `eno2` to a port on the camera's LAN (the router, or a switch on it) | Someone on site | **Worked 2026-09-29.** Leaves the M920q's own Wi-Fi LAN untouched. Read "After connecting" before leaving: the new link adds a default route |
+| 2 | Move the camera onto the M920q's network | The camera's own app, and someone able to reach it | Changes the camera's address: update Frigate by pull request |
+| 3 | Route between the two subnets on the router | Router admin | The ontology's 2026-08-07 note suggested checking for an inter-band routing or "same network" toggle. Whether this router has one was never confirmed |
+| 4 | A second Wi-Fi radio (USB adapter) | A purchase; Nate's decision | Lets the M920q hold two Wi-Fi networks. Not built |
+| 5 | A temporary Wi-Fi join with `never-default` and a timed auto-revert | Nate at the keyboard (no passwordless `sudo`, so no agent session can run it) | Last resort. While joined the M920q is off its LAN, Tailscale and the internet, so ntfy leak and freeze alerts cannot send. A draft safety design (profile fallback, two transient systemd timers armed before the join, an optional dead-man reboot) is on the unmerged branch `claude-code/w15-front-door-starlink-plan`; it was never run |
+
+**After connecting**
+1. **Host.** `ip -br addr show eno2` shows a lease, and `ip route get <CAMERA_IP>`
+   leaves through it. **A DHCP link adds its own default route.** On
+   2026-10-03 `ip route get 1.1.1.1` left through `eno2` via `192.168.1.1`
+   (metric 100), ahead of Wi-Fi (metric 600). Decide whether the camera
+   LAN may carry general traffic; if not, set `ipv4.never-default yes` on
+   that profile (W.2, undecided). Keep `connection.autoconnect yes` so the
+   link survives a reboot. The `cabin-camera-share` profile still has its
+   old name and a leftover `192.168.3.1/24` address from when it served
+   DHCP as a shared link.
+2. **Frigate, by pull request.** Use the `{FRIGATE_RTSP_PASSWORD}`
+   placeholder. **Set `detect.enabled: true` explicitly and list the
+   classes in `objects.track`.** Frigate 0.17 defaults detection off and
+   tracks `person` only, so a camera block without them records but never
+   detects. That is the 2026-09-30 state of `cabin_outside_reolink`
+   (W.1).
+3. **Platform.** Add a new camera key to `CAMERA_FEED_CONTINUOUS` in
+   `ui/src/App.jsx` (W.3). The clip filename's location prefix is added
+   in front of the camera key, so a key that already starts with `cabin_`
+   produces `cabin_cabin_…`.
+4. **Verify all three, not one.** `camera_fps` above zero in
+   `/api/stats`; a recording segment in the last hour
+   (`/api/<camera>/recordings/summary`); and a detection event, from
+   someone walking in front of the camera, in Frigate **and** in
+   `cabin_event`. On 2026-10-03 only the first two held.
+5. **Record it:** this section, the camera role entry in
+   `docs/ontology.yaml`, and the governance backlog.
+
+**Home (satellite) cameras: not built.** What Home has today is a
+collector (a spare Android phone under Termux, plus a Zigbee coordinator)
+that publishes Zigbee telemetry (`home_z2m/...`) and network-scan results
+to the M920q over MQTT; see [Home Location](#home-location--androidtermux-collector-bring-up).
+It carries **no video**, and there is no Home Assistant at Home (D23,
+proposed in #116: the M920q is the head). So a camera on Home's own LAN
+reaches Frigate only if the M920q can route to Home's LAN, and nothing does
+today. The Blink camera at Home works because Blink's cloud, not Home's
+LAN, is the path. If a Reolink-class camera is added at Home, run Step 0
+from the M920q first. If it is unreachable, the choices are a route into
+Home's LAN (for example a Home device advertising the subnet over
+Tailscale) or a small relay or Frigate instance at Home. **Neither is
+built or evaluated**, and opening one needs a new decision, not this
+runbook. Do not tell a household member this is supported.
+
+**Who can do what.** Anyone can run Step 0, which is read-only. Cabling,
+any change to the M920q's network, and a camera's own password are done by
+the owner on site, not by an agent session; see [Secrets](#secrets).
 
 ### Real on-demand liveview for the Blink camera (built 2026-08-03)
 
