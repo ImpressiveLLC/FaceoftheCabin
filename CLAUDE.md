@@ -363,6 +363,7 @@ npm install && npm run dev
 | `CAMERA_PASSWORD` | Frigate | Reolink admin password |
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
+| `CABIN_PRESENCE_STALE_AFTER_HOURS` | PresenceController | Hours of phone silence after which `/api/presence` reports `stale: true` and the badge reads "Presence unknown". Default `6`. Keep equal to Node-RED's `PRESENCE_STALE_HOURS` (siren gate, W-33) so the badge and the siren agree |
 | `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
 
 ---
@@ -382,6 +383,14 @@ cabin/kidde/co_alarm                 ← Kidde CO alarm push bridge (HA automati
                                         this topic)
 {location}/presence/#                ← MqttBridgeService subscribes `+/presence/#`
                                         (both `cabin/presence/*` and `home/presence/*`)
+{location}/presence/{person}/last_seen
+                                     ← retained ISO-8601 UTC time of the phone's last
+                                        Companion-app report to HA (W-34, 2026-10-04).
+                                        Not a presence value: it only says how old the
+                                        presence signal's source is. Absent until the
+                                        HA heartbeat automation (W-23) is applied --
+                                        the hub and the siren gate treat "no heartbeat"
+                                        as "age unknown", never as stale
 {location}/security/armed_away       ← MqttBridgeService subscribes `+/security/armed_away`
 zigbee2mqtt/bridge/devices           ← Zigbee2MQTT device list
 zigbee2mqtt/bridge/state             ← bridge health heartbeat
@@ -428,7 +437,7 @@ forward from an earlier session's list)
 | DELETE | `/api/devices/{id}/display-config` | DeviceController |
 | GET | `/api/dashboard/config` | DashboardController |
 | GET | `/api/events` | EventController — real, Postgres-backed (`?camera=&limit=&window=`). No longer a stub as of 2026-08-04; the "(stub)" note in earlier versions of this file was stale |
-| GET | `/api/presence` | PresenceController — auto-derived from real MQTT presence signals when any exist (`autoDerived`/`signals[]`), manual fallback otherwise (added 2026-08-08) |
+| GET | `/api/presence` | PresenceController — auto-derived from real MQTT presence signals when any exist (`autoDerived`/`signals[]`), manual fallback otherwise (added 2026-08-08). W-34 adds `lastSeen`, `signalAgeSeconds`, `stale`, `staleAfterHours` (all null/false until a phone heartbeat has been seen); the UI shows "Presence unknown" when `autoDerived && stale` |
 | PUT | `/api/presence` | PresenceController — manual override |
 | GET | `/api/security` | SecurityController — armed/disarmed per location, keyed by location, from `cabin/security/armed_away` (added 2026-08-08) |
 | GET | `/api/signal-quality` | SignalQualityController — prototype, Zigbee LQI trend/anomaly per device, not wired to any alert path yet (added 2026-08-08) |
