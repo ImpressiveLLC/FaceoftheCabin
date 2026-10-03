@@ -73,6 +73,42 @@ cameras:
       width: 640
       height: 480
       fps: 5
+    # Added 2026-09-23: no motion: block existed here before, so this camera
+    # ran on Frigate's undocumented-in-repo defaults (frame_height: 100,
+    # contour_area: 10, threshold: 30). Confirmed live via this camera's own
+    # /api/config that those were in fact the values in effect. Anecdotal
+    # user report: front_door (native RTSP, continuous 24/7 stream) is the
+    # camera where Frigate's own motion pass genuinely under-catches relative
+    # to what the Reolink's own onboard detection would flag -- unlike
+    # driveway/home_aldrich_front, which are Blink-sourced and already
+    # motion-gated upstream by Blink's cloud detection before Frigate ever
+    # sees a frame (Frigate there is a second, finer pass on top of a signal
+    # that already fired, not the primary gap). Three values raised/lowered
+    # together, each addressing a different way the default misses real
+    # motion at this camera's distance/lighting:
+    #   frame_height: 100 -> 160  (motion is computed on a downscaled copy of
+    #     the detect frame; 100px tall is coarse enough to lose a person-sized
+    #     object partway across the driveway. 160 keeps CPU cost well under
+    #     the full 480px detect height while giving the algorithm meaningfully
+    #     more resolution to work with.)
+    #   contour_area: 10 -> 5    (minimum contiguous changed-pixel blob, in
+    #     the downscaled motion frame, to count as motion at all -- 10 was
+    #     silently dropping smaller/farther motion before object detection
+    #     ever got a chance to classify it.)
+    #   threshold: 30 -> 22      (per-pixel grayscale delta needed to count a
+    #     pixel as "changed" -- 30 under-reacts to the lower-contrast motion
+    #     typical at dusk/night/snow cover, which is exactly when this
+    #     camera's coverage matters most for the current claim.)
+    # Trade-off, stated plainly: this raises both false-positive rate and
+    # motion-triggered CPU/storage load versus the prior defaults. Values
+    # chosen from Frigate's own documented tuning ranges, not guessed;
+    # revisit via this camera's continuous recording (5-day retention) if
+    # either false positives or missed events are still off after a
+    # deployed week of real data.
+    motion:
+      frame_height: 160
+      contour_area: 5
+      threshold: 22
     record:
       enabled: true
     snapshots:
