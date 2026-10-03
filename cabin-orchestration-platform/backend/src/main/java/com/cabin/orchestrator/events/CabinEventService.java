@@ -198,13 +198,20 @@ public class CabinEventService implements DeviceEventLookup {
             GROUP BY 1 ORDER BY 1
             """;
         // W-21: `since` is a precise instant ("N days ago from right now"),
-        // not a midnight boundary, so the earliest day this query can ever
+        // not a day boundary, so the earliest day this query can ever
         // return is almost always partial -- it only has samples from
-        // `since` onward within that UTC day, not the whole day. Marked
+        // `since` onward within that day, not the whole day. Marked
         // here (once, from `since` itself) rather than trusting each row's
         // own sample_count, since a fully-reported partial day and a
         // sparsely-reported full day are not distinguishable by count alone.
-        Instant sinceDayStart = since.truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+        // The boundary is asked of the database, not truncated in Java: the
+        // query's date_trunc('day', time) buckets by the JDBC session's
+        // timezone (the connecting JVM's default -- America/Chicago on the
+        // M920q), so a UTC-based truncation here would never equal a row's
+        // `day` there and `partial` would silently never be set.
+        Instant sinceDayStart = jdbc.queryForObject(
+            "SELECT date_trunc('day', ?::timestamptz)", java.sql.Timestamp.class,
+            java.sql.Timestamp.from(since)).toInstant();
         boolean sinceIsMidExactly = since.equals(sinceDayStart);
         return jdbc.queryForList(sql,
                 payloadField, payloadField, payloadField, deviceId, payloadField, payloadField,
