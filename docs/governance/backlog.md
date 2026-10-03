@@ -22,6 +22,12 @@ Time Sensitivity for items tied to UC-1 is scored against the insurance policy r
 
 | ID | Work | UC | Traces to | Origin | Owner | CoD (S×2+U+E+T) | Size | WSJF | Status | Blocked by |
 |---|---|---|---|---|---|---|---|---|---|---|
+| W-16 | Home netscan TCP reachability on the collector's recorded address:port; unknown presence until fresh probe evidence, including demo home http_poll and unconfigured cameras | UC-3, UC-9 | D22, D8 | ad-hoc (Nate 2026-09-24; W-NEW-c) | Codex | 4+9+5+10 = 28 (proposed) | 5 | **5.6** | in progress | Collector rollout and live verification for release |
+| W-17 | Preserve discovery description/vendor/model/serviceType/host through confirm and restart; re-check uses display name only when identity is empty; disable unsupported replacement | UC-3, UC-9 | D21, D8 | ad-hoc (Nate 2026-09-24; W-NEW-d) | Codex | 4+9+6+10 = 29 (proposed) | 3 | **9.7** | in progress | — |
+| W-18 | Netscan hygiene: coalesce same-location host/IP aliases without deleting configuration; network device types; local-time staleSince | UC-3, UC-9 | D8, D22 | ad-hoc (Nate 2026-09-24; W-NEW-e) | Codex | 2+7+5+8 = 22 (proposed) | 3 | **7.3** | in progress | — |
+| W-19 | Distinguish DuckDuckGo blocked/challenged/unavailable responses from genuine no-results; retain honest sources and confidence | UC-3 | D21 | ad-hoc (Nate 2026-09-24; W-NEW-a) | Codex | 2+8+5+8 = 23 (proposed) | 3 | **7.7** | in progress | — |
+| W-20 | D21 amendment proposal comparing SearXNG and Brave; no provider switch, new service or paid subscription without ratification | UC-3, UC-6 | D21 | ad-hoc (Nate 2026-09-24; W-NEW-b) | Codex proposes; Nate decides | 2+5+6+6 = 19 (proposed) | 2 | **9.5** | proposed | W-19 evidence; provider decision |
+| W-21 | History range contract: viewer-effective options, explicit clamp feedback, partial first-day label; normal/demo non-presence row parity and 60-day demo ceiling | UC-9 | D22 R-DM-8, Q-DM-2 | ad-hoc (Nate 2026-09-24 chart defect) | Codex | 4+9+6+10 = 29 (proposed) | 5 | **5.8** | in progress | — |
 | W-8 | Decide recording retention for the claim period (continuous 5 days; alerts/detections 10 days) after checking free space on `/storage` | UC-2 | D18 | ad-hoc | **Nate** (production config); Code sizes disk | 8+3+2+10 = 23 | 1 | **23.0** | proposed | — |
 | W-1 | Live-verify all four guest scopes on M920q with a logged-out browser; post evidence in the PR | UC-1 | D12 | ad-hoc (closes Bug Fix Sprint `8f424f6` evidence gap) | Code | 14+7+3+9 = 33 | 1 | **33.0** | proposed | — |
 | W-4 | Remove or neutralize the "insurance adjuster/mediator" callout anywhere a token holder can see it | UC-1 | D12 | ad-hoc | Code | 4+6+1+9 = 20 | 1 | **20.0** | proposed | — |
@@ -59,3 +65,13 @@ Video lifecycle MVP (W-9–W-12) build order: **W-11 → W-9 (after #96) → W-1
 |---|---|---|
 | Delete stale `vault.yml.bak-*` and `.env.bak-*` on M920q after diffing | Nate | Code handover r8 |
 | Vaultwarden one-time Organization and API key setup | Nate | Code handover r8; `docs/MAINTENANCE.md` |
+
+## 2026-09-24 Home Devices and demo correction plan
+
+Nate directs W-16 and W-17 first because both affect UC-9, overriding numerical WSJF order for this batch. Then W-18, W-19, the W-20 proposal, and W-21. Scores are Codex proposals, not Cowork ratification. IDs checked against main and all three open PRs on 2026-09-24: W-15 is reserved by #105.
+
+Evidence: Nate reports six Home http_poll devices stale after 30 minutes, UNKNOWN last-known state, Brother HL-L2480DW identity absent after assignment, duplicate LG TV service names, and chart discrepancies in both views. These are user-reported screenshot findings; this session has not independently inspected the running instance.
+
+Acceptance and implementation plan: preserve allowlisted discovery metadata durably on lifecycle/config writes; use display name as the final identity fallback without forwarding raw network attributes externally; reject unsupported replace in both UI and API. TCP probes must execute on the Home collector, which can reach that LAN, not the cabin backend. Missing/expired probe evidence means presence unknown; a fresh failed probe means the service did not respond, not a proven device outage. Match netscan aliases within a location and preserve configured records. Render timestamps locally. Distinguish provider blocking from empty parsed results. W-20 changes policy proposal only. W-21 keeps presence series empty, returns range metadata, filters options to the viewer ceiling and marks the partial first day; test the same non-presence query in normal and demo views for identical rows.
+
+Workflow: planning committed and pushed on the feature PR before code; regression tests and user/QA documentation ship with implementation. No merge or production/collector restart is authorized by this request. CI on the final head and separate live/collector validation must be reported honestly. Existing sign-offs and iteration ownership remain intact.
