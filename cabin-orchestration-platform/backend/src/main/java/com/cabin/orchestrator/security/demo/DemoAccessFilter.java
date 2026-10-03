@@ -54,8 +54,11 @@ public class DemoAccessFilter extends OncePerRequestFilter {
     private final CabinAccessTokenService accessTokens;
     private final DemoPresenceClassifier presence;
 
-    @Value("${cabin.demo.max-history-days:1}")
-    private int maxHistoryDays = 1;
+    // W-21 (D22 Q-DM-2 answered 2026-09-24): aligned to the normal view's
+    // own ceiling (EventController.maxHistoryDays), not left at the
+    // original present-day-only default.
+    @Value("${cabin.demo.max-history-days:60}")
+    private int maxHistoryDays = 60;
 
     public DemoAccessFilter(CabinAccessTokenService accessTokens, DemoPresenceClassifier presence) {
         this.accessTokens = accessTokens;

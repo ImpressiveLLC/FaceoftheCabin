@@ -270,11 +270,25 @@ describe("SensorHistoryPanel", () => {
   // disagree with the fixture), and everything else (telemetry-history)
   // from telemetryFn(url) -- defaulting to a constant response for tests
   // that don't care which device/field a particular call was for.
-  function reportedFieldsFetch(deviceList, telemetryFn = () => points) {
+  // W-21: telemetry-history now answers with TelemetryHistoryResponse
+  // ({requestedDays, effectiveDays, clamped, points}), not a bare array --
+  // wrapVerbatim lets a test override the whole envelope (to exercise the
+  // clamp banner) while telemetryFn keeps describing just the points, as
+  // every pre-existing test here already does.
+  function telemetryResponse(url, points, wrapVerbatim) {
+    if (wrapVerbatim) return wrapVerbatim(points);
+    const requestedDays = Number(url.match(/days=(\d+)/)?.[1]) || 30;
+    return { requestedDays, effectiveDays: requestedDays, clamped: false, points };
+  }
+
+  function reportedFieldsFetch(deviceList, telemetryFn = () => points, wrapVerbatim) {
     const fieldsMap = Object.fromEntries(deviceList.map(d => [d.deviceId, d.attributes.reportsFields]));
     return vi.fn((url) => {
       if (url.includes("/reported-fields")) {
         return Promise.resolve({ ok: true, json: async () => fieldsMap });
+      }
+      if (url.includes("/telemetry-history")) {
+        return Promise.resolve({ ok: true, json: async () => telemetryResponse(url, telemetryFn(url), wrapVerbatim) });
       }
       return Promise.resolve({ ok: true, json: async () => telemetryFn(url) });
     });
@@ -307,9 +321,13 @@ describe("SensorHistoryPanel", () => {
       "z2m-outside": ["temperature"],
       "ha-kitchen-humidity-dup": ["humidity"],
     };
-    vi.stubGlobal("fetch", vi.fn((url) => url.includes("/reported-fields")
-      ? Promise.resolve({ ok: true, json: async () => fieldsMap })
-      : Promise.resolve({ ok: true, json: async () => points })));
+    vi.stubGlobal("fetch", vi.fn((url) => {
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => fieldsMap });
+      if (url.includes("/telemetry-history")) {
+        return Promise.resolve({ ok: true, json: async () => telemetryResponse(url, points) });
+      }
+      return Promise.resolve({ ok: true, json: async () => points });
+    }));
     render(<SensorHistoryPanel devices={allDevices} apiBase="http://cabin" tempUnit="F" />);
 
     await screen.findByRole("button", { name: "Mech Room" });
@@ -365,6 +383,28 @@ describe("SensorHistoryPanel", () => {
     expect(within(rows[2]).getByText("70.0% (n=12)")).toBeTruthy();
   });
 
+  // W-21: `since` ("N days ago from right now") almost never lands on an
+  // exact midnight, so the earliest day of a window is (almost) always a
+  // partial day -- labeled rather than silently averaged in as if it
+  // covered the same 24 hours as every other row.
+  it("labels the earliest day as (partial) and leaves later days unlabeled", async () => {
+    const withPartial = [
+      { day: "2026-08-24T00:00:00Z", avg: 70, min: 65, max: 75, sampleCount: 12, partial: true },
+      { day: "2026-08-25T00:00:00Z", avg: 75.2, min: 70, max: 80, sampleCount: 8, partial: false },
+    ];
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]], () => withPartial));
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
+
+    // Built from the same Date().toLocaleDateString() the app itself uses,
+    // not a hardcoded string -- see the CSV-export test above for why.
+    const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString();
+    const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString();
+    const rows = await screen.findAllByRole("row");
+    expect(within(rows[1]).getByText(day2)).toBeTruthy();
+    expect(within(rows[1]).queryByText(/\(partial\)/)).toBeNull();
+    expect(within(rows[2]).getByText(`${day1} (partial)`)).toBeTruthy();
+  });
+
   // 2026-08-27: the user flagged that a wide multi-device table with only
   // an average per cell hides whether a reading came from dozens of real
   // samples or one stray point -- exactly the kind of question an
@@ -399,9 +439,34 @@ describe("SensorHistoryPanel", () => {
     render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
     await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(1));
 
-    fireEvent.change(screen.getByLabelText(/^range$/i), { target: { value: "90" } });
+    fireEvent.change(screen.getByLabelText(/^range$/i), { target: { value: "60" } });
     await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(2));
-    expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history")).at(-1)[0]).toContain("days=90");
+    expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history")).at(-1)[0]).toContain("days=60");
+  });
+
+  // W-21: offering a range the server never actually honors is exactly the
+  // "chart defect" this closes -- both cabin.history.max-days and
+  // cabin.demo.max-history-days default to 60 (D22 Q-DM-2, answered
+  // 2026-09-24), so nothing past that is a real option for any viewer.
+  it("does not offer a range beyond the shared 60-day platform ceiling", async () => {
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]]));
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
+
+    const rangeSelect = await screen.findByLabelText(/^range$/i);
+    expect(within(rangeSelect).queryByText(/90 days/)).toBeNull();
+    expect(within(rangeSelect).getByText(/60 days/)).toBeTruthy();
+  });
+
+  // W-21: the response is a wrapper carrying the range the server actually
+  // honored -- a demo token's own ceiling (or a future divergence from the
+  // normal view's own ceiling) must show up as explicit feedback, not a
+  // chart that's silently shorter than what was asked for.
+  it("shows a clamped-range notice when the server returns fewer days than requested", async () => {
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]], () => points,
+      (pts) => ({ requestedDays: 60, effectiveDays: 14, clamped: true, points: pts })));
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
+
+    expect(await screen.findByText(/Showing last 14 days/)).toBeTruthy();
   });
 
   // "step two": a real multi-select toggle -- click a device chip to
@@ -460,7 +525,7 @@ describe("SensorHistoryPanel", () => {
     vi.stubGlobal("fetch", vi.fn((url) => {
       if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => fieldsMap });
       if (url.includes("/reporting-relationships")) return Promise.resolve({ ok: true, json: async () => reportingRelationships });
-      return Promise.resolve({ ok: true, json: async () => points });
+      return Promise.resolve({ ok: true, json: async () => telemetryResponse(url, points) });
     }));
 
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
@@ -564,9 +629,9 @@ describe("SensorHistoryPanel", () => {
     // previous calendar day.
     const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString();
     const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString();
-    expect(lines[0]).toBe("date,device,avg,count");
-    expect(lines).toContain(`${day1},"Mech Room",70.00,12`);
-    expect(lines).toContain(`${day2},"Kitchen",75.20,8`);
+    expect(lines[0]).toBe("date,device,avg,count,partial");
+    expect(lines).toContain(`${day1},"Mech Room",70.00,12,no`);
+    expect(lines).toContain(`${day2},"Kitchen",75.20,8,no`);
   });
 
   // The user reported not knowing what "(n=…)" meant at all until asking --
@@ -4854,9 +4919,10 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
   it("observations_read scope shows historical readings via reported-fields + telemetry-history", async () => {
     vi.stubGlobal("fetch", mockFetchByUrl([
       ["/api/events/reported-fields", { ok: true, json: async () => ({ "z2m-temp_kitchen": ["humidity"] }) }],
-      ["/api/events/telemetry-history", { ok: true, json: async () => [
-        { day: "2026-09-01T00:00:00Z", avg: 47.5, min: 40, max: 55, sampleCount: 90 },
-      ] }],
+      ["/api/events/telemetry-history", { ok: true, json: async () => ({
+        requestedDays: 7, effectiveDays: 7, clamped: false, points: [
+          { day: "2026-09-01T00:00:00Z", avg: 47.5, min: 40, max: 55, sampleCount: 90 },
+        ] }) }],
     ]));
 
     render(<GuestDashboard token="secret-abc" />);

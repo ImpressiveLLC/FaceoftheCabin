@@ -12,9 +12,16 @@ spring:
 
 cabin:
   # D22 Demo Access -- history window a demo-link viewer can chart (R-DM-8).
-  # Present day only by default (Q-DM-2); raise it here, no code change.
+  # W-21 (Q-DM-2 answered 2026-09-24, Nate): aligned to the normal view's
+  # own ceiling below -- raise either one here, no code change.
   demo:
-    max-history-days: ${CABIN_DEMO_MAX_HISTORY_DAYS:1}
+    max-history-days: ${CABIN_DEMO_MAX_HISTORY_DAYS:60}
+  # W-21: the same ceiling for every authenticated (non-demo) caller of
+  # GET /api/events/telemetry-history -- there was no ceiling at all here
+  # before this, only the demo path had one. See EventController's own
+  # comment on why this is a separate property from cabin.demo above.
+  history:
+    max-days: ${CABIN_HISTORY_MAX_DAYS:60}
   name: Cumberland Cabin
   mqtt:
     brokerUrl: ${MQTT_URL:tcp://localhost:1883}

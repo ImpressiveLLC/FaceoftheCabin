@@ -255,6 +255,40 @@ class CabinEventServiceTest {
         assertThat(points).isEmpty();
     }
 
+    // W-21: `since` ("N days ago from right now") almost never lands on an
+    // exact midnight, so the earliest day a window can return only has
+    // partial coverage -- a reading placed just inside `since` should land
+    // in that boundary day and be flagged, while a reading from today
+    // (comfortably inside the window, not the boundary day) should not.
+    //
+    // The boundary reading sits 2 minutes after the test's own `since`
+    // because dailyAggregates() computes its own `since` a few ms later --
+    // a reading exactly at the test's `since` falls just before the query's
+    // and is excluded (found when this first ran against a real Postgres).
+    // The assumption skips, rather than flakes, in the ~2 minutes around a
+    // day boundary where that margin would cross into the next day, the
+    // same class of midnight flake averagesMultipleSameDayReadingsIntoOneBucket
+    // documents above. Zone is the JVM default because that is what the
+    // JDBC session -- and so date_trunc('day', ...) -- buckets by.
+    @Test
+    void marksOnlyTheEarliestDayInTheWindowAsPartial() {
+        Instant now = Instant.now();
+        Instant since = now.minus(java.time.Duration.ofDays(7));
+        Instant boundaryReading = since.plusSeconds(120);
+        java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            since.atZone(zone).toLocalDate().equals(boundaryReading.atZone(zone).toLocalDate()),
+            "window start is within 2 minutes of a day boundary; the margin would cross into the next day");
+        saveTelemetry("boundary", "z2m-humid_mech", boundaryReading, Map.of("humidity", 50));
+        saveTelemetry("recent", "z2m-humid_mech", now, Map.of("humidity", 90));
+
+        List<TelemetryDailyPoint> points = service.dailyAggregates("z2m-humid_mech", "humidity", 7);
+
+        assertThat(points).hasSize(2);
+        assertThat(points.get(0).partial()).isTrue();
+        assertThat(points.get(points.size() - 1).partial()).isFalse();
+    }
+
     // 2026-08-27: reportedFieldsByDevice() -- the real, observed-data
     // ground truth for the field/device picker, replacing
     // DeviceType.telemetryFields()'s static per-type guess (see its own

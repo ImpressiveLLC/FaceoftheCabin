@@ -639,6 +639,30 @@ All items below are **complete and pushed to GitHub**:
   constraint now) and gave `WorkflowRulesCard`'s workflow list the same
   capped-height/scroll treatment as `.active-conditions-list`. See
   `docs/PRODUCT_NOTES.md`'s 2026-09-17 entry.
+- **History range contract (W-21, 2026-09-24)** — `GET
+  /api/events/telemetry-history` now returns `TelemetryHistoryResponse`
+  (`requestedDays`, `effectiveDays`, `clamped`, `points`), not a bare
+  array, so a caller can tell it got a shorter range than it asked for
+  instead of silently rendering a shorter chart. A new
+  `cabin.history.max-days` property (default 60) caps every caller, demo
+  and authenticated alike -- previously only the demo path had any
+  ceiling at all. D22 Q-DM-2 answered the same day: `cabin.demo.max-
+  history-days`' own default moved from 1 to 60 to match, so a demo
+  viewer's history now aligns with the normal view instead of clamping
+  to the present day. Each `TelemetryDailyPoint` also carries a new
+  `partial` flag (the earliest day in a window almost never starts at
+  a day boundary, so it never has a full 24 hours of samples; the
+  boundary is asked of the database, since `date_trunc('day', ...)`
+  buckets by the JDBC session's timezone, not UTC) -- the UI
+  labels it "(partial)" rather than silently averaging it in as
+  equivalent to a full day. `SensorHistoryPanel`'s Range dropdown drops
+  its old 90-day option (nothing ever honored it past the new shared
+  ceiling) and shows a "Showing last N days" notice whenever a response
+  comes back clamped. See `docs/governance/decisions/ontology-
+  decisions.md`'s D22 section (R-DM-8, Q-DM-2, required test 9) and
+  `docs/governance/backlog.md`'s W-21 row for the full record, including
+  its relationship to PR #106 (which first drafted this same ID and
+  scope but shipped no implementation).
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
