@@ -15,6 +15,7 @@ This folder is the single home for how platform work is decided, prioritized, ac
 | Know what "done" means before a merge or a release | [Definition of Done](definition-of-done.md) |
 | Know whether something may merge or ship | [Sign-offs](signoffs/) — newest first by filename |
 | Know what is being worked this iteration, by whom, in what order | [Iterations](iterations/) — newest first by filename |
+| Pass work between Cowork and Code, or pick up work passed to you | [Handovers](#handovers) |
 
 ## Traceability chain
 
@@ -41,6 +42,7 @@ Every record ID is allocated once, by the PR that introduces the record, and nev
 | `DL-YYYY-MM-DD-NN` | Discrepancy | [`discrepancy-log.md`](discrepancy-log.md) | Two-digit sequence per date |
 | `SO-YYYY-MM-DD-rN` | Sign-off | [`signoffs/`](signoffs/) | Revision per date |
 | `ITER-YYYY-MM-DD` | Iteration plan | [`iterations/`](iterations/) | One per start date |
+| `HO-YYYY-MM-DD` | Handover | [`handovers/`](handovers/) | One per date; deleted when its last task closes (see [Handovers](#handovers)) |
 
 **The next free ID is one past the highest in use on `main` or in any open PR.** An ID in an open PR is taken even though it has not merged: two PRs that each read only `main` will pick the same number. Before allocating, check both:
 
@@ -72,6 +74,14 @@ Rules:
 | `definition-of-done.md` | Cowork drafts | Nate |
 | `signoffs/` | Cowork only. Append-only: a later sign-off supersedes, never edits, an earlier one | — |
 | `iterations/` | Cowork drafts; Code confirms feasibility | Nate |
+
+## Handovers
+
+A handover is the list of tasks one role passes to another, for example Cowork to Code. It travels through GitHub, not through chat or a claude.ai project doc.
+
+- **Where:** `docs/governance/handovers/HO-YYYY-MM-DD.md`, one file per date. If a handover arrives as a paste, assume it also lives here and check before relying on the paste.
+- **While open:** update each task in place with the IDs it allocated and the PR numbers that carry it. The [ID allocation](#id-allocation) rules apply to every ID.
+- **Closing:** the PR that closes the last task deletes the file, and its commit message lists the outcome PRs. Git history keeps the file.
 
 ## Where other documents fit
 
