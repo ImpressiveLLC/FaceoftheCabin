@@ -165,6 +165,16 @@ public class HomeAssistantDiscoveryService {
                     }
                 }
             }
+            // 2026-10-02 (W-27): a switch's on/off is HA's state field, which
+            // mapHaState() collapses to ONLINE for device health -- so the
+            // dashboard had no way to show or toggle it. Stored as "state":
+            // "ON"/"OFF", the same key and casing Zigbee2MQTT plugs already
+            // publish (and WorkflowRuleService's command confirmation reads).
+            // Anything else (unavailable/unknown) is left out, not guessed.
+            if ("switch".equals(domain)) {
+                String s = String.valueOf(entity.state()).toLowerCase();
+                if (s.equals("on") || s.equals("off")) attrs.put("state", s.toUpperCase());
+            }
             String haDeviceId = deviceIds.get(entity.entityId());
             if (haDeviceId != null && !haDeviceId.isBlank()) {
                 attrs.put("haDeviceId", haDeviceId);
