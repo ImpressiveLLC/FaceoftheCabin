@@ -126,6 +126,25 @@ class HomeAssistantDiscoveryServiceTest {
         assertThat(discovered.get(0).attributes()).containsEntry("description", "Breaker Box Switch");
     }
 
+    // 2026-10-02 (W-27): a switch's on/off was collapsed to ONLINE and lost,
+    // so the dashboard couldn't show or toggle it.
+    @Test
+    void aSwitchDomainEntitysOnOffIsCapturedAsStateInZigbeeCasing() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "switch.heater_mech_room", "on", Map.of("friendly_name", "Heater Mech Room")),
+            new HomeAssistantAdapter.DiscoveredEntity(
+                "switch.breaker_box", "unavailable", Map.of("friendly_name", "Breaker Box"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        Map<String, Map<String, Object>> byEntity = new java.util.HashMap<>();
+        registry.byLocation("cabin").forEach(d -> byEntity.put((String) d.attributes().get("entityId"), d.attributes()));
+        assertThat(byEntity.get("switch.heater_mech_room")).containsEntry("state", "ON");
+        assertThat(byEntity.get("switch.breaker_box")).doesNotContainKey("state");
+    }
+
     @Test
     void aNonSensorDomainEntityDoesNotGetAValueAttribute() {
         when(adapter.discover("cabin")).thenReturn(List.of(
