@@ -152,6 +152,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * safety-relevant alert for someone else) -- same "GET stays open, writes
  * don't" split already established for /api/rules/** above.
  *
+ * /api/ha — added 2026-10-02 (W-27/W-28), every method. HaServiceController
+ * turns a request into a real Home Assistant service call (heater on/off,
+ * preheat trigger); that's a physical-world write, the same category as
+ * silencing an alert above, never an anonymous one. Does not touch D14:
+ * no read lives under this path.
+ *
  * cabin.security.googleAuth.enabled defaults to true (secure by default —
  * absence of the property changes nothing). The only reason it exists is
  * local verification: there's no way to obtain a real Google access token
@@ -181,6 +187,6 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
                 "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session",
                 "/api/presence/**", "/api/security/**", "/api/opportunities/**", "/api/alerts/**",
-                "/api/devices/**", "/api/locations/**");
+                "/api/devices/**", "/api/ha/**", "/api/locations/**");
     }
 }
