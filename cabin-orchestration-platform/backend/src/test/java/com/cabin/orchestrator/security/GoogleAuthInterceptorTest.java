@@ -125,9 +125,9 @@ class GoogleAuthInterceptorTest {
     }
 
     @Test
-    void aValidGuestTokenScopedToDeviceStatesReachesApiDevices() throws Exception {
-        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("device_states"), null, "nate@example.com");
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+    void aValidGuestTokenScopedToDashboardReachesApiDashboard() throws Exception {
+        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("dashboard"), null, "nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dashboard/config");
         request.setParameter("t", token.token());
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -163,10 +163,15 @@ class GoogleAuthInterceptorTest {
         assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
     }
 
+    // W-31: GET /api/devices is now an explicit read carve-out (D14 keeps
+    // device reads open for every caller), so the guest-token mechanics the
+    // next four tests cover -- scope mismatch, unknown, revoked, expired --
+    // can no longer be driven through that path. /api/dashboard is a scoped
+    // guest path with no carve-out, so it exercises the same logic.
     @Test
     void aGuestTokenNotScopedForThePathIsRejected() throws Exception {
         CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("alerts_read"), null, "nate@example.com");
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dashboard/config");
         request.setParameter("t", token.token());
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -187,7 +192,7 @@ class GoogleAuthInterceptorTest {
 
     @Test
     void anUnknownGuestTokenIsRejected() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dashboard/config");
         request.setParameter("t", "not-a-real-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -197,9 +202,9 @@ class GoogleAuthInterceptorTest {
 
     @Test
     void aRevokedGuestTokenIsRejected() throws Exception {
-        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("device_states"), null, "nate@example.com");
+        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("dashboard"), null, "nate@example.com");
         accessTokens.revoke(token.id());
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dashboard/config");
         request.setParameter("t", token.token());
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -209,13 +214,157 @@ class GoogleAuthInterceptorTest {
 
     @Test
     void anExpiredGuestTokenIsRejected() throws Exception {
-        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("device_states"), Duration.ofDays(-1), "nate@example.com");
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("dashboard"), Duration.ofDays(-1), "nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dashboard/config");
         request.setParameter("t", token.token());
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         assertFalse(interceptor.preHandle(request, response, new Object()));
         assertEquals(401, response.getStatus());
+    }
+
+    // ── W-31 (P0): /api/devices/** write gate, every route x every credential ──
+    //
+    // POST /api/devices/{id}/command was reachable with no credential because
+    // /api/devices/** was never in WebConfig's interceptor list. Routes come
+    // from scanning the real controllers (WriteGateAuditTest), so a new device
+    // write route is covered here the day it is added. That every route is
+    // inside WebConfig's patterns is asserted in WriteGateAuditTest.
+
+    private static final List<String> ALL_GUEST_SCOPES = List.of("dashboard", "device_states", "alerts_read", "observations_read");
+
+    private List<WriteGateAuditTest.Route> deviceWriteRoutes() throws Exception {
+        List<WriteGateAuditTest.Route> routes = WriteGateAuditTest.nonGetRoutes().stream()
+            .filter(r -> r.template().startsWith("/api/devices")).toList();
+        assertTrue(routes.size() >= 14, "expected the 14 /api/devices write routes, found " + routes.size());
+        return routes;
+    }
+
+    private static MockHttpServletRequest deviceRequest(String verb, String path) {
+        MockHttpServletRequest request = new MockHttpServletRequest(verb, path);
+        request.setRequestURI(path);
+        return request;
+    }
+
+    private static MockHttpServletRequest deviceWrite(WriteGateAuditTest.Route r) {
+        return deviceRequest(r.method().equals("ANY") ? "POST" : r.method(), r.path());
+    }
+
+    @Test
+    void anonymousCallersAreRefusedOnEveryDeviceWriteRoute() throws Exception {
+        for (WriteGateAuditTest.Route r : deviceWriteRoutes()) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(deviceWrite(r), response, new Object()), r.key());
+            assertEquals(401, response.getStatus(), r.key());
+        }
+    }
+
+    @Test
+    void aGuestTokenWithEveryScopeIsRefusedOnEveryDeviceWriteRoute() throws Exception {
+        CabinAccessToken token = accessTokens.create("All scopes", ALL_GUEST_SCOPES, null, "nate@example.com");
+        for (WriteGateAuditTest.Route r : deviceWriteRoutes()) {
+            MockHttpServletRequest viaHeader = deviceWrite(r);
+            viaHeader.addHeader("Authorization", "CabinToken " + token.token());
+            MockHttpServletResponse headerResponse = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(viaHeader, headerResponse, new Object()), r.key() + " via header");
+            assertEquals(403, headerResponse.getStatus(), r.key() + " via header");
+
+            MockHttpServletRequest viaParam = deviceWrite(r);
+            viaParam.setParameter("t", token.token());
+            MockHttpServletResponse paramResponse = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(viaParam, paramResponse, new Object()), r.key() + " via ?t=");
+            assertEquals(403, paramResponse.getStatus(), r.key() + " via ?t=");
+        }
+    }
+
+    @Test
+    void aDemoTokenIsRefusedOnEveryDeviceWriteRouteAndNeverReachesTheController() throws Exception {
+        com.cabin.orchestrator.security.demo.DemoPresenceClassifier noPresence =
+            new com.cabin.orchestrator.security.demo.DemoPresenceClassifier(null, null) {
+                @Override public Map<String, String> presenceDevices() { return Map.of(); }
+            };
+        com.cabin.orchestrator.security.demo.DemoAccessFilter filter =
+            new com.cabin.orchestrator.security.demo.DemoAccessFilter(accessTokens, noPresence);
+        String demo = accessTokens.create("Demo", List.of("demo"), Duration.ofDays(1), "nate@example.com").token();
+        for (WriteGateAuditTest.Route r : deviceWriteRoutes()) {
+            MockHttpServletRequest request = deviceWrite(r);
+            request.addHeader("Authorization", "CabinToken " + demo);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            org.springframework.mock.web.MockFilterChain chain = new org.springframework.mock.web.MockFilterChain();
+            filter.doFilter(request, response, chain);
+            assertEquals(403, response.getStatus(), r.key());
+            assertTrue(response.getContentAsString().contains("GUEST_READ_ONLY"), r.key());
+            assertNull(chain.getRequest(), r.key() + " must never reach the controller");
+        }
+    }
+
+    @Test
+    void aReadOnlyManagedViewerIsRefusedOnEveryDeviceWriteRoute() throws Exception {
+        String viewer = issueManagedSessionToken(ManagedUserRole.VIEWER);
+        for (WriteGateAuditTest.Route r : deviceWriteRoutes()) {
+            MockHttpServletRequest request = deviceWrite(r);
+            request.addHeader("Authorization", "ManagedSession " + viewer);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(request, response, new Object()), r.key());
+            assertEquals(403, response.getStatus(), r.key());
+        }
+    }
+
+    @Test
+    void aSignedInHouseholdSessionIsAllowedOnEveryDeviceWriteRoute() throws Exception {
+        String cabinSession = cabinSessions.issue("member@example.com").token();
+        String managedMember = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        for (WriteGateAuditTest.Route r : deviceWriteRoutes()) {
+            for (String credential : List.of("CabinSession " + cabinSession, "ManagedSession " + managedMember)) {
+                MockHttpServletRequest request = deviceWrite(r);
+                request.addHeader("Authorization", credential);
+                MockHttpServletResponse response = new MockHttpServletResponse();
+                assertTrue(interceptor.preHandle(request, response, new Object()),
+                    r.key() + " with " + credential.substring(0, credential.indexOf(' ')));
+            }
+        }
+    }
+
+    @Test
+    void anAdminSessionIsAllowedOnEveryDeviceWriteRouteAndResolvesAsAdministrator() throws Exception {
+        ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "nate@example.com");
+        String adminSession = cabinSessions.issue("nate@example.com").token();
+        for (WriteGateAuditTest.Route r : deviceWriteRoutes()) {
+            MockHttpServletRequest request = deviceWrite(r);
+            request.addHeader("Authorization", "CabinSession " + adminSession);
+            assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()), r.key());
+            assertEquals(HouseholdRole.ADMINISTRATOR, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE), r.key());
+        }
+    }
+
+    @Test
+    void anInvalidSessionTokenIsRefusedOnTheCommandRouteNotTreatedAsOpen() throws Exception {
+        MockHttpServletRequest request = deviceRequest("POST", "/api/devices/x/command");
+        request.addHeader("Authorization", "CabinSession not-a-real-session");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    // D14 (2026-09-04) keeps device READS open for every caller -- a kiosk
+    // must work with no sign-in. The write gate must not change that, not
+    // even for a caller who happens to carry a bad guest token on a read.
+    @Test
+    void deviceReadsStayOpenForAnonymousAndBadTokenCallers() throws Exception {
+        for (String verb : List.of("GET", "HEAD")) {
+            for (String path : List.of("/api/devices", "/api/devices/x", "/api/devices/x/config", "/api/devices/meta/types",
+                                       "/api/devices/display-config", "/api/devices/reporting-relationships")) {
+                MockHttpServletResponse anonymous = new MockHttpServletResponse();
+                assertTrue(interceptor.preHandle(deviceRequest(verb, path), anonymous, new Object()), verb + " " + path);
+                assertEquals(200, anonymous.getStatus(), verb + " " + path);
+
+                MockHttpServletRequest badToken = deviceRequest(verb, path);
+                badToken.setParameter("t", "not-a-real-token");
+                assertTrue(interceptor.preHandle(badToken, new MockHttpServletResponse(), new Object()),
+                    verb + " " + path + " with a bad guest token must stay open");
+            }
+        }
     }
 
     @Test
@@ -318,7 +467,7 @@ class GoogleAuthInterceptorTest {
     @Test
     void aValidHouseholdMemberSessionCanReadAndWrite() throws Exception {
         String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
-        MockHttpServletRequest getReq = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest getReq = new MockHttpServletRequest("GET", "/api/notes");
         getReq.addHeader("Authorization", "ManagedSession " + sessionToken);
         assertTrue(interceptor.preHandle(getReq, new MockHttpServletResponse(), new Object()));
 
@@ -331,7 +480,7 @@ class GoogleAuthInterceptorTest {
     @Test
     void aValidViewerSessionCanReadButNotWrite() throws Exception {
         String sessionToken = issueManagedSessionToken(ManagedUserRole.VIEWER);
-        MockHttpServletRequest getReq = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest getReq = new MockHttpServletRequest("GET", "/api/notes");
         getReq.addHeader("Authorization", "ManagedSession " + sessionToken);
         assertTrue(interceptor.preHandle(getReq, new MockHttpServletResponse(), new Object()));
 
@@ -345,7 +494,7 @@ class GoogleAuthInterceptorTest {
     @Test
     void aValidManagedSessionSetsTheSameEmailAttributeAGoogleTokenWould() throws Exception {
         String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "ManagedSession " + sessionToken);
 
         assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
@@ -362,7 +511,7 @@ class GoogleAuthInterceptorTest {
         // above proving the email attribute itself is path-independent.
         ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "member@example.com, someone-else@example.com");
         String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "ManagedSession " + sessionToken);
 
         assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
@@ -374,7 +523,7 @@ class GoogleAuthInterceptorTest {
     void aManagedSessionEmailNotInAdminEmailsResolvesToAdultHouseholdMemberRole() throws Exception {
         ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "someone-else@example.com");
         String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "ManagedSession " + sessionToken);
 
         assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
@@ -384,7 +533,7 @@ class GoogleAuthInterceptorTest {
 
     @Test
     void anUnknownManagedSessionTokenIsRejected() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "ManagedSession not-a-real-session");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -396,7 +545,7 @@ class GoogleAuthInterceptorTest {
     void aRevokedManagedSessionIsRejected() throws Exception {
         String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
         managedUsers.revokeSession(sessionToken);
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "ManagedSession " + sessionToken);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -412,7 +561,7 @@ class GoogleAuthInterceptorTest {
         String sessionToken = managedUsers.consumeMagicLink(url.substring(url.lastIndexOf('/') + 1)).orElseThrow().token();
         managedUsers.setActive(user.id(), false);
 
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "ManagedSession " + sessionToken);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -463,7 +612,7 @@ class GoogleAuthInterceptorTest {
     @Test
     void aValidCabinSessionGrantsFullReadAndWriteAccess() throws Exception {
         CabinSession session = cabinSessions.issue("nate@example.com");
-        MockHttpServletRequest getReq = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest getReq = new MockHttpServletRequest("GET", "/api/notes");
         getReq.addHeader("Authorization", "CabinSession " + session.token());
         assertTrue(interceptor.preHandle(getReq, new MockHttpServletResponse(), new Object()));
 
@@ -476,7 +625,7 @@ class GoogleAuthInterceptorTest {
     @Test
     void aValidCabinSessionSetsTheSameEmailAttributeAGoogleTokenWould() throws Exception {
         CabinSession session = cabinSessions.issue("nate@example.com");
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "CabinSession " + session.token());
 
         interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
@@ -488,7 +637,7 @@ class GoogleAuthInterceptorTest {
     void aCabinSessionForAnAdminEmailResolvesToAdministratorRole() throws Exception {
         ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "nate@example.com");
         CabinSession session = cabinSessions.issue("nate@example.com");
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "CabinSession " + session.token());
 
         interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
@@ -498,7 +647,7 @@ class GoogleAuthInterceptorTest {
 
     @Test
     void anUnknownCabinSessionTokenIsRejected() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "CabinSession not-a-real-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -510,7 +659,7 @@ class GoogleAuthInterceptorTest {
     void aRevokedCabinSessionIsRejected() throws Exception {
         CabinSession session = cabinSessions.issue("nate@example.com");
         cabinSessions.revoke(session.token());
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "CabinSession " + session.token());
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -525,7 +674,7 @@ class GoogleAuthInterceptorTest {
         CabinSession fresh = expiredSessions.issue("nate@example.com");
         rawStore.extend(fresh.token(), Instant.now().minus(Duration.ofDays(1))); // force it into the past
         GoogleAuthInterceptor expiredInterceptor = new GoogleAuthInterceptor(accessTokens, managedUsers, expiredSessions);
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "CabinSession " + fresh.token());
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -551,7 +700,7 @@ class GoogleAuthInterceptorTest {
         Instant almostExpired = Instant.now().plus(Duration.ofDays(1));
         rawStore.extend(original.token(), almostExpired);
         GoogleAuthInterceptor slidingInterceptor = new GoogleAuthInterceptor(accessTokens, managedUsers, slidingSessions);
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.addHeader("Authorization", "CabinSession " + original.token());
 
         assertTrue(slidingInterceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
@@ -722,7 +871,7 @@ class GoogleAuthInterceptorTest {
         CabinAccessToken token = accessTokens.create("W-2 expired test token",
             List.of("dashboard", "device_states", "alerts_read", "observations_read"),
             Duration.ofDays(-1), "nate@example.com");
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
         request.setParameter("t", token.token());
         MockHttpServletResponse response = new MockHttpServletResponse();
 

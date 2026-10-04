@@ -1,6 +1,8 @@
 package com.cabin.orchestrator.security;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -35,10 +37,16 @@ class WebConfigTest {
         assertThat(gated("/api/ha/services")).isTrue();
     }
 
-    // D14: device reads stay open for glanceable/kiosk use -- this change
-    // must not quietly re-gate them.
+    // D14: device reads stay open for glanceable/kiosk use. Since W-31
+    // /api/devices/** is in the interceptor's pattern list so its writes are
+    // gated, and reads stay open through GoogleAuthInterceptor's own GET
+    // carve-out -- so this pins the behaviour, not path membership (which
+    // this test used to assert, and which W-31 correctly changed).
     @Test
-    void deviceReadsStayOpenPerD14() {
-        assertThat(gated("/api/devices")).isFalse();
+    void deviceReadsStayOpenPerD14() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/devices");
+        request.setRequestURI("/api/devices");
+        assertThat(new GoogleAuthInterceptor(null, null, null)
+            .preHandle(request, new MockHttpServletResponse(), new Object())).isTrue();
     }
 }

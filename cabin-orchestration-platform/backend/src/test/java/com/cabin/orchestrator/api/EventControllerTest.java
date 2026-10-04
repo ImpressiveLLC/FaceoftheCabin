@@ -116,11 +116,33 @@ class EventControllerTest {
         rawEventService.save(new CabinEvent("evt-humidity", "z2m-humid_mech", "TELEMETRY",
             "INFO", Instant.now(), Map.of("humidity", 75)));
 
-        List<com.cabin.orchestrator.events.TelemetryDailyPoint> points =
+        com.cabin.orchestrator.events.TelemetryHistoryResponse response =
             controller.telemetryHistory("z2m-humid_mech", "humidity", 30);
 
-        assertEquals(1, points.size());
-        assertEquals(75.0, points.get(0).avg());
+        assertEquals(30, response.requestedDays());
+        assertEquals(30, response.effectiveDays());
+        assertFalse(response.clamped());
+        assertEquals(1, response.points().size());
+        assertEquals(75.0, response.points().get(0).avg());
+    }
+
+    // W-21: days beyond cabin.history.max-days (default 60) come back
+    // clamped, with the response saying so rather than silently rendering
+    // a shorter chart -- see EventController.maxHistoryDays.
+    @Test
+    void telemetryHistoryReportsClampedRangeBeyondTheConfiguredCeiling() {
+        CabinEventService rawEventService = new CabinEventService(
+            new JdbcTemplate(new SimpleDriverDataSource(
+                new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+        rawEventService.save(new CabinEvent("evt-humidity-2", "z2m-humid_mech", "TELEMETRY",
+            "INFO", Instant.now(), Map.of("humidity", 75)));
+
+        com.cabin.orchestrator.events.TelemetryHistoryResponse response =
+            controller.telemetryHistory("z2m-humid_mech", "humidity", 90);
+
+        assertEquals(90, response.requestedDays());
+        assertEquals(60, response.effectiveDays());
+        assertTrue(response.clamped());
     }
 
     // 2026-08-27: /reported-fields -- wiring only, reportedFieldsByDevice()'s

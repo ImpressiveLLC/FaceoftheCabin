@@ -39,6 +39,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * -- see the shared "Cabin Platform Decisions" ontology artifact (D14) for
  * the full reasoning either way.
  *
+ * /api/devices — WRITES gated 2026-10-03 (W-31, P0), reads stay open. The
+ * 2026-09-04 reversal above was about reads not revealing occupancy, and
+ * that still holds. But taking /api/devices out of this list also took its
+ * writes with it: POST /api/devices/{id}/command, PUT/DELETE/PATCH, lifecycle,
+ * permit-join, network-scan and discovery apply/run were all reachable with
+ * no credential at all, so an anonymous caller could operate the main water
+ * valve, heaters and locks. Same "GET stays open, writes don't" split as
+ * /api/rules, /api/kb and /api/alerts: GoogleAuthInterceptor's isDevicesRead
+ * carve-out lets GET/HEAD through, and every other method needs a signed-in
+ * session -- guest and demo tokens are read-only and get 403.
+ *
  * /api/access-tokens — added 2026-09-01, admin-only management (create/
  * list/revoke) of Tier 1 guest share links. See GoogleAuthInterceptor's
  * own guest-token path (SCOPE_PATH_PREFIXES) for the other half of this:
@@ -168,6 +179,6 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
                 "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session",
                 "/api/presence/**", "/api/security/**", "/api/opportunities/**", "/api/alerts/**",
-                "/api/ha/**");
+                "/api/devices/**", "/api/ha/**");
     }
 }
