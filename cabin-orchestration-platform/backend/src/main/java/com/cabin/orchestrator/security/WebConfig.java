@@ -50,6 +50,14 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * carve-out lets GET/HEAD through, and every other method needs a signed-in
  * session -- guest and demo tokens are read-only and get 403.
  *
+ * /api/locations — WRITES gated 2026-10-04 (W-32), reads stay open. Found by
+ * W-31's controller audit: POST/PATCH/reorder/DELETE on the place list were
+ * reachable with no credential, and PATCH can repoint a place's apiBase, the
+ * address the UI sends signed-in tokens to. Same split as /api/devices:
+ * GoogleAuthInterceptor's isLocationsRead lets GET/HEAD through (the toolbar
+ * needs the place list before sign-in); every other method needs a signed-in
+ * session, and guest and demo tokens are read-only (403).
+ *
  * /api/access-tokens — added 2026-09-01, admin-only management (create/
  * list/revoke) of Tier 1 guest share links. See GoogleAuthInterceptor's
  * own guest-token path (SCOPE_PATH_PREFIXES) for the other half of this:
@@ -173,6 +181,6 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
                 "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session",
                 "/api/presence/**", "/api/security/**", "/api/opportunities/**", "/api/alerts/**",
-                "/api/devices/**");
+                "/api/devices/**", "/api/locations/**");
     }
 }

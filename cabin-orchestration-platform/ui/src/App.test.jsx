@@ -1582,6 +1582,56 @@ describe("FamilyHubPanel — Add Place", () => {
 
     await waitFor(() => expect(screen.getByText("id is required")).toBeTruthy());
   });
+
+  // W-32 (2026-10-04): POST /api/locations now needs a signed-in session, so the
+  // create must go through the auth object's authedFetch, not a plain fetch.
+  function renderPanelWithAuth(authedFetch) {
+    return render(
+      <ThemeProvider>
+        <AppContext.Provider value={{ devices: [] }}>
+          <FamilyHubPanel auth={{ authedFetch }} />
+        </AppContext.Provider>
+      </ThemeProvider>
+    );
+  }
+
+  function fillAndSubmit() {
+    fireEvent.click(screen.getByText("Add Place"));
+    fireEvent.change(screen.getByPlaceholderText("lakehouse"), { target: { value: "lakehouse" } });
+    fireEvent.change(screen.getByPlaceholderText("Lake House"), { target: { value: "Lake House" } });
+    fireEvent.click(screen.getByText("Create Place"));
+  }
+
+  it("creates the place through the signed-in authedFetch, never a bare fetch", async () => {
+    const plainFetch = vi.fn();
+    vi.stubGlobal("fetch", plainFetch);
+    const authedFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    const [url, opts] = authedFetch.mock.calls[0];
+    expect(url).toMatch(/\/api\/locations$/);
+    expect(opts.method).toBe("POST");
+    expect(plainFetch).not.toHaveBeenCalled();
+  });
+
+  it("tells a signed-out user to sign in instead of showing a bare 401", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => "Missing bearer token" });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/needs a signed-in household session/)).toBeTruthy());
+    expect(screen.queryByText("Missing bearer token")).toBeNull();
+  });
+
+  it("gives a read-only guest or viewer the same sign-in message on 403", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 403, text: async () => "forbidden" });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/needs a signed-in household session/)).toBeTruthy());
+  });
 });
 
 describe("allLocationsLabel", () => {

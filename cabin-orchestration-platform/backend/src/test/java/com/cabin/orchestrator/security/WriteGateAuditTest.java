@@ -62,11 +62,9 @@ class WriteGateAuditTest {
             "own shared-secret header (cabin.blinkMotionWebhook.apiKey); returns 503/401 when unset or wrong");
 
     /** Routes with no WebConfig pattern that are an OPEN KNOWN GAP, tracked by a backlog item. Remove each entry when its item lands. */
-    private static final Map<String, String> KNOWN_GAP = Map.of(
-        "POST /api/locations", "W-32",
-        "PATCH /api/locations/{id}", "W-32",
-        "POST /api/locations/reorder", "W-32",
-        "DELETE /api/locations/{id}", "W-32");
+    private static final Map<String, String> KNOWN_GAP = Map.of();
+    // W-32 closed 2026-10-04: the four /api/locations write routes that sat here are now
+    // inside WebConfig's patterns (see everyLocationsWriteRouteIsCoveredByTheInterceptor).
 
     /** Routes inside a WebConfig pattern that GoogleAuthInterceptor lets through on purpose, each with its own check. */
     private static final Map<String, String> CARVED_OUT = Map.of(
@@ -188,6 +186,16 @@ class WriteGateAuditTest {
         for (String k : KNOWN_GAP.keySet()) if (!uncovered.contains(k)) stale.add("KNOWN_GAP " + k + " (" + KNOWN_GAP.get(k) + " landed? remove the entry)");
         for (String k : CARVED_OUT.keySet()) if (!covered.contains(k)) stale.add("CARVED_OUT " + k);
         assertEquals(List.of(), stale, "Allowlist entries that no longer describe a real route -- remove them:");
+    }
+
+    @Test
+    void everyLocationsWriteRouteIsCoveredByTheInterceptor() throws Exception {
+        List<String> patterns = registeredPatterns();
+        List<Route> locations = nonGetRoutes().stream().filter(r -> r.template().startsWith("/api/locations")).toList();
+        assertEquals(4, locations.size(), "expected POST, PATCH, reorder and DELETE on /api/locations, found " + locations);
+        for (Route r : locations) {
+            assertTrue(matchesAnyPattern(patterns, r.path()), r.key() + " is not covered by WebConfig (W-32)");
+        }
     }
 
     @Test

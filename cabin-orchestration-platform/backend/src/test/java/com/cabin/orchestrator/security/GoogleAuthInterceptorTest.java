@@ -367,6 +367,73 @@ class GoogleAuthInterceptorTest {
         }
     }
 
+    // ── W-32: /api/locations writes, every route x every credential ──
+
+    private List<WriteGateAuditTest.Route> locationsWriteRoutes() throws Exception {
+        List<WriteGateAuditTest.Route> routes = WriteGateAuditTest.nonGetRoutes().stream()
+            .filter(r -> r.template().startsWith("/api/locations")).toList();
+        assertEquals(4, routes.size(), "expected POST, PATCH, reorder and DELETE on /api/locations, found " + routes);
+        return routes;
+    }
+
+    @Test
+    void anonymousCallersAreRefusedOnEveryLocationsWriteRoute() throws Exception {
+        for (WriteGateAuditTest.Route r : locationsWriteRoutes()) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(deviceWrite(r), response, new Object()), r.key());
+            assertEquals(401, response.getStatus(), r.key());
+        }
+    }
+
+    @Test
+    void aGuestTokenIsRefusedOnEveryLocationsWriteRoute() throws Exception {
+        CabinAccessToken token = accessTokens.create("All scopes", ALL_GUEST_SCOPES, null, "nate@example.com");
+        for (WriteGateAuditTest.Route r : locationsWriteRoutes()) {
+            MockHttpServletRequest request = deviceWrite(r);
+            request.addHeader("Authorization", "CabinToken " + token.token());
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(request, response, new Object()), r.key());
+            assertEquals(403, response.getStatus(), r.key());
+        }
+    }
+
+    @Test
+    void aReadOnlyManagedViewerIsRefusedOnEveryLocationsWriteRoute() throws Exception {
+        String viewer = issueManagedSessionToken(ManagedUserRole.VIEWER);
+        for (WriteGateAuditTest.Route r : locationsWriteRoutes()) {
+            MockHttpServletRequest request = deviceWrite(r);
+            request.addHeader("Authorization", "ManagedSession " + viewer);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(request, response, new Object()), r.key());
+            assertEquals(403, response.getStatus(), r.key());
+        }
+    }
+
+    @Test
+    void aSignedInHouseholdSessionIsAllowedOnEveryLocationsWriteRoute() throws Exception {
+        String cabinSession = cabinSessions.issue("member@example.com").token();
+        String managedMember = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        for (WriteGateAuditTest.Route r : locationsWriteRoutes()) {
+            for (String credential : List.of("CabinSession " + cabinSession, "ManagedSession " + managedMember)) {
+                MockHttpServletRequest request = deviceWrite(r);
+                request.addHeader("Authorization", credential);
+                assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()), r.key() + " with " + credential.substring(0, credential.indexOf(' ')));
+            }
+        }
+    }
+
+    // The toolbar needs the place list before anyone signs in, so reads stay open.
+    @Test
+    void locationsReadsStayOpenForAnonymousCallers() throws Exception {
+        for (String verb : List.of("GET", "HEAD")) {
+            for (String path : List.of("/api/locations", "/api/locations/cabin")) {
+                MockHttpServletResponse response = new MockHttpServletResponse();
+                assertTrue(interceptor.preHandle(deviceRequest(verb, path), response, new Object()), verb + " " + path);
+                assertEquals(200, response.getStatus(), verb + " " + path);
+            }
+        }
+    }
+
     @Test
     void aGuestTokenViaTheCabinTokenAuthorizationHeaderAlsoWorks() throws Exception {
         CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("alerts_read"), null, "nate@example.com");
