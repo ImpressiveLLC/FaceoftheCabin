@@ -91,6 +91,16 @@ printf 'bob  aa:bb:cc:dd:ee:ff\n' > "$T/short.conf"
 AUTHORIZED_USER_PHONES_CONF="$T/short.conf"; export AUTHORIZED_USER_PHONES_CONF
 run bob;   check "missing CIDR column: stdout empty" "" "$OUT"; check "...exit 2" "2" "$RC"
 
+echo "== repo hygiene (Cowork C-122-1): the real phone config is never committed"
+if git -C "$HERE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    tracked=$(git -C "$HERE" ls-files | grep -E '(^|/)authorized_user_phones\.conf$')
+    check "no authorized_user_phones.conf is tracked (only the .example template may be)" "" "$tracked"
+    if git -C "$HERE" check-ignore -q "$HERE/authorized_user_phones.conf"; then ignored=yes; else ignored=no; fi
+    check "the real file is git-ignored, so it cannot be added by accident" "yes" "$ignored"
+else
+    echo "  SKIP  not inside a git work tree (hygiene checks need one)"
+fi
+
 echo
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

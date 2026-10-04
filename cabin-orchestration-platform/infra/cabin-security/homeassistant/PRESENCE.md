@@ -57,12 +57,29 @@ signal goes stale, and W-33/W-34 then treat it as unknown rather than as away.
 
 **Verified 2026-10-04:** the S23+'s Tailscale node has been offline since
 2026-10-02 00:14 UTC. That alone explains the 41-hour silence behind the "Away"
-badge: the phone could not report. Turning Tailscale back on (and exempting it
-and the Companion app from battery optimization) restores the signal.
+badge: the phone could not report. (The phone is back on Tailscale as of
+2026-10-04.)
 
-Requiring the Companion app is not the intended end state. Alternatives are
-being worked out under W-36 (no Companion app) and W-37 (WiFi without phone
-customization); until then this is the only live GPS source.
+**Nate's direction, 2026-10-04: the phone's Tailscale should not be in the
+presence loop; it is a remote device for approvals only.** Requiring the
+Companion app is likewise not the intended end state. Alternatives are being
+worked out under W-36 (no Companion app, no phone Tailscale) and W-37 (WiFi
+without phone customization); until then the Companion app's GPS is the only
+live GPS source, and it only works while the phone can reach HA.
+
+**What that means for how this behaves, so nobody is surprised by it.** With HA
+not internet-reachable, a phone that is off the cabin LAN and off Tailscale
+cannot deliver GPS `leave` events, so GPS is **arrival-only**: arrival should
+work (the phone can reach HA directly over the cabin LAN; unverified for this
+phone), departure is never seen. The
+WiFi backup would notice the phone leaving the LAN, but its `not_home` is
+suppressed while the tracker (now stale) still says `zone.cabin`. So after
+leaving, presence can stay `home`; after 6 hours without a heartbeat the
+siren gate (W-33) stops trusting it and sends a push instead of sounding the
+siren. **In that state there is no siren while away.** Absence must come from
+the hub's own LAN view (W-37, now the critical path) or a source that does not
+need the phone's Tailscale (W-36). Until one is chosen, treat arming Away as
+alert-only protection when the phone has no route to HA.
 
 ## Publishers
 
@@ -192,10 +209,12 @@ cabin signal.
 
 ## Tests
 
-- `sh test_check_authorized_user_phone_wifi.sh`: 22 checks for the WiFi check
+- `sh test_check_authorized_user_phone_wifi.sh`: 24 checks for the WiFi check
   (presence, one user's phone never answers for another, the configured LAN is
-  swept, and every configuration error prints nothing and exits 2). Mutation
-  checked: making errors print OFF fails 7 of them. `nmap` and `ip` are stubbed.
+  swept, every configuration error prints nothing and exits 2, and the real
+  `authorized_user_phones.conf` is neither tracked nor un-ignored). Mutation
+  checked: making errors print OFF fails 7 of them, and force-adding a fake
+  config fails the hygiene check. `nmap` and `ip` are stubbed.
 - `python -m unittest test_cabin_security_mqtt_publish`: 6 tests for the
   allow-list and heartbeat validation (paho is stubbed, no broker).
 - `test/ha-sim/run_sim.py`: throwaway **offline** Home Assistant (Docker image
