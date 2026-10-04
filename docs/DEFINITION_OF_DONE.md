@@ -218,7 +218,7 @@ accumulate.*
      2026-09-29/30.** Reconnected through the M920q's Ethernet port and
      renamed `cabin_outside_reolink` in the live Frigate config; see
      MAINTENANCE.md, "A camera on a different network than the M920q".
-     Open follow-ups: W.1 to W.3 in `docs/governance/backlog.md`.
+     Open follow-ups: W-39 to W-41 in `docs/governance/backlog.md`.
   2. **`home_aldrich_front`'s clip gap is NOT an arm-state issue —
      correcting a wrong live-session claim.** Mid-session I told the user
      arming the driveway Blink camera would likely help, based only on

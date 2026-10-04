@@ -747,13 +747,27 @@ and git disagree. The Frigate config was edited by hand on 2026-09-30
 | Default route | `eno2` via `192.168.1.1` (metric 100) ahead of Wi-Fi (600) | not in git |
 
 Working: `camera_fps` about 5 for `cabin_outside_reolink`, and recordings on
-each day from 2026-09-29 to 2026-10-03. Tracked as W.1 to W.3 in
-`docs/governance/backlog.md`. **Until W.1 lands, do not merge #97 or
-anything else that touches `production-stack/frigate/config.yml` or
+each day from 2026-09-29 to 2026-10-03. Tracked as W-39 to W-41 in
+`docs/governance/backlog.md`. **Until W-39 lands, do not merge
+anything that touches `production-stack/frigate/config.yml` or
 `production-stack/docker-compose.yml`.** The deploy would copy git's
 `front_door` block over the live file and the camera would go dark again.
 Its smoke test checks Frigate's availability topic, not each camera, so it
 would pass.
+
+[#97](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/97) (the motion
+sensitivity tuning) was **closed unmerged on 2026-10-04**: it tunes a
+`front_door` camera that no longer exists under that name and would have
+overwritten the live file. Its three values (`frame_height: 160`,
+`contour_area: 5`, `threshold: 22`) return in a fresh PR, re-keyed to
+`cabin_outside_reolink`, only after W-39 merges and detection has run for 24
+hours at default sensitivity (the W-5 baseline); the 24-hour after-measurement
+is posted on that PR. The camera key `cabin_outside_reolink` is settled (it is
+the key recordings have been filed under since 2026-09-30), and the W-39
+config-sync PR carries it. The address `192.168.1.121` comes from the Starlink
+router's DHCP; **a reservation for it is not known to exist**, so if the
+camera's address changes Frigate loses it. Record how the address is kept
+stable, or that it is not, as a known risk.
 
 **A camera that is not delivering frames, or sits on another network**:
 see [A camera on a different network than the M920q](#a-camera-on-a-different-network-than-the-m920q),
@@ -970,7 +984,14 @@ off.
    2026-10-03 `ip route get 1.1.1.1` left through `eno2` via `192.168.1.1`
    (metric 100), ahead of Wi-Fi (metric 600). Decide whether the camera
    LAN may carry general traffic; if not, set `ipv4.never-default yes` on
-   that profile (W.2, undecided). Keep `connection.autoconnect yes` so the
+   that profile (W-40). **Ruled 2026-10-04 (Cowork): accept the current path and
+   document it; decide `never-default` at the next site visit**, because
+   changing routes remotely risks cutting the host off and this runbook
+   requires Nate on site with the timed revert (Cloudflare Tunnel and
+   Tailscale are both up on the current path). For that visit, a wired uplink
+   is usually the better default: if the Starlink LAN is the same internet
+   path, keep `eno2` as the default and retire the Wi-Fi default instead.
+   Keep `connection.autoconnect yes` so the
    link survives a reboot. The `cabin-camera-share` profile still has its
    old name and a leftover `192.168.3.1/24` address from when it served
    DHCP as a shared link.
@@ -979,9 +1000,9 @@ off.
    classes in `objects.track`.** Frigate 0.17 defaults detection off and
    tracks `person` only, so a camera block without them records but never
    detects. That is the 2026-09-30 state of `cabin_outside_reolink`
-   (W.1).
+   (W-39).
 3. **Platform.** Add a new camera key to `CAMERA_FEED_CONTINUOUS` in
-   `ui/src/App.jsx` (W.3). The clip filename's location prefix is added
+   `ui/src/App.jsx` (W-41). The clip filename's location prefix is added
    in front of the camera key, so a key that already starts with `cabin_`
    produces `cabin_cabin_…`.
 4. **Verify all three, not one.** `camera_fps` above zero in

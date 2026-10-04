@@ -3519,11 +3519,11 @@ elements:
       assignment. Mechanism: Frigate's `cameras:` config key. Git still
       says front_door (matching the driveway/Blink camera's `driveway`
       key); the live config has used `cabin_outside_reolink` since
-      2026-09-30 — see notes and W.1.
+      2026-09-30 — see notes and W-39.
     rendering:
       semantic: "Front door camera"
       systems: "Reolink RLC-820A — role: front_door"
-      technical: "Live Frigate key 'cabin_outside_reolink' (git: 'front_door', W.1); RTSP sub/main at 192.168.1.121:554, reached through the M920q's Ethernet port eno2; object detection not enabled yet"
+      technical: "Live Frigate key 'cabin_outside_reolink' (git: 'front_door', W-39); RTSP sub/main at 192.168.1.121:554, reached through the M920q's Ethernet port eno2; object detection not enabled yet"
       compliance: (not shown)
     definition: >
       The role "monitors the front door / driveway approach area,"
@@ -3639,7 +3639,7 @@ elements:
       2026-09-30). Git still names `front_door` at 192.168.2.200, and the
       live URLs carry a literal camera password that differs from the one
       the vault feeds FRIGATE_RTSP_PASSWORD (compared by length and
-      equality; neither value was displayed). Tracked as W.1 to W.3 in
+      equality; neither value was displayed). Tracked as W-39 to W-41 in
       docs/governance/backlog.md. The camera being reachable again also
       makes the firmware check in this entry's discovery block possible
       (not yet done). Repeatable procedure for the next camera on a
