@@ -8165,6 +8165,84 @@ function SecurityBadge() {
   );
 }
 
+// W-35 (Nate, 2026-10-04): tell the user when the system is armed Away while
+// presence shows someone at that location. Never blocks or disables arming.
+// The hub has no arm control (arming is the HA input_boolean or a Node-RED
+// button), so this cannot hang off a click; it is derived from state the hub
+// already holds: armed per location (/api/security) and the presence signals
+// or, with no live signal, the manual profile.
+//
+// Exported for src/App.test.jsx. Who is detected at `location` right now.
+// `detected` can be true with no names: the manual-profile fallback only
+// says someone is there, not who.
+export function peopleDetectedAt(location, { signals, autoDerived, profile }) {
+  if (autoDerived) {
+    const names = (signals || []).filter(s => s.present && s.location === location).map(s => s.personId);
+    return { detected: names.length > 0, names };
+  }
+  const occupiedBy = { cabin: ["AT_CABIN", "BOTH_OCCUPIED"], home: ["AT_HOME", "BOTH_OCCUPIED"] };
+  return { detected: (occupiedBy[location] || []).includes(profile), names: [] };
+}
+
+// Exported for tests. One entry per location that is armed with someone
+// detected there. `key` changes with each arming (the armed signal's
+// lastUpdated), so a dismissal holds for that arming only.
+export function armedWhileOccupiedNotices({ securityStates, signals, autoDerived, profile }) {
+  return Object.entries(securityStates || {})
+    .filter(([, s]) => s && s.armed === true)
+    .map(([location, s]) => ({ location, key: `${location}:${s.lastUpdated}`, ...peopleDetectedAt(location, { signals, autoDerived, profile }) }))
+    .filter(n => n.detected);
+}
+
+// Presentational half (props in, markup out) so the wording and dismissal can
+// be tested without the app shell. The wording says what the siren gate really
+// does: an authorized user whose phone reads present suppresses the siren;
+// anyone else who is there does not, and neither does a lost phone signal.
+export function ArmedWhileOccupiedBanner({ notices, dismissed, onDismiss }) {
+  const shown = (notices || []).filter(n => !(dismissed || []).includes(n.key));
+  if (shown.length === 0) return null;
+  return (
+    <div className="armed-occupied-list">
+      {shown.map(n => {
+        const label = LOCATIONS[n.location]?.label || n.location;
+        const who = n.names.length > 0 ? n.names.join(", ") : "someone";
+        const verb = n.names.length > 1 ? "are" : "is";
+        return (
+          <div key={n.key} className="armed-occupied-notice" role="alert">
+            <AlertTriangle size={16} className="armed-occupied-icon" aria-hidden="true" />
+            <div className="armed-occupied-text">
+              <strong>Armed while {who} {verb} detected at the {label}.</strong>{" "}
+              If a door opens, the sirens will sound unless the system recognizes an authorized
+              user as present. Anyone else who is here will set them off, and so will you if the
+              system loses your phone. Disarm before staying.
+            </div>
+            <button type="button" className="armed-occupied-dismiss" onClick={() => onDismiss(n.key)}>
+              Dismiss
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ArmedWhileOccupiedNotice() {
+  const { securityStates, presenceSignals, presenceAutoDerived, activeProfile } = useApp();
+  const [dismissed, setDismissed] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("armedOccupiedDismissed") || "[]"); }
+    catch { return []; }
+  });
+  const dismiss = (key) => {
+    const next = [...dismissed, key];
+    setDismissed(next);
+    try { sessionStorage.setItem("armedOccupiedDismissed", JSON.stringify(next)); } catch { /* per-viewer convenience only */ }
+  };
+  const notices = armedWhileOccupiedNotices({
+    securityStates, signals: presenceSignals, autoDerived: presenceAutoDerived, profile: activeProfile,
+  });
+  return <ArmedWhileOccupiedBanner notices={notices} dismissed={dismissed} onDismiss={dismiss} />;
+}
+
 // ─── Navigation Rail ───────────────────────────────────────────────────────
 function NavRail({ active, onSelect, alertLevels }) {
   const alerts = alertLevels;
@@ -8451,6 +8529,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
               </div>
             </div>
           </div>
+          {!isDemo && <ArmedWhileOccupiedNotice />}
           <div className="panel-area">
             {isDemo && DEMO_HIDDEN_PANELS.has(activePanel) && (
               <DemoHiddenPanel title={PANELS.find(p => p.id === activePanel)?.label} />

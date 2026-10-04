@@ -663,6 +663,18 @@ All items below are **complete and pushed to GitHub**:
   `docs/governance/backlog.md`'s W-21 row for the full record, including
   its relationship to PR #106 (which first drafted this same ID and
   scope but shipped no implementation).
+- **Arm-while-occupied warning (W-35, 2026-10-04)** — `ArmedWhileOccupiedNotice`
+  (`App.jsx`, under the toolbar) shows a visible, dismissable, non-blocking
+  banner per location that is armed (`/api/security`) while presence shows
+  someone there (live `signals[]`, or the manual profile when no live signal
+  exists). It never blocks or disables arming: the hub has no arm control
+  (arming is `input_boolean.cabin_security_armed_away` in HA or a Node-RED
+  button), so it is derived from state the hub already holds. The wording
+  says what the siren gate does, not more: the sirens sound unless the system
+  recognizes an authorized user as present, anyone else there sets them off,
+  and so does a lost phone signal. A dismissal holds for that arming only
+  (keyed by the armed signal's `lastUpdated`). Pure rule
+  `armedWhileOccupiedNotices`, covered in `App.test.jsx`.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
