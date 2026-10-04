@@ -74,7 +74,7 @@ shell_command:
 """
 
 WIFI_STUB = """#!/bin/sh
-# Test stand-in for check_nate_phone_wifi.sh: ON/OFF comes from a flag file.
+# Test stand-in for check_authorized_user_phone_wifi.sh: ON/OFF comes from a flag file.
 cat /config/wifi_flag 2>/dev/null || echo OFF
 """
 
@@ -94,13 +94,13 @@ class Sim:
                               "-p", f"{PORT}:8123", IMAGE], capture_output=True, text=True)
         if out.returncode:
             sys.exit("docker run failed: " + out.stderr)
-        subprocess.run(["docker", "exec", NAME, "chmod", "+x", "/config/check_nate_phone_wifi.sh"], capture_output=True)
+        subprocess.run(["docker", "exec", NAME, "chmod", "+x", "/config/check_authorized_user_phone_wifi.sh"], capture_output=True)
 
     def setup_files(self):
         (self.cfg / "packages").mkdir()
         (self.cfg / "configuration.yaml").write_text(CONFIG, encoding="utf-8", newline="\n")
         (self.cfg / "packages" / "sim_support.yaml").write_text(SUPPORT, encoding="utf-8", newline="\n")
-        (self.cfg / "check_nate_phone_wifi.sh").write_text(WIFI_STUB, encoding="utf-8", newline="\n")
+        (self.cfg / "check_authorized_user_phone_wifi.sh").write_text(WIFI_STUB, encoding="utf-8", newline="\n")
         (self.cfg / "wifi_flag").write_text("OFF\n", encoding="utf-8", newline="\n")
         (self.cfg / "published.log").write_text("", encoding="utf-8")
         text = PACKAGE.read_text(encoding="utf-8")

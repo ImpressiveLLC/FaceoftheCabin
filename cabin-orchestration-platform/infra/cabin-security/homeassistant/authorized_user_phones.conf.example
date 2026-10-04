@@ -1,0 +1,24 @@
+# authorized_user_phones.conf -- who check_authorized_user_phone_wifi.sh looks for.
+#
+# Copy this file to authorized_user_phones.conf next to the script (in Home
+# Assistant's config directory, /config) and fill it in. The real file is NOT
+# committed: a WiFi MAC identifies a device.
+#
+# One line per AUTHORIZED PRIMARY-ROLE user of THIS location, i.e. the people
+# who actually live here / use it (ontology `location_role: primary`).
+# Do NOT list a maintenance-only user (someone who set the location up and
+# maintains it but is not an occupant): their phone must not make the location
+# read as occupied; they are a guest for presence purposes.
+#
+# Columns, whitespace separated:
+#   person_id   the id used in the presence topic, e.g. nate -> cabin/presence/nate
+#   wifi_mac    the MAC the phone presents ON THIS NETWORK (see the note below)
+#   lan_cidr    the LAN to sweep so the ARP cache is warm, e.g. 192.168.2.0/24
+#
+# Note: Android and iOS may present a private (randomized) MAC per network. The
+# MAC listed here must be the one the router actually sees, or the check can
+# never match. Find it in the router's client list, or `ip neigh` on the hub
+# while the phone is connected. See homeassistant/PRESENCE.md.
+#
+# person_id  wifi_mac           lan_cidr
+# alex       aa:bb:cc:dd:ee:ff  192.168.2.0/24

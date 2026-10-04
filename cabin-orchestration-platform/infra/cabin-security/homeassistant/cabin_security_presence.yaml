@@ -1,11 +1,19 @@
-# Nate's WiFi-presence detection for person.natecabin — feeds the
-# `cabin/presence/nate` topic that the cabin-security intrusion flow's
-# "armed + Nate away" gate depends on (see ../README.md and
-# ../nodered/flows.json). Added 2026-08-02 at the user's request: "we
-# need to have my phone on the wifi network be my presence."
+# Phone-based presence for the cabin's authorized primary-role user(s) — feeds
+# the `cabin/presence/<person>` topic (today `cabin/presence/nate`) that the
+# cabin-security intrusion flow's "armed + authorized user away" gate depends
+# on (see ../README.md and ../nodered/flows.json). Added 2026-08-02 at the
+# user's request: "we need to have my phone on the wifi network be my
+# presence." Made person-agnostic 2026-10-04 (D24): the check is
+# check_authorized_user_phone_wifi.sh, run once per authorized PRIMARY-role
+# user (the occupants of this location). A maintenance-only user (someone who
+# sets the location up and maintains it, but is not an occupant) is not given a
+# check, so their phone never counts as presence. The sensor INSTANCE below
+# keeps the person id in its name (binary_sensor.nate_phone_on_wifi) because
+# an instance belongs to one person and renaming a live entity id would orphan
+# its history; the check and the docs are what is agnostic.
 #
 # Router is a Starlink Gen3 gateway with no HA-supported integration, so
-# this uses a direct LAN ARP check (check_nate_phone_wifi.sh) via
+# this uses a direct LAN ARP check (check_authorized_user_phone_wifi.sh) via
 # command_line rather than a router-specific device_tracker platform —
 # HA's nmap_tracker integration would also work but is config-flow-only
 # in this HA version (2026.7.0, confirmed via the installed component's
@@ -29,7 +37,9 @@
 command_line:
   - binary_sensor:
       name: Nate Phone On WiFi
-      command: "/config/check_nate_phone_wifi.sh"
+      # The argument is the person id; the phone's MAC and the LAN to sweep
+      # come from /config/authorized_user_phones.conf (not in git).
+      command: "/config/check_authorized_user_phone_wifi.sh nate"
       payload_on: "ON"
       payload_off: "OFF"
       command_timeout: 30
