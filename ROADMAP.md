@@ -598,7 +598,7 @@ ontology_version: "1.0"          # Add this — migration tooling needs a versio
       originally-floated 14-30 days: `driveway`'s record role turned out
       to use its 4K main stream (missed at planning time), which at
       realistic 4K bitrates could be 80-160+ GB/day once that camera
-      reconnects (currently off-network). Re-measure real GB/day before
+      reconnects (it was off-network until 2026-09-29/30 and is now back as `cabin_outside_reolink`; GB/day not yet re-measured). Re-measure real GB/day before
       extending retention, don't trust this as more than a starting
       estimate.
 - [x] **(a) Live view "like Blink"** — built via Frigate's plain MJPEG

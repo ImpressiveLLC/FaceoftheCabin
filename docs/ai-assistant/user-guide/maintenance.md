@@ -19,6 +19,19 @@ Sources: [maintenance incident lessons](../../MAINTENANCE.md), [replication heal
 
 Use only established authorized read endpoints for diagnosis. Method names alone are insufficient: [platform import proposals](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PlatformImportController.java) is a GET that contacts the platform and upserts records. Do not trigger regeneration, scanning, liveview sessions or device commands as an unannounced “read check.”
 
+## A camera is not delivering frames
+
+Audience: operator. Source-reviewed against the live host on 2026-10-03. The full procedure and the site facts are in the [Maintenance & Operations Guide](../../MAINTENANCE.md#a-camera-on-a-different-network-than-the-m920q).
+
+| Observation | Safe next check | What it does not prove |
+|---|---|---|
+| Frigate reports `camera_fps` 0.0 for one camera and its log says "No route to host" | Confirm the camera's current address in its own app or the router's client list, then from the M920q run `ip route get <ip>`, `ping`, and `nc -zv <ip> 554`. | "No route to host" shows that nothing answers at that address. It does not show the camera is off: it may have a new address or sit on another subnet. |
+| The camera answers but Frigate still shows no frames | Test the stream from inside the Frigate container with the full ffprobe path `/usr/lib/ffmpeg/7.0/bin/ffprobe`, letting the password expand there. Try a wrong password once, not in a loop. | A reachable camera is not a working stream: paths differ by firmware, and the password may differ from the one in the vault. |
+| Frames and recording are fine but the camera never produces events | Read Frigate's effective config for the camera (`/api/config`): is `detect.enabled` true, and which classes does `objects.track` list? | Frames and continuous recording do not mean detection is on. Frigate 0.17 defaults detection to off. |
+| The camera is on a different network from the M920q | Prefer a cable from the M920q's spare Ethernet port to the camera's network. A Wi-Fi join takes the M920q off its own network, Tailscale and the internet. | A network name does not identify a network: names repeat across the cabin, Home and several bands. |
+
+Camera configuration changes go through a pull request, and the camera password never goes into the file or the repository.
+
 ## Deployment source correction
 
 The old Maintenance Deployment section describes backend deployment as manual-only. The current [deploy-cabin-backend workflow](../../../.github/workflows/deploy-cabin-backend.yml) instead has a main-push path filter and manual dispatch. Its implementation tests, builds/tags a candidate, checks health and has rollback handling. The workflow is the source for current configured behavior; none of this proves its latest run succeeded.
