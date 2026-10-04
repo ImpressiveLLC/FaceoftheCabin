@@ -202,6 +202,18 @@ ROUTER, UPS, GOOGLE_HOME_DEVICE, HOME_ASSISTANT_ENTITY, DASHBOARD`
 
 Both hubs are x86_64. No ARM/Pi hardware anywhere. Tailscale is the only VPN.
 
+**Current reality, 2026-10-04 (read this before trusting the Home column).**
+The Home column describes the original plan. No Home hub is deployed: Home's
+Zigbee and network-scan data come from an Android/Termux collector that
+publishes to the M920q over MQTT, and the M920q is the head for both
+locations (`docs/MAINTENANCE.md`, "Home Location", decision 2026-10-01;
+D23, drafted in PR #116, is not ratified yet). The code agrees:
+`HOME_HUB_DEPLOYED` defaults to `false` (`HaTokenHomeHealthIndicator`),
+`HOME_HA_URL` defaults to `http://home-hub:8123` but `HOME_HA_TOKEN` is blank
+on purpose, and `application.yml` reports Home's HA as out of service by
+design. Do not treat `home-hub` URLs as live. This table stays until D23 is
+ratified, then it should be rewritten, not patched.
+
 ---
 
 ## Deployed cabin stack (as of 2026-07-25)
@@ -459,10 +471,36 @@ forward from an earlier session's list)
 | POST | `/api/kb/curate` | KnowledgeNodeController — the only way to write `SETUP`/`TROUBLESHOOTING`/`CREDENTIAL_POINTER` chunks (KB Generator v1 only ever auto-writes `DESCRIPTION`/`RELATIONSHIP`); body `{entityRef, chunkType, content}`, `source` is ignored and always forced to `MANUALLY_CURATED` server-side regardless of what's sent |
 | GET | `/actuator/health` | Spring Actuator — what `deploy-cabin-backend.yml`'s health-check gate polls |
 
-**Not yet built**: `/api/alerts/active` (the dashboard-badge fix from the
-severity-tiering MVP scope — only the classifier + ntfy push shipped
-2026-08-06, the dashboard-facing endpoint is still open, see
-`docs/DEFINITION_OF_DONE.md`).
+**Route groups missing from the table above** (added 2026-10-04, read from
+the controllers and `WebConfig`; this replaces an earlier "Not yet built:
+`/api/alerts/active`" note, which went stale when `AlertController` shipped).
+`WriteGateAuditTest` fails `mvn test` (which gates the backend deploy) if a state-changing route is neither
+interceptor-gated nor on its documented allowlist, so the "who may call"
+column for writes is enforced, not just described. Reads follow D14: several
+`GET`s are open on purpose.
+
+| Routes | Controller | Who may call |
+|---|---|---|
+| `GET /api/alerts/active`, `/rules`, `/acknowledgments`; `POST /acknowledgments`; `DELETE /acknowledgments/{alertKey}` | AlertController | `GET` open; acknowledge and snooze need a signed-in session |
+| `POST /api/devices/{id}/discovery/run`, `/apply`; `GET .../discovery/latest` | DeviceDiscoveryController | writes need a signed-in session (W-31, merged 2026-10-03, live-verified 2026-10-04); `GET` open |
+| `GET`/`POST /api/access-tokens`, `DELETE /{id}` | CabinAccessTokensController | signed-in admin only; never a guest token |
+| `/api/managed-users` (list, create, `/{id}/deactivate`, `/reactivate`, `/invite`, `/magic/{token}/consume`) | ManagedUsersController | admin; `consume` is exempt because the single-use magic-link token is the credential |
+| `POST /api/auth/session`, `POST /api/auth/session/revoke` | AuthController | `session` needs a Google token, managed session or existing CabinSession; `revoke` is open on purpose (holding the token is the proof) |
+| `GET /api/cross-domain/cabin-status-summary` | CrossDomainController | gated, plus a per-route household-role check (D11) |
+| `POST /api/helpdesk/ask` | TinyHelpdeskController | any signed-in session; a guest token gets 403; `CREDENTIAL_POINTER` redaction happens inside the answer |
+| `GET /api/platform-import/records`, `/{platform}/proposals`; `POST /{platform}/confirm` | PlatformImportController | `records`: administrator or adult household member; the rest administrator only |
+| `GET /api/opportunities`, `PATCH /{id}/status` | OpportunitiesController | administrator only, every method |
+| `/api/schedule/rules`, `/api/schedule/holidays` | ScheduleRulesController, HolidaysController | gated |
+| `/api/chores/assignments`, `/api/chores/definitions` (CRUD, `reorder`, `restore`) | ChoreAssignmentsController, ChoreDefinitionsController | gated (under `/api/chores/**`) |
+| `GET /api/presence/activity` | PresenceActivityController | gated (under `/api/presence/**`) |
+| `GET /api/frigate-metrics` | FrigateMetricsController | no interceptor pattern: open `GET` (per-camera health from Prometheus) |
+| `GET /api/context/cabin-context.jsonld`, `GET /api/devices/{id}/jsonld` | JsonLdController | open `GET` |
+| `POST /api/webhooks/blink-motion` | BlinkMotionWebhookController | its own shared-secret header (`cabin.blinkMotionWebhook.apiKey`); 503 or 401 when the key is unset or wrong |
+| `GET`/`POST /api/locations`, `PATCH /{id}`, `POST /reorder`, `DELETE /{id}` | LocationsController | **writes are open, a known gap: W-32.** The UI sends signed-in users' tokens to the `apiBase` this controller stores |
+
+Also corrected: `POST /api/devices/**` and every other non-`GET` under
+`/api/devices/**` need a signed-in session as of W-31. The `/api/devices` rows
+in the first table above describe the routes, not their gate.
 
 ---
 
@@ -667,7 +705,6 @@ All items below are **complete and pushed to GitHub**:
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
 - Swap `notify.mobile_app_YOUR_PHONE` in `CabinAutomations` for real HA mobile app service name
-- `/api/alerts/active` — the dashboard-badge half of the severity-tiering MVP (classifier + ntfy shipped 2026-08-06, this didn't)
 - Armed/presence-aware severity escalation (deliberate MVP scope cut, see `event_severity`'s notes)
 - home-hub deployment
 - Production Docker Compose with env-var secrets
@@ -675,7 +712,7 @@ All items below are **complete and pushed to GitHub**:
 
 ---
 
-## CI/CD (built — both pipelines are self-hosted-runner GitHub Actions
+## CI/CD (built — the pipelines below are self-hosted-runner GitHub Actions
 workflows on the M920q itself; nothing inbound, no SSH secrets in GitHub,
 the runner polls GitHub over its own outbound Tailscale connection)
 
@@ -704,6 +741,27 @@ files. Three real properties, not just "rebuild and hope":
    env var, since those live in the compose files, not image metadata;
    caught in review before it ever ran for real). The job still fails
    (visible in the Actions tab) even when the rollback itself succeeds.
+
+**Other workflows (not described above until 2026-10-04):**
+- **`deploy-production-stack.yml`** — triggers on push to `main` touching
+  `cabin-orchestration-platform/infra/production-stack/**`,
+  `docker-compose.m920q.yml` or the workflow, and on manual dispatch.
+  Validates, deploys, smoke-tests (MQTT device path, Frigate availability
+  topic) and rolls back to the last-known-good compose file, Frigate config
+  and images on failure. **It overwrites the live Frigate config
+  (`/storage/services/frigate/config.yml`) from git** on a manual run, with no
+  prior SHA, or when a merge touches `production-stack/docker-compose.yml`,
+  `production-stack/frigate/config.yml` or the workflow; the
+  `docker-compose.m920q.yml` trigger alone is validation and smoke only. So a
+  hand-edited live Frigate file is reverted by the next such merge. The camera
+  smoke test checks Frigate's availability topic, not each camera.
+- **`deploy-cabin-discovery.yml`** — triggers on `discovery-service/**`,
+  `docker-compose.m920q.yml` or the workflow, and on manual dispatch.
+- **`rotate-secrets.yml`** — monthly (06:00 UTC on the 1st) and on manual
+  dispatch; automated secrets rotation (see `docs/MAINTENANCE.md`, Secrets).
+- No workflow triggers on `pull_request`. The first CI execution of a change
+  is the post-merge gate on the M920q, so run touched tests locally before
+  opening a PR.
 
 **Manually deploying `cabin-backend` outside this pipeline** (e.g. testing
 a change before pushing) still works exactly as before — see "Manual
