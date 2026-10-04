@@ -133,7 +133,7 @@
 version: "0.6.0"
 status: draft
 maintainer: FaceoftheCabin platform team
-last_updated: "2026-09-13"
+last_updated: "2026-10-04"
 # Note: this top-level version/last_updated pair had drifted stale
 # (frozen at 0.3.0/2026-07-28) even though per-entity schema_version
 # tags already referenced 0.4.0/0.4.1 work done since — not reconciled
@@ -4533,7 +4533,9 @@ elements:
       HA automation id cabin_security_publish_nate_presence_from_phone,
       in packages/cabin_security_presence.yaml. Triggers on state
       change of binary_sensor.nate_phone_on_wifi, itself a
-      command_line sensor (check_nate_phone_wifi.sh, scan_interval 60s)
+      command_line sensor (check_authorized_user_phone_wifi.sh nate, scan_interval
+      60s; renamed from check_nate_phone_wifi.sh 2026-10-04, see
+      check_authorized_user_phone_wifi)
       doing a direct LAN ARP check for the phone's MAC — chosen because
       the Starlink Gen3 gateway has no HA-supported device_tracker
       integration, per this package's own header comment.
@@ -4573,6 +4575,14 @@ elements:
       instead of nothing consuming it. Previously this automation
       published a genuine, live signal that the orchestration platform
       never read at all.
+
+      UPDATED 2026-10-04 (W-23, PR #122, not applied live): this is now the
+      BACKUP signal. Its not_home is suppressed while GPS has the phone
+      inside zone.cabin (a phone can sleep off WiFi at the cabin, and a
+      false away is the dangerous direction), and it checks the phone via
+      the person-agnostic check_authorized_user_phone_wifi, for primary-role
+      users only (D24). The primary signal is
+      automation_cabin_presence_publish_nate_presence_from_phone_gps.
 
   - id: automation_home_presence_publish_nate_presence_from_phone_gps
     entity_type: owl:Class
@@ -4663,6 +4673,316 @@ elements:
       (`'zone.house' in state_attr(..., 'in_zones')`) instead of comparing
       against a string that depends on the zone's display name.
 
+  # ─── Authorized-user phone presence (W-23, D24) ────────────────────────────
+  # Added 2026-10-04. The check, the gate and the roles below are
+  # person-agnostic. Only INSTANCES carry a person id (binary_sensor.nate_
+  # phone_on_wifi, cabin/presence/nate), because an instance belongs to one
+  # person. See D24 in docs/governance/decisions/ontology-decisions.md.
+
+  - id: check_authorized_user_phone_wifi
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-02"
+      ref: >
+        As check_nate_phone_wifi.sh (packages/cabin_security_presence.yaml;
+        see automation_cabin_security_publish_nate_presence_from_phone).
+        Renamed and made person-agnostic in W-23 (PR #122); the renamed
+        script is not applied to the live Home Assistant yet.
+    first_verified_live:
+      date: "2026-10-04"
+      ref: >
+        The old-named script run inside the live homeassistant container:
+        nmap, ip and arp present, output OFF while the phone was away from
+        the cabin LAN. NOT yet verified: a match (ON), which needs the phone
+        on the cabin network.
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: ["ON", "OFF"]
+    ui_display_name: "Authorized User Phone On WiFi (check)"
+    source: >
+      infra/cabin-security/homeassistant/check_authorized_user_phone_wifi.sh
+      <person_id>, run by one command_line binary_sensor per authorized
+      primary-role user (scan_interval 60 s). Reads that person's WiFi MAC
+      and the LAN to sweep from /config/authorized_user_phones.conf, which is
+      not committed (a MAC identifies a device); the committed template is
+      authorized_user_phones.conf.example.
+    rendering:
+      semantic: "Is an authorized user's phone on this location's WiFi"
+      systems: "Phone WiFi ARP check, one per authorized primary-role user"
+      technical: "sh: nmap -sn <cidr>; ip neigh | grep <mac>; prints ON or OFF; any config problem exits 2 with nothing on stdout"
+      compliance: Occupant Presence — Source Check (WiFi association; supplemental per D11)
+    definition: >
+      Whether the named authorized, primary-role user's phone is associated
+      with this location's LAN, found by pinging the LAN to warm the ARP
+      cache and then looking for the phone's WiFi MAC. It holds no person or
+      site data of its own, so the same check serves any primary-role user at
+      any location.
+    relationships:
+      - target: automation_cabin_security_publish_nate_presence_from_phone
+        type: consumed_by
+        cardinality: "1:N"
+      - target: location_role
+        type: applies_to
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [location_role, active_presence_profile]
+    notes: >
+      APPLIES TO PRIMARY-ROLE USERS ONLY (D24). A maintenance-only person is
+      deliberately given no instance, so their phone never counts toward the
+      location's presence. Today that is enforced by configuration alone; the
+      backend does not know roles yet (W-38).
+
+      FAILS SAFE. A configuration problem (no person id, no config file,
+      person not listed, malformed MAC or CIDR) exits 2 and prints nothing,
+      so command_line reports the sensor unavailable and neither automation
+      acts on it. It must never print OFF for a broken setup: OFF for three
+      minutes publishes not_home, and a false "away" is the dangerous
+      direction for the siren gate.
+
+      NAMING. The check, script, docs and Ask content are agnostic. The
+      sensor INSTANCE keeps its person id (binary_sensor.nate_phone_on_wifi):
+      renaming a live entity id would orphan its history.
+
+      KNOWN LIMIT (unconfirmed). It has never matched on the cabin network.
+      The tooling works; the leading suspect is a phone presenting a private
+      (randomized) MAC there, which cannot match the MAC in the config. That
+      can only be confirmed with the phone at the cabin. How to handle it
+      without asking every user to change a phone setting is open: W-37
+      (WiFi presence without per-phone customization), W-36 (presence without
+      the HA Companion app). D11 already rates WiFi association as
+      supplemental corroboration, "unreliable alone".
+
+  - id: nodered_cabin_security_siren_gate
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-08-02"
+      ref: >
+        infra/cabin-security/README.md (live siren outputs enabled directly in
+        Node-RED, confirmed intentional by the user 2026-08-02).
+    first_verified_live:
+      date: "2026-10-04"
+      ref: >
+        The live flow read directly: security-gate reads flow context
+        automationEnabled (cabin/security/enabled), armedAway
+        (cabin/security/armed_away) and natePresence (cabin/presence/nate).
+        It does NOT read person.natecabin, which the README had claimed.
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Intrusion Siren Gate"
+    source: >
+      infra/cabin-security/nodered/flows.json, node security-gate ("Require
+      enabled + armed + authorized user away"), live in Node-RED on the
+      cabin M920q.
+    rendering:
+      semantic: "Decides whether a door opening sounds the sirens"
+      systems: "Siren gate: enabled AND armed AND authorized user not present; 30 s entry delay; 10 min cooldown"
+      technical: "Node-RED function node; alarm candidate only on cabin/presence/<person> exactly not_home; home blocks; anything else is unknown and fails safe"
+      compliance: Alarm Decision — Gate Audit (cabin/security/intrusion/event)
+    definition: >
+      Turns a closed-to-open door transition into an alarm candidate only
+      when the automation is enabled, the system is armed away, and the
+      authorized user's presence reads exactly not_home after the entry delay.
+      An authorized user whose phone reads home suppresses the siren; anyone
+      else does not, and neither does a lost phone signal.
+    relationships:
+      - target: automation_cabin_security_publish_nate_presence_from_phone
+        type: consumes
+        cardinality: "N:1"
+      - target: presence_last_seen
+        type: consumes
+        cardinality: "N:1"
+      - target: location_role
+        type: scoped_to
+        cardinality: "N:1"
+    relates_to:
+      ui_components: []
+      elements: [active_presence_profile, check_authorized_user_phone_wifi]
+    notes: >
+      PENDING (W-33, PR #118, not applied live): presence older than 6 h
+      (PRESENCE_STALE_HOURS, judged from presence_last_seen) sends a push
+      alert only and never sounds the siren. Inactive until a heartbeat has
+      been seen, so deploy order does not matter.
+
+      CONSEQUENCE OF D24: the gate recognizes primary-role users only. A
+      maintenance-only person on site is a guest for presence, so to the gate
+      they are anyone else: they set the sirens off like any unrecognized
+      person unless the system is disarmed first (open question Q-LR-2).
+
+      The hub warns, without blocking, when the system is armed while someone
+      is detected at the location (W-35).
+
+  - id: automation_cabin_presence_publish_nate_presence_from_phone_gps
+    entity_type: owl:Class
+    layer: integration
+    primitive: false
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      enum: ["home", "not_home"]
+    ui_display_name: "Publish Presence (phone GPS zone — cabin)"
+    source: >
+      HA automation id cabin_presence_publish_nate_presence_from_phone_gps in
+      packages/cabin_security_presence.yaml (W-23, PR #122; not applied live).
+      A copy of the House GPS automation keyed to zone.cabin (a UI zone,
+      100 m, confirmed on the live HA 2026-10-03).
+    rendering:
+      semantic: "Authorized user's phone in the Cabin GPS zone"
+      systems: Presence Publisher (phone GPS zone)
+      technical: "shell_command.cabin_security_publish -> cabin/presence/nate, retain=true, qos=1"
+      compliance: Occupant Presence — Publication Record (GPS-derived)
+    definition: >
+      Publishes home the moment the paired phone enters zone.cabin and
+      not_home after three continuous minutes outside it (a delay on the
+      leave branch; mode: restart cancels it if the phone returns), the same
+      asymmetric debounce as the House automation.
+    relationships:
+      - target: active_presence_profile
+        type: consumed_by
+        cardinality: "1:N"
+      - target: nodered_cabin_security_siren_gate
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [automation_home_presence_publish_nate_presence_from_phone_gps]
+    notes: >
+      WHY IT WAS NEEDED: cabin/presence/nate had been home 0 of 190 recorded
+      times. The person-based publisher only fires on exactly home or
+      not_home, and inside a zone the person's state is the zone NAME, so it
+      never fired; the WiFi check has never matched.
+
+      DEPENDS ON the HA Companion app on the phone and, away from the cabin
+      LAN, on Tailscale (HA is deliberately not internet-reachable). Verified
+      2026-10-04: the S23+'s Tailscale node has been offline since
+      2026-10-02 00:14 UTC, which alone explains a 41 h silence. The app must
+      not be required long term: W-36.
+
+      Tested in an offline Home Assistant 2026.7.4 simulation (34 checks); not
+      yet verified against the real phone or at the real zone edge.
+
+  - id: presence_last_seen
+    entity_type: owl:DatatypeProperty
+    layer: integration
+    primitive: false
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: derived
+    data_type: xsd:string
+    constraint:
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+      description: "retained UTC ISO-8601 time on cabin/presence/<person>/last_seen"
+    ui_display_name: "Presence Signal Last Seen"
+    source: >
+      cabin/presence/<person>/last_seen, published by HA automation
+      cabin_presence_publish_nate_last_seen (packages/cabin_security_presence.yaml,
+      W-23, PR #122; not applied live) every 5 minutes from last_reported of the
+      phone's battery sensor, only if that is newer than the last recorded HA
+      start (automation.cabin_presence_note_home_assistant_start).
+    rendering:
+      semantic: "When the phone last reported in"
+      systems: "Phone heartbeat (retained UTC time)"
+      technical: "MQTT cabin/presence/<person>/last_seen, retain=true; PresenceController lastSeen/signalAgeSeconds/stale (W-34)"
+      compliance: Occupant Presence — Signal Freshness
+    definition: >
+      The moment the authorized user's phone last reported to Home Assistant,
+      not "now", so a silent phone's value does not advance and ages out. It
+      is the age source for the siren gate's stale-presence rule (W-33) and
+      the hub badge's "Presence unknown" (W-34). No heartbeat ever seen means
+      age unknown, never stale.
+    relationships:
+      - target: nodered_cabin_security_siren_gate
+        type: consumed_by
+        cardinality: "1:N"
+      - target: active_presence_profile
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: [ui_presence_toggle]
+      elements: [automation_cabin_presence_publish_nate_presence_from_phone_gps]
+    notes: >
+      DESIGN, each point found by simulating in a real HA 2026.7.4: it polls,
+      because HA refuses automation triggers on state_reported and a state
+      trigger would miss unchanged re-reports (a phone on a charger at 100 %
+      would look dead). A restart guard ignores the restart-time rewrite of
+      restored sensors; the guard looks the marker up by ENTITY id (derived
+      from the automation's alias, not its id:) and fails closed if it is
+      missing. The payload is validated by a strict pattern plus a real date
+      parse in the publisher allow-list.
+
+      NOT VERIFIED LIVE: that the Companion app re-sends unchanged sensor
+      values so last_reported advances at a steady battery level.
+
+  - id: location_role
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: xsd:string
+    constraint:
+      enum: ["primary", "maintenance"]
+    ui_display_name: "Location Role"
+    source: >
+      D24 (docs/governance/decisions/ontology-decisions.md), proposed
+      2026-10-04 from Nate's direction. Not a database column or enum yet;
+      enforced today only by configuration (W-38 builds the registry).
+    rendering:
+      semantic: "How a person relates to a location: lives there, or maintains it"
+      systems: "primary | maintenance, per person per location"
+      technical: "not yet stored; a person may hold both roles at one location"
+      compliance: Occupant Presence — Who Counts
+    definition: >
+      A person's relationship to ONE location. primary: an active user of the
+      location, who lives there or uses it; their phone is checked and their
+      presence counts. maintenance: establishes and maintains the location,
+      does not own it, holds the same credentials as a primary user plus
+      elevated ones, and is never recognized as on-site: for location
+      presence they are a guest. One person can hold both roles at the same
+      location (at the cabin, Nate does).
+    relationships:
+      - target: hub_location
+        type: scoped_to
+        cardinality: "N:1"
+      - target: active_presence_profile
+        type: complements
+        cardinality: "1:N"
+      - target: check_authorized_user_phone_wifi
+        type: consumed_by
+        cardinality: "1:N"
+    relates_to:
+      ui_components: []
+      elements: [hub_location, active_presence_profile, check_authorized_user_phone_wifi, nodered_cabin_security_siren_gate]
+    notes: >
+      NOT the same axis as HouseholdRole / ManagedUserRole (what a signed-in
+      principal may do) and NOT provisioning_role (install-dependency scoping,
+      docs/ontology/PROPOSAL_2026-09-16_provisioning-role.md). A location role
+      never grants or removes a permission; maintenance is a superset of
+      primary in credentials, not in presence.
+
+      STATUS: proposed (D24). Not enforced in code: PresenceSignalRegistry
+      counts whoever publishes, and personId is still just a topic string
+      (see active_presence_profile's notes on the missing tracked-person
+      registry). Until W-38, a maintenance-only person is kept out of presence
+      only by never creating a check or publisher for them.
+
   - id: active_presence_profile
     entity_type: owl:Class
     layer: backend
@@ -4715,6 +5035,9 @@ elements:
       - target: hub_location
         type: complements
         cardinality: "1:N"
+      - target: location_role
+        type: scoped_to
+        cardinality: "N:1"
     relates_to:
       ui_components: [ui_presence_toggle]
       elements: [automation_cabin_security_publish_nate_presence_from_phone, hub_location]
@@ -4755,6 +5078,17 @@ elements:
       (for a friendlier "Nate is home" label instead of a raw id) is a
       reasonable small follow-up, not done here.
 
+      ADDED 2026-10-04 (D24, proposed): presence is meant to count PRIMARY-role
+      persons only (location_role). A maintenance-only person is a guest for
+      presence. NOT enforced in the backend: PresenceSignalRegistry counts
+      whoever publishes, so today the rule holds only because no check or
+      publisher is created for a maintenance-only person. Enforcement and the
+      tracked-person registry this entity already lists as not built are W-38.
+
+      ADDED 2026-10-04 (W-34, PR #121): GET /api/presence also reports how
+      old the source signal is (presence_last_seen); past the limit the badge
+      reads "Presence unknown" instead of Away or At Cabin.
+
   - id: automation_cabin_security_publish_presence_at_startup
     entity_type: owl:Class
     layer: integration
@@ -4792,6 +5126,10 @@ elements:
       Combined with binary_sensor.nate_phone_on_wifi's own 60s
       scan_interval, presence (unlike armed-state) already has a genuine
       recurring heartbeat, not just startup + on-change republishing.
+
+      UPDATED 2026-10-04 (W-23, PR #122, not applied live): the startup payload
+      is now home if the phone is on WiFi OR GPS has it inside zone.cabin.
+      Before this a restart republished not_home over a correct GPS home.
 
 # ═══════════════════════════════════════════════════════════════════════════
 # HOME ASSISTANT CORE — RECOGNIZED, DERIVED CONCEPTS

@@ -185,6 +185,26 @@ CONTACT_SENSOR, THERMOSTAT, TEMPERATURE_SENSOR, HUMIDITY_SENSOR,
 WATER_PRESSURE_SENSOR, POWER_METER, DISHWASHER, WASHING_MACHINE, DRYER,
 ROUTER, UPS, GOOGLE_HOME_DEVICE, HOME_ASSISTANT_ENTITY, DASHBOARD`
 
+### Location roles (D24, proposed 2026-10-04 — not enforced in code yet)
+A person's relationship to **one location**, separate from `HouseholdRole`
+(what a signed-in principal may do):
+- **`primary`** — the active users of the location (they live there or use
+  it). Their phone is checked and their presence counts; the siren gate
+  recognizes them.
+- **`maintenance`** — establishes and maintains the location, does not own
+  it. Same credentials as primary plus elevated ones, but never recognized
+  as on-site: a **guest** for presence (no phone check, no counted signal).
+  One person can hold both at one location (at the cabin, Nate does).
+
+Today the rule holds only by configuration: a phone check
+(`check_authorized_user_phone_wifi.sh <person_id>`, person- and site-agnostic;
+the phone's MAC and LAN live in an uncommitted `authorized_user_phones.conf`)
+and a publisher exist for primary users only. The backend's
+`PresenceSignalRegistry` counts whoever publishes (W-38 builds the
+tracked-person registry). Setup for a new clone: `docs/REPLICATION.md` §3
+"Who counts as present". Ontology: `location_role`,
+`check_authorized_user_phone_wifi`, `nodered_cabin_security_siren_gate`.
+
 ---
 
 ## Two locations, two hubs
