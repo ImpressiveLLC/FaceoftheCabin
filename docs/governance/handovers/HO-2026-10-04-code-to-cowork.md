@@ -11,12 +11,12 @@ On 2026-10-04 Nate told Code that Code is the authoritative assistant in GitHub 
 | PR | State | What |
 |---|---|---|
 | [#119](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/119) | open | Camera runbook, ontology camera entities, user-guide section, stale "off-network" lines |
-| [#120](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/120) | open | Triage rows (W-15 done, W.1 to W.5, DEP.1 to DEP.4, DOC-6), backlog status corrections, discrepancy rulings, this file |
+| [#120](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/120) | open | Triage rows (W-15 done, W.1 to W.6, DEP.1 to DEP.4, DOC-6), backlog status corrections, discrepancy rulings, this file |
 | [#123](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/123) | open | `CLAUDE.md` reconciled with merged code |
 | [#105](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/105) | closed unmerged | Redundant: the camera was reconnected out of band. Branch kept for its Wi-Fi-join safety design |
 | [#97](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/97) | open, draft | **Do not merge until W.1 lands.** It edits `production-stack/frigate/config.yml`, which the deploy copies over the live file |
 
-Ids `W.1` to `W.5` and `DEP.1` to `DEP.4` are provisional (sub-id form requested by Nate). Ratify or renumber to the next free `W-nn` / `DEP-nn`; #117 and #118 already hold W-33 and W-34.
+Ids `W.1` to `W.6` and `DEP.1` to `DEP.4` are provisional (sub-id form requested by Nate). Ratify or renumber to the next free `W-nn` / `DEP-nn`; #117 and #118 already hold W-33 and W-34.
 
 ## Verified against code and the live host
 
@@ -42,18 +42,20 @@ Ids `W.1` to `W.5` and `DEP.1` to `DEP.4` are provisional (sub-id form requested
 
 ## Not ruled, and why
 
-**DL-2026-09-23-10** (anonymous `GET /api/devices` shows presence-class devices). The code and D22 Q-DM-3 already agree, so no document needs amending. Whether to redact for anonymous callers reverses part of D14, which Nate decided on 2026-09-04 and asked not to see re-added without a conversation, and Q-DM-3 waits on him explicitly. Code recommends redacting presence-class devices for callers who are not signed-in household principals, with a kiosk-compatible exemption, because D14's own test is failed by the owner's phone entities and the Home locks. That is W.5, `held`, **Nate to decide**.
+**DL-2026-09-23-10** (anonymous `GET /api/devices` shows presence-class devices). The code and D22 Q-DM-3 already agree, so no document needs amending. Whether to redact for anonymous callers reverses part of D14, which Nate decided on 2026-09-04 and asked not to see re-added without a conversation, and Q-DM-3 waits on him explicitly. Code first recommended redacting presence-class devices for callers who are not signed in, with a kiosk exemption. **Nate corrected that on 2026-10-04:** it needs concurrent multi-user sessions and presence-based roles that do not exist, so Code now recommends holding at the status quo. D14's own test is still failed by the owner's phone entities and the Home locks, so this stays visible as W.5 (`held`), blocked on W.6.
+
+**W.6 is Nate's own proposal, for later evaluation.** His stated use case, for Cowork to turn into a UC: the admin signs in with OAuth and is the primary user, and any other user signed in while the admin is present gets the same CRUD. When the admin is away and the daughter brings friends, she can sign in (first or later) with a household role of her own, not admin; the friends can see, think and act (presence-based control) but cannot change CRUD or users from the kiosk until a primary-role user authorizes it. Nate will work specific use cases. Code read the current state from code (one principal per session; `CHILD` and `KIOSK_DISPLAY` roles exist without derivation; no concurrent-session model, no presence-to-authorization link) and listed the open questions in the W.6 row. Code has not proposed a design.
 
 ## Needs Nate
 
 1. **Camera password (W.1).** The live RTSP URLs hold a literal password that differs from the vault-fed `FRIGATE_RTSP_PASSWORD`. Confirm the real one and align the vault and `.env`; only then can the config-sync PR be written.
 2. **Egress path (W.2).** `eno2` now carries the default route (metric 100) ahead of Wi-Fi (600). `never-default`, or accept.
-3. **D14 on anonymous device reads (W.5).**
+3. **Specific use cases for W.6**, which W.5 now waits on, then the D14 ruling (W.5).
 4. **How the camera was reconnected, and who renamed it.** The records show the cable going live 2026-09-29 17:47 and the config edit 2026-09-30 02:46; intent is Nate's to confirm.
 
 ## Needs Cowork
 
-- Score W.1 to W.5 (no CoD components given) and ratify or renumber the provisional ids.
+- Turn W.6 into a UC (candidate UC-1, UC-5) and score it with W.1 to W.5 (no CoD components given) and ratify or renumber the provisional ids.
 - Answer the four questions in #120 (DEP.2 intent, DOC-6 rework or close, id form, scoring).
 - Correct the Task 3 row for #105 in `HO-2026-10-03.md` (on #112, not on `main` yet): it says "Awaiting the camera's current IP", which is stale.
 - Decide whether `GET /api/frigate-metrics` (per-camera health) and the JSON-LD routes should stay open; Code documented them as open and made no judgement (#123).
