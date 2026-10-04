@@ -1,5 +1,7 @@
 # Handover, Code to Cowork, 2026-10-04
 
+> **Ids converted 2026-10-04** by [HO-2026-10-04-cowork-to-code.md](HO-2026-10-04-cowork-to-code.md) section 1: `W.1` is W-39, `W.2` W-40, `W.3` W-41, `W.4` W-42, `W.5` W-43, `W.6` W-44. `DEP.1` to `DEP.4` stay provisional (Codex's list). The text below is left as written.
+
 Read this from GitHub. It records what Code verified against code on `main` (`8485b7c`), what Code ruled, and what is left for Nate or Cowork. Every claim names its evidence; anything not checked says so.
 
 ## Authority for the rulings below
