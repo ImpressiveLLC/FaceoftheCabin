@@ -10,3 +10,5 @@ ansible/group_vars/**/vault.yml -text
 # forcing LF here rather than relying on this session's git config).
 *.sh text eol=lf
 
+
+scripts/host/backup-modular text eol=lf

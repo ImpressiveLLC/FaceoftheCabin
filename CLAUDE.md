@@ -256,6 +256,12 @@ Zigbee adapter must handle this sub-property generically.
 
 ---
 
+## Storage (read `docs/STORAGE_ARCHITECTURE.md` before touching disk, retention or backups)
+
+Two disks: the NVMe `/` is hot (Postgres, Docker); the rotational HDD `/storage` is the cold tier (video, telemetry archives, backups) and was 94% full on 2026-10-10 (640 GB of it nightly backups with no pruning, W-48). BI telemetry (the `TELEMETRY` rows behind temperature, humidity, presence, CO2 and the rest) is the data to keep: never delete or archive-and-delete it without a warning first (W-49; the monthly archival job has none today). Recorded video and old backups are disposable. Permanent deletions are run by the owner from a dry-run-first script, not by an agent session. The project skill `cabin-storage-tiers` carries these rules.
+
+---
+
 ## Docker services (cabin stack)
 
 **Two compose files, two different jobs — don't read either alone.**
@@ -754,7 +760,10 @@ files. Three real properties, not just "rebuild and hope":
   `production-stack/frigate/config.yml` or the workflow; the
   `docker-compose.m920q.yml` trigger alone is validation and smoke only. So a
   hand-edited live Frigate file is reverted by the next such merge. The camera
-  smoke test checks Frigate's availability topic, not each camera.
+  smoke test checks Frigate's availability topic, not each camera. It also does
+  **not restart Frigate** after copying the config (W-46): `docker compose up -d`
+  sees no change to a bind-mounted file, so restart it by hand
+  (`docker restart frigate`) before a config change takes effect.
 - **`deploy-cabin-discovery.yml`** — triggers on `discovery-service/**`,
   `docker-compose.m920q.yml` or the workflow, and on manual dispatch.
 - **`rotate-secrets.yml`** — monthly (06:00 UTC on the 1st) and on manual

@@ -1,0 +1,80 @@
+#!/bin/bash
+# Daily dated rsync snapshots into /storage/backups/<type>/<date>/.
+# Installed on the M920q as /usr/local/bin/backup-modular and run by the systemd
+# timers backup-home / backup-configs / backup-services / backup-data (about 02:00).
+#
+# Changed 2026-10-10 (W-48). The previous version made a FULL copy into a new dated
+# folder every night and never deleted any, so /storage/backups reached 640 GB of a
+# 916 GB disk (94% full), 577 GB of it 101 copies of /home, each carrying the 13 GB
+# poc1-work directory. This version (1) prunes to the newest KEEP snapshots after a
+# successful run and (2) leaves regenerable or bulky things out of the home copy.
+#
+# poc1-work is NOT backed up by this script any more: if anything in it is not
+# reproducible, move it into git or ~/eval-results first.
+set -euo pipefail
+
+TYPE="$1"
+DATE=$(date +%F)
+ROOT="/storage/backups/$TYPE"
+BASE="$ROOT/$DATE"
+
+case "$TYPE" in
+  home)     KEEP=7  ;;
+  services) KEEP=14 ;;
+  configs)  KEEP=30 ;;
+  data)     KEEP=14 ;;
+  *) echo "Usage: backup-modular {configs|home|services|data}"; exit 1 ;;
+esac
+
+mkdir -p "$BASE"
+
+case "$TYPE" in
+  configs)
+    rsync -a /etc/ "$BASE/etc/"
+    rsync -a /usr/local/bin/ "$BASE/usr-local-bin/"
+    ;;
+
+  home)
+    rsync -a --delete \
+      --exclude=".cache/" \
+      --exclude="Downloads/" \
+      --exclude="poc1-work/" \
+      --exclude="actions-runner/" \
+      --exclude="snap/" \
+      --exclude=".m2/" \
+      --exclude=".jdks/" \
+      --exclude="llama.cpp/" \
+      /home/ "$BASE/home/"
+    ;;
+
+  services)
+    rsync -a --delete \
+      /storage/services/ "$BASE/services/" 2>/dev/null || true
+    rsync -a --delete \
+      /storage/homeassistant/ "$BASE/homeassistant/" 2>/dev/null || true
+    rsync -a --delete \
+      /storage/docker/ "$BASE/docker/" 2>/dev/null || true
+    ;;
+
+  data)
+    rsync -a --delete \
+      /storage/data/ "$BASE/data/" 2>/dev/null || true
+    rsync -a --delete \
+      /storage/documents/ "$BASE/documents/" 2>/dev/null || true
+    rsync -a --delete \
+      /storage/cabin/ "$BASE/cabin/" 2>/dev/null || true
+    rsync -a --delete \
+      /storage/weather/ "$BASE/weather/" 2>/dev/null || true
+    ;;
+esac
+
+# Prune. Reached only if every step above succeeded (set -e). Only directories named
+# exactly YYYY-MM-DD directly under $ROOT, oldest first, and never today's.
+find "$ROOT" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended \
+     -regex '.*/[0-9]{4}-[0-9]{2}-[0-9]{2}' -printf '%f\n' \
+  | sort | head -n "-$KEEP" \
+  | while read -r old; do
+      [ "$old" = "$DATE" ] && continue
+      # ${VAR:?} makes the shell stop instead of running rm if either is ever empty
+      rm -rf --one-file-system -- "${ROOT:?}/${old:?}"
+    done
