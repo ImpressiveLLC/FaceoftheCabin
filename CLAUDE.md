@@ -256,6 +256,12 @@ Zigbee adapter must handle this sub-property generically.
 
 ---
 
+## Storage (read `docs/STORAGE_ARCHITECTURE.md` before touching disk, retention or backups)
+
+Two disks: the NVMe `/` is hot (Postgres, Docker); the rotational HDD `/storage` is the cold tier (video, telemetry archives, backups) and was 94% full on 2026-10-10 (640 GB of it nightly backups with no pruning, W-48). BI telemetry (the `TELEMETRY` rows behind temperature, humidity, presence, CO2 and the rest) is the data to keep: never delete or archive-and-delete it without a warning first (W-49; the monthly archival job has none today). Recorded video and old backups are disposable. Permanent deletions are run by the owner from a dry-run-first script, not by an agent session. The project skill `cabin-storage-tiers` carries these rules.
+
+---
+
 ## Docker services (cabin stack)
 
 **Two compose files, two different jobs — don't read either alone.**
