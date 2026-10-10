@@ -76,9 +76,12 @@ cameras:
   #     Q3). Detector cost is per frame, not per class; the extra cost is
   #     events and snapshot storage, which the retention settings below govern.
   #   * the camera password is the {FRIGATE_RTSP_PASSWORD} placeholder, not a
-  #     literal. THE LIVE FILE'S LITERAL DIFFERS FROM THE VAULT-FED VALUE, so
-  #     do not merge this until Nate has aligned the vault and infra/.env with
-  #     the working credential (W-39). Merging before that takes the camera dark.
+  #     literal. Until 2026-10-10 the live file's literal differed from the
+  #     vault-fed value, so this could not merge. On 2026-10-10 the production
+  #     .env CAMERA_PASSWORD was set to the working credential and Frigate was
+  #     recreated; verified from inside the container (value equal, ffprobe on
+  #     the sub stream returns h264 640x360). The vault copy follows by PR and
+  #     must merge before the monthly rotate-secrets run (1st of the month).
   #
   # KNOWN RISK: 192.168.1.121 comes from the Starlink router's DHCP. A
   # reservation for it is not known to exist, so if the address changes Frigate
