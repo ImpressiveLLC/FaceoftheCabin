@@ -3,8 +3,36 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
-mergeStatusCheckItems } from "./App.jsx";
+mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
+
+// The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
+// it used to reset to Cabin on every visit, hiding the Home AldrichFront camera).
+describe("readStoredLocation", () => {
+  const store = (value) => ({ getItem: (k) => (k === ACTIVE_LOCATION_KEY ? value : null) });
+
+  it("returns the stored location when it is a known one", () => {
+    expect(readStoredLocation(store("home"), ["cabin", "home"])).toBe("home");
+    expect(readStoredLocation(store("cabin"), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("returns 'both' when 'both' was stored", () => {
+    expect(readStoredLocation(store("both"), ["cabin", "home"])).toBe("both");
+  });
+
+  it("falls back to cabin when nothing is stored", () => {
+    expect(readStoredLocation(store(null), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("falls back to cabin for a location that no longer exists", () => {
+    expect(readStoredLocation(store("lake-house"), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("falls back to cabin when storage throws", () => {
+    const broken = { getItem: () => { throw new Error("blocked"); } };
+    expect(readStoredLocation(broken, ["cabin", "home"])).toBe("cabin");
+  });
+});
 
 // Covers the actual reported bug this session ("Camera Events" showing
 // device logs instead of camera activity) -- see

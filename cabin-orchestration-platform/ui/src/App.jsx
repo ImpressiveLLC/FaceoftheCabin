@@ -1582,6 +1582,22 @@ export function allLocationsLabel(locationCount) {
   return locationCount <= 2 ? "Both" : "All";
 }
 
+// Which location the toolbar switcher shows survives a reload (2026-10-10).
+// It used to start on "cabin" every time, so someone who mostly looks at Home
+// (the AldrichFront camera lives there) re-picked it on every visit. Presence
+// is deliberately not used to choose it: presence can be stale or unknown, and
+// the view someone last chose is the one they expect back. A stored value that
+// is no longer a known location falls back to "cabin".
+export const ACTIVE_LOCATION_KEY = "ui.activeLocation";
+export function readStoredLocation(storage = globalThis.localStorage, ids = Object.keys(LOCATIONS)) {
+  try {
+    const value = storage.getItem(ACTIVE_LOCATION_KEY);
+    return value === "both" || ids.includes(value) ? value : "cabin";
+  } catch {
+    return "cabin";
+  }
+}
+
 function LocationSwitcher({ active, onChange }) {
   // Object.keys(LOCATIONS) instead of a hardcoded ["cabin","home"] so a
   // location added via POST /api/locations (see useHubLocations below)
@@ -8367,7 +8383,10 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   // consumes and clears this itself once it applies the selection, so it
   // never re-fires on an unrelated panel switch back to Device Manager.
   const [pendingDeviceFocus, setPendingDeviceFocus] = useState(null);
-  const [activeLocation, setActiveLocation] = useState("cabin");
+  const [activeLocation, setActiveLocation] = useState(() => readStoredLocation());
+  useEffect(() => {
+    try { localStorage.setItem(ACTIVE_LOCATION_KEY, activeLocation); } catch { /* storage unavailable: the choice just isn't remembered */ }
+  }, [activeLocation]);
   // 2026-08-25: toolbar device-count toggle -- see countParentDevices'
   // own comment for why "157 devices" alone was misleading (every HA
   // sub-entity/service counted as its own device).
