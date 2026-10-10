@@ -1,12 +1,5 @@
 [
   {
-    "id": "cabin-security-tab",
-    "type": "tab",
-    "label": "Cabin Intrusion Alarm",
-    "disabled": false,
-    "info": "Door-triggered intrusion detection gated by manual Arm Away and person.natecabin presence. Live siren MQTT outputs are intentionally disabled until dry-run validation is complete."
-  },
-  {
     "id": "cabin-mqtt",
     "type": "mqtt-broker",
     "name": "Cabin Mosquitto",
@@ -33,10 +26,17 @@
     "willMsg": {}
   },
   {
+    "id": "cabin-security-tab",
+    "type": "tab",
+    "label": "Cabin Intrusion Alarm",
+    "disabled": false,
+    "info": "Node-RED-native Enable, Arm Away, Disarm, and unconditional Silence controls. Alarm ON requires enabled + armed + Nate confirmed away. Disable, Disarm, Silence, and two-minute timeout all invoke repeated OFF. Presence comes from the retained MQTT topic cabin/presence/nate (not directly from person.natecabin). W-33: if the phone's last report (cabin/presence/nate/last_seen) is older than PRESENCE_STALE_HOURS (default 6), a door opening while armed sends a push alert only and never sounds the siren."
+  },
+  {
     "id": "armed-in",
     "type": "mqtt in",
     "z": "cabin-security-tab",
-    "name": "Arm Away state",
+    "name": "Node-RED Arm Away state",
     "topic": "cabin/security/armed_away",
     "qos": "1",
     "datatype": "auto-detect",
@@ -47,14 +47,18 @@
     "inputs": 0,
     "x": 130,
     "y": 80,
-    "wires": [["armed-state"]]
+    "wires": [
+      [
+        "armed-state"
+      ]
+    ]
   },
   {
     "id": "armed-state",
     "type": "function",
     "z": "cabin-security-tab",
     "name": "Remember armed state",
-    "func": "const armed = String(msg.payload).trim().toUpperCase() === 'ON';\nflow.set('armedAway', armed);\nnode.status({fill: armed ? 'red' : 'green', shape: 'dot', text: armed ? 'ARMED AWAY' : 'disarmed'});\nreturn null;",
+    "func": "const armed=String(msg.payload).trim().toUpperCase()==='ON';\nflow.set('armedAway',armed);\nnode.status({fill:armed?'red':'green',shape:'dot',text:armed?'ARMED AWAY':'DISARMED'});\nreturn null;",
     "outputs": 0,
     "timeout": 0,
     "noerr": 0,
@@ -80,7 +84,11 @@
     "inputs": 0,
     "x": 120,
     "y": 130,
-    "wires": [["presence-state"]]
+    "wires": [
+      [
+        "presence-state"
+      ]
+    ]
   },
   {
     "id": "presence-state",
@@ -99,6 +107,43 @@
     "wires": []
   },
   {
+    "id": "presence-seen-in",
+    "type": "mqtt in",
+    "z": "cabin-security-tab",
+    "name": "Phone last seen (heartbeat)",
+    "topic": "cabin/presence/nate/last_seen",
+    "qos": "1",
+    "datatype": "auto-detect",
+    "broker": "cabin-mqtt",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 140,
+    "y": 180,
+    "wires": [
+      [
+        "presence-seen-state"
+      ]
+    ]
+  },
+  {
+    "id": "presence-seen-state",
+    "type": "function",
+    "z": "cabin-security-tab",
+    "name": "Remember phone last seen",
+    "func": "const limitHours=Number(env.get('PRESENCE_STALE_HOURS'))>0?Number(env.get('PRESENCE_STALE_HOURS')):6;\nconst raw=String(msg.payload).trim();\nconst t=Date.parse(raw);\nif(!raw||Number.isNaN(t)){node.status({fill:'red',shape:'ring',text:'bad last_seen: '+raw.slice(0,24)});return null;}\nflow.set('presenceSeenAt',t);\nconst h=(Date.now()-t)/3600000;\nnode.status({fill:h>limitHours?'yellow':'green',shape:'dot',text:'phone seen '+h.toFixed(1)+' h ago'});\nreturn null;",
+    "outputs": 0,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 180,
+    "wires": []
+  },
+  {
     "id": "front-door-in",
     "type": "mqtt in",
     "z": "cabin-security-tab",
@@ -113,7 +158,11 @@
     "inputs": 0,
     "x": 130,
     "y": 230,
-    "wires": [["door-transition"]]
+    "wires": [
+      [
+        "door-transition"
+      ]
+    ]
   },
   {
     "id": "second-door-in",
@@ -130,7 +179,11 @@
     "inputs": 0,
     "x": 130,
     "y": 280,
-    "wires": [["door-transition"]]
+    "wires": [
+      [
+        "door-transition"
+      ]
+    ]
   },
   {
     "id": "door-transition",
@@ -146,7 +199,11 @@
     "libs": [],
     "x": 390,
     "y": 255,
-    "wires": [["entry-delay"]]
+    "wires": [
+      [
+        "entry-delay"
+      ]
+    ]
   },
   {
     "id": "entry-delay",
@@ -167,15 +224,19 @@
     "outputs": 1,
     "x": 650,
     "y": 255,
-    "wires": [["security-gate"]]
+    "wires": [
+      [
+        "security-gate"
+      ]
+    ]
   },
   {
     "id": "security-gate",
     "type": "function",
     "z": "cabin-security-tab",
-    "name": "Require armed + Nate away",
-    "func": "const armed = flow.get('armedAway') === true;\nconst presence = String(flow.get('natePresence') || 'unknown').toLowerCase();\nconst now = Date.now();\nconst lastAlarmAt = Number(flow.get('lastAlarmAt') || 0);\nlet decision = 'blocked';\nlet reason = '';\nif (!armed) reason = 'system disarmed';\nelse if (presence === 'home') reason = 'Nate is home';\nelse if (presence !== 'not_home') reason = 'presence unknown — fail safe';\nelse if (now - lastAlarmAt < 10 * 60 * 1000) reason = '10 minute cooldown active';\nelse {\n    decision = 'alarm_candidate';\n    reason = 'armed and Nate is away';\n    flow.set('lastAlarmAt', now);\n}\nconst audit = {\n    topic: 'cabin/security/intrusion/event',\n    payload: JSON.stringify({decision, reason, door:msg.door, detectedAt:msg.detectedAt, evaluatedAt:new Date().toISOString(), armedAway:armed, natePresence:presence, liveSirensEnabled:false}),\n    qos: 1, retain: false\n};\nnode.status({fill: decision === 'alarm_candidate' ? 'red' : 'green', shape:'dot', text:reason});\nreturn [decision === 'alarm_candidate' ? msg : null, audit];",
-    "outputs": 2,
+    "name": "Require enabled + armed + Nate away (stale presence: push only)",
+    "func": "const enabled=flow.get('automationEnabled')===true;\nconst armed=flow.get('armedAway')===true;\nconst presence=String(flow.get('natePresence')||'unknown').toLowerCase();\nconst now=Date.now(),last=Number(flow.get('lastAlarmAt')||0);\n// W-33: age of the presence signal. presenceSeenAt is the phone's last Companion\n// report, published by Home Assistant as cabin/presence/nate/last_seen. 0 means no\n// heartbeat has ever been seen, and then the rule stays inactive (deploy order\n// does not matter). Limit: env PRESENCE_STALE_HOURS, default 6.\nconst limitHours=Number(env.get('PRESENCE_STALE_HOURS'))>0?Number(env.get('PRESENCE_STALE_HOURS')):6;\nconst seenAt=Number(flow.get('presenceSeenAt')||0);\nconst ageHours=seenAt>0?(now-seenAt)/3600000:null;\nconst stale=ageHours!==null&&ageHours>limitHours;\nlet decision='blocked',reason='',push=null;\nif(!enabled)reason='automation disabled';\nelse if(!armed)reason='system disarmed';\nelse if(stale){\n  if(now-Number(flow.get('lastStalePushAt')||0)<600000)reason='presence stale; push cooldown active (10 minutes)';\n  else{\n    decision='stale_push_only';\n    reason='presence signal is '+ageHours.toFixed(1)+' h old (limit '+limitHours+' h): push alert only, no siren';\n    flow.set('lastStalePushAt',now);\n    push={topic:'cabin/event/critical',payload:JSON.stringify({event:'INTRUSION_CANDIDATE_STALE_PRESENCE',deviceId:'cabin-security',door:msg.door,detectedAt:msg.detectedAt,natePresence:presence,presenceAgeHours:Number(ageHours.toFixed(1)),staleLimitHours:limitHours,sirenSounded:false,reason}),qos:1,retain:false};\n  }\n}\nelse if(presence==='home')reason='Nate is home';\nelse if(presence!=='not_home')reason='presence unknown — fail safe';\nelse if(now-last<600000)reason='10 minute cooldown active';\nelse{decision='alarm_candidate';reason='enabled, armed, and Nate is away';flow.set('lastAlarmAt',now);}\nconst audit={topic:'cabin/security/intrusion/event',payload:JSON.stringify({decision,reason,door:msg.door,detectedAt:msg.detectedAt,evaluatedAt:new Date().toISOString(),automationEnabled:enabled,armedAway:armed,natePresence:presence,presenceAgeHours:ageHours===null?null:Number(ageHours.toFixed(1)),presenceStale:stale,staleLimitHours:limitHours,liveSirensEnabled:true}),qos:1,retain:false};\nnode.status({fill:decision==='alarm_candidate'?'red':(decision==='stale_push_only'?'yellow':'green'),shape:'dot',text:reason});\nreturn [decision==='alarm_candidate'?msg:null,audit,push];",
+    "outputs": 3,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
@@ -183,7 +244,18 @@
     "libs": [],
     "x": 920,
     "y": 255,
-    "wires": [["alarm-on"],["audit-out","audit-debug"]]
+    "wires": [
+      [
+        "alarm-on"
+      ],
+      [
+        "audit-out",
+        "audit-debug"
+      ],
+      [
+        "push-alert-out"
+      ]
+    ]
   },
   {
     "id": "audit-out",
@@ -234,14 +306,18 @@
     "libs": [],
     "x": 1190,
     "y": 210,
-    "wires": [["live-siren-on","auto-stop-delay"]]
+    "wires": [
+      [
+        "alarm-state"
+      ]
+    ]
   },
   {
     "id": "live-siren-on",
     "type": "mqtt out",
     "z": "cabin-security-tab",
-    "d": true,
-    "name": "LIVE SIRENS ON — disabled",
+    "d": false,
+    "name": "SIRENS ON — gated by controls",
     "topic": "",
     "qos": "",
     "retain": "",
@@ -274,7 +350,11 @@
     "outputs": 1,
     "x": 1480,
     "y": 235,
-    "wires": [["alarm-off"]]
+    "wires": [
+      [
+        "alarm-off"
+      ]
+    ]
   },
   {
     "id": "silence-in",
@@ -291,14 +371,18 @@
     "inputs": 0,
     "x": 1180,
     "y": 410,
-    "wires": [["alarm-off"]]
+    "wires": [
+      [
+        "alarm-off"
+      ]
+    ]
   },
   {
     "id": "alarm-off",
     "type": "function",
     "z": "cabin-security-tab",
     "name": "Build siren OFF messages",
-    "func": "const devices = ['leak_alarm_fridge','leak_alarm_bathroom','leak_alarm_dishwasher'];\nreturn [devices.map(device => ({topic:`zigbee2mqtt/${device}/set`, payload:JSON.stringify({state:'OFF'}), qos:1, retain:false}))];",
+    "func": "flow.set('alarmActive',false);\nnode.status({fill:'green',shape:'dot',text:'QUIET — OFF sent x3'});\nconst devices=['leak_alarm_fridge','leak_alarm_bathroom','leak_alarm_dishwasher'];\nreturn [devices.map(device=>({topic:'zigbee2mqtt/'+device+'/set',payload:JSON.stringify({state:'OFF'}),qos:1,retain:false}))];",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
@@ -307,14 +391,20 @@
     "libs": [],
     "x": 1430,
     "y": 410,
-    "wires": [["live-siren-off"]]
+    "wires": [
+      [
+        "live-siren-off",
+        "off-delay-2",
+        "off-delay-10"
+      ]
+    ]
   },
   {
     "id": "live-siren-off",
     "type": "mqtt out",
     "z": "cabin-security-tab",
-    "d": true,
-    "name": "LIVE SIRENS OFF — disabled",
+    "d": false,
+    "name": "SIRENS OFF — enabled safety path",
     "topic": "",
     "qos": "",
     "retain": "",
@@ -326,6 +416,333 @@
     "broker": "cabin-mqtt",
     "x": 1690,
     "y": 410,
+    "wires": []
+  },
+  {
+    "id": "enabled-in",
+    "type": "mqtt in",
+    "z": "cabin-security-tab",
+    "name": "Automation enabled state",
+    "topic": "cabin/security/enabled",
+    "qos": "1",
+    "datatype": "auto-detect",
+    "broker": "cabin-mqtt",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 140,
+    "y": 30,
+    "wires": [
+      [
+        "enabled-state"
+      ]
+    ]
+  },
+  {
+    "id": "enabled-state",
+    "type": "function",
+    "z": "cabin-security-tab",
+    "name": "Remember enabled state",
+    "func": "const enabled=String(msg.payload).trim().toUpperCase()==='ON';\nflow.set('automationEnabled',enabled);\nnode.status({fill:enabled?'green':'grey',shape:'dot',text:enabled?'ENABLED':'DISABLED'});\nreturn null;",
+    "outputs": 0,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 30,
+    "wires": []
+  },
+  {
+    "id": "control-out",
+    "type": "mqtt out",
+    "z": "cabin-security-tab",
+    "name": "Retain control state",
+    "topic": "",
+    "qos": "1",
+    "retain": "true",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "cabin-mqtt",
+    "x": 390,
+    "y": 520,
+    "wires": []
+  },
+  {
+    "id": "enable-button",
+    "type": "inject",
+    "z": "cabin-security-tab",
+    "name": "ENABLE AUTOMATION",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "qos",
+        "v": "1",
+        "vt": "num"
+      },
+      {
+        "p": "retain",
+        "v": "true",
+        "vt": "bool"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "cabin/security/enabled",
+    "payload": "ON",
+    "payloadType": "str",
+    "x": 140,
+    "y": 480,
+    "wires": [
+      [
+        "control-out"
+      ]
+    ]
+  },
+  {
+    "id": "disable-button",
+    "type": "inject",
+    "z": "cabin-security-tab",
+    "name": "DISABLE + SILENCE",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "qos",
+        "v": "1",
+        "vt": "num"
+      },
+      {
+        "p": "retain",
+        "v": "true",
+        "vt": "bool"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "cabin/security/enabled",
+    "payload": "OFF",
+    "payloadType": "str",
+    "x": 140,
+    "y": 520,
+    "wires": [
+      [
+        "control-out",
+        "alarm-off"
+      ]
+    ]
+  },
+  {
+    "id": "arm-button",
+    "type": "inject",
+    "z": "cabin-security-tab",
+    "name": "ARM AWAY",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "qos",
+        "v": "1",
+        "vt": "num"
+      },
+      {
+        "p": "retain",
+        "v": "true",
+        "vt": "bool"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "cabin/security/node_red_armed",
+    "payload": "ON",
+    "payloadType": "str",
+    "x": 130,
+    "y": 560,
+    "wires": [
+      [
+        "control-out"
+      ]
+    ]
+  },
+  {
+    "id": "disarm-button",
+    "type": "inject",
+    "z": "cabin-security-tab",
+    "name": "DISARM + SILENCE",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "qos",
+        "v": "1",
+        "vt": "num"
+      },
+      {
+        "p": "retain",
+        "v": "true",
+        "vt": "bool"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "cabin/security/node_red_armed",
+    "payload": "OFF",
+    "payloadType": "str",
+    "x": 140,
+    "y": 600,
+    "wires": [
+      [
+        "control-out",
+        "alarm-off"
+      ]
+    ]
+  },
+  {
+    "id": "silence-button",
+    "type": "inject",
+    "z": "cabin-security-tab",
+    "name": "SILENCE ALARMS NOW",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "SILENCE",
+    "payloadType": "str",
+    "x": 150,
+    "y": 650,
+    "wires": [
+      [
+        "alarm-off"
+      ]
+    ]
+  },
+  {
+    "id": "alarm-state",
+    "type": "function",
+    "z": "cabin-security-tab",
+    "name": "Alarm candidate status",
+    "func": "flow.set('alarmActive',true);\nnode.status({fill:'red',shape:'dot',text:'ALARM ACTIVE — auto OFF in 2 min'});\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1430,
+    "y": 210,
+    "wires": [
+      [
+        "live-siren-on",
+        "auto-stop-delay"
+      ]
+    ]
+  },
+  {
+    "id": "off-delay-2",
+    "type": "delay",
+    "z": "cabin-security-tab",
+    "name": "Repeat OFF after 2 seconds",
+    "pauseType": "delay",
+    "timeout": "2",
+    "timeoutUnits": "seconds",
+    "rate": "1",
+    "nbRateUnits": "1",
+    "rateUnits": "second",
+    "randomFirst": "1",
+    "randomLast": "5",
+    "randomUnits": "seconds",
+    "drop": false,
+    "allowrate": false,
+    "outputs": 1,
+    "x": 1690,
+    "y": 450,
+    "wires": [
+      [
+        "live-siren-off"
+      ]
+    ]
+  },
+  {
+    "id": "off-delay-10",
+    "type": "delay",
+    "z": "cabin-security-tab",
+    "name": "Repeat OFF after 10 seconds",
+    "pauseType": "delay",
+    "timeout": "10",
+    "timeoutUnits": "seconds",
+    "rate": "1",
+    "nbRateUnits": "1",
+    "rateUnits": "second",
+    "randomFirst": "1",
+    "randomLast": "5",
+    "randomUnits": "seconds",
+    "drop": false,
+    "allowrate": false,
+    "outputs": 1,
+    "x": 1690,
+    "y": 490,
+    "wires": [
+      [
+        "live-siren-off"
+      ]
+    ]
+  },
+  {
+    "id": "push-alert-out",
+    "type": "mqtt out",
+    "z": "cabin-security-tab",
+    "name": "Stale-presence push alert (hub, ntfy)",
+    "topic": "",
+    "qos": "",
+    "retain": "",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "cabin-mqtt",
+    "x": 1250,
+    "y": 390,
     "wires": []
   }
 ]
