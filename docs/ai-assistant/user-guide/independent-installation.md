@@ -29,6 +29,18 @@ The existing replication guide distinguishes own repository, domain, accounts an
 8. **Complete integration setup.** Sign in, enroll supported users, commission selected devices and verify data flow. A candidate record or green container is not a successful integration.
 9. **Verify real user journeys and recovery.** Use the acceptance record below, then leave an operator runbook, backup/restore procedure and remaining manual-step list.
 
+## Presence for each location
+
+Automatic presence is optional: without it the toolbar badge is a manual setting. If it is wanted, this is the complete set to decide and provide **per location**, not a sample:
+
+1. **Who is primary and who is maintenance.** Primary users live at or actively use the location; their phones are checked and count. A maintenance user sets the location up and maintains it without living there (often the installer): same credentials plus elevated ones, but never recognized as on-site, so a guest for presence. One person can be both. Give a phone check to primary users only.
+2. **For each primary user:** a person id (the id in `{location}/presence/{person_id}`), the WiFi MAC the phone presents on that location's network (a private/randomized MAC shows a different one per network; handling it is an open item, W-37), and the LAN as a CIDR. These go in `authorized_user_phones.conf` in Home Assistant's config directory, created from `authorized_user_phones.conf.example`. It is never committed and must not be pasted into the assistant.
+3. **GPS coordinates** for the location's Home Assistant zone, if zone-based presence is wanted (never committed; see the replication guide).
+4. **The Home Assistant Companion app on each primary user's phone**, plus Tailscale on that phone, since away from the location's LAN the app reaches Home Assistant only over Tailscale. This dependency is not meant to be permanent (W-36); until it is resolved, a phone that loses either shows as a stale signal.
+5. **The presence package and publisher script** applied to Home Assistant, then verified with the acceptance checks for the phone check and the heartbeat.
+
+Do not create a phone check or publisher for a maintenance-only user. Today that is the only thing that keeps their phone out of presence; the backend does not enforce roles yet (W-38). Tell the household that the siren gate treats a maintenance-only person on site as a guest, so the system should be disarmed before they enter. Sources: [REPLICATION, "Who counts as present"](../../REPLICATION.md), [PRESENCE.md](../../../cabin-orchestration-platform/infra/cabin-security/homeassistant/PRESENCE.md), [D24](../../governance/decisions/ontology-decisions.md#d24--location-roles-primary-and-maintenance).
+
 Sources: [replication setup/acceptance](../../REPLICATION.md), [host provisioning role](../../../ansible/roles/cabin_host/tasks/main.yml), [base Compose](../../../cabin-orchestration-platform/infra/docker-compose.yml), [M920q overlay](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml), [production stack](../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml), [deployment workflows](../../../.github/workflows).
 
 ## Verified clean-host limitations

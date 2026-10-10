@@ -44,14 +44,26 @@
   exactly what's used until the first real signal ever arrives, see
   `docs/ontology.yaml`'s `active_presence_profile` entity — but any
   instance can plug in real detection just by publishing to that topic
-  contract; nothing backend-side needs editing. This instance's examples:
-  an HA automation doing a WiFi ARP check for a phone on the local
-  network (publishing `home`/`not_home` to `cabin/presence/nate`, see
-  `ontology.yaml`'s
-  `automation_cabin_security_publish_nate_presence_from_phone`), and a
+  contract; nothing backend-side needs editing. **Presence counts
+  authorized primary-role users only** (D24, proposed): see §3's "Who
+  counts as present" bullet. This instance's examples:
+  an HA automation doing a WiFi ARP check for an authorized user's phone
+  on the local network (the person-agnostic
+  `check_authorized_user_phone_wifi.sh <person_id>`, publishing
+  `home`/`not_home` to `cabin/presence/<person_id>`; this instance's one
+  user is `nate`, see `ontology.yaml`'s `check_authorized_user_phone_wifi`
+  and `automation_cabin_security_publish_nate_presence_from_phone`), and a
   GPS-zone automation for locations with no local network to ARP-scan
   (see §3's "Home/cabin GPS coordinates" callout below — **this second
   kind requires real address input at setup time**, not just accounts).
+  **The GPS signal, and the "last seen" heartbeat the siren gate and the
+  hub badge use to tell a stale signal from a current one, both come from
+  the Home Assistant Companion app on each user's phone, which away from
+  the location's LAN reaches HA only over Tailscale.** If the phone's
+  Tailscale or the app stops, presence goes stale and the system reads it
+  as "unknown", never as "away". Not requiring the app is an open design
+  item (W-36); `infra/cabin-security/homeassistant/PRESENCE.md` has the
+  full dependency chain and the options.
 
 ## 2. What still needs your own values (find-and-replace)
 
@@ -98,6 +110,29 @@ whoever forks the repo — not bugs, just template points:
   should land) in `infra/.env`. Skip this entirely if you're not using
   Tier 2 — Tier 1 guest share links and normal Google sign-in need nothing
   here.
+- **Who counts as present: primary and maintenance users, per location**
+  (D24, proposed). Decide this for every location before wiring presence.
+  A **primary** user is someone who lives at or actively uses the location:
+  their phone is checked and their presence counts, and the siren gate
+  recognizes them. A **maintenance** user is whoever sets the location up
+  and maintains it without living there (often you, when you build a clone
+  for someone else): same credentials as a primary user plus elevated ones,
+  but never recognized as on-site, so a guest as far as presence goes. One
+  person can be both at one location. For each **primary** user, gather
+  (a) their `person_id` (the id used in `{location}/presence/{person_id}`),
+  (b) the WiFi MAC their phone presents **on that network** (the router's
+  client list, or `ip neigh` on the hub while the phone is connected; a
+  phone with a private/randomized MAC shows a different one per network, and
+  how to cope with that is an open item, W-37), and (c) the location's LAN
+  as a CIDR. These go in `authorized_user_phones.conf` in HA's config
+  directory, which is **never committed** (a MAC identifies a device;
+  `.gitignore` already excludes it, and `authorized_user_phones.conf.example`
+  is the template). Do **not** list a maintenance-only user: that is what
+  keeps their phone out of the location's presence. Today this is enforced
+  only by what you configure; the hub's backend does not know roles yet
+  (W-38). One consequence to tell the household: a maintenance-only person
+  on site is a guest to the siren gate, so the system should be disarmed
+  before they enter.
 - **Home/cabin GPS coordinates** (latitude/longitude), for every physical
   location where you want zone-based presence detection (see §1's
   Presence detection bullet) — **required input, not optional, if you want
@@ -193,7 +228,10 @@ whoever forks the repo — not bugs, just template points:
    values — not something to circle back for after the app is already
    live and someone notices presence looks wrong. You'll enter these into
    an HA `zone:` block per location in step 9; nothing to do with them
-   yet, just don't lose them between now and then.
+   yet, just don't lose them between now and then. Gather the primary-user
+   details for the phone WiFi check at the same time (§3's "Who counts as
+   present" bullet): person id, the MAC the phone shows on that network, the
+   LAN CIDR. Decide who is maintenance-only; they get none of this.
 6. **Host machine**: install Docker + Compose, join it to your mesh VPN.
 7. **Domain + tunnel**: point your domain at your DNS/tunnel provider,
    configure it to forward to your host's Family Hub port.
@@ -215,7 +253,12 @@ whoever forks the repo — not bugs, just template points:
    automation to Home Assistant's own config — see §1's Presence
    detection bullet; these files live in HA's own config directory, not
    this repo, same "never committed" posture as every other per-instance
-   secret.
+   secret. The presence package, the person-agnostic phone check
+   (`check_authorized_user_phone_wifi.sh`), the publisher script and the
+   `authorized_user_phones.conf` you create from the example are all
+   described, with the apply and rollback steps, in
+   `infra/cabin-security/homeassistant/PRESENCE.md`. Create one phone-check
+   instance per **primary** user only.
 10. **CI/CD**: follow `ansible/README.md` end to end against your own repo
     and host — it's already written generically (`{{ ansible_user }}`,
     configurable inventory groups), just needs your registration token and
@@ -250,7 +293,9 @@ them (`EventPublisher`/`EventConsumer`/`CabinEventService`, plus
 for camera recording/detection — explicitly excluded by this scenario,
 so leave it out entirely rather than including it "just in case"), zone/
 presence `zone:` blocks in Home Assistant (only needed for
-presence-based automation — see §4 step 5 above), and Home Assistant
+presence-based automation — see §4 step 5 above), the phone WiFi presence
+check and its `authorized_user_phones.conf` (only for the **primary** users
+of a location, and only if you want automatic presence), and Home Assistant
 itself is only required if you're bridging additional smart-home device
 types beyond native Zigbee.
 
@@ -287,6 +332,19 @@ straight to "it's up" without checking the actual behavior.
       location's zone (or WiFi range) actually changes it within one
       debounce cycle — confirmed live, not just "the automation looks
       right in the YAML."
+- [ ] If the phone WiFi check is wired up: with a **primary** user's phone
+      on the network the check's sensor reads `on`, with it off the network
+      `off` (and `unavailable`, never `off`, if you break
+      `authorized_user_phones.conf` on purpose, because an error must not read
+      as "away"); and a **maintenance-only** user's phone produces no presence
+      signal at all. A check that has never read `on` for a phone that is
+      plainly on the network is a finding to record, not a pass (this instance
+      has that open: W-37).
+- [ ] If a "last seen" heartbeat is wired up
+      (`cabin/presence/<person>/last_seen`): it carries the time the phone last
+      reported to HA, not the current time, and does not advance while the
+      phone is silent; `GET /api/presence` then reports `stale: true` past the
+      limit and the toolbar reads "Presence unknown".
 
 ## 6. Onboarding a new device or integration
 

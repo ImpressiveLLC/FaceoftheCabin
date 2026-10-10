@@ -283,6 +283,11 @@
           "path": "ai-assistant/user-guide/operations.md",
           "section": "capability-map",
           "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/operations.md",
+          "section": "presence-and-location-roles",
+          "audience": "household"
         }
       ]
     },
@@ -445,6 +450,11 @@
         {
           "path": "ai-assistant/user-guide/independent-installation.md",
           "section": "verified-clean-host-limitations",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/independent-installation.md",
+          "section": "presence-for-each-location",
           "audience": "administrator"
         }
       ]
@@ -690,6 +700,7 @@
     "whole-word/phrase matching replaces first-substring (fixes auth<-authorize/authentication, household role<-roles, run<-running, current<-current Ask endpoint)",
     "highest-score category wins instead of first declared match (r1's own description claimed this; the code did not do it)",
     "contextDocuments added: the DB holds none of the platform./system./family_hub. nodes r1 designates (2026-09-20 read-only check), so r1 context was empty for 16 of 17 categories",
-    "credential_redaction boost 2: credential questions must reach the role-gated credential guidance even when another category also matches"
+    "credential_redaction boost 2: credential questions must reach the role-gated credential guidance even when another category also matches",
+    "2026-10-04 (D24, W-23): presence and location-role sections added to live_sensors (operations.md#presence-and-location-roles) and installation (independent-installation.md#presence-for-each-location)"
   ]
 }

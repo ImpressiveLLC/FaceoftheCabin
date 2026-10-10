@@ -544,6 +544,48 @@ The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detecti
 
 ---
 
+## D24 — Location roles: primary and maintenance
+
+**Status:** proposed 2026-10-04 (Code, from Nate's stated direction). **Use case:** [UC-10](../use-cases.md). **Work:** [W-23](../backlog.md) (the agnostic phone check, implemented), [W-35](../backlog.md) (arming warning), [W-38](../backlog.md) (enforcement, not built). **Builds on:** D6 (multi-location), D11 (household roles; presence is aggregate), D16 (presence and occupancy). **Is not:** `HouseholdRole` / `ManagedUserRole` (what a signed-in principal may do), and not `provisioning_role` (install-dependency scoping, [discussion artifact](../../ontology/PROPOSAL_2026-09-16_provisioning-role.md)).
+
+**Problem.** Presence means "an authorized occupant is at this location", but nothing says whose presence counts. `personId` is whatever string a publisher's topic uses, and the ontology records the tracked-person registry as not built. The platform is meant to be cloned: one person sets a location up and maintains it, other people live there. That maintainer's phone arriving to fix something must not read as an occupant and must not suppress the siren, and a clone for another household must not inherit the maintainer as an occupant. The phone WiFi check was also named for one person (`check_nate_phone_wifi.sh`), which does not generalize.
+
+**Direction (Nate, 2026-10-04).**
+
+1. **Primary role:** the user role that aligns with the active users of a location. Their phones are checked and their presence counts.
+2. **Maintenance role:** separate from primary but can be equal to it (one person can hold both). Same credentials as primary plus elevated ones. Does not need to be recognized as on-site and is reserved as a guest from the perspective of location presence. Does not own the location; establishes and maintains it.
+3. The phone WiFi check is named for what it is, not for a person: `check_authorized_user_phone_wifi`, and applies to primary-role users.
+
+### Requirements
+
+| ID | Requirement |
+|---|---|
+| R-LR-1 | A **location role** is a relationship between a person and one location. Values: `primary`, `maintenance`. A person may hold both at one location. Roles at different locations are independent: maintenance at one place and primary at another is normal. |
+| R-LR-2 | **Presence counts primary only.** A primary-role person's signals feed `PresenceSignalRegistry`, `active_presence_profile`, the siren gate's authorized-user check and the arming warning (W-35). A maintenance-only person produces no counted signal; for presence they are a guest. |
+| R-LR-3 | **Credentials are a separate axis.** Maintenance is a superset of primary in credentials (the same, plus elevated administration). `HouseholdRole` and `ManagedUserRole` keep answering what a signed-in principal may do. A location role never grants or removes a permission. |
+| R-LR-4 | **The phone check is agnostic.** `check_authorized_user_phone_wifi.sh <person_id>` holds no person or site data. The phone's WiFi MAC and the LAN to sweep come from a local, uncommitted `authorized_user_phones.conf`. One check instance exists per primary-role person at a location, and none for a maintenance-only person. A configuration error never reads as "away" (exit 2, no stdout). |
+| R-LR-5 | **Instances carry the person id; types do not.** `binary_sensor.nate_phone_on_wifi` and `cabin/presence/nate` belong to one person. The ontology entity, the script, the docs and the Ask content name the generic check. |
+| R-LR-6 | **Enforcement is staged.** Now (W-23): by configuration only, because nothing creates a check or publisher for a maintenance-only person. W-38: a tracked-person registry (person to location role per location, linked to a family profile), the backend counting primary-role persons only, per-person generation of the HA automations, an admin way to assign roles, and a test that a maintenance-only signal is not counted. |
+| R-LR-7 | **Setup for a new clone states the roles.** Per location, say who is primary and who, if anyone, is maintenance, and create phone-check configuration only for primary users ([REPLICATION.md](../../REPLICATION.md), [independent installation](../../ai-assistant/user-guide/independent-installation.md)). |
+
+**Consequence to be aware of.** The siren gate recognizes primary-role users only. A maintenance-only person on site is a guest for presence, so to the gate they are anyone else: unless the system is disarmed first, their door opening sounds the sirens like any unrecognized person's. That follows directly from "reserved as a guest", and is Q-LR-2 below.
+
+### Implementation status (Code)
+
+R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its config file and tests, the ontology entities `check_authorized_user_phone_wifi` and `location_role`. **Not yet applied to the live Home Assistant.** R-LR-7 is documented in the same set of PRs. R-LR-1, R-LR-2 and R-LR-3 are definitions, enforced only by configuration today; R-LR-6's registry and backend enforcement are W-38, not built.
+
+### Open questions
+
+| ID | Question | Owner |
+|---|---|---|
+| Q-LR-1 | Should a maintenance-only person's arrival be recorded (for example an audit entry "maintenance visit") even though it does not count as presence? | Nate, Cowork |
+| Q-LR-2 | A maintenance-only person on site sets the sirens off like any guest unless the system is disarmed first. Is that intended, or should the maintainer be announced or recognized some other way without counting as an occupant? | Nate |
+| Q-LR-3 | Are children primary-role for presence, or aggregate-only as D11's "Allowed Initial Uses of Child-Derived Presence" implies? | Nate, Cowork |
+
+**What this is not.** Not a new permission or a change to any `HouseholdRole` check. Not a database table or a UI yet. Not a decision about how a phone is detected (W-36, W-37 hold those options).
+
+---
+
 ## PR — WSJF Priority Order
 
 01Identity scheme done28.0
