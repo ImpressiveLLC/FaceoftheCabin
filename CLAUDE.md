@@ -697,7 +697,10 @@ All items below are **complete and pushed to GitHub**:
   `partial` flag (the earliest day in a window almost never starts at
   a day boundary, so it never has a full 24 hours of samples; the
   boundary is asked of the database, since `date_trunc('day', ...)`
-  buckets by the JDBC session's timezone, not UTC) -- the UI
+  buckets by the JDBC session's timezone, i.e. the backend JVM default:
+  UTC in the production container, Central on the CI runner and dev
+  machines -- see DL-2026-10-03-01, ruled a defect, fix tracked as W-30)
+  -- the UI
   labels it "(partial)" rather than silently averaging it in as
   equivalent to a full day. `SensorHistoryPanel`'s Range dropdown drops
   its old 90-day option (nothing ever honored it past the new shared
