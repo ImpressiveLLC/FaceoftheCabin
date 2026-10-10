@@ -41,6 +41,24 @@ public class PresenceSignalRegistry {
         return signals.values().stream().toList();
     }
 
+    // W-34: when each person's phone last reported, taken from the heartbeat
+    // Home Assistant publishes (cabin/presence/{personId}/last_seen, W-23).
+    // Deliberately separate from Signal.lastUpdated: that is when THIS BACKEND
+    // received a message, and a backend restart re-delivers retained messages
+    // and would reset it to "just now" for a phone that has been silent for
+    // days. The heartbeat carries the real report time.
+    private final Map<String, Instant> seenByPerson = new ConcurrentHashMap<>();
+
+    /** Keeps the newest heartbeat per person; an older timestamp never replaces a newer one. */
+    public void recordSeen(String personId, Instant seenAt) {
+        seenByPerson.merge(personId, seenAt, (current, incoming) -> incoming.isAfter(current) ? incoming : current);
+    }
+
+    /** The most recent heartbeat across everyone tracked; empty until the first one has ever arrived. */
+    public java.util.Optional<Instant> latestSeen() {
+        return seenByPerson.values().stream().max(java.util.Comparator.naturalOrder());
+    }
+
     /** True if any tracked person currently has a "present" signal at this location. */
     public boolean anyPresentAt(String location) {
         return signals.values().stream()

@@ -43,6 +43,12 @@ import java.util.*;
  *                                         needs signals from every
  *                                         location this instance manages,
  *                                         not just cabin's own.
+ *   {location}/presence/{personId}/last_seen
+ *                                       — retained ISO-8601 UTC time the
+ *                                         person's phone last reported to
+ *                                         Home Assistant (W-23/W-34, see
+ *                                         handlePresenceLastSeen). A
+ *                                         heartbeat, not a presence value.
  *   {location}/security/armed_away     — "ON"/"OFF", real HA-published,
  *                                         retained, self-healing armed
  *                                         state (see handleArmedTopic) —
@@ -191,6 +197,14 @@ public class MqttBridgeService implements MqttCallback {
                 // and `{camera}/motion` are plain text ("online"/"ON"), only
                 // `events` is JSON. Parsing happens per-branch below, not here.
                 handleCameraTopic(parts, payload);
+                return;
+            }
+
+            if (parts.length == 4 && "presence".equals(parts[1]) && "last_seen".equals(parts[3])) {
+                // W-34 heartbeat: a timestamp, not a presence value, so it must
+                // never reach handlePresenceTopic (which would read it as
+                // not-"home" and mark the person absent).
+                handlePresenceLastSeen(parts[2], payload);
                 return;
             }
 
@@ -411,6 +425,22 @@ public class MqttBridgeService implements MqttCallback {
         eventPublisher.publish(new CabinEvent(
             UUID.randomUUID().toString(), "presence:" + location + ":" + personId, "PRESENCE_CHANGED",
             "INFO", Instant.now(), Map.of("present", present, "personId", personId, "location", location)));
+    }
+
+    /**
+     * {location}/presence/{personId}/last_seen -- retained ISO-8601 UTC, the
+     * time the phone last reported to Home Assistant (W-23 publishes it).
+     * Only recorded: it changes no presence value and publishes no event,
+     * since "the phone is still reporting" is not a presence change. An
+     * unparseable payload is ignored (and logged) rather than throwing, so a
+     * bad publisher can never take the subscription down or reset the age.
+     */
+    private void handlePresenceLastSeen(String personId, String payload) {
+        try {
+            presenceSignalRegistry.recordSeen(personId, Instant.parse(payload.trim()));
+        } catch (java.time.format.DateTimeParseException e) {
+            log.warn("Ignoring unparseable presence heartbeat for {}: '{}'", personId, payload);
+        }
     }
 
     /**

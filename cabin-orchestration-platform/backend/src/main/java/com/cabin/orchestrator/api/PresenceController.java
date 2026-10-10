@@ -1,9 +1,11 @@
 package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.presence.PresenceContractV1;
+import com.cabin.orchestrator.presence.PresenceFreshness;
 import com.cabin.orchestrator.presence.PresenceProfile;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -19,6 +21,12 @@ public class PresenceController {
 
     private final PresenceService presenceService;
     private final PresenceSignalRegistry signalRegistry;
+
+    // W-34: past this many hours without a phone heartbeat the badge reads
+    // "Presence unknown" instead of Away / At Cabin. Same default as the siren
+    // gate's own limit (W-33); configured separately.
+    @Value("${cabin.presence.stale-after-hours:6}")
+    private double staleAfterHours = 6;
 
     public PresenceController(PresenceService presenceService, PresenceSignalRegistry signalRegistry) {
         this.presenceService = presenceService;
@@ -39,6 +47,17 @@ public class PresenceController {
         // masquerading as a live one drove real security severity
         // decisions with no actual signal behind it.
         body.put("autoDerived", presenceService.isAutoDerived());
+        // W-34: how old the signal is. All four are null/false until the first
+        // phone heartbeat has ever been seen, so nothing changes for a deploy
+        // that has no heartbeat publisher yet. lastSeen is when the PHONE last
+        // reported, not when the value last changed or when this backend
+        // received a message. With several tracked people this is the newest
+        // heartbeat among them.
+        PresenceFreshness freshness = PresenceFreshness.of(signalRegistry.latestSeen(), Instant.now(), staleAfterHours);
+        body.put("lastSeen", freshness.lastSeen() == null ? null : freshness.lastSeen().toString());
+        body.put("signalAgeSeconds", freshness.signalAgeSeconds());
+        body.put("stale", freshness.stale());
+        body.put("staleAfterHours", freshness.staleAfterHours());
         body.put("signals", signalRegistry.all().stream()
             .map(s -> Map.of(
                 "location", s.location(),

@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
+formatPresenceAge, presenceBadgeModel, PresenceBadge,
 mergeStatusCheckItems } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
@@ -5175,6 +5176,105 @@ describe("formatPresenceSignals", () => {
     expect(formatPresenceSignals([{ personId: "nate", location: "cabin", present: false }]))
       .toBe("No one currently detected present");
     expect(formatPresenceSignals(undefined)).toBe("No one currently detected present");
+  });
+});
+
+// W-34 (2026-10-03 finding): the badge read "Away" at the house because the
+// retained presence value was 41 hours old. A stale auto-derived value must
+// read "Presence unknown", never a confident Away/At Cabin.
+describe("formatPresenceAge", () => {
+  it("formats minutes, hours and days compactly", () => {
+    expect(formatPresenceAge(5)).toBe("just now");
+    expect(formatPresenceAge(60)).toBe("1 min ago");
+    expect(formatPresenceAge(59 * 60)).toBe("59 min ago");
+    expect(formatPresenceAge(3600)).toBe("1 h ago");
+    expect(formatPresenceAge(3 * 3600 + 20 * 60)).toBe("3 h 20 min ago");
+    expect(formatPresenceAge(24 * 3600)).toBe("1 d ago");
+    expect(formatPresenceAge(41 * 3600)).toBe("1 d 17 h ago");
+  });
+
+  it("is empty for a missing or non-finite age and never negative", () => {
+    expect(formatPresenceAge(null)).toBe("");
+    expect(formatPresenceAge(undefined)).toBe("");
+    expect(formatPresenceAge(NaN)).toBe("");
+    expect(formatPresenceAge(-30)).toBe("just now");
+  });
+});
+
+describe("presenceBadgeModel", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const fresh = { signalAgeSeconds: 600, stale: false, staleAfterHours: 6 };
+  const stale = { signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 };
+
+  it("with no heartbeat behaves exactly as before: no age, never unknown", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: null });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toBe("Live-detected: No one currently detected present");
+  });
+
+  it("shows the age and stays a confident reading while fresh", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: fresh });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("10 min ago");
+    expect(m.title).toContain("phone last reported 10 min ago");
+  });
+
+  it("goes unknown past the limit and explains why", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: stale });
+    expect(m.unknown).toBe(true);
+    expect(m.title).toContain("Presence unknown");
+    expect(m.title).toContain("1 d 17 h");
+    expect(m.title).toContain("limit 6 h");
+  });
+
+  it("does not hide a manual override just because a heartbeat is old", () => {
+    const m = presenceBadgeModel({ autoDerived: false, signals, freshness: stale });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toMatch(/^Manually set/);
+  });
+});
+
+describe("PresenceBadge", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const base = { profile: "AWAY", options: [], onChange: () => {}, autoDerived: true, signals };
+
+  it("renders 'Presence unknown' instead of Away when the signal is stale", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Presence unknown");
+    expect(screen.queryByText("last seen 1 d 17 h ago")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeFalsy();
+    // the real choices are still there as a manual override
+    expect(within(select).getByText("Away")).toBeTruthy();
+  });
+
+  it("keeps the real value and the live dot when fresh, with an age chip", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 120, stale: false, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+    expect(screen.queryByText("2 min ago")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeFalsy();
+  });
+
+  it("renders with no age chip at all when the backend sends no heartbeat", () => {
+    const { container } = render(<PresenceBadge {...base} freshness={null} />);
+    expect(container.querySelector(".presence-age")).toBeFalsy();
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+  });
+
+  it("picking a real option while unknown reports it as a manual override", () => {
+    const onChange = vi.fn();
+    render(<PresenceBadge {...base} onChange={onChange}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    fireEvent.change(screen.getByLabelText("Presence"), { target: { value: "AT_CABIN" } });
+    expect(onChange).toHaveBeenCalledWith("AT_CABIN");
   });
 });
 

@@ -8110,6 +8110,11 @@ function usePresence(authedFetch = fetch) {
   const [options, setOptions]      = useState([]);
   const [autoDerived, setAutoDerived] = useState(false);
   const [signals, setSignals]      = useState([]);
+  // W-34: how old the presence signal is. `freshness` stays null until the
+  // backend has seen a phone heartbeat (cabin/presence/<person>/last_seen),
+  // so an instance that hasn't deployed the heartbeat publisher renders
+  // exactly as before instead of guessing an age.
+  const [freshness, setFreshness]  = useState(null);
 
   const refresh = useCallback(() => {
     authedFetch(`${LOCATIONS.cabin.apiBase}/api/presence`)
@@ -8120,6 +8125,11 @@ function usePresence(authedFetch = fetch) {
         setOptions(data.options || []);
         setAutoDerived(!!data.autoDerived);
         setSignals(data.signals || []);
+        setFreshness(data.signalAgeSeconds == null ? null : {
+          signalAgeSeconds: data.signalAgeSeconds,
+          stale: !!data.stale,
+          staleAfterHours: data.staleAfterHours,
+        });
       })
       .catch(() => {});
   }, [authedFetch]);
@@ -8144,7 +8154,7 @@ function usePresence(authedFetch = fetch) {
     }).then(r => r.ok ? r.json() : null).then(d => { if (d) setProfileState(d.profile); }).catch(() => {});
   };
 
-  return { profile, setProfile, options, autoDerived, signals };
+  return { profile, setProfile, options, autoDerived, signals, freshness };
 }
 
 // Found 2026-08-08 (user question, following the presence fix above):
@@ -8235,11 +8245,79 @@ export function formatPresenceSignals(signals) {
   return present.map(s => `${s.personId} at ${s.location}`).join(", ");
 }
 
-function PresenceToggle() {
-  const { activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals } = useApp();
-  const opts = presenceOptions.length > 0
-    ? presenceOptions
+// W-34 (Cowork 2026-10-04): presence is published on CHANGE, so a retained
+// "not_home" can be days old and still be what the badge shows -- on
+// 2026-10-03 the badge read "Away" at the house because the phone had not
+// reported for 41 hours. This is the age of the PHONE's last report to Home
+// Assistant (cabin/presence/<person>/last_seen), not of the last change.
+// Exported for src/App.test.jsx. Pure: seconds in, short duration out.
+export function formatPresenceAge(seconds) {
+  if (seconds == null || !Number.isFinite(seconds)) return "";
+  const s = Math.max(0, Math.floor(seconds));
+  if (s < 60) return "just now";
+  const totalMin = Math.floor(s / 60);
+  if (totalMin < 60) return `${totalMin} min ago`;
+  const totalHours = Math.floor(totalMin / 60);
+  if (totalHours < 24) {
+    const m = totalMin % 60;
+    return m === 0 ? `${totalHours} h ago` : `${totalHours} h ${m} min ago`;
+  }
+  const d = Math.floor(totalHours / 24);
+  const h = totalHours % 24;
+  return h === 0 ? `${d} d ago` : `${d} d ${h} h ago`;
+}
+
+// Exported for src/App.test.jsx. What the presence badge should say. A
+// stale AUTO-DERIVED value must never be shown as a fact ("Away", "At
+// Cabin"): once the phone has been silent past the backend's limit the
+// answer is "Presence unknown". A MANUAL override is the user's own
+// statement, not a phone reading, so staleness does not hide it. No
+// heartbeat (freshness null) means the backend has no age to report, so the
+// badge behaves exactly as it did before W-34.
+export function presenceBadgeModel({ autoDerived, signals, freshness }) {
+  const hasAge = !!autoDerived && !!freshness;
+  const unknown = hasAge && !!freshness.stale;
+  const ageLabel = hasAge ? formatPresenceAge(freshness.signalAgeSeconds) : "";
+  let title;
+  if (!autoDerived) {
+    title = "Manually set — no live presence signal detected yet for this instance";
+  } else if (unknown) {
+    title = `Presence unknown: the phone has not reported for ${ageLabel.replace(/ ago$/, "")} `
+      + `(limit ${freshness.staleAfterHours} h). Last reading: ${formatPresenceSignals(signals)}.`;
+  } else {
+    title = `Live-detected: ${formatPresenceSignals(signals)}`
+      + (hasAge ? ` — phone last reported ${ageLabel}` : "");
+  }
+  return { unknown, ageLabel, title };
+}
+
+// Presentational half of PresenceToggle (props in, markup out) so the
+// stale/fresh/manual rendering can be tested without the whole app shell.
+export function PresenceBadge({ profile, options, onChange, autoDerived, signals, freshness }) {
+  const opts = options.length > 0
+    ? options
     : Object.entries(PROFILE_LABELS).map(([value, label]) => ({ value, label }));
+  const { unknown, ageLabel, title } = presenceBadgeModel({ autoDerived, signals, freshness });
+  return (
+    <div className={`presence-toggle${unknown ? " presence-toggle-unknown" : ""}`} title={title}>
+      <MapPin size={13} style={{ opacity: 0.6 }}/>
+      {autoDerived && (unknown
+        ? <span className="presence-stale-dot" aria-label="Presence stale" />
+        : <span className="presence-live-dot" aria-label="Live-detected" />)}
+      <select className="presence-select" aria-label="Presence"
+        value={unknown ? "__unknown__" : profile}
+        onChange={e => onChange(e.target.value)}>
+        {/* Display-only: picking a real option below is a manual override. */}
+        {unknown && <option value="__unknown__" disabled>Presence unknown</option>}
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      {ageLabel && <span className="presence-age">{unknown ? `last seen ${ageLabel}` : ageLabel}</span>}
+    </div>
+  );
+}
+
+function PresenceToggle() {
+  const { activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals, presenceFreshness } = useApp();
   // Found 2026-08-08: this pin's icon reads as "your detected location,"
   // but the value behind it was purely a manual toggle with nothing real
   // driving it -- see PresenceService's class comment for why that
@@ -8248,18 +8326,15 @@ function PresenceToggle() {
   // below still allows a manual override for an instance/location with
   // no presence automation configured yet (or a guest with no tracked
   // phone) -- see usePresence's comment.
-  const title = presenceAutoDerived
-    ? `Live-detected: ${formatPresenceSignals(presenceSignals)}`
-    : "Manually set — no live presence signal detected yet for this instance";
   return (
-    <div className="presence-toggle" title={title}>
-      <MapPin size={13} style={{ opacity: 0.6 }}/>
-      {presenceAutoDerived && <span className="presence-live-dot" aria-label="Live-detected" />}
-      <select className="presence-select" value={activeProfile}
-        onChange={e => setProfile(e.target.value)}>
-        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
+    <PresenceBadge
+      profile={activeProfile}
+      options={presenceOptions}
+      onChange={setProfile}
+      autoDerived={presenceAutoDerived}
+      signals={presenceSignals}
+      freshness={presenceFreshness}
+    />
   );
 }
 
@@ -8400,7 +8475,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   const { acknowledgments: alertAcknowledgments, refresh: refreshAlertAcknowledgments } = useAlertAcknowledgments(cameraAuth.authedFetch);
   const alertLevels = navAlertLevelsFor(activeAlerts, activeLocation, automationAlerts, alertAcknowledgments);
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
-  const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence(cameraAuth.authedFetch);
+  const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals, freshness: presenceFreshness } = usePresence(cameraAuth.authedFetch);
   const securityStates = useSecurityState(cameraAuth.authedFetch);
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile, cameraAuth.authedFetch);
   const lifecycleLabels = useLifecycleStateLabels(LOCATIONS.cabin.apiBase, cameraAuth.authedFetch);
@@ -8525,7 +8600,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       activeAlerts, activeAlertLocations, activeAlertUnavailableLocations, activeAlertsGeneratedAt,
       automationAlerts, automationAlertsLoading,
       alertAcknowledgments, refreshAlertAcknowledgments,
-      activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
+      activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals, presenceFreshness,
       securityStates,
       displayConfigs, refreshDisplayConfigs,
       lifecycleLabels,
