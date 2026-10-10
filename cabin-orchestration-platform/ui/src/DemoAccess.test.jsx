@@ -48,7 +48,11 @@ describe("Demo Access (/demo/{token})", () => {
     stubFetch();
     const { container } = render(<ThemeProvider><App demoToken="demo-tok" /></ThemeProvider>);
     fireEvent.click(screen.getAllByTitle("Camera Events")[0] ?? screen.getByText("Camera Events"));
-    await waitFor(() => expect(container.querySelector(".demo-camera-card")).not.toBeNull());
+    // Wait for the status badge, not just the card: until the devices load the
+    // card renders its empty state (no badge), so waiting on the card alone
+    // passed early and then failed on a slower CI machine (found 2026-10-10,
+    // when it blocked the cabin-ui deploy of an unrelated change).
+    await waitFor(() => expect(container.querySelector(".demo-camera-card .state-badge")).not.toBeNull());
     const panel = container.querySelector(".panel-area");
     expect(panel.textContent).toContain(HIDDEN_FOR_DEMO);
     expect(panel.querySelector("img")).toBeNull();
