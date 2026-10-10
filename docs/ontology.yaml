@@ -3457,8 +3457,9 @@ elements:
       2026-10-03: Frigate receives frames from this unit (see
       camera_role_front_door; reconnected 2026-09-29/30, after the
       2026-08-07 proof-of-concept connection, when no live reading was
-      ever pulled). "Partial" now means "frames and recording
-      confirmed, object detection not enabled."
+      ever pulled). Detection enabled 2026-10-10 (see
+      camera_role_front_door); "partial" remains only because the
+      firmware check and a DHCP reservation are not confirmed.
     data_class: raw
     data_type: owl:Class
     ui_display_name: "Reolink RLC-820A (unit 01)"
@@ -3509,21 +3510,20 @@ elements:
       2026-10-03 (reconnected 2026-09-29/30): Frigate receives frames
       from hw_camera_reolink_rlc820a_01 under the key
       `cabin_outside_reolink` (camera_fps about 5, continuous recording
-      on each day since 2026-09-29). Object detection is NOT enabled
-      yet; see notes.
+      on each day since 2026-09-29). Object detection enabled and running
+      since 2026-10-10 (see notes).
     data_class: derived
     data_type: owl:Class
     ui_display_name: "Front Door Camera"
     source: >
       Not asserted by any device — this is a platform/workflow
-      assignment. Mechanism: Frigate's `cameras:` config key. Git still
-      says front_door (matching the driveway/Blink camera's `driveway`
-      key); the live config has used `cabin_outside_reolink` since
-      2026-09-30 — see notes and W-39.
+      assignment. Mechanism: Frigate's `cameras:` config key. The key is
+      `cabin_outside_reolink` (renamed from front_door on 2026-09-30,
+      under git since PR #127 on 2026-10-10) -- see notes and W-39.
     rendering:
       semantic: "Front door camera"
       systems: "Reolink RLC-820A — role: front_door"
-      technical: "Live Frigate key 'cabin_outside_reolink' (git: 'front_door', W-39); RTSP sub/main at 192.168.1.121:554, reached through the M920q's Ethernet port eno2; object detection not enabled yet"
+      technical: "Live Frigate key 'cabin_outside_reolink' (under git since PR #127); RTSP sub/main at 192.168.1.121:554, reached through the M920q's Ethernet port eno2; detection on since 2026-10-10 via PR #127"
       compliance: (not shown)
     definition: >
       The role "monitors the front door / driveway approach area,"
@@ -3645,6 +3645,15 @@ elements:
       (not yet done). Repeatable procedure for the next camera on a
       different network: docs/MAINTENANCE.md, "A camera on a different
       network than the M920q".
+
+      RESOLVED 2026-10-10 (W-39): the camera credential was aligned (vault,
+      both .env files, running container; verified from inside the
+      container, never printed) and the config merged (PR #127, vault PR
+      #133). Frigate's effective config now shows detect.enabled True with
+      the eight shared classes, and detection ran at about 3.8 fps. Frigate
+      had to be restarted by hand: the production-stack deploy copies the
+      config but does not restart Frigate (W-46). Still open: no known DHCP
+      reservation for 192.168.1.121.
 
   - id: hw_camera_blink_outdoor4_01
     entity_type: owl:Class

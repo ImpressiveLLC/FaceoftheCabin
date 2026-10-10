@@ -754,7 +754,10 @@ files. Three real properties, not just "rebuild and hope":
   `production-stack/frigate/config.yml` or the workflow; the
   `docker-compose.m920q.yml` trigger alone is validation and smoke only. So a
   hand-edited live Frigate file is reverted by the next such merge. The camera
-  smoke test checks Frigate's availability topic, not each camera.
+  smoke test checks Frigate's availability topic, not each camera. It also does
+  **not restart Frigate** after copying the config (W-46): `docker compose up -d`
+  sees no change to a bind-mounted file, so restart it by hand
+  (`docker restart frigate`) before a config change takes effect.
 - **`deploy-cabin-discovery.yml`** — triggers on `discovery-service/**`,
   `docker-compose.m920q.yml` or the workflow, and on manual dispatch.
 - **`rotate-secrets.yml`** — monthly (06:00 UTC on the 1st) and on manual

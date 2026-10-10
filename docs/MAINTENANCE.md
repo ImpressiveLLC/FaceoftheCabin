@@ -714,13 +714,30 @@ deploy breaks the camera with no warning. To compare credentials, compare
 length or equality and never print the value (see [Secrets](#secrets) and
 [Never diff secrets by raw value](#never-diff-secrets-by-raw-value-found-2026-08-03)).
 
+**Where the camera credential lives, and how to align it.** The vault key
+`vault_camera_password` (`ansible/group_vars/cabin/vault.yml`) feeds
+`CAMERA_PASSWORD` in `infra/production-stack/.env` (a host-only file; the
+deploy worktree's copy is a symlink) and in `infra/.env`, which the Frigate
+service passes in as `FRIGATE_RTSP_PASSWORD`, which fills the
+`{FRIGATE_RTSP_PASSWORD}` placeholder in `production-stack/frigate/config.yml`.
+All of them must hold the same value, and the container must be *recreated*
+(`docker compose -p cabin --env-file <stack .env> -f <stack compose> up -d
+--no-deps frigate`) after the `.env` changes; a restart does not re-read it.
+Check without displaying anything: compare the container's value with the
+working one by equality, then run `ffprobe` from inside the container using
+`${FRIGATE_RTSP_PASSWORD}` against the sub stream. A stream means the value is
+right; `401 Unauthorized` means it is not. A human vault change goes through a
+PR and must merge before the monthly `rotate-secrets` run, which re-templates
+`.env` from the vault. Done once on 2026-10-10; the previous `.env` files are
+backed up on the host in `~/camera-credential-align-20261010-012651/backup`.
+
 **Current cameras (2026-10-03).**
 - `cabin_outside_reolink` — the Reolink RLC-820A (the unit earlier
   configured as `front_door`), renamed in the live config on 2026-09-30.
   Native RTSP at `192.168.1.121`, reached through the M920q's Ethernet
   port `eno2`. 4K record stream, 640×480 detect stream. Continuous
-  recording works. **Object detection is not enabled** (see the state
-  table).
+  recording works, and object detection has been on since 2026-10-10
+  (W-39; the state table below is the 2026-10-03 history).
 - `driveway` — a Blink camera bridged via `blinkbridge` + `mediamtx`. No
   true continuous stream: it is only "live" when Blink's own cloud has
   already detected motion, so Frigate's detection is a second, finer pass
@@ -732,6 +749,20 @@ The Reolink and `driveway` physically cover the same front-door/driveway
 area from different angles. The names describe available semantic slots,
 not fixed device identities; one is expected to eventually relocate to
 cover the building's rear.
+
+**Resolved 2026-10-10 (W-39).** The table below describes 2026-10-03. Since
+then the camera credential was aligned (vault, both `.env` files and the
+running container; checked from inside the Frigate container, never
+printed), `cabin_outside_reolink` was brought under git ([#127](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/127)) with
+detection on and the same eight classes as the other cameras, the vault copy
+merged ([#133](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/133)), and `home_aldrich_front` was re-enabled. Verified from
+Frigate's API afterwards: the Reolink running detection (about 3.8 detection
+fps while idle motion was present), AldrichFront enabled with detection on.
+**Gotcha found doing it: the deploy copies the Frigate config but does not
+restart Frigate.** `docker compose up -d` sees no change to a bind-mounted file,
+so a config-only deploy does not take effect until `docker restart frigate`
+(W-46). The Frigate UI's own detection toggle lasts only until a restart or a
+container recreate; the merged config is what makes it permanent.
 
 **State on 2026-10-03 (verified read-only against the live host).** Live
 and git disagree. The Frigate config was edited by hand on 2026-09-30
@@ -748,7 +779,7 @@ and git disagree. The Frigate config was edited by hand on 2026-09-30
 
 Working: `camera_fps` about 5 for `cabin_outside_reolink`, and recordings on
 each day from 2026-09-29 to 2026-10-03. Tracked as W-39 to W-41 in
-`docs/governance/backlog.md`. **Until W-39 lands, do not merge
+`docs/governance/backlog.md`. **Until W-39 landed (2026-10-10), do not merge
 anything that touches `production-stack/frigate/config.yml` or
 `production-stack/docker-compose.yml`.** The deploy would copy git's
 `front_door` block over the live file and the camera would go dark again.
@@ -1198,6 +1229,14 @@ Camera Events the same way any Blink motion does today (a `MOTION_ON`/
 - A rapid duplicate call (e.g. a flaky notification firing twice) is a
   harmless no-op — `BlinkLiveviewService.start()` extends an already-active
   session rather than starting a second one, by design.
+
+**Verified end to end 2026-10-10.** With `home_aldrich_front` enabled in
+Frigate, `POST liveview/AldrichFront/start` through blinkbridge published the
+`aldrichfront` path to mediamtx and Frigate read it at about 5 fps within 40
+seconds; `.../stop` ended the session. Between sessions the path has no stream,
+so Frigate shows `camera_fps` 0 for it by design (the same as `driveway`).
+Detection only has something to work on while a liveview is open, which the
+push-notification automation below starts on real Blink motion.
 
 **Known limitation, not yet built**: nothing today tracks whether the
 `cabin_security_publish_blink_motion` HA automation is actually still
