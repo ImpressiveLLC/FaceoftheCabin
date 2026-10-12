@@ -1283,6 +1283,15 @@ Item 3) — not built as of this entry.
 
 ## Overnight Camera Alerts (Node-RED)
 
+**Status 2026-10-12 (read-only checks).** Two reasons this flow could not have
+alerted recently: (1) it fires on Frigate *detection* events, and the Reolink had
+object detection off from 2026-09-30 until 2026-10-10 (W-39); (2) it also needs
+`cabin/security/armed_away` ON and `cabin/presence/nate` not_home, and
+`armed_away` was OFF. This flow is separate from the backend's own push: the
+backend publishes to ntfy only when `CABIN_ALERT_NTFY_TOPIC` is set, and it is
+blank on the M920q, so CRITICAL events from the backend (leak, smoke, alarm, the
+UI's "Notify me" workflows) never reach a phone (W-51).
+
 A dedicated Node-RED tab ("Camera Overnight Alerts") pushes a real
 notification via [ntfy.sh](https://ntfy.sh) when Frigate detects an
 alert-tier object while the cabin is armed-away and no one's present.
