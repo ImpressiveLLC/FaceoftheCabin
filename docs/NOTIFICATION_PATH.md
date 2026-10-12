@@ -18,6 +18,7 @@ Note: the Companion app's *push* does not need Tailscale. Home Assistant sends i
 ## Decisions (Nate, 2026-10-12)
 
 1. **Channels:** ntfy push, **and** Google Home speaker announcements.
+   **Amended the same day: audible outputs are manual-only for now.** No speaker announcement and no siren is triggered automatically by the rules below. Nate does not want a speaker to come on during a meeting or frighten children who walk in while he is down at the lake. Audible outputs happen only when Nate sets them off: arming away is his act and keeps the existing siren behaviour, and a speaker announcement is a control he presses. The automatic alert is silent (ntfy).
 2. **"Nate is away from the cabin" cannot be decided by his phone leaving the cabin Wi-Fi alone.** He sometimes shares the phone's hotspot for meetings when the Starlink Wi-Fi is inconsistent, and that must not look like an absence. His alternative: alert when presence is indicated at the cabin and Nate has not been on the Wi-Fi for **2 hours**, and he is not at Home.
 3. **Nate at Home** while presence is indicated at the cabin is an alert, immediately.
 
@@ -35,14 +36,14 @@ An alert fires on an occupancy indication when **any** of these is true:
 
 A hotspot session shorter than 2 hours is covered, because C needs *every* signal silent for 2 hours, not just the Wi-Fi. **Known gap:** a longer one, with no other signal reporting (phone GPS needs the Companion app to reach Home Assistant), will alert on the next movement in the cabin. That is why open question 2 matters, and until it is answered an acknowledge or snooze is the way out. Authorized other people (primary-role users, D24) and maintenance visits must not trigger it once W-38 enforces roles; until then, arming and the rule above are the only filter, so expect to snooze.
 
-**On firing:** ntfy at the highest priority with the camera snapshot and which indication fired, repeated every 10 minutes until acknowledged or the indication clears. If a Google speaker exists at the cabin, also announce a spoken warning there (a deterrent for whoever is present; it does not reach Nate). Acknowledge or snooze from the ntfy action buttons.
+**On firing:** ntfy at the highest priority with the camera snapshot and which indication fired, repeated every 10 minutes until acknowledged or the indication clears. Acknowledge or snooze from the ntfy action buttons. **Nothing audible happens at the cabin automatically**: the rule never drives a speaker or a siren (Nate, 2026-10-12). A manual "announce" control for Google speakers can come later (S5).
 
 **A check error never reads as an intrusion or as "Nate is away"** (the same rule as W-36 and W-37).
 
 ## Where it lives
 
 - **Policy:** Node-RED, extending "Camera Overnight Alerts". It already has the ntfy node and subscribes to `cabin/security/armed_away` and `cabin/presence/nate`; it needs `home/presence/nate`, the Zigbee occupancy topics and a persisted "last seen" per Nate signal. Per `CLAUDE.md` the platform does not duplicate automation logic.
-- **Delivery:** ntfy for the phone; Home Assistant's `cast`/`tts` for a speaker announcement.
+- **Delivery:** ntfy for the phone. Home Assistant's `cast`/`tts` is for a *manual* speaker announcement only.
 - **The platform (this repo):** shows what fired (an in-app feed, W-51), reports whether each channel is actually configured, and sets the backend ntfy topic so leak, smoke and alarm events reach the phone too.
 
 ## Build slices
@@ -53,7 +54,7 @@ A hotspot session shorter than 2 hours is covered, because C needs *every* signa
 | S2 | "Notify me" says whether anything will be delivered; Config shows the real channel map | S1 |
 | S3 | The occupancy-alert flow in Node-RED with rule A to C | Nate's answers below; presence trustworthy (W-23, W-37) for C |
 | S4 | In-app notification feed | S1 |
-| S5 | Google Home announcement | Speakers added to Home Assistant; a Google sign-in from Nate |
+| S5 | A manual "announce" control for Google speakers (never automatic) | Speakers added to Home Assistant; a Google sign-in from Nate |
 | S6 | Mesh occupancy signal as one more indication (W-54) | An evaluation of the existing Zigbee LQI prototype |
 
 ## Open questions for Nate
