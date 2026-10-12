@@ -123,6 +123,36 @@ body {
 
 .panel-area { flex: 1; overflow-y: auto; }
 
+/* W-35: armed while someone is detected at the location. Informational, never
+   blocks arming. Uses theme tokens only (ThemeLayers forbids hard-coded colors). */
+.armed-occupied-list { display: flex; flex-direction: column; gap: 6px; padding: 8px 20px 0; }
+.armed-occupied-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--warning);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.armed-occupied-icon { color: var(--warning); flex-shrink: 0; margin-top: 2px; }
+.armed-occupied-text { flex: 1; }
+.armed-occupied-dismiss {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.armed-occupied-dismiss:hover { color: var(--text); border-color: var(--text-muted); }
+
 /* ─── Panel Content ────────────────────────────────────────────────────── */
 .panel-content { padding: 20px 24px; }
 .panel-header-bar {
