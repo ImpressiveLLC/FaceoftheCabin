@@ -141,3 +141,45 @@ None yet — see Known gaps below.
 - Untested: behavior across a Termux/Android update, a Zigbee2MQTT version
   bump, or a different phone model — this pass covered exactly one specific
   hardware/software combination.
+
+---
+
+## Alert History (W-56)
+
+Spec: [`docs/PRODUCT_NOTES.md`](PRODUCT_NOTES.md) § "2026-10-12 — Alert History".
+
+Automated:
+
+- `AlertControllerTest` (Testcontainers Postgres): ignore, snooze and
+  un-ignore each leave a history row (newest first, nothing lost to the
+  acknowledgment upsert); a rejected acknowledgment leaves none; an expired
+  snooze is logged once, stamped with the time it expired; automation alerts
+  in `cabin_event` appear as RAISED without being copied (telemetry does
+  not); device filter, paging and the bad-window fallback.
+- `AlertTransitionRecorderTest` (Testcontainers): raised once not every
+  cycle; resolved only after two quiet cycles; a recurrence is a fresh
+  raise; a restart neither forgets nor double-counts an open condition; no
+  resolves during the startup grace period.
+- `AlertKeysTest`: key parse/build, `none` device, unknown keys, and every
+  `WORKFLOW_UNCONFIRMED_*` alert collapsing to one key.
+- `GoogleAuthInterceptorTest`: `/api/alerts/history` is 401 anonymously
+  while `/api/alerts/active` stays open; an all-scopes guest token gets 403.
+  `DemoAccessTest`: the route is DENY for demo tokens.
+- `App.test.jsx`: `AlertHistoryLog` (entries, range, sign-in note on 401,
+  Un-ignore sends the DELETE and is hidden when signed out, Open device /
+  Open workflow hand-offs, other-location entries hidden),
+  `alertRulesTarget`, Status Checks "Open workflow" / "Open rule" (none for
+  an unconfirmed-command alert), and rules focus landing on the right
+  `WorkflowRow` / built-in rule row.
+
+Checked by hand (mock API, dev server, 2026-10-12): Monitoring → Alert
+History renders the silenced list and history at desktop width, and the
+log has no horizontal overflow at 375 px.
+
+### Known gaps
+
+- Not exercised against the live M920q backend: merging deploys, so the
+  first real `alert_history` rows appear after the deploy.
+- No test drives the scheduled job through Spring's real scheduler; the
+  recorder is tested by calling `recordTransitions()` directly.
+- Device-condition history before first deploy does not exist.

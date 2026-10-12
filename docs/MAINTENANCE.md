@@ -649,6 +649,38 @@ that it was a static, unclickable summary, which was itself a
 user-reported gap ("the See/Think/Act 'Act' step needs a real path to
 the mitigating screen").
 
+**Where the history lives (W-56, 2026-10-12).** Status Checks is the
+live, last-24-hours view; the reviewable record is Monitoring → Sensor
+History → Alert History (`AlertHistoryLog`, `GET /api/alerts/history`).
+It merges two homes at read time, nothing copied between them:
+automation alerts stay in `cabin_event`; the `alert_history` table holds
+what nothing else did — device-condition RAISED/RESOLVED (written by
+`AlertTransitionRecorder`, ~every 60 s, because `ActiveAlertService` is
+stateless on purpose) and every IGNORED / SNOOZED / UN_IGNORED /
+SNOOZE_EXPIRED. `alert_acknowledgment` is still only "what is suppressed
+right now"; it is not the history. Things worth knowing when debugging:
+
+- **Device-condition history starts at first deploy.** Nothing recorded
+  those before, so an empty week for a flaky sensor means "not logged yet",
+  not "quiet".
+- **RESOLVED is deliberately slow.** A condition must be gone for two
+  consecutive cycles, and none are written for the first
+  `cabin.alerts.history.startupGraceMillis` (3 min) after boot, so a
+  backend restart (adapters repopulate `DeviceRegistry` afterwards) cannot
+  invent a resolve/raise pair for every open alert. Turn the recorder off
+  with `cabin.alerts.history.enabled=false`.
+- **The route is signed-in only.** It lists door/motion times and who
+  silenced what, so unlike the other GETs under `/api/alerts` it is not in
+  `GoogleAuthInterceptor`'s open-read carve-out, a guest `alerts_read` link
+  is refused, and demo tokens are DENY (`DemoAccessPolicy`).
+- **"Open workflow" / "Open rule"** read `payload.ruleId`
+  (`"WORKFLOW_" + workflowId`, or a built-in rule id); a
+  `WORKFLOW_UNCONFIRMED_` alert is a failed command confirmation and links
+  to its device only. They hand off through `pendingRulesFocus`, the twin
+  of `pendingDeviceFocus`.
+- **IGNORED has no expiry.** Un-ignore now exists in the UI (Alert History →
+  "Silenced right now"); before W-56 the only way back was the DELETE API.
+
 **Box layout is a real preference, not a fixed screenshot.** Card order
 in the Rules & Alerts grid is drag-reordered and persisted
 (`localStorage` key `order.rulesAlertsBoxes`, `useDraggableOrder` — same

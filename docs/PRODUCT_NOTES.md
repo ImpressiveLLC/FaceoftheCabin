@@ -931,3 +931,47 @@ set with realistic room to grow past a screenful, and it's the one the
 screenshot actually showed doing so.
 
 ---
+
+## 2026-10-12 — Alert History: a log you can review, and a way back from each alert
+
+**The ask (Nate, 2026-09-15):** on Rules & Alerts, clear alerts; get from an
+alert to the workflow or device behind it; and have what gets cleared
+persisted somewhere reviewable, so an alert that fires all the time can be
+recognized and its cause addressed rather than silenced forever.
+
+**What was already true when this was picked up (verified against `main`,
+not assumed):** ignore/snooze, "Open device", repeats grouped as history
+and the Status Checks merge had all shipped in September (PRs #76–#81,
+#89). The remainder was narrower than the ask sounded: no log (the
+acknowledgment table is "what is suppressed now" and deletes expired
+snoozes), no way back from an IGNORED alert in the UI, and no link from a
+workflow-driven alert to its workflow.
+
+**Why two homes instead of one table.** Automation alerts already sit in
+`cabin_event`, and copying them would give two answers to "what fired".
+Device conditions (`MISSED_CHECKIN`, `DEVICE_ALARM`) had no home at all —
+`ActiveAlertService` is stateless on purpose, so an alert vanishes the
+moment its evidence does, and no record said a sensor missed its check-in
+nine times this week. The log therefore adds only `alert_history` (device
+raised/resolved transitions + every acknowledgment action) and merges it
+with `cabin_event` at read time. It is append-only.
+
+**Why RESOLVED is slow.** A resolve needs two quiet cycles and is suppressed
+for three minutes after boot. The alternative was a log that, after every
+backend restart, recorded every open alert as resolved and re-raised — which
+would have made the very thing this feeds (repeat counting, W-57) count
+restarts as flapping.
+
+**Why the history route is gated, unlike its siblings.** The other GETs
+under `/api/alerts` stay open because they show current state. A history of
+door and motion alerts plus who silenced what is an occupancy record — the
+same data the `/api/events` gate exists for — so it needs a session, a guest
+`alerts_read` link is refused, and demo tokens are denied.
+
+**Known limits, stated rather than hidden:** device-condition history begins
+at first deploy; the client's alert key for an unconfirmed-command alert
+embeds the execution id, so ignoring one does not suppress the next
+(DL-2026-10-12-03, open). W-57 (alert noise → Optimization Opportunities,
+and the Tiny Helpdesk guidance as docs in git) builds on this log.
+
+---

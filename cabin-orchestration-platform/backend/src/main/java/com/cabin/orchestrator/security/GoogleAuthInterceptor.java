@@ -132,7 +132,11 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // GETs do. Only POST/DELETE .../acknowledgments require a real
         // identity -- silencing a safety-relevant alert is a genuine
         // action, unlike everything else this controller serves.
-        boolean isAlertsRead = path.startsWith(contextPath + "/api/alerts/") && "GET".equalsIgnoreCase(request.getMethod());
+        // Except /api/alerts/history (W-56): that one lists when doors opened
+        // and motion fired and who silenced what -- the occupancy-revealing
+        // data the /api/events gate exists for -- so it needs a real session.
+        boolean isAlertsRead = path.startsWith(contextPath + "/api/alerts/") && "GET".equalsIgnoreCase(request.getMethod())
+            && !path.equals(contextPath + ALERT_HISTORY_PATH);
         if (isAlertsRead) {
             return true;
         }
@@ -315,6 +319,8 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         "observations_read", List.of("/api/events/telemetry-history", "/api/events/reported-fields")
     );
 
+    private static final String ALERT_HISTORY_PATH = "/api/alerts/history";
+
     private String extractGuestToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("CabinToken ") && header.length() > 11) {
@@ -346,7 +352,9 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
             .flatMap(List::stream)
             .map(prefix -> contextPath + prefix)
             .anyMatch(base -> path.equals(base) || path.startsWith(base + "/"));
-        if (!covered) {
+        // alerts_read maps to the whole /api/alerts prefix, which would reach
+        // the alert history too -- but that is a signed-in-only view (W-56).
+        if (!covered || path.equals(contextPath + ALERT_HISTORY_PATH)) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "This access link doesn't cover that page");
             return false;
         }

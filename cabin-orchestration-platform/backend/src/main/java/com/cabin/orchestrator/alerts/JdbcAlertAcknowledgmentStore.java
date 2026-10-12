@@ -15,9 +15,11 @@ import java.util.List;
 public class JdbcAlertAcknowledgmentStore {
 
     private final JdbcTemplate jdbc;
+    private final JdbcAlertHistoryStore history;
 
-    public JdbcAlertAcknowledgmentStore(JdbcTemplate jdbc) {
+    public JdbcAlertAcknowledgmentStore(JdbcTemplate jdbc, JdbcAlertHistoryStore history) {
         this.jdbc = jdbc;
+        this.history = history;
         jdbc.execute("""
             CREATE TABLE IF NOT EXISTS alert_acknowledgment (
               alert_key        TEXT PRIMARY KEY,
@@ -49,12 +51,21 @@ public class JdbcAlertAcknowledgmentStore {
      * Active = IGNORED (no expiry) or SNOOZED with snoozed_until still in
      * the future. An expired SNOOZED row is deleted here, not just
      * filtered out of the result -- the table stays a live "currently
-     * suppressed" set, not a growing history of every acknowledgment ever
-     * made (that's a real, separate ask -- see MAINTENANCE.md's Status
-     * Checks section, "show me history" is explicitly not this table).
+     * suppressed" set. The history of every acknowledgment lives in
+     * alert_history (W-56): each expiry deleted here is logged there as
+     * SNOOZE_EXPIRED, stamped with the time it actually expired. RETURNING
+     * makes the delete and the log atomic per row, so two concurrent
+     * readers can't both log the same expiry.
      */
     public List<AlertAcknowledgment> activeAcknowledgments() {
-        jdbc.update("DELETE FROM alert_acknowledgment WHERE mode = 'SNOOZED' AND snoozed_until < now()");
+        jdbc.query("""
+            DELETE FROM alert_acknowledgment WHERE mode = 'SNOOZED' AND snoozed_until < now()
+            RETURNING alert_key, snoozed_until""",
+            rs -> {
+                Timestamp until = rs.getTimestamp("snoozed_until");
+                history.append(AlertHistoryEntry.ofAcknowledgment(rs.getString("alert_key"), "SNOOZE_EXPIRED", null,
+                    until.toInstant(), until.toInstant()));
+            });
         return jdbc.query(
             "SELECT alert_key, mode, snoozed_until, acknowledged_by, acknowledged_at FROM alert_acknowledgment",
             (rs, i) -> new AlertAcknowledgment(
