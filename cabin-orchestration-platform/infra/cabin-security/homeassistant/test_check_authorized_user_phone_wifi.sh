@@ -40,7 +40,7 @@ CONF="$T/authorized_user_phones.conf"
 export AUTHORIZED_USER_PHONES_CONF="$CONF"
 cat > "$CONF" <<'EOF'
 # a comment
-nate   BC:10:7B:8B:DA:A0  192.168.2.0/24
+nate   02:AA:BB:CC:DD:01  192.168.2.0/24
 
 #ghost  00:11:22:33:44:55  10.0.0.0/24
 emma   aa:bb:cc:dd:ee:ff  192.168.9.0/24
@@ -52,14 +52,14 @@ run() { # person -> sets OUT (stdout) and RC
 }
 
 echo "== presence"
-FAKE_NEIGH="192.168.2.50 dev wlo1 lladdr bc:10:7b:8b:da:a0 REACHABLE"; export FAKE_NEIGH
+FAKE_NEIGH="192.168.2.50 dev wlo1 lladdr 02:aa:bb:cc:dd:01 REACHABLE"; export FAKE_NEIGH
 run nate;  check "MAC in the ARP table -> ON" "ON" "$OUT"
 check "...and exits 0" "0" "$RC"
 FAKE_NEIGH="192.168.2.51 dev wlo1 lladdr 11:22:33:44:55:66 REACHABLE"; export FAKE_NEIGH
 run nate;  check "MAC not in the ARP table -> OFF" "OFF" "$OUT"
 FAKE_NEIGH=""; export FAKE_NEIGH
 run nate;  check "empty ARP table -> OFF" "OFF" "$OUT"
-FAKE_NEIGH="x dev wlo1 lladdr bc:10:7b:8b:da:a0 STALE"; export FAKE_NEIGH
+FAKE_NEIGH="x dev wlo1 lladdr 02:aa:bb:cc:dd:01 STALE"; export FAKE_NEIGH
 run nate;  check "MAC matching ignores the case used in the config" "ON" "$OUT"
 
 echo "== one user's phone never answers for another"
@@ -73,7 +73,7 @@ run emma
 check "sweep uses emma's CIDR" "-sn -T4 192.168.9.0/24" "$(cat "$FAKE_NMAP_LOG")"
 
 echo "== fails safe: a broken setup prints nothing on stdout and exits 2"
-FAKE_NEIGH="x dev wlo1 lladdr bc:10:7b:8b:da:a0 REACHABLE"; export FAKE_NEIGH
+FAKE_NEIGH="x dev wlo1 lladdr 02:aa:bb:cc:dd:01 REACHABLE"; export FAKE_NEIGH
 run ghost; check "commented-out user is not found: stdout empty" "" "$OUT"; check "...exit 2" "2" "$RC"
 run nobody; check "unknown user: stdout empty" "" "$OUT"; check "...exit 2" "2" "$RC"
 run "";    check "no person_id: stdout empty" "" "$OUT"; check "...exit 2" "2" "$RC"
