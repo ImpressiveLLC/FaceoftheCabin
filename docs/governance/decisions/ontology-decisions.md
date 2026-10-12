@@ -530,7 +530,7 @@ The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detecti
 6. A demo token is rejected when combined with another scope at creation.
 7. Expired and revoked demo tokens return 401 `GUEST_LINK_INACTIVE`.
 8. UI (Vitest): demo mode shows the banner, renders no sign-in control, and renders the camera card placeholder with no `<img>` or `<video>`.
-9. Added by [W-21](../backlog.md): the same range and field, requested through the normal view and through a demo token, returns identical rows for a non-presence device (Q-DM-2 answered — both ceilings are 60).
+9. Added by [W-21](../backlog.md): the same range and field, requested through the normal view and through a demo token, returns identical rows for a non-presence device (Q-DM-2 answered — both ceilings are 60). Ratified by Cowork 2026-10-03.
 
 ### Open questions
 
