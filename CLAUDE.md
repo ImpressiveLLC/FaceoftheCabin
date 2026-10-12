@@ -761,13 +761,19 @@ themselves, they just never had anything to trip on before:
 
 ## Design constraints
 
-- No Python beyond `watchdog.py` **and** the `docs/ai-assistant/` corpus/
+- No Python beyond `watchdog.py`, the `docs/ai-assistant/` corpus/
   eval tooling (`scripts/build-corpus-inventory.py`,
-  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`) —
-  updated 2026-09-10, this constraint had drifted stale as those shipped.
-  Both are deliberately narrow, tooling-only exceptions; no Python in the
-  actual runtime request path (backend stays Java/Spring Boot, frontend
-  stays JS/React).
+  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`),
+  **and** the Home Assistant side of `infra/cabin-security/homeassistant/`:
+  `cabin_security_mqtt_publish.py` (the publish allow-list HA's
+  `shell_command` runs inside HA's own container, not in the backend) and
+  its unit test, plus `test/ha-sim/run_sim.py`, an offline Home Assistant
+  simulation that runs only on a developer machine. Updated 2026-09-10 for
+  the corpus tooling and 2026-10-12 for the HA side (the allow-list script
+  already existed, so this constraint had drifted again, found by the
+  2026-10-12 session DoD). All are deliberately narrow, tooling-only
+  exceptions; no Python in the actual runtime request path (backend stays
+  Java/Spring Boot, frontend stays JS/React).
 - No ARM/Pi hardware for the two *production* "main brain" hubs — both
   are x86_64 Lenovo ThinkCentre M920q running the full stack (Postgres,
   Kafka, the Spring Boot backend, Grafana, HA, Node-RED, Frigate), and
