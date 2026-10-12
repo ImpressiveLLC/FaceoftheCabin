@@ -27,6 +27,14 @@ This platform is designed to be worked on across multiple machines. The rule is 
 
 **If Claude can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
 
+**Several agent sessions (Claude Code, Codex, Cowork) push to this repo at once.**
+Load the project skill `cabin-peer-agent-collaboration` when a PR conflicts, an
+Autofix event arrives, or you are about to merge: it covers re-reading a branch
+before touching it, repairing conflicts by merging `origin/main` in (never
+rebase or force-push), the resolver for the append-only tables every PR edits,
+merging only a clean PR pinned to the commit you checked, and which PRs wait
+for Nate.
+
 **Decisions made where Claude can't commit (Claude web at the cabin — no
 Claude Code on the M920q) need an explicit hand-back, not just a good
 conversation.** Found 2026-08-06: a real, discussed, agreed decision about
