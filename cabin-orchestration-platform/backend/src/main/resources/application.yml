@@ -184,6 +184,16 @@ cabin:
   # must be a real read-write bind mount to /storage (the M920q's actual
   # HDD, not the container's own ephemeral filesystem) -- see
   # docker-compose.m920q.yml's matching volume entry.
+  # W-11 (2026-10-12): disk-usage monitor for the HDD cold tier and the NVMe hot tier; see
+  # StorageMonitorService. Reports only, never deletes. The HDD is seen through the archive mount below.
+  storage:
+    monitor:
+      enabled: ${STORAGE_MONITOR_ENABLED:true}
+      mounts: ${STORAGE_MONITOR_MOUNTS:storage-hdd=/app/archives/cabin_event,root-nvme=/}
+      warnPercent: ${STORAGE_WARN_PERCENT:80}
+      criticalPercent: ${STORAGE_CRITICAL_PERCENT:90}
+      clearMarginPercent: ${STORAGE_CLEAR_MARGIN_PERCENT:3}
+      renotifyHours: ${STORAGE_RENOTIFY_HOURS:24}
   telemetryArchival:
     enabled: ${TELEMETRY_ARCHIVAL_ENABLED:true}
     hotRetentionMonths: ${TELEMETRY_ARCHIVAL_HOT_MONTHS:3}

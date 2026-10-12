@@ -6612,7 +6612,10 @@ export function deviceConditionSteps(item) {
   ];
 }
 
-const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED";
+// STORAGE_ (W-11, 2026-10-12): STORAGE_THRESHOLD / STORAGE_CLEARED events from the backend's disk
+// monitor -- a filling disk is exactly the quiet failure this list exists to surface (the HDD sat at
+// 94% for weeks with nothing saying so). Their payload carries the same see/think/act text.
+const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED,STORAGE_";
 
 // authedFetch falls back to plain fetch when no auth prop is passed, so
 // this component's own existing tests (rendered without one) keep

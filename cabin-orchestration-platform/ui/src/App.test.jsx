@@ -4554,6 +4554,28 @@ describe("useAutomationAlerts", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
       url.includes("eventTypePrefix=AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED"))).toBe(true));
   });
+
+  // W-11: the disk monitor's STORAGE_THRESHOLD events must reach this list, or a filling disk is silent again.
+  it("also asks for STORAGE_ events", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+
+    render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
+      /eventTypePrefix=[^&]*STORAGE_/.test(url))).toBe(true));
+  });
+
+  it("renders a storage warning from its see/think payload with a readable rule name", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: async () => [{ eventId: "s1", sourceDeviceId: "storage-storage-hdd", eventType: "STORAGE_THRESHOLD",
+        severity: "CRITICAL", timestamp: new Date().toISOString(),
+        payload: { ruleId: "STORAGE_THRESHOLD", see: "storage-hdd is 94% full (57 GB free of 916 GB)", think: "Crossed the 90% critical line", act: "Prune old nightly backups first" } }],
+    });
+
+    render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
+
+    expect(await screen.findByText("storage-hdd is 94% full (57 GB free of 916 GB)")).toBeTruthy();
+  });
 });
 
 // Covers the 2026-08-08 request: drop the vestigial "Family" wording from
