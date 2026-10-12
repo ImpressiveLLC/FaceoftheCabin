@@ -76,6 +76,25 @@ public class JdbcAlertHistoryStore {
             rs.getString("title")), args.toArray());
     }
 
+    /** W-57: rows grouped by (alert_key, action) since a time; deviceId is nullable (null = every device). */
+    public List<AlertHistoryCount> countsSince(Instant since, String deviceId) {
+        StringBuilder sql = new StringBuilder("""
+            SELECT alert_key, kind, device_id, condition, action, COUNT(*) AS n,
+                   MIN(occurred_at) AS first_at, MAX(occurred_at) AS last_at
+            FROM alert_history WHERE occurred_at >= ?""");
+        List<Object> args = new ArrayList<>();
+        args.add(Timestamp.from(since));
+        if (deviceId != null && !deviceId.isBlank()) {
+            sql.append(" AND device_id = ?");
+            args.add(deviceId);
+        }
+        sql.append(" GROUP BY alert_key, kind, device_id, condition, action");
+        return jdbc.query(sql.toString(), (rs, i) -> new AlertHistoryCount(
+            rs.getString("alert_key"), rs.getString("kind"), rs.getString("device_id"), rs.getString("condition"),
+            rs.getString("action"), rs.getLong("n"),
+            rs.getTimestamp("first_at").toInstant(), rs.getTimestamp("last_at").toInstant()), args.toArray());
+    }
+
     /** alertKey -> latest of its RAISED/RESOLVED rows' action. A key is "open" iff its value is RAISED. */
     public Map<String, String> latestTransitionByKey() {
         Map<String, String> latest = new HashMap<>();
