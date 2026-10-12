@@ -1124,6 +1124,21 @@ body {
   background: var(--success);
   flex-shrink: 0;
 }
+/* W-34: replaces the live dot once the phone's last report is older than the
+   backend's stale limit, and the badge reads "Presence unknown". */
+.presence-stale-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+}
+.presence-toggle-unknown { border-color: var(--warning); }
+.presence-age {
+  font-size: 11px;
+  color: var(--text-dim, var(--text-muted));
+  white-space: nowrap;
+}
 
 /* ─── Monitoring panel profile hint ─────────────────────────────────────── */
 .mn-profile-hint {
@@ -1296,6 +1311,20 @@ body {
 .dm-row-enable-toggle {
   flex-shrink: 0; padding: 2px; line-height: 0;
 }
+/* W-27 power on/off (DmPowerToggle) -- text + icon, unlike the
+   monitoring-enable toggle beside it, so the two can't be confused. */
+.dm-power-toggle {
+  flex-shrink: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; padding: 2px 8px;
+}
+.dm-power-toggle.dm-power-on  { color: var(--success); }
+.dm-power-toggle.dm-power-off { color: var(--text-muted); }
+
+/* W-28 "On the Way" button + its short-lived confirmation. */
+.on-the-way { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.on-the-way-toast { font-size: 12px; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--border); }
+.on-the-way-toast.toast-ok  { color: var(--success); }
+.on-the-way-toast.toast-err { color: var(--danger, var(--text)); }
 
 /* ─── Device detail pane ─────────────────────────────────────────────────── */
 .dm-detail {

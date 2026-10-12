@@ -4,8 +4,37 @@ import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-li
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
-mergeStatusCheckItems } from "./App.jsx";
+formatPresenceAge, presenceBadgeModel, PresenceBadge,
+mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
+
+// The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
+// it used to reset to Cabin on every visit, hiding the Home AldrichFront camera).
+describe("readStoredLocation", () => {
+  const store = (value) => ({ getItem: (k) => (k === ACTIVE_LOCATION_KEY ? value : null) });
+
+  it("returns the stored location when it is a known one", () => {
+    expect(readStoredLocation(store("home"), ["cabin", "home"])).toBe("home");
+    expect(readStoredLocation(store("cabin"), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("returns 'both' when 'both' was stored", () => {
+    expect(readStoredLocation(store("both"), ["cabin", "home"])).toBe("both");
+  });
+
+  it("falls back to cabin when nothing is stored", () => {
+    expect(readStoredLocation(store(null), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("falls back to cabin for a location that no longer exists", () => {
+    expect(readStoredLocation(store("lake-house"), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("falls back to cabin when storage throws", () => {
+    const broken = { getItem: () => { throw new Error("blocked"); } };
+    expect(readStoredLocation(broken, ["cabin", "home"])).toBe("cabin");
+  });
+});
 
 // Covers the actual reported bug this session ("Camera Events" showing
 // device logs instead of camera activity) -- see
@@ -1582,6 +1611,56 @@ describe("FamilyHubPanel — Add Place", () => {
     fireEvent.click(screen.getByText("Create Place"));
 
     await waitFor(() => expect(screen.getByText("id is required")).toBeTruthy());
+  });
+
+  // W-32 (2026-10-04): POST /api/locations now needs a signed-in session, so the
+  // create must go through the auth object's authedFetch, not a plain fetch.
+  function renderPanelWithAuth(authedFetch) {
+    return render(
+      <ThemeProvider>
+        <AppContext.Provider value={{ devices: [] }}>
+          <FamilyHubPanel auth={{ authedFetch }} />
+        </AppContext.Provider>
+      </ThemeProvider>
+    );
+  }
+
+  function fillAndSubmit() {
+    fireEvent.click(screen.getByText("Add Place"));
+    fireEvent.change(screen.getByPlaceholderText("lakehouse"), { target: { value: "lakehouse" } });
+    fireEvent.change(screen.getByPlaceholderText("Lake House"), { target: { value: "Lake House" } });
+    fireEvent.click(screen.getByText("Create Place"));
+  }
+
+  it("creates the place through the signed-in authedFetch, never a bare fetch", async () => {
+    const plainFetch = vi.fn();
+    vi.stubGlobal("fetch", plainFetch);
+    const authedFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    const [url, opts] = authedFetch.mock.calls[0];
+    expect(url).toMatch(/\/api\/locations$/);
+    expect(opts.method).toBe("POST");
+    expect(plainFetch).not.toHaveBeenCalled();
+  });
+
+  it("tells a signed-out user to sign in instead of showing a bare 401", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => "Missing bearer token" });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/needs a signed-in household session/)).toBeTruthy());
+    expect(screen.queryByText("Missing bearer token")).toBeNull();
+  });
+
+  it("gives a read-only guest or viewer the same sign-in message on 403", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 403, text: async () => "forbidden" });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/needs a signed-in household session/)).toBeTruthy());
   });
 });
 
@@ -4477,6 +4556,28 @@ describe("useAutomationAlerts", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
       url.includes("eventTypePrefix=AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED"))).toBe(true));
   });
+
+  // W-11: the disk monitor's STORAGE_THRESHOLD events must reach this list, or a filling disk is silent again.
+  it("also asks for STORAGE_ events", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+
+    render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
+      /eventTypePrefix=[^&]*STORAGE_/.test(url))).toBe(true));
+  });
+
+  it("renders a storage warning from its see/think payload with a readable rule name", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: async () => [{ eventId: "s1", sourceDeviceId: "storage-storage-hdd", eventType: "STORAGE_THRESHOLD",
+        severity: "CRITICAL", timestamp: new Date().toISOString(),
+        payload: { ruleId: "STORAGE_THRESHOLD", see: "storage-hdd is 94% full (57 GB free of 916 GB)", think: "Crossed the 90% critical line", act: "Prune old nightly backups first" } }],
+    });
+
+    render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
+
+    expect(await screen.findByText("storage-hdd is 94% full (57 GB free of 916 GB)")).toBeTruthy();
+  });
 });
 
 // Covers the 2026-08-08 request: drop the vestigial "Family" wording from
@@ -5176,6 +5277,105 @@ describe("formatPresenceSignals", () => {
     expect(formatPresenceSignals([{ personId: "nate", location: "cabin", present: false }]))
       .toBe("No one currently detected present");
     expect(formatPresenceSignals(undefined)).toBe("No one currently detected present");
+  });
+});
+
+// W-34 (2026-10-03 finding): the badge read "Away" at the house because the
+// retained presence value was 41 hours old. A stale auto-derived value must
+// read "Presence unknown", never a confident Away/At Cabin.
+describe("formatPresenceAge", () => {
+  it("formats minutes, hours and days compactly", () => {
+    expect(formatPresenceAge(5)).toBe("just now");
+    expect(formatPresenceAge(60)).toBe("1 min ago");
+    expect(formatPresenceAge(59 * 60)).toBe("59 min ago");
+    expect(formatPresenceAge(3600)).toBe("1 h ago");
+    expect(formatPresenceAge(3 * 3600 + 20 * 60)).toBe("3 h 20 min ago");
+    expect(formatPresenceAge(24 * 3600)).toBe("1 d ago");
+    expect(formatPresenceAge(41 * 3600)).toBe("1 d 17 h ago");
+  });
+
+  it("is empty for a missing or non-finite age and never negative", () => {
+    expect(formatPresenceAge(null)).toBe("");
+    expect(formatPresenceAge(undefined)).toBe("");
+    expect(formatPresenceAge(NaN)).toBe("");
+    expect(formatPresenceAge(-30)).toBe("just now");
+  });
+});
+
+describe("presenceBadgeModel", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const fresh = { signalAgeSeconds: 600, stale: false, staleAfterHours: 6 };
+  const stale = { signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 };
+
+  it("with no heartbeat behaves exactly as before: no age, never unknown", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: null });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toBe("Live-detected: No one currently detected present");
+  });
+
+  it("shows the age and stays a confident reading while fresh", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: fresh });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("10 min ago");
+    expect(m.title).toContain("phone last reported 10 min ago");
+  });
+
+  it("goes unknown past the limit and explains why", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: stale });
+    expect(m.unknown).toBe(true);
+    expect(m.title).toContain("Presence unknown");
+    expect(m.title).toContain("1 d 17 h");
+    expect(m.title).toContain("limit 6 h");
+  });
+
+  it("does not hide a manual override just because a heartbeat is old", () => {
+    const m = presenceBadgeModel({ autoDerived: false, signals, freshness: stale });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toMatch(/^Manually set/);
+  });
+});
+
+describe("PresenceBadge", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const base = { profile: "AWAY", options: [], onChange: () => {}, autoDerived: true, signals };
+
+  it("renders 'Presence unknown' instead of Away when the signal is stale", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Presence unknown");
+    expect(screen.queryByText("last seen 1 d 17 h ago")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeFalsy();
+    // the real choices are still there as a manual override
+    expect(within(select).getByText("Away")).toBeTruthy();
+  });
+
+  it("keeps the real value and the live dot when fresh, with an age chip", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 120, stale: false, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+    expect(screen.queryByText("2 min ago")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeFalsy();
+  });
+
+  it("renders with no age chip at all when the backend sends no heartbeat", () => {
+    const { container } = render(<PresenceBadge {...base} freshness={null} />);
+    expect(container.querySelector(".presence-age")).toBeFalsy();
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+  });
+
+  it("picking a real option while unknown reports it as a manual override", () => {
+    const onChange = vi.fn();
+    render(<PresenceBadge {...base} onChange={onChange}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    fireEvent.change(screen.getByLabelText("Presence"), { target: { value: "AT_CABIN" } });
+    expect(onChange).toHaveBeenCalledWith("AT_CABIN");
   });
 });
 

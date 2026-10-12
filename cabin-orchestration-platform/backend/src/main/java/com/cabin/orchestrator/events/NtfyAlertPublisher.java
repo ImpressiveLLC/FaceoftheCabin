@@ -20,6 +20,12 @@ import java.time.Duration;
  * second notification path. WARN-severity events (door open, low battery,
  * tamper) are deliberately not pushed — that would page for every open door.
  *
+ * An event can ask for a push regardless of severity with payload notify=true
+ * (W-11's 80% storage warning is WARN and should still reach a phone). It may
+ * also supply its own ntfy title and body in payload title/message; without
+ * them the push reads "deviceId: eventType" as before. Non-CRITICAL pushes go
+ * out at ntfy priority "high", CRITICAL at "urgent".
+ *
  * No-op when cabin.alerts.ntfyTopic is unset, matching this codebase's
  * existing pattern for optional integrations (see CameraMediaController's
  * blinkBridgeUrl / techid.apiKey).
@@ -46,17 +52,20 @@ public class NtfyAlertPublisher {
     }
 
     public void publishIfCritical(CabinEvent event) {
-        if (!"CRITICAL".equals(event.severity())) return;
+        boolean critical = "CRITICAL".equals(event.severity());
+        boolean asked = event.payload() != null && Boolean.TRUE.equals(event.payload().get("notify"));
+        if (!critical && !asked) return;
         if (ntfyTopic == null || ntfyTopic.isBlank()) {
             log.debug("CRITICAL event {} not pushed — no ntfy topic configured", event.eventId());
             return;
         }
         try {
-            String message = event.sourceDeviceId() + ": " + event.eventType();
+            String message = payloadText(event, "message", event.sourceDeviceId() + ": " + event.eventType());
+            String title = payloadText(event, "title", "Cabin Alert");
             HttpRequest req = HttpRequest.newBuilder(URI.create(ntfyBaseUrl + "/" + ntfyTopic))
                 .timeout(Duration.ofSeconds(10))
-                .header("Title", "Cabin Alert")
-                .header("Priority", "urgent")
+                .header("Title", headerSafe(title))
+                .header("Priority", critical ? "urgent" : "high")
                 .POST(HttpRequest.BodyPublishers.ofString(message, StandardCharsets.UTF_8))
                 .build();
             http.sendAsync(req, HttpResponse.BodyHandlers.discarding())
@@ -67,5 +76,15 @@ public class NtfyAlertPublisher {
         } catch (Exception e) {
             log.warn("Failed to build ntfy push for event {}: {}", event.eventId(), e.getMessage());
         }
+    }
+
+    private static String payloadText(CabinEvent event, String key, String fallback) {
+        Object v = event.payload() == null ? null : event.payload().get(key);
+        return v instanceof String s && !s.isBlank() ? s : fallback;
+    }
+
+    /** HTTP header values cannot carry control characters or non-ASCII; keep the title plain. */
+    private static String headerSafe(String text) {
+        return text.replaceAll("[^\\x20-\\x7E]", " ").trim();
     }
 }
