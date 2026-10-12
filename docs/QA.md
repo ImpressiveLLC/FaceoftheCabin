@@ -183,3 +183,11 @@ log has no horizontal overflow at 375 px.
 - No test drives the scheduled job through Spring's real scheduler; the
   recorder is tested by calling `recordTransitions()` directly.
 - Device-condition history before first deploy does not exist.
+
+---
+
+## Noisy alert opportunities (W-57)
+
+Automated: `AlertRecommendationsTest` (advice per alert kind; safety-class never told to tune, including a safety-category device; retire note only at the silence threshold), `AlertFrequencyAnalyticsServiceTest` (Testcontainers: device conditions and automation alerts counted; below-threshold and out-of-window ignored; unconfirmed-command alerts collapse to one; silencing alone flags; refresh keeps an acknowledged row; resolved is not reopened by old events and a fresh burst opens one counting only new events; no-device events skipped; disabled), `AskContextBuilderTest` (new fixture section resolves, frozen questions still route), and `App.test.jsx` (NOISY_ALERT card shows counts, advice and the device/workflow links).
+
+Known gaps: not run against the live backend, and the scheduler itself is not driven (the scan is called directly).

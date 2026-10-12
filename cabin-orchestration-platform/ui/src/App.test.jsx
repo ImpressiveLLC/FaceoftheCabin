@@ -5244,6 +5244,32 @@ describe("OptimizationOpportunitiesCard", () => {
     expect(screen.getByText(/Drawing ~42W continuously for 60h/)).toBeTruthy();
   });
 
+  it("shows a noisy-alert opportunity's counts and advice, with links to the device and workflow (W-57)", async () => {
+    const setActivePanel = vi.fn(), setPendingDeviceFocus = vi.fn(), setPendingRulesFocus = vi.fn();
+    const auth = mockAuth({ ok: true, json: async () => [
+      { id: "op-9", opportunityType: "NOISY_ALERT", deviceId: "z2m-heater_mech_room", status: "OPEN",
+        detectedAt: "2026-10-12T00:00:00Z", evidence: { windowDays: 7, alerts: [
+          { alertKey: "automation:WORKFLOW_wf1:z2m-heater_mech_room", kind: "automation", ruleId: "WORKFLOW_wf1",
+            raised: 8, silenced: 3, recommendations: ["give its notify action a cooldown"] },
+        ] } },
+    ] });
+
+    render(
+      <AppContext.Provider value={{ setActivePanel, setPendingDeviceFocus, setPendingRulesFocus }}>
+        <OptimizationOpportunitiesCard auth={auth} devices={devices} />
+      </AppContext.Provider>
+    );
+
+    expect(await screen.findByText(/Alerts keep recurring \(last 7 days\)/)).toBeTruthy();
+    expect(screen.getByText(/raised 8×, silenced 3×/)).toBeTruthy();
+    expect(screen.getByText("give its notify action a cooldown")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open device" }));
+    expect(setPendingDeviceFocus).toHaveBeenCalledWith("z2m-heater_mech_room");
+    fireEvent.click(screen.getByRole("button", { name: "Open workflow" }));
+    expect(setPendingRulesFocus).toHaveBeenCalledWith({ kind: "workflow", id: "wf1" });
+    expect(setActivePanel).toHaveBeenLastCalledWith("RULES_ENGINE");
+  });
+
   it("falls back to the bare deviceId when no matching device is found", async () => {
     const auth = mockAuth({ ok: true, json: async () => [
       { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-unknown", status: "OPEN",

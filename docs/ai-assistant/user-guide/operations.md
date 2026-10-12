@@ -48,3 +48,18 @@ Historical Claude findings now reconciled with source: discovery lookup-result p
 New backend workflows are created disabled; activation is separate. Creation and activation validate action targets and the valve-reopen guard. Inspect the owner and current rule definition before altering a workflow; do not duplicate an HA or Node-RED action merely because the assistant knows about it. Source: [RulesController `createWorkflow`/`activateWorkflow`](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java).
 
 Safety-critical instructions need a reviewed applicable procedure. The existing sprint record reports incomplete safety curation; this is historical evidence, not a current content audit. This supplement does not invent leak-response or valve-reopen instructions. If the procedure is absent, say so and request the operator's approved procedure rather than improvising. Source: [Sprint 2 curation status](../../ontology/SPRINT-STATUS.md), [KB generator](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/KbGeneratorService.java).
+
+## An alert keeps firing
+
+Audience: administrator. Rules & Alerts and Monitoring show alerts; when the same alert keeps coming back, or keeps being silenced, the platform opens an **Alert noise** opportunity (Rules & Alerts, Optimization Opportunities) for that device, naming each alert, how many times it was raised and silenced in the last seven days, and what to look at. It is a pattern worth a look, never an automatic change, and it reads the reviewable record in Monitoring, Sensor History, Alert History. That record starts when the log was turned on, so a quiet history for a flaky device can mean "not logged yet".
+
+What to look at depends on the alert:
+
+- **A device missed its check-in.** Compare how often the device really reports with the check-in window on its device page ("Expected within ... min"). If it normally reports less often, the window is too tight and it will keep looking late. If it is sometimes on time and sometimes not, look at its link (signal quality, distance to a router) and its battery.
+- **A workflow notification repeats.** The workflow notifies every time its condition recurs. Give its notify action a cooldown; an existing workflow cannot be edited yet, so create the replacement and delete the old one. Also check whether the reading sits right at the trigger threshold, which means the device may need repositioning.
+- **A command is not confirmed.** The device did not report the commanded state. Check the device, its link and battery, and whether another automation (Home Assistant, Node-RED) is reverting the command.
+- **A built-in presence rule** (motion while unoccupied, lock unlocked) usually means the presence picture is wrong: check the presence signals before the rule.
+- **Any other built-in backend rule.** Its threshold is a deploy-time setting, not editable in the app. Check the reading is genuinely near the threshold before asking for a change.
+- **An alert silenced three or more times** is telling you something: retune it as above, or retire it. A routinely silenced alert is easy to miss on the day it is real.
+
+**Safety alerts are different.** For a water-leak, smoke or CO device, any device alarm, and the freeze-risk and safety-alarm rules, repeats are a reason to find the cause (sensor placement, a slow leak, a failing battery, a genuinely cold spot, a faulty probe). Silencing is not a fix and this guidance never suggests tuning those down.

@@ -975,3 +975,21 @@ embeds the execution id, so ignoring one does not suppress the next
 and the Tiny Helpdesk guidance as docs in git) builds on this log.
 
 ---
+
+## 2026-10-12 — Noisy alerts: say what to look at, never "turn it down"
+
+W-57 turns the W-56 log into a finding. When an alert is raised five times
+or silenced three times for one device in a week, an Alert noise opportunity
+appears with where to look. Two choices worth recording. **Silencing counts
+as evidence:** a person who has snoozed the same alert three times has
+already decided it is noise, which is a stronger signal than the raw count.
+**Safety alerts are never told to tune down:** for a leak, smoke or CO
+device, any device alarm and the freeze-risk and safety-alarm rules, the
+advice is to find the cause, because a repeating safety alert is exactly the
+case where silencing is the wrong response (the same stance that kept the
+mechanical-room heater from being called "waste" in POWER_DRAW_ANOMALY).
+Advice is a deterministic table, not a model call. Tiny Helpdesk gets the
+same guidance as a section of the user guide in git, not a runtime KB write,
+because KB content must repopulate from a fresh clone.
+
+---

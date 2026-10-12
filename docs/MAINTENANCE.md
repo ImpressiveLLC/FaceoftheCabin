@@ -681,6 +681,15 @@ right now"; it is not the history. Things worth knowing when debugging:
 - **IGNORED has no expiry.** Un-ignore now exists in the UI (Alert History →
   "Silenced right now"); before W-56 the only way back was the DELETE API.
 
+**Noisy alerts (W-57).** `AlertFrequencyAnalyticsService` runs hourly
+(`cabin.opportunities.alertNoise.cron`, `.enabled`, `.windowDays` 7,
+`.minRaises` 5, `.minSilences` 3) and opens one `NOISY_ALERT` row in
+Optimization Opportunities per device. It reads the W-56 log, so it cannot
+flag anything the log has not seen; an admin's Acknowledge/Resolve is never
+overwritten, and after a Resolve only newer events count. The advice is a
+fixed table (`AlertRecommendations`), mirrored in prose in the user guide's
+"An alert keeps firing" section that Ask can retrieve; change both together.
+
 **Box layout is a real preference, not a fixed screenshot.** Card order
 in the Rules & Alerts grid is drag-reordered and persisted
 (`localStorage` key `order.rulesAlertsBoxes`, `useDraggableOrder` — same

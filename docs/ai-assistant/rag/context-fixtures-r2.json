@@ -210,7 +210,14 @@
         "reopen",
         "valve",
         "automation",
-        "create a workflow"
+        "create a workflow",
+        "alert keeps firing",
+        "keeps firing",
+        "fires too often",
+        "noisy alert",
+        "alert noise",
+        "alert fatigue",
+        "too many alerts"
       ],
       "questions": [
         "Q08"
@@ -236,6 +243,11 @@
         {
           "path": "ai-assistant/user-guide/operations.md",
           "section": "rules-and-safety",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/operations.md",
+          "section": "an-alert-keeps-firing",
           "audience": "administrator"
         }
       ]

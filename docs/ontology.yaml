@@ -8893,6 +8893,58 @@ elements:
       ("WORKFLOW_" + workflowId); a WORKFLOW_UNCONFIRMED_ alert is a failed
       command confirmation, so it links to its device only.
 
+  - id: optimization_opportunity
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-10-12"
+      ref: "W-57: AlertFrequencyAnalyticsService, AlertRecommendations (POWER_DRAW_ANOMALY predates this entity: OptimizationAnalyticsService)"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Optimization opportunity"
+    source: >
+      optimization_opportunity table (JdbcOptimizationOpportunityStore),
+      written by two scheduled scans and read by GET /api/opportunities
+      (administrator only). POWER_DRAW_ANOMALY: a power meter drawing
+      continuously. NOISY_ALERT: one row per device whose alerts keep
+      recurring or keep being silenced, counted over a rolling window from
+      alert_history_entry rows and cabin_event.
+    transformation: >
+      alert_history_entry + cabin_event(AUTOMATION_ALERT, WORKFLOW_ACTION,
+      WORKFLOW_UNCONFIRMED) --AlertFrequencyAnalyticsService hourly, per device,
+      any alert at >= 5 raises or >= 3 silences in 7 days--> NOISY_ALERT row
+      whose evidence lists each noisy alert with its counts and deterministic
+      recommendations. Never auto-resolved; only counts after the last
+      resolution are considered for a re-open.
+    rendering:
+      semantic: "A pattern worth a look, with where to look -- never an automatic change"
+      systems: "Rules & Alerts > Optimization Opportunities (OptimizationOpportunitiesCard)"
+      technical: >
+        Per-type rows. NOISY_ALERT shows each alert's counts, its
+        recommendations, and Open device / Open workflow / Open rule.
+      compliance: "Rules & Alerts panel"
+    definition: >
+      An admin-reviewed finding about a device, with status OPEN,
+      ACKNOWLEDGED or RESOLVED. Safety-class alerts (safety-category device,
+      DEVICE_ALARM, SAFETY_ALARM, FREEZE_RISK) are advised to be investigated,
+      never tuned down or silenced.
+    relationships:
+      - target: alert_history_entry
+        type: derived_from
+        cardinality: "N:N"
+    relates_to:
+      ui_components: [ui_rules_panel, ui_device_manager_panel]
+      elements: []
+    notes: >
+      Guidance for an administrator who sees one of these lives in git, in
+      docs/ai-assistant/user-guide/operations.md ("An alert keeps firing"),
+      not in the runtime knowledge base. Its text is the prose twin of
+      AlertRecommendations.
+
   - id: nav_alert_summary_banner
     entity_type: owl:Class
     layer: frontend

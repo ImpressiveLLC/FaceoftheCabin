@@ -7990,7 +7990,19 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
 // PlatformInfoCard.
 const OPPORTUNITY_TYPE_LABELS = {
   POWER_DRAW_ANOMALY: "Power",
+  NOISY_ALERT: "Alert noise",
 };
+
+// W-57: one noisy alert's line -- what it is, how often, and where to go.
+export function noisyAlertSummary(alert) {
+  const parts = [];
+  if (alert.raised > 0) parts.push(`raised ${alert.raised}×`);
+  if (alert.silenced > 0) parts.push(`silenced ${alert.silenced}×`);
+  const what = alert.kind === "device"
+    ? (alert.condition || "alert").replaceAll("_", " ").toLowerCase()
+    : humanizeRuleId(alert.ruleId);
+  return `${what} — ${parts.join(", ")}`;
+}
 
 export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // exported for src/App.test.jsx -- tested standalone rather than through RulesPanel's much larger fetch surface
   const [opportunities, setOpportunities] = useState([]);
@@ -7998,6 +8010,7 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [typeFilter, setTypeFilter] = useState("ALL");
+  const app = useApp() || {};
   const doFetch = auth?.authedFetch || fetch;
   const apiBase = LOCATIONS.cabin.apiBase;
 
@@ -8079,8 +8092,28 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
                 <div className="rule-detail">
                   {watts != null && `Drawing ~${Number(watts).toFixed(0)}W`}
                   {hours != null && ` continuously for ${hours}h`}
+                  {o.opportunityType === "NOISY_ALERT" && `Alerts keep recurring (last ${o.evidence?.windowDays ?? "?"} days)`}
                   {" · detected "}{new Date(o.detectedAt).toLocaleString()}
                 </div>
+                {o.opportunityType === "NOISY_ALERT" && (o.evidence?.alerts || []).map(alert => {
+                  const target = alert.kind === "automation" ? alertRulesTarget(alert.ruleId) : null;
+                  return (
+                    <div key={alert.alertKey} className="noisy-alert-item">
+                      <strong>{noisyAlertSummary(alert)}</strong>
+                      <ul>
+                        {(alert.recommendations || []).map((text, i) => <li key={i}>{text}</li>)}
+                      </ul>
+                      <div className="workflow-row-actions">
+                        <button type="button" className="btn-ghost" onClick={() => { app.setPendingDeviceFocus?.(o.deviceId); app.setActivePanel?.("DEVICE_MANAGER"); }}>Open device</button>
+                        {target && (
+                          <button type="button" className="btn-ghost" onClick={() => { app.setPendingRulesFocus?.(target); app.setActivePanel?.("RULES_ENGINE"); }}>
+                            {target.kind === "workflow" ? "Open workflow" : "Open rule"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
                 <MetaChips items={[OPPORTUNITY_TYPE_LABELS[o.opportunityType] || o.opportunityType, o.status === "ACKNOWLEDGED" && "acknowledged"]} />
                 <div className="workflow-row-actions">
                   {o.status === "OPEN" && (
