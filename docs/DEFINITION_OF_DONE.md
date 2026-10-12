@@ -214,10 +214,11 @@ accumulate.*
 - **Live camera investigation, 2026-08-24 — three real findings, one
   self-correction.** Triggered by the user reporting missing clips at
   both locations.
-  1. **`front_door` (cabin, Reolink) is still physically off-network** —
-     `No route to host` on `192.168.2.200:554`, continuous watchdog
-     crash-loop. Same known issue as above, reconfirmed live, still not
-     fixable remotely.
+  1. **`front_door` (cabin, Reolink) was off-network — resolved
+     2026-09-29/30.** Reconnected through the M920q's Ethernet port and
+     renamed `cabin_outside_reolink` in the live Frigate config; see
+     MAINTENANCE.md, "A camera on a different network than the M920q".
+     Open follow-ups: W-39 to W-41 in `docs/governance/backlog.md`.
   2. **`home_aldrich_front`'s clip gap is NOT an arm-state issue —
      correcting a wrong live-session claim.** Mid-session I told the user
      arming the driveway Blink camera would likely help, based only on
@@ -384,8 +385,6 @@ accumulate.*
   event severity classifier, native device-confidence evidence, and live
   mobile/kiosk UX validation after review. See `docs/ontology.yaml`'s
   `active_alert_condition` and `automation_rule_status` entities.
-- **Reolink (`front_door`) camera still physically off-network** — needs
-  on-site checking (power, WiFi re-pairing). Not fixable remotely.
 - **`blinkbridge`'s no-clip crash fix — holding, checked 2026-09-13.**
   Container uptime confirmed live: started 2026-09-07, `RestartCount: 0`
   since — no crash-loop recurrence in 6 days of real operation. Stronger

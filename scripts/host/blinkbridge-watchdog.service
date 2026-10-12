@@ -1,0 +1,6 @@
+[Unit]
+Description=Restart blinkbridge if it has stopped logging (W-50)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/blinkbridge-watchdog
