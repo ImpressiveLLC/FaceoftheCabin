@@ -204,28 +204,38 @@
   ledger is in the close-out at the end of this file):
   - **Nate, #118:** acknowledge on the PR that it moves the repo's Node-RED
     flow from dry-run to **live sirens** (Cowork condition C-118-1) before
-    it merges. No part of #118 or #122 is applied to the M920q as of
+    it merges. #122 merged 2026-10-12 (06:28 UTC) but none of the cabin
+    security files from #122 or #118 is applied to the M920q as of
     2026-10-12.
   - **Nate, D24 and D23:** answer Q-LR-1 to Q-LR-3 on
     [#125](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/125) and
     Q-HD-1 and Q-HD-2 on
     [#116](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/116), or say
     "accept Cowork's recommendations" ([HO-2026-10-04](governance/handovers/HO-2026-10-04-cowork-to-code.md)).
-  - **Presence apply order:** merge #122, then #118; re-stage the three files
-    from `main` (the copies in `/tmp/w23` on the host are dated 2026-10-04 and
-    come from a pre-merge branch); then Nate runs the install (the permission
+  - **Presence apply order:** #122 is merged (2026-10-12); merge #118 once
+    Nate has acknowledged it; re-stage the three files from `main` (the copies
+    in `/tmp/w23` on the host are dated 2026-10-04 and come from a pre-merge
+    branch); then Nate runs the install (the permission
     layer refused remote writes on 2026-10-04). Until then, and until a
     departure signal that does not need the phone's Tailscale exists (W-37,
     W-47), arming Away at the cabin is alert-only protection, not a siren.
-  - **PRs that need `main` merged in before they can land** (state read
-    2026-10-12): #113, #121, #124, #129. #121 then #124, per Cowork; they
-    conflict with each other in `App.test.jsx`.
-  - **Live proof owed for D25:** the first scheduled rotate-secrets run after
-    [#129](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/129) merges
-    (06:00 UTC on the 1st) should show `workflow run <id>` in its commit
+  - **PRs that still need `main` merged in** (state read 2026-10-12, 17:59
+    UTC): [#116](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/116) and
+    [#125](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/125) now
+    conflict, because D25 landed in the same decision files; merge `main` in
+    when Nate answers their questions. #118 previews clean. #113, #121, #124,
+    #129 are merged (see the outcome list in the 2026-10-12 close-out).
+  - **Live proof owed for D25:** [#129](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/129)
+    merged 2026-10-12 (17:45 UTC), so the first scheduled rotate-secrets run
+    after it is 2026-11-01 at 06:00 UTC. It should show `workflow run <id>` in its commit
     message, and nothing but the vault file in its diff.
   - **Tests that run only on a developer machine**, until PR CI exists (W-29):
     the three scripts named under section 10 of the 2026-10-12 close-out.
+  - **Skill for concurrent agents:** `cabin-peer-agent-collaboration`
+    ([#151](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/151), merged
+    2026-10-12, 17:59 UTC). Cowork or Nate: add a pointer to it from
+    `fotc-git-and-host-routing`, which lives in Cowork's plugin store outside
+    git.
   - **Missing close-outs:** see the gap list in the 2026-10-12 close-out.
 
 - **2026-09-18 — PR #83 scheduling handoff:** [Retro theme refresh and optional HA console proposal](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/83) is authorized by Nate for merge. The implemented work is **aesthetic/presentation only**: Pac-Man Crackman display fonts, neon Baumans with bundled Oxanium fallback, and pink/mint/blue/yellow palette in both apps. No backend, orchestration, safety logic or device-control behavior is added. **HA-UX0–5 remain proposed, unscored, unratified and unscheduled**; do not start or mark the HA Operations Console complete from this merge. Preserve existing scheduling priorities; use [the WSJF references](ai-assistant/wsjf-backlog.md#optional-ha-operations-console-candidate--2026-09-18) for later explicit prioritization. Deployment/live verification is separate from merge; see [validation limits](retro-theme-validation.md).
@@ -673,7 +683,9 @@ the presence fix (W-23, W-33 to W-38, D24), the Frigate detection fix (W-39),
 the write-gate and governance follow-ups (W-32, D25), and Cowork's
 HO-2026-10-04 rulings. Written on 2026-10-12 from `git log` and each PR's
 `createdAt`, `mergedAt` and `closedAt` read the same day, per the dating
-practice in section (i).
+practice in section (i). The PR outcomes and the 2026-10-12 ledger row were
+refreshed at 17:59 UTC the same day, after the merges they list; times below
+are UTC.
 
 **Date ledger.** "This session" is activity on this session's PR branches.
 "Landed on `main`" is every merge that day, from any session.
@@ -686,13 +698,20 @@ practice in section (i).
 | 2026-10-09 Fri | no activity | #132 |
 | 2026-10-10 Sat | #112 repaired (`9674a18`, 02:45) | #138, #136, #127 (W-39), #133, #137, #134, #135 |
 | 2026-10-11 Sun | no activity | nothing |
-| 2026-10-12 Mon | #114 repaired (`8ab16f5`, 00:55); #122 fake-MAC fix (`021343d`, 00:59) and CLAUDE.md fix (`0dc54a4`, 01:02); this close-out | #143, #141, #142, #128 (W-32), #140, #139, #144, #145 |
+| 2026-10-12 Mon | #114 repaired (`8ab16f5`, 00:55); #122 fake-MAC fix (`021343d`, 00:59) and CLAUDE.md fix (`0dc54a4`, 01:02); this close-out; then, from 17:45 to 17:59 UTC, `main` merged into and repaired #129, #114, #121, #124 and #113 where they conflicted, and #129, #114, #126, #112, #121, #113, #124 merged; #151 opened and merged. The backend deploy (test gate, health check) and UI deploy after #121 and the UI deploy after #124 succeeded | #139, #140, #141, #142, #143, #128 (W-32), #144, #145, #146, #148, #122 (06:28), #150 (16:34), #129, #114, #126, #112, #121, #113, #124, #151 (17:45 to 17:59) |
 
-**Outcome of each PR, read 2026-10-12.** Merged: #117 (2026-10-04), #119
-(2026-10-04), #120 (2026-10-04), #127 (2026-10-10, W-39; credential aligned
-and verified in #133), #128 (2026-10-12, W-32). Closed unmerged: #97 and #99
-(2026-10-04). Open and mergeable: #112, #114, #116, #118, #122, #125, #126.
-Open and conflicting after `main` moved on 2026-10-12: #113, #121, #124, #129.
+**Outcome of each PR, read 2026-10-12 and refreshed at 17:59 UTC.** Merged:
+#117 (2026-10-04), #119 (2026-10-04), #120 (2026-10-04), #127 (2026-10-10,
+W-39; credential aligned and verified in #133), and on 2026-10-12: #128 (05:40,
+W-32), #122 (06:28), #129 (17:45), #114 (17:47), #126 (17:48), #112 (17:49),
+#121 (17:54, W-34), #113 (17:56), #124 (17:58, W-35), #151 (17:59, the
+peer-agent collaboration skill). Closed unmerged: #97 and #99 (2026-10-04).
+Open and held for a named condition: #118 (Nate's acknowledgement of the
+dry-run to live-sirens change, C-118-1), #116 (D23 Q-HD-1 and Q-HD-2), #125
+(D24 Q-LR-1 to Q-LR-3). #116 and #125 conflict with `main` as of 17:59 UTC and
+need `main` merged in. Open: this PR (#147). Earlier on 2026-10-12 #113, #121,
+#124 and #129 were conflicting after `main` moved; each was repaired by merging
+`main` into its branch, never by rebase or force-push.
 
 **Checklist, run 2026-10-12.**
 
@@ -704,7 +723,7 @@ Open and conflicting after `main` moved on 2026-10-12: #113, #121, #124, #129.
 | 4 Local storage | Pass | One new browser key, `armedOccupiedDismissed` (sessionStorage, read on every render of the banner, per-arming) |
 | 5, 6 CI/CD | Pass | No workflow changed. The rotate-secrets playbook's commit step changed (#129) and is documented in D25 |
 | 7 Specs | Pass | The Python constraint above; the handover, D24 and the backlog agree on W-33 to W-38 |
-| 8 Reaches the host | **Not met** | **Nothing of the presence work has reached the M920q as of 2026-10-12.** The permission layer refused the remote write on 2026-10-04; Cowork then ruled merge first, then Nate runs the install. W-39 and W-32 did reach production: W-39 merged 2026-10-10 (detection live on the Reolink at about 3.8 detection fps, credential verified from inside the Frigate container, per the backlog) and W-32 merged 2026-10-12 (live check: anonymous writes 401, reads 200) |
+| 8 Reaches the host | **Partly met** | **The cabin security presence files (the GPS publisher, the stale-presence flow change, the phone Wi-Fi check: #122, #118) have not reached the M920q as of 2026-10-12.** The permission layer refused the remote write on 2026-10-04; Cowork then ruled merge first, then Nate runs the install. **The hub-side presence work did deploy on 2026-10-12:** W-34 (#121, merged 17:54 UTC) through the backend deploy (test gate, health check, no rollback) and the UI deploy, both successful, and W-35 (#124, merged 17:58 UTC) through the UI deploy, successful; neither was viewed rendering in the browser by this session after deploy. W-39 and W-32 did reach production: W-39 merged 2026-10-10 (detection live on the Reolink at about 3.8 detection fps, credential verified from inside the Frigate container, per the backlog) and W-32 merged 2026-10-12 (live check: anonymous writes 401, reads 200) |
 | 9 Ontology baked | Partly | `location_role` is a concept with no create, read, update or delete surface yet (W-38) |
 | 10 Tests | **Partly: several are not CI-gated** | Run in CI at the post-merge gate: the backend and Vitest suites (W-32, W-34, W-35). **Not in any workflow**, because PR CI does not exist yet (W-29): `test_check_authorized_user_phone_wifi.sh` (24 checks), `test_cabin_security_mqtt_publish.py` (6), `ansible/tests/test_vault_commit_guard.sh` (13), and `test/ha-sim/run_sim.py` (34, needs Docker, local only). They ran locally on 2026-10-03, 2026-10-04 and 2026-10-12 (Windows, Docker Desktop, Git Bash), not in a CI run. **Not run at all:** the rotate-secrets playbook end to end (it rotates the real password), Frigate's own config validator for #127, any live phone or zone check |
 
@@ -731,5 +750,5 @@ to #92, #94), 2026-09-23 and 2026-09-24 (the governance skeleton, W-13 and
 related commits), 2026-09-30 and 2026-10-01 (#107, #109, #110 and the vault
 commits), 2026-10-03 and 2026-10-04 (#108, #115, #111, #117, #119, #120,
 #123, #130, #131), 2026-10-09 and 2026-10-10 (#132, #127, #133 to #138) and
-2026-10-12 (#128, #139 to #145). Each owner adds a close-out dated from git,
+2026-10-12 (#128, #139 to #146, #148, #150). Each owner adds a close-out dated from git,
 or Nate accepts the gap explicitly.
