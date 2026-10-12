@@ -12,3 +12,4 @@ ansible/group_vars/**/vault.yml -text
 
 
 scripts/host/backup-modular text eol=lf
+scripts/host/blinkbridge-watchdog* text eol=lf

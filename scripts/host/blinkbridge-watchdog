@@ -1,0 +1,37 @@
+#!/bin/bash
+# Restart blinkbridge when it has gone silent (W-50).
+#
+# blinkbridge polls Blink every 30-40 s and logs every poll, so a healthy one never
+# goes minutes without a log line. Its known failure mode is a hang after a Blink
+# API error: the container stays "Up", the process stays alive at 0% CPU and the
+# control port still answers, but it does nothing, so the Blink cameras (driveway,
+# AldrichFront) look offline in Frigate with only 404s from mediamtx. Docker's
+# restart policy cannot see it. It happened 2026-08-03, 2026-08-06 and 2026-10-10
+# (silent from 16:43 UTC until noticed 36 hours later); `docker restart blinkbridge`
+# fixed it every time.
+#
+# Run by blinkbridge-watchdog.timer every 5 minutes (as root, for docker access).
+# Restarts at most once per STALE_MIN window because a fresh start resets the clock.
+set -euo pipefail
+
+NAME=${NAME:-blinkbridge}
+STALE_MIN=${STALE_MIN:-10}
+now=$(date +%s)
+
+running=$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null || echo false)
+[ "$running" = true ] || exit 0          # not running: Docker's restart policy owns that case
+
+started=$(docker inspect -f '{{.State.StartedAt}}' "$NAME")
+[ $(( now - $(date -d "$started" +%s) )) -gt $(( STALE_MIN * 60 )) ] || exit 0   # just (re)started
+
+last=$(docker logs --tail 1 -t "$NAME" 2>&1 | awk 'NR==1 {print $1}')
+if [ -n "$last" ] && last_s=$(date -d "$last" +%s 2>/dev/null); then
+  silent=$(( now - last_s ))
+else
+  silent=$(( now - $(date -d "$started" +%s) ))    # no readable log line at all
+fi
+
+if [ "$silent" -gt $(( STALE_MIN * 60 )) ]; then
+  logger -t blinkbridge-watchdog "$NAME silent for ${silent}s (limit $(( STALE_MIN * 60 ))s): restarting"
+  docker restart "$NAME" >/dev/null
+fi
