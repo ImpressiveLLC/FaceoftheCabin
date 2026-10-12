@@ -1582,6 +1582,22 @@ export function allLocationsLabel(locationCount) {
   return locationCount <= 2 ? "Both" : "All";
 }
 
+// Which location the toolbar switcher shows survives a reload (2026-10-10).
+// It used to start on "cabin" every time, so someone who mostly looks at Home
+// (the AldrichFront camera lives there) re-picked it on every visit. Presence
+// is deliberately not used to choose it: presence can be stale or unknown, and
+// the view someone last chose is the one they expect back. A stored value that
+// is no longer a known location falls back to "cabin".
+export const ACTIVE_LOCATION_KEY = "ui.activeLocation";
+export function readStoredLocation(storage = globalThis.localStorage, ids = Object.keys(LOCATIONS)) {
+  try {
+    const value = storage.getItem(ACTIVE_LOCATION_KEY);
+    return value === "both" || ids.includes(value) ? value : "cabin";
+  } catch {
+    return "cabin";
+  }
+}
+
 function LocationSwitcher({ active, onChange }) {
   // Object.keys(LOCATIONS) instead of a hardcoded ["cabin","home"] so a
   // location added via POST /api/locations (see useHubLocations below)
@@ -1820,10 +1836,15 @@ const ADD_PLACE_FIELDS = [
   { key: "familyHubUrl", label: "Family Hub URL",    placeholder: "(fill in later if unknown)" },
 ];
 
-function AddPlaceForm({ onCreated, onCancel }) {
+function AddPlaceForm({ onCreated, onCancel, auth }) {
   const [form, setForm] = useState(() => Object.fromEntries(ADD_PLACE_FIELDS.map(f => [f.key, ""])));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // W-32 (2026-10-04): POST /api/locations now needs a signed-in session. The
+  // plain fetch this used to make carries no credential, so it would 401 for
+  // everyone. `auth` is only ever omitted by a test exercising the fallback,
+  // same convention as every other panel here.
+  const doFetch = auth?.authedFetch || fetch;
 
   const update = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
 
@@ -1840,11 +1861,14 @@ function AddPlaceForm({ onCreated, onCancel }) {
       for (const [k, v] of Object.entries(form)) {
         if (v.trim()) body[k] = v.trim();
       }
-      const res = await fetch(`${LOCATIONS.cabin.apiBase}/api/locations`, {
+      const res = await doFetch(`${LOCATIONS.cabin.apiBase}/api/locations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("Adding a place needs a signed-in household session. Sign in, then try again.");
+      }
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(text || `HTTP ${res.status}`);
@@ -1886,7 +1910,7 @@ function AddPlaceForm({ onCreated, onCancel }) {
 // also exposes (built in §1b, still unused by any UI -- a server-synced
 // order is a deliberate, separate future option, not what this
 // implements).
-export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder test
+export function FamilyHubPanel({ auth }) { // exported for src/App.test.jsx's reorder test
   const { devices } = useApp();
   const [reorderMode, setReorderMode] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -1931,6 +1955,7 @@ export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder te
           the UI at all. AddPlaceForm below is that missing piece. */}
       {adding && (
         <AddPlaceForm
+          auth={auth}
           onCreated={() => { setAdding(false); window.location.reload(); }}
           onCancel={() => setAdding(false)}
         />
@@ -6587,7 +6612,10 @@ export function deviceConditionSteps(item) {
   ];
 }
 
-const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED";
+// STORAGE_ (W-11, 2026-10-12): STORAGE_THRESHOLD / STORAGE_CLEARED events from the backend's disk
+// monitor -- a filling disk is exactly the quiet failure this list exists to surface (the HDD sat at
+// 94% for weeks with nothing saying so). Their payload carries the same see/think/act text.
+const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED,STORAGE_";
 
 // authedFetch falls back to plain fetch when no auth prop is passed, so
 // this component's own existing tests (rendered without one) keep
@@ -8367,7 +8395,10 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   // consumes and clears this itself once it applies the selection, so it
   // never re-fires on an unrelated panel switch back to Device Manager.
   const [pendingDeviceFocus, setPendingDeviceFocus] = useState(null);
-  const [activeLocation, setActiveLocation] = useState("cabin");
+  const [activeLocation, setActiveLocation] = useState(() => readStoredLocation());
+  useEffect(() => {
+    try { localStorage.setItem(ACTIVE_LOCATION_KEY, activeLocation); } catch { /* storage unavailable: the choice just isn't remembered */ }
+  }, [activeLocation]);
   // 2026-08-25: toolbar device-count toggle -- see countParentDevices'
   // own comment for why "157 devices" alone was misleading (every HA
   // sub-entity/service counted as its own device).
@@ -8602,7 +8633,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
                 <DemoCameraCards devices={toolbarDevices} />
               </div>
             )}
-            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
+            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel auth={cameraAuth} />}
             {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel auth={cameraAuth} />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} auth={cameraAuth} />}
