@@ -21,6 +21,7 @@ Note: the Companion app's *push* does not need Tailscale. Home Assistant sends i
    **Amended the same day: audible outputs are manual-only for now.** No speaker announcement and no siren is triggered automatically by the rules below. Nate does not want a speaker to come on during a meeting or frighten children who walk in while he is down at the lake. Audible outputs happen only when Nate sets them off: arming away is his act and keeps the existing siren behaviour, and a speaker announcement is a control he presses. The automatic alert is silent (ntfy).
 2. **"Nate is away from the cabin" cannot be decided by his phone leaving the cabin Wi-Fi alone.** He sometimes shares the phone's hotspot for meetings when the Starlink Wi-Fi is inconsistent, and that must not look like an absence. His alternative: alert when presence is indicated at the cabin and Nate has not been on the Wi-Fi for **2 hours**, and he is not at Home.
 3. **Nate at Home** while presence is indicated at the cabin is an alert, immediately.
+4. **What counts as "Nate is at the cabin"** (answered 2026-10-12): his phone on the cabin Wi-Fi and a fresh GPS fix in the Cabin zone, **and** an "I'm here" tap on the touchscreen kiosk once the kiosk is installed, **and** a laptop or tablet he has signed into (for example with Google), which is clearly him. Any one of these resets the 2-hour clock in case C. Tracked as W-55.
 
 ## Proposed rule
 
@@ -32,9 +33,9 @@ An alert fires on an occupancy indication when **any** of these is true:
 |---|---|---|
 | A | The system is armed away | none |
 | B | Nate is at Home (`home/presence/nate` = home, fresh) | none |
-| C | None of Nate's signals has been seen for 2 hours: his phone on the cabin Wi-Fi, a fresh GPS fix inside the Cabin zone, or any other signal listed under "Open questions" | 2 hours of silence, then immediately on the next indication |
+| C | None of Nate's signals has been seen for 2 hours: his phone on the cabin Wi-Fi, a fresh GPS fix inside the Cabin zone, a signed-in laptop or tablet of his on the cabin network or active in the app from it, or an "I'm here" tap on the kiosk (decision 4) | 2 hours of silence, then immediately on the next indication |
 
-A hotspot session shorter than 2 hours is covered, because C needs *every* signal silent for 2 hours, not just the Wi-Fi. **Known gap:** a longer one, with no other signal reporting (phone GPS needs the Companion app to reach Home Assistant), will alert on the next movement in the cabin. That is why open question 2 matters, and until it is answered an acknowledge or snooze is the way out. Authorized other people (primary-role users, D24) and maintenance visits must not trigger it once W-38 enforces roles; until then, arming and the rule above are the only filter, so expect to snooze.
+A hotspot session shorter than 2 hours is covered, because C needs *every* signal silent for 2 hours, not just the Wi-Fi. **Known gap:** a longer one, with no other signal reporting (phone GPS needs the Companion app to reach Home Assistant), will alert on the next movement in the cabin. That is why the signals in decision 4 matter: a signed-in laptop or tablet on the cabin network, or a kiosk tap, ends that false alert. Until W-55 builds them, acknowledge or snooze is the way out. Authorized other people (primary-role users, D24) and maintenance visits must not trigger it once W-38 enforces roles; until then, arming and the rule above are the only filter, so expect to snooze.
 
 **On firing:** ntfy at the highest priority with the camera snapshot and which indication fired, repeated every 10 minutes until acknowledged or the indication clears. Acknowledge or snooze from the ntfy action buttons. **Nothing audible happens at the cabin automatically**: the rule never drives a speaker or a siren (Nate, 2026-10-12). A manual "announce" control for Google speakers can come later (S5).
 
@@ -60,6 +61,6 @@ A hotspot session shorter than 2 hours is covered, because C needs *every* signa
 ## Open questions for Nate
 
 1. Are there Google Home or Nest speakers at the cabin (and at Home)? Home Assistant sees none; they may be on the Starlink 2.4 GHz subnet (`192.168.1.0/24`), which the M920q's Wi-Fi is not on.
-2. Beyond his phone's Wi-Fi and GPS, what else tells us Nate is at the cabin: a laptop or tablet that joins the cabin Wi-Fi, his own Bluetooth, an "I'm here" tap?
+2. ~~What else tells us Nate is at the cabin?~~ **Answered 2026-10-12** (decision 4). How each is built is W-55's design: a laptop or tablet is recognised by the same per-network MAC problem as W-37, or better by a signed-in session active from the cabin network (the backend would need the client's network, not only its identity); the kiosk tap needs the kiosk, and on a shared screen it must know *who* tapped (W-44).
 3. Reuse the Node-RED ntfy topic for the backend (recommended: nothing new to subscribe to), or make a new random one?
 4. Should arming away be required for case C, or is "2 hours of silence" enough on its own?
