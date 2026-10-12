@@ -258,7 +258,7 @@ Zigbee adapter must handle this sub-property generically.
 
 ## Storage (read `docs/STORAGE_ARCHITECTURE.md` before touching disk, retention or backups)
 
-Two disks: the NVMe `/` is hot (Postgres, Docker); the rotational HDD `/storage` is the cold tier (video, telemetry archives, backups) and was 94% full on 2026-10-10 (640 GB of it nightly backups with no pruning, W-48). BI telemetry (the `TELEMETRY` rows behind temperature, humidity, presence, CO2 and the rest) is the data to keep: never delete or archive-and-delete it without a warning first (W-49; the monthly archival job has none today). Recorded video and old backups are disposable. Permanent deletions are run by the owner from a dry-run-first script, not by an agent session. The project skill `cabin-storage-tiers` carries these rules.
+Two disks: the NVMe `/` is hot (Postgres, Docker); the rotational HDD `/storage` is the cold tier (video, telemetry archives, backups) and was 94% full on 2026-10-10 (640 GB of it nightly backups with no pruning, W-48). `cabin-backend` now warns at 80% and 90% full (`StorageMonitorService`, W-11; `GET /api/system/storage`) but never deletes. BI telemetry (the `TELEMETRY` rows behind temperature, humidity, presence, CO2 and the rest) is the data to keep: never delete or archive-and-delete it without a warning first (W-49; the monthly archival job has none today). Recorded video and old backups are disposable. Permanent deletions are run by the owner from a dry-run-first script, not by an agent session. The project skill `cabin-storage-tiers` carries these rules.
 
 ---
 
@@ -451,6 +451,7 @@ forward from an earlier session's list)
 | GET | `/api/security` | SecurityController — armed/disarmed per location, keyed by location, from `cabin/security/armed_away` (added 2026-08-08) |
 | GET | `/api/signal-quality` | SignalQualityController — prototype, Zigbee LQI trend/anomaly per device, not wired to any alert path yet (added 2026-08-08) |
 | GET | `/api/system/health` | SystemController |
+| GET | `/api/system/storage` | StorageController — disk usage and level for the HDD cold tier and the NVMe hot tier (W-11); alerts arrive as `STORAGE_THRESHOLD` events |
 | GET | `/api/camera/list` | CameraMediaController |
 | GET | `/api/camera/events/{frigateEventId}/snapshot` | CameraMediaController |
 | GET | `/api/camera/events/{frigateEventId}/clip` | CameraMediaController |

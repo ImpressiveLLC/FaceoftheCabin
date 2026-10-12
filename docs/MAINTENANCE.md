@@ -2715,3 +2715,13 @@ trusted at face value.
       (`entityRef: zigbee2mqtt_bridge`/`cabin_event_ingestion`,
       `data_recovery_pipeline`) for the same playbook, queryable locally
       through Ollama with zero internet connectivity.
+
+---
+
+## Disk space alerts (W-11)
+
+`cabin-backend` watches two disks and raises an event when one crosses a line: the HDD `/storage` (the cold tier, `storage-hdd`) and the NVMe `/` (the hot tier, `root-nvme`). At 80% it publishes a WARN `STORAGE_THRESHOLD` event, at 90% a CRITICAL one; a `STORAGE_CLEARED` follows when the disk falls 3 points below the line. The event appears in Rules & Alerts' 24-hour list with what to do, repeats every 24 hours while the disk stays above the line, and does not repeat because of a deploy. If `CABIN_ALERT_NTFY_TOPIC` is set it is also pushed to the phone; **it was blank on 2026-10-12, so until W-51 S1 the in-app list is the only place it shows.**
+
+Check it by hand against the host: `GET http://<m920q>:8090/api/system/storage` should match `df -h /storage /` (the HDD figure comes through the archive mount `/app/archives/cabin_event`, which reports the whole `/storage` filesystem). Change the lines with `STORAGE_WARN_PERCENT`, `STORAGE_CRITICAL_PERCENT`, `STORAGE_RENOTIFY_HOURS` in `infra/.env` (the compose file must pass them through), or switch it off with `STORAGE_MONITOR_ENABLED=false`.
+
+**It never deletes anything.** When it fires, the owner decides: prune old nightly backups with `scripts/prune-storage-backups.sh` (dry run first), review recording retention, check `docker system df`. BI telemetry is never removed without a warning (`docs/STORAGE_ARCHITECTURE.md`).
