@@ -781,6 +781,8 @@ a change before pushing) still works exactly as before — see "Manual
 
 ## Testing
 
+**Run the whole backend suite before merging, not just the tests you touched** (`./mvnw -o test`; the Docker-backed classes error without a Docker daemon, everything else must pass). Repo-wide guard tests only fail when a *new* thing is added: on 2026-10-12 `DemoAccessTest.everyMappedGetRouteIsClassified` stopped W-11's deploy because a new GET route had no `DemoAccessPolicy` entry, and `WriteGateAuditTest` does the same for new write routes. No workflow runs on `pull_request`, so the first CI run is the post-merge gate on the M920q.
+
 **First tests in this project's history, added 2026-08-06** —
 `backend/src/test/java/com/cabin/orchestrator/events/`:
 `AlertSeverityClassifierTest`, `NtfyAlertPublisherTest` (pure unit, no
