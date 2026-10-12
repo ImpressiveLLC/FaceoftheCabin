@@ -544,6 +544,33 @@ The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detecti
 
 ---
 
+## D25 — Vault commits to `main`: a narrow exemption for rotate-secrets
+
+**Status:** ratified 2026-10-04 (Cowork, [HO-2026-10-04](../handovers/HO-2026-10-04-cowork-to-code.md) section 4; Nate directed Code to use that file as its guide). **Use case:** [UC-6](../use-cases.md). **Builds on:** D4 (governance: every governed fact changes by reviewed PR), the credential lifecycle in [#109](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/109).
+
+**Problem.** Changes to `main` go through a reviewed PR, but the rotation playbook pushes the re-encrypted vault to `main` directly, by design: a rotated password that exists only in an uncommitted vault edit is lost at the next `git reset --hard origin/main` in the deploy worktree (the incident `ansible/playbooks/rotate-secrets.yml` documents). Separately, three human commits on 2026-10-01 (`8348458`, `5bbc751`, `989fb07`) also reached `main` with no PR. No written rule settled either case.
+
+**Ruling.**
+
+| ID | Requirement |
+|---|---|
+| R-VC-1 | **One exemption.** A commit pushed to `main` without a PR is allowed only when it is made by `.github/workflows/rotate-secrets.yml` through `ansible/playbooks/rotate-secrets.yml`. Nothing else is exempt. |
+| R-VC-2 | **Conditions, all three.** The commit changes **only** `ansible/group_vars/cabin/vault.yml`; its message **names the run** (the workflow run id) and the secret rotated; and the pre-push check **refuses any non-vault path**. |
+| R-VC-3 | **Human-made vault commits go through a PR** from now on, like any other change. |
+| R-VC-4 | The three 2026-10-01 human commits are ratified after the fact, as [DL-2026-10-04-01](../discrepancy-log.md). |
+
+**What review of a vault diff does and does not show.** The vault is Ansible-Vault encrypted, so a reviewer sees the file path, its size and that it changed, never the secrets. R-VC-3 is about traceability and the governance record, not about reading the contents.
+
+### Implementation status (Code)
+
+- The playbook already built the commit as `origin/main` plus the vault blob only, so a non-vault path could not be included **by construction**. This change makes that an explicit, tested check rather than an accident of how the commit is built: the step now refuses to push if `git diff-tree` between `origin/main` and the new tree names anything but the vault path, treats "nothing changed" as nothing to push, and the commit message carries `workflow run ${GITHUB_RUN_ID}` (`manual` outside Actions).
+- Tested by running the **shipped** shell block, extracted from the playbook, against a throwaway origin and clone: a normal run pushes exactly one vault-only commit whose message names the run; a run edited to include a second path is refused and nothing is pushed; an unchanged vault pushes nothing. `ansible/tests/test_vault_commit_guard.sh`.
+- Not run end to end: the playbook rotates the real Postgres password, so it was not executed. The first scheduled rotation after merge (the 1st of the month, 06:00 UTC) is the live proof, and its commit on `main` should show the run id in the message.
+
+**What this is not.** Not a general exemption for automation commits, not a way to commit anything else without review, and not a change to who may rotate secrets.
+
+---
+
 ## PR — WSJF Priority Order
 
 01Identity scheme done28.0
