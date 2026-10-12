@@ -3,6 +3,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
+armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
+formatPresenceAge, presenceBadgeModel, PresenceBadge,
 mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
@@ -5278,6 +5280,105 @@ describe("formatPresenceSignals", () => {
   });
 });
 
+// W-34 (2026-10-03 finding): the badge read "Away" at the house because the
+// retained presence value was 41 hours old. A stale auto-derived value must
+// read "Presence unknown", never a confident Away/At Cabin.
+describe("formatPresenceAge", () => {
+  it("formats minutes, hours and days compactly", () => {
+    expect(formatPresenceAge(5)).toBe("just now");
+    expect(formatPresenceAge(60)).toBe("1 min ago");
+    expect(formatPresenceAge(59 * 60)).toBe("59 min ago");
+    expect(formatPresenceAge(3600)).toBe("1 h ago");
+    expect(formatPresenceAge(3 * 3600 + 20 * 60)).toBe("3 h 20 min ago");
+    expect(formatPresenceAge(24 * 3600)).toBe("1 d ago");
+    expect(formatPresenceAge(41 * 3600)).toBe("1 d 17 h ago");
+  });
+
+  it("is empty for a missing or non-finite age and never negative", () => {
+    expect(formatPresenceAge(null)).toBe("");
+    expect(formatPresenceAge(undefined)).toBe("");
+    expect(formatPresenceAge(NaN)).toBe("");
+    expect(formatPresenceAge(-30)).toBe("just now");
+  });
+});
+
+describe("presenceBadgeModel", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const fresh = { signalAgeSeconds: 600, stale: false, staleAfterHours: 6 };
+  const stale = { signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 };
+
+  it("with no heartbeat behaves exactly as before: no age, never unknown", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: null });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toBe("Live-detected: No one currently detected present");
+  });
+
+  it("shows the age and stays a confident reading while fresh", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: fresh });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("10 min ago");
+    expect(m.title).toContain("phone last reported 10 min ago");
+  });
+
+  it("goes unknown past the limit and explains why", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: stale });
+    expect(m.unknown).toBe(true);
+    expect(m.title).toContain("Presence unknown");
+    expect(m.title).toContain("1 d 17 h");
+    expect(m.title).toContain("limit 6 h");
+  });
+
+  it("does not hide a manual override just because a heartbeat is old", () => {
+    const m = presenceBadgeModel({ autoDerived: false, signals, freshness: stale });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toMatch(/^Manually set/);
+  });
+});
+
+describe("PresenceBadge", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const base = { profile: "AWAY", options: [], onChange: () => {}, autoDerived: true, signals };
+
+  it("renders 'Presence unknown' instead of Away when the signal is stale", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Presence unknown");
+    expect(screen.queryByText("last seen 1 d 17 h ago")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeFalsy();
+    // the real choices are still there as a manual override
+    expect(within(select).getByText("Away")).toBeTruthy();
+  });
+
+  it("keeps the real value and the live dot when fresh, with an age chip", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 120, stale: false, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+    expect(screen.queryByText("2 min ago")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeFalsy();
+  });
+
+  it("renders with no age chip at all when the backend sends no heartbeat", () => {
+    const { container } = render(<PresenceBadge {...base} freshness={null} />);
+    expect(container.querySelector(".presence-age")).toBeFalsy();
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+  });
+
+  it("picking a real option while unknown reports it as a manual override", () => {
+    const onChange = vi.fn();
+    render(<PresenceBadge {...base} onChange={onChange}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    fireEvent.change(screen.getByLabelText("Presence"), { target: { value: "AT_CABIN" } });
+    expect(onChange).toHaveBeenCalledWith("AT_CABIN");
+  });
+});
+
 // Covers the 2026-08-08 armed-state finding: cabin/security/armed_away
 // is a real, live, HA-published MQTT signal that cabin-backend never
 // subscribed to. formatArmedTitle must never let "no signal yet" read
@@ -5303,6 +5404,108 @@ describe("formatArmedTitle", () => {
 
   it("handles undefined the same as null without throwing", () => {
     expect(() => formatArmedTitle(undefined)).not.toThrow();
+  });
+});
+
+// W-35 (Nate, 2026-10-04): warn, never block, when the system is armed while
+// presence shows someone at that location. The hub has no arm control, so the
+// rule is derived from the armed state and presence it already holds.
+describe("armedWhileOccupiedNotices", () => {
+  const armedCabin = { cabin: { armed: true, lastUpdated: "2026-10-04T10:00:00Z" } };
+  const nateAtCabin = [{ personId: "nate", location: "cabin", present: true }];
+  const live = { autoDerived: true, profile: "AT_CABIN" };
+
+  it("warns, naming who, when armed with someone detected at that location", () => {
+    const n = armedWhileOccupiedNotices({ securityStates: armedCabin, signals: nateAtCabin, ...live });
+    expect(n).toHaveLength(1);
+    expect(n[0]).toMatchObject({ location: "cabin", names: ["nate"], detected: true });
+  });
+
+  it("says nothing when disarmed, even with someone present", () => {
+    const disarmed = { cabin: { armed: false, lastUpdated: "2026-10-04T10:00:00Z" } };
+    expect(armedWhileOccupiedNotices({ securityStates: disarmed, signals: nateAtCabin, ...live })).toEqual([]);
+  });
+
+  it("says nothing when armed and nobody is detected", () => {
+    const away = [{ personId: "nate", location: "cabin", present: false }];
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, signals: away, ...live })).toEqual([]);
+  });
+
+  it("does not count presence at the other location", () => {
+    const atHome = [{ personId: "nate", location: "home", present: true }];
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, signals: atHome, ...live })).toEqual([]);
+  });
+
+  it("evaluates every armed location independently", () => {
+    const both = { ...armedCabin, home: { armed: true, lastUpdated: "2026-10-04T11:00:00Z" } };
+    const signals = [...nateAtCabin, { personId: "emma", location: "home", present: true }];
+    const n = armedWhileOccupiedNotices({ securityStates: both, signals, ...live });
+    expect(n.map(x => x.location).sort()).toEqual(["cabin", "home"]);
+  });
+
+  it("with no live signal, honors the manual profile (occupied, but nobody to name)", () => {
+    const manual = { autoDerived: false, signals: [] };
+    const n = armedWhileOccupiedNotices({ securityStates: armedCabin, ...manual, profile: "AT_CABIN" });
+    expect(n).toHaveLength(1);
+    expect(n[0].names).toEqual([]);
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, ...manual, profile: "AT_HOME" })).toEqual([]);
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, ...manual, profile: "BOTH_OCCUPIED" })).toHaveLength(1);
+  });
+
+  it("ignores the manual profile once a live signal exists", () => {
+    const away = [{ personId: "nate", location: "cabin", present: false }];
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, signals: away, autoDerived: true, profile: "AT_CABIN" })).toEqual([]);
+  });
+
+  it("tolerates missing state (signed out, no armed signal yet)", () => {
+    expect(armedWhileOccupiedNotices({ securityStates: undefined, signals: undefined, autoDerived: true, profile: "AWAY" })).toEqual([]);
+    expect(armedWhileOccupiedNotices({ securityStates: { cabin: null }, signals: nateAtCabin, ...live })).toEqual([]);
+  });
+
+  it("a new arming gets a new key, so an earlier dismissal does not hide it", () => {
+    const first = armedWhileOccupiedNotices({ securityStates: armedCabin, signals: nateAtCabin, ...live })[0].key;
+    const again = { cabin: { armed: true, lastUpdated: "2026-10-04T12:00:00Z" } };
+    const second = armedWhileOccupiedNotices({ securityStates: again, signals: nateAtCabin, ...live })[0].key;
+    expect(second).not.toBe(first);
+  });
+});
+
+describe("ArmedWhileOccupiedBanner", () => {
+  const notice = { location: "cabin", key: "cabin:t1", detected: true, names: ["nate"] };
+
+  it("shows a visible, non-blocking alert that names who and where", () => {
+    render(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={[]} onDismiss={() => {}} />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toMatch(/Armed while nate is detected at the Cabin\./);
+    expect(alert.textContent).toMatch(/sirens will sound unless the system recognizes an authorized user/);
+    expect(alert.textContent).toMatch(/Anyone else who is here will set them off/);
+  });
+
+  it("does not claim the alarm sounds for a recognized authorized user", () => {
+    render(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={[]} onDismiss={() => {}} />);
+    expect(screen.getByRole("alert").textContent).not.toMatch(/will sound if anyone is present/i);
+  });
+
+  it("uses 'someone' when the manual profile can't say who, and 'are' for several people", () => {
+    const { unmount } = render(<ArmedWhileOccupiedBanner notices={[{ ...notice, names: [] }]} dismissed={[]} onDismiss={() => {}} />);
+    expect(screen.getByRole("alert").textContent).toMatch(/Armed while someone is detected/);
+    unmount();
+    render(<ArmedWhileOccupiedBanner notices={[{ ...notice, names: ["nate", "emma"] }]} dismissed={[]} onDismiss={() => {}} />);
+    expect(screen.getByRole("alert").textContent).toMatch(/Armed while nate, emma are detected/);
+  });
+
+  it("dismiss reports the notice's key; a dismissed notice is not shown", () => {
+    const onDismiss = vi.fn();
+    const { rerender } = render(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={[]} onDismiss={onDismiss} />);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onDismiss).toHaveBeenCalledWith("cabin:t1");
+    rerender(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={["cabin:t1"]} onDismiss={onDismiss} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("renders nothing at all when there are no notices", () => {
+    const { container } = render(<ArmedWhileOccupiedBanner notices={[]} dismissed={[]} onDismiss={() => {}} />);
+    expect(container.innerHTML).toBe("");
   });
 });
 

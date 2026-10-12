@@ -27,6 +27,14 @@ This platform is designed to be worked on across multiple machines. The rule is 
 
 **If Claude can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
 
+**Several agent sessions (Claude Code, Codex, Cowork) push to this repo at once.**
+Load the project skill `cabin-peer-agent-collaboration` when a PR conflicts, an
+Autofix event arrives, or you are about to merge: it covers re-reading a branch
+before touching it, repairing conflicts by merging `origin/main` in (never
+rebase or force-push), the resolver for the append-only tables every PR edits,
+merging only a clean PR pinned to the commit you checked, and which PRs wait
+for Nate.
+
 **Decisions made where Claude can't commit (Claude web at the cabin — no
 Claude Code on the M920q) need an explicit hand-back, not just a good
 conversation.** Found 2026-08-06: a real, discussed, agreed decision about
@@ -381,6 +389,7 @@ npm install && npm run dev
 | `CAMERA_PASSWORD` | Frigate | Reolink admin password |
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
+| `CABIN_PRESENCE_STALE_AFTER_HOURS` | PresenceController | Hours of phone silence after which `/api/presence` reports `stale: true` and the badge reads "Presence unknown". Default `6`. Keep equal to Node-RED's `PRESENCE_STALE_HOURS` (siren gate, W-33) so the badge and the siren agree |
 | `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). **Blank on the M920q as of 2026-10-12, so no backend push reaches a phone (W-51)**. The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
 
 ---
@@ -400,6 +409,14 @@ cabin/kidde/co_alarm                 ← Kidde CO alarm push bridge (HA automati
                                         this topic)
 {location}/presence/#                ← MqttBridgeService subscribes `+/presence/#`
                                         (both `cabin/presence/*` and `home/presence/*`)
+{location}/presence/{person}/last_seen
+                                     ← retained ISO-8601 UTC time of the phone's last
+                                        Companion-app report to HA (W-34, 2026-10-04).
+                                        Not a presence value: it only says how old the
+                                        presence signal's source is. Absent until the
+                                        HA heartbeat automation (W-23) is applied --
+                                        the hub and the siren gate treat "no heartbeat"
+                                        as "age unknown", never as stale
 {location}/security/armed_away       ← MqttBridgeService subscribes `+/security/armed_away`
 zigbee2mqtt/bridge/devices           ← Zigbee2MQTT device list
 zigbee2mqtt/bridge/state             ← bridge health heartbeat
@@ -446,7 +463,7 @@ forward from an earlier session's list)
 | DELETE | `/api/devices/{id}/display-config` | DeviceController |
 | GET | `/api/dashboard/config` | DashboardController |
 | GET | `/api/events` | EventController — real, Postgres-backed (`?camera=&limit=&window=`). No longer a stub as of 2026-08-04; the "(stub)" note in earlier versions of this file was stale |
-| GET | `/api/presence` | PresenceController — auto-derived from real MQTT presence signals when any exist (`autoDerived`/`signals[]`), manual fallback otherwise (added 2026-08-08) |
+| GET | `/api/presence` | PresenceController — auto-derived from real MQTT presence signals when any exist (`autoDerived`/`signals[]`), manual fallback otherwise (added 2026-08-08). W-34 adds `lastSeen`, `signalAgeSeconds`, `stale`, `staleAfterHours` (all null/false until a phone heartbeat has been seen); the UI shows "Presence unknown" when `autoDerived && stale` |
 | PUT | `/api/presence` | PresenceController — manual override |
 | GET | `/api/security` | SecurityController — armed/disarmed per location, keyed by location, from `cabin/security/armed_away` (added 2026-08-08) |
 | GET | `/api/signal-quality` | SignalQualityController — prototype, Zigbee LQI trend/anomaly per device, not wired to any alert path yet (added 2026-08-08) |
@@ -698,7 +715,10 @@ All items below are **complete and pushed to GitHub**:
   `partial` flag (the earliest day in a window almost never starts at
   a day boundary, so it never has a full 24 hours of samples; the
   boundary is asked of the database, since `date_trunc('day', ...)`
-  buckets by the JDBC session's timezone, not UTC) -- the UI
+  buckets by the JDBC session's timezone, i.e. the backend JVM default:
+  UTC in the production container, Central on the CI runner and dev
+  machines -- see DL-2026-10-03-01, ruled a defect, fix tracked as W-30)
+  -- the UI
   labels it "(partial)" rather than silently averaging it in as
   equivalent to a full day. `SensorHistoryPanel`'s Range dropdown drops
   its old 90-day option (nothing ever honored it past the new shared
@@ -708,6 +728,18 @@ All items below are **complete and pushed to GitHub**:
   `docs/governance/backlog.md`'s W-21 row for the full record, including
   its relationship to PR #106 (which first drafted this same ID and
   scope but shipped no implementation).
+- **Arm-while-occupied warning (W-35, 2026-10-04)** — `ArmedWhileOccupiedNotice`
+  (`App.jsx`, under the toolbar) shows a visible, dismissable, non-blocking
+  banner per location that is armed (`/api/security`) while presence shows
+  someone there (live `signals[]`, or the manual profile when no live signal
+  exists). It never blocks or disables arming: the hub has no arm control
+  (arming is `input_boolean.cabin_security_armed_away` in HA or a Node-RED
+  button), so it is derived from state the hub already holds. The wording
+  says what the siren gate does, not more: the sirens sound unless the system
+  recognizes an authorized user as present, anyone else there sets them off,
+  and so does a lost phone signal. A dismissal holds for that arming only
+  (keyed by the armed signal's `lastUpdated`). Pure rule
+  `armedWhileOccupiedNotices`, covered in `App.test.jsx`.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
@@ -781,6 +813,8 @@ a change before pushing) still works exactly as before — see "Manual
 
 ## Testing
 
+**Run the whole backend suite before merging, not just the tests you touched** (`./mvnw -o test`; the Docker-backed classes error without a Docker daemon, everything else must pass). Repo-wide guard tests only fail when a *new* thing is added: on 2026-10-12 `DemoAccessTest.everyMappedGetRouteIsClassified` stopped W-11's deploy because a new GET route had no `DemoAccessPolicy` entry, and `WriteGateAuditTest` does the same for new write routes. No workflow runs on `pull_request`, so the first CI run is the post-merge gate on the M920q.
+
 **First tests in this project's history, added 2026-08-06** —
 `backend/src/test/java/com/cabin/orchestrator/events/`:
 `AlertSeverityClassifierTest`, `NtfyAlertPublisherTest` (pure unit, no
@@ -829,13 +863,19 @@ themselves, they just never had anything to trip on before:
 
 ## Design constraints
 
-- No Python beyond `watchdog.py` **and** the `docs/ai-assistant/` corpus/
+- No Python beyond `watchdog.py`, the `docs/ai-assistant/` corpus/
   eval tooling (`scripts/build-corpus-inventory.py`,
-  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`) —
-  updated 2026-09-10, this constraint had drifted stale as those shipped.
-  Both are deliberately narrow, tooling-only exceptions; no Python in the
-  actual runtime request path (backend stays Java/Spring Boot, frontend
-  stays JS/React).
+  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`),
+  **and** the Home Assistant side of `infra/cabin-security/homeassistant/`:
+  `cabin_security_mqtt_publish.py` (the publish allow-list HA's
+  `shell_command` runs inside HA's own container, not in the backend) and
+  its unit test, plus `test/ha-sim/run_sim.py`, an offline Home Assistant
+  simulation that runs only on a developer machine. Updated 2026-09-10 for
+  the corpus tooling and 2026-10-12 for the HA side (the allow-list script
+  already existed, so this constraint had drifted again, found by the
+  2026-10-12 session DoD). All are deliberately narrow, tooling-only
+  exceptions; no Python in the actual runtime request path (backend stays
+  Java/Spring Boot, frontend stays JS/React).
 - No ARM/Pi hardware for the two *production* "main brain" hubs — both
   are x86_64 Lenovo ThinkCentre M920q running the full stack (Postgres,
   Kafka, the Spring Boot backend, Grafana, HA, Node-RED, Frigate), and
