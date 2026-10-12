@@ -47,12 +47,17 @@ The readings behind the BI metrics (temperature, humidity, presence, CO2, leak, 
 4. Permanent deletion of files is run by the owner. Prepare a script that lists first and removes only with `--apply` (see `scripts/prune-storage-backups.sh`), and say what it will not touch.
 5. Anything bulky and long-lived goes to `/storage`; anything that needs fast random I/O stays on the NVMe.
 
+## Disk monitor (W-11, PR #145)
+
+`StorageMonitorService` in `cabin-backend` measures `storage-hdd` (the HDD, seen through the archive mount `/app/archives/cabin_event`) and `root-nvme` (`/`) every 5 minutes. At **80%** it publishes a WARN `STORAGE_THRESHOLD` event, at **90%** a CRITICAL one, and `STORAGE_CLEARED` once it falls 3 points below the line; the notice repeats every 24 hours while above, and survives a restart without re-paging. The event shows in Rules & Alerts' 24-hour list and, when `CABIN_ALERT_NTFY_TOPIC` is set (W-51 S1), is pushed to the phone (WARN at ntfy priority high, CRITICAL urgent). `GET /api/system/storage` reports the current figures. Tune with `STORAGE_WARN_PERCENT`, `STORAGE_CRITICAL_PERCENT`, `STORAGE_RENOTIFY_HOURS`, `STORAGE_MONITOR_MOUNTS`. **It reports only and never deletes** (see the rules above); the automatic purge W-11 first described is W-11b.
+
 ## Open work
 
 | ID | What |
 |---|---|
 | W-48 | Backup retention and exclusions: `scripts/host/backup-modular` (prunes to the newest N, leaves regenerable data out) and the one-time `scripts/prune-storage-backups.sh` |
 | W-49 | Dump warning before telemetry is archived-and-deleted, with an owner-set threshold |
-| W-11 | `/storage` thresholds (warn 80%, purge at 90% oldest-first, never Cold or Pinned, ntfy). Not built; the disk reached 94% unnoticed |
+| W-11 | `/storage` thresholds: warning at 80%, critical at 90%, in-app and ntfy. Built (PR #145). The disk had reached 94% unnoticed |
+| W-11b | The automatic oldest-first purge W-11 first described. Deferred: permanent deletion is owner-run and telemetry needs a warning first (W-49) |
 | W-8 / W-10 / W-12 | Recording retention decision (kept at 5/10 days), Warm and Cold rules |
 | D19 Option B | Deploy `telemetry-backup-agent` so a copy exists that does not depend on `cabin-backend` |

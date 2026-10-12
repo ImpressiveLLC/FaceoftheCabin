@@ -32,6 +32,8 @@ class NtfyAlertPublisherTest {
     private CountDownLatch requestReceived;
     private final AtomicReference<String> receivedPath = new AtomicReference<>();
     private final AtomicReference<String> receivedBody = new AtomicReference<>();
+    private final AtomicReference<String> receivedTitle = new AtomicReference<>();
+    private final AtomicReference<String> receivedPriority = new AtomicReference<>();
 
     @BeforeEach
     void startServer() throws IOException {
@@ -39,6 +41,8 @@ class NtfyAlertPublisherTest {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/", exchange -> {
             receivedPath.set(exchange.getRequestURI().getPath());
+            receivedTitle.set(exchange.getRequestHeaders().getFirst("Title"));
+            receivedPriority.set(exchange.getRequestHeaders().getFirst("Priority"));
             receivedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             exchange.sendResponseHeaders(200, -1);
             exchange.close();
@@ -92,6 +96,43 @@ class NtfyAlertPublisherTest {
         NtfyAlertPublisher publisher = new NtfyAlertPublisher("", baseUrl);
 
         publisher.publishIfCritical(eventWithSeverity("CRITICAL"));
+
+        assertThat(requestReceived.await(1, TimeUnit.SECONDS)).isFalse();
+    }
+
+    // W-11: the 80% storage warning is WARN but must still reach a phone, with its own wording.
+    @Test
+    void warnEventThatAsksToNotifyTriggersPushWithItsOwnTitleAndMessage() throws InterruptedException {
+        NtfyAlertPublisher publisher = new NtfyAlertPublisher("my-topic", baseUrl);
+        CabinEvent warn = new CabinEvent(UUID.randomUUID().toString(), "storage-storage-hdd", "STORAGE_THRESHOLD",
+            "WARN", Instant.now(), Map.of("notify", true, "title", "Cabin storage: 82% full", "message", "storage-hdd is 82% full"));
+
+        publisher.publishIfCritical(warn);
+
+        assertThat(requestReceived.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(receivedPath.get()).isEqualTo("/my-topic");
+        assertThat(receivedBody.get()).isEqualTo("storage-hdd is 82% full");
+        assertThat(receivedTitle.get()).isEqualTo("Cabin storage: 82% full");
+        assertThat(receivedPriority.get()).isEqualTo("high");
+    }
+
+    @Test
+    void criticalEventStillUsesTheDefaultTitleAndUrgentPriority() throws InterruptedException {
+        NtfyAlertPublisher publisher = new NtfyAlertPublisher("my-topic", baseUrl);
+
+        publisher.publishIfCritical(eventWithSeverity("CRITICAL"));
+
+        assertThat(requestReceived.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(receivedTitle.get()).isEqualTo("Cabin Alert");
+        assertThat(receivedPriority.get()).isEqualTo("urgent");
+    }
+
+    @Test
+    void warnEventWithNotifyFalseDoesNotTriggerPush() throws InterruptedException {
+        NtfyAlertPublisher publisher = new NtfyAlertPublisher("my-topic", baseUrl);
+        CabinEvent warn = new CabinEvent(UUID.randomUUID().toString(), "d", "T", "WARN", Instant.now(), Map.of("notify", false));
+
+        publisher.publishIfCritical(warn);
 
         assertThat(requestReceived.await(1, TimeUnit.SECONDS)).isFalse();
     }
