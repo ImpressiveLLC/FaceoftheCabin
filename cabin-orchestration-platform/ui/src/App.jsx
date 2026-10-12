@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download
+  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download, Power, Car
 } from "lucide-react";
 import "./styles.css";
 
@@ -1582,6 +1582,22 @@ export function allLocationsLabel(locationCount) {
   return locationCount <= 2 ? "Both" : "All";
 }
 
+// Which location the toolbar switcher shows survives a reload (2026-10-10).
+// It used to start on "cabin" every time, so someone who mostly looks at Home
+// (the AldrichFront camera lives there) re-picked it on every visit. Presence
+// is deliberately not used to choose it: presence can be stale or unknown, and
+// the view someone last chose is the one they expect back. A stored value that
+// is no longer a known location falls back to "cabin".
+export const ACTIVE_LOCATION_KEY = "ui.activeLocation";
+export function readStoredLocation(storage = globalThis.localStorage, ids = Object.keys(LOCATIONS)) {
+  try {
+    const value = storage.getItem(ACTIVE_LOCATION_KEY);
+    return value === "both" || ids.includes(value) ? value : "cabin";
+  } catch {
+    return "cabin";
+  }
+}
+
 function LocationSwitcher({ active, onChange }) {
   // Object.keys(LOCATIONS) instead of a hardcoded ["cabin","home"] so a
   // location added via POST /api/locations (see useHubLocations below)
@@ -1820,10 +1836,15 @@ const ADD_PLACE_FIELDS = [
   { key: "familyHubUrl", label: "Family Hub URL",    placeholder: "(fill in later if unknown)" },
 ];
 
-function AddPlaceForm({ onCreated, onCancel }) {
+function AddPlaceForm({ onCreated, onCancel, auth }) {
   const [form, setForm] = useState(() => Object.fromEntries(ADD_PLACE_FIELDS.map(f => [f.key, ""])));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // W-32 (2026-10-04): POST /api/locations now needs a signed-in session. The
+  // plain fetch this used to make carries no credential, so it would 401 for
+  // everyone. `auth` is only ever omitted by a test exercising the fallback,
+  // same convention as every other panel here.
+  const doFetch = auth?.authedFetch || fetch;
 
   const update = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
 
@@ -1840,11 +1861,14 @@ function AddPlaceForm({ onCreated, onCancel }) {
       for (const [k, v] of Object.entries(form)) {
         if (v.trim()) body[k] = v.trim();
       }
-      const res = await fetch(`${LOCATIONS.cabin.apiBase}/api/locations`, {
+      const res = await doFetch(`${LOCATIONS.cabin.apiBase}/api/locations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("Adding a place needs a signed-in household session. Sign in, then try again.");
+      }
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(text || `HTTP ${res.status}`);
@@ -1886,7 +1910,7 @@ function AddPlaceForm({ onCreated, onCancel }) {
 // also exposes (built in §1b, still unused by any UI -- a server-synced
 // order is a deliberate, separate future option, not what this
 // implements).
-export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder test
+export function FamilyHubPanel({ auth }) { // exported for src/App.test.jsx's reorder test
   const { devices } = useApp();
   const [reorderMode, setReorderMode] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -1931,6 +1955,7 @@ export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder te
           the UI at all. AddPlaceForm below is that missing piece. */}
       {adding && (
         <AddPlaceForm
+          auth={auth}
           onCreated={() => { setAdding(false); window.location.reload(); }}
           onCancel={() => setAdding(false)}
         />
@@ -2936,6 +2961,7 @@ export function DeviceManagerPanel({ auth }) {
               )}
             </>
           )}
+          <OnTheWayButton auth={auth} devices={devices} />
           <button className="btn-ghost" onClick={refreshManagerDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
       </div>
@@ -3012,6 +3038,57 @@ export function deviceLifecycleState(device) {
   const explicit = device?.attributes?.deviceLifecycle;
   if (explicit) return String(explicit).toUpperCase();
   return device?.attributes?.candidate === true ? "CANDIDATE" : "ASSIGNED";
+}
+
+// ─── Home Assistant service calls (W-27/W-28, 2026-10-02) ────────────────
+// Both go through POST /api/ha/services: signed-in only, and the backend
+// allowlists switch/input_boolean on/off and refuses valves and locks
+// (HaServiceController). The M920q is the head for both locations and runs
+// the one HA, so these always target the cabin backend.
+
+/**
+ * W-27: the HA switch entity a Device Manager row can power on/off, or null.
+ * Needs a real reported on/off ("state": "ON"/"OFF" -- Zigbee2MQTT's own
+ * payload, or HA discovery's for switch.* entities). Zigbee devices map to
+ * switch.<friendly_name>, Zigbee2MQTT's default HA discovery entity id.
+ * Cabin only: Home's collector devices aren't in the cabin HA. Valves and
+ * locks never get a toggle (same rule the backend enforces).
+ */
+export function powerToggleTarget(device) {
+  const attrs = device?.attributes || {};
+  const state = String(attrs.state ?? "").toUpperCase();
+  if (state !== "ON" && state !== "OFF") return null;
+  if (device.location && device.location !== "cabin") return null;
+  if (!["ASSIGNED", "AVAILABLE"].includes(deviceLifecycleState(device))) return null;
+  let entityId = null;
+  if (typeof attrs.entityId === "string" && attrs.entityId.startsWith("switch.")) {
+    entityId = attrs.entityId;
+  } else if (device.deviceId?.startsWith("z2m-")) {
+    entityId = `switch.${device.deviceId.slice(4)}`;
+  }
+  if (!entityId || !/^switch\.[a-z0-9_]+$/.test(entityId) || /valve|lock/.test(entityId)) return null;
+  return { entityId, isOn: state === "ON" };
+}
+
+export async function callHaService(doFetch, domain, service, entityId) {
+  const response = await doFetch(`${LOCATIONS.cabin.apiBase}/api/ha/services`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ domain, service, entity_id: entityId }),
+  });
+  if (response.status === 401) throw new Error("Sign in to control devices");
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.accepted === false) {
+    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command" : `HTTP ${response.status}`));
+  }
+  return body;
+}
+
+/** W-28: the mech room temperature (°C, as reported) for the "On the Way" confirmation, or null. */
+export function mechRoomTemperature(devices) {
+  const d = (devices || []).find(x => /temp_mech_room/.test(x.deviceId || "")
+    && typeof x.attributes?.temperature === "number");
+  return d ? d.attributes.temperature : null;
 }
 
 const LIFECYCLE_LABELS = {
@@ -4142,6 +4219,94 @@ function DmRowEnableToggle({ device, onToggled, auth }) {
   );
 }
 
+// W-27: on/off for switch-like devices. Optimistic: flips immediately, then
+// the next poll's real reported state wins (or the guess is dropped after
+// 60s if the device never reports back). On failure it snaps back and the
+// reason is in the tooltip.
+function DmPowerToggle({ device, auth }) {
+  const target = powerToggleTarget(device);
+  const [optimistic, setOptimistic] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const reported = device.attributes?.state;
+  useEffect(() => { setOptimistic(null); }, [reported]);
+  useEffect(() => {
+    if (optimistic === null) return undefined;
+    const t = setTimeout(() => setOptimistic(null), 60000);
+    return () => clearTimeout(t);
+  }, [optimistic]);
+  if (!target) return null;
+  const isOn = optimistic ?? target.isOn;
+
+  const toggle = async (e) => {
+    e.stopPropagation(); // don't also select the row
+    const next = !isOn;
+    setOptimistic(next);
+    setBusy(true);
+    setError(null);
+    try {
+      await callHaService(auth?.authedFetch || fetch, "switch", next ? "turn_on" : "turn_off", target.entityId);
+    } catch (err) {
+      setOptimistic(null);
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      className={`btn-ghost dm-power-toggle ${isOn ? "dm-power-on" : "dm-power-off"}`}
+      onClick={toggle}
+      disabled={busy}
+      aria-pressed={isOn}
+      aria-label={`${device.name}: turn ${isOn ? "off" : "on"}`}
+      title={error ? `Not changed: ${error}` : `Turn ${isOn ? "off" : "on"} (${target.entityId})`}
+    >
+      <Power size={14}/> {isOn ? "On" : "Off"}
+    </button>
+  );
+}
+
+// W-28: one tap tells HA we're heading up; HA's own preheat automation
+// (input_boolean.on_the_way_to_cabin) decides what to turn on and sends the
+// push notification -- no heater logic lives here (CLAUDE.md: don't
+// duplicate HA automations).
+export function OnTheWayButton({ auth, devices }) {
+  const [tempUnit] = useTempUnit();
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const t = setTimeout(() => setToast(null), 8000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const go = async () => {
+    setBusy(true);
+    try {
+      await callHaService(auth?.authedFetch || fetch, "input_boolean", "turn_on", "input_boolean.on_the_way_to_cabin");
+      const temp = mechRoomTemperature(devices);
+      setToast({ ok: true, text: `Preheat started. Mech room is ${temp == null ? "not reporting" : fmtTemp(temp, tempUnit)}.` });
+    } catch (err) {
+      setToast({ ok: false, text: `Couldn't start preheat: ${err.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="on-the-way">
+      <button className="btn-ghost" onClick={go} disabled={busy} title="Tell the cabin you're on the way (starts preheat)">
+        <Car size={14}/> {busy ? "Sending…" : "On the Way"}
+      </button>
+      {toast && (
+        <span role="status" className={`on-the-way-toast ${toast.ok ? "toast-ok" : "toast-err"}`}>{toast.text}</span>
+      )}
+    </span>
+  );
+}
+
 // forwardRef (2026-08-27, user report): switching L1 tabs (See<->Change)
 // unmounts and remounts whichever view isn't active, so a selection that
 // correctly carries over via the shared `selected` state (2026-08-25 fix)
@@ -4184,6 +4349,7 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
+      {auth && <DmPowerToggle device={device} auth={auth} />}
       {onToggled && <DmRowEnableToggle device={device} onToggled={onToggled} auth={auth} />}
     </div>
   );
@@ -6446,7 +6612,10 @@ export function deviceConditionSteps(item) {
   ];
 }
 
-const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED";
+// STORAGE_ (W-11, 2026-10-12): STORAGE_THRESHOLD / STORAGE_CLEARED events from the backend's disk
+// monitor -- a filling disk is exactly the quiet failure this list exists to surface (the HDD sat at
+// 94% for weeks with nothing saying so). Their payload carries the same see/think/act text.
+const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED,STORAGE_";
 
 // authedFetch falls back to plain fetch when no auth prop is passed, so
 // this component's own existing tests (rendered without one) keep
@@ -8301,7 +8470,10 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   // consumes and clears this itself once it applies the selection, so it
   // never re-fires on an unrelated panel switch back to Device Manager.
   const [pendingDeviceFocus, setPendingDeviceFocus] = useState(null);
-  const [activeLocation, setActiveLocation] = useState("cabin");
+  const [activeLocation, setActiveLocation] = useState(() => readStoredLocation());
+  useEffect(() => {
+    try { localStorage.setItem(ACTIVE_LOCATION_KEY, activeLocation); } catch { /* storage unavailable: the choice just isn't remembered */ }
+  }, [activeLocation]);
   // 2026-08-25: toolbar device-count toggle -- see countParentDevices'
   // own comment for why "157 devices" alone was misleading (every HA
   // sub-entity/service counted as its own device).
@@ -8536,7 +8708,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
                 <DemoCameraCards devices={toolbarDevices} />
               </div>
             )}
-            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
+            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel auth={cameraAuth} />}
             {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel auth={cameraAuth} />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} auth={cameraAuth} />}

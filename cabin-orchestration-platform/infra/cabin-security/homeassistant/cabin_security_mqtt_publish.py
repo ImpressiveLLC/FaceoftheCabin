@@ -1,6 +1,8 @@
 """Publish only the allow-listed cabin security states to local MQTT."""
 
+import re
 import sys
+from datetime import datetime
 
 from paho.mqtt import publish
 
@@ -26,8 +28,8 @@ ALLOWED = {
     # doesn't need to know that string either.
     "cabin/kidde/co_alarm": {"ON", "OFF"},
     # Added 2026-09-05 -- replaces the phone-side MacroDroid listener
-    # (validated working, since uninstalled) that used to call
-    # BlinkMotionWebhookController's HTTP endpoint directly. Payload
+    # (adware-driven, required watching ads to keep working) that used to
+    # call BlinkMotionWebhookController's HTTP endpoint directly. Payload
     # is the camera name (BlinkLiveviewService's own blinkCameraMap key,
     # not the Blink app's own device name) -- see
     # cabin_security_publish_blink_motion in cabin_security.yaml for the
@@ -38,6 +40,29 @@ ALLOWED = {
     # script doesn't already know is real.
     "cabin/blink/motion": {"driveway", "home_aldrich_front"},
 }
+
+# Topics whose payload is validated by a strict pattern instead of a fixed
+# set, because it is a timestamp. Added for W-23: the phone "last seen"
+# heartbeat that W-33 (siren gate) and W-34 (hub badge) read. Same fail-closed
+# rule as ALLOWED: anything that is not exactly a real UTC time is refused.
+ISO_UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+PATTERNS = {
+    "cabin/presence/nate/last_seen": ISO_UTC,
+}
+
+
+def is_allowed(topic, payload):
+    if topic in ALLOWED:
+        return payload in ALLOWED[topic]
+    pattern = PATTERNS.get(topic)
+    if pattern is None or not pattern.fullmatch(payload):
+        return False
+    try:
+        datetime.strptime(payload, "%Y-%m-%dT%H:%M:%SZ")  # rejects month 13, day 32, 25:00
+    except ValueError:
+        return False
+    return True
+
 
 # A motion notification is a one-off EVENT, not ongoing state, unlike every
 # other topic above (armed/presence/Kidde's alarm, which genuinely persist
@@ -56,7 +81,7 @@ def main() -> int:
         return 2
 
     topic, payload = sys.argv[1:]
-    if topic not in ALLOWED or payload not in ALLOWED[topic]:
+    if not is_allowed(topic, payload):
         return 3
 
     publish.single(

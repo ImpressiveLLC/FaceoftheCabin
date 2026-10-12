@@ -17,3 +17,8 @@ __pycache__/
 # the only thing standing between a secret and a commit, but it helps.
 cabin-orchestration-platform/infra/.env
 cabin-orchestration-platform/locations/*/.env
+
+# The real phone-to-person map for the WiFi presence check (a WiFi MAC
+# identifies a device). Only the .example template is tracked; see
+# cabin-orchestration-platform/infra/cabin-security/homeassistant/PRESENCE.md.
+cabin-orchestration-platform/infra/cabin-security/homeassistant/authorized_user_phones.conf

@@ -202,6 +202,18 @@ ROUTER, UPS, GOOGLE_HOME_DEVICE, HOME_ASSISTANT_ENTITY, DASHBOARD`
 
 Both hubs are x86_64. No ARM/Pi hardware anywhere. Tailscale is the only VPN.
 
+**Current reality, 2026-10-04 (read this before trusting the Home column).**
+The Home column describes the original plan. No Home hub is deployed: Home's
+Zigbee and network-scan data come from an Android/Termux collector that
+publishes to the M920q over MQTT, and the M920q is the head for both
+locations (`docs/MAINTENANCE.md`, "Home Location", decision 2026-10-01;
+D23, drafted in PR #116, is not ratified yet). The code agrees:
+`HOME_HUB_DEPLOYED` defaults to `false` (`HaTokenHomeHealthIndicator`),
+`HOME_HA_URL` defaults to `http://home-hub:8123` but `HOME_HA_TOKEN` is blank
+on purpose, and `application.yml` reports Home's HA as out of service by
+design. Do not treat `home-hub` URLs as live. This table stays until D23 is
+ratified, then it should be rewritten, not patched.
+
 ---
 
 ## Deployed cabin stack (as of 2026-07-25)
@@ -241,6 +253,12 @@ Z2M coordinator: SONOFF ZBDongle-E (USB on M920q).
 property is independent of `water_leak` — `leak_spare_siren` uses the buzzer
 as an intrusion siren without triggering false leak alerts. The platform's
 Zigbee adapter must handle this sub-property generically.
+
+---
+
+## Storage (read `docs/STORAGE_ARCHITECTURE.md` before touching disk, retention or backups)
+
+Two disks: the NVMe `/` is hot (Postgres, Docker); the rotational HDD `/storage` is the cold tier (video, telemetry archives, backups) and was 94% full on 2026-10-10 (640 GB of it nightly backups with no pruning, W-48). `cabin-backend` now warns at 80% and 90% full (`StorageMonitorService`, W-11; `GET /api/system/storage`) but never deletes. BI telemetry (the `TELEMETRY` rows behind temperature, humidity, presence, CO2 and the rest) is the data to keep: never delete or archive-and-delete it without a warning first (W-49; the monthly archival job has none today). Recorded video and old backups are disposable. Permanent deletions are run by the owner from a dry-run-first script, not by an agent session. The project skill `cabin-storage-tiers` carries these rules.
 
 ---
 
@@ -364,7 +382,7 @@ npm install && npm run dev
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
 | `CABIN_PRESENCE_STALE_AFTER_HOURS` | PresenceController | Hours of phone silence after which `/api/presence` reports `stale: true` and the badge reads "Presence unknown". Default `6`. Keep equal to Node-RED's `PRESENCE_STALE_HOURS` (siren gate, W-33) so the badge and the siren agree |
-| `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
+| `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). **Blank on the M920q as of 2026-10-12, so no backend push reaches a phone (W-51)**. The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
 
 ---
 
@@ -442,6 +460,7 @@ forward from an earlier session's list)
 | GET | `/api/security` | SecurityController — armed/disarmed per location, keyed by location, from `cabin/security/armed_away` (added 2026-08-08) |
 | GET | `/api/signal-quality` | SignalQualityController — prototype, Zigbee LQI trend/anomaly per device, not wired to any alert path yet (added 2026-08-08) |
 | GET | `/api/system/health` | SystemController |
+| GET | `/api/system/storage` | StorageController — disk usage and level for the HDD cold tier and the NVMe hot tier (W-11); alerts arrive as `STORAGE_THRESHOLD` events |
 | GET | `/api/camera/list` | CameraMediaController |
 | GET | `/api/camera/events/{frigateEventId}/snapshot` | CameraMediaController |
 | GET | `/api/camera/events/{frigateEventId}/clip` | CameraMediaController |
@@ -468,10 +487,36 @@ forward from an earlier session's list)
 | POST | `/api/kb/curate` | KnowledgeNodeController — the only way to write `SETUP`/`TROUBLESHOOTING`/`CREDENTIAL_POINTER` chunks (KB Generator v1 only ever auto-writes `DESCRIPTION`/`RELATIONSHIP`); body `{entityRef, chunkType, content}`, `source` is ignored and always forced to `MANUALLY_CURATED` server-side regardless of what's sent |
 | GET | `/actuator/health` | Spring Actuator — what `deploy-cabin-backend.yml`'s health-check gate polls |
 
-**Not yet built**: `/api/alerts/active` (the dashboard-badge fix from the
-severity-tiering MVP scope — only the classifier + ntfy push shipped
-2026-08-06, the dashboard-facing endpoint is still open, see
-`docs/DEFINITION_OF_DONE.md`).
+**Route groups missing from the table above** (added 2026-10-04, read from
+the controllers and `WebConfig`; this replaces an earlier "Not yet built:
+`/api/alerts/active`" note, which went stale when `AlertController` shipped).
+`WriteGateAuditTest` fails `mvn test` (which gates the backend deploy) if a state-changing route is neither
+interceptor-gated nor on its documented allowlist, so the "who may call"
+column for writes is enforced, not just described. Reads follow D14: several
+`GET`s are open on purpose.
+
+| Routes | Controller | Who may call |
+|---|---|---|
+| `GET /api/alerts/active`, `/rules`, `/acknowledgments`; `POST /acknowledgments`; `DELETE /acknowledgments/{alertKey}` | AlertController | `GET` open; acknowledge and snooze need a signed-in session |
+| `POST /api/devices/{id}/discovery/run`, `/apply`; `GET .../discovery/latest` | DeviceDiscoveryController | writes need a signed-in session (W-31, merged 2026-10-03, live-verified 2026-10-04); `GET` open |
+| `GET`/`POST /api/access-tokens`, `DELETE /{id}` | CabinAccessTokensController | signed-in admin only; never a guest token |
+| `/api/managed-users` (list, create, `/{id}/deactivate`, `/reactivate`, `/invite`, `/magic/{token}/consume`) | ManagedUsersController | admin; `consume` is exempt because the single-use magic-link token is the credential |
+| `POST /api/auth/session`, `POST /api/auth/session/revoke` | AuthController | `session` needs a Google token, managed session or existing CabinSession; `revoke` is open on purpose (holding the token is the proof) |
+| `GET /api/cross-domain/cabin-status-summary` | CrossDomainController | gated, plus a per-route household-role check (D11) |
+| `POST /api/helpdesk/ask` | TinyHelpdeskController | any signed-in session; a guest token gets 403; `CREDENTIAL_POINTER` redaction happens inside the answer |
+| `GET /api/platform-import/records`, `/{platform}/proposals`; `POST /{platform}/confirm` | PlatformImportController | `records`: administrator or adult household member; the rest administrator only |
+| `GET /api/opportunities`, `PATCH /{id}/status` | OpportunitiesController | administrator only, every method |
+| `/api/schedule/rules`, `/api/schedule/holidays` | ScheduleRulesController, HolidaysController | gated |
+| `/api/chores/assignments`, `/api/chores/definitions` (CRUD, `reorder`, `restore`) | ChoreAssignmentsController, ChoreDefinitionsController | gated (under `/api/chores/**`) |
+| `GET /api/presence/activity` | PresenceActivityController | gated (under `/api/presence/**`) |
+| `GET /api/frigate-metrics` | FrigateMetricsController | no interceptor pattern: open `GET` (per-camera health from Prometheus) |
+| `GET /api/context/cabin-context.jsonld`, `GET /api/devices/{id}/jsonld` | JsonLdController | open `GET` |
+| `POST /api/webhooks/blink-motion` | BlinkMotionWebhookController | its own shared-secret header (`cabin.blinkMotionWebhook.apiKey`); 503 or 401 when the key is unset or wrong |
+| `GET`/`POST /api/locations`, `PATCH /{id}`, `POST /reorder`, `DELETE /{id}` | LocationsController | **writes are open, a known gap: W-32.** The UI sends signed-in users' tokens to the `apiBase` this controller stores |
+
+Also corrected: `POST /api/devices/**` and every other non-`GET` under
+`/api/devices/**` need a signed-in session as of W-31. The `/api/devices` rows
+in the first table above describe the routes, not their gate.
 
 ---
 
@@ -662,7 +707,10 @@ All items below are **complete and pushed to GitHub**:
   `partial` flag (the earliest day in a window almost never starts at
   a day boundary, so it never has a full 24 hours of samples; the
   boundary is asked of the database, since `date_trunc('day', ...)`
-  buckets by the JDBC session's timezone, not UTC) -- the UI
+  buckets by the JDBC session's timezone, i.e. the backend JVM default:
+  UTC in the production container, Central on the CI runner and dev
+  machines -- see DL-2026-10-03-01, ruled a defect, fix tracked as W-30)
+  -- the UI
   labels it "(partial)" rather than silently averaging it in as
   equivalent to a full day. `SensorHistoryPanel`'s Range dropdown drops
   its old 90-day option (nothing ever honored it past the new shared
@@ -676,7 +724,6 @@ All items below are **complete and pushed to GitHub**:
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
 - Swap `notify.mobile_app_YOUR_PHONE` in `CabinAutomations` for real HA mobile app service name
-- `/api/alerts/active` — the dashboard-badge half of the severity-tiering MVP (classifier + ntfy shipped 2026-08-06, this didn't)
 - Armed/presence-aware severity escalation (deliberate MVP scope cut, see `event_severity`'s notes)
 - home-hub deployment
 - Production Docker Compose with env-var secrets
@@ -684,7 +731,7 @@ All items below are **complete and pushed to GitHub**:
 
 ---
 
-## CI/CD (built — both pipelines are self-hosted-runner GitHub Actions
+## CI/CD (built — the pipelines below are self-hosted-runner GitHub Actions
 workflows on the M920q itself; nothing inbound, no SSH secrets in GitHub,
 the runner polls GitHub over its own outbound Tailscale connection)
 
@@ -714,6 +761,30 @@ files. Three real properties, not just "rebuild and hope":
    caught in review before it ever ran for real). The job still fails
    (visible in the Actions tab) even when the rollback itself succeeds.
 
+**Other workflows (not described above until 2026-10-04):**
+- **`deploy-production-stack.yml`** — triggers on push to `main` touching
+  `cabin-orchestration-platform/infra/production-stack/**`,
+  `docker-compose.m920q.yml` or the workflow, and on manual dispatch.
+  Validates, deploys, smoke-tests (MQTT device path, Frigate availability
+  topic) and rolls back to the last-known-good compose file, Frigate config
+  and images on failure. **It overwrites the live Frigate config
+  (`/storage/services/frigate/config.yml`) from git** on a manual run, with no
+  prior SHA, or when a merge touches `production-stack/docker-compose.yml`,
+  `production-stack/frigate/config.yml` or the workflow; the
+  `docker-compose.m920q.yml` trigger alone is validation and smoke only. So a
+  hand-edited live Frigate file is reverted by the next such merge. The camera
+  smoke test checks Frigate's availability topic, not each camera. It also does
+  **not restart Frigate** after copying the config (W-46): `docker compose up -d`
+  sees no change to a bind-mounted file, so restart it by hand
+  (`docker restart frigate`) before a config change takes effect.
+- **`deploy-cabin-discovery.yml`** — triggers on `discovery-service/**`,
+  `docker-compose.m920q.yml` or the workflow, and on manual dispatch.
+- **`rotate-secrets.yml`** — monthly (06:00 UTC on the 1st) and on manual
+  dispatch; automated secrets rotation (see `docs/MAINTENANCE.md`, Secrets).
+- No workflow triggers on `pull_request`. The first CI execution of a change
+  is the post-merge gate on the M920q, so run touched tests locally before
+  opening a PR.
+
 **Manually deploying `cabin-backend` outside this pipeline** (e.g. testing
 a change before pushing) still works exactly as before — see "Manual
 (cabin-backend)" in `docs/MAINTENANCE.md`.
@@ -721,6 +792,8 @@ a change before pushing) still works exactly as before — see "Manual
 ---
 
 ## Testing
+
+**Run the whole backend suite before merging, not just the tests you touched** (`./mvnw -o test`; the Docker-backed classes error without a Docker daemon, everything else must pass). Repo-wide guard tests only fail when a *new* thing is added: on 2026-10-12 `DemoAccessTest.everyMappedGetRouteIsClassified` stopped W-11's deploy because a new GET route had no `DemoAccessPolicy` entry, and `WriteGateAuditTest` does the same for new write routes. No workflow runs on `pull_request`, so the first CI run is the post-merge gate on the M920q.
 
 **First tests in this project's history, added 2026-08-06** —
 `backend/src/test/java/com/cabin/orchestrator/events/`:
@@ -770,13 +843,19 @@ themselves, they just never had anything to trip on before:
 
 ## Design constraints
 
-- No Python beyond `watchdog.py` **and** the `docs/ai-assistant/` corpus/
+- No Python beyond `watchdog.py`, the `docs/ai-assistant/` corpus/
   eval tooling (`scripts/build-corpus-inventory.py`,
-  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`) —
-  updated 2026-09-10, this constraint had drifted stale as those shipped.
-  Both are deliberately narrow, tooling-only exceptions; no Python in the
-  actual runtime request path (backend stays Java/Spring Boot, frontend
-  stays JS/React).
+  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`),
+  **and** the Home Assistant side of `infra/cabin-security/homeassistant/`:
+  `cabin_security_mqtt_publish.py` (the publish allow-list HA's
+  `shell_command` runs inside HA's own container, not in the backend) and
+  its unit test, plus `test/ha-sim/run_sim.py`, an offline Home Assistant
+  simulation that runs only on a developer machine. Updated 2026-09-10 for
+  the corpus tooling and 2026-10-12 for the HA side (the allow-list script
+  already existed, so this constraint had drifted again, found by the
+  2026-10-12 session DoD). All are deliberately narrow, tooling-only
+  exceptions; no Python in the actual runtime request path (backend stays
+  Java/Spring Boot, frontend stays JS/React).
 - No ARM/Pi hardware for the two *production* "main brain" hubs — both
   are x86_64 Lenovo ThinkCentre M920q running the full stack (Postgres,
   Kafka, the Spring Boot backend, Grafana, HA, Node-RED, Frigate), and

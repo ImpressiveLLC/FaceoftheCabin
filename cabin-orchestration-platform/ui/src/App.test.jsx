@@ -4,8 +4,36 @@ import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-li
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
-mergeStatusCheckItems } from "./App.jsx";
+mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
+
+// The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
+// it used to reset to Cabin on every visit, hiding the Home AldrichFront camera).
+describe("readStoredLocation", () => {
+  const store = (value) => ({ getItem: (k) => (k === ACTIVE_LOCATION_KEY ? value : null) });
+
+  it("returns the stored location when it is a known one", () => {
+    expect(readStoredLocation(store("home"), ["cabin", "home"])).toBe("home");
+    expect(readStoredLocation(store("cabin"), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("returns 'both' when 'both' was stored", () => {
+    expect(readStoredLocation(store("both"), ["cabin", "home"])).toBe("both");
+  });
+
+  it("falls back to cabin when nothing is stored", () => {
+    expect(readStoredLocation(store(null), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("falls back to cabin for a location that no longer exists", () => {
+    expect(readStoredLocation(store("lake-house"), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("falls back to cabin when storage throws", () => {
+    const broken = { getItem: () => { throw new Error("blocked"); } };
+    expect(readStoredLocation(broken, ["cabin", "home"])).toBe("cabin");
+  });
+});
 
 // Covers the actual reported bug this session ("Camera Events" showing
 // device logs instead of camera activity) -- see
@@ -1582,6 +1610,56 @@ describe("FamilyHubPanel — Add Place", () => {
     fireEvent.click(screen.getByText("Create Place"));
 
     await waitFor(() => expect(screen.getByText("id is required")).toBeTruthy());
+  });
+
+  // W-32 (2026-10-04): POST /api/locations now needs a signed-in session, so the
+  // create must go through the auth object's authedFetch, not a plain fetch.
+  function renderPanelWithAuth(authedFetch) {
+    return render(
+      <ThemeProvider>
+        <AppContext.Provider value={{ devices: [] }}>
+          <FamilyHubPanel auth={{ authedFetch }} />
+        </AppContext.Provider>
+      </ThemeProvider>
+    );
+  }
+
+  function fillAndSubmit() {
+    fireEvent.click(screen.getByText("Add Place"));
+    fireEvent.change(screen.getByPlaceholderText("lakehouse"), { target: { value: "lakehouse" } });
+    fireEvent.change(screen.getByPlaceholderText("Lake House"), { target: { value: "Lake House" } });
+    fireEvent.click(screen.getByText("Create Place"));
+  }
+
+  it("creates the place through the signed-in authedFetch, never a bare fetch", async () => {
+    const plainFetch = vi.fn();
+    vi.stubGlobal("fetch", plainFetch);
+    const authedFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    const [url, opts] = authedFetch.mock.calls[0];
+    expect(url).toMatch(/\/api\/locations$/);
+    expect(opts.method).toBe("POST");
+    expect(plainFetch).not.toHaveBeenCalled();
+  });
+
+  it("tells a signed-out user to sign in instead of showing a bare 401", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => "Missing bearer token" });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/needs a signed-in household session/)).toBeTruthy());
+    expect(screen.queryByText("Missing bearer token")).toBeNull();
+  });
+
+  it("gives a read-only guest or viewer the same sign-in message on 403", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 403, text: async () => "forbidden" });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/needs a signed-in household session/)).toBeTruthy());
   });
 });
 
@@ -4476,6 +4554,28 @@ describe("useAutomationAlerts", () => {
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
       url.includes("eventTypePrefix=AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED"))).toBe(true));
+  });
+
+  // W-11: the disk monitor's STORAGE_THRESHOLD events must reach this list, or a filling disk is silent again.
+  it("also asks for STORAGE_ events", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+
+    render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
+      /eventTypePrefix=[^&]*STORAGE_/.test(url))).toBe(true));
+  });
+
+  it("renders a storage warning from its see/think payload with a readable rule name", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: async () => [{ eventId: "s1", sourceDeviceId: "storage-storage-hdd", eventType: "STORAGE_THRESHOLD",
+        severity: "CRITICAL", timestamp: new Date().toISOString(),
+        payload: { ruleId: "STORAGE_THRESHOLD", see: "storage-hdd is 94% full (57 GB free of 916 GB)", think: "Crossed the 90% critical line", act: "Prune old nightly backups first" } }],
+    });
+
+    render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
+
+    expect(await screen.findByText("storage-hdd is 94% full (57 GB free of 916 GB)")).toBeTruthy();
   });
 });
 
