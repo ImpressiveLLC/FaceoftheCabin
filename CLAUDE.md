@@ -708,6 +708,29 @@ All items below are **complete and pushed to GitHub**:
   `docs/governance/backlog.md`'s W-21 row for the full record, including
   its relationship to PR #106 (which first drafted this same ID and
   scope but shipped no implementation).
+- **Status Checks alert flow: silencing safety floor, undo, and a
+  reliable "Open device"** (2026-10-12) — review of the See -> Think -> Act
+  chain in `StatusChecksCard` found three gaps. (1) **A CRITICAL check
+  can no longer be silenced open-endedly**: its row offers no "Ignore for
+  now" and only the 1-hour "Remind me in" (`CRITICAL_SNOOZE_DURATIONS`),
+  and `mergeStatusCheckItems` keeps a CRITICAL item visible under an
+  `IGNORED` acknowledgment even if one already exists in the database --
+  the same "density/quiet must never hide the thing this dashboard exists
+  to surface" rule as the collapse floor, since the nav rail reads the
+  same merged list. (2) **Ignore/Snooze is undoable**: a "N silenced"
+  disclosure in the card (`silencedStatusChecks`) lists every
+  acknowledgment currently hiding something, with Restore (the
+  previously-unused `DELETE /api/alerts/acknowledgments/{key}`), and flags
+  ones whose condition has cleared ("not currently active") because an
+  `IGNORED` row outlives its condition and would pre-suppress that alert's
+  next occurrence; the empty state no longer claims nothing is wrong while
+  items are silenced. (3) **Open device reveals its target**:
+  `DeviceManagerPanel` resets only the filters that hide the device
+  (Parent-only / State / Imported-from / Review-previously), expands its
+  collapsed group, and says so when the id isn't in the list instead of
+  silently showing nothing. Not done, deliberately: inline Act buttons
+  (e.g. close the water valve from the alert) and clear-on-resolve for
+  `IGNORED` rows -- see `docs/PRODUCT_NOTES.md`'s 2026-10-12 entry.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds

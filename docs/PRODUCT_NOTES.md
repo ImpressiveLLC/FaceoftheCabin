@@ -931,3 +931,51 @@ set with realistic room to grow past a screenful, and it's the one the
 screenshot actually showed doing so.
 
 ---
+
+## 2026-10-12 — Status Checks: Silencing Needs a Floor and an Undo
+
+A review of the alert flow end to end (Nate asked whether it needed
+additional actions) found that the density work of 2026-09-16/17 had been
+careful about *collapsing* but the later Ignore/Remind-me actions (2026-09-18)
+had not applied the same care to *silencing*, and that "Open device" could
+still dead-end. Three gaps, fixed together because they are one chain.
+
+**1. Silencing is not a safe way to get quiet for a CRITICAL check.**
+`IGNORED` has no expiry, and the filter that applies it is plain key
+membership, so one click on "Ignore for now" could remove an active leak
+alarm from the card *and* the nav rail (both read `mergeStatusCheckItems`)
+until someone found a way to clear it -- and there was no way. The
+2026-09-16 rule was that collapsing for density must never hide an
+ALARM/CRITICAL item; silencing is the same hazard by another route. So a
+CRITICAL row now offers only a 1-hour "Remind me in", no Ignore, and the
+merge itself refuses to honor an `IGNORED` row for a CRITICAL item (so rows
+already in the database stop hiding them too, without a migration). This
+only governs what this UI shows: the ntfy push for CRITICAL events is a
+separate path and was never affected by acknowledgments.
+
+**2. A silenced check has to stay findable.** The card now carries an
+"N silenced" disclosure with Restore per entry, built on the
+`DELETE /api/alerts/acknowledgments/{key}` endpoint that already existed
+but nothing called. It also lists acknowledgments whose condition has
+cleared, labelled "not currently active": an `IGNORED` row is keyed by
+`device:{id}:{condition}`, so it quietly pre-suppresses that device's *next*
+occurrence of the same problem, and without a list there was no way to even
+see that. The empty state used to say "No status checks need attention --
+built-in safety rules are watching" while checks were silenced; it now says
+how many are.
+
+**3. "Open device" now lands on the device.** It set the selection but left
+the saved Parent-only / State / Imported-from filters and the group's
+collapsed state alone, so a child service or a Saved-for-later device could
+send the person to a panel that did not show it. Focus now resets only the
+facets that actually hide the target (a focus on an already-visible device
+leaves the person's filters untouched), expands its group, and shows a
+dismissible notice if the id is not in the device list.
+
+**Deliberately not done.** *Inline Act buttons* (close the water valve from
+the alert row): the right shape needs a confirmation design and an
+allowlist of safe commands, and the existing "Open device" hop already
+reaches the device's own controls -- backlogged rather than rushed. *Clear
+`IGNORED` on resolve* (backend): changes what "ignore" means to the person
+who chose it, so it is a decision for Nate rather than a side effect of a
+UI fix; the silenced list makes the current behavior visible meanwhile.

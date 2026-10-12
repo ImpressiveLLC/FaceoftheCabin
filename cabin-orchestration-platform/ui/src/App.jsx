@@ -2735,14 +2735,6 @@ export function DeviceManagerPanel({ auth }) {
   const [selected, setSelected]     = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
 
-  // Consume+clear immediately (not left for the next mount) so switching
-  // away and back to Device Manager later doesn't re-select a stale target.
-  useEffect(() => {
-    if (!pendingDeviceFocus) return;
-    setSelected(pendingDeviceFocus);
-    setView("see");
-    setPendingDeviceFocus(null);
-  }, [pendingDeviceFocus, setPendingDeviceFocus]);
   const [groupBy, setGroupBy] = useState(() => localStorage.getItem("devices.groupBy") || "type");
   const [groupFlow, setGroupFlow] = useState(() => localStorage.getItem("devices.groupFlow") || "horizontal");
   // Replaces the old single "devices.filter" enum (2026-09-16) -- parent/
@@ -2853,6 +2845,37 @@ export function DeviceManagerPanel({ auth }) {
     useCollapsedSections(`collapsed.deviceGroups.${activeLocation}.${groupBy}`);
   const groupNames = useMemo(() => groups.map(([name]) => name), [groups]);
   const allGroupsCollapsed = groupNames.length > 0 && groupNames.every(isGroupCollapsed);
+
+  // "Open device" from a Status Check (pendingDeviceFocus). Consume+clear
+  // immediately (not left for the next mount) so switching away and back
+  // later doesn't re-select a stale target. Declared after `groups` so it
+  // can also make the target *visible*: a saved Parent-only / State /
+  // Imported-from filter or a collapsed group would otherwise leave the
+  // person on a panel that doesn't show the device they were just sent to
+  // act on -- a dead end in the See -> Think -> Act chain. Only the facets
+  // that actually hide this device are reset, so a focus that was already
+  // visible leaves the person's saved filters alone.
+  const [focusNotice, setFocusNotice] = useState(null);
+  useEffect(() => {
+    if (!pendingDeviceFocus) return;
+    const target = managerDevices.find(d => d.deviceId === pendingDeviceFocus);
+    setSelected(pendingDeviceFocus);
+    setView("see");
+    setPendingDeviceFocus(null);
+    if (!target) {
+      setFocusNotice(`Device "${pendingDeviceFocus}" isn't in the device list for this location.`);
+      return;
+    }
+    setFocusNotice(null);
+    if (filterDeviceManagerDevices([target], effectiveDeviceFilter).length === 0) {
+      setReviewingPrevious(false);
+      setParentOnly(false);
+      setLifecycleFilter(LIFECYCLE_FILTER_OPTIONS.map(o => o.value));
+      setImportedFromFilter("");
+    }
+    const group = groups.find(([, items]) => items.some(d => d.deviceId === target.deviceId));
+    if (group && isGroupCollapsed(group[0])) setAllGroupsCollapsed([group[0]], false);
+  }, [pendingDeviceFocus, setPendingDeviceFocus, managerDevices, effectiveDeviceFilter, groups, isGroupCollapsed, setAllGroupsCollapsed]);
 
   const refreshManagerDevices = useCallback(() => {
     refreshDevices();
@@ -2986,6 +3009,11 @@ export function DeviceManagerPanel({ auth }) {
         </a>
       </div>
 
+      {focusNotice && (
+        <p className="action-result action-error" role="status">
+          {focusNotice} <button type="button" className="active-condition-link" onClick={() => setFocusNotice(null)}>Dismiss</button>
+        </p>
+      )}
       {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} groups={groups} reorderGroup={reorderGroup} reorderDevice={reorderDevice}
         selected={selected} onSelect={setSelected}
         reorderMode={reorderMode} groupFlow={groupFlow}
@@ -6793,11 +6821,22 @@ export function mergeStatusCheckItems(activeAlerts, activeLocation, automationAl
   const visibleDeviceAlerts = activeLocation === "both"
     ? activeAlerts
     : activeAlerts.filter(alert => alert.location === activeLocation);
-  const suppressedKeys = new Set(acknowledgments.map(a => a.alertKey));
+  const modeByKey = new Map(acknowledgments.map(a => [a.alertKey, a.mode]));
+  // Safety floor (2026-10-12): an open-ended "Ignore" must never hide a
+  // CRITICAL condition -- same principle as the collapse floor, collapsing
+  // or silencing for density can't be allowed to hide the exact thing this
+  // dashboard exists to surface. A CRITICAL item stays visible under an
+  // IGNORED row (including ones already in the database from before this
+  // rule); only a time-boxed SNOOZE (UI caps it at 1 hour for CRITICAL) hides it.
+  const isSuppressed = item => {
+    if (!modeByKey.has(item.alertKey)) return false;
+    const mode = modeByKey.get(item.alertKey);
+    return !(mode === "IGNORED" && (item.severity || "").toLowerCase() === "critical");
+  };
   const members = [
     ...visibleDeviceAlerts.map(normalizeDeviceAlert),
     ...automationAlerts.map(normalizeAutomationAlert),
-  ].filter(item => !suppressedKeys.has(item.alertKey));
+  ].filter(item => !isSuppressed(item));
 
   // 2026-09-19 (user report, annotated screenshot): the same alert showed
   // up as separate rows -- "an alert for ____ condition" can't be occurring
@@ -6842,6 +6881,39 @@ export function mergeStatusCheckItems(activeAlerts, activeLocation, automationAl
   });
 }
 
+// CRITICAL conditions can only be snoozed, and only for the shortest window
+// -- see mergeStatusCheckItems' isSuppressed for why.
+export const CRITICAL_SNOOZE_DURATIONS = SNOOZE_DURATIONS.slice(0, 1);
+
+// 2026-10-12: Ignore/Snooze used to be one-way from this UI -- a silenced
+// item simply vanished, with no way to see or undo it (the DELETE endpoint
+// existed, nothing called it). Returns one entry per acknowledgment that is
+// currently hiding something, so the card can list them with a Restore
+// button. Titles are looked up across BOTH locations (the visible list is
+// location-scoped, a silenced entry for the other location should still be
+// recognizable); an entry whose condition has since cleared falls back to
+// its key and is flagged not active -- still listed, because an IGNORED row
+// outlives the condition it was made for and would silently pre-suppress
+// that alert's next occurrence if there were no way to find and clear it.
+export function silencedStatusChecks(activeAlerts, automationAlerts, acknowledgments = []) {
+  if (acknowledgments.length === 0) return [];
+  const titleByKey = new Map();
+  mergeStatusCheckItems(activeAlerts, "both", automationAlerts, []).forEach(item =>
+    item.alertKeys.forEach(key => titleByKey.set(key, item.title)));
+  const stillVisible = new Set();
+  mergeStatusCheckItems(activeAlerts, "both", automationAlerts, acknowledgments).forEach(item =>
+    item.alertKeys.forEach(key => stillVisible.add(key)));
+  return acknowledgments
+    .filter(ack => !stillVisible.has(ack.alertKey))
+    .map(ack => ({
+      alertKey: ack.alertKey,
+      mode: ack.mode,
+      snoozedUntil: ack.snoozedUntil,
+      title: titleByKey.get(ack.alertKey) || ack.alertKey,
+      active: titleByKey.has(ack.alertKey),
+    }));
+}
+
 // 2026-09-18 (user report, annotated screenshot): "Current conditions" and
 // "Automation alerts" were two separately-fetched, separately-styled boxes
 // stacked in the same column -- confusing given "Current conditions" isn't
@@ -6870,6 +6942,7 @@ function StatusChecksCard({ auth }) {
   const [expandedId, setExpandedId] = useState(null);
   const [snoozeOpenFor, setSnoozeOpenFor] = useState(null);
   const [ackError, setAckError] = useState(null);
+  const [showSilenced, setShowSilenced] = useState(false);
   const containerRef = useRef(null);
   const toggleExpanded = (id) => {
     setExpandedId(prev => (prev === id ? null : id));
@@ -6912,6 +6985,39 @@ function StatusChecksCard({ auth }) {
       refreshAlertAcknowledgments?.();
     } catch (e) { setAckError(e.message); }
   };
+  const restoreAlert = async (alertKey) => {
+    setAckError(null);
+    try {
+      await clearAlertAcknowledgment(doFetch, alertKey);
+      refreshAlertAcknowledgments?.();
+    } catch (e) { setAckError(e.message); }
+  };
+  const silenced = silencedStatusChecks(activeAlerts, automationAlerts, alertAcknowledgments);
+  const silencedList = silenced.length > 0 && (
+    <div className="active-condition-silenced">
+      <button type="button" className="active-condition-link" aria-expanded={showSilenced}
+        onClick={() => setShowSilenced(v => !v)}>
+        {silenced.length} silenced {showSilenced ? <ChevronUp size={11}/> : <ChevronDown size={11}/>}
+      </button>
+      {showSilenced && (
+        <ul>
+          {silenced.map(entry => (
+            <li key={entry.alertKey}>
+              <span className="active-condition-silenced-title">{entry.title}</span>
+              <span className="meta-chip">
+                {entry.mode === "SNOOZED" ? `Snoozed until ${formatAlertTimestamp(entry.snoozedUntil)}` : "Ignored"}
+              </span>
+              {!entry.active && <span className="config-hint">not currently active</span>}
+              <button type="button" className="active-condition-link" onClick={() => restoreAlert(entry.alertKey)}>
+                Restore
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {ackError && expandedId === null && <p className="action-result action-error">{ackError}</p>}
+    </div>
+  );
 
   const locationAvailable = activeLocation === "both"
     ? activeAlertLocations.length > 0
@@ -6928,14 +7034,19 @@ function StatusChecksCard({ auth }) {
   // nothing to show yet AND at least one source hasn't settled (so an
   // empty state doesn't flash before the other resolves).
   const nothingYet = visibleDeviceAlerts.length === 0 && automationAlerts.length === 0;
-  if (nothingYet && (!locationAvailable || automationAlertsLoading)) return null;
+  if (nothingYet && silenced.length === 0 && (!locationAvailable || automationAlertsLoading)) return null;
 
   const items = mergeStatusCheckItems(activeAlerts, activeLocation, automationAlerts, alertAcknowledgments);
 
   if (items.length === 0) {
     return (
       <div className="active-conditions active-conditions-none">
-        <p className="config-desc">No status checks need attention — built-in safety rules are watching.</p>
+        <p className="config-desc">
+          {silenced.length > 0
+            ? `No status checks need attention — ${silenced.length} silenced by you, restore below.`
+            : "No status checks need attention — built-in safety rules are watching."}
+        </p>
+        {silencedList}
       </div>
     );
   }
@@ -7020,9 +7131,13 @@ function StatusChecksCard({ auth }) {
                         device below is a separate, deliberate escalation,
                         not a peer of these. */}
                     <div className="active-condition-actions active-condition-actions-expanded active-condition-ack-actions">
-                      <button type="button" className="active-condition-link" onClick={() => ignoreAlert(item.alertKeys)}>
-                        Ignore for now
-                      </button>
+                      {/* No open-ended Ignore for CRITICAL (safety floor, see
+                          mergeStatusCheckItems) -- only a short snooze. */}
+                      {(item.severity || "").toLowerCase() !== "critical" && (
+                        <button type="button" className="active-condition-link" onClick={() => ignoreAlert(item.alertKeys)}>
+                          Ignore for now
+                        </button>
+                      )}
                       <span className="active-condition-snooze">
                         <button type="button" className="active-condition-link"
                           onClick={() => setSnoozeOpenFor(snoozeOpenFor === item.id ? null : item.id)}>
@@ -7030,7 +7145,7 @@ function StatusChecksCard({ auth }) {
                         </button>
                         {snoozeOpenFor === item.id && (
                           <div className="active-condition-snooze-menu">
-                            {SNOOZE_DURATIONS.map(d => (
+                            {((item.severity || "").toLowerCase() === "critical" ? CRITICAL_SNOOZE_DURATIONS : SNOOZE_DURATIONS).map(d => (
                               <button key={d.label} type="button" className="active-condition-snooze-option"
                                 onClick={() => snoozeAlert(item.alertKeys, d.ms)}>
                                 {d.label}
@@ -7056,6 +7171,7 @@ function StatusChecksCard({ auth }) {
         })}
       </div>
       )}
+      {silencedList}
     </section>
   );
 }
