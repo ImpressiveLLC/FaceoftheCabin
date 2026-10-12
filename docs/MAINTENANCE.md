@@ -830,6 +830,38 @@ orphaned service from `docker-compose.yml` is a real infra edit,
 flagged for the user to confirm rather than done unilaterally) — this
 note exists so the next person doesn't lose time to the same confusion.
 
+**Latest occurrence, 2026-10-10, and how to recognize it in two minutes
+(W-50).** Symptom: the driveway (or AldrichFront) shows "offline" in Frigate
+and its log fills with `404 Not Found` on `rtsp://mediamtx:8554/outdoor_4_-_dhee`
+or `.../aldrichfront`. **That 404 alone proves nothing**: Blink cameras only
+have a stream while a liveview session is open, so Frigate logs it every ten
+seconds when idle and healthy. The real test is blinkbridge itself:
+```bash
+docker logs -t --tail 1 blinkbridge      # the timestamp of its last log line
+docker top blinkbridge                   # python -m blinkbridge.main, state S, 0% CPU
+```
+A healthy blinkbridge logs a "motion poll" every 30 to 40 seconds. If the last
+line is minutes or hours old while the container still says "Up" and the
+process is alive (Docker's `RestartCount` stays 0), it has hung. On 2026-10-10
+it went silent at 16:43 UTC, right after a Blink live-view teardown error
+(`ConnectionResetError`, then "endpoint possibly down or throttled"), and stayed
+silent for 36 hours until noticed. (August's `max_failures` give-up was
+patched to back off and retry; this was a different hang, after a live-view
+teardown.) `docker restart blinkbridge` fixed it again:
+it re-authenticated within 5 seconds, and a short liveview then fed Frigate at
+about 5 fps with detection running. Two things in its log look alarming but are
+not the cause: `Could not extract events: An app update is required` is
+blinkpy's retired `get_events` call (blinkpy issue #757), and the startup line
+`Unexpected error: days=...; must have magnitude` appears on every start.
+**Prevention (staged, not installed):** `scripts/host/blinkbridge-watchdog`
+restarts it after 10 minutes of log silence, run every 5 minutes by
+`blinkbridge-watchdog.timer`. Install with sudo:
+```bash
+sudo install -m 755 scripts/host/blinkbridge-watchdog /usr/local/bin/blinkbridge-watchdog
+sudo cp scripts/host/blinkbridge-watchdog.service scripts/host/blinkbridge-watchdog.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now blinkbridge-watchdog.timer
+```
+
 **Blink camera (`driveway`) went dark for hours with no auto-recovery
 — found and fixed 2026-08-03.** External review's "no camera-event
 pipeline activity" finding traced to `docker exec frigate curl
