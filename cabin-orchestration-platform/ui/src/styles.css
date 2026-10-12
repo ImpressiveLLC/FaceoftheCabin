@@ -1094,6 +1094,21 @@ body {
   background: var(--success);
   flex-shrink: 0;
 }
+/* W-34: replaces the live dot once the phone's last report is older than the
+   backend's stale limit, and the badge reads "Presence unknown". */
+.presence-stale-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+}
+.presence-toggle-unknown { border-color: var(--warning); }
+.presence-age {
+  font-size: 11px;
+  color: var(--text-dim, var(--text-muted));
+  white-space: nowrap;
+}
 
 /* ─── Monitoring panel profile hint ─────────────────────────────────────── */
 .mn-profile-hint {
