@@ -381,7 +381,7 @@ npm install && npm run dev
 | `CAMERA_PASSWORD` | Frigate | Reolink admin password |
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
-| `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
+| `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). **Blank on the M920q as of 2026-10-12, so no backend push reaches a phone (W-51)**. The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
 
 ---
 
