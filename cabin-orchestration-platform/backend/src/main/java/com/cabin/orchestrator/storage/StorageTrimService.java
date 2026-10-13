@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.storage;
 
+import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.kafka.EventPublisher;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -7,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -50,19 +53,23 @@ public class StorageTrimService {
     static final Duration STALE_AFTER = Duration.ofHours(12);
 
     private final StorageMonitorService monitor;
+    private final EventPublisher eventPublisher;
+    private volatile String lastAutoAnnounced;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Value("${cabin.storage.trimSpoolDir:/app/archives/cabin_event/.trim}")
     private String spoolDir;
 
     @Autowired
-    public StorageTrimService(StorageMonitorService monitor) {
+    public StorageTrimService(StorageMonitorService monitor, EventPublisher eventPublisher) {
         this.monitor = monitor;
+        this.eventPublisher = eventPublisher;
     }
 
     /** Tests: point at a scratch folder. */
-    StorageTrimService(StorageMonitorService monitor, String spoolDir) {
+    StorageTrimService(StorageMonitorService monitor, EventPublisher eventPublisher, String spoolDir) {
         this.monitor = monitor;
+        this.eventPublisher = eventPublisher;
         this.spoolDir = spoolDir;
     }
 
@@ -91,6 +98,7 @@ public class StorageTrimService {
         out.put("planAgeSeconds", plannedAt == null ? null : Duration.between(plannedAt, Instant.now()).toSeconds());
         out.put("stale", plannedAt == null || Duration.between(plannedAt, Instant.now()).compareTo(STALE_AFTER) > 0);
         out.put("sizesMeasured", Boolean.TRUE.equals(planJson.get("sizesMeasured")));
+        out.put("auto", planJson.get("auto"));
         out.put("targets", trimmableTargets(planJson));
         Map<String, Object> result = readJson(Path.of(spoolDir, "result.json"));
         out.put("lastResult", result);
@@ -143,6 +151,54 @@ public class StorageTrimService {
         }
         log.info("Storage trim requested {} keep={}", requestId, keep);
         return requestId;
+    }
+
+    /**
+     * The host agent trims on its own when the disk is too full (W-11b). This tells the owner it happened, or
+     * that it could not get the disk down: an automatic trim removes backup copies nobody asked for in that
+     * moment, so it must never be silent. Looks at result.json once a minute and announces each automatic
+     * result once (and only a recent one, so a restart does not repeat an old announcement).
+     */
+    @Scheduled(fixedDelayString = "${cabin.storage.trim.pollMs:60000}", initialDelayString = "${cabin.storage.trim.pollMs:60000}")
+    public void announceAutoResult() {
+        Map<String, Object> r = readJson(Path.of(spoolDir, "result.json"));
+        if (r == null || !Boolean.TRUE.equals(r.get("auto"))) return;
+        String id = String.valueOf(r.get("requestId"));
+        if (id.equals(lastAutoAnnounced)) return;
+        Instant at = parseInstant(r.get("finishedAt"));
+        if (at == null || Duration.between(at, Instant.now()).compareTo(Duration.ofMinutes(15)) > 0) {
+            lastAutoAnnounced = id;
+            return;
+        }
+        lastAutoAnnounced = id;
+        boolean ok = Boolean.TRUE.equals(r.get("ok"));
+        boolean reached = !Boolean.FALSE.equals(r.get("reachedTarget"));
+        int removed = r.get("removed") instanceof Number n ? n.intValue() : 0;
+        double freedGb = r.get("freedBytes") instanceof Number n ? n.doubleValue() / (1024.0 * 1024.0 * 1024.0) : 0;
+        String see = ok
+            ? String.format("Automatic trim removed %d old backup copies and freed about %.0f GB", removed, freedGb)
+            : "Automatic trim of old backups failed";
+        String think = !ok ? String.valueOf(r.get("output"))
+            : reached ? "The disk was above its automatic-trim line; it is back under it"
+            : "The disk is still above its line and every backup folder is already down to its minimum copies";
+        String act = !ok || !reached
+            ? "Open this alert and use Trim old backups, or free space another way (recorded video, the one-off system copy)."
+            : "Nothing to do.";
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("ruleId", "STORAGE_AUTO_TRIM");
+        p.put("removed", removed);
+        p.put("freedBytes", r.get("freedBytes"));
+        p.put("reachedTarget", reached);
+        p.put("see", see);
+        p.put("think", think);
+        p.put("act", act);
+        boolean needsAttention = !ok || !reached;
+        p.put("notify", needsAttention);
+        p.put("title", "Cabin storage: " + (needsAttention ? "automatic trim needs you" : "automatic trim ran"));
+        p.put("message", see + ". " + think);
+        eventPublisher.publish(new CabinEvent(UUID.randomUUID().toString(), "storage-storage-hdd", "STORAGE_AUTO_TRIM",
+            needsAttention ? "WARN" : "INFO", Instant.now(), p));
+        log.info("Announced automatic storage trim {}: removed={} ok={} reached={}", id, removed, ok, reached);
     }
 
     // ---- helpers ------------------------------------------------------------------------------

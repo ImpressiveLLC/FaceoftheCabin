@@ -102,8 +102,8 @@ public class StorageMonitorService {
             CabinEventService eventService,
             @Value("${cabin.storage.monitor.enabled:true}") boolean enabled,
             @Value("${cabin.storage.monitor.mounts:storage-hdd=/app/archives/cabin_event,root-nvme=/}") String mountsSpec,
-            @Value("${cabin.storage.monitor.warnPercent:80}") int warnPercent,
-            @Value("${cabin.storage.monitor.criticalPercent:90}") int criticalPercent,
+            @Value("${cabin.storage.monitor.warnPercent:60}") int warnPercent,
+            @Value("${cabin.storage.monitor.criticalPercent:75}") int criticalPercent,
             @Value("${cabin.storage.monitor.clearMarginPercent:3}") int clearMarginPercent,
             @Value("${cabin.storage.monitor.renotifyHours:24}") int renotifyHours) {
         this(eventPublisher, eventService, FILE_PROBE, enabled, parseMounts(mountsSpec),

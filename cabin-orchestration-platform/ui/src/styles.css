@@ -2528,3 +2528,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
   background: var(--bg); color: var(--danger); font-size: 14px; cursor: pointer;
 }
 .trim-go:disabled { opacity: 0.55; cursor: not-allowed; }
+.trim-want { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.trim-want input[type="number"] { width: 80px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 6px; }
+.trim-want button { align-self: flex-start; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 10px; cursor: pointer; }
+.trim-want button:disabled { opacity: 0.55; cursor: not-allowed; }

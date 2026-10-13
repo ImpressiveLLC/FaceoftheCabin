@@ -116,6 +116,36 @@ r5 report --keep nosuch=2 >/dev/null 2>&1; rc=$?
 check "--keep for an unknown target is refused" "[ $rc -eq 2 ]"
 check "the newest folder survived every run" "[ -d $B/tr/2026-02-05 ]"
 
+echo "auto-trim to a fill level (oldest first, never below the floor)"
+mkdir -p "$W/stub"
+cat >"$W/stub/df" <<'DFEOF'
+#!/usr/bin/env bash
+n=$(cat "$USED_FILE"); printf 'Use%%\n %s%%\n' "$n"; echo $(( n - 10 )) >"$USED_FILE"
+DFEOF
+chmod +x "$W/stub/df"
+printf 'allowed_root %s\ntarget au1 dated-dirs %s\ntarget au2 dated-dirs %s\n' "$B" "$B/au1" "$B/au2" >"$W/conf6"
+mkau() { rm -rf "$B/au1" "$B/au2"; mkdir -p "$B/au1" "$B/au2"
+  for d in 2026-03-01 2026-03-02 2026-03-03 2026-03-04 2026-03-05; do mkdir "$B/au1/$d"; done
+  for d in 2026-03-02 2026-03-03 2026-03-06; do mkdir "$B/au2/$d"; done; }
+r6() { PATH="$W/stub:$PATH" USED_FILE="$W/used" CABIN_STORAGE_CONF="$W/conf6" CABIN_STORAGE_LOG="$W/log" CABIN_STORAGE_TEST=1 bash "$SCRIPT" "$@"; }
+mkau; echo 85 >"$W/used"
+out=$(r6 apply --auto-below 65 --floor 2 --yes --only au1,au2)
+check "removes the oldest folders one at a time until the disk is at the level" "[ ! -d $B/au1/2026-03-01 ] && [ ! -d $B/au1/2026-03-02 ] && [ -d $B/au1/2026-03-03 ] && [ -d $B/au2/2026-03-02 ] && echo \"\$out\" | grep -q 'auto-result: reached used=65 removed=2'"
+mkau; echo 99 >"$W/used"
+out=$(r6 apply --auto-below 10 --floor 3 --yes)
+check "stops at the floor when the disk is still too full, and says so" "echo \"\$out\" | grep -q 'auto-result: floor' && [ \$(ls $B/au1 | wc -l) -eq 3 ] && [ \$(ls $B/au2 | wc -l) -eq 3 ] && [ -d $B/au1/2026-03-05 ]"
+mkau; echo 99 >"$W/used"
+r6 apply --auto-below 10 --floor 1 --yes --only au2 >/dev/null
+check "--only limits it to the named targets" "[ \$(ls $B/au1 | wc -l) -eq 5 ] && [ \$(ls $B/au2 | wc -l) -eq 1 ] && [ -d $B/au2/2026-03-06 ]"
+mkau; echo 40 >"$W/used"
+out=$(r6 apply --auto-below 65 --yes)
+check "does nothing when the disk is already below the level" "echo \"\$out\" | grep -q 'reached used=40 removed=0' && [ \$(ls $B/au1 | wc -l) -eq 5 ]"
+r6 apply --auto-below 0 --yes >/dev/null 2>&1; rc=$?; check "--auto-below 0 is refused" "[ $rc -eq 2 ]"
+r6 apply --auto-below abc --yes >/dev/null 2>&1; rc=$?; check "--auto-below with a non-number is refused" "[ $rc -eq 2 ]"
+r6 apply --auto-below 50 --floor 0 --yes >/dev/null 2>&1; rc=$?; check "--floor 0 is refused" "[ $rc -eq 2 ]"
+check "auto-trim never touched the protected telemetry folder" "[ -d $B/arch/cabin_event ]"
+check "auto-trim logged each removal" "grep -c 'auto-trim removed' $W/log | grep -qv '^0\$'"
+
 echo "config"
 printf 'bogus thing\n' >"$W/conf2"
 CABIN_STORAGE_CONF="$W/conf2" bash "$SCRIPT" report >/dev/null 2>&1; rc=$?

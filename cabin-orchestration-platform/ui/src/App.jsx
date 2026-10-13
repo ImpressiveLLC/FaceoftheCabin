@@ -6905,12 +6905,31 @@ export function trimPreview(targets, keepN, disk) {
   return { rows, removeCount, unknown, totalBytes, after };
 }
 
+// "I need N GB for a big job": the most copies we can keep and still free at least `wantGb`.
+// Returns { keepN, achievable, maxFreeGb }; keepN is null when sizes are not measured yet.
+export function keepForFreeing(targets, wantGb) {
+  const max = Math.max(1, ...(targets || []).map(t => (t.snapshots || []).length));
+  const freedGbAt = (n) => {
+    const p = trimPreview(targets, n, null);
+    return p.totalBytes == null ? null : p.totalBytes / (1024 ** 3);
+  };
+  const atMinimum = freedGbAt(1);
+  if (atMinimum == null) return { keepN: null, achievable: false, maxFreeGb: null };
+  if (atMinimum < wantGb) return { keepN: 1, achievable: false, maxFreeGb: atMinimum };
+  for (let n = max; n >= 1; n--) {
+    if (freedGbAt(n) >= wantGb) return { keepN: n, achievable: true, maxFreeGb: atMinimum };
+  }
+  return { keepN: 1, achievable: true, maxFreeGb: atMinimum };
+}
+
 export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 }) {
   const [view, setView] = useState(null);
   const [problem, setProblem] = useState(null);
   const [keepN, setKeepN] = useState(null);
   const [waitingFor, setWaitingFor] = useState(null); // requestId we are waiting on
   const [sending, setSending] = useState(false);
+  const [wantGb, setWantGb] = useState("");
+  const [wantNote, setWantNote] = useState(null);
   const url = `${apiBase}/api/system/storage/trim`;
 
   const load = useCallback(async () => {
@@ -6982,6 +7001,9 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
     <div className="trim-widget">
       <strong>Trim old backups</strong>
       {disk && <p className="trim-note">Disk now: {disk.usedPercent}% full, {Math.round(disk.freeGb)} GB free of {Math.round(disk.totalGb)} GB.</p>}
+      {view.auto && (view.auto.enabled
+        ? <p className="trim-note">Automatic: at {view.auto.aboveFull}% full the oldest backup copies are removed until the disk is back to {view.auto.downTo}%, never leaving fewer than {view.auto.floorKeep} per folder. You are told each time.</p>
+        : <p className="trim-note">Automatic trimming is turned off on the host.</p>)}
       {view.stale && <p className="trim-note">This plan is more than 12 hours old, so recent folders may be missing from it.</p>}
       {!view.sizesMeasured && <p className="trim-note">The host is still measuring folder sizes (the first pass takes several minutes). You can trim now; the amount freed shows when it finishes.</p>}
 
@@ -6992,6 +7014,21 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
                onChange={e => setKeepN(Number(e.target.value))} />
         <span className="trim-slider-ends"><span>Trim more</span><span>Trim less</span></span>
       </label>
+
+      <div className="trim-want">
+        <label>Need room for a big job? Free up at least{" "}
+          <input type="number" min="1" inputMode="numeric" value={wantGb} disabled={busy} aria-label="Gigabytes to free"
+                 onChange={e => setWantGb(e.target.value)} /> GB
+        </label>
+        <button type="button" disabled={busy || !(Number(wantGb) > 0)} onClick={() => {
+          const r = keepForFreeing(view.targets, Number(wantGb));
+          if (r.keepN == null) { setWantNote("Sizes are not measured yet, so the slider cannot be set from a target."); return; }
+          setKeepN(r.keepN);
+          setWantNote(r.achievable ? null
+            : `Even keeping 1 copy of each folder frees only ${Math.round(r.maxFreeGb)} GB. For more, shorten recorded-video retention in Frigate or remove the one-off system copy.`);
+        }}>Set the slider</button>
+        {wantNote && <p className="trim-note" role="status">{wantNote}</p>}
+      </div>
 
       <ul className="trim-rows">
         {preview.rows.map(r => (
@@ -7019,8 +7056,8 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
       {result && !waitingFor && !view.pending && (
         <p className={result.ok ? "trim-note" : "trim-error"} role="status">
           {result.ok
-            ? `Last trim: removed ${result.removed} ${result.removed === 1 ? "copy" : "copies"}, freed ${formatTrimBytes(result.freedBytes)}.`
-            : `Last trim did not finish: ${result.output || "no detail"}`}
+            ? `Last trim${result.auto ? " (automatic)" : ""}: removed ${result.removed} ${result.removed === 1 ? "copy" : "copies"}, freed ${formatTrimBytes(result.freedBytes)}.${result.reachedTarget === false ? " The disk is still above its line and every folder is at its minimum." : ""}`
+            : `Last trim${result.auto ? " (automatic)" : ""} did not finish: ${result.output || "no detail"}`}
         </p>
       )}
     </div>

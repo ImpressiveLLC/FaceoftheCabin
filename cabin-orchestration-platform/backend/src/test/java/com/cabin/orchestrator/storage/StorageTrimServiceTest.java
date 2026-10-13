@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.storage;
 
+import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.kafka.EventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -8,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import org.mockito.ArgumentCaptor;
 import java.util.List;
 import java.util.Map;
 
@@ -17,13 +20,18 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class StorageTrimServiceTest {
 
     @TempDir Path spool;
     StorageMonitorService monitor;
+    EventPublisher publisher;
     StorageTrimService service;
 
     @BeforeEach
@@ -32,11 +40,12 @@ class StorageTrimServiceTest {
         when(monitor.snapshot()).thenReturn(List.of(
             Map.of("mount", "storage-hdd", "available", true, "usedPercent", 99, "freeGb", 18.0, "totalGb", 916.0),
             Map.of("mount", "root-nvme", "available", true, "usedPercent", 40, "freeGb", 500.0, "totalGb", 938.0)));
-        service = new StorageTrimService(monitor, spool.toString());
+        publisher = mock(EventPublisher.class);
+        service = new StorageTrimService(monitor, publisher, spool.toString());
     }
 
     private void writePlan(Instant at, boolean measured) throws IOException {
-        String json = "{\"plannedAt\":\"" + at + "\",\"sizesMeasured\":" + measured + ",\"targets\":["
+        String json = "{\"plannedAt\":\"" + at + "\",\"sizesMeasured\":" + measured + ",\"auto\":{\"enabled\":true,\"aboveFull\":70,\"downTo\":55,\"floorKeep\":3},\"targets\":["
             + "{\"id\":\"backups-home\",\"kind\":\"dated-dirs\",\"path\":\"/storage/backups/home\",\"status\":\"ok\",\"keep\":3,"
             + "\"snapshots\":[{\"name\":\"2026-01-01\",\"bytes\":100},{\"name\":\"2026-01-02\",\"bytes\":200},{\"name\":\"2026-01-03\",\"bytes\":300},{\"name\":\"2026-01-04\",\"bytes\":400}]},"
             + "{\"id\":\"backups-data\",\"kind\":\"dated-dirs\",\"path\":\"/storage/backups/data\",\"status\":\"ok\",\"keep\":3,"
@@ -69,6 +78,7 @@ class StorageTrimServiceTest {
         assertEquals(4, ((List<?>) targets.get(0).get("snapshots")).size());
         assertEquals(false, v.get("pending"));
         assertNull(v.get("lastResult"));
+        assertEquals(70, ((Map<?, ?>) v.get("auto")).get("aboveFull"));
     }
 
     @Test
@@ -124,5 +134,56 @@ class StorageTrimServiceTest {
     void noPlanMeansNoRequest() {
         assertEquals(503, assertThrows(StorageTrimService.TrimException.class, () -> service.request(Map.of("backups-home", 1))).status().value());
         assertNotNull(service);
+    }
+
+    private void writeAutoResult(Instant at, String id, boolean ok, boolean reached, int removed) throws IOException {
+        Files.writeString(spool.resolve("result.json"), "{\"requestId\":\"" + id + "\",\"finishedAt\":\"" + at + "\",\"ok\":" + ok
+            + ",\"removed\":" + removed + ",\"freedBytes\":" + (70L * 1024 * 1024 * 1024) + ",\"auto\":true,\"reachedTarget\":" + reached + ",\"output\":\"auto-result\"}");
+    }
+
+    @Test
+    void anAutomaticTrimIsAnnouncedOnceAsInfoWhenItReachedItsTarget() throws Exception {
+        writeAutoResult(Instant.now(), "auto-1", true, true, 12);
+        service.announceAutoResult();
+        service.announceAutoResult();
+        ArgumentCaptor<CabinEvent> c = ArgumentCaptor.forClass(CabinEvent.class);
+        verify(publisher, times(1)).publish(c.capture());
+        CabinEvent e = c.getValue();
+        assertEquals("STORAGE_AUTO_TRIM", e.eventType());
+        assertEquals("INFO", e.severity());
+        assertEquals("storage-storage-hdd", e.sourceDeviceId());
+        assertTrue(String.valueOf(e.payload().get("see")).contains("removed 12 old backup copies"));
+        assertEquals(false, e.payload().get("notify"));
+    }
+
+    @Test
+    void anAutomaticTrimThatCouldNotGetUnderItsLineIsAWarningThatNotifies() throws Exception {
+        writeAutoResult(Instant.now(), "auto-2", true, false, 0);
+        service.announceAutoResult();
+        ArgumentCaptor<CabinEvent> c = ArgumentCaptor.forClass(CabinEvent.class);
+        verify(publisher).publish(c.capture());
+        assertEquals("WARN", c.getValue().severity());
+        assertEquals(true, c.getValue().payload().get("notify"));
+        assertTrue(String.valueOf(c.getValue().payload().get("think")).contains("already down to its minimum"));
+    }
+
+    @Test
+    void aFailedAutomaticTrimIsAWarning() throws Exception {
+        writeAutoResult(Instant.now(), "auto-3", false, false, 0);
+        service.announceAutoResult();
+        ArgumentCaptor<CabinEvent> c = ArgumentCaptor.forClass(CabinEvent.class);
+        verify(publisher).publish(c.capture());
+        assertEquals("WARN", c.getValue().severity());
+        assertTrue(String.valueOf(c.getValue().payload().get("see")).contains("failed"));
+    }
+
+    @Test
+    void manualResultsOldResultsAndNoResultAreNotAnnounced() throws Exception {
+        service.announceAutoResult();
+        Files.writeString(spool.resolve("result.json"), "{\"requestId\":\"m1\",\"finishedAt\":\"" + Instant.now() + "\",\"ok\":true,\"removed\":3,\"auto\":false}");
+        service.announceAutoResult();
+        writeAutoResult(Instant.now().minusSeconds(3600), "auto-old", true, true, 5);
+        service.announceAutoResult();
+        verify(publisher, never()).publish(any());
     }
 }
