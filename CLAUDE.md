@@ -23,6 +23,13 @@ This platform is designed to be worked on across multiple machines. The rule is 
 2. On the new machine: `git pull origin main`
 3. Never commit directly on the M920q unless doing cabin-specific infra work — push from there immediately
 
+**Several Claude sessions work this repo at once.** Before merging any PR or
+pushing to a shared file, load `.claude/skills/fotc-peer-merge-sequencing/`:
+find the agreed merge order, check the other live sessions and every open PR
+with `git merge-tree`, settle overlaps with a merge-order note on the PR, and
+merge strictly one at a time. Work in your own worktree, never another
+session's checkout.
+
 **Single source of truth:** GitHub `ImpressiveLLC/FaceoftheCabin`. If something isn't there, it doesn't exist on other machines.
 
 **If Claude can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
