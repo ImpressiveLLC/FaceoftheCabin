@@ -532,13 +532,13 @@ The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detecti
 8. UI (Vitest): demo mode shows the banner, renders no sign-in control, and renders the camera card placeholder with no `<img>` or `<video>`.
 9. Added by [W-21](../backlog.md): the same range and field, requested through the normal view and through a demo token, returns identical rows for a non-presence device (Q-DM-2 answered — both ceilings are 60). Ratified by Cowork 2026-10-03.
 
-### Decided questions (Nate, 2026-10-13: "accept Cowork's recommendations")
+### Open questions
 
-| ID | Question | Decision |
+| ID | Question | Owner |
 |---|---|---|
-| Q-LR-1 | Should a maintenance-only person's arrival be recorded even though it does not count as presence? | **Yes.** An audit event, not a presence signal (R-LR-8). Folds into W-38. Cowork: contractor and service visits are the record the cabin claim keeps needing. |
-| Q-LR-2 | A maintenance-only person on site sets the sirens off unless the system is disarmed first. Intended? | **Intended** (R-LR-9). The ordinary alarm model; the maintenance role holds the credentials to disarm. One line in the setup docs: maintenance visitors disarm on arrival. |
-| Q-LR-3 | Are children primary-role for presence, or aggregate-only? | **Both, split by purpose** (R-LR-10): primary role for gating, aggregate-only for display. |
+| Q-DM-1 | Confirm `location = home` entities are fully redacted in demo mode (conservative default in R-DM-6) or shown as cabin entities are. Note: R-DM-6 relies on each device's `location` field. Phone entities (battery, charger, Wi-Fi presence) currently list as `cabin` and ONLINE while the owner may be elsewhere, so they are redacted by the phone/person rule, not the `home` rule. Whether `location` should track where a roaming phone actually is is a separate question, not part of D22. | Nate |
+| Q-DM-2 | **Answered — Nate, 2026-09-24:** demo history aligns with the normal view. Set `cabin.demo.max-history-days` to **60**, matching the normal view's own ceiling (`cabin.history.max-days`); the clamp stays in place as a ceiling, and presence-class series stay empty per R-DM-8. Implemented in [W-21](../backlog.md). | Nate |
+| Q-DM-3 | Redaction applies to demo-token responses only. Under D14 the same device list is readable by anyone with no token at all ([DL-2026-09-23-10](../discrepancy-log.md)). Until Nate rules on that, the label is a preview affordance and must not be described to the recipient as privacy protection. | Nate |
 
 **What this is not.** Not a security boundary beyond the existing token model (D12). Not a change to D14's public read tier. Not a new role, table or write path. Not a Grafana login.
 
@@ -611,13 +611,13 @@ The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detecti
 
 R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its config file and tests, the ontology entities `check_authorized_user_phone_wifi` and `location_role`. **Not yet applied to the live Home Assistant.** R-LR-7 is documented in the same set of PRs. R-LR-1, R-LR-2 and R-LR-3 are definitions, enforced only by configuration today; R-LR-6's registry and backend enforcement are W-38, not built, and now unblocked. R-LR-8 and R-LR-10 are decided and unbuilt (W-38). R-LR-9's one setup line is in [REPLICATION.md](../../REPLICATION.md) and the Ask installation guide.
 
-### Open questions
+### Decided questions (Nate, 2026-10-13: "accept Cowork's recommendations")
 
-| ID | Question | Owner |
+| ID | Question | Decision |
 |---|---|---|
-| Q-LR-1 | Should a maintenance-only person's arrival be recorded (for example an audit entry "maintenance visit") even though it does not count as presence? | Nate, Cowork |
-| Q-LR-2 | A maintenance-only person on site sets the sirens off like any guest unless the system is disarmed first. Is that intended, or should the maintainer be announced or recognized some other way without counting as an occupant? | Nate |
-| Q-LR-3 | Are children primary-role for presence, or aggregate-only as D11's "Allowed Initial Uses of Child-Derived Presence" implies? | Nate, Cowork |
+| Q-LR-1 | Should a maintenance-only person's arrival be recorded even though it does not count as presence? | **Yes.** An audit event, not a presence signal (R-LR-8). Folds into W-38. Cowork: contractor and service visits are the record the cabin claim keeps needing. |
+| Q-LR-2 | A maintenance-only person on site sets the sirens off unless the system is disarmed first. Intended? | **Intended** (R-LR-9). The ordinary alarm model; the maintenance role holds the credentials to disarm. One line in the setup docs: maintenance visitors disarm on arrival. |
+| Q-LR-3 | Are children primary-role for presence, or aggregate-only? | **Both, split by purpose** (R-LR-10): primary role for gating, aggregate-only for display. |
 
 **What this is not.** Not a new permission or a change to any `HouseholdRole` check. Not a database table or a UI yet. Not a decision about how a phone is detected (W-36, W-37 hold those options).
 
