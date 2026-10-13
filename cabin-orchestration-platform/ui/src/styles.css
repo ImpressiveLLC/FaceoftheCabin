@@ -2532,3 +2532,19 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .trim-want input[type="number"] { width: 80px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 6px; }
 .trim-want button { align-self: flex-start; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 10px; cursor: pointer; }
 .trim-want button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ─── On the Way, prominent on My Places (2026-10-13) ───────────────────── */
+.on-the-way-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  margin: 0 0 14px 0; padding: 14px 16px; border-radius: 12px;
+  background: var(--layer-1-fill); border: 1px solid var(--layer-1-edge);
+}
+.on-the-way-card-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text-muted); min-width: 220px; flex: 1; }
+.on-the-way-card-text strong { font-size: 16px; color: var(--text); }
+.on-the-way-btn-prominent {
+  display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 10px;
+  border: 1px solid var(--layer-1-edge); background: var(--bg); color: var(--text);
+  font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.on-the-way-btn-prominent:hover:not(:disabled), .on-the-way-btn-prominent:focus-visible { outline: 2px solid var(--text-muted); }
+.on-the-way-btn-prominent:disabled { opacity: 0.6; cursor: wait; }

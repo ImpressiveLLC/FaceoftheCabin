@@ -1912,6 +1912,7 @@ function AddPlaceForm({ onCreated, onCancel, auth }) {
 // implements).
 export function FamilyHubPanel({ auth }) { // exported for src/App.test.jsx's reorder test
   const { devices } = useApp();
+  const [tempUnit] = useTempUnit();
   const [reorderMode, setReorderMode] = useState(false);
   const [adding, setAdding] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
@@ -1947,6 +1948,16 @@ export function FamilyHubPanel({ auth }) { // exported for src/App.test.jsx's re
           </button>
         </div>
       </div>
+      {/* 2026-10-13 (Nate): "On the Way" was only a small button on Devices. It is the
+          thing you do before every trip, so it leads My Places. */}
+      <section className="on-the-way-card" aria-label="On the Way">
+        <div className="on-the-way-card-text">
+          <strong>Heading to the cabin?</strong>
+          <span>Tell it you are on the way. It starts the preheat and confirms the mech room temperature
+            {mechRoomTemperature(devices) != null ? ` (now ${fmtTemp(mechRoomTemperature(devices), tempUnit)})` : ""}.</span>
+        </div>
+        <OnTheWayButton auth={auth} devices={devices} prominent />
+      </section>
       {/* Found 2026-08-08 (user report, ahead of adding a real second
           location): the backend's full create/update/reorder/archive
           CRUD for hub_location (Phase 7 §1b) has existed since that
@@ -4272,7 +4283,7 @@ function DmPowerToggle({ device, auth }) {
 // (input_boolean.on_the_way_to_cabin) decides what to turn on and sends the
 // push notification -- no heater logic lives here (CLAUDE.md: don't
 // duplicate HA automations).
-export function OnTheWayButton({ auth, devices }) {
+export function OnTheWayButton({ auth, devices, prominent = false }) {
   const [tempUnit] = useTempUnit();
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
@@ -4297,8 +4308,8 @@ export function OnTheWayButton({ auth, devices }) {
 
   return (
     <span className="on-the-way">
-      <button className="btn-ghost" onClick={go} disabled={busy} title="Tell the cabin you're on the way (starts preheat)">
-        <Car size={14}/> {busy ? "Sending…" : "On the Way"}
+      <button className={prominent ? "on-the-way-btn-prominent" : "btn-ghost"} onClick={go} disabled={busy} title="Tell the cabin you're on the way (starts preheat)">
+        <Car size={prominent ? 18 : 14}/> {busy ? "Sending…" : "On the Way"}
       </button>
       {toast && (
         <span role="status" className={`on-the-way-toast ${toast.ok ? "toast-ok" : "toast-err"}`}>{toast.text}</span>
@@ -6072,7 +6083,7 @@ const MN_VIEWS = [
   { id: "remove", label: "Remove", icon: Minus },
 ];
 
-function MonitoringPanel({ active, auth }) {
+export function MonitoringPanel({ active, auth }) { // exported for src/App.test.jsx
   const { devices, activeLocation, activeProfile } = useApp();
   const [view, setView]               = useState("see");
   const [selected, setSelected]       = useState(null);
@@ -6093,6 +6104,7 @@ function MonitoringPanel({ active, auth }) {
               <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
             </button>
           )}
+          <OnTheWayButton auth={auth} devices={devices} />
           <span className={`ws-indicator ${active ? "ws-live" : "ws-off"}`}>
             {active ? <><Wifi size={12}/> Live</> : <><WifiOff size={12}/> Docked</>}
           </span>

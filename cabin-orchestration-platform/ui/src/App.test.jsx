@@ -4,7 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-li
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
-StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing,
+StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
 mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
@@ -6403,5 +6403,50 @@ describe("Trim old backups: big-job helper and automatic policy", () => {
   it("an automatic result is labelled, and a floor stop is explained", async () => {
     render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view({ lastResult: { requestId: "auto-1", ok: true, auto: true, reachedTarget: false, removed: 4, freedBytes: 200 * GB, output: "x" } }))} />);
     expect(await screen.findByText(/Last trim \(automatic\): removed 4 copies, freed 200 GB\. The disk is still above its line/)).toBeTruthy();
+  });
+});
+
+
+// 2026-10-13 (Nate): "On the Way" belongs prominently on My Places, and on Monitoring in the
+// same place as on Devices (the panel's header actions), not only on Devices.
+describe("On the Way is reachable from My Places and Monitoring", () => {
+  const devices = [{ deviceId: "z2m-temp_mech_room", name: "Mech room", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin", attributes: { temperature: 12 } }];
+  const okReply = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ accepted: true }) });
+  const haCalls = (fn) => fn.mock.calls.filter(call => String(call[0]).includes("/api/ha/services"));
+
+  it("My Places leads with an On the Way card showing the mech room temperature", () => {
+    render(<ThemeProvider><AppContext.Provider value={{ devices }}><FamilyHubPanel auth={{}} /></AppContext.Provider></ThemeProvider>);
+    const card = screen.getByRole("region", { name: "On the Way" });
+    expect(card.textContent).toMatch(/Heading to the cabin\?/);
+    expect(card.textContent).toMatch(/now \d+/);
+    expect(within(card).getByRole("button", { name: /On the Way/ })).toBeTruthy();
+    // it comes before the place cards
+    expect(card.compareDocumentPosition(document.querySelector(".family-hub-grid")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("pressing it on My Places turns on the cabin helper and confirms", async () => {
+    const authedFetch = vi.fn(okReply);
+    render(<ThemeProvider><AppContext.Provider value={{ devices }}><FamilyHubPanel auth={{ authedFetch }} /></AppContext.Provider></ThemeProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /On the Way/ }));
+    await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
+    expect(JSON.parse(haCalls(authedFetch)[0][1].body)).toMatchObject({ domain: "input_boolean", service: "turn_on", entity_id: "input_boolean.on_the_way_to_cabin" });
+    expect((await screen.findByRole("status")).textContent).toMatch(/Preheat started\. Mech room is/);
+  });
+
+  it("Monitoring has the same button in its header actions", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const authedFetch = vi.fn(okReply);
+    render(
+      <ThemeProvider>
+        <AppContext.Provider value={{ devices, activeLocation: "cabin", activeProfile: "AT_CABIN", alertAcknowledgments: [], activeAlerts: [], activeAlertLocations: [], automationAlerts: [] }}>
+          <MonitoringPanel active={true} auth={{ authedFetch }} />
+        </AppContext.Provider>
+      </ThemeProvider>
+    );
+    const header = document.querySelector(".panel-header-bar .header-actions");
+    const btn = within(header).getByRole("button", { name: /On the Way/ });
+    fireEvent.click(btn);
+    await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
+    expect(JSON.parse(haCalls(authedFetch)[0][1].body).entity_id).toBe("input_boolean.on_the_way_to_cabin");
   });
 });
