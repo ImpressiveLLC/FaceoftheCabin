@@ -54,6 +54,8 @@ The readings behind the BI metrics (temperature, humidity, presence, CO2, leak, 
 **Install once on the M920q** (Nate; an agent session cannot write there):
 
 ```bash
+# from a clone that has this merged; a scripts-only merge does not update ~/FaceoftheCabin-deploy
+git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin
 sudo install -m 0755 scripts/host/cabin-storage-prune /usr/local/bin/cabin-storage-prune
 # optional: only if you want to change a default (see the file for examples)
 sudo install -m 0644 scripts/host/cabin-storage-prune.conf.example /etc/cabin-storage-prune.conf
