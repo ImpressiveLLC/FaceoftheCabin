@@ -4,6 +4,8 @@
 #   cabin-storage-prune report [--json] [--exact | --no-sizes]     read-only (default command); measures sizes
 #   cabin-storage-prune plan   [--json] [--only ID,ID] [--sizes]   read-only: exactly what apply would remove
 #   sudo cabin-storage-prune apply --only ID,ID|all-safe [--yes] [--yes-delete ID]
+#   any command: --keep ID=N (repeatable) keeps the newest N dated folders of that target this run
+#   report --json --snapshots lists every dated folder with its size (what the in-app Trim control reads)
 #
 # Why it exists (W-61): /storage reached 94% full from nightly backups that were never
 # pruned. This is the one reviewed, tested place that decides what may be removed, so the
@@ -35,6 +37,8 @@ die() { echo "ERROR: $*" >&2; exit 2; }
 
 declare -a T_ID=() T_KIND=() T_PATH=() T_OPTS=() ALLOWED_ROOTS=()
 declare -A OFF=()
+declare -A KEEP_OVERRIDE=()
+SNAPSHOTS=0
 
 KINDS=" dated-dirs old-files whole-dir docker-cache journal "
 
@@ -122,11 +126,20 @@ while [ $# -gt 0 ]; do
     --no-sizes) SIZES=none ;;
     --only) shift; [ $# -gt 0 ] || die "--only needs a list"; ONLY=$1 ;;
     --yes) YES=1 ;;
+    --snapshots) SNAPSHOTS=1 ;;
+    --keep) shift; [ $# -gt 0 ] || die "--keep needs ID=N"
+            [[ "$1" =~ ^([a-z0-9][a-z0-9-]*)=([0-9]+)$ ]] || die "--keep needs ID=N with N a whole number, got '$1'"
+            [ "${BASH_REMATCH[2]}" -ge 1 ] || die "--keep N must be 1 or more (the newest snapshot is never removed)"
+            KEEP_OVERRIDE[${BASH_REMATCH[1]}]=${BASH_REMATCH[2]} ;;
     --yes-delete) shift; [ $# -gt 0 ] || die "--yes-delete needs a target id"; YES_DELETE=$1 ;;
     -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     *) die "unknown argument '$1'" ;;
   esac
   shift
+done
+for kid in "${!KEEP_OVERRIDE[@]}"; do
+  kfound=0; for j in "${!T_ID[@]}"; do [ "${T_ID[$j]}" = "$kid" ] && [ "${T_KIND[$j]}" = dated-dirs ] && kfound=1; done
+  [ $kfound = 1 ] || die "--keep names '$kid', which is not a configured dated-dirs target"
 done
 if [ -z "$SIZES" ]; then if [ "$CMD" = report ]; then SIZES=estimate; else SIZES=none; fi; fi
 if [ "$SIZES" != none ] && [ "$JSON" != 1 ]; then echo "measuring sizes: this takes several minutes on the HDD (--no-sizes lists instantly)" >&2; fi
@@ -135,7 +148,7 @@ if [ "$SIZES" != none ] && [ "$JSON" != 1 ]; then echo "measuring sizes: this ta
 evaluate() {
   local i=$1 kind path why n keep drop size all name
   kind=${T_KIND[$i]}; path=${T_PATH[$i]}
-  STATUS=ok; ITEMS=0; SIZE=-1; RECLAIM=0; DETAIL=""; DROP=()
+  STATUS=ok; ITEMS=0; SIZE=-1; RECLAIM=0; DETAIL=""; DROP=(); KEEP_NOW=-1; SNAP_JSON=""
   if [ -n "${OFF[${T_ID[$i]}]:-}" ]; then STATUS=off; DETAIL="turned off in the config"; return 0; fi
   case "$kind" in
     docker-cache|journal) ;;
@@ -147,10 +160,18 @@ evaluate() {
   esac
   case "$kind" in
     dated-dirs)
-      keep=$(opt "$i" keep 3)
+      keep=${KEEP_OVERRIDE[${T_ID[$i]}]:-$(opt "$i" keep 3)}
       [[ "$keep" =~ ^[0-9]+$ ]] && [ "$keep" -ge 1 ] || { STATUS=refused; DETAIL="keep must be a whole number, 1 or more"; return 0; }
       mapfile -t all < <(find "$path" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]{4}-[0-9]{2}-[0-9]{2}' -printf '%f\n' | sort)
-      n=${#all[@]}; drop=$(( n > keep ? n - keep : 0 ))
+      n=${#all[@]}; drop=$(( n > keep ? n - keep : 0 )); KEEP_NOW=$keep
+      if [ "$SNAPSHOTS" = 1 ]; then
+        local sj="" sb
+        for name in "${all[@]}"; do
+          if [ "$SIZES" = none ]; then sb=-1; else sb=$(du -sb -- "$path/$name" 2>/dev/null | cut -f1 || true); sb=${sb:--1}; fi
+          sj+="${sj:+,}{\"name\":\"$name\",\"bytes\":$sb}"
+        done
+        SNAP_JSON=$sj
+      fi
       ITEMS=$drop
       if [ "$drop" -gt 0 ]; then DROP=("${all[@]:0:$drop}"); fi
       DETAIL="$n dated snapshots, keep the newest $keep"
@@ -208,8 +229,11 @@ show() { # report / plan output
     selected "${T_ID[$i]}" "${T_KIND[$i]}" || continue
     evaluate "$i"
     if [ "$JSON" = 1 ]; then
-      printf '%s{"id":"%s","kind":"%s","path":"%s","status":"%s","items":%s,"sizeBytes":%s,"reclaimBytes":%s,"detail":"%s"}' \
-        "$sep" "${T_ID[$i]}" "${T_KIND[$i]}" "$(jesc "${T_PATH[$i]}")" "$STATUS" "$ITEMS" "$SIZE" "$RECLAIM" "$(jesc "$DETAIL")"
+      local extra=""
+      [ "$KEEP_NOW" -ge 0 ] && extra=",\"keep\":$KEEP_NOW"
+      [ "$SNAPSHOTS" = 1 ] && [ "${T_KIND[$i]}" = dated-dirs ] && [ "$STATUS" = ok ] && extra+=",\"snapshots\":[$SNAP_JSON]"
+      printf '%s{"id":"%s","kind":"%s","path":"%s","status":"%s","items":%s,"sizeBytes":%s,"reclaimBytes":%s,"detail":"%s"%s}' \
+        "$sep" "${T_ID[$i]}" "${T_KIND[$i]}" "$(jesc "${T_PATH[$i]}")" "$STATUS" "$ITEMS" "$SIZE" "$RECLAIM" "$(jesc "$DETAIL")" "$extra"
       sep=","
     else
       if [ $first = 1 ]; then printf '%-18s %-13s %-8s %10s %12s  %s\n' ID KIND STATUS ITEMS RECLAIM DETAIL; first=0; fi

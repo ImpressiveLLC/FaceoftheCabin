@@ -92,7 +92,7 @@ sudo cabin-storage-prune apply --only system-copy --yes-delete system-copy   # a
 | ID | What |
 |---|---|
 | W-61 | `scripts/host/cabin-storage-prune`: report, plan and discrete owner-run removal with a config file (built, install and run by Nate) |
-| W-62 | In-app Act on storage: a multi-select prune control and authorized settings in See / Think / Act (proposed, see below) |
+| W-62 | In-app Act on storage: the Trim control in the disk alert's Act step (built; needs the host agent installed, see "Trim control" below). Authorized-user settings editing is not built |
 | W-63 | Storage beyond `/storage`: SD cards, extra disks, and LAN or WAN network storage, registered, monitored and prunable (proposed) |
 | W-48 | Backup retention and exclusions: `scripts/host/backup-modular` (prunes to the newest N, leaves regenerable data out) and the one-time `scripts/prune-storage-backups.sh` |
 | W-49 | Dump warning before telemetry is archived-and-deleted, with an owner-set threshold |
@@ -101,6 +101,32 @@ sudo cabin-storage-prune apply --only system-copy --yes-delete system-copy   # a
 | W-8 / W-10 / W-12 | Recording retention decision (kept at 5/10 days), Warm and Cold rules |
 | D19 Option B | Deploy `telemetry-backup-agent` so a copy exists that does not depend on `cabin-backend` |
 
-### Proposed: how the in-app Act (W-62) reaches the host
+### Trim control (W-62)
 
-Not built and not decided. The web container must stay unprivileged, so it cannot delete host files. The proposal keeps the deletion logic in the one script above and uses the MQTT bus the platform already runs on: a small root-owned host service (installed once by the owner) publishes `cabin-storage-prune report --json` to a retained `cabin/system/storage/prune-plan` topic; `cabin-backend` shows it in See / Think / Act as a multi-select list with sizes; an authorized user's selection becomes an audited `prune-request` that the host service re-validates against its own config and runs through `apply --only ...`, publishing the result. The same path carries config changes (validated, versioned, written to `/etc/cabin-storage-prune.conf`). Decisions needed from Nate and Cowork are listed on W-62.
+Nate, 2026-10-13: the disk alert's Act step took him to Device Manager. It now shows a **Trim old backups** control: a slider for how many of the newest nightly copies to keep in each backup folder (toward "Trim more" or "Trim less"), what that frees, what the disk would be afterwards, and **Go**.
+
+**How it works.** The web container cannot delete host files, so it never does. It shares a hidden spool folder with a small root service on the host, inside the one bind mount the backend already writes to (`/storage/archives/cabin_event/.trim/`):
+
+| File | Written by | Meaning |
+|---|---|---|
+| `plan.json` | host agent | every dated backup folder and its size (from `cabin-storage-prune report --json --snapshots`), refreshed every 6 hours and after each trim |
+| `request.env` | backend, when the administrator presses Go | `requestId` and `keep.<target>=N` lines |
+| `result.json` | host agent | what the last request removed and how much it freed |
+
+The backend (`StorageTrimService`, `GET` and `POST /api/system/storage/trim`, **administrator only**) validates the request; the agent (`scripts/host/cabin-storage-trim-agent`) validates it again and runs `cabin-storage-prune apply --only ... --keep ... --yes`, which still refuses telemetry and database paths. The newest copy of every folder is never removed, one request runs at a time, and the UI only says it is done when the host reports back.
+
+**Install once on the M920q** (Nate; an agent session cannot write there):
+
+```bash
+git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin
+sudo install -m 0755 scripts/host/cabin-storage-prune /usr/local/bin/cabin-storage-prune
+sudo install -m 0755 scripts/host/cabin-storage-trim-agent /usr/local/bin/cabin-storage-trim-agent
+sudo install -m 0644 scripts/host/cabin-storage-trim-agent.service /etc/systemd/system/cabin-storage-trim-agent.service
+sudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent
+```
+
+The backend deploy picks up the new route on its own. Until the agent has written its first plan the widget says the host service is not installed. The first plan lists folder names at once and the sizes follow once the host has measured them (several minutes on the HDD).
+
+**Scope.** It trims the dated nightly backup folders only. Recorded video is governed by Frigate's retention (days), and BI telemetry is never touched. Other storage (W-63) uses the same tool through `allowed_root`.
+
+**Decisions Nate has made by using it:** a root host service is acceptable (W-62 question 1). Still open for Cowork: which roles may trim (today administrator only) and whether a large trim needs a second confirmation.

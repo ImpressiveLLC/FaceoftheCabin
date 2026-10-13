@@ -98,6 +98,24 @@ check "whole-dir needs --yes-delete" "[ -f $B/sys/blob ]"
 run apply --only syscopy --yes --yes-delete syscopy >/dev/null 2>&1
 check "whole-dir removed when named twice" "[ ! -e $B/sys ]"
 
+echo "keep override and snapshot sizes (what the in-app Trim control uses)"
+mkdir -p "$B/tr"; for d in 2026-02-01 2026-02-02 2026-02-03 2026-02-04 2026-02-05; do mkdir -p "$B/tr/$d"; head -c 1000 /dev/zero >"$B/tr/$d/f"; done
+printf 'allowed_root %s\ntarget tr dated-dirs %s keep=4\n' "$B" "$B/tr" >"$W/conf5"
+r5() { CABIN_STORAGE_CONF="$W/conf5" CABIN_STORAGE_LOG="$W/log" CABIN_STORAGE_TEST=1 bash "$SCRIPT" "$@"; }
+js=$(r5 report --json --snapshots --only tr)
+check "json lists every dated folder with its size and the keep in force" "echo \"\$js\" | grep -q '\"keep\":4' && echo \"\$js\" | grep -q '\"name\":\"2026-02-01\",\"bytes\":' && [ \$(echo \"\$js\" | grep -o '\"name\":' | wc -l) -eq 5 ]"
+js=$(r5 report --json --snapshots --only tr --keep tr=2)
+check "--keep overrides the configured keep in the plan" "echo \"\$js\" | grep -q '\"keep\":2' && echo \"\$js\" | grep -q '\"items\":3'"
+r5 apply --only tr --keep tr=2 --yes >/dev/null 2>&1
+check "apply --keep 2 leaves exactly the newest two" "[ ! -d $B/tr/2026-02-03 ] && [ -d $B/tr/2026-02-04 ] && [ -d $B/tr/2026-02-05 ]"
+r5 report --keep tr=0 >/dev/null 2>&1; rc=$?
+check "--keep 0 is refused (the newest snapshot is never removed)" "[ $rc -eq 2 ]"
+r5 report --keep tr=abc >/dev/null 2>&1; rc=$?
+check "--keep with a non-number is refused" "[ $rc -eq 2 ]"
+r5 report --keep nosuch=2 >/dev/null 2>&1; rc=$?
+check "--keep for an unknown target is refused" "[ $rc -eq 2 ]"
+check "the newest folder survived every run" "[ -d $B/tr/2026-02-05 ]"
+
 echo "config"
 printf 'bogus thing\n' >"$W/conf2"
 CABIN_STORAGE_CONF="$W/conf2" bash "$SCRIPT" report >/dev/null 2>&1; rc=$?

@@ -494,6 +494,7 @@ forward from an earlier session's list)
 | GET | `/api/signal-quality` | SignalQualityController — prototype, Zigbee LQI trend/anomaly per device, not wired to any alert path yet (added 2026-08-08) |
 | GET | `/api/system/health` | SystemController |
 | GET | `/api/system/storage` | StorageController — disk usage and level for the HDD cold tier and the NVMe hot tier (W-11); alerts arrive as `STORAGE_THRESHOLD` events |
+| GET/POST | `/api/system/storage/trim` | StorageTrimController — administrator only (W-62). `GET` the backup-folder plan, disk and last result; `POST {keep:{target:N}}` asks the host agent to trim (202). The backend never deletes; see `docs/STORAGE_ARCHITECTURE.md` "Trim control" |
 | GET | `/api/camera/list` | CameraMediaController |
 | GET | `/api/camera/events/{frigateEventId}/snapshot` | CameraMediaController |
 | GET | `/api/camera/events/{frigateEventId}/clip` | CameraMediaController |

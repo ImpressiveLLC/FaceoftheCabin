@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-li
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
+StorageTrimWidget, trimPreview, formatTrimBytes,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
 mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
@@ -6212,5 +6213,140 @@ describe("FamilyConfigPanel — Platform specs", () => {
     expect(await screen.findByText("2026.9.1")).toBeTruthy();
     expect(screen.getByText("Ollama")).toBeTruthy();
     expect(document.querySelector(".spec-summary")).toBeNull();
+  });
+});
+
+
+// W-62 (Nate, 2026-10-13): the disk alert's Act step is a Trim control: how many
+// newest nightly copies to keep, what that frees, what the disk would be, then Go.
+describe("Trim old backups", () => {
+  const GB = 1024 ** 3;
+  const snaps = (n, bytes) => Array.from({ length: n }, (_, i) => ({ name: `2026-01-${String(i + 1).padStart(2, "0")}`, bytes: typeof bytes === "function" ? bytes(i) : bytes }));
+  const plan = (over = {}) => ({
+    installed: true, pending: false, stale: false, sizesMeasured: true, lastResult: null,
+    disk: { usedPercent: 99, freeGb: 18, totalGb: 916 },
+    targets: [
+      { id: "backups-home", path: "/storage/backups/home", keep: 3, count: 10, snapshots: snaps(10, 50 * GB) },
+      { id: "backups-data", path: "/storage/backups/data", keep: 3, count: 4, snapshots: snaps(4, 1 * GB) },
+    ],
+    ...over,
+  });
+  const reply = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
+
+  it("formatTrimBytes is plain, and says unknown for an unmeasured size", () => {
+    expect(formatTrimBytes(350 * GB)).toBe("350 GB");
+    expect(formatTrimBytes(12.34 * GB)).toBe("12.3 GB");
+    expect(formatTrimBytes(5 * 1024 ** 2)).toBe("5 MB");
+    expect(formatTrimBytes(-1)).toBe("unknown");
+    expect(formatTrimBytes(null)).toBe("unknown");
+  });
+
+  it("trimPreview removes the OLDEST copies, keeps at least one, and says what the disk would be", () => {
+    const p = trimPreview(plan().targets, 3, plan().disk);
+    expect(p.rows.map(r => [r.id, r.keep, r.remove])).toEqual([["backups-home", 3, 7], ["backups-data", 3, 1]]);
+    expect(p.totalBytes).toBe(7 * 50 * GB + 1 * GB);
+    expect(p.after.usedPercent).toBe(Math.round(((916 - (18 + 351)) / 916) * 100));
+    // 0 or negative is clamped to the newest copy, never to nothing
+    expect(trimPreview(plan().targets, 0).rows.every(r => r.keep === 1)).toBe(true);
+    // asking to keep more than exists removes nothing
+    expect(trimPreview(plan().targets, 50).removeCount).toBe(0);
+    // an unmeasured size can't be summed, so it says so instead of guessing
+    const u = trimPreview([{ id: "backups-home", snapshots: snaps(5, -1) }], 2, plan().disk);
+    expect(u.unknown).toBe(true);
+    expect(u.totalBytes).toBeNull();
+    expect(u.after).toBeNull();
+  });
+
+  it("shows the disk, defaults the slider to the configured keep, and the amount it frees", async () => {
+    const fetchMock = vi.fn(() => reply(200, plan()));
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={fetchMock} />);
+    expect(await screen.findByText(/Disk now: 99% full, 18 GB free of 916 GB/)).toBeTruthy();
+    expect(screen.getByRole("slider").value).toBe("3");
+    expect(screen.getByText(/Frees about 351 GB\. The disk would be about 60% full/)).toBeTruthy();
+    expect(screen.getByText(/keep 3 of 10, remove 7/)).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith("http://hub/api/system/storage/trim");
+  });
+
+  it("moving the slider changes what it says it will free", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, plan())} />);
+    const slider = await screen.findByRole("slider");
+    fireEvent.change(slider, { target: { value: "1" } });
+    expect(screen.getByText(/Frees about 453 GB/)).toBeTruthy();
+    fireEvent.change(slider, { target: { value: "10" } });
+    expect(screen.getByText(/Nothing to remove at this setting/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go" }).disabled).toBe(true);
+  });
+
+  it("Go sends exactly the keep counts on screen, then waits for the host before saying it is done", async () => {
+    let state = plan();
+    const fetchMock = vi.fn((url, opts) => {
+      if (opts?.method === "POST") { state = plan({ pending: true }); return reply(202, { accepted: true, requestId: "r1" }); }
+      return reply(200, state);
+    });
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={fetchMock} pollMs={20} />);
+    fireEvent.change(await screen.findByRole("slider"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Trimming on the host/ })).toBeTruthy());
+    const post = fetchMock.mock.calls.find(c => c[1]?.method === "POST");
+    expect(post[0]).toBe("http://hub/api/system/storage/trim");
+    expect(JSON.parse(post[1].body)).toEqual({ keep: { "backups-home": 2, "backups-data": 2 } });
+    // the host reports back
+    state = plan({ disk: { usedPercent: 60, freeGb: 366, totalGb: 916 }, lastResult: { requestId: "r1", ok: true, removed: 10, freedBytes: 350 * GB, output: "done" } });
+    expect(await screen.findByText(/Last trim: removed 10 copies, freed 350 GB/, {}, { timeout: 2000 })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go" })).toBeTruthy();
+  });
+
+  it("reports a refusal from the hub instead of pretending it started", async () => {
+    const fetchMock = vi.fn((url, opts) => (opts?.method === "POST" ? reply(409, { accepted: false, error: "A trim is already waiting for the host or running" }) : reply(200, plan())));
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={fetchMock} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Go" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/already waiting/);
+  });
+
+  it("a failed last trim shows the host's reason", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, plan({ lastResult: { requestId: "x", ok: false, removed: 0, freedBytes: 0, output: "tool exited 2: nope" } }))} />);
+    expect(await screen.findByText(/Last trim did not finish: tool exited 2: nope/)).toBeTruthy();
+  });
+
+  it.each([[403, /Only an administrator can trim storage/], [401, /Sign in to trim storage/]])("a %s is explained", async (status, pattern) => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(status, {})} />);
+    expect((await screen.findByRole("status")).textContent).toMatch(pattern);
+  });
+
+  it("says the host service is not installed, with no slider", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, { installed: false, pending: false, disk: null, message: "The host trim service has not produced a plan yet." })} />);
+    expect(await screen.findByText(/has not produced a plan yet/)).toBeTruthy();
+    expect(screen.queryByRole("slider")).toBeNull();
+  });
+
+  it("while sizes are still being measured it says so, and still lets you trim", async () => {
+    const unmeasured = plan({ sizesMeasured: false, targets: [{ id: "backups-home", keep: 3, count: 6, snapshots: snaps(6, -1) }] });
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, unmeasured)} />);
+    expect(await screen.findByText(/still measuring folder sizes/)).toBeTruthy();
+    expect(screen.getByText(/The amount freed is not measured yet/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go" }).disabled).toBe(false);
+  });
+
+  it("a stale plan is flagged", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, plan({ stale: true }))} />);
+    expect(await screen.findByText(/more than 12 hours old/)).toBeTruthy();
+  });
+
+  it("the disk alert's Act step is the Trim control, not Open device", async () => {
+    vi.stubGlobal("fetch", vi.fn((url) => (String(url).includes("/api/system/storage/trim") ? reply(200, plan()) : new Promise(() => {}))));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"], activeAlerts: [],
+        automationAlerts: [{
+          eventId: "e1", sourceDeviceId: "storage-storage-hdd", severity: "CRITICAL", timestamp: "2026-10-13T12:00:00Z",
+          payload: { ruleId: "STORAGE_THRESHOLD", see: "storage-hdd is 99% full (18 GB free of 916 GB)", think: "Crossed the 90% critical line", act: "Trim old nightly backups first" },
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "See more" }));
+    expect(await screen.findByRole("slider")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /open device/i })).toBeNull();
   });
 });
