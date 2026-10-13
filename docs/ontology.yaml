@@ -3457,8 +3457,9 @@ elements:
       2026-10-03: Frigate receives frames from this unit (see
       camera_role_front_door; reconnected 2026-09-29/30, after the
       2026-08-07 proof-of-concept connection, when no live reading was
-      ever pulled). "Partial" now means "frames and recording
-      confirmed, object detection not enabled."
+      ever pulled). Detection enabled 2026-10-10 (see
+      camera_role_front_door); "partial" remains only because the
+      firmware check and a DHCP reservation are not confirmed.
     data_class: raw
     data_type: owl:Class
     ui_display_name: "Reolink RLC-820A (unit 01)"
@@ -3509,21 +3510,20 @@ elements:
       2026-10-03 (reconnected 2026-09-29/30): Frigate receives frames
       from hw_camera_reolink_rlc820a_01 under the key
       `cabin_outside_reolink` (camera_fps about 5, continuous recording
-      on each day since 2026-09-29). Object detection is NOT enabled
-      yet; see notes.
+      on each day since 2026-09-29). Object detection enabled and running
+      since 2026-10-10 (see notes).
     data_class: derived
     data_type: owl:Class
     ui_display_name: "Front Door Camera"
     source: >
       Not asserted by any device — this is a platform/workflow
-      assignment. Mechanism: Frigate's `cameras:` config key. Git still
-      says front_door (matching the driveway/Blink camera's `driveway`
-      key); the live config has used `cabin_outside_reolink` since
-      2026-09-30 — see notes and W-39.
+      assignment. Mechanism: Frigate's `cameras:` config key. The key is
+      `cabin_outside_reolink` (renamed from front_door on 2026-09-30,
+      under git since PR #127 on 2026-10-10) -- see notes and W-39.
     rendering:
       semantic: "Front door camera"
       systems: "Reolink RLC-820A — role: front_door"
-      technical: "Live Frigate key 'cabin_outside_reolink' (git: 'front_door', W-39); RTSP sub/main at 192.168.1.121:554, reached through the M920q's Ethernet port eno2; object detection not enabled yet"
+      technical: "Live Frigate key 'cabin_outside_reolink' (under git since PR #127); RTSP sub/main at 192.168.1.121:554, reached through the M920q's Ethernet port eno2; detection on since 2026-10-10 via PR #127"
       compliance: (not shown)
     definition: >
       The role "monitors the front door / driveway approach area,"
@@ -3645,6 +3645,15 @@ elements:
       (not yet done). Repeatable procedure for the next camera on a
       different network: docs/MAINTENANCE.md, "A camera on a different
       network than the M920q".
+
+      RESOLVED 2026-10-10 (W-39): the camera credential was aligned (vault,
+      both .env files, running container; verified from inside the
+      container, never printed) and the config merged (PR #127, vault PR
+      #133). Frigate's effective config now shows detect.enabled True with
+      the eight shared classes, and detection ran at about 3.8 fps. Frigate
+      had to be restarted by hand: the production-stack deploy copies the
+      config but does not restart Frigate (W-46). Still open: no known DHCP
+      reservation for 192.168.1.121.
 
   - id: hw_camera_blink_outdoor4_01
     entity_type: owl:Class
@@ -4845,7 +4854,7 @@ elements:
       CONSEQUENCE OF D24: the gate recognizes primary-role users only. A
       maintenance-only person on site is a guest for presence, so to the gate
       they are anyone else: they set the sirens off like any unrecognized
-      person unless the system is disarmed first (open question Q-LR-2).
+      person unless the system is disarmed first (decided intended, Q-LR-2, 2026-10-13).
 
       The hub warns, without blocking, when the system is armed while someone
       is detected at the location (W-35).
@@ -4968,8 +4977,8 @@ elements:
       enum: ["primary", "maintenance"]
     ui_display_name: "Location Role"
     source: >
-      D24 (docs/governance/decisions/ontology-decisions.md), proposed
-      2026-10-04 from Nate's direction. Not a database column or enum yet;
+      D24 (docs/governance/decisions/ontology-decisions.md), ratified
+      2026-10-13 (proposed 2026-10-04 from Nate's direction). Not a database column or enum yet;
       enforced today only by configuration (W-38 builds the registry).
     rendering:
       semantic: "How a person relates to a location: lives there, or maintains it"
@@ -5004,7 +5013,7 @@ elements:
       never grants or removes a permission; maintenance is a superset of
       primary in credentials, not in presence.
 
-      STATUS: proposed (D24). Not enforced in code: PresenceSignalRegistry
+      STATUS: ratified 2026-10-13 (D24). Not enforced in code: PresenceSignalRegistry
       counts whoever publishes, and personId is still just a topic string
       (see active_presence_profile's notes on the missing tracked-person
       registry). Until W-38, a maintenance-only person is kept out of presence
@@ -5105,7 +5114,7 @@ elements:
       (for a friendlier "Nate is home" label instead of a raw id) is a
       reasonable small follow-up, not done here.
 
-      ADDED 2026-10-04 (D24, proposed): presence is meant to count PRIMARY-role
+      ADDED 2026-10-04 (D24, ratified 2026-10-13): presence is meant to count PRIMARY-role
       persons only (location_role). A maintenance-only person is a guest for
       presence. NOT enforced in the backend: PresenceSignalRegistry counts
       whoever publishes, so today the rule holds only because no check or

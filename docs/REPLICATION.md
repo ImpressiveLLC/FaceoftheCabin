@@ -45,7 +45,7 @@
   `docs/ontology.yaml`'s `active_presence_profile` entity — but any
   instance can plug in real detection just by publishing to that topic
   contract; nothing backend-side needs editing. **Presence counts
-  authorized primary-role users only** (D24, proposed): see §3's "Who
+  authorized primary-role users only** (D24, ratified 2026-10-13): see §3's "Who
   counts as present" bullet. This instance's examples:
   an HA automation doing a WiFi ARP check for an authorized user's phone
   on the local network (the person-agnostic
@@ -111,7 +111,7 @@ whoever forks the repo — not bugs, just template points:
   Tier 2 — Tier 1 guest share links and normal Google sign-in need nothing
   here.
 - **Who counts as present: primary and maintenance users, per location**
-  (D24, proposed). Decide this for every location before wiring presence.
+  (D24, ratified 2026-10-13). Decide this for every location before wiring presence. **Maintenance visitors disarm on arrival:** a maintenance-only person on site is a guest to the siren gate, so unless the system is disarmed first their door opening sounds the sirens (intended, not a defect). Their visits are meant to be recorded as an audit entry, not as presence (W-38).
   A **primary** user is someone who lives at or actively uses the location:
   their phone is checked and their presence counts, and the siren gate
   recognizes them. A **maintenance** user is whoever sets the location up

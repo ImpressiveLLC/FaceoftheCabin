@@ -307,6 +307,49 @@ class MqttBridgeServiceTest {
             "emma is still at cabin -- one person leaving must not clear the whole location");
     }
 
+    // ── W-34: the phone heartbeat topic ───────────────────────────────────
+
+    @Test
+    void aHeartbeatIsRecordedAgainstTheNewestSeenTime() throws Exception {
+        deliver("cabin/presence/nate/last_seen", "2026-10-04T09:00:00Z");
+
+        assertEquals(java.time.Instant.parse("2026-10-04T09:00:00Z"), presenceSignalRegistry.latestSeen().orElseThrow());
+    }
+
+    @Test
+    void aHeartbeatIsNeverReadAsAPresenceValue() throws Exception {
+        // Regression guard for the obvious mistake: cabin/presence/nate/last_seen
+        // is a timestamp. If it fell into the 3-part presence handler it would be
+        // read as "not 'home'" and mark Nate absent.
+        deliver("cabin/presence/nate", "home");
+        deliver("cabin/presence/nate/last_seen", "2026-10-04T09:00:00Z");
+
+        assertEquals(PresenceProfile.AT_CABIN, presenceService.get());
+        assertEquals(1, presenceSignalRegistry.all().size(), "the heartbeat must not create a presence signal");
+        assertTrue(presenceSignalRegistry.anyPresentAt("cabin"));
+    }
+
+    @Test
+    void aHeartbeatAloneDoesNotStartAutoDerivingPresence() throws Exception {
+        presenceService.set(PresenceProfile.AT_HOME); // manual fallback
+
+        deliver("cabin/presence/nate/last_seen", "2026-10-04T09:00:00Z");
+
+        assertEquals(PresenceProfile.AT_HOME, presenceService.get());
+        assertFalse(presenceService.isAutoDerived(), "only a real presence value may switch the badge from manual to live");
+    }
+
+    @Test
+    void anUnparseableHeartbeatIsIgnoredAndKeepsTheLastGoodOne() throws Exception {
+        deliver("cabin/presence/nate/last_seen", "2026-10-04T09:00:00Z");
+
+        for (String junk : new String[] {"", "now", "not a date", "{\"x\":1}", "2026-13-40T99:00:00Z"}) {
+            deliver("cabin/presence/nate/last_seen", junk);
+        }
+
+        assertEquals(java.time.Instant.parse("2026-10-04T09:00:00Z"), presenceSignalRegistry.latestSeen().orElseThrow());
+    }
+
     @Test
     void manualOverrideIsSupersededByTheNextRealSignal() throws Exception {
         presenceService.set(PresenceProfile.AWAY); // manual override, e.g. no signal configured yet

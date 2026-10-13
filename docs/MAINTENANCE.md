@@ -714,13 +714,30 @@ deploy breaks the camera with no warning. To compare credentials, compare
 length or equality and never print the value (see [Secrets](#secrets) and
 [Never diff secrets by raw value](#never-diff-secrets-by-raw-value-found-2026-08-03)).
 
+**Where the camera credential lives, and how to align it.** The vault key
+`vault_camera_password` (`ansible/group_vars/cabin/vault.yml`) feeds
+`CAMERA_PASSWORD` in `infra/production-stack/.env` (a host-only file; the
+deploy worktree's copy is a symlink) and in `infra/.env`, which the Frigate
+service passes in as `FRIGATE_RTSP_PASSWORD`, which fills the
+`{FRIGATE_RTSP_PASSWORD}` placeholder in `production-stack/frigate/config.yml`.
+All of them must hold the same value, and the container must be *recreated*
+(`docker compose -p cabin --env-file <stack .env> -f <stack compose> up -d
+--no-deps frigate`) after the `.env` changes; a restart does not re-read it.
+Check without displaying anything: compare the container's value with the
+working one by equality, then run `ffprobe` from inside the container using
+`${FRIGATE_RTSP_PASSWORD}` against the sub stream. A stream means the value is
+right; `401 Unauthorized` means it is not. A human vault change goes through a
+PR and must merge before the monthly `rotate-secrets` run, which re-templates
+`.env` from the vault. Done once on 2026-10-10; the previous `.env` files are
+backed up on the host in `~/camera-credential-align-20261010-012651/backup`.
+
 **Current cameras (2026-10-03).**
 - `cabin_outside_reolink` — the Reolink RLC-820A (the unit earlier
   configured as `front_door`), renamed in the live config on 2026-09-30.
   Native RTSP at `192.168.1.121`, reached through the M920q's Ethernet
   port `eno2`. 4K record stream, 640×480 detect stream. Continuous
-  recording works. **Object detection is not enabled** (see the state
-  table).
+  recording works, and object detection has been on since 2026-10-10
+  (W-39; the state table below is the 2026-10-03 history).
 - `driveway` — a Blink camera bridged via `blinkbridge` + `mediamtx`. No
   true continuous stream: it is only "live" when Blink's own cloud has
   already detected motion, so Frigate's detection is a second, finer pass
@@ -732,6 +749,20 @@ The Reolink and `driveway` physically cover the same front-door/driveway
 area from different angles. The names describe available semantic slots,
 not fixed device identities; one is expected to eventually relocate to
 cover the building's rear.
+
+**Resolved 2026-10-10 (W-39).** The table below describes 2026-10-03. Since
+then the camera credential was aligned (vault, both `.env` files and the
+running container; checked from inside the Frigate container, never
+printed), `cabin_outside_reolink` was brought under git ([#127](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/127)) with
+detection on and the same eight classes as the other cameras, the vault copy
+merged ([#133](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/133)), and `home_aldrich_front` was re-enabled. Verified from
+Frigate's API afterwards: the Reolink running detection (about 3.8 detection
+fps while idle motion was present), AldrichFront enabled with detection on.
+**Gotcha found doing it: the deploy copies the Frigate config but does not
+restart Frigate.** `docker compose up -d` sees no change to a bind-mounted file,
+so a config-only deploy does not take effect until `docker restart frigate`
+(W-46). The Frigate UI's own detection toggle lasts only until a restart or a
+container recreate; the merged config is what makes it permanent.
 
 **State on 2026-10-03 (verified read-only against the live host).** Live
 and git disagree. The Frigate config was edited by hand on 2026-09-30
@@ -748,7 +779,7 @@ and git disagree. The Frigate config was edited by hand on 2026-09-30
 
 Working: `camera_fps` about 5 for `cabin_outside_reolink`, and recordings on
 each day from 2026-09-29 to 2026-10-03. Tracked as W-39 to W-41 in
-`docs/governance/backlog.md`. **Until W-39 lands, do not merge
+`docs/governance/backlog.md`. **Until W-39 landed (2026-10-10), do not merge
 anything that touches `production-stack/frigate/config.yml` or
 `production-stack/docker-compose.yml`.** The deploy would copy git's
 `front_door` block over the live file and the camera would go dark again.
@@ -798,6 +829,38 @@ trusting any config file's contents. Not yet cleaned up (removing the
 orphaned service from `docker-compose.yml` is a real infra edit,
 flagged for the user to confirm rather than done unilaterally) — this
 note exists so the next person doesn't lose time to the same confusion.
+
+**Latest occurrence, 2026-10-10, and how to recognize it in two minutes
+(W-50).** Symptom: the driveway (or AldrichFront) shows "offline" in Frigate
+and its log fills with `404 Not Found` on `rtsp://mediamtx:8554/outdoor_4_-_dhee`
+or `.../aldrichfront`. **That 404 alone proves nothing**: Blink cameras only
+have a stream while a liveview session is open, so Frigate logs it every ten
+seconds when idle and healthy. The real test is blinkbridge itself:
+```bash
+docker logs -t --tail 1 blinkbridge      # the timestamp of its last log line
+docker top blinkbridge                   # python -m blinkbridge.main, state S, 0% CPU
+```
+A healthy blinkbridge logs a "motion poll" every 30 to 40 seconds. If the last
+line is minutes or hours old while the container still says "Up" and the
+process is alive (Docker's `RestartCount` stays 0), it has hung. On 2026-10-10
+it went silent at 16:43 UTC, right after a Blink live-view teardown error
+(`ConnectionResetError`, then "endpoint possibly down or throttled"), and stayed
+silent for 36 hours until noticed. (August's `max_failures` give-up was
+patched to back off and retry; this was a different hang, after a live-view
+teardown.) `docker restart blinkbridge` fixed it again:
+it re-authenticated within 5 seconds, and a short liveview then fed Frigate at
+about 5 fps with detection running. Two things in its log look alarming but are
+not the cause: `Could not extract events: An app update is required` is
+blinkpy's retired `get_events` call (blinkpy issue #757), and the startup line
+`Unexpected error: days=...; must have magnitude` appears on every start.
+**Prevention (staged, not installed):** `scripts/host/blinkbridge-watchdog`
+restarts it after 10 minutes of log silence, run every 5 minutes by
+`blinkbridge-watchdog.timer`. Install with sudo:
+```bash
+sudo install -m 755 scripts/host/blinkbridge-watchdog /usr/local/bin/blinkbridge-watchdog
+sudo cp scripts/host/blinkbridge-watchdog.service scripts/host/blinkbridge-watchdog.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now blinkbridge-watchdog.timer
+```
 
 **Blink camera (`driveway`) went dark for hours with no auto-recovery
 — found and fixed 2026-08-03.** External review's "no camera-event
@@ -1199,6 +1262,14 @@ Camera Events the same way any Blink motion does today (a `MOTION_ON`/
   harmless no-op — `BlinkLiveviewService.start()` extends an already-active
   session rather than starting a second one, by design.
 
+**Verified end to end 2026-10-10.** With `home_aldrich_front` enabled in
+Frigate, `POST liveview/AldrichFront/start` through blinkbridge published the
+`aldrichfront` path to mediamtx and Frigate read it at about 5 fps within 40
+seconds; `.../stop` ended the session. Between sessions the path has no stream,
+so Frigate shows `camera_fps` 0 for it by design (the same as `driveway`).
+Detection only has something to work on while a liveview is open, which the
+push-notification automation below starts on real Blink motion.
+
 **Known limitation, not yet built**: nothing today tracks whether the
 `cabin_security_publish_blink_motion` HA automation is actually still
 firing on a live schedule — it can silently stop working after an
@@ -1211,6 +1282,15 @@ Item 3) — not built as of this entry.
 ---
 
 ## Overnight Camera Alerts (Node-RED)
+
+**Status 2026-10-12 (read-only checks).** Two reasons this flow could not have
+alerted recently: (1) it fires on Frigate *detection* events, and the Reolink had
+object detection off from 2026-09-30 until 2026-10-10 (W-39); (2) it also needs
+`cabin/security/armed_away` ON and `cabin/presence/nate` not_home, and
+`armed_away` was OFF. This flow is separate from the backend's own push: the
+backend publishes to ntfy only when `CABIN_ALERT_NTFY_TOPIC` is set, and it is
+blank on the M920q, so CRITICAL events from the backend (leak, smoke, alarm, the
+UI's "Notify me" workflows) never reach a phone (W-51).
 
 A dedicated Node-RED tab ("Camera Overnight Alerts") pushes a real
 notification via [ntfy.sh](https://ntfy.sh) when Frigate detects an
@@ -2635,3 +2715,13 @@ trusted at face value.
       (`entityRef: zigbee2mqtt_bridge`/`cabin_event_ingestion`,
       `data_recovery_pipeline`) for the same playbook, queryable locally
       through Ollama with zero internet connectivity.
+
+---
+
+## Disk space alerts (W-11)
+
+`cabin-backend` watches two disks and raises an event when one crosses a line: the HDD `/storage` (the cold tier, `storage-hdd`) and the NVMe `/` (the hot tier, `root-nvme`). At 80% it publishes a WARN `STORAGE_THRESHOLD` event, at 90% a CRITICAL one; a `STORAGE_CLEARED` follows when the disk falls 3 points below the line. The event appears in Rules & Alerts' 24-hour list with what to do, repeats every 24 hours while the disk stays above the line, and does not repeat because of a deploy. If `CABIN_ALERT_NTFY_TOPIC` is set it is also pushed to the phone; **it was blank on 2026-10-12, so until W-51 S1 the in-app list is the only place it shows.**
+
+Check it by hand against the host: `GET http://<m920q>:8090/api/system/storage` should match `df -h /storage /` (the HDD figure comes through the archive mount `/app/archives/cabin_event`, which reports the whole `/storage` filesystem). Change the lines with `STORAGE_WARN_PERCENT`, `STORAGE_CRITICAL_PERCENT`, `STORAGE_RENOTIFY_HOURS` in `infra/.env` (the compose file must pass them through), or switch it off with `STORAGE_MONITOR_ENABLED=false`.
+
+**It never deletes anything.** When it fires, the owner decides: prune old nightly backups with `scripts/prune-storage-backups.sh` (dry run first), review recording retention, check `docker system df`. BI telemetry is never removed without a warning (`docs/STORAGE_ARCHITECTURE.md`).
