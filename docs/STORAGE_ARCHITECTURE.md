@@ -47,6 +47,40 @@ The readings behind the BI metrics (temperature, humidity, presence, CO2, leak, 
 4. Permanent deletion of files is run by the owner. Prepare a script that lists first and removes only with `--apply` (see `scripts/prune-storage-backups.sh`), and say what it will not touch.
 5. Anything bulky and long-lived goes to `/storage`; anything that needs fast random I/O stays on the NVMe.
 
+## Pruning: `cabin-storage-prune` (W-61)
+
+`scripts/host/cabin-storage-prune` is the one reviewed place that decides what disposable storage may be removed. It reports first, plans second, and removes only what is named. It replaces improvised `rm` and extends the one-time `scripts/prune-storage-backups.sh` (still valid for the four dated backup folders).
+
+**Install once on the M920q** (Nate; an agent session cannot write there):
+
+```bash
+sudo install -m 0755 scripts/host/cabin-storage-prune /usr/local/bin/cabin-storage-prune
+# optional: only if you want to change a default (see the file for examples)
+sudo install -m 0644 scripts/host/cabin-storage-prune.conf.example /etc/cabin-storage-prune.conf
+```
+
+**Use it, in this order:**
+
+```bash
+cabin-storage-prune report                       # what is prunable and the estimated space (read-only; a few minutes on the HDD, --no-sizes is instant)
+cabin-storage-prune plan --only all-safe         # exactly which folders would go (read-only)
+sudo cabin-storage-prune apply --only all-safe   # shows the plan, asks you to type APPLY, then removes
+sudo cabin-storage-prune apply --only system-copy --yes-delete system-copy   # a whole directory needs both flags
+```
+
+`report --json` gives the same data for a program (the in-app control, W-62, reads it).
+
+**What it will and will not do**
+
+- Targets are `dated-dirs` (keep the newest N of `YYYY-MM-DD` folders), `old-files` (older than N days, optional glob), `whole-dir`, `docker-cache` and `journal`. `all-safe` is every target except `whole-dir`.
+- It never touches BI telemetry or databases: any path containing `archives`, `cabin_event`, `telemetry`, `postgres` or docker volumes is refused, as is a symlink that resolves into one. This holds whatever the config says.
+- A target must be strictly inside an `allowed_root` (default `/storage/backups`), and deletion never crosses a filesystem.
+- Nothing is removed without `apply`, an explicit `--only`, and a typed confirmation (or `--yes`). Every removal is logged to `/var/log/cabin-storage-prune.log`.
+
+**Adjusting it.** Settings live in `/etc/cabin-storage-prune.conf` (root-edited today; the in-app control for an authorized user is W-62). Change how many snapshots to keep, add a target, or turn one `off`. To manage other storage, mount it and add its directory with `allowed_root`: an SD card or extra disk, a LAN share (NFS or SMB), or a remote volume are all managed through the path they are mounted at (W-63 covers registering and monitoring them, not just pruning them).
+
+**Tested** by `scripts/host/test_cabin_storage_prune.sh` (32 checks against a scratch folder, including refusal of outside paths, protected names and symlink escapes; the symlink checks need Linux).
+
 ## Disk monitor (W-11, PR #145)
 
 `StorageMonitorService` in `cabin-backend` measures `storage-hdd` (the HDD, seen through the archive mount `/app/archives/cabin_event`) and `root-nvme` (`/`) every 5 minutes. At **80%** it publishes a WARN `STORAGE_THRESHOLD` event, at **90%** a CRITICAL one, and `STORAGE_CLEARED` once it falls 3 points below the line; the notice repeats every 24 hours while above, and survives a restart without re-paging. The event shows in Rules & Alerts' 24-hour list and, when `CABIN_ALERT_NTFY_TOPIC` is set (W-51 S1), is pushed to the phone (WARN at ntfy priority high, CRITICAL urgent). `GET /api/system/storage` reports the current figures. Tune with `STORAGE_WARN_PERCENT`, `STORAGE_CRITICAL_PERCENT`, `STORAGE_RENOTIFY_HOURS`, `STORAGE_MONITOR_MOUNTS`. **It reports only and never deletes** (see the rules above); the automatic purge W-11 first described is W-11b.
@@ -55,9 +89,16 @@ The readings behind the BI metrics (temperature, humidity, presence, CO2, leak, 
 
 | ID | What |
 |---|---|
+| W-61 | `scripts/host/cabin-storage-prune`: report, plan and discrete owner-run removal with a config file (built, install and run by Nate) |
+| W-62 | In-app Act on storage: a multi-select prune control and authorized settings in See / Think / Act (proposed, see below) |
+| W-63 | Storage beyond `/storage`: SD cards, extra disks, and LAN or WAN network storage, registered, monitored and prunable (proposed) |
 | W-48 | Backup retention and exclusions: `scripts/host/backup-modular` (prunes to the newest N, leaves regenerable data out) and the one-time `scripts/prune-storage-backups.sh` |
 | W-49 | Dump warning before telemetry is archived-and-deleted, with an owner-set threshold |
 | W-11 | `/storage` thresholds: warning at 80%, critical at 90%, in-app and ntfy. Built (PR #145). The disk had reached 94% unnoticed |
 | W-11b | The automatic oldest-first purge W-11 first described. Deferred: permanent deletion is owner-run and telemetry needs a warning first (W-49) |
 | W-8 / W-10 / W-12 | Recording retention decision (kept at 5/10 days), Warm and Cold rules |
 | D19 Option B | Deploy `telemetry-backup-agent` so a copy exists that does not depend on `cabin-backend` |
+
+### Proposed: how the in-app Act (W-62) reaches the host
+
+Not built and not decided. The web container must stay unprivileged, so it cannot delete host files. The proposal keeps the deletion logic in the one script above and uses the MQTT bus the platform already runs on: a small root-owned host service (installed once by the owner) publishes `cabin-storage-prune report --json` to a retained `cabin/system/storage/prune-plan` topic; `cabin-backend` shows it in See / Think / Act as a multi-select list with sizes; an authorized user's selection becomes an audited `prune-request` that the host service re-validates against its own config and runs through `apply --only ...`, publishing the result. The same path carries config changes (validated, versioned, written to `/etc/cabin-storage-prune.conf`). Decisions needed from Nate and Cowork are listed on W-62.
