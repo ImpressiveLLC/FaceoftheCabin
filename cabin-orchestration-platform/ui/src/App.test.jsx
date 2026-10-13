@@ -3,8 +3,39 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
-mergeStatusCheckItems } from "./App.jsx";
+armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
+StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
+formatPresenceAge, presenceBadgeModel, PresenceBadge,
+mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
+
+// The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
+// it used to reset to Cabin on every visit, hiding the Home AldrichFront camera).
+describe("readStoredLocation", () => {
+  const store = (value) => ({ getItem: (k) => (k === ACTIVE_LOCATION_KEY ? value : null) });
+
+  it("returns the stored location when it is a known one", () => {
+    expect(readStoredLocation(store("home"), ["cabin", "home"])).toBe("home");
+    expect(readStoredLocation(store("cabin"), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("returns 'both' when 'both' was stored", () => {
+    expect(readStoredLocation(store("both"), ["cabin", "home"])).toBe("both");
+  });
+
+  it("falls back to cabin when nothing is stored", () => {
+    expect(readStoredLocation(store(null), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("falls back to cabin for a location that no longer exists", () => {
+    expect(readStoredLocation(store("lake-house"), ["cabin", "home"])).toBe("cabin");
+  });
+
+  it("falls back to cabin when storage throws", () => {
+    const broken = { getItem: () => { throw new Error("blocked"); } };
+    expect(readStoredLocation(broken, ["cabin", "home"])).toBe("cabin");
+  });
+});
 
 // Covers the actual reported bug this session ("Camera Events" showing
 // device logs instead of camera activity) -- see
@@ -270,11 +301,25 @@ describe("SensorHistoryPanel", () => {
   // disagree with the fixture), and everything else (telemetry-history)
   // from telemetryFn(url) -- defaulting to a constant response for tests
   // that don't care which device/field a particular call was for.
-  function reportedFieldsFetch(deviceList, telemetryFn = () => points) {
+  // W-21: telemetry-history now answers with TelemetryHistoryResponse
+  // ({requestedDays, effectiveDays, clamped, points}), not a bare array --
+  // wrapVerbatim lets a test override the whole envelope (to exercise the
+  // clamp banner) while telemetryFn keeps describing just the points, as
+  // every pre-existing test here already does.
+  function telemetryResponse(url, points, wrapVerbatim) {
+    if (wrapVerbatim) return wrapVerbatim(points);
+    const requestedDays = Number(url.match(/days=(\d+)/)?.[1]) || 30;
+    return { requestedDays, effectiveDays: requestedDays, clamped: false, points };
+  }
+
+  function reportedFieldsFetch(deviceList, telemetryFn = () => points, wrapVerbatim) {
     const fieldsMap = Object.fromEntries(deviceList.map(d => [d.deviceId, d.attributes.reportsFields]));
     return vi.fn((url) => {
       if (url.includes("/reported-fields")) {
         return Promise.resolve({ ok: true, json: async () => fieldsMap });
+      }
+      if (url.includes("/telemetry-history")) {
+        return Promise.resolve({ ok: true, json: async () => telemetryResponse(url, telemetryFn(url), wrapVerbatim) });
       }
       return Promise.resolve({ ok: true, json: async () => telemetryFn(url) });
     });
@@ -307,9 +352,13 @@ describe("SensorHistoryPanel", () => {
       "z2m-outside": ["temperature"],
       "ha-kitchen-humidity-dup": ["humidity"],
     };
-    vi.stubGlobal("fetch", vi.fn((url) => url.includes("/reported-fields")
-      ? Promise.resolve({ ok: true, json: async () => fieldsMap })
-      : Promise.resolve({ ok: true, json: async () => points })));
+    vi.stubGlobal("fetch", vi.fn((url) => {
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => fieldsMap });
+      if (url.includes("/telemetry-history")) {
+        return Promise.resolve({ ok: true, json: async () => telemetryResponse(url, points) });
+      }
+      return Promise.resolve({ ok: true, json: async () => points });
+    }));
     render(<SensorHistoryPanel devices={allDevices} apiBase="http://cabin" tempUnit="F" />);
 
     await screen.findByRole("button", { name: "Mech Room" });
@@ -365,6 +414,28 @@ describe("SensorHistoryPanel", () => {
     expect(within(rows[2]).getByText("70.0% (n=12)")).toBeTruthy();
   });
 
+  // W-21: `since` ("N days ago from right now") almost never lands on an
+  // exact midnight, so the earliest day of a window is (almost) always a
+  // partial day -- labeled rather than silently averaged in as if it
+  // covered the same 24 hours as every other row.
+  it("labels the earliest day as (partial) and leaves later days unlabeled", async () => {
+    const withPartial = [
+      { day: "2026-08-24T00:00:00Z", avg: 70, min: 65, max: 75, sampleCount: 12, partial: true },
+      { day: "2026-08-25T00:00:00Z", avg: 75.2, min: 70, max: 80, sampleCount: 8, partial: false },
+    ];
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]], () => withPartial));
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
+
+    // Built from the same Date().toLocaleDateString() the app itself uses,
+    // not a hardcoded string -- see the CSV-export test above for why.
+    const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString();
+    const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString();
+    const rows = await screen.findAllByRole("row");
+    expect(within(rows[1]).getByText(day2)).toBeTruthy();
+    expect(within(rows[1]).queryByText(/\(partial\)/)).toBeNull();
+    expect(within(rows[2]).getByText(`${day1} (partial)`)).toBeTruthy();
+  });
+
   // 2026-08-27: the user flagged that a wide multi-device table with only
   // an average per cell hides whether a reading came from dozens of real
   // samples or one stray point -- exactly the kind of question an
@@ -399,9 +470,34 @@ describe("SensorHistoryPanel", () => {
     render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
     await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(1));
 
-    fireEvent.change(screen.getByLabelText(/^range$/i), { target: { value: "90" } });
+    fireEvent.change(screen.getByLabelText(/^range$/i), { target: { value: "60" } });
     await waitFor(() => expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history"))).toHaveLength(2));
-    expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history")).at(-1)[0]).toContain("days=90");
+    expect(fetchMock.mock.calls.filter(c => c[0].includes("telemetry-history")).at(-1)[0]).toContain("days=60");
+  });
+
+  // W-21: offering a range the server never actually honors is exactly the
+  // "chart defect" this closes -- both cabin.history.max-days and
+  // cabin.demo.max-history-days default to 60 (D22 Q-DM-2, answered
+  // 2026-09-24), so nothing past that is a real option for any viewer.
+  it("does not offer a range beyond the shared 60-day platform ceiling", async () => {
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]]));
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
+
+    const rangeSelect = await screen.findByLabelText(/^range$/i);
+    expect(within(rangeSelect).queryByText(/90 days/)).toBeNull();
+    expect(within(rangeSelect).getByText(/60 days/)).toBeTruthy();
+  });
+
+  // W-21: the response is a wrapper carrying the range the server actually
+  // honored -- a demo token's own ceiling (or a future divergence from the
+  // normal view's own ceiling) must show up as explicit feedback, not a
+  // chart that's silently shorter than what was asked for.
+  it("shows a clamped-range notice when the server returns fewer days than requested", async () => {
+    vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]], () => points,
+      (pts) => ({ requestedDays: 60, effectiveDays: 14, clamped: true, points: pts })));
+    render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
+
+    expect(await screen.findByText(/Showing last 14 days/)).toBeTruthy();
   });
 
   // "step two": a real multi-select toggle -- click a device chip to
@@ -460,7 +556,7 @@ describe("SensorHistoryPanel", () => {
     vi.stubGlobal("fetch", vi.fn((url) => {
       if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => fieldsMap });
       if (url.includes("/reporting-relationships")) return Promise.resolve({ ok: true, json: async () => reportingRelationships });
-      return Promise.resolve({ ok: true, json: async () => points });
+      return Promise.resolve({ ok: true, json: async () => telemetryResponse(url, points) });
     }));
 
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
@@ -564,9 +660,9 @@ describe("SensorHistoryPanel", () => {
     // previous calendar day.
     const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString();
     const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString();
-    expect(lines[0]).toBe("date,device,avg,count");
-    expect(lines).toContain(`${day1},"Mech Room",70.00,12`);
-    expect(lines).toContain(`${day2},"Kitchen",75.20,8`);
+    expect(lines[0]).toBe("date,device,avg,count,partial");
+    expect(lines).toContain(`${day1},"Mech Room",70.00,12,no`);
+    expect(lines).toContain(`${day2},"Kitchen",75.20,8,no`);
   });
 
   // The user reported not knowing what "(n=…)" meant at all until asking --
@@ -1516,6 +1612,56 @@ describe("FamilyHubPanel — Add Place", () => {
     fireEvent.click(screen.getByText("Create Place"));
 
     await waitFor(() => expect(screen.getByText("id is required")).toBeTruthy());
+  });
+
+  // W-32 (2026-10-04): POST /api/locations now needs a signed-in session, so the
+  // create must go through the auth object's authedFetch, not a plain fetch.
+  function renderPanelWithAuth(authedFetch) {
+    return render(
+      <ThemeProvider>
+        <AppContext.Provider value={{ devices: [] }}>
+          <FamilyHubPanel auth={{ authedFetch }} />
+        </AppContext.Provider>
+      </ThemeProvider>
+    );
+  }
+
+  function fillAndSubmit() {
+    fireEvent.click(screen.getByText("Add Place"));
+    fireEvent.change(screen.getByPlaceholderText("lakehouse"), { target: { value: "lakehouse" } });
+    fireEvent.change(screen.getByPlaceholderText("Lake House"), { target: { value: "Lake House" } });
+    fireEvent.click(screen.getByText("Create Place"));
+  }
+
+  it("creates the place through the signed-in authedFetch, never a bare fetch", async () => {
+    const plainFetch = vi.fn();
+    vi.stubGlobal("fetch", plainFetch);
+    const authedFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    const [url, opts] = authedFetch.mock.calls[0];
+    expect(url).toMatch(/\/api\/locations$/);
+    expect(opts.method).toBe("POST");
+    expect(plainFetch).not.toHaveBeenCalled();
+  });
+
+  it("tells a signed-out user to sign in instead of showing a bare 401", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => "Missing bearer token" });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/needs a signed-in household session/)).toBeTruthy());
+    expect(screen.queryByText("Missing bearer token")).toBeNull();
+  });
+
+  it("gives a read-only guest or viewer the same sign-in message on 403", async () => {
+    const authedFetch = vi.fn().mockResolvedValue({ ok: false, status: 403, text: async () => "forbidden" });
+    renderPanelWithAuth(authedFetch);
+    fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/needs a signed-in household session/)).toBeTruthy());
   });
 });
 
@@ -4411,6 +4557,28 @@ describe("useAutomationAlerts", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
       url.includes("eventTypePrefix=AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED"))).toBe(true));
   });
+
+  // W-11: the disk monitor's STORAGE_THRESHOLD events must reach this list, or a filling disk is silent again.
+  it("also asks for STORAGE_ events", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+
+    render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
+      /eventTypePrefix=[^&]*STORAGE_/.test(url))).toBe(true));
+  });
+
+  it("renders a storage warning from its see/think payload with a readable rule name", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: async () => [{ eventId: "s1", sourceDeviceId: "storage-storage-hdd", eventType: "STORAGE_THRESHOLD",
+        severity: "CRITICAL", timestamp: new Date().toISOString(),
+        payload: { ruleId: "STORAGE_THRESHOLD", see: "storage-hdd is 94% full (57 GB free of 916 GB)", think: "Crossed the 90% critical line", act: "Prune old nightly backups first" } }],
+    });
+
+    render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
+
+    expect(await screen.findByText("storage-hdd is 94% full (57 GB free of 916 GB)")).toBeTruthy();
+  });
 });
 
 // Covers the 2026-08-08 request: drop the vestigial "Family" wording from
@@ -4854,9 +5022,10 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
   it("observations_read scope shows historical readings via reported-fields + telemetry-history", async () => {
     vi.stubGlobal("fetch", mockFetchByUrl([
       ["/api/events/reported-fields", { ok: true, json: async () => ({ "z2m-temp_kitchen": ["humidity"] }) }],
-      ["/api/events/telemetry-history", { ok: true, json: async () => [
-        { day: "2026-09-01T00:00:00Z", avg: 47.5, min: 40, max: 55, sampleCount: 90 },
-      ] }],
+      ["/api/events/telemetry-history", { ok: true, json: async () => ({
+        requestedDays: 7, effectiveDays: 7, clamped: false, points: [
+          { day: "2026-09-01T00:00:00Z", avg: 47.5, min: 40, max: 55, sampleCount: 90 },
+        ] }) }],
     ]));
 
     render(<GuestDashboard token="secret-abc" />);
@@ -5112,6 +5281,105 @@ describe("formatPresenceSignals", () => {
   });
 });
 
+// W-34 (2026-10-03 finding): the badge read "Away" at the house because the
+// retained presence value was 41 hours old. A stale auto-derived value must
+// read "Presence unknown", never a confident Away/At Cabin.
+describe("formatPresenceAge", () => {
+  it("formats minutes, hours and days compactly", () => {
+    expect(formatPresenceAge(5)).toBe("just now");
+    expect(formatPresenceAge(60)).toBe("1 min ago");
+    expect(formatPresenceAge(59 * 60)).toBe("59 min ago");
+    expect(formatPresenceAge(3600)).toBe("1 h ago");
+    expect(formatPresenceAge(3 * 3600 + 20 * 60)).toBe("3 h 20 min ago");
+    expect(formatPresenceAge(24 * 3600)).toBe("1 d ago");
+    expect(formatPresenceAge(41 * 3600)).toBe("1 d 17 h ago");
+  });
+
+  it("is empty for a missing or non-finite age and never negative", () => {
+    expect(formatPresenceAge(null)).toBe("");
+    expect(formatPresenceAge(undefined)).toBe("");
+    expect(formatPresenceAge(NaN)).toBe("");
+    expect(formatPresenceAge(-30)).toBe("just now");
+  });
+});
+
+describe("presenceBadgeModel", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const fresh = { signalAgeSeconds: 600, stale: false, staleAfterHours: 6 };
+  const stale = { signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 };
+
+  it("with no heartbeat behaves exactly as before: no age, never unknown", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: null });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toBe("Live-detected: No one currently detected present");
+  });
+
+  it("shows the age and stays a confident reading while fresh", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: fresh });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("10 min ago");
+    expect(m.title).toContain("phone last reported 10 min ago");
+  });
+
+  it("goes unknown past the limit and explains why", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: stale });
+    expect(m.unknown).toBe(true);
+    expect(m.title).toContain("Presence unknown");
+    expect(m.title).toContain("1 d 17 h");
+    expect(m.title).toContain("limit 6 h");
+  });
+
+  it("does not hide a manual override just because a heartbeat is old", () => {
+    const m = presenceBadgeModel({ autoDerived: false, signals, freshness: stale });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toMatch(/^Manually set/);
+  });
+});
+
+describe("PresenceBadge", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const base = { profile: "AWAY", options: [], onChange: () => {}, autoDerived: true, signals };
+
+  it("renders 'Presence unknown' instead of Away when the signal is stale", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Presence unknown");
+    expect(screen.queryByText("last seen 1 d 17 h ago")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeFalsy();
+    // the real choices are still there as a manual override
+    expect(within(select).getByText("Away")).toBeTruthy();
+  });
+
+  it("keeps the real value and the live dot when fresh, with an age chip", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 120, stale: false, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+    expect(screen.queryByText("2 min ago")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeFalsy();
+  });
+
+  it("renders with no age chip at all when the backend sends no heartbeat", () => {
+    const { container } = render(<PresenceBadge {...base} freshness={null} />);
+    expect(container.querySelector(".presence-age")).toBeFalsy();
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+  });
+
+  it("picking a real option while unknown reports it as a manual override", () => {
+    const onChange = vi.fn();
+    render(<PresenceBadge {...base} onChange={onChange}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    fireEvent.change(screen.getByLabelText("Presence"), { target: { value: "AT_CABIN" } });
+    expect(onChange).toHaveBeenCalledWith("AT_CABIN");
+  });
+});
+
 // Covers the 2026-08-08 armed-state finding: cabin/security/armed_away
 // is a real, live, HA-published MQTT signal that cabin-backend never
 // subscribed to. formatArmedTitle must never let "no signal yet" read
@@ -5137,6 +5405,108 @@ describe("formatArmedTitle", () => {
 
   it("handles undefined the same as null without throwing", () => {
     expect(() => formatArmedTitle(undefined)).not.toThrow();
+  });
+});
+
+// W-35 (Nate, 2026-10-04): warn, never block, when the system is armed while
+// presence shows someone at that location. The hub has no arm control, so the
+// rule is derived from the armed state and presence it already holds.
+describe("armedWhileOccupiedNotices", () => {
+  const armedCabin = { cabin: { armed: true, lastUpdated: "2026-10-04T10:00:00Z" } };
+  const nateAtCabin = [{ personId: "nate", location: "cabin", present: true }];
+  const live = { autoDerived: true, profile: "AT_CABIN" };
+
+  it("warns, naming who, when armed with someone detected at that location", () => {
+    const n = armedWhileOccupiedNotices({ securityStates: armedCabin, signals: nateAtCabin, ...live });
+    expect(n).toHaveLength(1);
+    expect(n[0]).toMatchObject({ location: "cabin", names: ["nate"], detected: true });
+  });
+
+  it("says nothing when disarmed, even with someone present", () => {
+    const disarmed = { cabin: { armed: false, lastUpdated: "2026-10-04T10:00:00Z" } };
+    expect(armedWhileOccupiedNotices({ securityStates: disarmed, signals: nateAtCabin, ...live })).toEqual([]);
+  });
+
+  it("says nothing when armed and nobody is detected", () => {
+    const away = [{ personId: "nate", location: "cabin", present: false }];
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, signals: away, ...live })).toEqual([]);
+  });
+
+  it("does not count presence at the other location", () => {
+    const atHome = [{ personId: "nate", location: "home", present: true }];
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, signals: atHome, ...live })).toEqual([]);
+  });
+
+  it("evaluates every armed location independently", () => {
+    const both = { ...armedCabin, home: { armed: true, lastUpdated: "2026-10-04T11:00:00Z" } };
+    const signals = [...nateAtCabin, { personId: "emma", location: "home", present: true }];
+    const n = armedWhileOccupiedNotices({ securityStates: both, signals, ...live });
+    expect(n.map(x => x.location).sort()).toEqual(["cabin", "home"]);
+  });
+
+  it("with no live signal, honors the manual profile (occupied, but nobody to name)", () => {
+    const manual = { autoDerived: false, signals: [] };
+    const n = armedWhileOccupiedNotices({ securityStates: armedCabin, ...manual, profile: "AT_CABIN" });
+    expect(n).toHaveLength(1);
+    expect(n[0].names).toEqual([]);
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, ...manual, profile: "AT_HOME" })).toEqual([]);
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, ...manual, profile: "BOTH_OCCUPIED" })).toHaveLength(1);
+  });
+
+  it("ignores the manual profile once a live signal exists", () => {
+    const away = [{ personId: "nate", location: "cabin", present: false }];
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, signals: away, autoDerived: true, profile: "AT_CABIN" })).toEqual([]);
+  });
+
+  it("tolerates missing state (signed out, no armed signal yet)", () => {
+    expect(armedWhileOccupiedNotices({ securityStates: undefined, signals: undefined, autoDerived: true, profile: "AWAY" })).toEqual([]);
+    expect(armedWhileOccupiedNotices({ securityStates: { cabin: null }, signals: nateAtCabin, ...live })).toEqual([]);
+  });
+
+  it("a new arming gets a new key, so an earlier dismissal does not hide it", () => {
+    const first = armedWhileOccupiedNotices({ securityStates: armedCabin, signals: nateAtCabin, ...live })[0].key;
+    const again = { cabin: { armed: true, lastUpdated: "2026-10-04T12:00:00Z" } };
+    const second = armedWhileOccupiedNotices({ securityStates: again, signals: nateAtCabin, ...live })[0].key;
+    expect(second).not.toBe(first);
+  });
+});
+
+describe("ArmedWhileOccupiedBanner", () => {
+  const notice = { location: "cabin", key: "cabin:t1", detected: true, names: ["nate"] };
+
+  it("shows a visible, non-blocking alert that names who and where", () => {
+    render(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={[]} onDismiss={() => {}} />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toMatch(/Armed while nate is detected at the Cabin\./);
+    expect(alert.textContent).toMatch(/sirens will sound unless the system recognizes an authorized user/);
+    expect(alert.textContent).toMatch(/Anyone else who is here will set them off/);
+  });
+
+  it("does not claim the alarm sounds for a recognized authorized user", () => {
+    render(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={[]} onDismiss={() => {}} />);
+    expect(screen.getByRole("alert").textContent).not.toMatch(/will sound if anyone is present/i);
+  });
+
+  it("uses 'someone' when the manual profile can't say who, and 'are' for several people", () => {
+    const { unmount } = render(<ArmedWhileOccupiedBanner notices={[{ ...notice, names: [] }]} dismissed={[]} onDismiss={() => {}} />);
+    expect(screen.getByRole("alert").textContent).toMatch(/Armed while someone is detected/);
+    unmount();
+    render(<ArmedWhileOccupiedBanner notices={[{ ...notice, names: ["nate", "emma"] }]} dismissed={[]} onDismiss={() => {}} />);
+    expect(screen.getByRole("alert").textContent).toMatch(/Armed while nate, emma are detected/);
+  });
+
+  it("dismiss reports the notice's key; a dismissed notice is not shown", () => {
+    const onDismiss = vi.fn();
+    const { rerender } = render(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={[]} onDismiss={onDismiss} />);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onDismiss).toHaveBeenCalledWith("cabin:t1");
+    rerender(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={["cabin:t1"]} onDismiss={onDismiss} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("renders nothing at all when there are no notices", () => {
+    const { container } = render(<ArmedWhileOccupiedBanner notices={[]} dismissed={[]} onDismiss={() => {}} />);
+    expect(container.innerHTML).toBe("");
   });
 });
 
@@ -5843,5 +6213,240 @@ describe("FamilyConfigPanel — Platform specs", () => {
     expect(await screen.findByText("2026.9.1")).toBeTruthy();
     expect(screen.getByText("Ollama")).toBeTruthy();
     expect(document.querySelector(".spec-summary")).toBeNull();
+  });
+});
+
+
+// W-62 (Nate, 2026-10-13): the disk alert's Act step is a Trim control: how many
+// newest nightly copies to keep, what that frees, what the disk would be, then Go.
+describe("Trim old backups", () => {
+  const GB = 1024 ** 3;
+  const snaps = (n, bytes) => Array.from({ length: n }, (_, i) => ({ name: `2026-01-${String(i + 1).padStart(2, "0")}`, bytes: typeof bytes === "function" ? bytes(i) : bytes }));
+  const plan = (over = {}) => ({
+    installed: true, pending: false, stale: false, sizesMeasured: true, lastResult: null,
+    disk: { usedPercent: 99, freeGb: 18, totalGb: 916 },
+    targets: [
+      { id: "backups-home", path: "/storage/backups/home", keep: 3, count: 10, snapshots: snaps(10, 50 * GB) },
+      { id: "backups-data", path: "/storage/backups/data", keep: 3, count: 4, snapshots: snaps(4, 1 * GB) },
+    ],
+    ...over,
+  });
+  const reply = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
+
+  it("formatTrimBytes is plain, and says unknown for an unmeasured size", () => {
+    expect(formatTrimBytes(350 * GB)).toBe("350 GB");
+    expect(formatTrimBytes(12.34 * GB)).toBe("12.3 GB");
+    expect(formatTrimBytes(5 * 1024 ** 2)).toBe("5 MB");
+    expect(formatTrimBytes(-1)).toBe("unknown");
+    expect(formatTrimBytes(null)).toBe("unknown");
+  });
+
+  it("trimPreview removes the OLDEST copies, keeps at least one, and says what the disk would be", () => {
+    const p = trimPreview(plan().targets, 3, plan().disk);
+    expect(p.rows.map(r => [r.id, r.keep, r.remove])).toEqual([["backups-home", 3, 7], ["backups-data", 3, 1]]);
+    expect(p.totalBytes).toBe(7 * 50 * GB + 1 * GB);
+    expect(p.after.usedPercent).toBe(Math.round(((916 - (18 + 351)) / 916) * 100));
+    // 0 or negative is clamped to the newest copy, never to nothing
+    expect(trimPreview(plan().targets, 0).rows.every(r => r.keep === 1)).toBe(true);
+    // asking to keep more than exists removes nothing
+    expect(trimPreview(plan().targets, 50).removeCount).toBe(0);
+    // an unmeasured size can't be summed, so it says so instead of guessing
+    const u = trimPreview([{ id: "backups-home", snapshots: snaps(5, -1) }], 2, plan().disk);
+    expect(u.unknown).toBe(true);
+    expect(u.totalBytes).toBeNull();
+    expect(u.after).toBeNull();
+  });
+
+  it("shows the disk, defaults the slider to the configured keep, and the amount it frees", async () => {
+    const fetchMock = vi.fn(() => reply(200, plan()));
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={fetchMock} />);
+    expect(await screen.findByText(/Disk now: 99% full, 18 GB free of 916 GB/)).toBeTruthy();
+    expect(screen.getByRole("slider").value).toBe("3");
+    expect(screen.getByText(/Frees about 351 GB\. The disk would be about 60% full/)).toBeTruthy();
+    expect(screen.getByText(/keep 3 of 10, remove 7/)).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith("http://hub/api/system/storage/trim");
+  });
+
+  it("moving the slider changes what it says it will free", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, plan())} />);
+    const slider = await screen.findByRole("slider");
+    fireEvent.change(slider, { target: { value: "1" } });
+    expect(screen.getByText(/Frees about 453 GB/)).toBeTruthy();
+    fireEvent.change(slider, { target: { value: "10" } });
+    expect(screen.getByText(/Nothing to remove at this setting/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go" }).disabled).toBe(true);
+  });
+
+  it("Go sends exactly the keep counts on screen, then waits for the host before saying it is done", async () => {
+    let state = plan();
+    const fetchMock = vi.fn((url, opts) => {
+      if (opts?.method === "POST") { state = plan({ pending: true }); return reply(202, { accepted: true, requestId: "r1" }); }
+      return reply(200, state);
+    });
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={fetchMock} pollMs={20} />);
+    fireEvent.change(await screen.findByRole("slider"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Trimming on the host/ })).toBeTruthy());
+    const post = fetchMock.mock.calls.find(c => c[1]?.method === "POST");
+    expect(post[0]).toBe("http://hub/api/system/storage/trim");
+    expect(JSON.parse(post[1].body)).toEqual({ keep: { "backups-home": 2, "backups-data": 2 } });
+    // the host reports back
+    state = plan({ disk: { usedPercent: 60, freeGb: 366, totalGb: 916 }, lastResult: { requestId: "r1", ok: true, removed: 10, freedBytes: 350 * GB, output: "done" } });
+    expect(await screen.findByText(/Last trim: removed 10 copies, freed 350 GB/, {}, { timeout: 2000 })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go" })).toBeTruthy();
+  });
+
+  it("reports a refusal from the hub instead of pretending it started", async () => {
+    const fetchMock = vi.fn((url, opts) => (opts?.method === "POST" ? reply(409, { accepted: false, error: "A trim is already waiting for the host or running" }) : reply(200, plan())));
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={fetchMock} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Go" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/already waiting/);
+  });
+
+  it("a failed last trim shows the host's reason", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, plan({ lastResult: { requestId: "x", ok: false, removed: 0, freedBytes: 0, output: "tool exited 2: nope" } }))} />);
+    expect(await screen.findByText(/Last trim did not finish: tool exited 2: nope/)).toBeTruthy();
+  });
+
+  it.each([[403, /Only an administrator can trim storage/], [401, /Sign in to trim storage/]])("a %s is explained", async (status, pattern) => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(status, {})} />);
+    expect((await screen.findByRole("status")).textContent).toMatch(pattern);
+  });
+
+  it("says the host service is not installed, with no slider", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, { installed: false, pending: false, disk: null, message: "The host trim service has not produced a plan yet." })} />);
+    expect(await screen.findByText(/has not produced a plan yet/)).toBeTruthy();
+    expect(screen.queryByRole("slider")).toBeNull();
+  });
+
+  it("while sizes are still being measured it says so, and still lets you trim", async () => {
+    const unmeasured = plan({ sizesMeasured: false, targets: [{ id: "backups-home", keep: 3, count: 6, snapshots: snaps(6, -1) }] });
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, unmeasured)} />);
+    expect(await screen.findByText(/still measuring folder sizes/)).toBeTruthy();
+    expect(screen.getByText(/The amount freed is not measured yet/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go" }).disabled).toBe(false);
+  });
+
+  it("a stale plan is flagged", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, plan({ stale: true }))} />);
+    expect(await screen.findByText(/more than 12 hours old/)).toBeTruthy();
+  });
+
+  it("the disk alert's Act step is the Trim control, not Open device", async () => {
+    vi.stubGlobal("fetch", vi.fn((url) => (String(url).includes("/api/system/storage/trim") ? reply(200, plan()) : new Promise(() => {}))));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"], activeAlerts: [],
+        automationAlerts: [{
+          eventId: "e1", sourceDeviceId: "storage-storage-hdd", severity: "CRITICAL", timestamp: "2026-10-13T12:00:00Z",
+          payload: { ruleId: "STORAGE_THRESHOLD", see: "storage-hdd is 99% full (18 GB free of 916 GB)", think: "Crossed the 90% critical line", act: "Trim old nightly backups first" },
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "See more" }));
+    expect(await screen.findByRole("slider")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /open device/i })).toBeNull();
+  });
+});
+
+
+describe("Trim old backups: big-job helper and automatic policy", () => {
+  const GB = 1024 ** 3;
+  const targets = [
+    { id: "backups-home", keep: 3, count: 10, snapshots: Array.from({ length: 10 }, (_, i) => ({ name: `2026-01-${String(i + 1).padStart(2, "0")}`, bytes: 50 * GB })) },
+  ];
+  const reply = (body) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+  const view = (extra = {}) => ({ installed: true, pending: false, stale: false, sizesMeasured: true, lastResult: null,
+    disk: { usedPercent: 99, freeGb: 18, totalGb: 916 }, auto: { enabled: true, aboveFull: 70, downTo: 55, floorKeep: 3 }, targets, ...extra });
+
+  it("keepForFreeing picks the most copies it can keep and still free the amount", () => {
+    expect(keepForFreeing(targets, 200)).toEqual({ keepN: 6, achievable: true, maxFreeGb: 450 });
+    expect(keepForFreeing(targets, 450).keepN).toBe(1);
+    expect(keepForFreeing(targets, 1).keepN).toBe(9);
+  });
+
+  it("keepForFreeing says plainly when even the minimum is not enough, or sizes are unknown", () => {
+    const r = keepForFreeing(targets, 600);
+    expect(r.achievable).toBe(false);
+    expect(r.keepN).toBe(1);
+    expect(r.maxFreeGb).toBe(450);
+    expect(keepForFreeing([{ id: "x", snapshots: [{ name: "a", bytes: -1 }, { name: "b", bytes: -1 }] }], 10).keepN).toBeNull();
+  });
+
+  it("'Free up at least N GB' moves the slider and the summary follows", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view())} />);
+    fireEvent.change(await screen.findByLabelText("Gigabytes to free"), { target: { value: "200" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set the slider" }));
+    expect(screen.getByRole("slider").value).toBe("6");
+    expect(screen.getByText(/Frees about 200 GB/)).toBeTruthy();
+  });
+
+  it("when the target is more than the backups hold, it says what else could free space", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view())} />);
+    fireEvent.change(await screen.findByLabelText("Gigabytes to free"), { target: { value: "600" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set the slider" }));
+    expect(screen.getByRole("slider").value).toBe("1");
+    expect(screen.getByText(/Even keeping 1 copy of each folder frees only 450 GB/)).toBeTruthy();
+    expect(screen.getByText(/recorded-video retention in Frigate/)).toBeTruthy();
+  });
+
+  it("states the automatic policy, and when it is off", async () => {
+    const { unmount } = render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view())} />);
+    expect(await screen.findByText(/at 70% full the oldest backup copies are removed until the disk is back to 55%.*fewer than 3 per folder/)).toBeTruthy();
+    unmount();
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view({ auto: { enabled: false, aboveFull: 70, downTo: 55, floorKeep: 3 } }))} />);
+    expect(await screen.findByText(/Automatic trimming is turned off on the host/)).toBeTruthy();
+  });
+
+  it("an automatic result is labelled, and a floor stop is explained", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view({ lastResult: { requestId: "auto-1", ok: true, auto: true, reachedTarget: false, removed: 4, freedBytes: 200 * GB, output: "x" } }))} />);
+    expect(await screen.findByText(/Last trim \(automatic\): removed 4 copies, freed 200 GB\. The disk is still above its line/)).toBeTruthy();
+  });
+});
+
+
+// 2026-10-13 (Nate): "On the Way" belongs prominently on My Places, and on Monitoring in the
+// same place as on Devices (the panel's header actions), not only on Devices.
+describe("On the Way is reachable from My Places and Monitoring", () => {
+  const devices = [{ deviceId: "z2m-temp_mech_room", name: "Mech room", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin", attributes: { temperature: 12 } }];
+  const okReply = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ accepted: true }) });
+  const haCalls = (fn) => fn.mock.calls.filter(call => String(call[0]).includes("/api/ha/services"));
+
+  it("My Places leads with an On the Way card showing the mech room temperature", () => {
+    render(<ThemeProvider><AppContext.Provider value={{ devices }}><FamilyHubPanel auth={{}} /></AppContext.Provider></ThemeProvider>);
+    const card = screen.getByRole("region", { name: "On the Way" });
+    expect(card.textContent).toMatch(/Heading to the cabin\?/);
+    expect(card.textContent).toMatch(/now \d+/);
+    expect(within(card).getByRole("button", { name: /On the Way/ })).toBeTruthy();
+    // it comes before the place cards
+    expect(card.compareDocumentPosition(document.querySelector(".family-hub-grid")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("pressing it on My Places turns on the cabin helper and confirms", async () => {
+    const authedFetch = vi.fn(okReply);
+    render(<ThemeProvider><AppContext.Provider value={{ devices }}><FamilyHubPanel auth={{ authedFetch }} /></AppContext.Provider></ThemeProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /On the Way/ }));
+    await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
+    expect(JSON.parse(haCalls(authedFetch)[0][1].body)).toMatchObject({ domain: "input_boolean", service: "turn_on", entity_id: "input_boolean.on_the_way_to_cabin" });
+    expect((await screen.findByRole("status")).textContent).toMatch(/Preheat started\. Mech room is/);
+  });
+
+  it("Monitoring has the same button in its header actions", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const authedFetch = vi.fn(okReply);
+    render(
+      <ThemeProvider>
+        <AppContext.Provider value={{ devices, activeLocation: "cabin", activeProfile: "AT_CABIN", alertAcknowledgments: [], activeAlerts: [], activeAlertLocations: [], automationAlerts: [] }}>
+          <MonitoringPanel active={true} auth={{ authedFetch }} />
+        </AppContext.Provider>
+      </ThemeProvider>
+    );
+    const header = document.querySelector(".panel-header-bar .header-actions");
+    const btn = within(header).getByRole("button", { name: /On the Way/ });
+    fireEvent.click(btn);
+    await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
+    expect(JSON.parse(haCalls(authedFetch)[0][1].body).entity_id).toBe("input_boolean.on_the_way_to_cabin");
   });
 });

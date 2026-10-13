@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download
+  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download, Power, Car
 } from "lucide-react";
 import "./styles.css";
 
@@ -1582,6 +1582,22 @@ export function allLocationsLabel(locationCount) {
   return locationCount <= 2 ? "Both" : "All";
 }
 
+// Which location the toolbar switcher shows survives a reload (2026-10-10).
+// It used to start on "cabin" every time, so someone who mostly looks at Home
+// (the AldrichFront camera lives there) re-picked it on every visit. Presence
+// is deliberately not used to choose it: presence can be stale or unknown, and
+// the view someone last chose is the one they expect back. A stored value that
+// is no longer a known location falls back to "cabin".
+export const ACTIVE_LOCATION_KEY = "ui.activeLocation";
+export function readStoredLocation(storage = globalThis.localStorage, ids = Object.keys(LOCATIONS)) {
+  try {
+    const value = storage.getItem(ACTIVE_LOCATION_KEY);
+    return value === "both" || ids.includes(value) ? value : "cabin";
+  } catch {
+    return "cabin";
+  }
+}
+
 function LocationSwitcher({ active, onChange }) {
   // Object.keys(LOCATIONS) instead of a hardcoded ["cabin","home"] so a
   // location added via POST /api/locations (see useHubLocations below)
@@ -1820,10 +1836,15 @@ const ADD_PLACE_FIELDS = [
   { key: "familyHubUrl", label: "Family Hub URL",    placeholder: "(fill in later if unknown)" },
 ];
 
-function AddPlaceForm({ onCreated, onCancel }) {
+function AddPlaceForm({ onCreated, onCancel, auth }) {
   const [form, setForm] = useState(() => Object.fromEntries(ADD_PLACE_FIELDS.map(f => [f.key, ""])));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // W-32 (2026-10-04): POST /api/locations now needs a signed-in session. The
+  // plain fetch this used to make carries no credential, so it would 401 for
+  // everyone. `auth` is only ever omitted by a test exercising the fallback,
+  // same convention as every other panel here.
+  const doFetch = auth?.authedFetch || fetch;
 
   const update = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
 
@@ -1840,11 +1861,14 @@ function AddPlaceForm({ onCreated, onCancel }) {
       for (const [k, v] of Object.entries(form)) {
         if (v.trim()) body[k] = v.trim();
       }
-      const res = await fetch(`${LOCATIONS.cabin.apiBase}/api/locations`, {
+      const res = await doFetch(`${LOCATIONS.cabin.apiBase}/api/locations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("Adding a place needs a signed-in household session. Sign in, then try again.");
+      }
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(text || `HTTP ${res.status}`);
@@ -1886,8 +1910,9 @@ function AddPlaceForm({ onCreated, onCancel }) {
 // also exposes (built in §1b, still unused by any UI -- a server-synced
 // order is a deliberate, separate future option, not what this
 // implements).
-export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder test
+export function FamilyHubPanel({ auth }) { // exported for src/App.test.jsx's reorder test
   const { devices } = useApp();
+  const [tempUnit] = useTempUnit();
   const [reorderMode, setReorderMode] = useState(false);
   const [adding, setAdding] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
@@ -1923,6 +1948,16 @@ export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder te
           </button>
         </div>
       </div>
+      {/* 2026-10-13 (Nate): "On the Way" was only a small button on Devices. It is the
+          thing you do before every trip, so it leads My Places. */}
+      <section className="on-the-way-card" aria-label="On the Way">
+        <div className="on-the-way-card-text">
+          <strong>Heading to the cabin?</strong>
+          <span>Tell it you are on the way. It starts the preheat and confirms the mech room temperature
+            {mechRoomTemperature(devices) != null ? ` (now ${fmtTemp(mechRoomTemperature(devices), tempUnit)})` : ""}.</span>
+        </div>
+        <OnTheWayButton auth={auth} devices={devices} prominent />
+      </section>
       {/* Found 2026-08-08 (user report, ahead of adding a real second
           location): the backend's full create/update/reorder/archive
           CRUD for hub_location (Phase 7 §1b) has existed since that
@@ -1931,6 +1966,7 @@ export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder te
           the UI at all. AddPlaceForm below is that missing piece. */}
       {adding && (
         <AddPlaceForm
+          auth={auth}
           onCreated={() => { setAdding(false); window.location.reload(); }}
           onCancel={() => setAdding(false)}
         />
@@ -2936,6 +2972,7 @@ export function DeviceManagerPanel({ auth }) {
               )}
             </>
           )}
+          <OnTheWayButton auth={auth} devices={devices} />
           <button className="btn-ghost" onClick={refreshManagerDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
       </div>
@@ -3012,6 +3049,57 @@ export function deviceLifecycleState(device) {
   const explicit = device?.attributes?.deviceLifecycle;
   if (explicit) return String(explicit).toUpperCase();
   return device?.attributes?.candidate === true ? "CANDIDATE" : "ASSIGNED";
+}
+
+// ─── Home Assistant service calls (W-27/W-28, 2026-10-02) ────────────────
+// Both go through POST /api/ha/services: signed-in only, and the backend
+// allowlists switch/input_boolean on/off and refuses valves and locks
+// (HaServiceController). The M920q is the head for both locations and runs
+// the one HA, so these always target the cabin backend.
+
+/**
+ * W-27: the HA switch entity a Device Manager row can power on/off, or null.
+ * Needs a real reported on/off ("state": "ON"/"OFF" -- Zigbee2MQTT's own
+ * payload, or HA discovery's for switch.* entities). Zigbee devices map to
+ * switch.<friendly_name>, Zigbee2MQTT's default HA discovery entity id.
+ * Cabin only: Home's collector devices aren't in the cabin HA. Valves and
+ * locks never get a toggle (same rule the backend enforces).
+ */
+export function powerToggleTarget(device) {
+  const attrs = device?.attributes || {};
+  const state = String(attrs.state ?? "").toUpperCase();
+  if (state !== "ON" && state !== "OFF") return null;
+  if (device.location && device.location !== "cabin") return null;
+  if (!["ASSIGNED", "AVAILABLE"].includes(deviceLifecycleState(device))) return null;
+  let entityId = null;
+  if (typeof attrs.entityId === "string" && attrs.entityId.startsWith("switch.")) {
+    entityId = attrs.entityId;
+  } else if (device.deviceId?.startsWith("z2m-")) {
+    entityId = `switch.${device.deviceId.slice(4)}`;
+  }
+  if (!entityId || !/^switch\.[a-z0-9_]+$/.test(entityId) || /valve|lock/.test(entityId)) return null;
+  return { entityId, isOn: state === "ON" };
+}
+
+export async function callHaService(doFetch, domain, service, entityId) {
+  const response = await doFetch(`${LOCATIONS.cabin.apiBase}/api/ha/services`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ domain, service, entity_id: entityId }),
+  });
+  if (response.status === 401) throw new Error("Sign in to control devices");
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.accepted === false) {
+    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command" : `HTTP ${response.status}`));
+  }
+  return body;
+}
+
+/** W-28: the mech room temperature (°C, as reported) for the "On the Way" confirmation, or null. */
+export function mechRoomTemperature(devices) {
+  const d = (devices || []).find(x => /temp_mech_room/.test(x.deviceId || "")
+    && typeof x.attributes?.temperature === "number");
+  return d ? d.attributes.temperature : null;
 }
 
 const LIFECYCLE_LABELS = {
@@ -4142,6 +4230,94 @@ function DmRowEnableToggle({ device, onToggled, auth }) {
   );
 }
 
+// W-27: on/off for switch-like devices. Optimistic: flips immediately, then
+// the next poll's real reported state wins (or the guess is dropped after
+// 60s if the device never reports back). On failure it snaps back and the
+// reason is in the tooltip.
+function DmPowerToggle({ device, auth }) {
+  const target = powerToggleTarget(device);
+  const [optimistic, setOptimistic] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const reported = device.attributes?.state;
+  useEffect(() => { setOptimistic(null); }, [reported]);
+  useEffect(() => {
+    if (optimistic === null) return undefined;
+    const t = setTimeout(() => setOptimistic(null), 60000);
+    return () => clearTimeout(t);
+  }, [optimistic]);
+  if (!target) return null;
+  const isOn = optimistic ?? target.isOn;
+
+  const toggle = async (e) => {
+    e.stopPropagation(); // don't also select the row
+    const next = !isOn;
+    setOptimistic(next);
+    setBusy(true);
+    setError(null);
+    try {
+      await callHaService(auth?.authedFetch || fetch, "switch", next ? "turn_on" : "turn_off", target.entityId);
+    } catch (err) {
+      setOptimistic(null);
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      className={`btn-ghost dm-power-toggle ${isOn ? "dm-power-on" : "dm-power-off"}`}
+      onClick={toggle}
+      disabled={busy}
+      aria-pressed={isOn}
+      aria-label={`${device.name}: turn ${isOn ? "off" : "on"}`}
+      title={error ? `Not changed: ${error}` : `Turn ${isOn ? "off" : "on"} (${target.entityId})`}
+    >
+      <Power size={14}/> {isOn ? "On" : "Off"}
+    </button>
+  );
+}
+
+// W-28: one tap tells HA we're heading up; HA's own preheat automation
+// (input_boolean.on_the_way_to_cabin) decides what to turn on and sends the
+// push notification -- no heater logic lives here (CLAUDE.md: don't
+// duplicate HA automations).
+export function OnTheWayButton({ auth, devices, prominent = false }) {
+  const [tempUnit] = useTempUnit();
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const t = setTimeout(() => setToast(null), 8000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const go = async () => {
+    setBusy(true);
+    try {
+      await callHaService(auth?.authedFetch || fetch, "input_boolean", "turn_on", "input_boolean.on_the_way_to_cabin");
+      const temp = mechRoomTemperature(devices);
+      setToast({ ok: true, text: `Preheat started. Mech room is ${temp == null ? "not reporting" : fmtTemp(temp, tempUnit)}.` });
+    } catch (err) {
+      setToast({ ok: false, text: `Couldn't start preheat: ${err.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="on-the-way">
+      <button className={prominent ? "on-the-way-btn-prominent" : "btn-ghost"} onClick={go} disabled={busy} title="Tell the cabin you're on the way (starts preheat)">
+        <Car size={prominent ? 18 : 14}/> {busy ? "Sending…" : "On the Way"}
+      </button>
+      {toast && (
+        <span role="status" className={`on-the-way-toast ${toast.ok ? "toast-ok" : "toast-err"}`}>{toast.text}</span>
+      )}
+    </span>
+  );
+}
+
 // forwardRef (2026-08-27, user report): switching L1 tabs (See<->Change)
 // unmounts and remounts whichever view isn't active, so a selection that
 // correctly carries over via the shared `selected` state (2026-08-25 fix)
@@ -4184,6 +4360,7 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
+      {auth && <DmPowerToggle device={device} auth={auth} />}
       {onToggled && <DmRowEnableToggle device={device} onToggled={onToggled} auth={auth} />}
     </div>
   );
@@ -5495,6 +5672,13 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   const [days, setDays] = useState(30);
   const [seriesByDevice, setSeriesByDevice] = useState({});
   const [loading, setLoading] = useState(false);
+  // W-21: the server's own answer to "how much of what you asked for did
+  // you actually get" (TelemetryHistoryResponse), not derived from `days`
+  // itself -- a demo token's own ceiling (or a future divergence from the
+  // normal view's cabin.history.max-days) can clamp below what the Range
+  // dropdown shows as selected, and that must never render silently as if
+  // the full requested window came back.
+  const [rangeInfo, setRangeInfo] = useState(null);
 
   // Alert History (D16): "a view over the alert event log (all types)" --
   // Cowork-ratified 2026-09-05 as a pure computed view, not a per-service
@@ -5525,16 +5709,27 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
     // then also skips setLoading(false) because of that same flag, and
     // this early-return branch never touched loading at all. Must reset
     // it explicitly here, not just the series.
-    if (selectedIds.length === 0) { setSeriesByDevice({}); setLoading(false); return; }
+    if (selectedIds.length === 0) { setSeriesByDevice({}); setLoading(false); setRangeInfo(null); return; }
     let cancelled = false;
     setLoading(true);
     Promise.all(selectedIds.map(id =>
       authedFetch(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(id)}&field=${field}&days=${days}`)
         .then(r => r.json())
-        .then(data => [id, Array.isArray(data) ? data : []])
-        .catch(() => [id, []])
-    )).then(entries => { if (!cancelled) setSeriesByDevice(Object.fromEntries(entries)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+        .then(data => [id, data])
+        .catch(() => [id, null])
+    )).then(entries => {
+      if (cancelled) return;
+      setSeriesByDevice(Object.fromEntries(entries.map(([id, data]) =>
+        [id, Array.isArray(data?.points) ? data.points : []])));
+      // Every selected device was asked for the same `days` against the same
+      // viewer's ceiling, so any response that actually came back describes
+      // the same effective range -- take the first one rather than reconciling
+      // disagreement that architecturally can't happen.
+      const withRange = entries.map(([, data]) => data).find(d => d && typeof d.effectiveDays === "number");
+      setRangeInfo(withRange
+        ? { requestedDays: withRange.requestedDays, effectiveDays: withRange.effectiveDays, clamped: withRange.clamped }
+        : null);
+    }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // `field` deliberately omitted -- a field change always cascades through
     // the reset effect above into a `selectedIds` update in the very next
@@ -5567,6 +5762,10 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   // multiple lines/columns line up and compare on one chart/table instead
   // of each device silently keeping its own independent scale.
   const allDates = [...new Set(selectedIds.flatMap(id => (seriesByDevice[id] || []).map(p => p.day)))].sort();
+  // W-21: every selected device queries the same window, so a day the
+  // backend flags partial for one device is partial for all of them --
+  // this is just which of allDates that ever was, not a per-device fact.
+  const partialDates = new Set(selectedIds.flatMap(id => (seriesByDevice[id] || []).filter(p => p.partial).map(p => p.day)));
   const allDisplayValues = selectedIds.flatMap(id =>
     (seriesByDevice[id] || []).filter(p => p.avg != null).map(p => toDisplay(p.avg)));
   const chartMin = allDisplayValues.length ? Math.min(...allDisplayValues) : 0;
@@ -5596,13 +5795,13 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   // "don't fabricate a value that isn't real" reasoning as the on-screen
   // table's "—" cells -- a pivot built on this can trust every row.
   const downloadCsv = () => {
-    const header = "date,device,avg,count\n";
+    const header = "date,device,avg,count,partial\n";
     const rows = [];
     for (const day of allDates) {
       for (const id of selectedIds) {
         const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
         if (p?.avg == null) continue;
-        rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount].join(","));
+        rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount, p.partial ? "yes" : "no"].join(","));
       }
     }
     const blob = new Blob([header + rows.join("\n")], { type: "text/csv" });
@@ -5678,15 +5877,24 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                 </select>
               </label>
               <label className="dm-toolbar-select">Range
+                {/* W-21: capped at the shared 60-day platform ceiling
+                    (cabin.history.max-days / cabin.demo.max-history-days,
+                    D22 Q-DM-2) -- offering 90 here when nothing ever honors
+                    it past that ceiling is exactly the "chart defect" this
+                    fixes. */}
                 <select value={days} onChange={e => setDays(Number(e.target.value))}>
                   <option value={7}>7 days</option>
                   <option value={30}>30 days</option>
                   <option value={60}>60 days</option>
-                  <option value={90}>90 days</option>
                 </select>
               </label>
               <button className="btn-ghost" onClick={downloadCsv} disabled={selectedIds.length === 0 || allDates.length === 0}>Download CSV</button>
             </div>
+            {rangeInfo?.clamped && (
+              <p className="config-hint sensor-history-clamp-note">
+                Showing last {rangeInfo.effectiveDays} days — this view's history is limited to {rangeInfo.effectiveDays} days, less than the {rangeInfo.requestedDays} requested.
+              </p>
+            )}
             <div className="sensor-history-device-picker">
               <button className="btn-ghost" onClick={selectAll} disabled={selectedIds.length === fieldDevices.length}>Select all</button>
               <button className="btn-ghost" onClick={selectNone} disabled={selectedIds.length === 0}>Clear</button>
@@ -5704,7 +5912,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
               <p className="config-hint">Select at least one device above to chart {SENSOR_FIELD_LABELS[field] || field}.</p>
             )}
             {!loading && selectedIds.length > 0 && allDates.length === 0 && (
-              <p className="config-hint">No {field} history for the selected devices in the last {days} days.</p>
+              <p className="config-hint">No {field} history for the selected devices in the last {rangeInfo?.effectiveDays ?? days} days.</p>
             )}
             {!loading && allDates.length > 0 && (
               <>
@@ -5727,6 +5935,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                 )}
                 <p className="config-hint sensor-history-count-note">
                   Each value is that day's average; (n=…) is how many individual readings were averaged into it — the CSV export has the count as its own column.
+                  {partialDates.size > 0 && " A day marked (partial) covers less than a full 24 hours -- its average is over fewer hours than the other rows, not a stronger or weaker reading."}
                 </p>
                 <div className="sensor-history-table-wrap">
                   <table className="sensor-history-table">
@@ -5734,7 +5943,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                     <tbody>
                       {[...allDates].reverse().map(day => (
                         <tr key={day}>
-                          <td>{new Date(day).toLocaleDateString()}</td>
+                          <td>{new Date(day).toLocaleDateString()}{partialDates.has(day) ? " (partial)" : ""}</td>
                           {selectedIds.map(id => {
                             const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
                             // Sample count matters for credibility, not just decoration --
@@ -5874,7 +6083,7 @@ const MN_VIEWS = [
   { id: "remove", label: "Remove", icon: Minus },
 ];
 
-function MonitoringPanel({ active, auth }) {
+export function MonitoringPanel({ active, auth }) { // exported for src/App.test.jsx
   const { devices, activeLocation, activeProfile } = useApp();
   const [view, setView]               = useState("see");
   const [selected, setSelected]       = useState(null);
@@ -5895,6 +6104,7 @@ function MonitoringPanel({ active, auth }) {
               <GripVertical size={14}/> {reorderMode ? "Done" : "Reorder"}
             </button>
           )}
+          <OnTheWayButton auth={auth} devices={devices} />
           <span className={`ws-indicator ${active ? "ws-live" : "ws-off"}`}>
             {active ? <><Wifi size={12}/> Live</> : <><WifiOff size={12}/> Docked</>}
           </span>
@@ -6414,7 +6624,12 @@ export function deviceConditionSteps(item) {
   ];
 }
 
-const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED";
+// STORAGE_ (W-11, 2026-10-12): STORAGE_THRESHOLD / STORAGE_CLEARED events from the backend's disk
+// monitor -- a filling disk is exactly the quiet failure this list exists to surface (the HDD sat at
+// 94% for weeks with nothing saying so). Their payload carries the same see/think/act text.
+// sourceId("storage-hdd") in StorageMonitorService: the cold-tier disk alert.
+export const STORAGE_HDD_SOURCE = "storage-storage-hdd";
+const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED,STORAGE_";
 
 // authedFetch falls back to plain fetch when no auth prop is passed, so
 // this component's own existing tests (rendered without one) keep
@@ -6655,6 +6870,212 @@ export function mergeStatusCheckItems(activeAlerts, activeLocation, automationAl
 // counterpart for rows that never had a native see/think/act payload).
 // Renamed "Current conditions" -> "Status Checks" to match what the box
 // actually is now that it covers both sources.
+// ─── Trim old backups (W-62) ────────────────────────────────────────────────
+// Nate, 2026-10-13: the disk alert's Act step took him to Device Manager, which
+// is no use for a full disk. Act now offers this: one slider for how many of the
+// newest nightly copies to keep in each backup folder ("cut it down from total
+// or turn it up to remove more"), what that frees, what the disk would be
+// afterwards, and Go. The hub cannot delete host files, so Go asks the host's
+// trim service through the backend (StorageTrimService) and then waits for the
+// host to report back; it never claims the space is freed until the host says so.
+export function formatTrimBytes(bytes) {
+  if (bytes == null || bytes < 0) return "unknown";
+  const gb = bytes / (1024 ** 3);
+  if (gb >= 100) return `${Math.round(gb)} GB`;
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  const mb = bytes / (1024 ** 2);
+  return mb >= 1 ? `${Math.round(mb)} MB` : "under 1 MB";
+}
+
+export function trimTargetLabel(id) {
+  const name = String(id).replace(/^backups-/, "");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// Pure: what keeping the newest `keepN` copies of every folder would remove.
+// Snapshots are dated folders named YYYY-MM-DD, so name order is age order.
+export function trimPreview(targets, keepN, disk) {
+  const rows = (targets || []).map(t => {
+    const snaps = [...(t.snapshots || [])].sort((a, b) => (a.name < b.name ? -1 : 1));
+    const keep = Math.min(Math.max(1, keepN), snaps.length);
+    const removed = snaps.slice(0, snaps.length - keep);
+    const unknown = removed.some(s => s.bytes == null || s.bytes < 0);
+    return {
+      id: t.id, label: trimTargetLabel(t.id), count: snaps.length, keep, remove: removed.length,
+      bytes: unknown ? null : removed.reduce((n, s) => n + s.bytes, 0), unknown,
+    };
+  });
+  const removeCount = rows.reduce((n, r) => n + r.remove, 0);
+  const unknown = rows.some(r => r.unknown);
+  const totalBytes = unknown ? null : rows.reduce((n, r) => n + (r.bytes || 0), 0);
+  let after = null;
+  if (disk && totalBytes != null && disk.totalGb > 0) {
+    const freedGb = totalBytes / (1024 ** 3);
+    const freeGb = Math.min(disk.totalGb, disk.freeGb + freedGb);
+    after = { freeGb, usedPercent: Math.round(((disk.totalGb - freeGb) / disk.totalGb) * 100) };
+  }
+  return { rows, removeCount, unknown, totalBytes, after };
+}
+
+// "I need N GB for a big job": the most copies we can keep and still free at least `wantGb`.
+// Returns { keepN, achievable, maxFreeGb }; keepN is null when sizes are not measured yet.
+export function keepForFreeing(targets, wantGb) {
+  const max = Math.max(1, ...(targets || []).map(t => (t.snapshots || []).length));
+  const freedGbAt = (n) => {
+    const p = trimPreview(targets, n, null);
+    return p.totalBytes == null ? null : p.totalBytes / (1024 ** 3);
+  };
+  const atMinimum = freedGbAt(1);
+  if (atMinimum == null) return { keepN: null, achievable: false, maxFreeGb: null };
+  if (atMinimum < wantGb) return { keepN: 1, achievable: false, maxFreeGb: atMinimum };
+  for (let n = max; n >= 1; n--) {
+    if (freedGbAt(n) >= wantGb) return { keepN: n, achievable: true, maxFreeGb: atMinimum };
+  }
+  return { keepN: 1, achievable: true, maxFreeGb: atMinimum };
+}
+
+export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 }) {
+  const [view, setView] = useState(null);
+  const [problem, setProblem] = useState(null);
+  const [keepN, setKeepN] = useState(null);
+  const [waitingFor, setWaitingFor] = useState(null); // requestId we are waiting on
+  const [sending, setSending] = useState(false);
+  const [wantGb, setWantGb] = useState("");
+  const [wantNote, setWantNote] = useState(null);
+  const url = `${apiBase}/api/system/storage/trim`;
+
+  const load = useCallback(async () => {
+    try {
+      const r = await authedFetch(url);
+      if (r.status === 401) { setProblem("Sign in to trim storage."); return null; }
+      if (r.status === 403) { setProblem("Only an administrator can trim storage."); return null; }
+      if (!r.ok) { setProblem("The hub could not read the trim plan."); return null; }
+      const v = await r.json();
+      setProblem(null);
+      setView(v);
+      return v;
+    } catch {
+      setProblem("The hub could not be reached.");
+      return null;
+    }
+  }, [authedFetch, url]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Default the slider to the configured keep, once the plan is known.
+  useEffect(() => {
+    if (keepN != null || !view?.targets?.length) return;
+    const configured = view.targets[0].keep || 3;
+    const max = Math.max(...view.targets.map(t => t.count));
+    setKeepN(Math.min(Math.max(1, configured), max));
+  }, [view, keepN]);
+
+  // After Go, wait for the host to report this request's result.
+  useEffect(() => {
+    if (!waitingFor) return undefined;
+    const id = setInterval(async () => {
+      const v = await load();
+      if (v?.lastResult?.requestId === waitingFor && !v.pending) setWaitingFor(null);
+    }, pollMs);
+    return () => clearInterval(id);
+  }, [waitingFor, load, pollMs]);
+
+  if (problem && !view) return <p className="trim-note" role="status">{problem}</p>;
+  if (!view) return <p className="trim-note" role="status">Loading the trim plan…</p>;
+  if (!view.installed) return <p className="trim-note" role="status">{view.message}</p>;
+  if (!view.targets?.length) return <p className="trim-note" role="status">No dated backup folders to trim.</p>;
+
+  const max = Math.max(...view.targets.map(t => t.count));
+  const n = keepN ?? Math.min(3, max);
+  const preview = trimPreview(view.targets, n, view.disk);
+  const busy = sending || !!waitingFor || view.pending;
+  const disk = view.disk;
+  const result = view.lastResult;
+
+  const go = async () => {
+    setSending(true);
+    setProblem(null);
+    try {
+      const keep = {};
+      preview.rows.forEach(r => { keep[r.id] = r.keep; });
+      const r = await authedFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keep }) });
+      const body = await r.json().catch(() => ({}));
+      if (r.status === 202) { setWaitingFor(body.requestId); load(); }
+      else setProblem(body.error || `The hub refused the request (${r.status}).`);
+    } catch {
+      setProblem("The hub could not be reached.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="trim-widget">
+      <strong>Trim old backups</strong>
+      {disk && <p className="trim-note">Disk now: {disk.usedPercent}% full, {Math.round(disk.freeGb)} GB free of {Math.round(disk.totalGb)} GB.</p>}
+      {view.auto && (view.auto.enabled
+        ? <p className="trim-note">Automatic: at {view.auto.aboveFull}% full the oldest backup copies are removed until the disk is back to {view.auto.downTo}%, never leaving fewer than {view.auto.floorKeep} per folder. You are told each time.</p>
+        : <p className="trim-note">Automatic trimming is turned off on the host.</p>)}
+      {view.stale && <p className="trim-note">This plan is more than 12 hours old, so recent folders may be missing from it.</p>}
+      {!view.sizesMeasured && <p className="trim-note">The host is still measuring folder sizes (the first pass takes several minutes). You can trim now; the amount freed shows when it finishes.</p>}
+
+      <label className="trim-slider">
+        <span>Keep the newest <strong>{n}</strong> nightly cop{n === 1 ? "y" : "ies"} of each folder</span>
+        <input type="range" min="1" max={max} step="1" value={n} disabled={busy}
+               aria-label="Number of newest copies to keep in each folder"
+               onChange={e => setKeepN(Number(e.target.value))} />
+        <span className="trim-slider-ends"><span>Trim more</span><span>Trim less</span></span>
+      </label>
+
+      <div className="trim-want">
+        <label>Need room for a big job? Free up at least{" "}
+          <input type="number" min="1" inputMode="numeric" value={wantGb} disabled={busy} aria-label="Gigabytes to free"
+                 onChange={e => setWantGb(e.target.value)} /> GB
+        </label>
+        <button type="button" disabled={busy || !(Number(wantGb) > 0)} onClick={() => {
+          const r = keepForFreeing(view.targets, Number(wantGb));
+          if (r.keepN == null) { setWantNote("Sizes are not measured yet, so the slider cannot be set from a target."); return; }
+          setKeepN(r.keepN);
+          setWantNote(r.achievable ? null
+            : `Even keeping 1 copy of each folder frees only ${Math.round(r.maxFreeGb)} GB. For more, shorten recorded-video retention in Frigate or remove the one-off system copy.`);
+        }}>Set the slider</button>
+        {wantNote && <p className="trim-note" role="status">{wantNote}</p>}
+      </div>
+
+      <ul className="trim-rows">
+        {preview.rows.map(r => (
+          <li key={r.id}>
+            <span className="trim-row-name">{r.label}</span>
+            <span>keep {r.keep} of {r.count}{r.remove > 0 ? `, remove ${r.remove}` : ""}</span>
+            <span className="trim-row-size">{r.remove > 0 ? formatTrimBytes(r.bytes) : "nothing"}</span>
+          </li>
+        ))}
+      </ul>
+
+      <p className="trim-summary" aria-live="polite">
+        {preview.removeCount === 0
+          ? "Nothing to remove at this setting. Slide toward Trim more."
+          : preview.totalBytes == null
+            ? `Removes ${preview.removeCount} older copies. The amount freed is not measured yet.`
+            : `Frees about ${formatTrimBytes(preview.totalBytes)}.${preview.after ? ` The disk would be about ${preview.after.usedPercent}% full (${Math.round(preview.after.freeGb)} GB free).` : ""}`}
+      </p>
+
+      <button type="button" className="trim-go" onClick={go} disabled={busy || preview.removeCount === 0}>
+        {sending ? "Sending…" : waitingFor || view.pending ? "Trimming on the host…" : "Go"}
+      </button>
+      <p className="trim-note">Go permanently deletes the older backup copies, oldest first. The newest copy of each folder is never removed. Telemetry is never touched.</p>
+      {problem && <p className="trim-error" role="alert">{problem}</p>}
+      {result && !waitingFor && !view.pending && (
+        <p className={result.ok ? "trim-note" : "trim-error"} role="status">
+          {result.ok
+            ? `Last trim${result.auto ? " (automatic)" : ""}: removed ${result.removed} ${result.removed === 1 ? "copy" : "copies"}, freed ${formatTrimBytes(result.freedBytes)}.${result.reachedTarget === false ? " The disk is still above its line and every folder is at its minimum." : ""}`
+            : `Last trim${result.auto ? " (automatic)" : ""} did not finish: ${result.output || "no detail"}`}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function StatusChecksCard({ auth }) {
   const {
     activeAlerts = [], activeAlertLocations = [], activeLocation = "cabin",
@@ -6840,7 +7261,10 @@ function StatusChecksCard({ auth }) {
                       </span>
                     </div>
                     {ackError && <p className="action-result action-error">{ackError}</p>}
-                    {item.sourceDeviceId && (
+                    {/* W-62: a full-disk alert's Act is the Trim control, not a device. */}
+                    {item.kind === "automation" && item.sourceDeviceId === STORAGE_HDD_SOURCE ? (
+                      <StorageTrimWidget apiBase={LOCATIONS.cabin.apiBase} authedFetch={doFetch} />
+                    ) : item.sourceDeviceId && (
                       <div className="active-condition-actions active-condition-actions-expanded">
                         <button type="button" className="active-condition-link" onClick={() => openDevice(item.sourceDeviceId)}>
                           Open device <ChevronRight size={11}/>
@@ -7937,6 +8361,11 @@ function usePresence(authedFetch = fetch) {
   const [options, setOptions]      = useState([]);
   const [autoDerived, setAutoDerived] = useState(false);
   const [signals, setSignals]      = useState([]);
+  // W-34: how old the presence signal is. `freshness` stays null until the
+  // backend has seen a phone heartbeat (cabin/presence/<person>/last_seen),
+  // so an instance that hasn't deployed the heartbeat publisher renders
+  // exactly as before instead of guessing an age.
+  const [freshness, setFreshness]  = useState(null);
 
   const refresh = useCallback(() => {
     authedFetch(`${LOCATIONS.cabin.apiBase}/api/presence`)
@@ -7947,6 +8376,11 @@ function usePresence(authedFetch = fetch) {
         setOptions(data.options || []);
         setAutoDerived(!!data.autoDerived);
         setSignals(data.signals || []);
+        setFreshness(data.signalAgeSeconds == null ? null : {
+          signalAgeSeconds: data.signalAgeSeconds,
+          stale: !!data.stale,
+          staleAfterHours: data.staleAfterHours,
+        });
       })
       .catch(() => {});
   }, [authedFetch]);
@@ -7971,7 +8405,7 @@ function usePresence(authedFetch = fetch) {
     }).then(r => r.ok ? r.json() : null).then(d => { if (d) setProfileState(d.profile); }).catch(() => {});
   };
 
-  return { profile, setProfile, options, autoDerived, signals };
+  return { profile, setProfile, options, autoDerived, signals, freshness };
 }
 
 // Found 2026-08-08 (user question, following the presence fix above):
@@ -8062,11 +8496,79 @@ export function formatPresenceSignals(signals) {
   return present.map(s => `${s.personId} at ${s.location}`).join(", ");
 }
 
-function PresenceToggle() {
-  const { activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals } = useApp();
-  const opts = presenceOptions.length > 0
-    ? presenceOptions
+// W-34 (Cowork 2026-10-04): presence is published on CHANGE, so a retained
+// "not_home" can be days old and still be what the badge shows -- on
+// 2026-10-03 the badge read "Away" at the house because the phone had not
+// reported for 41 hours. This is the age of the PHONE's last report to Home
+// Assistant (cabin/presence/<person>/last_seen), not of the last change.
+// Exported for src/App.test.jsx. Pure: seconds in, short duration out.
+export function formatPresenceAge(seconds) {
+  if (seconds == null || !Number.isFinite(seconds)) return "";
+  const s = Math.max(0, Math.floor(seconds));
+  if (s < 60) return "just now";
+  const totalMin = Math.floor(s / 60);
+  if (totalMin < 60) return `${totalMin} min ago`;
+  const totalHours = Math.floor(totalMin / 60);
+  if (totalHours < 24) {
+    const m = totalMin % 60;
+    return m === 0 ? `${totalHours} h ago` : `${totalHours} h ${m} min ago`;
+  }
+  const d = Math.floor(totalHours / 24);
+  const h = totalHours % 24;
+  return h === 0 ? `${d} d ago` : `${d} d ${h} h ago`;
+}
+
+// Exported for src/App.test.jsx. What the presence badge should say. A
+// stale AUTO-DERIVED value must never be shown as a fact ("Away", "At
+// Cabin"): once the phone has been silent past the backend's limit the
+// answer is "Presence unknown". A MANUAL override is the user's own
+// statement, not a phone reading, so staleness does not hide it. No
+// heartbeat (freshness null) means the backend has no age to report, so the
+// badge behaves exactly as it did before W-34.
+export function presenceBadgeModel({ autoDerived, signals, freshness }) {
+  const hasAge = !!autoDerived && !!freshness;
+  const unknown = hasAge && !!freshness.stale;
+  const ageLabel = hasAge ? formatPresenceAge(freshness.signalAgeSeconds) : "";
+  let title;
+  if (!autoDerived) {
+    title = "Manually set — no live presence signal detected yet for this instance";
+  } else if (unknown) {
+    title = `Presence unknown: the phone has not reported for ${ageLabel.replace(/ ago$/, "")} `
+      + `(limit ${freshness.staleAfterHours} h). Last reading: ${formatPresenceSignals(signals)}.`;
+  } else {
+    title = `Live-detected: ${formatPresenceSignals(signals)}`
+      + (hasAge ? ` — phone last reported ${ageLabel}` : "");
+  }
+  return { unknown, ageLabel, title };
+}
+
+// Presentational half of PresenceToggle (props in, markup out) so the
+// stale/fresh/manual rendering can be tested without the whole app shell.
+export function PresenceBadge({ profile, options, onChange, autoDerived, signals, freshness }) {
+  const opts = options.length > 0
+    ? options
     : Object.entries(PROFILE_LABELS).map(([value, label]) => ({ value, label }));
+  const { unknown, ageLabel, title } = presenceBadgeModel({ autoDerived, signals, freshness });
+  return (
+    <div className={`presence-toggle${unknown ? " presence-toggle-unknown" : ""}`} title={title}>
+      <MapPin size={13} style={{ opacity: 0.6 }}/>
+      {autoDerived && (unknown
+        ? <span className="presence-stale-dot" aria-label="Presence stale" />
+        : <span className="presence-live-dot" aria-label="Live-detected" />)}
+      <select className="presence-select" aria-label="Presence"
+        value={unknown ? "__unknown__" : profile}
+        onChange={e => onChange(e.target.value)}>
+        {/* Display-only: picking a real option below is a manual override. */}
+        {unknown && <option value="__unknown__" disabled>Presence unknown</option>}
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      {ageLabel && <span className="presence-age">{unknown ? `last seen ${ageLabel}` : ageLabel}</span>}
+    </div>
+  );
+}
+
+function PresenceToggle() {
+  const { activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals, presenceFreshness } = useApp();
   // Found 2026-08-08: this pin's icon reads as "your detected location,"
   // but the value behind it was purely a manual toggle with nothing real
   // driving it -- see PresenceService's class comment for why that
@@ -8075,18 +8577,15 @@ function PresenceToggle() {
   // below still allows a manual override for an instance/location with
   // no presence automation configured yet (or a guest with no tracked
   // phone) -- see usePresence's comment.
-  const title = presenceAutoDerived
-    ? `Live-detected: ${formatPresenceSignals(presenceSignals)}`
-    : "Manually set — no live presence signal detected yet for this instance";
   return (
-    <div className="presence-toggle" title={title}>
-      <MapPin size={13} style={{ opacity: 0.6 }}/>
-      {presenceAutoDerived && <span className="presence-live-dot" aria-label="Live-detected" />}
-      <select className="presence-select" value={activeProfile}
-        onChange={e => setProfile(e.target.value)}>
-        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
+    <PresenceBadge
+      profile={activeProfile}
+      options={presenceOptions}
+      onChange={setProfile}
+      autoDerived={presenceAutoDerived}
+      signals={presenceSignals}
+      freshness={presenceFreshness}
+    />
   );
 }
 
@@ -8131,6 +8630,84 @@ function SecurityBadge() {
       <Unlock size={13}/> Disarmed
     </span>
   );
+}
+
+// W-35 (Nate, 2026-10-04): tell the user when the system is armed Away while
+// presence shows someone at that location. Never blocks or disables arming.
+// The hub has no arm control (arming is the HA input_boolean or a Node-RED
+// button), so this cannot hang off a click; it is derived from state the hub
+// already holds: armed per location (/api/security) and the presence signals
+// or, with no live signal, the manual profile.
+//
+// Exported for src/App.test.jsx. Who is detected at `location` right now.
+// `detected` can be true with no names: the manual-profile fallback only
+// says someone is there, not who.
+export function peopleDetectedAt(location, { signals, autoDerived, profile }) {
+  if (autoDerived) {
+    const names = (signals || []).filter(s => s.present && s.location === location).map(s => s.personId);
+    return { detected: names.length > 0, names };
+  }
+  const occupiedBy = { cabin: ["AT_CABIN", "BOTH_OCCUPIED"], home: ["AT_HOME", "BOTH_OCCUPIED"] };
+  return { detected: (occupiedBy[location] || []).includes(profile), names: [] };
+}
+
+// Exported for tests. One entry per location that is armed with someone
+// detected there. `key` changes with each arming (the armed signal's
+// lastUpdated), so a dismissal holds for that arming only.
+export function armedWhileOccupiedNotices({ securityStates, signals, autoDerived, profile }) {
+  return Object.entries(securityStates || {})
+    .filter(([, s]) => s && s.armed === true)
+    .map(([location, s]) => ({ location, key: `${location}:${s.lastUpdated}`, ...peopleDetectedAt(location, { signals, autoDerived, profile }) }))
+    .filter(n => n.detected);
+}
+
+// Presentational half (props in, markup out) so the wording and dismissal can
+// be tested without the app shell. The wording says what the siren gate really
+// does: an authorized user whose phone reads present suppresses the siren;
+// anyone else who is there does not, and neither does a lost phone signal.
+export function ArmedWhileOccupiedBanner({ notices, dismissed, onDismiss }) {
+  const shown = (notices || []).filter(n => !(dismissed || []).includes(n.key));
+  if (shown.length === 0) return null;
+  return (
+    <div className="armed-occupied-list">
+      {shown.map(n => {
+        const label = LOCATIONS[n.location]?.label || n.location;
+        const who = n.names.length > 0 ? n.names.join(", ") : "someone";
+        const verb = n.names.length > 1 ? "are" : "is";
+        return (
+          <div key={n.key} className="armed-occupied-notice" role="alert">
+            <AlertTriangle size={16} className="armed-occupied-icon" aria-hidden="true" />
+            <div className="armed-occupied-text">
+              <strong>Armed while {who} {verb} detected at the {label}.</strong>{" "}
+              If a door opens, the sirens will sound unless the system recognizes an authorized
+              user as present. Anyone else who is here will set them off, and so will you if the
+              system loses your phone. Disarm before staying.
+            </div>
+            <button type="button" className="armed-occupied-dismiss" onClick={() => onDismiss(n.key)}>
+              Dismiss
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ArmedWhileOccupiedNotice() {
+  const { securityStates, presenceSignals, presenceAutoDerived, activeProfile } = useApp();
+  const [dismissed, setDismissed] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("armedOccupiedDismissed") || "[]"); }
+    catch { return []; }
+  });
+  const dismiss = (key) => {
+    const next = [...dismissed, key];
+    setDismissed(next);
+    try { sessionStorage.setItem("armedOccupiedDismissed", JSON.stringify(next)); } catch { /* per-viewer convenience only */ }
+  };
+  const notices = armedWhileOccupiedNotices({
+    securityStates, signals: presenceSignals, autoDerived: presenceAutoDerived, profile: activeProfile,
+  });
+  return <ArmedWhileOccupiedBanner notices={notices} dismissed={dismissed} onDismiss={dismiss} />;
 }
 
 // ─── Navigation Rail ───────────────────────────────────────────────────────
@@ -8194,7 +8771,10 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   // consumes and clears this itself once it applies the selection, so it
   // never re-fires on an unrelated panel switch back to Device Manager.
   const [pendingDeviceFocus, setPendingDeviceFocus] = useState(null);
-  const [activeLocation, setActiveLocation] = useState("cabin");
+  const [activeLocation, setActiveLocation] = useState(() => readStoredLocation());
+  useEffect(() => {
+    try { localStorage.setItem(ACTIVE_LOCATION_KEY, activeLocation); } catch { /* storage unavailable: the choice just isn't remembered */ }
+  }, [activeLocation]);
   // 2026-08-25: toolbar device-count toggle -- see countParentDevices'
   // own comment for why "157 devices" alone was misleading (every HA
   // sub-entity/service counted as its own device).
@@ -8227,7 +8807,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   const { acknowledgments: alertAcknowledgments, refresh: refreshAlertAcknowledgments } = useAlertAcknowledgments(cameraAuth.authedFetch);
   const alertLevels = navAlertLevelsFor(activeAlerts, activeLocation, automationAlerts, alertAcknowledgments);
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
-  const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence(cameraAuth.authedFetch);
+  const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals, freshness: presenceFreshness } = usePresence(cameraAuth.authedFetch);
   const securityStates = useSecurityState(cameraAuth.authedFetch);
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile, cameraAuth.authedFetch);
   const lifecycleLabels = useLifecycleStateLabels(LOCATIONS.cabin.apiBase, cameraAuth.authedFetch);
@@ -8352,7 +8932,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       activeAlerts, activeAlertLocations, activeAlertUnavailableLocations, activeAlertsGeneratedAt,
       automationAlerts, automationAlertsLoading,
       alertAcknowledgments, refreshAlertAcknowledgments,
-      activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
+      activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals, presenceFreshness,
       securityStates,
       displayConfigs, refreshDisplayConfigs,
       lifecycleLabels,
@@ -8419,6 +8999,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
               </div>
             </div>
           </div>
+          {!isDemo && <ArmedWhileOccupiedNotice />}
           <div className="panel-area">
             {isDemo && DEMO_HIDDEN_PANELS.has(activePanel) && (
               <DemoHiddenPanel title={PANELS.find(p => p.id === activePanel)?.label} />
@@ -8429,7 +9010,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
                 <DemoCameraCards devices={toolbarDevices} />
               </div>
             )}
-            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
+            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel auth={cameraAuth} />}
             {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel auth={cameraAuth} />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} auth={cameraAuth} />}
@@ -8606,8 +9187,9 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
       const entries = Object.entries(fields).filter(([, f]) => f.length > 0).slice(0, 5);
       const points = await Promise.all(entries.map(async ([deviceId, deviceFields]) => {
         const field = deviceFields[0];
-        const data = await fetchScoped(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(deviceId)}&field=${encodeURIComponent(field)}&days=7`);
-        return data ? { deviceId, field, data } : null;
+        const response = await fetchScoped(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(deviceId)}&field=${encodeURIComponent(field)}&days=7`);
+        const data = response?.points;
+        return Array.isArray(data) ? { deviceId, field, data } : null;
       }));
       setTelemetryHistory(points.filter(Boolean));
     };

@@ -239,33 +239,54 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
     public boolean sendCommand(DeviceDescriptor descriptor, String command, Object payload) {
         String[] parts = command.split("\\.");   // "lock.lock" or "climate.set_temperature"
         if (parts.length < 2) return false;
-        String token = tokenFor(descriptor);
+        Map<String, Object> extra = payload == null ? Map.of() : Map.of("data", payload);
+        return callService(descriptor.location(), parts[0], parts[1], descriptor.connectionString(), extra);
+    }
+
+    /**
+     * POST /api/services/{domain}/{service} on the given location's HA
+     * instance with {"entity_id": entityId, ...extra}. The one place this
+     * app calls an HA service -- sendCommand() above (registered devices)
+     * and HaServiceController (entities with no device row, e.g.
+     * input_boolean.on_the_way_to_cabin) both go through here. Returns
+     * false, never throws, on a blank token or any HTTP/network failure.
+     */
+    public boolean callService(String location, String domain, String service, String entityId,
+                               Map<String, Object> extra) {
+        String token = tokenFor(location);
         if (token.isBlank()) {
-            log.warn("HA token not configured for location '{}' — cannot send command to {}",
-                descriptor.location(), descriptor.deviceId());
+            log.warn("HA token not configured for location '{}' — cannot call {}.{} on {}",
+                location, domain, service, entityId);
             return false;
         }
         try {
             HttpHeaders headers = bearerHeaders(token);
             headers.setContentType(MediaType.APPLICATION_JSON);
-            Map<String, Object> body = new HashMap<>();
-            body.put("entity_id", descriptor.connectionString());
-            if (payload != null) body.put("data", payload);
-            rest.exchange(urlFor(descriptor) + "/api/services/" + parts[0] + "/" + parts[1],
+            Map<String, Object> body = new HashMap<>(extra);
+            body.put("entity_id", entityId);
+            rest.exchange(urlFor(location) + "/api/services/" + domain + "/" + service,
                 HttpMethod.POST, new HttpEntity<>(body, headers), Void.class);
             return true;
         } catch (Exception e) {
-            log.error("HA command failed for {}: {}", descriptor.deviceId(), e.getMessage());
+            log.error("HA service {}.{} failed for {}: {}", domain, service, entityId, e.getMessage());
             return false;
         }
     }
 
     private String urlFor(DeviceDescriptor d) {
-        return "home".equals(d.location()) ? homeHaUrl : cabinHaUrl;
+        return urlFor(d.location());
     }
 
     private String tokenFor(DeviceDescriptor d) {
-        return "home".equals(d.location()) ? homeHaToken : cabinHaToken;
+        return tokenFor(d.location());
+    }
+
+    private String urlFor(String location) {
+        return "home".equals(location) ? homeHaUrl : cabinHaUrl;
+    }
+
+    private String tokenFor(String location) {
+        return "home".equals(location) ? homeHaToken : cabinHaToken;
     }
 
     private HttpHeaders bearerHeaders(String token) {

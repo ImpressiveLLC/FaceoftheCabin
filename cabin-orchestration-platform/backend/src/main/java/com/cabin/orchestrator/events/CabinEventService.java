@@ -197,10 +197,26 @@ public class CabinEventService implements DeviceEventLookup {
               AND time >= ?
             GROUP BY 1 ORDER BY 1
             """;
+        // W-21: `since` is a precise instant ("N days ago from right now"),
+        // not a day boundary, so the earliest day this query can ever
+        // return is almost always partial -- it only has samples from
+        // `since` onward within that day, not the whole day. Marked
+        // here (once, from `since` itself) rather than trusting each row's
+        // own sample_count, since a fully-reported partial day and a
+        // sparsely-reported full day are not distinguishable by count alone.
+        // The boundary is asked of the database, not truncated in Java: the
+        // query's date_trunc('day', time) buckets by the JDBC session's
+        // timezone (the connecting JVM's default -- America/Chicago on the
+        // M920q), so a UTC-based truncation here would never equal a row's
+        // `day` there and `partial` would silently never be set.
+        Instant sinceDayStart = jdbc.queryForObject(
+            "SELECT date_trunc('day', ?::timestamptz)", java.sql.Timestamp.class,
+            java.sql.Timestamp.from(since)).toInstant();
+        boolean sinceIsMidExactly = since.equals(sinceDayStart);
         return jdbc.queryForList(sql,
                 payloadField, payloadField, payloadField, deviceId, payloadField, payloadField,
                 java.sql.Timestamp.from(since))
-            .stream().map(this::toDailyPoint).toList();
+            .stream().map(row -> toDailyPoint(row, sinceDayStart, sinceIsMidExactly)).toList();
     }
 
     /**
@@ -299,18 +315,20 @@ public class CabinEventService implements DeviceEventLookup {
         return timeVal instanceof java.sql.Timestamp t ? java.util.Optional.of(t.toInstant()) : java.util.Optional.empty();
     }
 
-    private TelemetryDailyPoint toDailyPoint(Map<String, Object> row) {
+    private TelemetryDailyPoint toDailyPoint(Map<String, Object> row, Instant sinceDayStart, boolean sinceIsMidnightExactly) {
         Object dayVal = row.get("day");
         Instant day = dayVal instanceof java.sql.Timestamp t ? t.toInstant() : Instant.now();
         Number avg = (Number) row.get("avg_val");
         Number min = (Number) row.get("min_val");
         Number max = (Number) row.get("max_val");
         Number count = (Number) row.get("sample_count");
+        boolean partial = !sinceIsMidnightExactly && day.equals(sinceDayStart);
         return new TelemetryDailyPoint(day,
             avg == null ? null : avg.doubleValue(),
             min == null ? null : min.doubleValue(),
             max == null ? null : max.doubleValue(),
-            count == null ? 0 : count.longValue());
+            count == null ? 0 : count.longValue(),
+            partial);
     }
 
     private CabinEvent fromRow(Map<String, Object> row) {

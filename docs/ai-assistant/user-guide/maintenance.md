@@ -12,10 +12,25 @@ Audience: operator. Source-reviewed at the corpus baseline; runtime state and re
 | Health reports HA token missing | Check secret presence through the approved provisioning mechanism; do not print it. | A nonblank token is not proof of valid HA authentication. |
 | Ask is unavailable or gives raw facts | Check `answeredByModel` and relevant sources, then model availability through an authorized read path. | Fallback is not evidence that the LLM is working. |
 | Device is known but offline | Check timestamps, lifecycle, protocol/provider and expected reporting behavior. | Registry existence alone is not a functioning physical device. |
+| Presence reads Away (or "Presence unknown") where someone is | Check how old the signal's source is (the badge's age, or the retained `{location}/presence/{person}/last_seen` time), then the phone: is its Tailscale connected (`tailscale status` on the hub lists the phone's `Online` and `LastSeen`), and is the Home Assistant Companion app reporting? | A stale signal is unknown, not away. Do not "fix" it by setting the manual badge: a manual value hides the stale signal. A phone silent for days is the usual cause; one such case (2026-10-04) was a phone off Tailscale since 2026-10-02. |
+| The phone WiFi check never reads on | Run `check_authorized_user_phone_wifi.sh <person_id>` inside the Home Assistant container and read its result; a configuration error prints nothing and exits 2 (the sensor then shows unavailable, by design: an error must not read as away). Then compare the MAC in `authorized_user_phones.conf` with the MAC the router shows for the phone on that network. | OFF with the phone on the network usually means the phone presents a different (private) MAC there; that is unconfirmed for the cabin and is an open item (W-37). Do not ask users to change phone settings as the answer. |
 
 Sources: [maintenance incident lessons](../../MAINTENANCE.md), [replication health layers](../../REPLICATION.md#10-monitoring--cross-container-health), [HaTokenCabinHealthIndicator](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/health/HaTokenCabinHealthIndicator.java), [TinyHelpdeskService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/helpdesk/TinyHelpdeskService.java).
 
 Use only established authorized read endpoints for diagnosis. Method names alone are insufficient: [platform import proposals](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PlatformImportController.java) is a GET that contacts the platform and upserts records. Do not trigger regeneration, scanning, liveview sessions or device commands as an unannounced “read check.”
+
+## A camera is not delivering frames
+
+Audience: operator. Source-reviewed against the live host on 2026-10-03. The full procedure and the site facts are in the [Maintenance & Operations Guide](../../MAINTENANCE.md#a-camera-on-a-different-network-than-the-m920q).
+
+| Observation | Safe next check | What it does not prove |
+|---|---|---|
+| Frigate reports `camera_fps` 0.0 for one camera and its log says "No route to host" | Confirm the camera's current address in its own app or the router's client list, then from the M920q run `ip route get <ip>`, `ping`, and `nc -zv <ip> 554`. | "No route to host" shows that nothing answers at that address. It does not show the camera is off: it may have a new address or sit on another subnet. |
+| The camera answers but Frigate still shows no frames | Test the stream from inside the Frigate container with the full ffprobe path `/usr/lib/ffmpeg/7.0/bin/ffprobe`, letting the password expand there. Try a wrong password once, not in a loop. | A reachable camera is not a working stream: paths differ by firmware, and the password may differ from the one in the vault. |
+| Frames and recording are fine but the camera never produces events | Read Frigate's effective config for the camera (`/api/config`): is `detect.enabled` true, and which classes does `objects.track` list? | Frames and continuous recording do not mean detection is on. Frigate 0.17 defaults detection to off. |
+| The camera is on a different network from the M920q | Prefer a cable from the M920q's spare Ethernet port to the camera's network. A Wi-Fi join takes the M920q off its own network, Tailscale and the internet. | A network name does not identify a network: names repeat across the cabin, Home and several bands. |
+
+Camera configuration changes go through a pull request, and the camera password never goes into the file or the repository.
 
 ## Deployment source correction
 

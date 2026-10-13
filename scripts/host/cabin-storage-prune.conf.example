@@ -1,0 +1,44 @@
+# /etc/cabin-storage-prune.conf  --  settings for cabin-storage-prune
+#
+# Copy to /etc/cabin-storage-prune.conf and edit as root. Only the lines you add or
+# change are needed: the built-in defaults (shown below, commented out) already match the
+# cabin M920q. A later `target` line with the same ID replaces the earlier one.
+#
+# Directives
+#   allowed_root DIR              a directory the tool may prune inside (targets must be
+#                                 strictly below it). Default: /storage/backups
+#   target ID KIND PATH [k=v ..]  something that can be pruned. ID is lowercase letters,
+#                                 digits and dashes. Use - as PATH for docker-cache/journal.
+#   off ID / on ID                turn a target off (or back on) without deleting its line
+#
+# Kinds
+#   dated-dirs    folders named YYYY-MM-DD under PATH; keep=N newest, remove the older
+#   old-files     regular files under PATH older than days=N, optional glob=*.log
+#   whole-dir     remove PATH entirely; never part of `all-safe`, needs --yes-delete ID
+#   docker-cache  docker build cache older than max_age_hours=N and dangling images
+#   journal       systemd journal vacuumed to max_size=SIZE
+#
+# Never prunable, whatever you write here: any path containing archives, cabin_event,
+# telemetry, postgres or docker volumes (BI telemetry and databases), or that resolves
+# into one through a symlink.
+#
+# --- built-in defaults (cabin M920q) ---------------------------------------------
+# allowed_root /storage/backups
+# target backups-home     dated-dirs   /storage/backups/home      keep=3
+# target backups-services dated-dirs   /storage/backups/services  keep=3
+# target backups-configs  dated-dirs   /storage/backups/configs   keep=3
+# target backups-data     dated-dirs   /storage/backups/data      keep=3
+# target system-copy      whole-dir    /storage/backups/system
+# target docker-cache     docker-cache -                          max_age_hours=168
+# target journal          journal      -                          max_size=500M
+#
+# --- examples: other storage (mount it first; the tool manages the mounted path) ----
+# An SD card or extra disk mounted at /mnt/sd:
+#   allowed_root /mnt/sd
+#   target sd-timelapse old-files /mnt/sd/timelapse days=30 glob=*.mp4
+# A LAN network share (NFS or SMB) or a remote (WAN) volume mounted at /mnt/nas:
+#   allowed_root /mnt/nas
+#   target nas-snapshots dated-dirs /mnt/nas/cabin-backups keep=7
+#
+# --- a looser or tighter default, for example keep 5 nightly snapshots of /home -----
+#   target backups-home dated-dirs /storage/backups/home keep=5

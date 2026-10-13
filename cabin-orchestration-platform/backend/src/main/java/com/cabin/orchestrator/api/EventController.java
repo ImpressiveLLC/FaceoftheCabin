@@ -4,7 +4,8 @@ import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
 import com.cabin.orchestrator.events.EventStreamBroadcaster;
-import com.cabin.orchestrator.events.TelemetryDailyPoint;
+import com.cabin.orchestrator.events.TelemetryHistoryResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -22,6 +23,19 @@ public class EventController {
     private final CabinEventService eventService;
     private final DeviceRegistry registry;
     private final EventStreamBroadcaster streamBroadcaster;
+
+    // W-21: the shared ceiling for every viewer, demo and authenticated
+    // alike (D22 Q-DM-2, answered 2026-09-24: "demo history aligns with
+    // the normal view"). DemoAccessFilter enforces its own
+    // cabin.demo.max-history-days ceiling first, on the raw request
+    // parameter, before this ever runs; both default to 60 and are
+    // deliberately two separate properties (the demo filter is a request
+    // wrapper, architecturally separate from this controller), not one
+    // shared value -- so this clamp is real defense-in-depth for the demo
+    // path, not redundant, and the only enforcement at all for a normal
+    // authenticated caller, which had no ceiling before this.
+    @Value("${cabin.history.max-days:60}")
+    private int maxHistoryDays = 60;
 
     public EventController(CabinEventService eventService, DeviceRegistry registry,
                            EventStreamBroadcaster streamBroadcaster) {
@@ -97,13 +111,22 @@ public class EventController {
      * own recentEvents() caps at 200 rows, which can't cover weeks of
      * ~10-15min-interval readings. Unauthenticated, same precedent as
      * every other GET here.
+     *
+     * W-21: the response is a wrapper, not a bare array, so a caller can
+     * tell whether it got the requested range or a clamped one instead of
+     * silently rendering a shorter chart with no explanation. A negative
+     * or zero `days` clamps up to 1 (dailyAggregates()'s own floor), which
+     * itself counts as `clamped` -- effectiveDays must always reflect what
+     * the query actually covered, not what was asked for.
      */
     @GetMapping("/telemetry-history")
-    public List<TelemetryDailyPoint> telemetryHistory(
+    public TelemetryHistoryResponse telemetryHistory(
             @RequestParam(name = "deviceId") String deviceId,
             @RequestParam(name = "field") String field,
             @RequestParam(name = "days", required = false, defaultValue = "30") int days) {
-        return eventService.dailyAggregates(deviceId, field, days);
+        int effectiveDays = Math.max(1, Math.min(days, maxHistoryDays));
+        return new TelemetryHistoryResponse(days, effectiveDays, effectiveDays != days,
+            eventService.dailyAggregates(deviceId, field, effectiveDays));
     }
 
     /**

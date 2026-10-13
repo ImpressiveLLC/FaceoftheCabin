@@ -10,3 +10,9 @@ ansible/group_vars/**/vault.yml -text
 # forcing LF here rather than relying on this session's git config).
 *.sh text eol=lf
 
+
+scripts/host/backup-modular text eol=lf
+scripts/host/blinkbridge-watchdog* text eol=lf
+
+# Extensionless host scripts (scripts/host/*) are copied to Linux and run directly.
+scripts/host/* text eol=lf

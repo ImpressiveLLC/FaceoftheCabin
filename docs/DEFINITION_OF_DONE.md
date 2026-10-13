@@ -163,9 +163,80 @@
   `CLAUDE.md` — that one closes the loop on undocumented decisions, this
   one closes it on undetected drift.
 
+- **Dates are locked in at close-out, from the clock and from git, never
+  from memory.** Added 2026-10-12 on an explicit user directive, after a
+  session that ran from 2026-10-03 to 2026-10-12 (the date changed four
+  times inside it) and a record whose last close-out was dated 2026-09-17
+  while `main` had changed on most days since. A date written from memory
+  straggles: it names the day work started, or the day it paused, or the
+  day someone last looked, and the days in between disappear. So:
+  - [ ] **Today's date comes from the system clock when the close-out is
+        written.** It is not carried over from the start of the session;
+        it moves between turns of a long one.
+  - [ ] **The close-out has a date ledger:** every calendar day the work
+        touched, and the days between them with no activity written as "no
+        activity". Build it from
+        `git log --remotes=origin --since=<first date> --format='%cd' --date=short`
+        and each PR's dates (`gh pr view <n> --json createdAt,mergedAt,closedAt`),
+        not from recollection, so a pause shows up as a pause.
+  - [ ] **Every completed item carries the date it completed, written the
+        day it completed** (`merged 2026-10-10 (#127)`). A status of
+        "in review" or "draft" is re-read from GitHub at close-out and
+        replaced with the state and date actually observed; it is never
+        left as the last word on something that has since merged or closed.
+  - [ ] **Every "as of", "verified" or "checked" date written during the
+        session is re-checked at close-out, or the entry says it was not
+        and how old it is** (for example: `~/repos/FaceoftheCabin` was read
+        on 2026-10-12 and its HEAD is dated 2026-09-21, 21 days old).
+  - [ ] **When work resumes after a gap, the first act is to read today's
+        date and `git log origin/main --since=<last close-out date>`, and
+        the new entry states the gap in days.** Days on which `main`
+        changed with no close-out are listed as missing, not skipped.
+  - [ ] **Push before dating.** A close-out for work that exists only in a
+        working tree cannot be dated from git, so it is not yet a close-out.
+
 ---
 
 ## Next Session — Open Items
+
+- **2026-10-12 — open from the 2026-10-03 to 2026-10-12 presence, camera and
+  governance session** (dates read from git and GitHub on 2026-10-12; the full
+  ledger is in the close-out at the end of this file):
+  - **Nate, #118:** acknowledge on the PR that it moves the repo's Node-RED
+    flow from dry-run to **live sirens** (Cowork condition C-118-1) before
+    it merges. #122 merged 2026-10-12 (06:28 UTC) but none of the cabin
+    security files from #122 or #118 is applied to the M920q as of
+    2026-10-12.
+  - **Nate, D24 and D23:** answer Q-LR-1 to Q-LR-3 on
+    [#125](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/125) and
+    Q-HD-1 and Q-HD-2 on
+    [#116](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/116), or say
+    "accept Cowork's recommendations" ([HO-2026-10-04](governance/handovers/HO-2026-10-04-cowork-to-code.md)).
+  - **Presence apply order:** #122 is merged (2026-10-12); merge #118 once
+    Nate has acknowledged it; re-stage the three files from `main` (the copies
+    in `/tmp/w23` on the host are dated 2026-10-04 and come from a pre-merge
+    branch); then Nate runs the install (the permission
+    layer refused remote writes on 2026-10-04). Until then, and until a
+    departure signal that does not need the phone's Tailscale exists (W-37,
+    W-47), arming Away at the cabin is alert-only protection, not a siren.
+  - **PRs that still need `main` merged in** (state read 2026-10-12, 17:59
+    UTC): [#116](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/116) and
+    [#125](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/125) now
+    conflict, because D25 landed in the same decision files; merge `main` in
+    when Nate answers their questions. #118 previews clean. #113, #121, #124,
+    #129 are merged (see the outcome list in the 2026-10-12 close-out).
+  - **Live proof owed for D25:** [#129](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/129)
+    merged 2026-10-12 (17:45 UTC), so the first scheduled rotate-secrets run
+    after it is 2026-11-01 at 06:00 UTC. It should show `workflow run <id>` in its commit
+    message, and nothing but the vault file in its diff.
+  - **Tests that run only on a developer machine**, until PR CI exists (W-29):
+    the three scripts named under section 10 of the 2026-10-12 close-out.
+  - **Skill for concurrent agents:** `cabin-peer-agent-collaboration`
+    ([#151](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/151), merged
+    2026-10-12, 17:59 UTC). Cowork or Nate: add a pointer to it from
+    `fotc-git-and-host-routing`, which lives in Cowork's plugin store outside
+    git.
+  - **Missing close-outs:** see the gap list in the 2026-10-12 close-out.
 
 - **2026-09-18 — PR #83 scheduling handoff:** [Retro theme refresh and optional HA console proposal](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/83) is authorized by Nate for merge. The implemented work is **aesthetic/presentation only**: Pac-Man Crackman display fonts, neon Baumans with bundled Oxanium fallback, and pink/mint/blue/yellow palette in both apps. No backend, orchestration, safety logic or device-control behavior is added. **HA-UX0–5 remain proposed, unscored, unratified and unscheduled**; do not start or mark the HA Operations Console complete from this merge. Preserve existing scheduling priorities; use [the WSJF references](ai-assistant/wsjf-backlog.md#optional-ha-operations-console-candidate--2026-09-18) for later explicit prioritization. Deployment/live verification is separate from merge; see [validation limits](retro-theme-validation.md).
 
@@ -214,10 +285,11 @@ accumulate.*
 - **Live camera investigation, 2026-08-24 — three real findings, one
   self-correction.** Triggered by the user reporting missing clips at
   both locations.
-  1. **`front_door` (cabin, Reolink) is still physically off-network** —
-     `No route to host` on `192.168.2.200:554`, continuous watchdog
-     crash-loop. Same known issue as above, reconfirmed live, still not
-     fixable remotely.
+  1. **`front_door` (cabin, Reolink) was off-network — resolved
+     2026-09-29/30.** Reconnected through the M920q's Ethernet port and
+     renamed `cabin_outside_reolink` in the live Frigate config; see
+     MAINTENANCE.md, "A camera on a different network than the M920q".
+     Open follow-ups: W-39 to W-41 in `docs/governance/backlog.md`.
   2. **`home_aldrich_front`'s clip gap is NOT an arm-state issue —
      correcting a wrong live-session claim.** Mid-session I told the user
      arming the driveway Blink camera would likely help, based only on
@@ -384,8 +456,6 @@ accumulate.*
   event severity classifier, native device-confidence evidence, and live
   mobile/kiosk UX validation after review. See `docs/ontology.yaml`'s
   `active_alert_condition` and `automation_rule_status` entities.
-- **Reolink (`front_door`) camera still physically off-network** — needs
-  on-site checking (power, WiFi re-pairing). Not fixable remotely.
 - **`blinkbridge`'s no-clip crash fix — holding, checked 2026-09-13.**
   Container uptime confirmed live: started 2026-09-07, `RestartCount: 0`
   since — no crash-loop recurrence in 6 days of real operation. Stronger
@@ -607,3 +677,78 @@ separately confirmed (both by local dry-run and GitHub's real
 recomputed status) to still merge cleanly against the new `main`, so
 this batch doesn't block or complicate that decision whenever it's
 made.
+
+**Session close-out, 2026-10-12.** Work dated **2026-10-03 to 2026-10-12**:
+the presence fix (W-23, W-33 to W-38, D24), the Frigate detection fix (W-39),
+the write-gate and governance follow-ups (W-32, D25), and Cowork's
+HO-2026-10-04 rulings. Written on 2026-10-12 from `git log` and each PR's
+`createdAt`, `mergedAt` and `closedAt` read the same day, per the dating
+practice in section (i). The PR outcomes and the 2026-10-12 ledger row were
+refreshed at 17:59 UTC the same day, after the merges they list; times below
+are UTC.
+
+**Date ledger.** "This session" is activity on this session's PR branches.
+"Landed on `main`" is every merge that day, from any session.
+
+| Date | This session | Landed on `main` that day |
+|---|---|---|
+| 2026-10-03 Sat | PRs #112, #113, #114, #116, #118, #121, #122 opened: presence diagnosis, W-33 flow sync, W-34 backend, W-23 publisher, D23 draft, handover tasks 1 to 3 | #115, #108 |
+| 2026-10-04 Sun | PRs #124 to #129 opened; #97 and #99 closed unmerged (Cowork); Cowork's rulings committed on #120 and applied; conflict repairs 13:24 to 13:43 | #119, #130, #120, #111, #131, #117, #123 |
+| 2026-10-05 to 2026-10-08 | **no activity** (four days) | **nothing** |
+| 2026-10-09 Fri | no activity | #132 |
+| 2026-10-10 Sat | #112 repaired (`9674a18`, 02:45) | #138, #136, #127 (W-39), #133, #137, #134, #135 |
+| 2026-10-11 Sun | no activity | nothing |
+| 2026-10-12 Mon | #114 repaired (`8ab16f5`, 00:55); #122 fake-MAC fix (`021343d`, 00:59) and CLAUDE.md fix (`0dc54a4`, 01:02); this close-out; then, from 17:45 to 17:59 UTC, `main` merged into and repaired #129, #114, #121, #124 and #113 where they conflicted, and #129, #114, #126, #112, #121, #113, #124 merged; #151 opened and merged. The backend deploy (test gate, health check) and UI deploy after #121 and the UI deploy after #124 succeeded | #139, #140, #141, #142, #143, #128 (W-32), #144, #145, #146, #148, #122 (06:28), #150 (16:34), #129, #114, #126, #112, #121, #113, #124, #151 (17:45 to 17:59) |
+
+**Outcome of each PR, read 2026-10-12 and refreshed at 17:59 UTC.** Merged:
+#117 (2026-10-04), #119 (2026-10-04), #120 (2026-10-04), #127 (2026-10-10,
+W-39; credential aligned and verified in #133), and on 2026-10-12: #128 (05:40,
+W-32), #122 (06:28), #129 (17:45), #114 (17:47), #126 (17:48), #112 (17:49),
+#121 (17:54, W-34), #113 (17:56), #124 (17:58, W-35), #151 (17:59, the
+peer-agent collaboration skill). Closed unmerged: #97 and #99 (2026-10-04).
+Open and held for a named condition: #118 (Nate's acknowledgement of the
+dry-run to live-sirens change, C-118-1), #116 (D23 Q-HD-1 and Q-HD-2), #125
+(D24 Q-LR-1 to Q-LR-3). #116 and #125 conflict with `main` as of 17:59 UTC and
+need `main` merged in. Open: this PR (#147). Earlier on 2026-10-12 #113, #121,
+#124 and #129 were conflicting after `main` moved; each was repaired by merging
+`main` into its branch, never by rebase or force-push.
+
+**Checklist, run 2026-10-12.**
+
+| § | Result | Evidence, and what is open |
+|---|---|---|
+| 1 Git reconciled | **Pass for this clone; open for others** | This clone was 70 commits behind on stale branch refs, with no unpushed work of this session. On 2026-10-12 local `main` was fast-forwarded, the clone switched to it (clean), and 9 local copies of PR branches that were fully on the remote were deleted. **Not touched, not this session's:** local-only branches `claude-code/c1a-r2-postdeploy-run-record`, `claude-code/camera-events-bulk-clip-download`, `claude-code/candidate-import-provenance-visible` (commits on no remote branch) and `cowork/d22-demo-access-spec` (14 commits ahead of its remote); their owners decide. **M920q, read 2026-10-12:** `~/FaceoftheCabin-deploy` is current (`f8fffd3`, 2026-10-12); `~/FaceoftheCabin` is on `claude-code/poc1-local-finetuning-pipeline` at `e708946` dated 2026-09-18, 24 days old (the operator and eval clone; re-cloned fresh at training per Nate); `~/repos/FaceoftheCabin` is `main` at `e0c8713` dated 2026-09-21, 21 days old, a stale duplicate whose retirement is Nate's call. `/tmp/w23` holds three files staged 2026-10-04, now stale |
+| 2 Checked in | **Pass, one finding fixed** | Every commit of this session is pushed (verified per PR branch 2026-10-12). Added-lines scan of every open PR branch found **the real phone WiFi MAC in 4 lines of #122's test fixtures**; replaced with a fake locally administered MAC (`021343d`, 2026-10-12). The real MAC remains in git history in the old `check_nate_phone_wifi.sh` (renamed away by #122) and cannot be scrubbed. One `password` in `run_sim.py` is a fixture for a throwaway local container, accepted. Nothing was pushed to `main` by this session; pushes were to PR branches on the user's direction (and Autofix's standing authorization for #112 and #114) |
+| 3 Docs and ontology | **Pass, one finding fixed** | Docs shipped with their changes (D24, D25, REPLICATION, Ask user-guide, PRESENCE.md, backlog rows). The new ontology entries (`check_authorized_user_phone_wifi`, `nodered_cabin_security_siren_gate`, `location_role`, `presence_last_seen`, the cabin GPS publisher) are in #125, **not yet merged**. CLAUDE.md's "no Python" constraint had drifted (the HA publish allow-list already existed; #122 adds its tests and the simulation): amended in #122 (`0dc54a4`). No version added anywhere, so `platform-specs.yaml` is unchanged |
+| 4 Local storage | Pass | One new browser key, `armedOccupiedDismissed` (sessionStorage, read on every render of the banner, per-arming) |
+| 5, 6 CI/CD | Pass | No workflow changed. The rotate-secrets playbook's commit step changed (#129) and is documented in D25 |
+| 7 Specs | Pass | The Python constraint above; the handover, D24 and the backlog agree on W-33 to W-38 |
+| 8 Reaches the host | **Partly met** | **The cabin security presence files (the GPS publisher, the stale-presence flow change, the phone Wi-Fi check: #122, #118) have not reached the M920q as of 2026-10-12.** The permission layer refused the remote write on 2026-10-04; Cowork then ruled merge first, then Nate runs the install. **The hub-side presence work did deploy on 2026-10-12:** W-34 (#121, merged 17:54 UTC) through the backend deploy (test gate, health check, no rollback) and the UI deploy, both successful, and W-35 (#124, merged 17:58 UTC) through the UI deploy, successful; neither was viewed rendering in the browser by this session after deploy. W-39 and W-32 did reach production: W-39 merged 2026-10-10 (detection live on the Reolink at about 3.8 detection fps, credential verified from inside the Frigate container, per the backlog) and W-32 merged 2026-10-12 (live check: anonymous writes 401, reads 200) |
+| 9 Ontology baked | Partly | `location_role` is a concept with no create, read, update or delete surface yet (W-38) |
+| 10 Tests | **Partly: several are not CI-gated** | Run in CI at the post-merge gate: the backend and Vitest suites (W-32, W-34, W-35). **Not in any workflow**, because PR CI does not exist yet (W-29): `test_check_authorized_user_phone_wifi.sh` (24 checks), `test_cabin_security_mqtt_publish.py` (6), `ansible/tests/test_vault_commit_guard.sh` (13), and `test/ha-sim/run_sim.py` (34, needs Docker, local only). They ran locally on 2026-10-03, 2026-10-04 and 2026-10-12 (Windows, Docker Desktop, Git Bash), not in a CI run. **Not run at all:** the rotate-secrets playbook end to end (it rotates the real password), Frigate's own config validator for #127, any live phone or zone check |
+
+**Section (i) practices.** *Verification evidence:* the W-35 banner was
+viewed in the browser pane on 2026-10-04 with mocked API data; the W-34 badge
+and the W-32 add-a-place change were verified by Vitest only, not seen
+rendering, and W-32's live check on 2026-10-12 (another session, per the backlog)
+covered anonymous writes and the served bundle; a signed-in create or edit
+of a place has not been verified. *No silent scope narrowing:*
+named as not done and why: the live apply, merging, and Cowork's read-only
+Tailscale prototype (superseded by Nate's 2026-10-04 direction that the
+phone's Tailscale stays out of the presence loop). *Reconcile drift when
+spotted:* `cabin_security.yaml` was reconciled on the git side on 2026-10-04
+(#126; the live copy differs only by a header comment, and writing it is
+blocked); the real MAC in a test fixture was found and fixed in the same pass
+on 2026-10-12.
+
+**Missing close-outs.** The last close-out before this one is dated
+2026-09-17. `main` changed on **14 of the 26 days** from 2026-09-17 to
+2026-10-12 and did not change on the other 12 (2026-09-22, 2026-09-25 to
+2026-09-29, 2026-10-02, 2026-10-05 to 2026-10-08, 2026-10-11). Work that
+landed with no close-out recorded here: 2026-09-18 to 2026-09-21 (#41, #50, #64, #80
+to #92, #94), 2026-09-23 and 2026-09-24 (the governance skeleton, W-13 and
+related commits), 2026-09-30 and 2026-10-01 (#107, #109, #110 and the vault
+commits), 2026-10-03 and 2026-10-04 (#108, #115, #111, #117, #119, #120,
+#123, #130, #131), 2026-10-09 and 2026-10-10 (#132, #127, #133 to #138) and
+2026-10-12 (#128, #139 to #146, #148, #150). Each owner adds a close-out dated from git,
+or Nate accepts the gap explicitly.
