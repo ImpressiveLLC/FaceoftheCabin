@@ -4,6 +4,8 @@ After=local-fs.target
 
 [Service]
 Type=simple
+# Optional overrides, one VAR=value per line: TRIM_AUTO=0 (off), TRIM_AUTO_ABOVE=70, TRIM_AUTO_TO=55, TRIM_AUTO_FLOOR=3
+EnvironmentFile=-/etc/cabin-storage-trim-agent.env
 ExecStart=/usr/local/bin/cabin-storage-trim-agent
 Restart=always
 RestartSec=15

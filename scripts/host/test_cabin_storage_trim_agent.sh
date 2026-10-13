@@ -16,6 +16,7 @@ SPOOL="$W/spool"
 cat >"$W/tool" <<EOF
 #!/usr/bin/env bash
 echo "\$@" >>"$W/calls"
+if [[ "\$*" == *--auto-below* ]]; then cat "$W/auto_out"; [ -f "$W/autofail" ] && exit 3; exit 0; fi
 case "\$1" in
   report) echo '[{"id":"bk","kind":"dated-dirs","status":"ok","keep":3,"snapshots":[{"name":"2026-01-01","bytes":100}]}]' ;;
   apply)  [ -f "$W/fail" ] && { echo "boom"; exit 3; }
@@ -23,7 +24,14 @@ case "\$1" in
 esac
 EOF
 chmod +x "$W/tool"
-agent() { TRIM_SPOOL="$SPOOL" TRIM_TOOL="$W/tool" TRIM_ONCE=1 TRIM_DF_PATH="$W" bash "$AGENT" 2>/dev/null; }
+agent() { TRIM_AUTO=0 TRIM_SPOOL="$SPOOL" TRIM_TOOL="$W/tool" TRIM_ONCE=1 TRIM_DF_PATH="$W" bash "$AGENT" 2>/dev/null; }
+mkdir -p "$W/stub"
+cat >"$W/stub/df" <<'DFEOF'
+#!/usr/bin/env bash
+if [[ "$*" == *pcent* ]]; then printf 'Use%%\n %s%%\n' "$(cat "$USED_FILE")"; else printf 'Avail\n 1000\n'; fi
+DFEOF
+chmod +x "$W/stub/df"
+agent_auto() { PATH="$W/stub:$PATH" USED_FILE="$W/used" TRIM_SPOOL="$SPOOL" TRIM_TOOL="$W/tool" TRIM_ONCE=1 TRIM_DF_PATH="$W" bash "$AGENT" 2>/dev/null; }
 calls() { cat "$W/calls" 2>/dev/null; }
 
 echo "plan"
@@ -54,6 +62,26 @@ check "an oversized request is refused" "! calls | grep -q '^apply' && grep -q '
 if [ -L "$W/probe" ] || ln -s "$W/tool" "$W/probe" 2>/dev/null && [ -L "$W/probe" ]; then
   check "a symlink as the request is refused" "! calls | grep -q '^apply' && [ ! -e $SPOOL/request.env ]"
 else echo "  skip symlink request check (this shell cannot create real symlinks; it runs on Linux)"; rm -f "$SPOOL/request.env"; fi
+
+echo "automatic trimming when the disk gets too full (W-11b)"
+rm -f "$SPOOL/result.json"
+: >"$W/calls"; echo 50 >"$W/used"; printf 'auto-result: reached used=50 removed=0\n' >"$W/auto_out"
+agent_auto
+check "below the threshold it does not trim" "! calls | grep -q -- '--auto-below'"
+check "plan.json states the policy so the UI can show it" "grep -q '\"auto\":{\"enabled\":true,\"aboveFull\":70,\"downTo\":55,\"floorKeep\":3}' $SPOOL/plan.json"
+: >"$W/calls"; echo 80 >"$W/used"; printf '  removed /x/a/2026-01-01\n  removed /x/a/2026-01-02\n  removed /x/b/2026-01-01\nauto-result: reached used=54 removed=3\n' >"$W/auto_out"
+agent_auto
+check "at or above it, it trims oldest-first down to the target with the floor" "calls | grep -qx 'apply --auto-below 55 --floor 3 --yes'"
+check "result.json marks it automatic, counts removals and says the target was reached" "grep -q '\"auto\":true' $SPOOL/result.json && grep -q '\"removed\":3' $SPOOL/result.json && grep -q '\"reachedTarget\":true' $SPOOL/result.json && grep -q '\"requestId\":\"auto-' $SPOOL/result.json"
+: >"$W/calls"; rm -f "$SPOOL/result.json"; echo 90 >"$W/used"; printf 'auto-result: floor used=88 removed=0\n' >"$W/auto_out"
+agent_auto
+check "when it hits the floor with the disk still full it says so, once" "grep -q '\"reachedTarget\":false' $SPOOL/result.json && grep -q '\"ok\":true' $SPOOL/result.json"
+: >"$W/calls"; rm -f "$SPOOL/result.json"; echo 90 >"$W/used"; printf 'boom\n' >"$W/auto_out"; touch "$W/autofail"
+agent_auto
+check "a failing tool is reported as a failed automatic trim" "grep -q '\"ok\":false' $SPOOL/result.json && grep -q '\"auto\":true' $SPOOL/result.json && grep -q 'auto-trim failed' $SPOOL/result.json"
+rm -f "$W/autofail" "$SPOOL/result.json"; : >"$W/calls"; echo 99 >"$W/used"
+PATH="$W/stub:$PATH" USED_FILE="$W/used" TRIM_AUTO=0 TRIM_SPOOL="$SPOOL" TRIM_TOOL="$W/tool" TRIM_ONCE=1 TRIM_DF_PATH="$W" bash "$AGENT" 2>/dev/null
+check "TRIM_AUTO=0 turns it off, even at 99%" "! calls | grep -q -- '--auto-below'"
 
 echo "tool failure"
 : >"$W/calls"; touch "$W/fail"

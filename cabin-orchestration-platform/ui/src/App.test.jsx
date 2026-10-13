@@ -4,7 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-li
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
-StorageTrimWidget, trimPreview, formatTrimBytes,
+StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
 mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
@@ -6348,5 +6348,60 @@ describe("Trim old backups", () => {
     fireEvent.click(await screen.findByRole("button", { name: "See more" }));
     expect(await screen.findByRole("slider")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /open device/i })).toBeNull();
+  });
+});
+
+
+describe("Trim old backups: big-job helper and automatic policy", () => {
+  const GB = 1024 ** 3;
+  const targets = [
+    { id: "backups-home", keep: 3, count: 10, snapshots: Array.from({ length: 10 }, (_, i) => ({ name: `2026-01-${String(i + 1).padStart(2, "0")}`, bytes: 50 * GB })) },
+  ];
+  const reply = (body) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+  const view = (extra = {}) => ({ installed: true, pending: false, stale: false, sizesMeasured: true, lastResult: null,
+    disk: { usedPercent: 99, freeGb: 18, totalGb: 916 }, auto: { enabled: true, aboveFull: 70, downTo: 55, floorKeep: 3 }, targets, ...extra });
+
+  it("keepForFreeing picks the most copies it can keep and still free the amount", () => {
+    expect(keepForFreeing(targets, 200)).toEqual({ keepN: 6, achievable: true, maxFreeGb: 450 });
+    expect(keepForFreeing(targets, 450).keepN).toBe(1);
+    expect(keepForFreeing(targets, 1).keepN).toBe(9);
+  });
+
+  it("keepForFreeing says plainly when even the minimum is not enough, or sizes are unknown", () => {
+    const r = keepForFreeing(targets, 600);
+    expect(r.achievable).toBe(false);
+    expect(r.keepN).toBe(1);
+    expect(r.maxFreeGb).toBe(450);
+    expect(keepForFreeing([{ id: "x", snapshots: [{ name: "a", bytes: -1 }, { name: "b", bytes: -1 }] }], 10).keepN).toBeNull();
+  });
+
+  it("'Free up at least N GB' moves the slider and the summary follows", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view())} />);
+    fireEvent.change(await screen.findByLabelText("Gigabytes to free"), { target: { value: "200" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set the slider" }));
+    expect(screen.getByRole("slider").value).toBe("6");
+    expect(screen.getByText(/Frees about 200 GB/)).toBeTruthy();
+  });
+
+  it("when the target is more than the backups hold, it says what else could free space", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view())} />);
+    fireEvent.change(await screen.findByLabelText("Gigabytes to free"), { target: { value: "600" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set the slider" }));
+    expect(screen.getByRole("slider").value).toBe("1");
+    expect(screen.getByText(/Even keeping 1 copy of each folder frees only 450 GB/)).toBeTruthy();
+    expect(screen.getByText(/recorded-video retention in Frigate/)).toBeTruthy();
+  });
+
+  it("states the automatic policy, and when it is off", async () => {
+    const { unmount } = render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view())} />);
+    expect(await screen.findByText(/at 70% full the oldest backup copies are removed until the disk is back to 55%.*fewer than 3 per folder/)).toBeTruthy();
+    unmount();
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view({ auto: { enabled: false, aboveFull: 70, downTo: 55, floorKeep: 3 } }))} />);
+    expect(await screen.findByText(/Automatic trimming is turned off on the host/)).toBeTruthy();
+  });
+
+  it("an automatic result is labelled, and a floor stop is explained", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view({ lastResult: { requestId: "auto-1", ok: true, auto: true, reachedTarget: false, removed: 4, freedBytes: 200 * GB, output: "x" } }))} />);
+    expect(await screen.findByText(/Last trim \(automatic\): removed 4 copies, freed 200 GB\. The disk is still above its line/)).toBeTruthy();
   });
 });

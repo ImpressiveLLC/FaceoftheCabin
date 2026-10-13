@@ -195,8 +195,8 @@ cabin:
     monitor:
       enabled: ${STORAGE_MONITOR_ENABLED:true}
       mounts: ${STORAGE_MONITOR_MOUNTS:storage-hdd=/app/archives/cabin_event,root-nvme=/}
-      warnPercent: ${STORAGE_WARN_PERCENT:80}
-      criticalPercent: ${STORAGE_CRITICAL_PERCENT:90}
+      warnPercent: ${STORAGE_WARN_PERCENT:60}
+      criticalPercent: ${STORAGE_CRITICAL_PERCENT:75}
       clearMarginPercent: ${STORAGE_CLEAR_MARGIN_PERCENT:3}
       renotifyHours: ${STORAGE_RENOTIFY_HOURS:24}
   telemetryArchival:

@@ -41,7 +41,7 @@ The readings behind the BI metrics (temperature, humidity, presence, CO2, leak, 
 
 ## Rules for any session touching storage
 
-1. Check `df -h /storage` and `/` first. A volume above 80% is a finding, not background.
+1. Check `df -h /storage` and `/` first. A volume above 60% is a finding, not background.
 2. Size before you propose: `du` the real directories and say which tier each belongs to. Do not assume.
 3. Telemetry follows the dump-warning rule above. Video and backups do not, but are still removed oldest-first and never while a dry run has not been read.
 4. Permanent deletion of files is run by the owner. Prepare a script that lists first and removes only with `--apply` (see `scripts/prune-storage-backups.sh`), and say what it will not touch.
@@ -85,7 +85,7 @@ sudo cabin-storage-prune apply --only system-copy --yes-delete system-copy   # a
 
 ## Disk monitor (W-11, PR #145)
 
-`StorageMonitorService` in `cabin-backend` measures `storage-hdd` (the HDD, seen through the archive mount `/app/archives/cabin_event`) and `root-nvme` (`/`) every 5 minutes. At **80%** it publishes a WARN `STORAGE_THRESHOLD` event, at **90%** a CRITICAL one, and `STORAGE_CLEARED` once it falls 3 points below the line; the notice repeats every 24 hours while above, and survives a restart without re-paging. The event shows in Rules & Alerts' 24-hour list and, when `CABIN_ALERT_NTFY_TOPIC` is set (W-51 S1), is pushed to the phone (WARN at ntfy priority high, CRITICAL urgent). `GET /api/system/storage` reports the current figures. Tune with `STORAGE_WARN_PERCENT`, `STORAGE_CRITICAL_PERCENT`, `STORAGE_RENOTIFY_HOURS`, `STORAGE_MONITOR_MOUNTS`. **It reports only and never deletes** (see the rules above); the automatic purge W-11 first described is W-11b.
+`StorageMonitorService` in `cabin-backend` measures `storage-hdd` (the HDD, seen through the archive mount `/app/archives/cabin_event`) and `root-nvme` (`/`) every 5 minutes. At **60%** (was 80% until 2026-10-13) it publishes a WARN `STORAGE_THRESHOLD` event, at **75%** (was 90%) a CRITICAL one, and `STORAGE_CLEARED` once it falls 3 points below the line; the notice repeats every 24 hours while above, and survives a restart without re-paging. The event shows in Rules & Alerts' 24-hour list and, when `CABIN_ALERT_NTFY_TOPIC` is set (W-51 S1), is pushed to the phone (WARN at ntfy priority high, CRITICAL urgent). `GET /api/system/storage` reports the current figures. Tune with `STORAGE_WARN_PERCENT`, `STORAGE_CRITICAL_PERCENT`, `STORAGE_RENOTIFY_HOURS`, `STORAGE_MONITOR_MOUNTS`. **The monitor itself only reports and never deletes**; the host agent's automatic trim of old backups (W-11b, below) is separate and bounded.
 
 ## Open work
 
@@ -96,10 +96,27 @@ sudo cabin-storage-prune apply --only system-copy --yes-delete system-copy   # a
 | W-63 | Storage beyond `/storage`: SD cards, extra disks, and LAN or WAN network storage, registered, monitored and prunable (proposed) |
 | W-48 | Backup retention and exclusions: `scripts/host/backup-modular` (prunes to the newest N, leaves regenerable data out) and the one-time `scripts/prune-storage-backups.sh` |
 | W-49 | Dump warning before telemetry is archived-and-deleted, with an owner-set threshold |
-| W-11 | `/storage` thresholds: warning at 80%, critical at 90%, in-app and ntfy. Built (PR #145). The disk had reached 94% unnoticed |
-| W-11b | The automatic oldest-first purge W-11 first described. Deferred: permanent deletion is owner-run and telemetry needs a warning first (W-49) |
+| W-11 | `/storage` thresholds, in-app and ntfy. Built (PR #145) at 80% / 90%; lowered to 60% / 75% on 2026-10-13 after the disk reached 99% |
+| W-11b | Automatic oldest-first trim of old **backups** at a low threshold. Built 2026-10-13 (host agent, needs installing); telemetry and video are not included |
 | W-8 / W-10 / W-12 | Recording retention decision (kept at 5/10 days), Warm and Cold rules |
 | D19 Option B | Deploy `telemetry-backup-agent` so a copy exists that does not depend on `cabin-backend` |
+
+### Why it filled to 99%, and what keeps it from doing so again
+
+Found 2026-10-13, `/storage` at 99% (852 GB used). Three things were true at once: (1) the nightly backups appear to still run the **old** `backup-modular` (the disk grew from 813 to 852 GB in three days, and the retention-fixed version was never installed as far as the record shows), which copies everything into a new dated folder and never deletes one, so the disk fills at a steady rate; (2) the 80% and 90% warnings (W-11) were in-app only, because `CABIN_ALERT_NTFY_TOPIC` is blank on the host (W-51), so nothing reached a phone; (3) the automatic purge W-11 first described was split out as W-11b on 2026-10-12 and held, so nothing acted on its own. The first is the cause and the other two are why nobody was told or protected.
+
+What now keeps it down (Nate, 2026-10-13: "notification and auto trimming at a much lower threshold"):
+
+| Layer | Setting | Where |
+|---|---|---|
+| Warn | **60%** used (WARN, in-app, ntfy once the topic is set) | `STORAGE_WARN_PERCENT` |
+| Critical | **75%** used | `STORAGE_CRITICAL_PERCENT` |
+| Auto-trim | at **70%** the host agent removes the oldest backup folders, one at a time, until the disk is at **55%**, never leaving fewer than **3** per folder | `TRIM_AUTO_ABOVE`, `TRIM_AUTO_TO`, `TRIM_AUTO_FLOOR` in `/etc/cabin-storage-trim-agent.env`; `TRIM_AUTO=0` turns it off |
+| Told | every automatic trim publishes a `STORAGE_AUTO_TRIM` event: INFO when it reached its line, WARN (and a push) when it hit the floor with the disk still full or failed | `StorageTrimService.announceAutoResult` |
+
+Automatic trimming touches only the dated backup folders (`cabin-storage-prune apply --auto-below`). BI telemetry, databases and recorded video are never touched by it. **The root fix is still to install the new `backup-modular`** (W-48), which keeps 7/14/30/14 copies and leaves out regenerable data, so the backups stop growing in the first place. Auto-trim is the safety net, not the plan.
+
+**Room for a big job.** The Trim control has a "Free up at least N GB" box: it sets the slider to the most copies you can keep and still free that much, and says plainly when even the minimum is not enough (then the remaining space is recorded video, set by Frigate retention, and the one-off 29 GB system copy). Setting `TRIM_AUTO=0` and `allowed_root` entries for a new mount is how a big job gets the disk without the agent trimming under it.
 
 ### Trim control (W-62)
 
