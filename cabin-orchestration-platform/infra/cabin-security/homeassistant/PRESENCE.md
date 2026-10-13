@@ -7,7 +7,7 @@ they were tested. Files: `cabin_security_presence.yaml`,
 `cabin_security_mqtt_publish.py`; tests in `test_check_authorized_user_phone_wifi.sh`,
 `test_cabin_security_mqtt_publish.py` and `test/ha-sim/run_sim.py`.
 
-## Who presence applies to: location roles (D24, proposed)
+## Who presence applies to: location roles (D24, ratified 2026-10-13)
 
 Presence answers "is an authorized occupant at this location?", so it must say
 which people count. Two **location roles** (a person's relationship to one
