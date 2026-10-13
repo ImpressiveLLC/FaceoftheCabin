@@ -19,7 +19,16 @@ worked together (2026-10-03/04 handovers, `docs/governance/`), not a new
 process.
 
 Companion skills: `fotc-git-and-host-routing` (fresh clone, which machine),
+`cabin-peer-agent-collaboration` (**the mechanics**: repairing a conflicting
+PR by merging fetched `main` in, the append-table resolver, id allocation,
+Autofix events, limits every agent shares), and
 `docs/governance/definition-of-done.md` (what a PR must carry).
+
+**Division of labour.** This skill decides *who goes when and what has been
+agreed* (order, peer discovery, overlap notes on the PR).
+`cabin-peer-agent-collaboration` owns *how to repair and how to merge safely*
+(its sections 1-4 and 6). Where the two overlap, the stricter rule wins; where
+they differ, fix the text in a PR rather than silently picking one.
 
 ## 0. The one rule
 
@@ -112,21 +121,30 @@ When any overlap is real, or any relevant session has not answered:
 ## 5. Merge, in sequence
 
 Only when all hold: you are next in the order; `gh pr view N --json
-mergeable,mergeStateStatus` is `MERGEABLE`/`CLEAN`; **CI is green on the head
+mergeable,mergeStateStatus` is `MERGEABLE`/`CLEAN` (`UNKNOWN` right after
+`main` moves means *still computing* -- wait and re-read, it is not a pass); **CI is green on the head
 commit** (if the branch reports no checks, say so on the PR and ask — absence
 is not a pass); the governance record is in the PR body; every `C-…` condition
 on the PR is satisfied; and Nate's authorization covers this PR.
 
 1. Re-fetch and re-run section 3 **immediately** before merging — the order
    changed if anything landed.
-2. `gh pr merge N --merge` (merge commit, **keep the branch**; no squash, no
-   rebase of shared history, no `--admin`, no `--auto` unless Nate asked).
+2. `gh pr merge N --merge --match-head-commit <sha-you-checked>` (merge
+   commit, **keep the branch**; no squash, no rebase of shared history, no
+   `--admin`, no `--auto` unless Nate asked). Pinning the head makes GitHub
+   refuse if anyone pushed after your check. For `backend/**`, `ui/**` or
+   `infra/**` PRs, wait for the previous merge's deploy on the M920q to
+   finish first (`gh run list`); docs-only PRs need not. Before merging,
+   simulate it and test the *other* open PRs against the result
+   (`cabin-peer-agent-collaboration` section 4); if a peer's PR would newly
+   conflict, say so on it or let theirs go first.
 3. **One at a time.** After each merge, `git fetch`, then the next PR in the
    queue re-runs section 3 against the new `main` and, if it conflicted or
    `main` moved under it, merges `main` in and re-runs the full test suite
    before it merges.
 4. Merge conditions that need Nate personally (live sirens, ontology
-   decisions, anything the PR marks held) are never merged by an agent.
+   decisions, anything the PR marks held) are never merged by an agent. A
+   generic "merge when ready" does not acknowledge a PR's own named condition.
 
 ## 6. After the merge
 
