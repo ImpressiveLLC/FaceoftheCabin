@@ -76,6 +76,46 @@ class HomeAssistantAdapterTest {
         assertEquals(java.util.Map.of(), adapter.deviceIdsByEntity("home"));
     }
 
+    // 2026-10-02 (W-27/W-28): the single HA service-call path.
+    @Test
+    void callServicePostsEntityIdWithBearerTokenToTheLocationsInstance() {
+        HomeAssistantAdapter adapter = new HomeAssistantAdapter();
+        ReflectionTestUtils.setField(adapter, "cabinHaUrl", "http://ha.test:8123");
+        ReflectionTestUtils.setField(adapter, "cabinHaToken", "tok");
+        org.springframework.web.client.RestTemplate rest =
+            (org.springframework.web.client.RestTemplate) ReflectionTestUtils.getField(adapter, "rest");
+        var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(rest).build();
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers
+                .requestTo("http://ha.test:8123/api/services/switch/turn_on"))
+            .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers
+                .method(org.springframework.http.HttpMethod.POST))
+            .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers
+                .header("Authorization", "Bearer tok"))
+            .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers
+                .content().json("{\"entity_id\":\"switch.heater_mech_room\"}", true))
+            .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess());
+
+        assertTrue(adapter.callService("cabin", "switch", "turn_on", "switch.heater_mech_room", java.util.Map.of()));
+        server.verify();
+    }
+
+    @Test
+    void callServiceReturnsFalseRatherThanThrowingWhenTokenIsBlankOrHaFails() {
+        HomeAssistantAdapter adapter = new HomeAssistantAdapter();
+        ReflectionTestUtils.setField(adapter, "cabinHaToken", "");
+        assertFalse(adapter.callService("cabin", "switch", "turn_on", "switch.x", java.util.Map.of()));
+
+        ReflectionTestUtils.setField(adapter, "cabinHaUrl", "http://ha.test:8123");
+        ReflectionTestUtils.setField(adapter, "cabinHaToken", "tok");
+        org.springframework.web.client.RestTemplate rest =
+            (org.springframework.web.client.RestTemplate) ReflectionTestUtils.getField(adapter, "rest");
+        var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(rest).build();
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers
+                .requestTo("http://ha.test:8123/api/services/switch/turn_on"))
+            .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withServerError());
+        assertFalse(adapter.callService("cabin", "switch", "turn_on", "switch.x", java.util.Map.of()));
+    }
+
     @Test
     void adapterTypeIsHaRest() {
         assertEquals("ha_rest", new HomeAssistantAdapter().adapterType());

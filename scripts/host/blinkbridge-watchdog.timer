@@ -1,0 +1,10 @@
+[Unit]
+Description=Check blinkbridge for silence every 5 minutes (W-50)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

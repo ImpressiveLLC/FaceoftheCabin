@@ -28,7 +28,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download
+  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download, Power, Car
 } from "lucide-react";
 import "./styles.css";
 
@@ -1582,6 +1582,22 @@ export function allLocationsLabel(locationCount) {
   return locationCount <= 2 ? "Both" : "All";
 }
 
+// Which location the toolbar switcher shows survives a reload (2026-10-10).
+// It used to start on "cabin" every time, so someone who mostly looks at Home
+// (the AldrichFront camera lives there) re-picked it on every visit. Presence
+// is deliberately not used to choose it: presence can be stale or unknown, and
+// the view someone last chose is the one they expect back. A stored value that
+// is no longer a known location falls back to "cabin".
+export const ACTIVE_LOCATION_KEY = "ui.activeLocation";
+export function readStoredLocation(storage = globalThis.localStorage, ids = Object.keys(LOCATIONS)) {
+  try {
+    const value = storage.getItem(ACTIVE_LOCATION_KEY);
+    return value === "both" || ids.includes(value) ? value : "cabin";
+  } catch {
+    return "cabin";
+  }
+}
+
 function LocationSwitcher({ active, onChange }) {
   // Object.keys(LOCATIONS) instead of a hardcoded ["cabin","home"] so a
   // location added via POST /api/locations (see useHubLocations below)
@@ -1820,10 +1836,15 @@ const ADD_PLACE_FIELDS = [
   { key: "familyHubUrl", label: "Family Hub URL",    placeholder: "(fill in later if unknown)" },
 ];
 
-function AddPlaceForm({ onCreated, onCancel }) {
+function AddPlaceForm({ onCreated, onCancel, auth }) {
   const [form, setForm] = useState(() => Object.fromEntries(ADD_PLACE_FIELDS.map(f => [f.key, ""])));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // W-32 (2026-10-04): POST /api/locations now needs a signed-in session. The
+  // plain fetch this used to make carries no credential, so it would 401 for
+  // everyone. `auth` is only ever omitted by a test exercising the fallback,
+  // same convention as every other panel here.
+  const doFetch = auth?.authedFetch || fetch;
 
   const update = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
 
@@ -1840,11 +1861,14 @@ function AddPlaceForm({ onCreated, onCancel }) {
       for (const [k, v] of Object.entries(form)) {
         if (v.trim()) body[k] = v.trim();
       }
-      const res = await fetch(`${LOCATIONS.cabin.apiBase}/api/locations`, {
+      const res = await doFetch(`${LOCATIONS.cabin.apiBase}/api/locations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("Adding a place needs a signed-in household session. Sign in, then try again.");
+      }
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(text || `HTTP ${res.status}`);
@@ -1886,7 +1910,7 @@ function AddPlaceForm({ onCreated, onCancel }) {
 // also exposes (built in §1b, still unused by any UI -- a server-synced
 // order is a deliberate, separate future option, not what this
 // implements).
-export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder test
+export function FamilyHubPanel({ auth }) { // exported for src/App.test.jsx's reorder test
   const { devices } = useApp();
   const [reorderMode, setReorderMode] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -1931,6 +1955,7 @@ export function FamilyHubPanel() { // exported for src/App.test.jsx's reorder te
           the UI at all. AddPlaceForm below is that missing piece. */}
       {adding && (
         <AddPlaceForm
+          auth={auth}
           onCreated={() => { setAdding(false); window.location.reload(); }}
           onCancel={() => setAdding(false)}
         />
@@ -2936,6 +2961,7 @@ export function DeviceManagerPanel({ auth }) {
               )}
             </>
           )}
+          <OnTheWayButton auth={auth} devices={devices} />
           <button className="btn-ghost" onClick={refreshManagerDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
       </div>
@@ -3012,6 +3038,57 @@ export function deviceLifecycleState(device) {
   const explicit = device?.attributes?.deviceLifecycle;
   if (explicit) return String(explicit).toUpperCase();
   return device?.attributes?.candidate === true ? "CANDIDATE" : "ASSIGNED";
+}
+
+// ─── Home Assistant service calls (W-27/W-28, 2026-10-02) ────────────────
+// Both go through POST /api/ha/services: signed-in only, and the backend
+// allowlists switch/input_boolean on/off and refuses valves and locks
+// (HaServiceController). The M920q is the head for both locations and runs
+// the one HA, so these always target the cabin backend.
+
+/**
+ * W-27: the HA switch entity a Device Manager row can power on/off, or null.
+ * Needs a real reported on/off ("state": "ON"/"OFF" -- Zigbee2MQTT's own
+ * payload, or HA discovery's for switch.* entities). Zigbee devices map to
+ * switch.<friendly_name>, Zigbee2MQTT's default HA discovery entity id.
+ * Cabin only: Home's collector devices aren't in the cabin HA. Valves and
+ * locks never get a toggle (same rule the backend enforces).
+ */
+export function powerToggleTarget(device) {
+  const attrs = device?.attributes || {};
+  const state = String(attrs.state ?? "").toUpperCase();
+  if (state !== "ON" && state !== "OFF") return null;
+  if (device.location && device.location !== "cabin") return null;
+  if (!["ASSIGNED", "AVAILABLE"].includes(deviceLifecycleState(device))) return null;
+  let entityId = null;
+  if (typeof attrs.entityId === "string" && attrs.entityId.startsWith("switch.")) {
+    entityId = attrs.entityId;
+  } else if (device.deviceId?.startsWith("z2m-")) {
+    entityId = `switch.${device.deviceId.slice(4)}`;
+  }
+  if (!entityId || !/^switch\.[a-z0-9_]+$/.test(entityId) || /valve|lock/.test(entityId)) return null;
+  return { entityId, isOn: state === "ON" };
+}
+
+export async function callHaService(doFetch, domain, service, entityId) {
+  const response = await doFetch(`${LOCATIONS.cabin.apiBase}/api/ha/services`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ domain, service, entity_id: entityId }),
+  });
+  if (response.status === 401) throw new Error("Sign in to control devices");
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.accepted === false) {
+    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command" : `HTTP ${response.status}`));
+  }
+  return body;
+}
+
+/** W-28: the mech room temperature (°C, as reported) for the "On the Way" confirmation, or null. */
+export function mechRoomTemperature(devices) {
+  const d = (devices || []).find(x => /temp_mech_room/.test(x.deviceId || "")
+    && typeof x.attributes?.temperature === "number");
+  return d ? d.attributes.temperature : null;
 }
 
 const LIFECYCLE_LABELS = {
@@ -4142,6 +4219,94 @@ function DmRowEnableToggle({ device, onToggled, auth }) {
   );
 }
 
+// W-27: on/off for switch-like devices. Optimistic: flips immediately, then
+// the next poll's real reported state wins (or the guess is dropped after
+// 60s if the device never reports back). On failure it snaps back and the
+// reason is in the tooltip.
+function DmPowerToggle({ device, auth }) {
+  const target = powerToggleTarget(device);
+  const [optimistic, setOptimistic] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const reported = device.attributes?.state;
+  useEffect(() => { setOptimistic(null); }, [reported]);
+  useEffect(() => {
+    if (optimistic === null) return undefined;
+    const t = setTimeout(() => setOptimistic(null), 60000);
+    return () => clearTimeout(t);
+  }, [optimistic]);
+  if (!target) return null;
+  const isOn = optimistic ?? target.isOn;
+
+  const toggle = async (e) => {
+    e.stopPropagation(); // don't also select the row
+    const next = !isOn;
+    setOptimistic(next);
+    setBusy(true);
+    setError(null);
+    try {
+      await callHaService(auth?.authedFetch || fetch, "switch", next ? "turn_on" : "turn_off", target.entityId);
+    } catch (err) {
+      setOptimistic(null);
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      className={`btn-ghost dm-power-toggle ${isOn ? "dm-power-on" : "dm-power-off"}`}
+      onClick={toggle}
+      disabled={busy}
+      aria-pressed={isOn}
+      aria-label={`${device.name}: turn ${isOn ? "off" : "on"}`}
+      title={error ? `Not changed: ${error}` : `Turn ${isOn ? "off" : "on"} (${target.entityId})`}
+    >
+      <Power size={14}/> {isOn ? "On" : "Off"}
+    </button>
+  );
+}
+
+// W-28: one tap tells HA we're heading up; HA's own preheat automation
+// (input_boolean.on_the_way_to_cabin) decides what to turn on and sends the
+// push notification -- no heater logic lives here (CLAUDE.md: don't
+// duplicate HA automations).
+export function OnTheWayButton({ auth, devices }) {
+  const [tempUnit] = useTempUnit();
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const t = setTimeout(() => setToast(null), 8000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const go = async () => {
+    setBusy(true);
+    try {
+      await callHaService(auth?.authedFetch || fetch, "input_boolean", "turn_on", "input_boolean.on_the_way_to_cabin");
+      const temp = mechRoomTemperature(devices);
+      setToast({ ok: true, text: `Preheat started. Mech room is ${temp == null ? "not reporting" : fmtTemp(temp, tempUnit)}.` });
+    } catch (err) {
+      setToast({ ok: false, text: `Couldn't start preheat: ${err.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="on-the-way">
+      <button className="btn-ghost" onClick={go} disabled={busy} title="Tell the cabin you're on the way (starts preheat)">
+        <Car size={14}/> {busy ? "Sending…" : "On the Way"}
+      </button>
+      {toast && (
+        <span role="status" className={`on-the-way-toast ${toast.ok ? "toast-ok" : "toast-err"}`}>{toast.text}</span>
+      )}
+    </span>
+  );
+}
+
 // forwardRef (2026-08-27, user report): switching L1 tabs (See<->Change)
 // unmounts and remounts whichever view isn't active, so a selection that
 // correctly carries over via the shared `selected` state (2026-08-25 fix)
@@ -4184,6 +4349,7 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
       <span className={`state-badge ${override ? override.cls : stateColor(device.state)}`}>
         {override ? override.text : device.state}
       </span>
+      {auth && <DmPowerToggle device={device} auth={auth} />}
       {onToggled && <DmRowEnableToggle device={device} onToggled={onToggled} auth={auth} />}
     </div>
   );
@@ -6446,7 +6612,10 @@ export function deviceConditionSteps(item) {
   ];
 }
 
-const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED";
+// STORAGE_ (W-11, 2026-10-12): STORAGE_THRESHOLD / STORAGE_CLEARED events from the backend's disk
+// monitor -- a filling disk is exactly the quiet failure this list exists to surface (the HDD sat at
+// 94% for weeks with nothing saying so). Their payload carries the same see/think/act text.
+const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED,STORAGE_";
 
 // authedFetch falls back to plain fetch when no auth prop is passed, so
 // this component's own existing tests (rendered without one) keep
@@ -7969,6 +8138,11 @@ function usePresence(authedFetch = fetch) {
   const [options, setOptions]      = useState([]);
   const [autoDerived, setAutoDerived] = useState(false);
   const [signals, setSignals]      = useState([]);
+  // W-34: how old the presence signal is. `freshness` stays null until the
+  // backend has seen a phone heartbeat (cabin/presence/<person>/last_seen),
+  // so an instance that hasn't deployed the heartbeat publisher renders
+  // exactly as before instead of guessing an age.
+  const [freshness, setFreshness]  = useState(null);
 
   const refresh = useCallback(() => {
     authedFetch(`${LOCATIONS.cabin.apiBase}/api/presence`)
@@ -7979,6 +8153,11 @@ function usePresence(authedFetch = fetch) {
         setOptions(data.options || []);
         setAutoDerived(!!data.autoDerived);
         setSignals(data.signals || []);
+        setFreshness(data.signalAgeSeconds == null ? null : {
+          signalAgeSeconds: data.signalAgeSeconds,
+          stale: !!data.stale,
+          staleAfterHours: data.staleAfterHours,
+        });
       })
       .catch(() => {});
   }, [authedFetch]);
@@ -8003,7 +8182,7 @@ function usePresence(authedFetch = fetch) {
     }).then(r => r.ok ? r.json() : null).then(d => { if (d) setProfileState(d.profile); }).catch(() => {});
   };
 
-  return { profile, setProfile, options, autoDerived, signals };
+  return { profile, setProfile, options, autoDerived, signals, freshness };
 }
 
 // Found 2026-08-08 (user question, following the presence fix above):
@@ -8094,11 +8273,79 @@ export function formatPresenceSignals(signals) {
   return present.map(s => `${s.personId} at ${s.location}`).join(", ");
 }
 
-function PresenceToggle() {
-  const { activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals } = useApp();
-  const opts = presenceOptions.length > 0
-    ? presenceOptions
+// W-34 (Cowork 2026-10-04): presence is published on CHANGE, so a retained
+// "not_home" can be days old and still be what the badge shows -- on
+// 2026-10-03 the badge read "Away" at the house because the phone had not
+// reported for 41 hours. This is the age of the PHONE's last report to Home
+// Assistant (cabin/presence/<person>/last_seen), not of the last change.
+// Exported for src/App.test.jsx. Pure: seconds in, short duration out.
+export function formatPresenceAge(seconds) {
+  if (seconds == null || !Number.isFinite(seconds)) return "";
+  const s = Math.max(0, Math.floor(seconds));
+  if (s < 60) return "just now";
+  const totalMin = Math.floor(s / 60);
+  if (totalMin < 60) return `${totalMin} min ago`;
+  const totalHours = Math.floor(totalMin / 60);
+  if (totalHours < 24) {
+    const m = totalMin % 60;
+    return m === 0 ? `${totalHours} h ago` : `${totalHours} h ${m} min ago`;
+  }
+  const d = Math.floor(totalHours / 24);
+  const h = totalHours % 24;
+  return h === 0 ? `${d} d ago` : `${d} d ${h} h ago`;
+}
+
+// Exported for src/App.test.jsx. What the presence badge should say. A
+// stale AUTO-DERIVED value must never be shown as a fact ("Away", "At
+// Cabin"): once the phone has been silent past the backend's limit the
+// answer is "Presence unknown". A MANUAL override is the user's own
+// statement, not a phone reading, so staleness does not hide it. No
+// heartbeat (freshness null) means the backend has no age to report, so the
+// badge behaves exactly as it did before W-34.
+export function presenceBadgeModel({ autoDerived, signals, freshness }) {
+  const hasAge = !!autoDerived && !!freshness;
+  const unknown = hasAge && !!freshness.stale;
+  const ageLabel = hasAge ? formatPresenceAge(freshness.signalAgeSeconds) : "";
+  let title;
+  if (!autoDerived) {
+    title = "Manually set — no live presence signal detected yet for this instance";
+  } else if (unknown) {
+    title = `Presence unknown: the phone has not reported for ${ageLabel.replace(/ ago$/, "")} `
+      + `(limit ${freshness.staleAfterHours} h). Last reading: ${formatPresenceSignals(signals)}.`;
+  } else {
+    title = `Live-detected: ${formatPresenceSignals(signals)}`
+      + (hasAge ? ` — phone last reported ${ageLabel}` : "");
+  }
+  return { unknown, ageLabel, title };
+}
+
+// Presentational half of PresenceToggle (props in, markup out) so the
+// stale/fresh/manual rendering can be tested without the whole app shell.
+export function PresenceBadge({ profile, options, onChange, autoDerived, signals, freshness }) {
+  const opts = options.length > 0
+    ? options
     : Object.entries(PROFILE_LABELS).map(([value, label]) => ({ value, label }));
+  const { unknown, ageLabel, title } = presenceBadgeModel({ autoDerived, signals, freshness });
+  return (
+    <div className={`presence-toggle${unknown ? " presence-toggle-unknown" : ""}`} title={title}>
+      <MapPin size={13} style={{ opacity: 0.6 }}/>
+      {autoDerived && (unknown
+        ? <span className="presence-stale-dot" aria-label="Presence stale" />
+        : <span className="presence-live-dot" aria-label="Live-detected" />)}
+      <select className="presence-select" aria-label="Presence"
+        value={unknown ? "__unknown__" : profile}
+        onChange={e => onChange(e.target.value)}>
+        {/* Display-only: picking a real option below is a manual override. */}
+        {unknown && <option value="__unknown__" disabled>Presence unknown</option>}
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      {ageLabel && <span className="presence-age">{unknown ? `last seen ${ageLabel}` : ageLabel}</span>}
+    </div>
+  );
+}
+
+function PresenceToggle() {
+  const { activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals, presenceFreshness } = useApp();
   // Found 2026-08-08: this pin's icon reads as "your detected location,"
   // but the value behind it was purely a manual toggle with nothing real
   // driving it -- see PresenceService's class comment for why that
@@ -8107,18 +8354,15 @@ function PresenceToggle() {
   // below still allows a manual override for an instance/location with
   // no presence automation configured yet (or a guest with no tracked
   // phone) -- see usePresence's comment.
-  const title = presenceAutoDerived
-    ? `Live-detected: ${formatPresenceSignals(presenceSignals)}`
-    : "Manually set — no live presence signal detected yet for this instance";
   return (
-    <div className="presence-toggle" title={title}>
-      <MapPin size={13} style={{ opacity: 0.6 }}/>
-      {presenceAutoDerived && <span className="presence-live-dot" aria-label="Live-detected" />}
-      <select className="presence-select" value={activeProfile}
-        onChange={e => setProfile(e.target.value)}>
-        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
+    <PresenceBadge
+      profile={activeProfile}
+      options={presenceOptions}
+      onChange={setProfile}
+      autoDerived={presenceAutoDerived}
+      signals={presenceSignals}
+      freshness={presenceFreshness}
+    />
   );
 }
 
@@ -8163,6 +8407,84 @@ function SecurityBadge() {
       <Unlock size={13}/> Disarmed
     </span>
   );
+}
+
+// W-35 (Nate, 2026-10-04): tell the user when the system is armed Away while
+// presence shows someone at that location. Never blocks or disables arming.
+// The hub has no arm control (arming is the HA input_boolean or a Node-RED
+// button), so this cannot hang off a click; it is derived from state the hub
+// already holds: armed per location (/api/security) and the presence signals
+// or, with no live signal, the manual profile.
+//
+// Exported for src/App.test.jsx. Who is detected at `location` right now.
+// `detected` can be true with no names: the manual-profile fallback only
+// says someone is there, not who.
+export function peopleDetectedAt(location, { signals, autoDerived, profile }) {
+  if (autoDerived) {
+    const names = (signals || []).filter(s => s.present && s.location === location).map(s => s.personId);
+    return { detected: names.length > 0, names };
+  }
+  const occupiedBy = { cabin: ["AT_CABIN", "BOTH_OCCUPIED"], home: ["AT_HOME", "BOTH_OCCUPIED"] };
+  return { detected: (occupiedBy[location] || []).includes(profile), names: [] };
+}
+
+// Exported for tests. One entry per location that is armed with someone
+// detected there. `key` changes with each arming (the armed signal's
+// lastUpdated), so a dismissal holds for that arming only.
+export function armedWhileOccupiedNotices({ securityStates, signals, autoDerived, profile }) {
+  return Object.entries(securityStates || {})
+    .filter(([, s]) => s && s.armed === true)
+    .map(([location, s]) => ({ location, key: `${location}:${s.lastUpdated}`, ...peopleDetectedAt(location, { signals, autoDerived, profile }) }))
+    .filter(n => n.detected);
+}
+
+// Presentational half (props in, markup out) so the wording and dismissal can
+// be tested without the app shell. The wording says what the siren gate really
+// does: an authorized user whose phone reads present suppresses the siren;
+// anyone else who is there does not, and neither does a lost phone signal.
+export function ArmedWhileOccupiedBanner({ notices, dismissed, onDismiss }) {
+  const shown = (notices || []).filter(n => !(dismissed || []).includes(n.key));
+  if (shown.length === 0) return null;
+  return (
+    <div className="armed-occupied-list">
+      {shown.map(n => {
+        const label = LOCATIONS[n.location]?.label || n.location;
+        const who = n.names.length > 0 ? n.names.join(", ") : "someone";
+        const verb = n.names.length > 1 ? "are" : "is";
+        return (
+          <div key={n.key} className="armed-occupied-notice" role="alert">
+            <AlertTriangle size={16} className="armed-occupied-icon" aria-hidden="true" />
+            <div className="armed-occupied-text">
+              <strong>Armed while {who} {verb} detected at the {label}.</strong>{" "}
+              If a door opens, the sirens will sound unless the system recognizes an authorized
+              user as present. Anyone else who is here will set them off, and so will you if the
+              system loses your phone. Disarm before staying.
+            </div>
+            <button type="button" className="armed-occupied-dismiss" onClick={() => onDismiss(n.key)}>
+              Dismiss
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ArmedWhileOccupiedNotice() {
+  const { securityStates, presenceSignals, presenceAutoDerived, activeProfile } = useApp();
+  const [dismissed, setDismissed] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("armedOccupiedDismissed") || "[]"); }
+    catch { return []; }
+  });
+  const dismiss = (key) => {
+    const next = [...dismissed, key];
+    setDismissed(next);
+    try { sessionStorage.setItem("armedOccupiedDismissed", JSON.stringify(next)); } catch { /* per-viewer convenience only */ }
+  };
+  const notices = armedWhileOccupiedNotices({
+    securityStates, signals: presenceSignals, autoDerived: presenceAutoDerived, profile: activeProfile,
+  });
+  return <ArmedWhileOccupiedBanner notices={notices} dismissed={dismissed} onDismiss={dismiss} />;
 }
 
 // ─── Navigation Rail ───────────────────────────────────────────────────────
@@ -8226,7 +8548,10 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   // consumes and clears this itself once it applies the selection, so it
   // never re-fires on an unrelated panel switch back to Device Manager.
   const [pendingDeviceFocus, setPendingDeviceFocus] = useState(null);
-  const [activeLocation, setActiveLocation] = useState("cabin");
+  const [activeLocation, setActiveLocation] = useState(() => readStoredLocation());
+  useEffect(() => {
+    try { localStorage.setItem(ACTIVE_LOCATION_KEY, activeLocation); } catch { /* storage unavailable: the choice just isn't remembered */ }
+  }, [activeLocation]);
   // 2026-08-25: toolbar device-count toggle -- see countParentDevices'
   // own comment for why "157 devices" alone was misleading (every HA
   // sub-entity/service counted as its own device).
@@ -8259,7 +8584,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   const { acknowledgments: alertAcknowledgments, refresh: refreshAlertAcknowledgments } = useAlertAcknowledgments(cameraAuth.authedFetch);
   const alertLevels = navAlertLevelsFor(activeAlerts, activeLocation, automationAlerts, alertAcknowledgments);
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
-  const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals } = usePresence(cameraAuth.authedFetch);
+  const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals, freshness: presenceFreshness } = usePresence(cameraAuth.authedFetch);
   const securityStates = useSecurityState(cameraAuth.authedFetch);
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile, cameraAuth.authedFetch);
   const lifecycleLabels = useLifecycleStateLabels(LOCATIONS.cabin.apiBase, cameraAuth.authedFetch);
@@ -8384,7 +8709,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       activeAlerts, activeAlertLocations, activeAlertUnavailableLocations, activeAlertsGeneratedAt,
       automationAlerts, automationAlertsLoading,
       alertAcknowledgments, refreshAlertAcknowledgments,
-      activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals,
+      activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals, presenceFreshness,
       securityStates,
       displayConfigs, refreshDisplayConfigs,
       lifecycleLabels,
@@ -8451,6 +8776,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
               </div>
             </div>
           </div>
+          {!isDemo && <ArmedWhileOccupiedNotice />}
           <div className="panel-area">
             {isDemo && DEMO_HIDDEN_PANELS.has(activePanel) && (
               <DemoHiddenPanel title={PANELS.find(p => p.id === activePanel)?.label} />
@@ -8461,7 +8787,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
                 <DemoCameraCards devices={toolbarDevices} />
               </div>
             )}
-            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel />}
+            {!isDemo && activePanel === "FAMILY_HUB"     && <FamilyHubPanel auth={cameraAuth} />}
             {activePanel === "FAMILY_CONFIG"  && <FamilyConfigPanel auth={cameraAuth} />}
             {activePanel === "DEVICE_MANAGER" && <DeviceManagerPanel auth={cameraAuth} />}
             {activePanel === "MONITORING"     && <MonitoringPanel active={true} auth={cameraAuth} />}

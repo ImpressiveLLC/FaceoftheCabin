@@ -12,6 +12,8 @@
 # yet purchased"; it never did, front-door coverage was already handled
 # by these two). Renamed to reflect that:
 #   front_door → 192.168.2.200  (Reolink RLC-820A) -- was named "driveway"
+#     (since 2026-09-30 this camera is cabin_outside_reolink at 192.168.1.121,
+#      see its block below; the line above is the 2026-08-02 naming history)
 #   driveway   → Blink "Outdoor 4 - DHEE" via blinkbridge -- was named "outdoor_4"
 # Neither name is device-preferential; they're just the two available
 # semantic slots for "covers the front door / driveway area," reassigned
@@ -23,6 +25,7 @@
 #   main stream: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@<IP>:554/h264Preview_01_main
 #   sub  stream: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@<IP>:554/h264Preview_01_sub
 #   Use sub for detect (640x480, low CPU), main for record (4K).
+#   cabin_outside_reolink actually runs on /Preview_01_sub at 640x360.
 
 mqtt:
   host: mosquitto
@@ -56,27 +59,63 @@ review:
 
 cameras:
 
-  front_door:
+  # The Reolink RLC-820A. Named front_door at 192.168.2.200 until 2026-09-30;
+  # since then cabin_outside_reolink at 192.168.1.121, reached through the
+  # M920q's Ethernet port eno2 (cabled to the Starlink router's
+  # 192.168.1.0/24 side). The key is settled as cabin_outside_reolink: it is
+  # the key recordings have been filed under since 2026-09-30 and renaming it
+  # back would split the camera's history. (W-39; Cowork, HO-2026-10-04.)
+  #
+  # Brought under git from the live hand edit of 2026-09-30, with these
+  # deliberate differences from what was running:
+  #   * detect.enabled: true and snapshots.enabled: true. The hand-written block
+  #     had neither, and Frigate 0.17 defaults detection OFF and tracks only
+  #     person, so the camera recorded continuously but ran no object detection
+  #     (detection_fps 0.0, no events) and kept no snapshots.
+  #   * objects.track is the same list every other camera here tracks (Cowork
+  #     Q3). Detector cost is per frame, not per class; the extra cost is
+  #     events and snapshot storage, which the retention settings below govern.
+  #   * the camera password is the {FRIGATE_RTSP_PASSWORD} placeholder, not a
+  #     literal. Until 2026-10-10 the live file's literal differed from the
+  #     vault-fed value, so this could not merge. On 2026-10-10 the production
+  #     .env CAMERA_PASSWORD was set to the working credential and Frigate was
+  #     recreated; verified from inside the container (value equal, ffprobe on
+  #     the sub stream returns h264 640x360). The vault copy follows by PR and
+  #     must merge before the monthly rotate-secrets run (1st of the month).
+  #
+  # KNOWN RISK: 192.168.1.121 comes from the Starlink router's DHCP. A
+  # reservation for it is not known to exist, so if the address changes Frigate
+  # loses the camera. Record here how it is kept stable, or that it is not.
+  #
+  # Kept as it was running (verified working at about 5 fps): the sub-stream
+  # path /Preview_01_sub (git's old block used /h264Preview_01_sub), the
+  # 640x360 detect size, and an empty hwaccel_args (no hardware acceleration
+  # for this camera). Motion sensitivity is NOT tuned here: that waits for a 24 h
+  # baseline of detection at default sensitivity (W-5), then its own PR.
+  cabin_outside_reolink:
     enabled: true
     ffmpeg:
       inputs:
-        # Sub-stream: low-res, used for motion detection (saves CPU)
-        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.2.200:554/h264Preview_01_sub
+        # Sub-stream: low-res, used for detection (saves CPU)
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.121:554/Preview_01_sub
           roles:
             - detect
         # Main stream: 4K, used for recording
-        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.2.200:554/h264Preview_01_main
+        - path: rtsp://admin:{FRIGATE_RTSP_PASSWORD}@192.168.1.121:554/h264Preview_01_main
           roles:
             - record
+      hwaccel_args: []
     detect:
       enabled: true
       width: 640
-      height: 480
+      height: 360
       fps: 5
     record:
       enabled: true
     snapshots:
       enabled: true
+    motion:
+      mask: []   # polygon coordinates can exclude areas (road, trees) later
     objects:
       track:
         - person
@@ -201,12 +240,12 @@ record:
   # from Frigate's 5s/5s default per the user's explicit request ("events
   # minus 15 seconds and post event of one minute"). Continuous (24/7)
   # recording enabled with a short 5-day retention, deliberately
-  # conservative: front_door's record role uses its 4K main stream (see
+  # conservative: cabin_outside_reolink's record role uses its 4K main stream (see
   # the camera comment above), which at realistic 4K bitrates could hit
-  # 80-160+ GB/day once that camera is back online (currently
-  # off-network) -- 826GB free as of this change, confirmed via a df -h
+  # 80-160+ GB/day once that camera is back online (it has been since
+  # 2026-09-30) -- 826GB free as of this change, confirmed via a df -h
   # check immediately before this edit. Re-measure real GB/day once
-  # front_door reconnects and extend retention only after confirming
+  # cabin_outside_reolink's recordings have a few days of history and extend retention only after confirming
   # actual usage, not this estimate. driveway (Blink) is motion-gated at
   # the source (see its own comment above) so continuous.days barely
   # matters for it -- there's no true 24/7 stream to continuously record
@@ -234,4 +273,6 @@ classification:
       object_config:
         objects:
           - person
+          - animal
+          - car
         classification_type: attribute

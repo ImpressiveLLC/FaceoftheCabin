@@ -530,17 +530,87 @@ The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detecti
 6. A demo token is rejected when combined with another scope at creation.
 7. Expired and revoked demo tokens return 401 `GUEST_LINK_INACTIVE`.
 8. UI (Vitest): demo mode shows the banner, renders no sign-in control, and renders the camera card placeholder with no `<img>` or `<video>`.
-9. Added by [W-21](../backlog.md): the same range and field, requested through the normal view and through a demo token, returns identical rows for a non-presence device (Q-DM-2 answered — both ceilings are 60).
+9. Added by [W-21](../backlog.md): the same range and field, requested through the normal view and through a demo token, returns identical rows for a non-presence device (Q-DM-2 answered — both ceilings are 60). Ratified by Cowork 2026-10-03.
+
+### Decided questions (Nate, 2026-10-13: "accept Cowork's recommendations")
+
+| ID | Question | Decision |
+|---|---|---|
+| Q-LR-1 | Should a maintenance-only person's arrival be recorded even though it does not count as presence? | **Yes.** An audit event, not a presence signal (R-LR-8). Folds into W-38. Cowork: contractor and service visits are the record the cabin claim keeps needing. |
+| Q-LR-2 | A maintenance-only person on site sets the sirens off unless the system is disarmed first. Intended? | **Intended** (R-LR-9). The ordinary alarm model; the maintenance role holds the credentials to disarm. One line in the setup docs: maintenance visitors disarm on arrival. |
+| Q-LR-3 | Are children primary-role for presence, or aggregate-only? | **Both, split by purpose** (R-LR-10): primary role for gating, aggregate-only for display. |
+
+**What this is not.** Not a security boundary beyond the existing token model (D12). Not a change to D14's public read tier. Not a new role, table or write path. Not a Grafana login.
+
+---
+
+## D24 — Location roles: primary and maintenance
+
+**Status:** ratified 2026-10-13 (Cowork, [HO-2026-10-04](../handovers/HO-2026-10-04-cowork-to-code.md) section 3, whose ratification was conditional on Nate's answers to Q-LR-1 to Q-LR-3; Nate accepted Cowork's recommendations 2026-10-13). Proposed 2026-10-04 by Code from Nate's stated direction. **Use case:** [UC-10](../use-cases.md). **Work:** [W-23](../backlog.md) (the agnostic phone check, implemented), [W-35](../backlog.md) (arming warning), [W-38](../backlog.md) (enforcement, not built). **Builds on:** D6 (multi-location), D11 (household roles; presence is aggregate), D16 (presence and occupancy). **Is not:** `HouseholdRole` / `ManagedUserRole` (what a signed-in principal may do), and not `provisioning_role` (install-dependency scoping, [discussion artifact](../../ontology/PROPOSAL_2026-09-16_provisioning-role.md)).
+
+**Problem.** Presence means "an authorized occupant is at this location", but nothing says whose presence counts. `personId` is whatever string a publisher's topic uses, and the ontology records the tracked-person registry as not built. The platform is meant to be cloned: one person sets a location up and maintains it, other people live there. That maintainer's phone arriving to fix something must not read as an occupant and must not suppress the siren, and a clone for another household must not inherit the maintainer as an occupant. The phone WiFi check was also named for one person (`check_nate_phone_wifi.sh`), which does not generalize.
+
+**Direction (Nate, 2026-10-04).**
+
+1. **Primary role:** the user role that aligns with the active users of a location. Their phones are checked and their presence counts.
+2. **Maintenance role:** separate from primary but can be equal to it (one person can hold both). Same credentials as primary plus elevated ones. Does not need to be recognized as on-site and is reserved as a guest from the perspective of location presence. Does not own the location; establishes and maintains it.
+3. The phone WiFi check is named for what it is, not for a person: `check_authorized_user_phone_wifi`, and applies to primary-role users.
+
+### Requirements
+
+| ID | Requirement |
+|---|---|
+| R-LR-1 | A **location role** is a relationship between a person and one location. Values: `primary`, `maintenance`. A person may hold both at one location. Roles at different locations are independent: maintenance at one place and primary at another is normal. |
+| R-LR-2 | **Presence counts primary only.** A primary-role person's signals feed `PresenceSignalRegistry`, `active_presence_profile`, the siren gate's authorized-user check and the arming warning (W-35). A maintenance-only person produces no counted signal; for presence they are a guest. |
+| R-LR-3 | **Credentials are a separate axis.** Maintenance is a superset of primary in credentials (the same, plus elevated administration). `HouseholdRole` and `ManagedUserRole` keep answering what a signed-in principal may do. A location role never grants or removes a permission. |
+| R-LR-4 | **The phone check is agnostic.** `check_authorized_user_phone_wifi.sh <person_id>` holds no person or site data. The phone's WiFi MAC and the LAN to sweep come from a local, uncommitted `authorized_user_phones.conf`. One check instance exists per primary-role person at a location, and none for a maintenance-only person. A configuration error never reads as "away" (exit 2, no stdout). |
+| R-LR-5 | **Instances carry the person id; types do not.** `binary_sensor.nate_phone_on_wifi` and `cabin/presence/nate` belong to one person. The ontology entity, the script, the docs and the Ask content name the generic check. |
+| R-LR-6 | **Enforcement is staged.** Now (W-23): by configuration only, because nothing creates a check or publisher for a maintenance-only person. W-38: a tracked-person registry (person to location role per location, linked to a family profile), the backend counting primary-role persons only, per-person generation of the HA automations, an admin way to assign roles, and the maintenance-visit audit entry (R-LR-8) and a test that a maintenance-only signal is not counted. |
+| R-LR-7 | **Setup for a new clone states the roles.** Per location, say who is primary and who, if anyone, is maintenance, and create phone-check configuration only for primary users ([REPLICATION.md](../../REPLICATION.md), [independent installation](../../ai-assistant/user-guide/independent-installation.md)). |
+| R-LR-8 | **A maintenance visit is recorded, not counted.** When a maintenance-only person arrives at a location, record an audit event ("maintenance visit": who, which location, when). It is not a presence signal and changes neither the presence profile nor the siren gate. Built with W-38. Decided 2026-10-13 (Q-LR-1). |
+| R-LR-9 | **Maintenance visitors disarm on arrival.** A maintenance-only person on site is a guest to the siren gate, so unless the system is disarmed first their door opening sounds the sirens, like any unrecognized person's. This is the ordinary alarm model, intended, not a defect; the maintenance role holds the credentials to disarm. Setup docs say so in one line. Decided 2026-10-13 (Q-LR-2). |
+| R-LR-10 | **Children are primary-role for gating and aggregate-only for display, split by purpose.** For the siren gate a child is primary-role, so a child arriving with friends while the location is armed is recognized and does not trip the siren. For display the hub shows only "household member present": no name and no location history, consistent with D11's data minimization. W-44's use-case pass covers the friends. Decided 2026-10-13 (Q-LR-3). |
+
+**Consequence to be aware of.** The siren gate recognizes primary-role users only. A maintenance-only person on site is a guest for presence, so to the gate they are anyone else: unless the system is disarmed first, their door opening sounds the sirens like any unrecognized person's. That follows directly from "reserved as a guest", and is Q-LR-2 below, decided 2026-10-13 as intended (R-LR-9).
+
+### Implementation status (Code)
+
+R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its config file and tests, the ontology entities `check_authorized_user_phone_wifi` and `location_role`. **Not yet applied to the live Home Assistant.** R-LR-7 is documented in the same set of PRs. R-LR-1, R-LR-2 and R-LR-3 are definitions, enforced only by configuration today; R-LR-6's registry and backend enforcement are W-38, not built, and now unblocked. R-LR-8 and R-LR-10 are decided and unbuilt (W-38). R-LR-9's one setup line is in [REPLICATION.md](../../REPLICATION.md) and the Ask installation guide.
 
 ### Open questions
 
 | ID | Question | Owner |
 |---|---|---|
-| Q-DM-1 | Confirm `location = home` entities are fully redacted in demo mode (conservative default in R-DM-6) or shown as cabin entities are. Note: R-DM-6 relies on each device's `location` field. Phone entities (battery, charger, Wi-Fi presence) currently list as `cabin` and ONLINE while the owner may be elsewhere, so they are redacted by the phone/person rule, not the `home` rule. Whether `location` should track where a roaming phone actually is is a separate question, not part of D22. | Nate |
-| Q-DM-2 | **Answered — Nate, 2026-09-24:** demo history aligns with the normal view. Set `cabin.demo.max-history-days` to **60**, matching the normal view's own ceiling (`cabin.history.max-days`); the clamp stays in place as a ceiling, and presence-class series stay empty per R-DM-8. Implemented in [W-21](../backlog.md). | Nate |
-| Q-DM-3 | Redaction applies to demo-token responses only. Under D14 the same device list is readable by anyone with no token at all ([DL-2026-09-23-10](../discrepancy-log.md)). Until Nate rules on that, the label is a preview affordance and must not be described to the recipient as privacy protection. | Nate |
+| Q-LR-1 | Should a maintenance-only person's arrival be recorded (for example an audit entry "maintenance visit") even though it does not count as presence? | Nate, Cowork |
+| Q-LR-2 | A maintenance-only person on site sets the sirens off like any guest unless the system is disarmed first. Is that intended, or should the maintainer be announced or recognized some other way without counting as an occupant? | Nate |
+| Q-LR-3 | Are children primary-role for presence, or aggregate-only as D11's "Allowed Initial Uses of Child-Derived Presence" implies? | Nate, Cowork |
 
-**What this is not.** Not a security boundary beyond the existing token model (D12). Not a change to D14's public read tier. Not a new role, table or write path. Not a Grafana login.
+**What this is not.** Not a new permission or a change to any `HouseholdRole` check. Not a database table or a UI yet. Not a decision about how a phone is detected (W-36, W-37 hold those options).
+
+## D25 — Vault commits to `main`: a narrow exemption for rotate-secrets
+
+**Status:** ratified 2026-10-04 (Cowork, [HO-2026-10-04](../handovers/HO-2026-10-04-cowork-to-code.md) section 4; Nate directed Code to use that file as its guide). **Use case:** [UC-6](../use-cases.md). **Builds on:** D4 (governance: every governed fact changes by reviewed PR), the credential lifecycle in [#109](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/109).
+
+**Problem.** Changes to `main` go through a reviewed PR, but the rotation playbook pushes the re-encrypted vault to `main` directly, by design: a rotated password that exists only in an uncommitted vault edit is lost at the next `git reset --hard origin/main` in the deploy worktree (the incident `ansible/playbooks/rotate-secrets.yml` documents). Separately, three human commits on 2026-10-01 (`8348458`, `5bbc751`, `989fb07`) also reached `main` with no PR. No written rule settled either case.
+
+**Ruling.**
+
+| ID | Requirement |
+|---|---|
+| R-VC-1 | **One exemption.** A commit pushed to `main` without a PR is allowed only when it is made by `.github/workflows/rotate-secrets.yml` through `ansible/playbooks/rotate-secrets.yml`. Nothing else is exempt. |
+| R-VC-2 | **Conditions, all three.** The commit changes **only** `ansible/group_vars/cabin/vault.yml`; its message **names the run** (the workflow run id) and the secret rotated; and the pre-push check **refuses any non-vault path**. |
+| R-VC-3 | **Human-made vault commits go through a PR** from now on, like any other change. |
+| R-VC-4 | The three 2026-10-01 human commits are ratified after the fact, as [DL-2026-10-04-01](../discrepancy-log.md). |
+
+**What review of a vault diff does and does not show.** The vault is Ansible-Vault encrypted, so a reviewer sees the file path, its size and that it changed, never the secrets. R-VC-3 is about traceability and the governance record, not about reading the contents.
+
+### Implementation status (Code)
+
+- The playbook already built the commit as `origin/main` plus the vault blob only, so a non-vault path could not be included **by construction**. This change makes that an explicit, tested check rather than an accident of how the commit is built: the step now refuses to push if `git diff-tree` between `origin/main` and the new tree names anything but the vault path, treats "nothing changed" as nothing to push, and the commit message carries `workflow run ${GITHUB_RUN_ID}` (`manual` outside Actions).
+- Tested by running the **shipped** shell block, extracted from the playbook, against a throwaway origin and clone: a normal run pushes exactly one vault-only commit whose message names the run; a run edited to include a second path is refused and nothing is pushed; an unchanged vault pushes nothing. `ansible/tests/test_vault_commit_guard.sh`.
+- Not run end to end: the playbook rotates the real Postgres password, so it was not executed. The first scheduled rotation after merge (the 1st of the month, 06:00 UTC) is the live proof, and its commit on `main` should show the run id in the message.
+
+**What this is not.** Not a general exemption for automation commits, not a way to commit anything else without review, and not a change to who may rotate secrets.
 
 ---
 

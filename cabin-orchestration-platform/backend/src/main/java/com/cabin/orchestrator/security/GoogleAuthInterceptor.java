@@ -151,6 +151,19 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         if (isDevicesRead) {
             return true;
         }
+        // /api/locations -- WRITES gated 2026-10-04 (W-32), reads stay open.
+        // GET /api/locations is what useHubLocations() and the LocationSwitcher
+        // call before anyone has signed in (the toolbar needs the place list on
+        // first paint), so it is the same "GET stays open" carve-out as
+        // /api/devices above. POST/PATCH/reorder/DELETE create, edit, reorder
+        // and archive a place -- and PATCH can repoint a place's apiBase, which
+        // the UI then sends signed-in tokens to -- so they require a signed-in
+        // session; guest and demo tokens are read-only and get 403.
+        boolean isLocationsRead = (path.equals(contextPath + "/api/locations") || path.startsWith(contextPath + "/api/locations/"))
+            && ("GET".equalsIgnoreCase(request.getMethod()) || "HEAD".equalsIgnoreCase(request.getMethod()));
+        if (isLocationsRead) {
+            return true;
+        }
         // /api/events/telemetry-history and /api/events/reported-fields stay
         // open -- found 2026-09-04, same day /api/devices and /api/alerts
         // were ungated: these two are numeric sensor-history endpoints
