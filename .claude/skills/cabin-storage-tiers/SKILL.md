@@ -31,4 +31,4 @@ Read `docs/STORAGE_ARCHITECTURE.md` first. It has the live numbers (2026-10-10) 
 
 ## Deleting
 
-Permanent deletion of files is done by the owner, not by an agent session. Prepare a script that **lists first** and removes only with `--apply`, restricted to exact name patterns, and state what it will not touch. `scripts/prune-storage-backups.sh` is the model. Never delete BI telemetry, Postgres data, `/storage/archives`, or `/storage/services`.
+Permanent deletion of files is done by the owner, not by an agent session. Prepare a script that **lists first** and removes only with `--apply`, restricted to exact name patterns, and state what it will not touch. `scripts/host/cabin-storage-prune` is the tool (report, plan, then apply per named target; config in `/etc/cabin-storage-prune.conf`); `scripts/prune-storage-backups.sh` was its model. Never write a new ad-hoc `rm`; add or adjust a target instead. Never delete BI telemetry, Postgres data, `/storage/archives`, or `/storage/services`.

@@ -22,6 +22,11 @@ cabin:
   # comment on why this is a separate property from cabin.demo above.
   history:
     max-days: ${CABIN_HISTORY_MAX_DAYS:60}
+  # W-34: past this many hours without a phone heartbeat the presence badge
+  # reads "Presence unknown". Same default as the siren gate's PRESENCE_STALE_HOURS
+  # (W-33); configured separately. Inactive until a heartbeat has been seen.
+  presence:
+    stale-after-hours: ${CABIN_PRESENCE_STALE_AFTER_HOURS:6}
   name: Cumberland Cabin
   mqtt:
     brokerUrl: ${MQTT_URL:tcp://localhost:1883}
@@ -190,8 +195,8 @@ cabin:
     monitor:
       enabled: ${STORAGE_MONITOR_ENABLED:true}
       mounts: ${STORAGE_MONITOR_MOUNTS:storage-hdd=/app/archives/cabin_event,root-nvme=/}
-      warnPercent: ${STORAGE_WARN_PERCENT:80}
-      criticalPercent: ${STORAGE_CRITICAL_PERCENT:90}
+      warnPercent: ${STORAGE_WARN_PERCENT:60}
+      criticalPercent: ${STORAGE_CRITICAL_PERCENT:75}
       clearMarginPercent: ${STORAGE_CLEAR_MARGIN_PERCENT:3}
       renotifyHours: ${STORAGE_RENOTIFY_HOURS:24}
   telemetryArchival:

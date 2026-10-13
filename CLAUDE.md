@@ -23,9 +23,24 @@ This platform is designed to be worked on across multiple machines. The rule is 
 2. On the new machine: `git pull origin main`
 3. Never commit directly on the M920q unless doing cabin-specific infra work — push from there immediately
 
+**Several Claude sessions work this repo at once.** Before merging any PR or
+pushing to a shared file, load `.claude/skills/fotc-peer-merge-sequencing/`:
+find the agreed merge order, check the other live sessions and every open PR
+with `git merge-tree`, settle overlaps with a merge-order note on the PR, and
+merge strictly one at a time. Work in your own worktree, never another
+session's checkout.
+
 **Single source of truth:** GitHub `ImpressiveLLC/FaceoftheCabin`. If something isn't there, it doesn't exist on other machines.
 
 **If Claude can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
+
+**Several agent sessions (Claude Code, Codex, Cowork) push to this repo at once.**
+Load the project skill `cabin-peer-agent-collaboration` when a PR conflicts, an
+Autofix event arrives, or you are about to merge: it covers re-reading a branch
+before touching it, repairing conflicts by merging `origin/main` in (never
+rebase or force-push), the resolver for the append-only tables every PR edits,
+merging only a clean PR pinned to the commit you checked, and which PRs wait
+for Nate.
 
 **Decisions made where Claude can't commit (Claude web at the cabin — no
 Claude Code on the M920q) need an explicit hand-back, not just a good
@@ -113,7 +128,7 @@ cabin-orchestration-platform/
 │   ├── grafana/provisioning/
 │   └── watchdog/watchdog.py
 ├── locations/
-│   └── home/                        Home-location overlays
+│   └── home/                        RETIRED by D23 (never deployed); removal is W-59
 │       ├── docker-compose.yml       Same stack, 16 GB mem limits
 │       ├── frigate.yml              5× Reolink RLC-810A (192.168.1.20–24)
 │       ├── application-home.yml     Spring profile overlay
@@ -185,34 +200,59 @@ CONTACT_SENSOR, THERMOSTAT, TEMPERATURE_SENSOR, HUMIDITY_SENSOR,
 WATER_PRESSURE_SENSOR, POWER_METER, DISHWASHER, WASHING_MACHINE, DRYER,
 ROUTER, UPS, GOOGLE_HOME_DEVICE, HOME_ASSISTANT_ENTITY, DASHBOARD`
 
+### Location roles (D24, ratified 2026-10-13 — not enforced in code yet)
+A person's relationship to **one location**, separate from `HouseholdRole`
+(what a signed-in principal may do):
+- **`primary`** — the active users of the location (they live there or use
+  it). Their phone is checked and their presence counts; the siren gate
+  recognizes them.
+- **`maintenance`** — establishes and maintains the location, does not own
+  it. Same credentials as primary plus elevated ones, but never recognized
+  as on-site: a **guest** for presence (no phone check, no counted signal).
+  One person can hold both at one location (at the cabin, Nate does).
+
+Today the rule holds only by configuration: a phone check
+(`check_authorized_user_phone_wifi.sh <person_id>`, person- and site-agnostic;
+the phone's MAC and LAN live in an uncommitted `authorized_user_phones.conf`)
+and a publisher exist for primary users only. The backend's
+`PresenceSignalRegistry` counts whoever publishes (W-38 builds the
+tracked-person registry). Setup for a new clone: `docs/REPLICATION.md` §3
+"Who counts as present". Ontology: `location_role`,
+`check_authorized_user_phone_wifi`, `nodered_cabin_security_siren_gate`.
+
 ---
 
-## Two locations, two hubs
+## Two locations, one head (D23, ratified 2026-10-13)
 
-| | Cabin | Home |
+The M920q at the cabin is the **head** for both locations: the only Home
+Assistant, Postgres, Kafka, `cabin-backend`, Grafana, Frigate, Node-RED and
+Zigbee2MQTT bridge run there. **Home is a collector**, not a second stack:
+Termux Zigbee2MQTT publishing under `home_z2m/...` and a phone-side
+network-scan agent, both reporting to the M920q over MQTT and Tailscale
+(`docs/MAINTENANCE.md`, "Home Location"; bench confirmation in
+`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`). There is no Home
+Assistant at Home and no `home-hub`.
+
+| | Cabin (the head) | Home (a collector) |
 |---|---|---|
-| Hardware | Lenovo ThinkCentre M920q, Ubuntu 24.04, 32 GB RAM | Lenovo ThinkCentre M920q, Ubuntu 24.04, 16 GB RAM |
-| Tailscale hostname | `cabin-hub` | `home-hub` |
-| HA URL | `http://cabin-hub:8123` | `http://home-hub:8123` |
-| Grafana | `http://cabin-hub:3000` | `http://home-hub:3000` |
-| Frigate | `http://cabin-hub:5000` | `http://home-hub:5000` |
-| Node-RED | `http://cabin-hub:1880` | `http://home-hub:1880` |
-| Zigbee2MQTT UI | `http://cabin-hub:8080` | N/A (cabin only so far) |
-| Spring Boot API | `http://cabin-hub:8080` | `http://home-hub:8080` |
+| Runs | Lenovo ThinkCentre M920q, Ubuntu 24.04, 32 GB RAM: the whole stack | Android phone running Termux, plus a Zigbee coordinator: Zigbee2MQTT and the scan agent only |
+| Tailscale hostname | `cabin-hub` | reaches `cabin-hub`; nothing at Home serves the platform |
+| HA, Grafana, Frigate, Node-RED, Spring Boot API | `http://cabin-hub:8123`, `:3000`, `:5000`, `:1880`, `:8080` | none (the M920q serves Home's data too) |
+| Zigbee2MQTT | `http://cabin-hub:8080`, base topic `zigbee2mqtt` | its own instance, base topic `home_z2m` |
 
-Both hubs are x86_64. No ARM/Pi hardware anywhere. Tailscale is the only VPN.
+The M920q is x86_64; ARM/Android appears only in the collector role (see
+"Design constraints"). Tailscale is the only VPN.
 
-**Current reality, 2026-10-04 (read this before trusting the Home column).**
-The Home column describes the original plan. No Home hub is deployed: Home's
-Zigbee and network-scan data come from an Android/Termux collector that
-publishes to the M920q over MQTT, and the M920q is the head for both
-locations (`docs/MAINTENANCE.md`, "Home Location", decision 2026-10-01;
-D23, drafted in PR #116, is not ratified yet). The code agrees:
-`HOME_HUB_DEPLOYED` defaults to `false` (`HaTokenHomeHealthIndicator`),
-`HOME_HA_URL` defaults to `http://home-hub:8123` but `HOME_HA_TOKEN` is blank
-on purpose, and `application.yml` reports Home's HA as out of service by
-design. Do not treat `home-hub` URLs as live. This table stays until D23 is
-ratified, then it should be rewritten, not patched.
+**Blank is correct for Home's Home Assistant settings.** `HOME_HA_URL`
+defaults to `http://home-hub:8123`, but `HOME_HA_TOKEN` and `vault_home_ha_token`
+are blank on purpose and `HOME_HUB_DEPLOYED` defaults to `false`
+(`HaTokenHomeHealthIndicator`), so `application.yml` reports Home's HA as out
+of service by design. That flag means only "a separate Home Assistant exists at
+Home for `cabin-backend` to call"; it is being renamed `HOME_HA_DEPLOYED`
+(W-60). A Home Assistant at Home would be a new decision (D23, R-HD-4). Do not
+treat `home-hub` URLs as live, and do not read "Home Assistant unreachable at
+Home" as an outage. The old `cabin-orchestration-platform/locations/home/` stack
+overlay was never deployed and is retired (removal tracked in W-59).
 
 ---
 
@@ -258,7 +298,7 @@ Zigbee adapter must handle this sub-property generically.
 
 ## Storage (read `docs/STORAGE_ARCHITECTURE.md` before touching disk, retention or backups)
 
-Two disks: the NVMe `/` is hot (Postgres, Docker); the rotational HDD `/storage` is the cold tier (video, telemetry archives, backups) and was 94% full on 2026-10-10 (640 GB of it nightly backups with no pruning, W-48). `cabin-backend` now warns at 80% and 90% full (`StorageMonitorService`, W-11; `GET /api/system/storage`) but never deletes. BI telemetry (the `TELEMETRY` rows behind temperature, humidity, presence, CO2 and the rest) is the data to keep: never delete or archive-and-delete it without a warning first (W-49; the monthly archival job has none today). Recorded video and old backups are disposable. Permanent deletions are run by the owner from a dry-run-first script, not by an agent session. The project skill `cabin-storage-tiers` carries these rules.
+Two disks: the NVMe `/` is hot (Postgres, Docker); the rotational HDD `/storage` is the cold tier (video, telemetry archives, backups) and was 94% full on 2026-10-10 (640 GB of it nightly backups with no pruning, W-48). `cabin-backend` warns at 60% and 75% full (`StorageMonitorService`, W-11, lowered from 80/90 on 2026-10-13 after the disk reached 99%; `GET /api/system/storage`) but never deletes; the host's `cabin-storage-trim-agent` trims old backups on its own at 70% (W-11b) and the disk-alert Act step has a Trim control (W-62). BI telemetry (the `TELEMETRY` rows behind temperature, humidity, presence, CO2 and the rest) is the data to keep: never delete or archive-and-delete it without a warning first (W-49; the monthly archival job has none today). Recorded video and old backups are disposable. Permanent deletions are run by the owner from a dry-run-first script, not by an agent session. The project skill `cabin-storage-tiers` carries these rules.
 
 ---
 
@@ -374,13 +414,14 @@ npm install && npm run dev
 | `GRAFANA_PASSWORD` | grafana | |
 | `HA_TOKEN` | HomeAssistantAdapter | Cabin HA long-lived token |
 | `HA_URL` | HomeAssistantAdapter | Default: `http://localhost:8123` |
-| `HOME_HA_TOKEN` | HomeAssistantAdapter | Home HA long-lived token |
-| `HOME_HA_URL` | HomeAssistantAdapter | Default: `http://home-hub:8123` |
+| `HOME_HA_TOKEN` | HomeAssistantAdapter | Blank on purpose: there is no Home Assistant at Home (D23) |
+| `HOME_HA_URL` | HomeAssistantAdapter | Default: `http://home-hub:8123`, not live (D23); leave unset |
 | `MQTT_URL` | MqttBridgeService | Default: `tcp://localhost:1883` |
 | `KAFKA_BOOTSTRAP` | EventPublisher | Default: `localhost:9092` |
 | `CAMERA_PASSWORD` | Frigate | Reolink admin password |
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
+| `CABIN_PRESENCE_STALE_AFTER_HOURS` | PresenceController | Hours of phone silence after which `/api/presence` reports `stale: true` and the badge reads "Presence unknown". Default `6`. Keep equal to Node-RED's `PRESENCE_STALE_HOURS` (siren gate, W-33) so the badge and the siren agree |
 | `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). **Blank on the M920q as of 2026-10-12, so no backend push reaches a phone (W-51)**. The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
 
 ---
@@ -400,6 +441,14 @@ cabin/kidde/co_alarm                 ← Kidde CO alarm push bridge (HA automati
                                         this topic)
 {location}/presence/#                ← MqttBridgeService subscribes `+/presence/#`
                                         (both `cabin/presence/*` and `home/presence/*`)
+{location}/presence/{person}/last_seen
+                                     ← retained ISO-8601 UTC time of the phone's last
+                                        Companion-app report to HA (W-34, 2026-10-04).
+                                        Not a presence value: it only says how old the
+                                        presence signal's source is. Absent until the
+                                        HA heartbeat automation (W-23) is applied --
+                                        the hub and the siren gate treat "no heartbeat"
+                                        as "age unknown", never as stale
 {location}/security/armed_away       ← MqttBridgeService subscribes `+/security/armed_away`
 zigbee2mqtt/bridge/devices           ← Zigbee2MQTT device list
 zigbee2mqtt/bridge/state             ← bridge health heartbeat
@@ -446,12 +495,13 @@ forward from an earlier session's list)
 | DELETE | `/api/devices/{id}/display-config` | DeviceController |
 | GET | `/api/dashboard/config` | DashboardController |
 | GET | `/api/events` | EventController — real, Postgres-backed (`?camera=&limit=&window=`). No longer a stub as of 2026-08-04; the "(stub)" note in earlier versions of this file was stale |
-| GET | `/api/presence` | PresenceController — auto-derived from real MQTT presence signals when any exist (`autoDerived`/`signals[]`), manual fallback otherwise (added 2026-08-08) |
+| GET | `/api/presence` | PresenceController — auto-derived from real MQTT presence signals when any exist (`autoDerived`/`signals[]`), manual fallback otherwise (added 2026-08-08). W-34 adds `lastSeen`, `signalAgeSeconds`, `stale`, `staleAfterHours` (all null/false until a phone heartbeat has been seen); the UI shows "Presence unknown" when `autoDerived && stale` |
 | PUT | `/api/presence` | PresenceController — manual override |
 | GET | `/api/security` | SecurityController — armed/disarmed per location, keyed by location, from `cabin/security/armed_away` (added 2026-08-08) |
 | GET | `/api/signal-quality` | SignalQualityController — prototype, Zigbee LQI trend/anomaly per device, not wired to any alert path yet (added 2026-08-08) |
 | GET | `/api/system/health` | SystemController |
 | GET | `/api/system/storage` | StorageController — disk usage and level for the HDD cold tier and the NVMe hot tier (W-11); alerts arrive as `STORAGE_THRESHOLD` events |
+| GET/POST | `/api/system/storage/trim` | StorageTrimController — administrator only (W-62). `GET` the backup-folder plan, disk and last result; `POST {keep:{target:N}}` asks the host agent to trim (202). The backend never deletes; see `docs/STORAGE_ARCHITECTURE.md` "Trim control" |
 | GET | `/api/camera/list` | CameraMediaController |
 | GET | `/api/camera/events/{frigateEventId}/snapshot` | CameraMediaController |
 | GET | `/api/camera/events/{frigateEventId}/clip` | CameraMediaController |
@@ -698,7 +748,10 @@ All items below are **complete and pushed to GitHub**:
   `partial` flag (the earliest day in a window almost never starts at
   a day boundary, so it never has a full 24 hours of samples; the
   boundary is asked of the database, since `date_trunc('day', ...)`
-  buckets by the JDBC session's timezone, not UTC) -- the UI
+  buckets by the JDBC session's timezone, i.e. the backend JVM default:
+  UTC in the production container, Central on the CI runner and dev
+  machines -- see DL-2026-10-03-01, ruled a defect, fix tracked as W-30)
+  -- the UI
   labels it "(partial)" rather than silently averaging it in as
   equivalent to a full day. `SensorHistoryPanel`'s Range dropdown drops
   its old 90-day option (nothing ever honored it past the new shared
@@ -731,6 +784,19 @@ All items below are **complete and pushed to GitHub**:
   silently showing nothing. Not done, deliberately: inline Act buttons
   (e.g. close the water valve from the alert) and clear-on-resolve for
   `IGNORED` rows -- see `docs/PRODUCT_NOTES.md`'s 2026-10-12 entry.
+
+- **Arm-while-occupied warning (W-35, 2026-10-04)** — `ArmedWhileOccupiedNotice`
+  (`App.jsx`, under the toolbar) shows a visible, dismissable, non-blocking
+  banner per location that is armed (`/api/security`) while presence shows
+  someone there (live `signals[]`, or the manual profile when no live signal
+  exists). It never blocks or disables arming: the hub has no arm control
+  (arming is `input_boolean.cabin_security_armed_away` in HA or a Node-RED
+  button), so it is derived from state the hub already holds. The wording
+  says what the siren gate does, not more: the sirens sound unless the system
+  recognizes an authorized user as present, anyone else there sets them off,
+  and so does a lost phone signal. A dismissal holds for that arming only
+  (keyed by the armed signal's `lastUpdated`). Pure rule
+  `armedWhileOccupiedNotices`, covered in `App.test.jsx`.
 
 **Pending next:**
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
@@ -854,13 +920,19 @@ themselves, they just never had anything to trip on before:
 
 ## Design constraints
 
-- No Python beyond `watchdog.py` **and** the `docs/ai-assistant/` corpus/
+- No Python beyond `watchdog.py`, the `docs/ai-assistant/` corpus/
   eval tooling (`scripts/build-corpus-inventory.py`,
-  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`) —
-  updated 2026-09-10, this constraint had drifted stale as those shipped.
-  Both are deliberately narrow, tooling-only exceptions; no Python in the
-  actual runtime request path (backend stays Java/Spring Boot, frontend
-  stays JS/React).
+  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`),
+  **and** the Home Assistant side of `infra/cabin-security/homeassistant/`:
+  `cabin_security_mqtt_publish.py` (the publish allow-list HA's
+  `shell_command` runs inside HA's own container, not in the backend) and
+  its unit test, plus `test/ha-sim/run_sim.py`, an offline Home Assistant
+  simulation that runs only on a developer machine. Updated 2026-09-10 for
+  the corpus tooling and 2026-10-12 for the HA side (the allow-list script
+  already existed, so this constraint had drifted again, found by the
+  2026-10-12 session DoD). All are deliberately narrow, tooling-only
+  exceptions; no Python in the actual runtime request path (backend stays
+  Java/Spring Boot, frontend stays JS/React).
 - No ARM/Pi hardware for the two *production* "main brain" hubs — both
   are x86_64 Lenovo ThinkCentre M920q running the full stack (Postgres,
   Kafka, the Spring Boot backend, Grafana, HA, Node-RED, Frigate), and
