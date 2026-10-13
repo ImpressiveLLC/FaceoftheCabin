@@ -121,7 +121,7 @@ cabin-orchestration-platform/
 │   ├── grafana/provisioning/
 │   └── watchdog/watchdog.py
 ├── locations/
-│   └── home/                        Home-location overlays
+│   └── home/                        RETIRED by D23 (never deployed); removal is W-59
 │       ├── docker-compose.yml       Same stack, 16 GB mem limits
 │       ├── frigate.yml              5× Reolink RLC-810A (192.168.1.20–24)
 │       ├── application-home.yml     Spring profile overlay
@@ -215,32 +215,37 @@ tracked-person registry). Setup for a new clone: `docs/REPLICATION.md` §3
 
 ---
 
-## Two locations, two hubs
+## Two locations, one head (D23, ratified 2026-10-13)
 
-| | Cabin | Home |
+The M920q at the cabin is the **head** for both locations: the only Home
+Assistant, Postgres, Kafka, `cabin-backend`, Grafana, Frigate, Node-RED and
+Zigbee2MQTT bridge run there. **Home is a collector**, not a second stack:
+Termux Zigbee2MQTT publishing under `home_z2m/...` and a phone-side
+network-scan agent, both reporting to the M920q over MQTT and Tailscale
+(`docs/MAINTENANCE.md`, "Home Location"; bench confirmation in
+`docs/RUNLOG_2026-09-10_home-collector-mr5u-termux.md`). There is no Home
+Assistant at Home and no `home-hub`.
+
+| | Cabin (the head) | Home (a collector) |
 |---|---|---|
-| Hardware | Lenovo ThinkCentre M920q, Ubuntu 24.04, 32 GB RAM | Lenovo ThinkCentre M920q, Ubuntu 24.04, 16 GB RAM |
-| Tailscale hostname | `cabin-hub` | `home-hub` |
-| HA URL | `http://cabin-hub:8123` | `http://home-hub:8123` |
-| Grafana | `http://cabin-hub:3000` | `http://home-hub:3000` |
-| Frigate | `http://cabin-hub:5000` | `http://home-hub:5000` |
-| Node-RED | `http://cabin-hub:1880` | `http://home-hub:1880` |
-| Zigbee2MQTT UI | `http://cabin-hub:8080` | N/A (cabin only so far) |
-| Spring Boot API | `http://cabin-hub:8080` | `http://home-hub:8080` |
+| Runs | Lenovo ThinkCentre M920q, Ubuntu 24.04, 32 GB RAM: the whole stack | Android phone running Termux, plus a Zigbee coordinator: Zigbee2MQTT and the scan agent only |
+| Tailscale hostname | `cabin-hub` | reaches `cabin-hub`; nothing at Home serves the platform |
+| HA, Grafana, Frigate, Node-RED, Spring Boot API | `http://cabin-hub:8123`, `:3000`, `:5000`, `:1880`, `:8080` | none (the M920q serves Home's data too) |
+| Zigbee2MQTT | `http://cabin-hub:8080`, base topic `zigbee2mqtt` | its own instance, base topic `home_z2m` |
 
-Both hubs are x86_64. No ARM/Pi hardware anywhere. Tailscale is the only VPN.
+The M920q is x86_64; ARM/Android appears only in the collector role (see
+"Design constraints"). Tailscale is the only VPN.
 
-**Current reality, 2026-10-04 (read this before trusting the Home column).**
-The Home column describes the original plan. No Home hub is deployed: Home's
-Zigbee and network-scan data come from an Android/Termux collector that
-publishes to the M920q over MQTT, and the M920q is the head for both
-locations (`docs/MAINTENANCE.md`, "Home Location", decision 2026-10-01;
-D23, drafted in PR #116, is not ratified yet). The code agrees:
-`HOME_HUB_DEPLOYED` defaults to `false` (`HaTokenHomeHealthIndicator`),
-`HOME_HA_URL` defaults to `http://home-hub:8123` but `HOME_HA_TOKEN` is blank
-on purpose, and `application.yml` reports Home's HA as out of service by
-design. Do not treat `home-hub` URLs as live. This table stays until D23 is
-ratified, then it should be rewritten, not patched.
+**Blank is correct for Home's Home Assistant settings.** `HOME_HA_URL`
+defaults to `http://home-hub:8123`, but `HOME_HA_TOKEN` and `vault_home_ha_token`
+are blank on purpose and `HOME_HUB_DEPLOYED` defaults to `false`
+(`HaTokenHomeHealthIndicator`), so `application.yml` reports Home's HA as out
+of service by design. That flag means only "a separate Home Assistant exists at
+Home for `cabin-backend` to call"; it is being renamed `HOME_HA_DEPLOYED`
+(W-60). A Home Assistant at Home would be a new decision (D23, R-HD-4). Do not
+treat `home-hub` URLs as live, and do not read "Home Assistant unreachable at
+Home" as an outage. The old `cabin-orchestration-platform/locations/home/` stack
+overlay was never deployed and is retired (removal tracked in W-59).
 
 ---
 
@@ -402,8 +407,8 @@ npm install && npm run dev
 | `GRAFANA_PASSWORD` | grafana | |
 | `HA_TOKEN` | HomeAssistantAdapter | Cabin HA long-lived token |
 | `HA_URL` | HomeAssistantAdapter | Default: `http://localhost:8123` |
-| `HOME_HA_TOKEN` | HomeAssistantAdapter | Home HA long-lived token |
-| `HOME_HA_URL` | HomeAssistantAdapter | Default: `http://home-hub:8123` |
+| `HOME_HA_TOKEN` | HomeAssistantAdapter | Blank on purpose: there is no Home Assistant at Home (D23) |
+| `HOME_HA_URL` | HomeAssistantAdapter | Default: `http://home-hub:8123`, not live (D23); leave unset |
 | `MQTT_URL` | MqttBridgeService | Default: `tcp://localhost:1883` |
 | `KAFKA_BOOTSTRAP` | EventPublisher | Default: `localhost:9092` |
 | `CAMERA_PASSWORD` | Frigate | Reolink admin password |

@@ -1081,7 +1081,7 @@ collector (a spare Android phone under Termux, plus a Zigbee coordinator)
 that publishes Zigbee telemetry (`home_z2m/...`) and network-scan results
 to the M920q over MQTT; see [Home Location](#home-location--androidtermux-collector-bring-up).
 It carries **no video**, and there is no Home Assistant at Home (D23,
-proposed in #116: the M920q is the head). So a camera on Home's own LAN
+ratified 2026-10-13: the M920q is the head). So a camera on Home's own LAN
 reaches Frigate only if the M920q can route to Home's LAN, and nothing does
 today. The Blink camera at Home works because Blink's cloud, not Home's
 LAN, is the path. If a Reolink-class camera is added at Home, run Step 0
