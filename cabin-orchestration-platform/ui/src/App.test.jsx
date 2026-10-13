@@ -1,9 +1,10 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within, act } from "@testing-library/react";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
+SecurityDrawer, SecurityBadge, armCommandFor, armErrorMessage, DETERRENT_OUTCOMES, ARM_HELPERS, ARM_CONFIRM_TIMEOUT_MS,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
 mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
@@ -6212,5 +6213,159 @@ describe("FamilyConfigPanel — Platform specs", () => {
     expect(await screen.findByText("2026.9.1")).toBeTruthy();
     expect(screen.getByText("Ollama")).toBeTruthy();
     expect(document.querySelector(".spec-summary")).toBeNull();
+  });
+});
+
+
+// W-64 (Nate, 2026-10-13): the badge opens a drawer to arm or disarm and to see the
+// deterrent outcomes. Disarm is one tap; arming warns but never blocks; the control
+// only calls the command done once the hub SEES the new state.
+describe("SecurityDrawer", () => {
+  const armed = { armed: true, lastUpdated: "2026-10-13T10:00:00Z" };
+  const disarmed = { armed: false, lastUpdated: "2026-10-13T10:00:30Z" };
+  const nobody = { detected: false, names: [] };
+  const base = { location: "cabin", apiBase: "http://hub", occupied: nobody, onClose: () => {} };
+  const ok = () => vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("armCommandFor drives the cabin helper through input_boolean; Home has no alarm", () => {
+    expect(armCommandFor("cabin", true)).toEqual({ domain: "input_boolean", service: "turn_on", entity_id: "input_boolean.cabin_security_armed_away", location: "cabin" });
+    expect(armCommandFor("cabin", false).service).toBe("turn_off");
+    expect(armCommandFor("home", true)).toBeNull();
+    expect(ARM_HELPERS.home).toBeUndefined();
+  });
+
+  it("shows the current state and every deterrent outcome, with only the sirens live", () => {
+    render(<SecurityDrawer {...base} state={armed} authedFetch={ok()} />);
+    expect(screen.getByRole("dialog").getAttribute("aria-label")).toMatch(/Security and deterrents for the Cabin/);
+    expect(screen.getByText(/Now: Armed/)).toBeTruthy();
+    expect(DETERRENT_OUTCOMES.map(o => o.label)).toEqual(["Sirens", "Speaker announcement", "Turn on the TV", "Flash the lights", "Deterrent plug"]);
+    const switches = screen.getAllByRole("switch");
+    expect(switches).toHaveLength(5);
+    switches.forEach(s => expect(s.disabled).toBe(true));
+    expect(switches.filter(s => s.checked)).toHaveLength(1);
+    expect(screen.getAllByText("Not connected yet")).toHaveLength(4);
+  });
+
+  it("an unknown state is shown as unknown, not as disarmed, and both buttons still work", () => {
+    render(<SecurityDrawer {...base} state={undefined} authedFetch={ok()} />);
+    expect(screen.getByText(/No armed\/disarmed signal received yet/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Arm away/ }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: /Disarm/ }).disabled).toBe(false);
+  });
+
+  it("disarm is one tap: it posts input_boolean.turn_off with no confirmation dialog", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const authedFetch = ok();
+    render(<SecurityDrawer {...base} state={armed} authedFetch={authedFetch} />);
+    fireEvent.click(screen.getByRole("button", { name: /Disarm/ }));
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledTimes(1));
+    const [url, opts] = authedFetch.mock.calls[0];
+    expect(url).toBe("http://hub/api/ha/services");
+    expect(opts.method).toBe("POST");
+    expect(JSON.parse(opts.body)).toEqual({ domain: "input_boolean", service: "turn_off", entity_id: "input_boolean.cabin_security_armed_away", location: "cabin" });
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("waits for the hub to see the new state, then confirms", async () => {
+    const authedFetch = ok();
+    const { rerender } = render(<SecurityDrawer {...base} state={armed} authedFetch={authedFetch} />);
+    fireEvent.click(screen.getByRole("button", { name: /Disarm/ }));
+    expect(await screen.findByText(/Waiting for the hub to see Disarmed/)).toBeTruthy();
+    rerender(<SecurityDrawer {...base} state={disarmed} authedFetch={authedFetch} />);
+    expect(await screen.findByText(/Confirmed: the hub now sees Disarmed\./)).toBeTruthy();
+  });
+
+  it("says plainly when the hub never sees the change, after the timeout", async () => {
+    vi.useFakeTimers();
+    const refreshSecurity = vi.fn();
+    render(<SecurityDrawer {...base} state={armed} authedFetch={ok()} refreshSecurity={refreshSecurity} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Disarm/ })); });
+    expect(screen.getByText(/Waiting for the hub to see Disarmed/)).toBeTruthy();
+    await act(async () => { vi.advanceTimersByTime(ARM_CONFIRM_TIMEOUT_MS + 2500); });
+    expect(refreshSecurity).toHaveBeenCalled();
+    const msg = screen.getByRole("status").textContent;
+    expect(msg).toMatch(/accepted the command, but the hub has not seen the armed signal change/);
+    expect(msg).toMatch(/The sirens follow that signal, not this button/);
+  });
+
+  it.each([[401, /Sign in to change/], [403, /not allowed to arm or disarm/], [400, /refused the command/], [502, /could not be reached, so nothing changed/]])(
+    "a %s from the hub is reported, not hidden", async (status, pattern) => {
+      const authedFetch = vi.fn().mockResolvedValue({ ok: false, status });
+      render(<SecurityDrawer {...base} state={armed} authedFetch={authedFetch} />);
+      fireEvent.click(screen.getByRole("button", { name: /Disarm/ }));
+      expect((await screen.findByRole("status")).textContent).toMatch(pattern);
+    });
+
+  it("a network failure is reported as the hub being unreachable", async () => {
+    render(<SecurityDrawer {...base} state={armed} authedFetch={vi.fn().mockRejectedValue(new Error("down"))} />);
+    fireEvent.click(screen.getByRole("button", { name: /Disarm/ }));
+    expect((await screen.findByRole("status")).textContent).toBe(armErrorMessage(0));
+  });
+
+  it("arming while someone is detected warns, names them, and does not block", async () => {
+    const authedFetch = ok();
+    render(<SecurityDrawer {...base} state={disarmed} occupied={{ detected: true, names: ["nate"] }} authedFetch={authedFetch} />);
+    const note = screen.getByRole("note");
+    expect(note.textContent).toMatch(/nate is detected at the Cabin/);
+    expect(note.textContent).toMatch(/sirens will sound when a door opens unless the system recognizes an authorized user/);
+    const arm = screen.getByRole("button", { name: /Arm away/ });
+    expect(arm.disabled).toBe(false);
+    fireEvent.click(arm);
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(authedFetch.mock.calls[0][1].body).service).toBe("turn_on");
+  });
+
+  it("no warning when nobody is detected", () => {
+    render(<SecurityDrawer {...base} state={disarmed} authedFetch={ok()} />);
+    expect(screen.queryByRole("note")).toBeNull();
+  });
+
+  it("signed out: both buttons are disabled and it says to sign in", () => {
+    render(<SecurityDrawer {...base} state={armed} signedIn={false} authedFetch={ok()} />);
+    expect(screen.getByRole("button", { name: /Disarm/ }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /Arm away/ }).disabled).toBe(true);
+    expect(screen.getByText("Sign in to change the armed state.")).toBeTruthy();
+  });
+
+  it("Home has no alarm configured, so no arm or disarm buttons", () => {
+    render(<SecurityDrawer {...base} location="home" state={undefined} authedFetch={ok()} />);
+    expect(screen.getByText(/No alarm is configured at the Home/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Arm away/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Disarm/ })).toBeNull();
+  });
+
+  it("closes on the Close button, on Escape and on a backdrop click, but not on a click inside", () => {
+    const onClose = vi.fn();
+    const { container } = render(<SecurityDrawer {...base} state={armed} authedFetch={ok()} onClose={onClose} />);
+    fireEvent.click(screen.getByRole("dialog"));
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(container.querySelector(".security-drawer-backdrop"));
+    expect(onClose).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("SecurityBadge opens the drawer", () => {
+  it("keeps showing the armed state and opens the drawer on click", () => {
+    const value = { securityStates: { cabin: { armed: true, lastUpdated: "2026-10-13T10:00:00Z" } }, activeLocation: "cabin" };
+    render(<AppContext.Provider value={value}><SecurityBadge /></AppContext.Provider>);
+    expect(screen.getByText("Armed")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("with both locations selected it controls the cabin, and shows Unknown with no signal", () => {
+    const value = { securityStates: {}, activeLocation: "both" };
+    render(<AppContext.Provider value={value}><SecurityBadge /></AppContext.Provider>);
+    expect(screen.getByText("Unknown")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByRole("dialog").getAttribute("aria-label")).toMatch(/the Cabin/);
   });
 });

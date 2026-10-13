@@ -8211,7 +8211,7 @@ function useSecurityState(authedFetch = fetch) {
     return () => clearInterval(t);
   }, [refresh]);
 
-  return states;
+  return { states, refresh };
 }
 
 // ─── Display configs (bulk, for active profile) ────────────────────────────
@@ -8385,20 +8385,18 @@ export function formatArmedTitle(state) {
 // with no way to answer "is this actually armed" for a user looking at
 // an ambiguous alert. See useSecurityState's comment for why this is a
 // separate hook/badge from presence rather than folded into it.
-function SecurityBadge() {
+export function SecurityBadge() {
   const { securityStates, activeLocation } = useApp();
+  const [open, setOpen] = useState(false);
   const loc = activeLocation !== "both" ? activeLocation : "cabin";
   const state = securityStates?.[loc];
   const title = formatArmedTitle(state);
 
-  if (!state) {
-    return (
-      <span className="security-badge security-unknown" title={title}>
-        <ShieldAlert size={13} style={{ opacity: 0.5 }}/> Unknown
-      </span>
-    );
-  }
-  return state.armed ? (
+  const badge = !state ? (
+    <span className="security-badge security-unknown" title={title}>
+      <ShieldAlert size={13} style={{ opacity: 0.5 }}/> Unknown
+    </span>
+  ) : state.armed ? (
     <span className="security-badge security-armed" title={title}>
       <Lock size={13}/> Armed
     </span>
@@ -8406,6 +8404,211 @@ function SecurityBadge() {
     <span className="security-badge security-disarmed" title={title}>
       <Unlock size={13}/> Disarmed
     </span>
+  );
+  // The badge is the way into the drawer (W-64): click to arm or disarm.
+  return (
+    <>
+      <button type="button" className="security-badge-btn" aria-haspopup="dialog" aria-expanded={open}
+              onClick={() => setOpen(true)}>
+        {badge}
+      </button>
+      {open && <SecurityControl location={loc} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+// ─── Security drawer: arm / disarm and the deterrent outcomes (W-64) ──────────
+// Nate, 2026-10-13: the sirens are the proof-of-concept deterrent; each further
+// deterrent (a spoken warning, the TV, flashing lights) needs one explicit
+// place to turn the whole thing armed or disarmed, and its own switch. Before
+// this the hub could only SHOW armed (the badge); arming was the Home
+// Assistant helper or a Node-RED button. Disarm is one tap, never a confirm
+// dialog: someone arriving at the door needs it fast. Arming never blocks
+// either; when someone is detected it warns, as the W-35 banner does.
+//
+// It does not write the armed topic itself. It turns the existing Home
+// Assistant helper on or off through the signed-in, allow-listed
+// POST /api/ha/services (input_boolean is allowed), and HA's own automation
+// republishes cabin/security/armed_away, which is the signal the siren gate and
+// the badge both read. So the button is only "done" when the hub SEES the new
+// state; until then it says it is waiting, and after 12 seconds it says plainly
+// that it could not confirm.
+export const ARM_HELPERS = { cabin: "input_boolean.cabin_security_armed_away" };
+export const ARM_POLL_MS = 2000;
+export const ARM_CONFIRM_TIMEOUT_MS = 12000;
+
+// Deterrent outcomes: what an armed intrusion candidate can DO. The ids name the
+// ontology entities (docs/ontology.yaml, deterrent_outcome and its members, D26).
+// Only the sirens are wired; the rest are visible, disabled placeholders so the
+// control exists before each outcome does (W-65 connects them).
+export const DETERRENT_OUTCOMES = [
+  { id: "sirens", ontologyId: "nodered_cabin_security_siren_gate", label: "Sirens", live: true,
+    detail: "The three Zigbee alarms. They sound when a door opens while the system is enabled and armed and no authorized user is present." },
+  { id: "speaker", ontologyId: "deterrent_outcome_speaker_announcement", label: "Speaker announcement", live: false,
+    detail: "A spoken warning on a connected speaker." },
+  { id: "tv", ontologyId: "deterrent_outcome_tv_wake", label: "Turn on the TV", live: false,
+    detail: "Wake the TV so it looks occupied." },
+  { id: "lights", ontologyId: "deterrent_outcome_light_flash", label: "Flash the lights", live: false,
+    detail: "Flash the lights on an intrusion." },
+  { id: "plug", ontologyId: "action_deterrent_plug_on", label: "Deterrent plug", live: false,
+    detail: "A smart plug for a deterrent device. The plug is not installed yet." },
+];
+
+export function armCommandFor(location, wantArmed) {
+  const entity_id = ARM_HELPERS[location];
+  if (!entity_id) return null;
+  return { domain: "input_boolean", service: wantArmed ? "turn_on" : "turn_off", entity_id, location };
+}
+
+export function armErrorMessage(status) {
+  if (status === 401) return "Sign in to change the armed state.";
+  if (status === 403) return "This account is not allowed to arm or disarm.";
+  if (status === 400) return "Home Assistant refused the command.";
+  if (status === 0) return "The hub could not be reached.";
+  return "Home Assistant could not be reached, so nothing changed.";
+}
+
+// Presentational and self-contained apart from the props, so it is tested without
+// the app shell. `state` is { armed, lastUpdated } from /api/security, or undefined
+// when no armed signal has ever arrived (which is NOT the same as disarmed).
+export function SecurityDrawer({ location, state, occupied, authedFetch = fetch, signedIn, apiBase, refreshSecurity, onClose }) {
+  const [phase, setPhase] = useState({ kind: "idle" });
+  const panelRef = useRef(null);
+  const label = LOCATIONS[location]?.label || location;
+  const canArm = !!ARM_HELPERS[location];
+  const blocked = signedIn === false;
+  const busy = phase.kind === "sending" || phase.kind === "confirming";
+
+  useEffect(() => { panelRef.current?.focus(); }, []);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Once the command is accepted, wait for the hub to SEE the new state.
+  useEffect(() => {
+    if (phase.kind !== "confirming") return undefined;
+    if (state && state.armed === phase.wantArmed) {
+      setPhase({ kind: "confirmed", wantArmed: phase.wantArmed });
+      return undefined;
+    }
+    const id = setInterval(() => {
+      refreshSecurity?.();
+      setPhase(p => (p.kind === "confirming" && Date.now() - p.since >= ARM_CONFIRM_TIMEOUT_MS
+        ? { kind: "unconfirmed", wantArmed: p.wantArmed } : p));
+    }, ARM_POLL_MS);
+    return () => clearInterval(id);
+  }, [phase, state, refreshSecurity]);
+
+  const send = async (wantArmed) => {
+    const cmd = armCommandFor(location, wantArmed);
+    if (!cmd || busy) return;
+    setPhase({ kind: "sending", wantArmed });
+    try {
+      const r = await authedFetch(`${apiBase}/api/ha/services`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cmd),
+      });
+      if (!r.ok) { setPhase({ kind: "error", status: r.status }); return; }
+      setPhase({ kind: "confirming", wantArmed, since: Date.now() });
+    } catch {
+      setPhase({ kind: "error", status: 0 });
+    }
+  };
+
+  const word = (a) => (a ? "Armed" : "Disarmed");
+  let message = null;
+  if (phase.kind === "sending") message = "Sending the command…";
+  else if (phase.kind === "confirming") message = `Waiting for the hub to see ${word(phase.wantArmed)}…`;
+  else if (phase.kind === "confirmed") message = `Confirmed: the hub now sees ${word(phase.wantArmed)}.`;
+  else if (phase.kind === "unconfirmed") {
+    message = "Home Assistant accepted the command, but the hub has not seen the armed signal change after "
+      + `${ARM_CONFIRM_TIMEOUT_MS / 1000} seconds. The sirens follow that signal, not this button: check Home Assistant and Node-RED before relying on it.`;
+  } else if (phase.kind === "error") message = armErrorMessage(phase.status);
+
+  return (
+    <div className="security-drawer-backdrop" onClick={onClose}>
+      <aside
+        className="security-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Security and deterrents for the ${label}`}
+        tabIndex={-1}
+        ref={panelRef}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="security-drawer-header">
+          <h3>Security: {label}</h3>
+          <button type="button" className="security-drawer-close" onClick={onClose}>Close</button>
+        </div>
+
+        <p className="security-drawer-state">Now: {formatArmedTitle(state)}</p>
+
+        {!canArm ? (
+          <p className="security-drawer-note">No alarm is configured at the {label}, so there is nothing to arm here.</p>
+        ) : (
+          <>
+            {occupied?.detected && (
+              <p className="security-drawer-warning" role="note">
+                <AlertTriangle size={14} aria-hidden="true" />{" "}
+                {occupied.names?.length > 0 ? occupied.names.join(", ") : "Someone"} {occupied.names?.length > 1 ? "are" : "is"} detected at the {label}.
+                If you arm, the sirens will sound when a door opens unless the system recognizes an authorized user as present.
+                Disarm before staying.
+              </p>
+            )}
+            <div className="security-drawer-actions">
+              <button type="button" className="security-arm-btn" aria-pressed={state?.armed === true}
+                      disabled={busy || blocked} onClick={() => send(true)}>
+                <Lock size={14} aria-hidden="true" /> Arm away
+              </button>
+              <button type="button" className="security-disarm-btn" aria-pressed={state?.armed === false}
+                      disabled={busy || blocked} onClick={() => send(false)}>
+                <Unlock size={14} aria-hidden="true" /> Disarm
+              </button>
+            </div>
+            {blocked && <p className="security-drawer-note">Sign in to change the armed state.</p>}
+            {message && <p className="security-drawer-message" role="status">{message}</p>}
+          </>
+        )}
+
+        <h4>Deterrent outcomes</h4>
+        <ul className="deterrent-list">
+          {DETERRENT_OUTCOMES.map(o => (
+            <li key={o.id} className={`deterrent-row ${o.live ? "deterrent-live" : "deterrent-placeholder"}`}>
+              <label>
+                <input type="checkbox" role="switch" checked={o.live} readOnly disabled aria-label={`${o.label}: ${o.live ? "on, follows Armed" : "not connected yet"}`} />
+                <span className="deterrent-label">{o.label}</span>
+                <span className="deterrent-chip">{o.live ? "Live: follows Armed" : "Not connected yet"}</span>
+              </label>
+              <p className="deterrent-detail">{o.detail}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="security-drawer-note">
+          Each outcome gets its own switch here when it is connected (W-65). To silence sounding sirens now, use the
+          SILENCE ALARMS NOW button in Node-RED until the hub has one.
+        </p>
+      </aside>
+    </div>
+  );
+}
+
+function SecurityControl({ location, onClose }) {
+  const { securityStates, refreshSecurity, authedFetch, signedIn, presenceSignals, presenceAutoDerived, activeProfile } = useApp();
+  const occupied = peopleDetectedAt(location, { signals: presenceSignals, autoDerived: presenceAutoDerived, profile: activeProfile });
+  return (
+    <SecurityDrawer
+      location={location}
+      state={securityStates?.[location]}
+      occupied={occupied}
+      authedFetch={authedFetch || fetch}
+      signedIn={signedIn}
+      apiBase={LOCATIONS.cabin.apiBase}
+      refreshSecurity={refreshSecurity}
+      onClose={onClose}
+    />
   );
 }
 
@@ -8585,7 +8788,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   const alertLevels = navAlertLevelsFor(activeAlerts, activeLocation, automationAlerts, alertAcknowledgments);
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals, freshness: presenceFreshness } = usePresence(cameraAuth.authedFetch);
-  const securityStates = useSecurityState(cameraAuth.authedFetch);
+  const { states: securityStates, refresh: refreshSecurity } = useSecurityState(cameraAuth.authedFetch);
   const { configs: displayConfigs, refetch: refreshDisplayConfigs } = useDisplayConfigs(activeProfile, cameraAuth.authedFetch);
   const lifecycleLabels = useLifecycleStateLabels(LOCATIONS.cabin.apiBase, cameraAuth.authedFetch);
 
@@ -8710,7 +8913,8 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       automationAlerts, automationAlertsLoading,
       alertAcknowledgments, refreshAlertAcknowledgments,
       activeProfile, setProfile, presenceOptions, presenceAutoDerived, presenceSignals, presenceFreshness,
-      securityStates,
+      securityStates, refreshSecurity,
+      authedFetch: cameraAuth.authedFetch, signedIn: cameraAuth.signedIn,
       displayConfigs, refreshDisplayConfigs,
       lifecycleLabels,
       setActivePanel,
