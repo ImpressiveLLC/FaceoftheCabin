@@ -52,7 +52,7 @@ public class JdbcAlertAcknowledgmentStore {
      * the future. An expired SNOOZED row is deleted here, not just
      * filtered out of the result -- the table stays a live "currently
      * suppressed" set. The history of every acknowledgment lives in
-     * alert_history (W-56): each expiry deleted here is logged there as
+     * alert_history (W-64): each expiry deleted here is logged there as
      * SNOOZE_EXPIRED, stamped with the time it actually expired. RETURNING
      * makes the delete and the log atomic per row, so two concurrent
      * readers can't both log the same expiry.

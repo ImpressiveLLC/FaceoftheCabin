@@ -144,7 +144,7 @@ None yet — see Known gaps below.
 
 ---
 
-## Alert History (W-56)
+## Alert History (W-64)
 
 Spec: [`docs/PRODUCT_NOTES.md`](PRODUCT_NOTES.md) § "2026-10-12 — Alert History".
 

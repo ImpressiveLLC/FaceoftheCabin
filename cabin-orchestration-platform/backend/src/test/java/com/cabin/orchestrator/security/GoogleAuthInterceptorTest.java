@@ -929,7 +929,7 @@ class GoogleAuthInterceptorTest {
         assertEquals(403, response.getStatus());
     }
 
-    // W-56: the alert history lists door/motion times and who silenced what,
+    // W-64: the alert history lists door/motion times and who silenced what,
     // so unlike the other GETs under /api/alerts it must not be anonymous
     // or reachable by an alerts_read share link.
     @Test

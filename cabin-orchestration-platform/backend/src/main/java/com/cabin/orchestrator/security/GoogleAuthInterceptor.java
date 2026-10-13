@@ -132,7 +132,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // GETs do. Only POST/DELETE .../acknowledgments require a real
         // identity -- silencing a safety-relevant alert is a genuine
         // action, unlike everything else this controller serves.
-        // Except /api/alerts/history (W-56): that one lists when doors opened
+        // Except /api/alerts/history (W-64): that one lists when doors opened
         // and motion fired and who silenced what -- the occupancy-revealing
         // data the /api/events gate exists for -- so it needs a real session.
         boolean isAlertsRead = path.startsWith(contextPath + "/api/alerts/") && "GET".equalsIgnoreCase(request.getMethod())
@@ -353,7 +353,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
             .map(prefix -> contextPath + prefix)
             .anyMatch(base -> path.equals(base) || path.startsWith(base + "/"));
         // alerts_read maps to the whole /api/alerts prefix, which would reach
-        // the alert history too -- but that is a signed-in-only view (W-56).
+        // the alert history too -- but that is a signed-in-only view (W-64).
         if (!covered || path.equals(contextPath + ALERT_HISTORY_PATH)) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "This access link doesn't cover that page");
             return false;

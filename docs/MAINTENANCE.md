@@ -649,7 +649,7 @@ that it was a static, unclickable summary, which was itself a
 user-reported gap ("the See/Think/Act 'Act' step needs a real path to
 the mitigating screen").
 
-**Where the history lives (W-56, 2026-10-12).** Status Checks is the
+**Where the history lives (W-64, 2026-10-12).** Status Checks is the
 live, last-24-hours view; the reviewable record is Monitoring → Sensor
 History → Alert History (`AlertHistoryLog`, `GET /api/alerts/history`).
 It merges two homes at read time, nothing copied between them:
@@ -679,7 +679,7 @@ right now"; it is not the history. Things worth knowing when debugging:
   to its device only. They hand off through `pendingRulesFocus`, the twin
   of `pendingDeviceFocus`.
 - **IGNORED has no expiry.** Un-ignore now exists in the UI (Alert History →
-  "Silenced right now"); before W-56 the only way back was the DELETE API.
+  "Silenced right now"); before W-64 the only way back was the DELETE API.
 
 **Box layout is a real preference, not a fixed screenshot.** Card order
 in the Rules & Alerts grid is drag-reordered and persisted
@@ -1113,7 +1113,7 @@ collector (a spare Android phone under Termux, plus a Zigbee coordinator)
 that publishes Zigbee telemetry (`home_z2m/...`) and network-scan results
 to the M920q over MQTT; see [Home Location](#home-location--androidtermux-collector-bring-up).
 It carries **no video**, and there is no Home Assistant at Home (D23,
-proposed in #116: the M920q is the head). So a camera on Home's own LAN
+ratified 2026-10-13: the M920q is the head). So a camera on Home's own LAN
 reaches Frigate only if the M920q can route to Home's LAN, and nothing does
 today. The Blink camera at Home works because Blink's cloud, not Home's
 LAN, is the path. If a Reolink-class camera is added at Home, run Step 0
