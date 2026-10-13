@@ -123,6 +123,36 @@ body {
 
 .panel-area { flex: 1; overflow-y: auto; }
 
+/* W-35: armed while someone is detected at the location. Informational, never
+   blocks arming. Uses theme tokens only (ThemeLayers forbids hard-coded colors). */
+.armed-occupied-list { display: flex; flex-direction: column; gap: 6px; padding: 8px 20px 0; }
+.armed-occupied-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--warning);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.armed-occupied-icon { color: var(--warning); flex-shrink: 0; margin-top: 2px; }
+.armed-occupied-text { flex: 1; }
+.armed-occupied-dismiss {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.armed-occupied-dismiss:hover { color: var(--text); border-color: var(--text-muted); }
+
 /* ─── Panel Content ────────────────────────────────────────────────────── */
 .panel-content { padding: 20px 24px; }
 .panel-header-bar {
@@ -536,6 +566,11 @@ body {
 .active-condition-ack-actions { padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 /* 2026-09-19: when the same alert has appeared more than once, the repeats
    live here (under See more) instead of as extra rows in the list. */
+/* 2026-10-12: silenced (ignored/snoozed) checks stay listed + restorable. */
+.active-condition-silenced { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 11px; }
+.active-condition-silenced ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.active-condition-silenced li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.active-condition-silenced-title { min-width: 0; overflow-wrap: anywhere; }
 .active-condition-history { margin-top: 10px; font-size: 11px; }
 .active-condition-history-label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
 .active-condition-history ul { margin: 3px 0 0; padding-left: 16px; color: var(--text-dim); }
@@ -773,7 +808,7 @@ body {
 .sensor-history-alert-title { color: var(--text); }
 .sensor-history-alert-detail { color: var(--text-dim); font-size: 11px; }
 
-/* W-56: reviewable alert history (Monitoring > Alert History) */
+/* W-64: reviewable alert history (Monitoring > Alert History) */
 .alert-history-log { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .alert-history-log h4 { margin: 0; font-size: 12px; color: var(--text); }
 .alert-history-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -1107,6 +1142,21 @@ body {
   border-radius: 50%;
   background: var(--success);
   flex-shrink: 0;
+}
+/* W-34: replaces the live dot once the phone's last report is older than the
+   backend's stale limit, and the badge reads "Presence unknown". */
+.presence-stale-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+}
+.presence-toggle-unknown { border-color: var(--warning); }
+.presence-age {
+  font-size: 11px;
+  color: var(--text-dim, var(--text-muted));
+  white-space: nowrap;
 }
 
 /* ─── Monitoring panel profile hint ─────────────────────────────────────── */
@@ -2477,6 +2527,46 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .demo-link-steps li { margin-bottom: 3px; }
 .demo-link-stop { margin: 2px 0; }
 
-/* W-57: noisy-alert opportunity detail */
+/* ─── Trim old backups (W-62), inside a disk alert's Act step ───────────── */
+.trim-widget {
+  margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.trim-note { margin: 0; font-size: 12px; color: var(--text-muted); }
+.trim-error { margin: 0; font-size: 12px; color: var(--danger); }
+.trim-slider { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.trim-slider input[type="range"] { width: 100%; }
+.trim-slider-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
+.trim-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.trim-rows li { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; }
+.trim-row-name { color: var(--text); }
+.trim-row-size { text-align: right; color: var(--text); }
+.trim-summary { margin: 0; font-size: 13px; color: var(--text); font-weight: 600; }
+.trim-go {
+  align-self: flex-start; padding: 8px 22px; border-radius: 8px; border: 1px solid var(--danger);
+  background: var(--bg); color: var(--danger); font-size: 14px; cursor: pointer;
+}
+.trim-go:disabled { opacity: 0.55; cursor: not-allowed; }
+.trim-want { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.trim-want input[type="number"] { width: 80px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 6px; }
+.trim-want button { align-self: flex-start; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 10px; cursor: pointer; }
+.trim-want button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ─── On the Way, prominent on My Places (2026-10-13) ───────────────────── */
+.on-the-way-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  margin: 0 0 14px 0; padding: 14px 16px; border-radius: 12px;
+  background: var(--layer-1-fill); border: 1px solid var(--layer-1-edge);
+}
+.on-the-way-card-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text-muted); min-width: 220px; flex: 1; }
+.on-the-way-card-text strong { font-size: 16px; color: var(--text); }
+.on-the-way-btn-prominent {
+  display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 10px;
+  border: 1px solid var(--layer-1-edge); background: var(--bg); color: var(--text);
+  font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.on-the-way-btn-prominent:hover:not(:disabled), .on-the-way-btn-prominent:focus-visible { outline: 2px solid var(--text-muted); }
+.on-the-way-btn-prominent:disabled { opacity: 0.6; cursor: wait; }
+/* W-65: noisy-alert opportunity detail */
 .noisy-alert-item { margin-top: 6px; font-size: 12px; }
 .noisy-alert-item ul { margin: 4px 0; padding-left: 18px; color: var(--text-muted); }

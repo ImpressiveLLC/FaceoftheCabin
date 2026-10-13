@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Append-only alert history (W-56). Holds only what no other table does:
+ * Append-only alert history (W-64). Holds only what no other table does:
  * device-condition RAISED/RESOLVED transitions (ActiveAlertService is
  * stateless by design) and every acknowledgment action. Automation alerts
  * are NOT copied here -- they already live in cabin_event.
@@ -76,7 +76,7 @@ public class JdbcAlertHistoryStore {
             rs.getString("title")), args.toArray());
     }
 
-    /** W-57: rows grouped by (alert_key, action) since a time; deviceId is nullable (null = every device). */
+    /** W-65: rows grouped by (alert_key, action) since a time; deviceId is nullable (null = every device). */
     public List<AlertHistoryCount> countsSince(Instant since, String deviceId) {
         StringBuilder sql = new StringBuilder("""
             SELECT alert_key, kind, device_id, condition, action, COUNT(*) AS n,

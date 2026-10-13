@@ -102,8 +102,8 @@ public class StorageMonitorService {
             CabinEventService eventService,
             @Value("${cabin.storage.monitor.enabled:true}") boolean enabled,
             @Value("${cabin.storage.monitor.mounts:storage-hdd=/app/archives/cabin_event,root-nvme=/}") String mountsSpec,
-            @Value("${cabin.storage.monitor.warnPercent:80}") int warnPercent,
-            @Value("${cabin.storage.monitor.criticalPercent:90}") int criticalPercent,
+            @Value("${cabin.storage.monitor.warnPercent:60}") int warnPercent,
+            @Value("${cabin.storage.monitor.criticalPercent:75}") int criticalPercent,
             @Value("${cabin.storage.monitor.clearMarginPercent:3}") int clearMarginPercent,
             @Value("${cabin.storage.monitor.renotifyHours:24}") int renotifyHours) {
         this(eventPublisher, eventService, FILE_PROBE, enabled, parseMounts(mountsSpec),
@@ -247,8 +247,8 @@ public class StorageMonitorService {
     /** Plain-language next step; never "delete X" automatically, see class doc. */
     private static String actionFor(String label) {
         if (label.startsWith("storage") || label.contains("hdd")) {
-            return "Prune old nightly backups first (scripts/prune-storage-backups.sh, dry run first), then review "
-                + "recording retention. BI telemetry is never removed without a warning (docs/STORAGE_ARCHITECTURE.md).";
+            return "Trim old nightly backups first: choose how many to keep, see how much it frees, then press Go (below). "
+                + "Then review recording retention. BI telemetry is never removed without a warning (docs/STORAGE_ARCHITECTURE.md).";
         }
         return "Check Docker usage (docker system df) and old images or build cache; Postgres lives here, so do not delete volumes.";
     }

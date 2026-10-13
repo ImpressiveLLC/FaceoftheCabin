@@ -1,0 +1,353 @@
+#!/usr/bin/env bash
+# cabin-storage-prune -- look at, plan and (owner-run) remove DISPOSABLE storage.
+#
+#   cabin-storage-prune report [--json] [--exact | --no-sizes]     read-only (default command); measures sizes
+#   cabin-storage-prune plan   [--json] [--only ID,ID] [--sizes]   read-only: exactly what apply would remove
+#   sudo cabin-storage-prune apply --only ID,ID|all-safe [--yes] [--yes-delete ID]
+#   sudo cabin-storage-prune apply --auto-below PERCENT [--floor N] [--only ID,ID] --yes
+#       removes the OLDEST dated folder across the dated-dirs targets, one at a time, until the disk
+#       is at or below PERCENT used, never leaving fewer than N (default 3) per target
+#   any command: --keep ID=N (repeatable) keeps the newest N dated folders of that target this run
+#   report --json --snapshots lists every dated folder with its size (what the in-app Trim control reads)
+#
+# Why it exists (W-61): /storage reached 94% full from nightly backups that were never
+# pruned. This is the one reviewed, tested place that decides what may be removed, so the
+# decision is not re-improvised with rm each time. It is deliberately discrete: nothing
+# is removed unless you name it, and nothing is removed without apply.
+#
+# Safety rules built in (docs/STORAGE_ARCHITECTURE.md, skill cabin-storage-tiers):
+#   * BI telemetry and databases are never touched. Any path containing "archives",
+#     "cabin_event", "telemetry", "postgres" or docker volumes is refused, as is any path
+#     that resolves into one (symlinks included).
+#   * A target must be strictly inside an allowed_root (default /storage/backups). To manage
+#     an SD card, an extra disk or a NAS / network share, mount it and add its mount
+#     directory with `allowed_root` in the config; a LAN or WAN device is managed through
+#     the path it is mounted at.
+#   * apply needs root, an explicit --only list ("all-safe" = every target except whole-dir),
+#     and a typed confirmation (or --yes). A whole-dir target also needs --yes-delete ID.
+#   * Deletions never cross filesystems (rm --one-file-system / find -xdev).
+#   * Every apply is appended to the log (/var/log/cabin-storage-prune.log).
+#
+# Settings are the config file (/etc/cabin-storage-prune.conf, see
+# cabin-storage-prune.conf.example): the authorized user edits it; the in-app control
+# that writes it is W-62. Built-in defaults match the cabin M920q.
+set -euo pipefail
+
+CONF=${CABIN_STORAGE_CONF:-/etc/cabin-storage-prune.conf}
+LOG=${CABIN_STORAGE_LOG:-/var/log/cabin-storage-prune.log}
+
+die() { echo "ERROR: $*" >&2; exit 2; }
+
+declare -a T_ID=() T_KIND=() T_PATH=() T_OPTS=() ALLOWED_ROOTS=()
+declare -A OFF=()
+declare -A KEEP_OVERRIDE=()
+AUTO_BELOW=""
+FLOOR=3
+SNAPSHOTS=0
+
+KINDS=" dated-dirs old-files whole-dir docker-cache journal "
+
+add_target() {
+  local id=$1 kind=$2 path=$3; shift 3
+  [[ "$id" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "bad target id '$id' (lowercase letters, digits, dashes)"
+  [[ "$KINDS" == *" $kind "* ]] || die "target $id: unknown kind '$kind' (one of:${KINDS})"
+  local i
+  for i in "${!T_ID[@]}"; do
+    if [ "${T_ID[$i]}" = "$id" ]; then T_KIND[$i]=$kind; T_PATH[$i]=$path; T_OPTS[$i]="$*"; return 0; fi
+  done
+  T_ID+=("$id"); T_KIND+=("$kind"); T_PATH+=("$path"); T_OPTS+=("$*")
+}
+
+parse_conf() {
+  local line directive a b c
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%%#*}; line=${line//$'\r'/}
+    [ -z "${line//[[:space:]]/}" ] && continue
+    directive=${line%%[[:space:]]*}
+    local rest=${line#"$directive"}
+    case "$directive" in
+      allowed_root) read -r a _ <<<"$rest"; [ -n "$a" ] || die "allowed_root needs a directory"; ALLOWED_ROOTS+=("$a") ;;
+      off)          read -r a _ <<<"$rest"; [ -n "$a" ] || die "off needs a target id"; OFF[$a]=1 ;;
+      on)           read -r a _ <<<"$rest"; [ -n "$a" ] || die "on needs a target id"; unset 'OFF[$a]' ;;
+      target)       read -r a b c rest <<<"$rest"
+                    [ -n "$a" ] && [ -n "$b" ] && [ -n "$c" ] || die "target needs: ID KIND PATH [key=value ...] (use - as PATH for docker-cache and journal)"
+                    # shellcheck disable=SC2086
+                    add_target "$a" "$b" "$c" $rest ;;
+      *) die "unknown config directive '$directive'" ;;
+    esac
+  done
+}
+
+DEFAULTS='
+allowed_root /storage/backups
+target backups-home     dated-dirs   /storage/backups/home      keep=3
+target backups-services dated-dirs   /storage/backups/services  keep=3
+target backups-configs  dated-dirs   /storage/backups/configs   keep=3
+target backups-data     dated-dirs   /storage/backups/data      keep=3
+target system-copy      whole-dir    /storage/backups/system
+target docker-cache     docker-cache -                          max_age_hours=168
+target journal          journal      -                          max_size=500M
+'
+parse_conf <<<"$DEFAULTS"
+if [ -f "$CONF" ]; then parse_conf <"$CONF"; fi
+
+opt() { # opt TARGET_INDEX NAME DEFAULT
+  local o
+  for o in ${T_OPTS[$1]}; do [ "${o%%=*}" = "$2" ] && { echo "${o#*=}"; return 0; }; done
+  echo "$3"
+}
+
+protected_pattern() { case "${1,,}" in *archives*|*cabin_event*|*telemetry*|*postgres*|*/docker/volumes*) return 0 ;; esac; return 1; }
+
+# prints a reason when the path may not be pruned, nothing when it may
+refuse_reason() {
+  local p=$1 real r rr
+  [[ "$p" =~ ^/[A-Za-z0-9._/@:+=-]+$ ]] || { echo "path is not absolute or has unsupported characters"; return 0; }
+  case "$p" in */../*|*/..|*/./*|*/.) echo "path has . or .. segments"; return 0 ;; esac
+  protected_pattern "$p" && { echo "protected: BI telemetry and databases are never pruned"; return 0; }
+  real=$(realpath -m -- "$p" 2>/dev/null) || { echo "cannot resolve the path"; return 0; }
+  protected_pattern "$real" && { echo "resolves into a protected path"; return 0; }
+  for r in "${ALLOWED_ROOTS[@]}"; do
+    rr=$(realpath -m -- "$r" 2>/dev/null) || continue
+    case "$real" in "$rr"/*) return 0 ;; esac
+  done
+  echo "outside every allowed_root (to manage an external or network mount, add 'allowed_root <its mount directory>')"
+}
+
+human() { awk -v b="$1" 'BEGIN{ if (b<0) {print "n/a"; exit} split("B KB MB GB TB",u," "); i=1; while (b>=1024 && i<5) {b/=1024; i++} printf (i==1?"%d %s":"%.1f %s"), b, u[i] }'; }
+
+SIZES=                # estimate | exact | none; default: report measures, plan and apply do not
+JSON=0
+ONLY=""
+YES=0
+YES_DELETE=""
+CMD=report
+[ $# -gt 0 ] && case "$1" in report|plan|apply) CMD=$1; shift ;; esac
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) JSON=1 ;;
+    --exact) SIZES=exact ;;
+    --sizes) SIZES=estimate ;;
+    --no-sizes) SIZES=none ;;
+    --only) shift; [ $# -gt 0 ] || die "--only needs a list"; ONLY=$1 ;;
+    --yes) YES=1 ;;
+    --snapshots) SNAPSHOTS=1 ;;
+    --auto-below) shift; [ $# -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 99 ] || die "--auto-below needs a whole percent from 1 to 99"
+                  AUTO_BELOW=$1 ;;
+    --floor) shift; [ $# -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] || die "--floor needs a whole number, 1 or more (the newest folder is never removed)"
+             FLOOR=$1 ;;
+    --keep) shift; [ $# -gt 0 ] || die "--keep needs ID=N"
+            [[ "$1" =~ ^([a-z0-9][a-z0-9-]*)=([0-9]+)$ ]] || die "--keep needs ID=N with N a whole number, got '$1'"
+            [ "${BASH_REMATCH[2]}" -ge 1 ] || die "--keep N must be 1 or more (the newest snapshot is never removed)"
+            KEEP_OVERRIDE[${BASH_REMATCH[1]}]=${BASH_REMATCH[2]} ;;
+    --yes-delete) shift; [ $# -gt 0 ] || die "--yes-delete needs a target id"; YES_DELETE=$1 ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    *) die "unknown argument '$1'" ;;
+  esac
+  shift
+done
+for kid in "${!KEEP_OVERRIDE[@]}"; do
+  kfound=0; for j in "${!T_ID[@]}"; do [ "${T_ID[$j]}" = "$kid" ] && [ "${T_KIND[$j]}" = dated-dirs ] && kfound=1; done
+  [ $kfound = 1 ] || die "--keep names '$kid', which is not a configured dated-dirs target"
+done
+if [ -z "$SIZES" ]; then if [ "$CMD" = report ]; then SIZES=estimate; else SIZES=none; fi; fi
+if [ "$SIZES" != none ] && [ "$JSON" != 1 ]; then echo "measuring sizes: this takes several minutes on the HDD (--no-sizes lists instantly)" >&2; fi
+
+# ---- per-target evaluation: sets STATUS ITEMS SIZE RECLAIM DETAIL and DROP (list of items)
+evaluate() {
+  local i=$1 kind path why n keep drop size all name
+  kind=${T_KIND[$i]}; path=${T_PATH[$i]}
+  STATUS=ok; ITEMS=0; SIZE=-1; RECLAIM=0; DETAIL=""; DROP=(); KEEP_NOW=-1; SNAP_JSON=""; ALL_NAMES=""
+  if [ -n "${OFF[${T_ID[$i]}]:-}" ]; then STATUS=off; DETAIL="turned off in the config"; return 0; fi
+  case "$kind" in
+    docker-cache|journal) ;;
+    *)
+      why=$(refuse_reason "$path")
+      if [ -n "$why" ]; then STATUS=refused; DETAIL=$why; return 0; fi
+      [ -e "$path" ] || { STATUS=missing; DETAIL="not present on this host"; return 0; }
+      ;;
+  esac
+  case "$kind" in
+    dated-dirs)
+      keep=${KEEP_OVERRIDE[${T_ID[$i]}]:-$(opt "$i" keep 3)}
+      [[ "$keep" =~ ^[0-9]+$ ]] && [ "$keep" -ge 1 ] || { STATUS=refused; DETAIL="keep must be a whole number, 1 or more"; return 0; }
+      mapfile -t all < <(find "$path" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]{4}-[0-9]{2}-[0-9]{2}' -printf '%f\n' | sort)
+      n=${#all[@]}; drop=$(( n > keep ? n - keep : 0 )); KEEP_NOW=$keep; ALL_NAMES="${all[*]:-}"
+      if [ "$SNAPSHOTS" = 1 ]; then
+        local sj="" sb
+        for name in "${all[@]}"; do
+          if [ "$SIZES" = none ]; then sb=-1; else sb=$(du -sb -- "$path/$name" 2>/dev/null | cut -f1 || true); sb=${sb:--1}; fi
+          sj+="${sj:+,}{\"name\":\"$name\",\"bytes\":$sb}"
+        done
+        SNAP_JSON=$sj
+      fi
+      ITEMS=$drop
+      if [ "$drop" -gt 0 ]; then DROP=("${all[@]:0:$drop}"); fi
+      DETAIL="$n dated snapshots, keep the newest $keep"
+      [ "$drop" -gt 0 ] && DETAIL+=", remove ${all[0]} to ${all[$((drop-1))]}"
+      if [ "$SIZES" != none ]; then
+        SIZE=$(du -sb -- "$path" 2>/dev/null | cut -f1 || echo -1)
+        if [ "$SIZES" = exact ] && [ "$drop" -gt 0 ]; then
+          RECLAIM=0; for name in "${DROP[@]}"; do RECLAIM=$(( RECLAIM + $(du -sb -- "$path/$name" 2>/dev/null | cut -f1 || echo 0) )); done
+        elif [ "$n" -gt 0 ]; then RECLAIM=$(( SIZE * drop / n )); DETAIL+=" (reclaim is an estimate; --exact measures)"; fi
+      else RECLAIM=-1; fi ;;
+    old-files)
+      local days glob
+      days=$(opt "$i" days ""); glob=$(opt "$i" glob '*')
+      [[ "$days" =~ ^[0-9]+$ ]] && [ "$days" -ge 1 ] || { STATUS=refused; DETAIL="old-files needs days=N (N of 1 or more)"; return 0; }
+      [[ "$glob" =~ ^[A-Za-z0-9._*?-]+$ ]] || { STATUS=refused; DETAIL="glob has unsupported characters"; return 0; }
+      ITEMS=0; RECLAIM=0
+      while IFS=$'\t' read -r sz _; do ITEMS=$((ITEMS+1)); RECLAIM=$((RECLAIM+sz)); done < <(find "$path" -xdev -type f -name "$glob" -mtime +"$days" -printf '%s\t%p\n')
+      DETAIL="regular files matching $glob older than $days days"
+      if [ "$SIZES" = none ]; then RECLAIM=-1; else SIZE=$(du -sb -- "$path" 2>/dev/null | cut -f1 || echo -1); fi ;;
+    whole-dir)
+      ITEMS=1; DROP=("$path"); DETAIL="the whole directory (never part of all-safe; needs --yes-delete ID)"
+      if [ "$SIZES" != none ]; then SIZE=$(du -sb -- "$path" 2>/dev/null | cut -f1 || echo -1); RECLAIM=$SIZE; else RECLAIM=-1; fi ;;
+    docker-cache)
+      if command -v docker >/dev/null 2>&1; then
+        DETAIL="build cache older than $(opt "$i" max_age_hours 168) h and dangling (untagged) images; tagged images are kept"
+        local rec; rec=$(docker system df --format '{{.Type}}={{.Reclaimable}}' 2>/dev/null | tr '\n' ' ' || true)
+        [ -n "$rec" ] && DETAIL+="; docker reports reclaimable: $rec"
+        RECLAIM=-1
+      else STATUS=missing; DETAIL="docker is not available to this user"; fi ;;
+    journal)
+      if command -v journalctl >/dev/null 2>&1; then
+        DETAIL="vacuum the systemd journal to $(opt "$i" max_size 500M); $(journalctl --disk-usage 2>/dev/null | sed 's/^Archived and active journals take up //; s/ in the file system.*//')"
+        RECLAIM=-1
+      else STATUS=missing; DETAIL="journalctl is not available"; fi ;;
+  esac
+  return 0
+}
+
+jesc() { local s=$1; s=${s//\\/\\\\}; s=${s//\"/\\\"}; printf '%s' "$s"; }
+
+selected() { # is target id $1 selected by --only (or everything, for report/plan with no --only)
+  local id=$1 kind=$2 want
+  [ -z "$ONLY" ] && return 0
+  for want in ${ONLY//,/ }; do
+    [ "$want" = "$id" ] && return 0
+    [ "$want" = all-safe ] && [ "$kind" != whole-dir ] && return 0
+  done
+  return 1
+}
+
+show() { # report / plan output
+  local i first=1 sep=""
+  if [ "$JSON" = 1 ]; then printf '['; fi
+  for i in "${!T_ID[@]}"; do
+    selected "${T_ID[$i]}" "${T_KIND[$i]}" || continue
+    evaluate "$i"
+    if [ "$JSON" = 1 ]; then
+      local extra=""
+      [ "$KEEP_NOW" -ge 0 ] && extra=",\"keep\":$KEEP_NOW"
+      [ "$SNAPSHOTS" = 1 ] && [ "${T_KIND[$i]}" = dated-dirs ] && [ "$STATUS" = ok ] && extra+=",\"snapshots\":[$SNAP_JSON]"
+      printf '%s{"id":"%s","kind":"%s","path":"%s","status":"%s","items":%s,"sizeBytes":%s,"reclaimBytes":%s,"detail":"%s"%s}' \
+        "$sep" "${T_ID[$i]}" "${T_KIND[$i]}" "$(jesc "${T_PATH[$i]}")" "$STATUS" "$ITEMS" "$SIZE" "$RECLAIM" "$(jesc "$DETAIL")" "$extra"
+      sep=","
+    else
+      if [ $first = 1 ]; then printf '%-18s %-13s %-8s %10s %12s  %s\n' ID KIND STATUS ITEMS RECLAIM DETAIL; first=0; fi
+      printf '%-18s %-13s %-8s %10s %12s  %s\n' "${T_ID[$i]}" "${T_KIND[$i]}" "$STATUS" "$ITEMS" "$(human "$RECLAIM")" "$DETAIL"
+      if [ "$CMD" = plan ] && [ ${#DROP[@]} -gt 0 ]; then
+        local d; for d in "${DROP[@]}"; do [ "${T_KIND[$i]}" = dated-dirs ] && echo "      would remove ${T_PATH[$i]}/$d" || echo "      would remove $d"; done
+      fi
+    fi
+  done
+  if [ "$JSON" = 1 ]; then printf ']\n'; fi
+}
+
+logline() { local m; m="$(date -Is) ${SUDO_USER:-$(id -un)} $*"; { echo "$m" >>"$LOG"; } 2>/dev/null || echo "$m" >&2; }
+
+apply() {
+  local i did=0 d name ans
+  [ -n "$ONLY" ] || die "apply needs --only ID,ID (or all-safe); nothing is removed by default"
+  local want known j
+  for want in ${ONLY//,/ }; do
+    [ "$want" = all-safe ] && continue
+    known=0; for j in "${!T_ID[@]}"; do [ "${T_ID[$j]}" = "$want" ] && known=1; done
+    [ $known = 1 ] || die "--only names '$want', which is not a configured target (run report to list them)"
+  done
+  [ "$(id -u)" -eq 0 ] || [ "${CABIN_STORAGE_TEST:-}" = 1 ] || die "run apply with sudo (the snapshot folders are owned by root)"
+  echo "before:"; df -h "${ALLOWED_ROOTS[0]}" 2>/dev/null | tail -1 || true
+  CMD=plan; JSON=0; show
+  if [ "$YES" != 1 ]; then
+    [ -t 0 ] || die "not a terminal: add --yes after reading the plan above"
+    read -r -p "Type APPLY to remove exactly the items listed above: " ans
+    [ "$ans" = APPLY ] || die "cancelled, nothing removed"
+  fi
+  for i in "${!T_ID[@]}"; do
+    selected "${T_ID[$i]}" "${T_KIND[$i]}" || continue
+    evaluate "$i"
+    if [ "$STATUS" != ok ]; then echo "skip ${T_ID[$i]}: $STATUS ($DETAIL)"; continue; fi
+    case "${T_KIND[$i]}" in
+      dated-dirs)
+        for name in "${DROP[@]}"; do
+          [[ "$name" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "refusing odd snapshot name '$name'"
+          rm -rf --one-file-system -- "${T_PATH[$i]:?}/${name:?}"; echo "  removed ${T_PATH[$i]}/$name"; logline "removed ${T_PATH[$i]}/$name (${T_ID[$i]})"; did=$((did+1))
+        done ;;
+      old-files)
+        find "${T_PATH[$i]}" -xdev -type f -name "$(opt "$i" glob '*')" -mtime +"$(opt "$i" days 1)" -delete
+        echo "  removed $ITEMS old files under ${T_PATH[$i]}"; logline "removed $ITEMS old files under ${T_PATH[$i]} (${T_ID[$i]})"; did=$((did+1)) ;;
+      whole-dir)
+        [ "$YES_DELETE" = "${T_ID[$i]}" ] || { echo "skip ${T_ID[$i]}: add --yes-delete ${T_ID[$i]} to remove the whole directory"; continue; }
+        rm -rf --one-file-system -- "${T_PATH[$i]:?}"; echo "  removed ${T_PATH[$i]}"; logline "removed whole directory ${T_PATH[$i]} (${T_ID[$i]})"; did=$((did+1)) ;;
+      docker-cache)
+        docker builder prune -f --filter "until=$(opt "$i" max_age_hours 168)h" >/dev/null
+        docker image prune -f >/dev/null
+        echo "  docker build cache and dangling images pruned"; logline "docker cache pruned (${T_ID[$i]})"; did=$((did+1)) ;;
+      journal)
+        journalctl --vacuum-size="$(opt "$i" max_size 500M)" >/dev/null 2>&1
+        echo "  journal vacuumed to $(opt "$i" max_size 500M)"; logline "journal vacuumed (${T_ID[$i]})"; did=$((did+1)) ;;
+    esac
+  done
+  echo "after:"; df -h "${ALLOWED_ROOTS[0]}" 2>/dev/null | tail -1 || true
+  echo "done: $did removal step(s)."
+}
+
+used_percent() { # percent of the filesystem holding $1 that is used (df's own figure)
+  df --output=pcent "$1" 2>/dev/null | tail -1 | tr -dc '0-9'
+}
+
+# Oldest-first trim down to a target fill level. Used by the host agent when the disk gets too full;
+# also runnable by hand. Only dated-dirs targets, never below FLOOR copies in any target.
+auto_trim() {
+  local i name best_name best_i pct removed=0 first_path="" j
+  [ "$(id -u)" -eq 0 ] || [ "${CABIN_STORAGE_TEST:-}" = 1 ] || die "run apply with sudo"
+  local -A names=() paths=() pos=()
+  local -a ids=()
+  for i in "${!T_ID[@]}"; do
+    [ "${T_KIND[$i]}" = dated-dirs ] || continue
+    selected "${T_ID[$i]}" "${T_KIND[$i]}" || continue
+    evaluate "$i"
+    [ "$STATUS" = ok ] || continue
+    ids+=("${T_ID[$i]}"); paths[${T_ID[$i]}]=${T_PATH[$i]}; names[${T_ID[$i]}]="$ALL_NAMES"; pos[${T_ID[$i]}]=0
+    [ -n "$first_path" ] || first_path=${T_PATH[$i]}
+  done
+  [ -n "$first_path" ] || { echo "auto-result: nothing used=none removed=0"; return 0; }
+  if [ "$YES" != 1 ]; then
+    [ -t 0 ] || die "not a terminal: add --yes"
+    read -r -p "Remove the oldest backup folders until the disk is at or below ${AUTO_BELOW}% used (keeping at least $FLOOR per folder)? Type APPLY: " ans
+    [ "$ans" = APPLY ] || die "cancelled, nothing removed"
+  fi
+  while :; do
+    pct=$(used_percent "$first_path"); pct=${pct:-100}
+    if [ "$pct" -le "$AUTO_BELOW" ]; then echo "auto-result: reached used=$pct removed=$removed"; return 0; fi
+    best_name=""; best_i=""
+    for j in "${ids[@]}"; do
+      read -r -a arr <<<"${names[$j]}"
+      local n=${#arr[@]} p=${pos[$j]}
+      [ $(( n - p )) -gt "$FLOOR" ] || continue
+      name=${arr[$p]}
+      if [ -z "$best_name" ] || [[ "$name" < "$best_name" ]]; then best_name=$name; best_i=$j; fi
+    done
+    if [ -z "$best_name" ]; then echo "auto-result: floor used=$pct removed=$removed"; return 0; fi
+    [[ "$best_name" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "refusing odd snapshot name '$best_name'"
+    rm -rf --one-file-system -- "${paths[$best_i]:?}/${best_name:?}"
+    echo "  removed ${paths[$best_i]}/$best_name"; logline "auto-trim removed ${paths[$best_i]}/$best_name ($best_i), disk was ${pct}%"
+    pos[$best_i]=$(( ${pos[$best_i]} + 1 )); removed=$((removed+1))
+  done
+}
+
+case "$CMD" in
+  report|plan) show ;;
+  apply) if [ -n "$AUTO_BELOW" ]; then auto_trim; else apply; fi ;;
+esac

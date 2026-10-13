@@ -22,7 +22,7 @@ package com.cabin.orchestrator.opportunities;
 public enum OpportunityType {
     POWER_DRAW_ANOMALY,
     /**
-     * W-57. An alert that keeps firing, or that a person keeps silencing,
+     * W-65. An alert that keeps firing, or that a person keeps silencing,
      * for the same device. Same "worth a look, never asserts" framing as
      * POWER_DRAW_ANOMALY: it says the pattern exists and offers the likely
      * places to look, never that the alert is wrong. See

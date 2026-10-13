@@ -58,7 +58,7 @@ public final class DemoAccessPolicy {
             "/api/managed-users/**", "/api/access-tokens/**", "/api/access-tokens",
             "/api/auth/**", "/api/webhooks/**",
             // W-11: disk capacity is operator detail, not part of the demo. The alerts it raises are events.
-            "/api/system/storage",
+            "/api/system/storage", "/api/system/storage/trim",
             "/api/profiles/**", "/api/profiles", "/api/chores/**", "/api/chores",
             "/api/notes/**", "/api/notes", "/api/schedule/**", "/api/schedule");
     }

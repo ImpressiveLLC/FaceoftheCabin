@@ -90,7 +90,7 @@ class StorageMonitorServiceTest {
         assertThat(e.payload()).containsEntry("level", "WARN").containsEntry("usedPercent", 81)
             .containsEntry("notify", true).containsEntry("reminder", false);
         assertThat((String) e.payload().get("see")).contains("81% full");
-        assertThat((String) e.payload().get("act")).contains("prune-storage-backups");
+        assertThat((String) e.payload().get("act")).contains("Trim old nightly backups");
     }
 
     @Test

@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * W-56. ActiveAlertService is stateless on purpose (an active alert must
+ * W-64. ActiveAlertService is stateless on purpose (an active alert must
  * vanish the moment its evidence does), so nothing remembers that a
  * device missed its check-in nine times this week. This job gives that
  * memory a home without changing the service: each cycle it diffs the

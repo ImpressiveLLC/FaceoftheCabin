@@ -144,7 +144,7 @@ None yet — see Known gaps below.
 
 ---
 
-## Alert History (W-56)
+## Alert History (W-64)
 
 Spec: [`docs/PRODUCT_NOTES.md`](PRODUCT_NOTES.md) § "2026-10-12 — Alert History".
 
@@ -186,7 +186,7 @@ log has no horizontal overflow at 375 px.
 
 ---
 
-## Noisy alert opportunities (W-57)
+## Noisy alert opportunities (W-65)
 
 Automated: `AlertRecommendationsTest` (advice per alert kind; safety-class never told to tune, including a safety-category device; retire note only at the silence threshold), `AlertFrequencyAnalyticsServiceTest` (Testcontainers: device conditions and automation alerts counted; below-threshold and out-of-window ignored; unconfirmed-command alerts collapse to one; silencing alone flags; refresh keeps an acknowledged row; resolved is not reopened by old events and a fresh burst opens one counting only new events; no-device events skipped; disabled), `AskContextBuilderTest` (new fixture section resolves, frozen questions still route), and `App.test.jsx` (NOISY_ALERT card shows counts, advice and the device/workflow links).
 

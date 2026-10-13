@@ -121,7 +121,7 @@ public class CabinEventService implements DeviceEventLookup {
     }
 
     /**
-     * W-57: per (ruleId, device) count of automation alerts in a window, for
+     * W-65: per (ruleId, device) count of automation alerts in a window, for
      * the noisy-alert detector. Grouped in SQL because recent()'s 500-row
      * cap would silently undercount exactly the case this exists to find (a
      * very noisy rule). deviceId is nullable (null = every device). Events

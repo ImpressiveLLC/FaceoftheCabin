@@ -3,7 +3,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
-mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY, AlertHistoryLog, alertRulesTarget } from "./App.jsx";
+armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
+StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
+formatPresenceAge, presenceBadgeModel, PresenceBadge,
+mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, AlertHistoryLog, alertRulesTarget } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
@@ -3536,6 +3539,58 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     expect(setPendingDeviceFocus).toHaveBeenCalledWith(null);
   });
 
+  // 2026-10-12: Open device used to land on a panel that could hide the very
+  // device the person was sent to act on (saved State/Parent-only filter, or
+  // its group collapsed). A focus request now reveals its target.
+  function renderWithFocus(devices, focus) {
+    vi.stubGlobal("fetch", deviceManagerFetchMock());
+    return render(
+      <AppContext.Provider value={{
+        devices, workflows: [], activeLocation: "cabin",
+        refreshDevices: vi.fn(), setActivePanel: vi.fn(),
+        pendingDeviceFocus: focus, setPendingDeviceFocus: vi.fn(),
+      }}>
+        <DeviceManagerPanel />
+      </AppContext.Provider>
+    );
+  }
+
+  it("a focus request reveals a device the saved State filter was hiding", async () => {
+    const devices = [
+      ...twoDevices,
+      { deviceId: "d3", name: "Device Three", type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "DEFERRED" } },
+    ];
+    renderWithFocus(devices, "d3");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(screen.getAllByText("Device Three").length).toBeGreaterThan(0);
+    expect(JSON.parse(localStorage.getItem("devices.lifecycleFilter"))).toContain("DEFERRED");
+  });
+
+  it("a focus request leaves the saved filters alone when the target was already visible", async () => {
+    localStorage.setItem("devices.lifecycleFilter", JSON.stringify(["ASSIGNED"]));
+    renderWithFocus(twoDevices, "d2");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(JSON.parse(localStorage.getItem("devices.lifecycleFilter"))).toEqual(["ASSIGNED"]);
+  });
+
+  it("a focus request expands the target's collapsed group", async () => {
+    localStorage.setItem("collapsed.deviceGroups.cabin.type", JSON.stringify({ LOCK: true }));
+    renderWithFocus(twoDevices, "d2");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(screen.getByText("Device One")).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("collapsed.deviceGroups.cabin.type")).LOCK).toBe(false);
+  });
+
+  it("says so, instead of silently showing nothing, when the focused device is not in the list", async () => {
+    renderWithFocus(twoDevices, "ghost_device");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(screen.getByRole("status").textContent).toContain("ghost_device");
+  });
+
   it("force-expands a device group containing an active ALARM device, even if the user had collapsed it", async () => {
     localStorage.setItem("collapsed.deviceGroups.cabin.type", JSON.stringify({ LOCK: true }));
     const devices = [
@@ -4453,9 +4508,9 @@ describe("StatusChecksCard — ignore/snooze actions", () => {
   });
 });
 
-// W-56: an automation alert links to the workflow / built-in rule behind it,
+// W-64: an automation alert links to the workflow / built-in rule behind it,
 // not just its device.
-describe("StatusChecksCard — Open workflow / Open rule (W-56)", () => {
+describe("StatusChecksCard — Open workflow / Open rule (W-64)", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   function renderAutomation(ruleId) {
@@ -4502,7 +4557,7 @@ describe("StatusChecksCard — Open workflow / Open rule (W-56)", () => {
   });
 });
 
-describe("rules focus lands on the matching row (W-56)", () => {
+describe("rules focus lands on the matching row (W-64)", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it("opens the focused workflow's history and clears the request", async () => {
@@ -5244,7 +5299,7 @@ describe("OptimizationOpportunitiesCard", () => {
     expect(screen.getByText(/Drawing ~42W continuously for 60h/)).toBeTruthy();
   });
 
-  it("shows a noisy-alert opportunity's counts and advice, with links to the device and workflow (W-57)", async () => {
+  it("shows a noisy-alert opportunity's counts and advice, with links to the device and workflow (W-65)", async () => {
     const setActivePanel = vi.fn(), setPendingDeviceFocus = vi.fn(), setPendingRulesFocus = vi.fn();
     const auth = mockAuth({ ok: true, json: async () => [
       { id: "op-9", opportunityType: "NOISY_ALERT", deviceId: "z2m-heater_mech_room", status: "OPEN",
@@ -5411,6 +5466,105 @@ describe("formatPresenceSignals", () => {
   });
 });
 
+// W-34 (2026-10-03 finding): the badge read "Away" at the house because the
+// retained presence value was 41 hours old. A stale auto-derived value must
+// read "Presence unknown", never a confident Away/At Cabin.
+describe("formatPresenceAge", () => {
+  it("formats minutes, hours and days compactly", () => {
+    expect(formatPresenceAge(5)).toBe("just now");
+    expect(formatPresenceAge(60)).toBe("1 min ago");
+    expect(formatPresenceAge(59 * 60)).toBe("59 min ago");
+    expect(formatPresenceAge(3600)).toBe("1 h ago");
+    expect(formatPresenceAge(3 * 3600 + 20 * 60)).toBe("3 h 20 min ago");
+    expect(formatPresenceAge(24 * 3600)).toBe("1 d ago");
+    expect(formatPresenceAge(41 * 3600)).toBe("1 d 17 h ago");
+  });
+
+  it("is empty for a missing or non-finite age and never negative", () => {
+    expect(formatPresenceAge(null)).toBe("");
+    expect(formatPresenceAge(undefined)).toBe("");
+    expect(formatPresenceAge(NaN)).toBe("");
+    expect(formatPresenceAge(-30)).toBe("just now");
+  });
+});
+
+describe("presenceBadgeModel", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const fresh = { signalAgeSeconds: 600, stale: false, staleAfterHours: 6 };
+  const stale = { signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 };
+
+  it("with no heartbeat behaves exactly as before: no age, never unknown", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: null });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toBe("Live-detected: No one currently detected present");
+  });
+
+  it("shows the age and stays a confident reading while fresh", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: fresh });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("10 min ago");
+    expect(m.title).toContain("phone last reported 10 min ago");
+  });
+
+  it("goes unknown past the limit and explains why", () => {
+    const m = presenceBadgeModel({ autoDerived: true, signals, freshness: stale });
+    expect(m.unknown).toBe(true);
+    expect(m.title).toContain("Presence unknown");
+    expect(m.title).toContain("1 d 17 h");
+    expect(m.title).toContain("limit 6 h");
+  });
+
+  it("does not hide a manual override just because a heartbeat is old", () => {
+    const m = presenceBadgeModel({ autoDerived: false, signals, freshness: stale });
+    expect(m.unknown).toBe(false);
+    expect(m.ageLabel).toBe("");
+    expect(m.title).toMatch(/^Manually set/);
+  });
+});
+
+describe("PresenceBadge", () => {
+  const signals = [{ personId: "nate", location: "cabin", present: false }];
+  const base = { profile: "AWAY", options: [], onChange: () => {}, autoDerived: true, signals };
+
+  it("renders 'Presence unknown' instead of Away when the signal is stale", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Presence unknown");
+    expect(screen.queryByText("last seen 1 d 17 h ago")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeFalsy();
+    // the real choices are still there as a manual override
+    expect(within(select).getByText("Away")).toBeTruthy();
+  });
+
+  it("keeps the real value and the live dot when fresh, with an age chip", () => {
+    const { container } = render(<PresenceBadge {...base}
+      freshness={{ signalAgeSeconds: 120, stale: false, staleAfterHours: 6 }} />);
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+    expect(screen.queryByText("2 min ago")).toBeTruthy();
+    expect(container.querySelector(".presence-live-dot")).toBeTruthy();
+    expect(container.querySelector(".presence-stale-dot")).toBeFalsy();
+  });
+
+  it("renders with no age chip at all when the backend sends no heartbeat", () => {
+    const { container } = render(<PresenceBadge {...base} freshness={null} />);
+    expect(container.querySelector(".presence-age")).toBeFalsy();
+    const select = screen.getByLabelText("Presence");
+    expect(select.options[select.selectedIndex].textContent).toBe("Away");
+  });
+
+  it("picking a real option while unknown reports it as a manual override", () => {
+    const onChange = vi.fn();
+    render(<PresenceBadge {...base} onChange={onChange}
+      freshness={{ signalAgeSeconds: 41 * 3600, stale: true, staleAfterHours: 6 }} />);
+    fireEvent.change(screen.getByLabelText("Presence"), { target: { value: "AT_CABIN" } });
+    expect(onChange).toHaveBeenCalledWith("AT_CABIN");
+  });
+});
+
 // Covers the 2026-08-08 armed-state finding: cabin/security/armed_away
 // is a real, live, HA-published MQTT signal that cabin-backend never
 // subscribed to. formatArmedTitle must never let "no signal yet" read
@@ -5436,6 +5590,108 @@ describe("formatArmedTitle", () => {
 
   it("handles undefined the same as null without throwing", () => {
     expect(() => formatArmedTitle(undefined)).not.toThrow();
+  });
+});
+
+// W-35 (Nate, 2026-10-04): warn, never block, when the system is armed while
+// presence shows someone at that location. The hub has no arm control, so the
+// rule is derived from the armed state and presence it already holds.
+describe("armedWhileOccupiedNotices", () => {
+  const armedCabin = { cabin: { armed: true, lastUpdated: "2026-10-04T10:00:00Z" } };
+  const nateAtCabin = [{ personId: "nate", location: "cabin", present: true }];
+  const live = { autoDerived: true, profile: "AT_CABIN" };
+
+  it("warns, naming who, when armed with someone detected at that location", () => {
+    const n = armedWhileOccupiedNotices({ securityStates: armedCabin, signals: nateAtCabin, ...live });
+    expect(n).toHaveLength(1);
+    expect(n[0]).toMatchObject({ location: "cabin", names: ["nate"], detected: true });
+  });
+
+  it("says nothing when disarmed, even with someone present", () => {
+    const disarmed = { cabin: { armed: false, lastUpdated: "2026-10-04T10:00:00Z" } };
+    expect(armedWhileOccupiedNotices({ securityStates: disarmed, signals: nateAtCabin, ...live })).toEqual([]);
+  });
+
+  it("says nothing when armed and nobody is detected", () => {
+    const away = [{ personId: "nate", location: "cabin", present: false }];
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, signals: away, ...live })).toEqual([]);
+  });
+
+  it("does not count presence at the other location", () => {
+    const atHome = [{ personId: "nate", location: "home", present: true }];
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, signals: atHome, ...live })).toEqual([]);
+  });
+
+  it("evaluates every armed location independently", () => {
+    const both = { ...armedCabin, home: { armed: true, lastUpdated: "2026-10-04T11:00:00Z" } };
+    const signals = [...nateAtCabin, { personId: "emma", location: "home", present: true }];
+    const n = armedWhileOccupiedNotices({ securityStates: both, signals, ...live });
+    expect(n.map(x => x.location).sort()).toEqual(["cabin", "home"]);
+  });
+
+  it("with no live signal, honors the manual profile (occupied, but nobody to name)", () => {
+    const manual = { autoDerived: false, signals: [] };
+    const n = armedWhileOccupiedNotices({ securityStates: armedCabin, ...manual, profile: "AT_CABIN" });
+    expect(n).toHaveLength(1);
+    expect(n[0].names).toEqual([]);
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, ...manual, profile: "AT_HOME" })).toEqual([]);
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, ...manual, profile: "BOTH_OCCUPIED" })).toHaveLength(1);
+  });
+
+  it("ignores the manual profile once a live signal exists", () => {
+    const away = [{ personId: "nate", location: "cabin", present: false }];
+    expect(armedWhileOccupiedNotices({ securityStates: armedCabin, signals: away, autoDerived: true, profile: "AT_CABIN" })).toEqual([]);
+  });
+
+  it("tolerates missing state (signed out, no armed signal yet)", () => {
+    expect(armedWhileOccupiedNotices({ securityStates: undefined, signals: undefined, autoDerived: true, profile: "AWAY" })).toEqual([]);
+    expect(armedWhileOccupiedNotices({ securityStates: { cabin: null }, signals: nateAtCabin, ...live })).toEqual([]);
+  });
+
+  it("a new arming gets a new key, so an earlier dismissal does not hide it", () => {
+    const first = armedWhileOccupiedNotices({ securityStates: armedCabin, signals: nateAtCabin, ...live })[0].key;
+    const again = { cabin: { armed: true, lastUpdated: "2026-10-04T12:00:00Z" } };
+    const second = armedWhileOccupiedNotices({ securityStates: again, signals: nateAtCabin, ...live })[0].key;
+    expect(second).not.toBe(first);
+  });
+});
+
+describe("ArmedWhileOccupiedBanner", () => {
+  const notice = { location: "cabin", key: "cabin:t1", detected: true, names: ["nate"] };
+
+  it("shows a visible, non-blocking alert that names who and where", () => {
+    render(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={[]} onDismiss={() => {}} />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toMatch(/Armed while nate is detected at the Cabin\./);
+    expect(alert.textContent).toMatch(/sirens will sound unless the system recognizes an authorized user/);
+    expect(alert.textContent).toMatch(/Anyone else who is here will set them off/);
+  });
+
+  it("does not claim the alarm sounds for a recognized authorized user", () => {
+    render(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={[]} onDismiss={() => {}} />);
+    expect(screen.getByRole("alert").textContent).not.toMatch(/will sound if anyone is present/i);
+  });
+
+  it("uses 'someone' when the manual profile can't say who, and 'are' for several people", () => {
+    const { unmount } = render(<ArmedWhileOccupiedBanner notices={[{ ...notice, names: [] }]} dismissed={[]} onDismiss={() => {}} />);
+    expect(screen.getByRole("alert").textContent).toMatch(/Armed while someone is detected/);
+    unmount();
+    render(<ArmedWhileOccupiedBanner notices={[{ ...notice, names: ["nate", "emma"] }]} dismissed={[]} onDismiss={() => {}} />);
+    expect(screen.getByRole("alert").textContent).toMatch(/Armed while nate, emma are detected/);
+  });
+
+  it("dismiss reports the notice's key; a dismissed notice is not shown", () => {
+    const onDismiss = vi.fn();
+    const { rerender } = render(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={[]} onDismiss={onDismiss} />);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onDismiss).toHaveBeenCalledWith("cabin:t1");
+    rerender(<ArmedWhileOccupiedBanner notices={[notice]} dismissed={["cabin:t1"]} onDismiss={onDismiss} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("renders nothing at all when there are no notices", () => {
+    const { container } = render(<ArmedWhileOccupiedBanner notices={[]} dismissed={[]} onDismiss={() => {}} />);
+    expect(container.innerHTML).toBe("");
   });
 });
 
@@ -5998,10 +6254,10 @@ describe("SensorHistoryPanel Alert History link", () => {
   });
 });
 
-// W-56: the Alert History tab is a real, reviewable log, not just the live
+// W-64: the Alert History tab is a real, reviewable log, not just the live
 // snapshot -- device conditions, every ignore/snooze/bring-back, and the
 // automation alerts already in the event log.
-describe("AlertHistoryLog (W-56)", () => {
+describe("AlertHistoryLog (W-64)", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   const entry = (over) => ({
@@ -6106,7 +6362,7 @@ describe("AlertHistoryLog (W-56)", () => {
   });
 });
 
-describe("alertRulesTarget (W-56)", () => {
+describe("alertRulesTarget (W-64)", () => {
   it("maps a workflow notification back to its workflow", () => {
     expect(alertRulesTarget("WORKFLOW_wf-1")).toEqual({ kind: "workflow", id: "wf-1" });
   });
@@ -6262,5 +6518,330 @@ describe("FamilyConfigPanel — Platform specs", () => {
     expect(await screen.findByText("2026.9.1")).toBeTruthy();
     expect(screen.getByText("Ollama")).toBeTruthy();
     expect(document.querySelector(".spec-summary")).toBeNull();
+  });
+});
+
+// 2026-10-12: safety floor + undo for Ignore/Snooze. An open-ended Ignore
+// must never hide a CRITICAL condition (same principle as the collapse floor),
+// and anything silenced has to stay findable and restorable.
+describe("Status Checks — silencing safety floor and restore", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const critical = { alertId: "device:leak_mech_room:device-alarm", sourceDeviceId: "leak_mech_room", location: "cabin",
+    severity: "CRITICAL", condition: "DEVICE_ALARM", title: "Mech Room Leak is in alarm", detail: "Water detected." };
+  const warn = { alertId: "device:door_front_contact:missed-checkin", sourceDeviceId: "door_front_contact", location: "cabin",
+    severity: "WARN", condition: "MISSED_CHECKIN", title: "Front Door missed check-in", detail: "No report." };
+
+  it("an IGNORED acknowledgment never hides a CRITICAL item, including ones already in the database", () => {
+    const items = mergeStatusCheckItems([critical], "cabin", [], [{ alertKey: critical.alertId, mode: "IGNORED" }]);
+    expect(items).toHaveLength(1);
+  });
+
+  it("a time-boxed SNOOZE still hides a CRITICAL item", () => {
+    const items = mergeStatusCheckItems([critical], "cabin", [],
+      [{ alertKey: critical.alertId, mode: "SNOOZED", snoozedUntil: new Date(Date.now() + 3600000).toISOString() }]);
+    expect(items).toHaveLength(0);
+  });
+
+  it("silencedStatusChecks lists hidden items, a visible CRITICAL-IGNORED one is not 'silenced', and orphaned keys are flagged", () => {
+    const acks = [
+      { alertKey: warn.alertId, mode: "IGNORED" },
+      { alertKey: critical.alertId, mode: "IGNORED" },
+      { alertKey: "device:gone:missed-checkin", mode: "IGNORED" },
+    ];
+    const entries = silencedStatusChecks([critical, warn], [], acks);
+    expect(entries.map(e => e.alertKey)).toEqual([warn.alertId, "device:gone:missed-checkin"]);
+    expect(entries[0]).toMatchObject({ title: "Front Door missed check-in", active: true });
+    expect(entries[1]).toMatchObject({ title: "device:gone:missed-checkin", active: false });
+  });
+
+  function renderCard(alerts, acks, authedFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })) {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const refreshAlertAcknowledgments = vi.fn();
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"], activeAlerts: alerts,
+        alertAcknowledgments: acks, refreshAlertAcknowledgments,
+      }}>
+        <RulesPanel auth={{ authedFetch }} />
+      </AppContext.Provider>
+    );
+    return { authedFetch, refreshAlertAcknowledgments };
+  }
+
+  it("a CRITICAL row offers no Ignore for now and only the 1 hour snooze", () => {
+    renderCard([critical], []);
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+
+    expect(screen.queryByRole("button", { name: "Ignore for now" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /remind me in/i }));
+    expect(screen.getByRole("button", { name: "1 hour" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "1 day" })).toBeNull();
+  });
+
+  it("a WARN row still offers Ignore for now and every snooze length", () => {
+    renderCard([warn], []);
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+
+    expect(screen.getByRole("button", { name: "Ignore for now" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /remind me in/i }));
+    expect(screen.getByRole("button", { name: "1 month" })).toBeTruthy();
+  });
+
+  it("lists silenced checks behind an 'N silenced' toggle and Restore DELETEs the key then refreshes", async () => {
+    const { authedFetch, refreshAlertAcknowledgments } = renderCard([warn], [{ alertKey: warn.alertId, mode: "IGNORED" }]);
+
+    expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /1 silenced/i }));
+    expect(screen.getByText("Front Door missed check-in")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => expect(authedFetch.mock.calls.find(([url]) => url.includes("/api/alerts/acknowledgments/"))).toBeTruthy());
+    const [url, options] = authedFetch.mock.calls.find(([u]) => u.includes("/api/alerts/acknowledgments/"));
+    expect(url).toContain(encodeURIComponent(warn.alertId));
+    expect(options.method).toBe("DELETE");
+    await waitFor(() => expect(refreshAlertAcknowledgments).toHaveBeenCalled());
+  });
+
+  it("with everything silenced, the empty state says so instead of claiming nothing is wrong", () => {
+    renderCard([warn], [{ alertKey: warn.alertId, mode: "IGNORED" }]);
+
+    expect(screen.getByText(/1 silenced by you/i)).toBeTruthy();
+    expect(screen.queryByText(/built-in safety rules are watching/i)).toBeNull();
+  });
+});
+
+
+// W-62 (Nate, 2026-10-13): the disk alert's Act step is a Trim control: how many
+// newest nightly copies to keep, what that frees, what the disk would be, then Go.
+describe("Trim old backups", () => {
+  const GB = 1024 ** 3;
+  const snaps = (n, bytes) => Array.from({ length: n }, (_, i) => ({ name: `2026-01-${String(i + 1).padStart(2, "0")}`, bytes: typeof bytes === "function" ? bytes(i) : bytes }));
+  const plan = (over = {}) => ({
+    installed: true, pending: false, stale: false, sizesMeasured: true, lastResult: null,
+    disk: { usedPercent: 99, freeGb: 18, totalGb: 916 },
+    targets: [
+      { id: "backups-home", path: "/storage/backups/home", keep: 3, count: 10, snapshots: snaps(10, 50 * GB) },
+      { id: "backups-data", path: "/storage/backups/data", keep: 3, count: 4, snapshots: snaps(4, 1 * GB) },
+    ],
+    ...over,
+  });
+  const reply = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
+
+  it("formatTrimBytes is plain, and says unknown for an unmeasured size", () => {
+    expect(formatTrimBytes(350 * GB)).toBe("350 GB");
+    expect(formatTrimBytes(12.34 * GB)).toBe("12.3 GB");
+    expect(formatTrimBytes(5 * 1024 ** 2)).toBe("5 MB");
+    expect(formatTrimBytes(-1)).toBe("unknown");
+    expect(formatTrimBytes(null)).toBe("unknown");
+  });
+
+  it("trimPreview removes the OLDEST copies, keeps at least one, and says what the disk would be", () => {
+    const p = trimPreview(plan().targets, 3, plan().disk);
+    expect(p.rows.map(r => [r.id, r.keep, r.remove])).toEqual([["backups-home", 3, 7], ["backups-data", 3, 1]]);
+    expect(p.totalBytes).toBe(7 * 50 * GB + 1 * GB);
+    expect(p.after.usedPercent).toBe(Math.round(((916 - (18 + 351)) / 916) * 100));
+    // 0 or negative is clamped to the newest copy, never to nothing
+    expect(trimPreview(plan().targets, 0).rows.every(r => r.keep === 1)).toBe(true);
+    // asking to keep more than exists removes nothing
+    expect(trimPreview(plan().targets, 50).removeCount).toBe(0);
+    // an unmeasured size can't be summed, so it says so instead of guessing
+    const u = trimPreview([{ id: "backups-home", snapshots: snaps(5, -1) }], 2, plan().disk);
+    expect(u.unknown).toBe(true);
+    expect(u.totalBytes).toBeNull();
+    expect(u.after).toBeNull();
+  });
+
+  it("shows the disk, defaults the slider to the configured keep, and the amount it frees", async () => {
+    const fetchMock = vi.fn(() => reply(200, plan()));
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={fetchMock} />);
+    expect(await screen.findByText(/Disk now: 99% full, 18 GB free of 916 GB/)).toBeTruthy();
+    expect(screen.getByRole("slider").value).toBe("3");
+    expect(screen.getByText(/Frees about 351 GB\. The disk would be about 60% full/)).toBeTruthy();
+    expect(screen.getByText(/keep 3 of 10, remove 7/)).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith("http://hub/api/system/storage/trim");
+  });
+
+  it("moving the slider changes what it says it will free", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, plan())} />);
+    const slider = await screen.findByRole("slider");
+    fireEvent.change(slider, { target: { value: "1" } });
+    expect(screen.getByText(/Frees about 453 GB/)).toBeTruthy();
+    fireEvent.change(slider, { target: { value: "10" } });
+    expect(screen.getByText(/Nothing to remove at this setting/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go" }).disabled).toBe(true);
+  });
+
+  it("Go sends exactly the keep counts on screen, then waits for the host before saying it is done", async () => {
+    let state = plan();
+    const fetchMock = vi.fn((url, opts) => {
+      if (opts?.method === "POST") { state = plan({ pending: true }); return reply(202, { accepted: true, requestId: "r1" }); }
+      return reply(200, state);
+    });
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={fetchMock} pollMs={20} />);
+    fireEvent.change(await screen.findByRole("slider"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Trimming on the host/ })).toBeTruthy());
+    const post = fetchMock.mock.calls.find(c => c[1]?.method === "POST");
+    expect(post[0]).toBe("http://hub/api/system/storage/trim");
+    expect(JSON.parse(post[1].body)).toEqual({ keep: { "backups-home": 2, "backups-data": 2 } });
+    // the host reports back
+    state = plan({ disk: { usedPercent: 60, freeGb: 366, totalGb: 916 }, lastResult: { requestId: "r1", ok: true, removed: 10, freedBytes: 350 * GB, output: "done" } });
+    expect(await screen.findByText(/Last trim: removed 10 copies, freed 350 GB/, {}, { timeout: 2000 })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go" })).toBeTruthy();
+  });
+
+  it("reports a refusal from the hub instead of pretending it started", async () => {
+    const fetchMock = vi.fn((url, opts) => (opts?.method === "POST" ? reply(409, { accepted: false, error: "A trim is already waiting for the host or running" }) : reply(200, plan())));
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={fetchMock} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Go" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/already waiting/);
+  });
+
+  it("a failed last trim shows the host's reason", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, plan({ lastResult: { requestId: "x", ok: false, removed: 0, freedBytes: 0, output: "tool exited 2: nope" } }))} />);
+    expect(await screen.findByText(/Last trim did not finish: tool exited 2: nope/)).toBeTruthy();
+  });
+
+  it.each([[403, /Only an administrator can trim storage/], [401, /Sign in to trim storage/]])("a %s is explained", async (status, pattern) => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(status, {})} />);
+    expect((await screen.findByRole("status")).textContent).toMatch(pattern);
+  });
+
+  it("says the host service is not installed, with no slider", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, { installed: false, pending: false, disk: null, message: "The host trim service has not produced a plan yet." })} />);
+    expect(await screen.findByText(/has not produced a plan yet/)).toBeTruthy();
+    expect(screen.queryByRole("slider")).toBeNull();
+  });
+
+  it("while sizes are still being measured it says so, and still lets you trim", async () => {
+    const unmeasured = plan({ sizesMeasured: false, targets: [{ id: "backups-home", keep: 3, count: 6, snapshots: snaps(6, -1) }] });
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, unmeasured)} />);
+    expect(await screen.findByText(/still measuring folder sizes/)).toBeTruthy();
+    expect(screen.getByText(/The amount freed is not measured yet/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go" }).disabled).toBe(false);
+  });
+
+  it("a stale plan is flagged", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, plan({ stale: true }))} />);
+    expect(await screen.findByText(/more than 12 hours old/)).toBeTruthy();
+  });
+
+  it("the disk alert's Act step is the Trim control, not Open device", async () => {
+    vi.stubGlobal("fetch", vi.fn((url) => (String(url).includes("/api/system/storage/trim") ? reply(200, plan()) : new Promise(() => {}))));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"], activeAlerts: [],
+        automationAlerts: [{
+          eventId: "e1", sourceDeviceId: "storage-storage-hdd", severity: "CRITICAL", timestamp: "2026-10-13T12:00:00Z",
+          payload: { ruleId: "STORAGE_THRESHOLD", see: "storage-hdd is 99% full (18 GB free of 916 GB)", think: "Crossed the 90% critical line", act: "Trim old nightly backups first" },
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "See more" }));
+    expect(await screen.findByRole("slider")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /open device/i })).toBeNull();
+  });
+});
+
+
+describe("Trim old backups: big-job helper and automatic policy", () => {
+  const GB = 1024 ** 3;
+  const targets = [
+    { id: "backups-home", keep: 3, count: 10, snapshots: Array.from({ length: 10 }, (_, i) => ({ name: `2026-01-${String(i + 1).padStart(2, "0")}`, bytes: 50 * GB })) },
+  ];
+  const reply = (body) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+  const view = (extra = {}) => ({ installed: true, pending: false, stale: false, sizesMeasured: true, lastResult: null,
+    disk: { usedPercent: 99, freeGb: 18, totalGb: 916 }, auto: { enabled: true, aboveFull: 70, downTo: 55, floorKeep: 3 }, targets, ...extra });
+
+  it("keepForFreeing picks the most copies it can keep and still free the amount", () => {
+    expect(keepForFreeing(targets, 200)).toEqual({ keepN: 6, achievable: true, maxFreeGb: 450 });
+    expect(keepForFreeing(targets, 450).keepN).toBe(1);
+    expect(keepForFreeing(targets, 1).keepN).toBe(9);
+  });
+
+  it("keepForFreeing says plainly when even the minimum is not enough, or sizes are unknown", () => {
+    const r = keepForFreeing(targets, 600);
+    expect(r.achievable).toBe(false);
+    expect(r.keepN).toBe(1);
+    expect(r.maxFreeGb).toBe(450);
+    expect(keepForFreeing([{ id: "x", snapshots: [{ name: "a", bytes: -1 }, { name: "b", bytes: -1 }] }], 10).keepN).toBeNull();
+  });
+
+  it("'Free up at least N GB' moves the slider and the summary follows", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view())} />);
+    fireEvent.change(await screen.findByLabelText("Gigabytes to free"), { target: { value: "200" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set the slider" }));
+    expect(screen.getByRole("slider").value).toBe("6");
+    expect(screen.getByText(/Frees about 200 GB/)).toBeTruthy();
+  });
+
+  it("when the target is more than the backups hold, it says what else could free space", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view())} />);
+    fireEvent.change(await screen.findByLabelText("Gigabytes to free"), { target: { value: "600" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set the slider" }));
+    expect(screen.getByRole("slider").value).toBe("1");
+    expect(screen.getByText(/Even keeping 1 copy of each folder frees only 450 GB/)).toBeTruthy();
+    expect(screen.getByText(/recorded-video retention in Frigate/)).toBeTruthy();
+  });
+
+  it("states the automatic policy, and when it is off", async () => {
+    const { unmount } = render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view())} />);
+    expect(await screen.findByText(/at 70% full the oldest backup copies are removed until the disk is back to 55%.*fewer than 3 per folder/)).toBeTruthy();
+    unmount();
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view({ auto: { enabled: false, aboveFull: 70, downTo: 55, floorKeep: 3 } }))} />);
+    expect(await screen.findByText(/Automatic trimming is turned off on the host/)).toBeTruthy();
+  });
+
+  it("an automatic result is labelled, and a floor stop is explained", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view({ lastResult: { requestId: "auto-1", ok: true, auto: true, reachedTarget: false, removed: 4, freedBytes: 200 * GB, output: "x" } }))} />);
+    expect(await screen.findByText(/Last trim \(automatic\): removed 4 copies, freed 200 GB\. The disk is still above its line/)).toBeTruthy();
+  });
+});
+
+
+// 2026-10-13 (Nate): "On the Way" belongs prominently on My Places, and on Monitoring in the
+// same place as on Devices (the panel's header actions), not only on Devices.
+describe("On the Way is reachable from My Places and Monitoring", () => {
+  const devices = [{ deviceId: "z2m-temp_mech_room", name: "Mech room", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin", attributes: { temperature: 12 } }];
+  const okReply = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ accepted: true }) });
+  const haCalls = (fn) => fn.mock.calls.filter(call => String(call[0]).includes("/api/ha/services"));
+
+  it("My Places leads with an On the Way card showing the mech room temperature", () => {
+    render(<ThemeProvider><AppContext.Provider value={{ devices }}><FamilyHubPanel auth={{}} /></AppContext.Provider></ThemeProvider>);
+    const card = screen.getByRole("region", { name: "On the Way" });
+    expect(card.textContent).toMatch(/Heading to the cabin\?/);
+    expect(card.textContent).toMatch(/now \d+/);
+    expect(within(card).getByRole("button", { name: /On the Way/ })).toBeTruthy();
+    // it comes before the place cards
+    expect(card.compareDocumentPosition(document.querySelector(".family-hub-grid")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("pressing it on My Places turns on the cabin helper and confirms", async () => {
+    const authedFetch = vi.fn(okReply);
+    render(<ThemeProvider><AppContext.Provider value={{ devices }}><FamilyHubPanel auth={{ authedFetch }} /></AppContext.Provider></ThemeProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /On the Way/ }));
+    await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
+    expect(JSON.parse(haCalls(authedFetch)[0][1].body)).toMatchObject({ domain: "input_boolean", service: "turn_on", entity_id: "input_boolean.on_the_way_to_cabin" });
+    expect((await screen.findByRole("status")).textContent).toMatch(/Preheat started\. Mech room is/);
+  });
+
+  it("Monitoring has the same button in its header actions", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const authedFetch = vi.fn(okReply);
+    render(
+      <ThemeProvider>
+        <AppContext.Provider value={{ devices, activeLocation: "cabin", activeProfile: "AT_CABIN", alertAcknowledgments: [], activeAlerts: [], activeAlertLocations: [], automationAlerts: [] }}>
+          <MonitoringPanel active={true} auth={{ authedFetch }} />
+        </AppContext.Provider>
+      </ThemeProvider>
+    );
+    const header = document.querySelector(".panel-header-bar .header-actions");
+    const btn = within(header).getByRole("button", { name: /On the Way/ });
+    fireEvent.click(btn);
+    await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
+    expect(JSON.parse(haCalls(authedFetch)[0][1].body).entity_id).toBe("input_boolean.on_the_way_to_cabin");
   });
 });
