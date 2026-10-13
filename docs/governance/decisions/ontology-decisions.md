@@ -544,6 +544,40 @@ The automation view (`/api/rules/**`) is `ALLOW_REDACT` on purpose: leak detecti
 
 ---
 
+## D23 — The M920q is the head for both locations; there is no Home Assistant at Home
+
+**Status:** ratified 2026-10-13 (Cowork, [HO-2026-10-04](../handovers/HO-2026-10-04-cowork-to-code.md) section 4, whose ratification was conditional on Nate confirming Q-HD-1 and Q-HD-2; Nate accepted Cowork's recommendations 2026-10-13). Proposed 2026-10-03 (Code drafted from Nate's 2026-10-01 statement as recorded in [`docs/MAINTENANCE.md`](../../MAINTENANCE.md#home-location--androidtermux-collector-bring-up) and [PR #110](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/110)). **Use case:** none assigned yet. **Work:** [W-59](../backlog.md) (retire the Home overlay), [W-60](../backlog.md) (rename the flag). **Builds on:** D6 (multi-location), [`ROADMAP.md`](../../../ROADMAP.md) Phase 8 (local collector hubs).
+
+**Problem.** On 2026-10-01 two sessions concluded "Home isn't live" from a comment in `ansible/roles/secrets/templates/env.j2` ("Home hub (not yet deployed — leave blank)"), because `HOME_HA_URL`, `HOME_HA_TOKEN` and `vault_home_ha_token` are blank and `HOME_HUB_DEPLOYED=false`. Home is live and collecting. What does not exist is a Home Assistant at Home. The decision was written into `MAINTENANCE.md` by #110 but never entered the decision record, and two older documents still describe a second full hub (see "Conflicts to resolve").
+
+**Decision (Nate, 2026-10-01).** The M920q at the cabin runs the only Home Assistant and is the head, the one "main brain", for both Cabin and Home. Home is a collector: Termux Zigbee2MQTT publishing under `home_z2m/...` and the phone-side network-scan agent, both reporting over MQTT/Tailscale to the M920q. A Home Assistant is added at Home only if a Home-only integration ever needs one.
+
+### Requirements
+
+| ID | Requirement |
+|---|---|
+| R-HD-1 | **One head.** Home Assistant runs only on the M920q. Home devices reach the platform through the M920q's MQTT broker and HA, never through a Home HA. |
+| R-HD-2 | **Home is a collector, not a second stack.** Whatever runs at Home (today: Termux Zigbee2MQTT and the network-scan agent) publishes to the M920q. It does not run its own Postgres, Kafka, cabin-backend or Home Assistant. |
+| R-HD-3 | **Blank is correct.** `HOME_HA_URL`, `HOME_HA_TOKEN` and `vault_home_ha_token` stay blank and `HOME_HUB_DEPLOYED=false`. Despite its name, `HOME_HUB_DEPLOYED` means only "a separate HA instance exists at Home for cabin-backend to call", never "Home is live". Tooling must treat the blank as expected: `HaTokenHomeHealthIndicator` reports `OUT_OF_SERVICE` by design and the secret-rotation preflight allows the blank. |
+| R-HD-4 | **Adding a Home HA is a new decision.** If a Home-only integration ever needs one: the token goes in the vault (hash-verified, the method used for `989fb07`), `HOME_HA_URL` is a Tailscale IP, `HOME_HUB_DEPLOYED=true`, and this decision is superseded in the same change. |
+| R-HD-5 | **The second-hub description is retired.** `cabin-orchestration-platform/locations/home/` (a full independent-stack overlay that has never been deployed) is removed, and CLAUDE.md's "Two locations, two hubs" table, which described a `home-hub`, is replaced by the head/collector description. The CLAUDE.md rewrite is done with this ratification; the directory's removal is W-59 (`platform-specs.yaml` and other files still point at it). Decided 2026-10-13 (Q-HD-1). |
+| R-HD-6 | **The flag says what it means.** `HOME_HUB_DEPLOYED` is renamed `HOME_HA_DEPLOYED` ("a separate Home Assistant exists at Home for cabin-backend to call"), default `false`, with the same behaviour. Until W-60 lands, the old name is the live one and R-HD-3's note about it stands. Decided 2026-10-13 (Q-HD-2). |
+
+### Conflicts this ratification resolves
+
+1. [`CLAUDE.md`](../../../CLAUDE.md) "Two locations, two hubs" no longer presents a Home hub: rewritten 2026-10-13 as the head/collector description, and its env-var rows say the blank Home HA values are intended.
+2. `cabin-orchestration-platform/locations/home/` is retired (R-HD-5); removal is W-59, not done here because other files reference it.
+3. The spec-versus-reality mismatch is recorded as `DL-2026-10-13-01` in [`discrepancy-log.md`](../discrepancy-log.md), ruled a ratified deviation: the running system is right and the old text was stale.
+
+### Decided questions (Nate, 2026-10-13: "accept Cowork's recommendations")
+
+| ID | Question | Decision |
+|---|---|---|
+| Q-HD-1 | Retire `locations/home/` and the CLAUDE.md "Home hub" column, or keep them as a labelled reference? | **Retire both** (R-HD-5). The table is rewritten now; the directory is removed by W-59. A future Home HA is a new decision (R-HD-4), not a reason to keep an undeployed stack. |
+| Q-HD-2 | Rename `HOME_HUB_DEPLOYED`, or leave it and rely on the note? | **Rename** to `HOME_HA_DEPLOYED` (R-HD-6, W-60). The name already misled two sessions. |
+
+**What this is not.** Not a statement that Home will never have its own stack (R-HD-4 keeps that door open). Not a change to the MQTT topic contract, to D6's location model, or to any running configuration.
+
 ## D24 — Location roles: primary and maintenance
 
 **Status:** ratified 2026-10-13 (Cowork, [HO-2026-10-04](../handovers/HO-2026-10-04-cowork-to-code.md) section 3, whose ratification was conditional on Nate's answers to Q-LR-1 to Q-LR-3; Nate accepted Cowork's recommendations 2026-10-13). Proposed 2026-10-04 by Code from Nate's stated direction. **Use case:** [UC-10](../use-cases.md). **Work:** [W-23](../backlog.md) (the agnostic phone check, implemented), [W-35](../backlog.md) (arming warning), [W-38](../backlog.md) (enforcement, not built). **Builds on:** D6 (multi-location), D11 (household roles; presence is aggregate), D16 (presence and occupancy). **Is not:** `HouseholdRole` / `ManagedUserRole` (what a signed-in principal may do), and not `provisioning_role` (install-dependency scoping, [discussion artifact](../../ontology/PROPOSAL_2026-09-16_provisioning-role.md)).
@@ -613,38 +647,6 @@ R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its
 **What this is not.** Not a general exemption for automation commits, not a way to commit anything else without review, and not a change to who may rotate secrets.
 
 ---
-
-## D23 — The M920q is the head for both locations; there is no Home Assistant at Home
-
-**Status:** proposed 2026-10-03 (Code drafts from Nate's 2026-10-01 statement as recorded in [`docs/MAINTENANCE.md`](../../MAINTENANCE.md#home-location--androidtermux-collector-bring-up) and [PR #110](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/110); Cowork to ratify, Nate final). **Use case:** none assigned yet. **Work:** none. **Builds on:** D6 (multi-location), [`ROADMAP.md`](../../../ROADMAP.md) Phase 8 (local collector hubs).
-
-**Problem.** On 2026-10-01 two sessions concluded "Home isn't live" from a comment in `ansible/roles/secrets/templates/env.j2` ("Home hub (not yet deployed — leave blank)"), because `HOME_HA_URL`, `HOME_HA_TOKEN` and `vault_home_ha_token` are blank and `HOME_HUB_DEPLOYED=false`. Home is live and collecting. What does not exist is a Home Assistant at Home. The decision was written into `MAINTENANCE.md` by #110 but never entered the decision record, and two older documents still describe a second full hub (see "Conflicts to resolve").
-
-**Decision (Nate, 2026-10-01).** The M920q at the cabin runs the only Home Assistant and is the head, the one "main brain", for both Cabin and Home. Home is a collector: Termux Zigbee2MQTT publishing under `home_z2m/...` and the phone-side network-scan agent, both reporting over MQTT/Tailscale to the M920q. A Home Assistant is added at Home only if a Home-only integration ever needs one.
-
-### Requirements
-
-| ID | Requirement |
-|---|---|
-| R-HD-1 | **One head.** Home Assistant runs only on the M920q. Home devices reach the platform through the M920q's MQTT broker and HA, never through a Home HA. |
-| R-HD-2 | **Home is a collector, not a second stack.** Whatever runs at Home (today: Termux Zigbee2MQTT and the network-scan agent) publishes to the M920q. It does not run its own Postgres, Kafka, cabin-backend or Home Assistant. |
-| R-HD-3 | **Blank is correct.** `HOME_HA_URL`, `HOME_HA_TOKEN` and `vault_home_ha_token` stay blank and `HOME_HUB_DEPLOYED=false`. Despite its name, `HOME_HUB_DEPLOYED` means only "a separate HA instance exists at Home for cabin-backend to call", never "Home is live". Tooling must treat the blank as expected: `HaTokenHomeHealthIndicator` reports `OUT_OF_SERVICE` by design and the secret-rotation preflight allows the blank. |
-| R-HD-4 | **Adding a Home HA is a new decision.** If a Home-only integration ever needs one: the token goes in the vault (hash-verified, the method used for `989fb07`), `HOME_HA_URL` is a Tailscale IP, `HOME_HUB_DEPLOYED=true`, and this decision is superseded in the same change. |
-
-### Conflicts to resolve if this is ratified (found while drafting; none changed by this PR)
-
-1. [`CLAUDE.md`](../../../CLAUDE.md) "Two locations, two hubs" presents a Home hub (`home-hub`, its own HA, Grafana, Frigate, Node-RED and Spring Boot API on a 16 GB M920q). That contradicts R-HD-1 and R-HD-2. Its env-var table also lists `HOME_HA_URL` (default `http://home-hub:8123`) and `HOME_HA_TOKEN` without saying blank is intended.
-2. `cabin-orchestration-platform/locations/home/` (`docker-compose.yml`, `frigate.yml`, `application-home.yml`) is a full independent stack overlay. `MAINTENANCE.md` already says it predates the collector model; it has never been deployed.
-3. These are spec-versus-reality mismatches and belong in [`discrepancy-log.md`](../discrepancy-log.md); a DL entry was not added here to avoid colliding with the entries open in #114.
-
-### Open questions
-
-| ID | Question | Owner |
-|---|---|---|
-| Q-HD-1 | Retire `locations/home/` and the CLAUDE.md "Home hub" column, or keep them as a labelled non-default reference for a future Home HA? | Nate |
-| Q-HD-2 | `HOME_HUB_DEPLOYED` already misled two sessions. Rename it to say what it means (a Home HA exists), or leave it and rely on the note? | Nate / Cowork |
-
-**What this is not.** Not a statement that Home will never have its own stack (R-HD-4 keeps that door open). Not a change to the MQTT topic contract, to D6's location model, or to any running configuration.
 
 ---
 
