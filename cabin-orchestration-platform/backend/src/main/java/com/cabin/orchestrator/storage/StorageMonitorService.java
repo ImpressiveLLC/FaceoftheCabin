@@ -247,8 +247,8 @@ public class StorageMonitorService {
     /** Plain-language next step; never "delete X" automatically, see class doc. */
     private static String actionFor(String label) {
         if (label.startsWith("storage") || label.contains("hdd")) {
-            return "Prune old nightly backups first (scripts/prune-storage-backups.sh, dry run first), then review "
-                + "recording retention. BI telemetry is never removed without a warning (docs/STORAGE_ARCHITECTURE.md).";
+            return "Trim old nightly backups first: choose how many to keep, see how much it frees, then press Go (below). "
+                + "Then review recording retention. BI telemetry is never removed without a warning (docs/STORAGE_ARCHITECTURE.md).";
         }
         return "Check Docker usage (docker system df) and old images or build cache; Postgres lives here, so do not delete volumes.";
     }

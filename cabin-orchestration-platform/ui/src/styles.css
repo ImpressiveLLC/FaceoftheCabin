@@ -2507,3 +2507,24 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .demo-link-steps { margin: 6px 0 10px 18px; padding: 0; font-size: 13px; color: var(--text-muted); }
 .demo-link-steps li { margin-bottom: 3px; }
 .demo-link-stop { margin: 2px 0; }
+
+/* ─── Trim old backups (W-62), inside a disk alert's Act step ───────────── */
+.trim-widget {
+  margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.trim-note { margin: 0; font-size: 12px; color: var(--text-muted); }
+.trim-error { margin: 0; font-size: 12px; color: var(--danger); }
+.trim-slider { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.trim-slider input[type="range"] { width: 100%; }
+.trim-slider-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
+.trim-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.trim-rows li { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; }
+.trim-row-name { color: var(--text); }
+.trim-row-size { text-align: right; color: var(--text); }
+.trim-summary { margin: 0; font-size: 13px; color: var(--text); font-weight: 600; }
+.trim-go {
+  align-self: flex-start; padding: 8px 22px; border-radius: 8px; border: 1px solid var(--danger);
+  background: var(--bg); color: var(--danger); font-size: 14px; cursor: pointer;
+}
+.trim-go:disabled { opacity: 0.55; cursor: not-allowed; }

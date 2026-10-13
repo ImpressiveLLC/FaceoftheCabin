@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# cabin-storage-trim-agent -- the host half of the in-app Trim control (W-62).
+#
+# cabin-backend runs in a container and cannot delete host files. It can, however, write to
+# /storage/archives/cabin_event (a bind mount it already uses). This root service shares a hidden
+# spool folder inside it with the backend and does two things:
+#
+#   plan:    runs `cabin-storage-prune report --json --snapshots` and writes $SPOOL/plan.json
+#            (every dated backup folder and its size). The backend serves it to the UI.
+#   request: when the signed-in administrator presses Go, the backend writes $SPOOL/request.env
+#            (requestId=..., keep.<target>=N). The agent validates it, runs
+#            `cabin-storage-prune apply --only <targets> --keep <target>=N --yes`, writes
+#            $SPOOL/result.json, deletes the request and refreshes the plan.
+#
+# Everything the UI can cause is bounded here: only dated-dirs targets the tool already knows,
+# N a whole number from 1 to 9999 (the newest folder is never removed), one request at a time,
+# no symlinks, no large files. The tool itself still refuses telemetry and database paths.
+# The spool holds no secrets; it is world-writable so the container's user can drop a request.
+#
+# Install (Nate, once): see docs/STORAGE_ARCHITECTURE.md "Trim control".
+set -uo pipefail
+
+SPOOL=${TRIM_SPOOL:-/storage/archives/cabin_event/.trim}
+TOOL=${TRIM_TOOL:-/usr/local/bin/cabin-storage-prune}
+PLAN_EVERY=${TRIM_PLAN_EVERY:-21600}   # seconds; sizes change slowly (one new folder a night)
+POLL=${TRIM_POLL:-5}
+ONCE=${TRIM_ONCE:-0}                   # tests: run one cycle and exit
+DF_PATH=${TRIM_DF_PATH:-$SPOOL}
+
+now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+log() { echo "$(now) trim-agent: $*" >&2; }
+
+write_atomic() { # write_atomic FILE  (content on stdin)
+  local f=$1 tmp
+  tmp=$(mktemp "$f.XXXXXX") || return 1
+  cat >"$tmp" && chmod 0644 "$tmp" && mv -f "$tmp" "$f"
+}
+
+jstr() { # JSON-escape one line of text
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}
+  s=$(printf '%s' "$s" | tr -d '\000-\010\013-\037')
+  printf '%s' "$s"
+}
+
+refresh_plan() { # refresh_plan [--no-sizes]
+  local out rc
+  out=$("$TOOL" report --json --snapshots "$@" 2>/dev/null); rc=$?
+  if [ $rc -ne 0 ] || [ "${out:0:1}" != "[" ]; then log "plan refresh failed (rc=$rc)"; return 1; fi
+  printf '{"plannedAt":"%s","sizesMeasured":%s,"targets":%s}\n' "$(now)" "$([ "${1:-}" = --no-sizes ] && echo false || echo true)" "$out" | write_atomic "$SPOOL/plan.json"
+}
+
+free_bytes() { df --output=avail -B1 "$DF_PATH" 2>/dev/null | tail -1 | tr -d ' ' || echo 0; }
+
+write_result() { # write_result REQUEST_ID OK REMOVED FREED OUTPUT
+  printf '{"requestId":"%s","finishedAt":"%s","ok":%s,"removed":%s,"freedBytes":%s,"output":"%s"}\n' \
+    "$1" "$(now)" "$2" "$3" "$4" "$(jstr "$5")" | write_atomic "$SPOOL/result.json"
+}
+
+handle_request() {
+  local f="$SPOOL/request.env" id="" line key val only="" bad="" b
+  local -a keeps=() ids=()
+  if [ -L "$f" ] || [ ! -f "$f" ]; then rm -f -- "$f"; write_result "unknown" false 0 0 "request ignored: not a regular file"; return 0; fi
+  if [ "$(stat -c %s "$f" 2>/dev/null || echo 99999)" -gt 2048 ]; then rm -f -- "$f"; write_result "unknown" false 0 0 "request ignored: too large"; return 0; fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line//$'\r'/}
+    [ -z "$line" ] && continue
+    [[ "$line" =~ ^[A-Za-z0-9_.:=-]+$ ]] || { bad="unexpected characters in request"; break; }
+    key=${line%%=*}; val=${line#*=}
+    case "$key" in
+      requestId) [[ "$val" =~ ^[A-Za-z0-9-]{1,64}$ ]] && id=$val || bad="bad requestId" ;;
+      requestedAt) ;;
+      keep.*)
+        local tid=${key#keep.}
+        [[ "$tid" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { bad="bad target id"; break; }
+        [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -ge 1 ] || { bad="keep for $tid must be a whole number from 1 to 9999"; break; }
+        ids+=("$tid"); keeps+=(--keep "$tid=$val") ;;
+      *) bad="unknown field '$key'"; break ;;
+    esac
+  done <"$f"
+  rm -f -- "$f"
+  [ -n "$id" ] || id="unknown"
+  if [ -z "$bad" ] && [ ${#ids[@]} -eq 0 ]; then bad="no target named"; fi
+  if [ -n "$bad" ]; then log "rejected request $id: $bad"; write_result "$id" false 0 0 "rejected: $bad"; return 0; fi
+  only=$(IFS=,; echo "${ids[*]}")
+  log "running request $id: $only"
+  local before after out rc removed
+  before=$(free_bytes)
+  out=$("$TOOL" apply --only "$only" "${keeps[@]}" --yes 2>&1); rc=$?
+  after=$(free_bytes)
+  removed=$(printf '%s\n' "$out" | grep -c '^  removed ' || true)
+  local tail; tail=$(printf '%s\n' "$out" | tail -n 8 | tr '\n' ' ')
+  tail=${tail:0:1500}
+  if [ $rc -eq 0 ]; then write_result "$id" true "$removed" "$(( after > before ? after - before : 0 ))" "$tail"
+  else write_result "$id" false "$removed" "$(( after > before ? after - before : 0 ))" "tool exited $rc: $tail"; fi
+  refresh_plan || true
+}
+
+mkdir -p "$SPOOL" && chmod 0777 "$SPOOL"
+if [ ! -f "$SPOOL/plan.json" ]; then refresh_plan --no-sizes || true; fi   # quick names-only plan first
+last_plan=0
+while :; do
+  if [ -e "$SPOOL/request.env" ] || [ -L "$SPOOL/request.env" ]; then handle_request; last_plan=$(date +%s); fi
+  need=0
+  [ -e "$SPOOL/refresh" ] && { rm -f -- "$SPOOL/refresh"; need=1; }
+  [ $(( $(date +%s) - last_plan )) -ge "$PLAN_EVERY" ] && need=1
+  if [ $need -eq 1 ]; then refresh_plan || true; last_plan=$(date +%s); fi
+  [ "$ONCE" = 1 ] && break
+  sleep "$POLL"
+done

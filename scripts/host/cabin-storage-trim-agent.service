@@ -1,0 +1,15 @@
+[Unit]
+Description=Cabin storage trim agent (W-62): runs the in-app Trim control's requests with cabin-storage-prune
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cabin-storage-trim-agent
+Restart=always
+RestartSec=15
+# Measuring snapshot sizes walks the whole HDD; keep it out of the way of recording and backups.
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

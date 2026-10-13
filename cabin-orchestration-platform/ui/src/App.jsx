@@ -6615,6 +6615,8 @@ export function deviceConditionSteps(item) {
 // STORAGE_ (W-11, 2026-10-12): STORAGE_THRESHOLD / STORAGE_CLEARED events from the backend's disk
 // monitor -- a filling disk is exactly the quiet failure this list exists to surface (the HDD sat at
 // 94% for weeks with nothing saying so). Their payload carries the same see/think/act text.
+// sourceId("storage-hdd") in StorageMonitorService: the cold-tier disk alert.
+export const STORAGE_HDD_SOURCE = "storage-storage-hdd";
 const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED,STORAGE_";
 
 // authedFetch falls back to plain fetch when no auth prop is passed, so
@@ -6856,6 +6858,175 @@ export function mergeStatusCheckItems(activeAlerts, activeLocation, automationAl
 // counterpart for rows that never had a native see/think/act payload).
 // Renamed "Current conditions" -> "Status Checks" to match what the box
 // actually is now that it covers both sources.
+// ─── Trim old backups (W-62) ────────────────────────────────────────────────
+// Nate, 2026-10-13: the disk alert's Act step took him to Device Manager, which
+// is no use for a full disk. Act now offers this: one slider for how many of the
+// newest nightly copies to keep in each backup folder ("cut it down from total
+// or turn it up to remove more"), what that frees, what the disk would be
+// afterwards, and Go. The hub cannot delete host files, so Go asks the host's
+// trim service through the backend (StorageTrimService) and then waits for the
+// host to report back; it never claims the space is freed until the host says so.
+export function formatTrimBytes(bytes) {
+  if (bytes == null || bytes < 0) return "unknown";
+  const gb = bytes / (1024 ** 3);
+  if (gb >= 100) return `${Math.round(gb)} GB`;
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  const mb = bytes / (1024 ** 2);
+  return mb >= 1 ? `${Math.round(mb)} MB` : "under 1 MB";
+}
+
+export function trimTargetLabel(id) {
+  const name = String(id).replace(/^backups-/, "");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// Pure: what keeping the newest `keepN` copies of every folder would remove.
+// Snapshots are dated folders named YYYY-MM-DD, so name order is age order.
+export function trimPreview(targets, keepN, disk) {
+  const rows = (targets || []).map(t => {
+    const snaps = [...(t.snapshots || [])].sort((a, b) => (a.name < b.name ? -1 : 1));
+    const keep = Math.min(Math.max(1, keepN), snaps.length);
+    const removed = snaps.slice(0, snaps.length - keep);
+    const unknown = removed.some(s => s.bytes == null || s.bytes < 0);
+    return {
+      id: t.id, label: trimTargetLabel(t.id), count: snaps.length, keep, remove: removed.length,
+      bytes: unknown ? null : removed.reduce((n, s) => n + s.bytes, 0), unknown,
+    };
+  });
+  const removeCount = rows.reduce((n, r) => n + r.remove, 0);
+  const unknown = rows.some(r => r.unknown);
+  const totalBytes = unknown ? null : rows.reduce((n, r) => n + (r.bytes || 0), 0);
+  let after = null;
+  if (disk && totalBytes != null && disk.totalGb > 0) {
+    const freedGb = totalBytes / (1024 ** 3);
+    const freeGb = Math.min(disk.totalGb, disk.freeGb + freedGb);
+    after = { freeGb, usedPercent: Math.round(((disk.totalGb - freeGb) / disk.totalGb) * 100) };
+  }
+  return { rows, removeCount, unknown, totalBytes, after };
+}
+
+export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 }) {
+  const [view, setView] = useState(null);
+  const [problem, setProblem] = useState(null);
+  const [keepN, setKeepN] = useState(null);
+  const [waitingFor, setWaitingFor] = useState(null); // requestId we are waiting on
+  const [sending, setSending] = useState(false);
+  const url = `${apiBase}/api/system/storage/trim`;
+
+  const load = useCallback(async () => {
+    try {
+      const r = await authedFetch(url);
+      if (r.status === 401) { setProblem("Sign in to trim storage."); return null; }
+      if (r.status === 403) { setProblem("Only an administrator can trim storage."); return null; }
+      if (!r.ok) { setProblem("The hub could not read the trim plan."); return null; }
+      const v = await r.json();
+      setProblem(null);
+      setView(v);
+      return v;
+    } catch {
+      setProblem("The hub could not be reached.");
+      return null;
+    }
+  }, [authedFetch, url]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Default the slider to the configured keep, once the plan is known.
+  useEffect(() => {
+    if (keepN != null || !view?.targets?.length) return;
+    const configured = view.targets[0].keep || 3;
+    const max = Math.max(...view.targets.map(t => t.count));
+    setKeepN(Math.min(Math.max(1, configured), max));
+  }, [view, keepN]);
+
+  // After Go, wait for the host to report this request's result.
+  useEffect(() => {
+    if (!waitingFor) return undefined;
+    const id = setInterval(async () => {
+      const v = await load();
+      if (v?.lastResult?.requestId === waitingFor && !v.pending) setWaitingFor(null);
+    }, pollMs);
+    return () => clearInterval(id);
+  }, [waitingFor, load, pollMs]);
+
+  if (problem && !view) return <p className="trim-note" role="status">{problem}</p>;
+  if (!view) return <p className="trim-note" role="status">Loading the trim plan…</p>;
+  if (!view.installed) return <p className="trim-note" role="status">{view.message}</p>;
+  if (!view.targets?.length) return <p className="trim-note" role="status">No dated backup folders to trim.</p>;
+
+  const max = Math.max(...view.targets.map(t => t.count));
+  const n = keepN ?? Math.min(3, max);
+  const preview = trimPreview(view.targets, n, view.disk);
+  const busy = sending || !!waitingFor || view.pending;
+  const disk = view.disk;
+  const result = view.lastResult;
+
+  const go = async () => {
+    setSending(true);
+    setProblem(null);
+    try {
+      const keep = {};
+      preview.rows.forEach(r => { keep[r.id] = r.keep; });
+      const r = await authedFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keep }) });
+      const body = await r.json().catch(() => ({}));
+      if (r.status === 202) { setWaitingFor(body.requestId); load(); }
+      else setProblem(body.error || `The hub refused the request (${r.status}).`);
+    } catch {
+      setProblem("The hub could not be reached.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="trim-widget">
+      <strong>Trim old backups</strong>
+      {disk && <p className="trim-note">Disk now: {disk.usedPercent}% full, {Math.round(disk.freeGb)} GB free of {Math.round(disk.totalGb)} GB.</p>}
+      {view.stale && <p className="trim-note">This plan is more than 12 hours old, so recent folders may be missing from it.</p>}
+      {!view.sizesMeasured && <p className="trim-note">The host is still measuring folder sizes (the first pass takes several minutes). You can trim now; the amount freed shows when it finishes.</p>}
+
+      <label className="trim-slider">
+        <span>Keep the newest <strong>{n}</strong> nightly cop{n === 1 ? "y" : "ies"} of each folder</span>
+        <input type="range" min="1" max={max} step="1" value={n} disabled={busy}
+               aria-label="Number of newest copies to keep in each folder"
+               onChange={e => setKeepN(Number(e.target.value))} />
+        <span className="trim-slider-ends"><span>Trim more</span><span>Trim less</span></span>
+      </label>
+
+      <ul className="trim-rows">
+        {preview.rows.map(r => (
+          <li key={r.id}>
+            <span className="trim-row-name">{r.label}</span>
+            <span>keep {r.keep} of {r.count}{r.remove > 0 ? `, remove ${r.remove}` : ""}</span>
+            <span className="trim-row-size">{r.remove > 0 ? formatTrimBytes(r.bytes) : "nothing"}</span>
+          </li>
+        ))}
+      </ul>
+
+      <p className="trim-summary" aria-live="polite">
+        {preview.removeCount === 0
+          ? "Nothing to remove at this setting. Slide toward Trim more."
+          : preview.totalBytes == null
+            ? `Removes ${preview.removeCount} older copies. The amount freed is not measured yet.`
+            : `Frees about ${formatTrimBytes(preview.totalBytes)}.${preview.after ? ` The disk would be about ${preview.after.usedPercent}% full (${Math.round(preview.after.freeGb)} GB free).` : ""}`}
+      </p>
+
+      <button type="button" className="trim-go" onClick={go} disabled={busy || preview.removeCount === 0}>
+        {sending ? "Sending…" : waitingFor || view.pending ? "Trimming on the host…" : "Go"}
+      </button>
+      <p className="trim-note">Go permanently deletes the older backup copies, oldest first. The newest copy of each folder is never removed. Telemetry is never touched.</p>
+      {problem && <p className="trim-error" role="alert">{problem}</p>}
+      {result && !waitingFor && !view.pending && (
+        <p className={result.ok ? "trim-note" : "trim-error"} role="status">
+          {result.ok
+            ? `Last trim: removed ${result.removed} ${result.removed === 1 ? "copy" : "copies"}, freed ${formatTrimBytes(result.freedBytes)}.`
+            : `Last trim did not finish: ${result.output || "no detail"}`}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function StatusChecksCard({ auth }) {
   const {
     activeAlerts = [], activeAlertLocations = [], activeLocation = "cabin",
@@ -7041,7 +7212,10 @@ function StatusChecksCard({ auth }) {
                       </span>
                     </div>
                     {ackError && <p className="action-result action-error">{ackError}</p>}
-                    {item.sourceDeviceId && (
+                    {/* W-62: a full-disk alert's Act is the Trim control, not a device. */}
+                    {item.kind === "automation" && item.sourceDeviceId === STORAGE_HDD_SOURCE ? (
+                      <StorageTrimWidget apiBase={LOCATIONS.cabin.apiBase} authedFetch={doFetch} />
+                    ) : item.sourceDeviceId && (
                       <div className="active-condition-actions active-condition-actions-expanded">
                         <button type="button" className="active-condition-link" onClick={() => openDevice(item.sourceDeviceId)}>
                           Open device <ChevronRight size={11}/>
