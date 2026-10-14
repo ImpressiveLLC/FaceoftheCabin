@@ -210,3 +210,10 @@ record, never silently anonymized into an unattributed fact.
   once, real, on the M920q (see status header). Tier 2 (does the trained
   tag actually answer better) has not — treat any claim about answer
   *quality* as unverified until a real Tier 2 comparison lands.
+
+## Intent / slot follow-on
+
+The [intent-slot r1 package](intent-slot/README.md) adds offline proposal schemas,
+source adapters, reviewed-data export and evaluation tooling for a hybrid
+RAG + semantic SFT + live resolver design. It is a reconstructed starter;
+resolver/runtime wiring, training and live evaluation remain follow-on work.

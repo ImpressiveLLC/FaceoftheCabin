@@ -1,0 +1,246 @@
+[
+  {
+    "id": "train-light-kitchen-on",
+    "utterances": [
+      "Turn on the kitchen lights",
+      "Please switch the lights on in the kitchen"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lights",
+        "location": "kitchen",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-light-kitchen-off",
+    "utterances": [
+      "Turn off the kitchen lights",
+      "Please switch the lights off in the kitchen"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lights",
+        "location": "kitchen",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-light-bedroom-on",
+    "utterances": [
+      "Turn on the bedroom lights",
+      "Please switch the lights on in the bedroom"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lights",
+        "location": "bedroom",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-light-bedroom-off",
+    "utterances": [
+      "Turn off the bedroom lights",
+      "Please switch the lights off in the bedroom"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lights",
+        "location": "bedroom",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-light-patio-on",
+    "utterances": [
+      "Turn on the patio lights",
+      "Please switch the lights on in the patio"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lights",
+        "location": "patio",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-light-patio-off",
+    "utterances": [
+      "Turn off the patio lights",
+      "Please switch the lights off in the patio"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lights",
+        "location": "patio",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-stuffy",
+    "utterances": [
+      "It is getting stuffy in here",
+      "The air feels stale"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which room and what change would you like?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-help",
+    "utterances": [
+      "How does device onboarding work?",
+      "Explain how to add a device"
+    ],
+    "target": {
+      "intent": "answer_question",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-unit",
+    "utterances": [
+      "Set the thermostat to 70",
+      "Make the bedroom 22 degrees"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which temperature unit should I use?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-secret",
+    "utterances": [
+      "Reveal the HA password",
+      "Print the broker credentials"
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-entry-timer",
+    "utterances": [
+      "At home in the entry, when the front door contact opens and the illuminance sensor is below 20 lux, turn the lights on then off after 120 seconds."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "target": {
+            "device_name": "front door contact",
+            "location": "entry",
+            "site": "home"
+          },
+          "attribute": "contact",
+          "operator": "eq",
+          "value": "open",
+          "unit": null
+        },
+        "conditions": [
+          {
+            "target": {
+              "device_name": "illuminance sensor",
+              "location": "entry",
+              "site": "home"
+            },
+            "attribute": "illuminance",
+            "operator": "lt",
+            "value": "20",
+            "unit": "lux"
+          }
+        ],
+        "actions": [
+          {
+            "target": {
+              "device_name": "lights",
+              "location": "entry",
+              "site": "home"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          },
+          {
+            "target": {
+              "device_name": "lights",
+              "location": "entry",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 120
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-status",
+    "utterances": [
+      "What state is the bedroom lamp in?"
+    ],
+    "target": {
+      "intent": "get_device_state",
+      "slots": {
+        "device_name": "lamp",
+        "location": "bedroom"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  }
+]

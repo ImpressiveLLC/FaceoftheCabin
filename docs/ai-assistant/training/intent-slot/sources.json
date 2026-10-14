@@ -1,0 +1,34 @@
+{
+  "reviewed_on": "2026-10-14",
+  "note": "Discovery manifest, not training approval. Pin revision, hash, license and record on every import. No upstream datasets bundled.",
+  "sources": [
+    {
+      "id": "ha",
+      "url": "https://github.com/OHF-Voice/intents",
+      "license_observed": "CC-BY-4.0",
+      "scope": "Concrete tests YAML for HassTurnOn/HassTurnOff; preserve attribution. Templates require upstream expansion.",
+      "revision": null
+    },
+    {
+      "id": "enfuse",
+      "url": "https://huggingface.co/datasets/enfuse/joint-intent-slot-smarthome",
+      "license_observed": "Apache-2.0",
+      "scope": "Synthetic JSONL text/intent/slots; review ambiguous units and out-of-domain gaps.",
+      "revision": null
+    },
+    {
+      "id": "snips",
+      "url": "https://github.com/snipsco/snips-nlu",
+      "license_observed": "Verify selected dataset terms separately from library license",
+      "scope": "Sample lights_dataset.json format only; no claim of a comprehensive smart-home corpus.",
+      "revision": null
+    },
+    {
+      "id": "casas",
+      "url": "https://casas.wsu.edu/datasets/",
+      "license_observed": "Review per dataset before use",
+      "scope": "Deferred behavioral research; not an intent corpus and never evidence of this household habits.",
+      "revision": null
+    }
+  ]
+}
