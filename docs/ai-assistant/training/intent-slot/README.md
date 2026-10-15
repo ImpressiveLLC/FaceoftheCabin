@@ -23,8 +23,11 @@ Repository baseline: `409e1804311b79eafcfa15f24aeac91b588b353c`.
    confirmation of the resolved action → existing executor. Recheck authorization,
    target availability and proposal version at execution; bind confirmation to
    the exact plan hash, principal and expiry. Model text cannot grant approval.
-   No arbitrary HA service or MQTT publish path. HA remains the automation engine;
-   coordinate automation persistence with CabinAutomations, not a parallel engine.
+   No arbitrary HA service or MQTT publish path. FaceoftheCabin owns platform
+   workflow interpretation and orchestration through its existing workflow engine
+   (`WorkflowRuleService`); HA, MQTT and other adapters provide integration paths.
+   Existing HA-owned automations remain coordinated with CabinAutomations.
+   Assistant proposals must reuse these governed paths, not create a second engine.
 5. **Behavior:** deterministic aggregation over authorized local telemetry can
    identify candidate patterns; the LLM explains a candidate and drafts a proposal.
    CASAS is deferred research, not a source of actual household habits.

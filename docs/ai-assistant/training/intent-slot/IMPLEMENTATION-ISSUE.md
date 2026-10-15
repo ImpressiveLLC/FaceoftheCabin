@@ -25,7 +25,8 @@ unassigned; no changes to existing Cowork Ratification fields.
 - [ ] Apply existing policy controls and confirm the concrete resolved plan.
   Bind approval to user, target, action parameters, plan hash and expiry;
   invalidate on inventory/plan changes and prevent replay. Never create arbitrary
-  service/topic passthrough. Reuse existing executor and HA automation ownership.
+  service/topic passthrough. Reuse the platform workflow engine/executor and its HA/MQTT adapters; preserve
+  ownership of existing HA automations without treating HA as the sole engine.
 - [ ] Add backend tests with a fake executor proving zero invocations on blocked
   requests. Cover forged approvals, prompt injection, unknown entity, wrong site,
   changed capability, unavailable devices, stale inventory, ambiguous aliases,
