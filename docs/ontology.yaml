@@ -10960,7 +10960,7 @@ elements:
       systems: Temperature Humidity Sensor type; candidate
       technical: zigbee_temperature_humidity_sensor
       compliance: Ordered/planned; not live-verified
-    definition: SNZB-02P battery sensor, one per Home monitoring location or spare; no leak-detection capability.
+    definition: SNZB-02P battery sensor; five Home room allocations and one Cabin lower-duct temperature reference; no leak-detection capability.
     notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
       identity stays in the registry; display aliases derive from this type label plus hub location, room and
       human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
@@ -11517,7 +11517,7 @@ elements:
       systems: Exhaust Fan type
       technical: exhaust_fan
       compliance: Uncommissioned; exact load identification required
-    definition: Bathroom air-extraction load, model/rating not supplied; distinct from the inter-level circulation
+    definition: Bathroom air-extraction load; Doc 27 allocation is Air King E130S, pending physical nameplate verification; distinct from the inter-level circulation
       fan.
     notes: W-76 candidate type only; no executable capability or runtime identity granted. See docs/hardware/doc27-schematics.md.
   - id: space_heater

@@ -72,7 +72,7 @@ flowchart TB
   DIST --> PSU[IRM-05-5 → reviewed low-voltage entry → S1 sensor circuit]
   DIST --> R1[MINI-ZB1GSP / exhaust channel]
   DIST --> R2[MINI-ZB1GSP / heat channel]
-  R1 --> EX[Existing bathroom exhaust load / rating pending]
+  R1 --> EX[Air King E130S exhaust / verify nameplate]
   R2 --> HE[Existing bathroom heat load / rating pending]
   SW1[Local toggle exhaust] -. manufacturer-approved switch input .-> R1
   SW2[Local toggle heat] -. manufacturer-approved switch input .-> R2
@@ -92,16 +92,15 @@ with the installer before turning this diagram into a construction drawing.
 ```mermaid
 flowchart TB
   FEED[Verified protected supply / enclosed distribution] --> PSU[IRM-05-5 → reviewed low-voltage entry → S1]
-  FEED --> A[MINI-ZB1GSP / control channel A]
-  FEED --> B[MINI-ZB1GSP / control channel B]
-  A --> LA[Assigned load A / identity and rating pending]
-  B --> LB[Assigned load B / identity and rating pending]
+  FEED --> A[MINI-ZB1GSP / circulation channel A]
+  FEED --> B[MINI-ZB1GSP / reserved channel B]
+  A --> LA[S6 manual controller and fan / motor rating check]
+  B --> LB[No connected load / blocked]
   A <-->|Zigbee| Z[Cabin coordinator / Z2M]
   B <-->|Zigbee| Z
 ```
 
-The two relay allocations are proposed from the four purchased relays; confirm
-against the original detailed Doc 27 design. Do not equate a new relay with the
+Current assignment from Nate's clarified loop: channel A controls S6 supply after motor-load verification; channel B is reserved. This is an explicit updated design, not a recovered earlier wiring diagram. Do not equate a new relay with the
 existing W-75 mech-room heater entity. Do not assign the Midea compressor to a
 relay merely because it is nearby. Unassigned channels are blocked in control metadata.
 
@@ -112,10 +111,10 @@ flowchart LR
   AC[Suitable continuous appliance supply] --> M[Midea Cube]
   M -->|Wi-Fi LAN candidate| MI[Midea AC LAN / HA]
   MI --> MD[Dehumidifier parent / actual sensor and control children]
-  AC2[Suitable motor-rated supply] --> P[Conditional S61 plug assignment]
+  AC2[Suitable motor-rated supply] --> P[Relay A OR approved S61 fallback / one path]
   P --> CTRL[Included S6 manual speed controller]
   CTRL --> FAN[CLOUDLINE S6]
-  P -->|Zigbee| Z[Cabin Z2M → outlet parent / state and verified telemetry]
+  P -->|Zigbee| Z[Cabin Z2M → switch parent / state and verified telemetry]
   FAN -. optional future compatible Wi-Fi UIS controller .-> UIS[UIS cloud → HA / speed service]
 ```
 
@@ -129,7 +128,7 @@ pump mode before relying on drainage. No networked UIS controller was ordered.
 
 ```mermaid
 flowchart LR
-  T[Five SNZB-02P room sensors + one spare] -->|Home mesh only| CO[Existing SLZB-MR5U coordinator]
+  T[Five Home SNZB-02P room sensors] -->|Home mesh only| CO[Existing SLZB-MR5U coordinator]
   CO --> Z[Configured Home Z2M process]
   Z -->|Existing location-scoped bridge prefix| B[Broker → Zigbee adapter]
   B --> R[Home hub-location devices → temperature / RH / diagnostics]
@@ -147,3 +146,22 @@ fuse choices; earthing/strain relief; enclosure compartment layout; local-switch
 behavior; heat/exhaust interlocks; power-loss recovery; measured low-voltage budget.
 Have the installer approve that completed drawing. The present documents cannot
 truthfully supply these details from the order summary alone.
+
+## S7 — fixed air loop and two-point temperature feedback
+
+```mermaid
+flowchart LR
+  LOW[Central basement duct / 72 inches above floor] -->|lower-to-upper driven leg / S6| UP[Upper upstairs zone]
+  UP -->|separate return-air path / fixed direction| LOW
+  LT[Cabin SNZB-02P lower reference] -. temperature .-> RULE[Freshness + delta + hysteresis + cycle limits]
+  UT[Main-node SHT45 upper reference] -. temperature .-> RULE
+  RULE -->|governed on-off / selected manual speed| SW[Mechanical relay A / conditional motor-load approval]
+  SW --> S6[S6 with supplied controller]
+```
+
+The sixth SNZB-02P joins the **Cabin** mesh; the other five join Home. No long
+inter-floor I2C run is proposed. S7 defines airflow/measurement topology; actual
+duct routing and return opening need installation verification. S6 reversibility,
+remote speed and measured airflow are not assumed. See the build plan for the
+control state rules and the explicit distinction between this lower T/RH point
+and the deferred lower full air-quality node.
