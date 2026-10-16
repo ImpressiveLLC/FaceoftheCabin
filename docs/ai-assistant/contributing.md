@@ -1,5 +1,14 @@
 # Shared knowledge contributions
 
+## Doc 27 environmental content
+
+[Environmental user guide](user-guide/environmental-nodes.md) is prepared within the
+reviewed-document allowlist. Adding it does not select it in AskContextBuilder.
+The [handoff](../governance/handovers/HO-2026-10-16-doc27-poc2.md) assigns category/ref
+wiring and answer/role tests to implementation. Preserve ordered/commissioned status,
+measurement provenance and the distinction between a topic relationship and a command.
+Do not ingest frozen acceptance answers as retrieval source content.
+
 This is a repository procedure usable now by authorized human operators/installers/maintainers, Claude collaborators and Codex collaborators. It is **not a claim that the future in-app review/refresh workflow exists**. GitHub remains the canonical artifact/change record. No model is the sole keeper of reusable facts.
 
 ## Small, auditable changes

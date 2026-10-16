@@ -317,6 +317,8 @@ Source: Nate, 2026-10-14; [D27](../governance/decisions/ontology-decisions.md) (
 
 ### [POC2] Intent/slot r1 extended for D27 (Codex)
 
+Current [Doc 27 / POC2 handoff](../governance/handovers/HO-2026-10-16-doc27-poc2.md): prompt/contract improvement first; review and expand gold; shadow deferred. Hardware facts belong in reviewed documents and live inventory. New environmental controls do not expand W-75's heater-only scope.
+
 Offline only. Extend the PR #159 contract and data:
 
 - **Needs.** Add an `express_need` intent and a `concept` slot from the W-66 vocabulary. "I'm cold" becomes `express_need` with `concept: cold`, not a bare `clarify`, so Ask can offer ontology options (D27 R-OC-5, R-OC-6). Unitless temperatures still clarify.

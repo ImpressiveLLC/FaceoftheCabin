@@ -1,5 +1,18 @@
 # CLAUDE.md — FaceoftheCabin platform
 
+## Doc 27 environmental-node collaboration handoff
+
+Start with [Doc 27 build and integration plan](docs/hardware/doc27-environmental-nodes.md),
+[master device allocation list](docs/hardware/doc27-device-inventory.json),
+[schematics](docs/hardware/doc27-schematics.md), and
+[model/shadow decisions](docs/governance/handovers/HO-2026-10-16-doc27-poc2.md).
+Three active node builds: main-level monitoring, bathroom exhaust/heat control,
+mechanical-room control. Lower-level monitoring-only node deferred. Hardware is ordered,
+not commissioned. Reuse candidate type names plus hub/room/purpose; never rename stable
+device IDs or infer capabilities from climate-topic membership. Midea and S6 are included;
+the S6 is the user's “air pump,” not a second purchase. Prompt/contract work first;
+shadow mode deferred. POC2 specification below remains pending implementation.
+
 This file gives Claude Code full context for every session — on any machine,
 at any location.
 

@@ -1,5 +1,14 @@
 # Maintenance & Operations Guide
 
+## Doc 27 incoming environmental equipment
+
+The [canonical build plan](hardware/doc27-environmental-nodes.md#setup-maintenance-and-acceptance)
+owns receipt, calibration, cleaning, drain inspection, freshness and recovery checks;
+the [master inventory](hardware/doc27-device-inventory.json) records planned allocations.
+Record commissioning evidence before changing ordered status to installed/verified.
+Do not treat a retained online state, commanded outlet state or recirculation as proof
+of fresh telemetry, airflow or equal conditions between floors.
+
 *Audience: whoever is operating, deploying, or debugging this platform.
 For product/day-to-day usage, see [`USER_GUIDE.md`](USER_GUIDE.md). For
 standing up an independent instance, see [`REPLICATION.md`](REPLICATION.md).
