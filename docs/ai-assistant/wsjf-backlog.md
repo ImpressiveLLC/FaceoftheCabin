@@ -330,3 +330,17 @@ Offline only. Extend the PR #159 contract and data:
 ### [C5] Ask action proposals, general (Code with Codex)
 
 C5 generalizes W-75 once its evidence is in. It replaces the static concept map with walking the W-68 store, uses the W-67 inventory, and applies W-69 guards and the caller's permissions. Its options use the R-OC-11 single confirm model. Execution outside the W-75 heater scope needs the PR #159 runtime gates (zero invented entities accepted, zero runs without confirmation, zero critical safety failures), the RAG regression suite and Nate's go.
+
+### POC2 human grading screen — scoped implementation, 2026-10-16
+
+Nate requested an accessible grading screen (local, temporary or integrated). Reuses
+POC2 / UC-17 / D27; no new governance ID. Codex owns `intent-slot/grading/` and
+its tests. This scope is recorded and pushed before implementation.
+
+Provide a localhost-only screen over a chosen package's gold fixtures: readable
+expected behavior, approve/revise/reject with reviewer and notes, persistent local
+review history, schema/card-target validation and explicit approved-gold export.
+Optionally display a matching evaluation report and record separate human model
+judgments. Never conflate fixture approval, automated scores, or physical execution.
+No model run, training, host change or automatic Git publication of grades.
+Progress: planned; implementation and verification follow on `codex/poc2-grading-screen`.
