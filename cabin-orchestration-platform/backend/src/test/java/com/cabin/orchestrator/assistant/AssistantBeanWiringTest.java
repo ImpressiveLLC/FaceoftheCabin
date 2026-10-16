@@ -32,6 +32,35 @@ class AssistantBeanWiringTest {
     }
 
     @Test
+    void theProposeRouteIsWiredAndOffByDefault() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getBeanFactory().registerSingleton("deviceRegistry", mock(DeviceRegistry.class));
+            context.getBeanFactory().registerSingleton("tinyHelpdeskService", mock(com.cabin.orchestrator.helpdesk.TinyHelpdeskService.class));
+            context.register(AssistantInventoryService.class, EntityResolver.class, IntentSlotContract.class, OllamaChatClient.class,
+                Slf4jProposalAuditLog.class, IntentProposalService.class, com.cabin.orchestrator.api.HelpdeskProposeController.class);
+            context.refresh();
+
+            assertNotNull(context.getBean(com.cabin.orchestrator.api.HelpdeskProposeController.class));
+            org.junit.jupiter.api.Assertions.assertFalse(context.getBean(IntentProposalService.class).enabled(),
+                "cabin.ask.intent.enabled must default to false");
+        }
+    }
+
+    @Test
+    void theFlagTurnsTheRouteOn() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of("cabin.ask.intent.enabled", "true")));
+            context.getBeanFactory().registerSingleton("deviceRegistry", mock(DeviceRegistry.class));
+            context.getBeanFactory().registerSingleton("tinyHelpdeskService", mock(com.cabin.orchestrator.helpdesk.TinyHelpdeskService.class));
+            context.register(AssistantInventoryService.class, EntityResolver.class, IntentSlotContract.class, OllamaChatClient.class,
+                Slf4jProposalAuditLog.class, IntentProposalService.class);
+            context.refresh();
+
+            org.junit.jupiter.api.Assertions.assertTrue(context.getBean(IntentProposalService.class).enabled());
+        }
+    }
+
+    @Test
     void theResolverReadsItsLimitsFromConfiguration() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(

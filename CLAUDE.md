@@ -422,6 +422,7 @@ npm install && npm run dev
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
 | `CABIN_PRESENCE_STALE_AFTER_HOURS` | PresenceController | Hours of phone silence after which `/api/presence` reports `stale: true` and the badge reads "Presence unknown". Default `6`. Keep equal to Node-RED's `PRESENCE_STALE_HOURS` (siren gate, W-33) so the badge and the siren agree |
+| `CABIN_ASK_INTENT_ENABLED` | HelpdeskProposeController | `true` turns on `POST /api/helpdesk/propose` (default `false`, route answers 404). Also tunable: `CABIN_ASK_INTENT_MODEL` (default `cabin-intent-slot-prompt-r1`, an Ollama tag that must exist), `CABIN_ASK_INTENT_PROPOSAL_TTL_SECONDS` (300), `CABIN_ASK_INTENT_MAX_INPUT_CHARS` (500), `CABIN_ASK_INTENT_TIMEOUT_SECONDS` (60), `CABIN_ASK_RESOLVER_MAX_INVENTORY_AGE_SECONDS` (120), `CABIN_ASK_RESOLVER_MAX_OBSERVATION_AGE_HOURS` (6). None is passed through `docker-compose.m920q.yml` yet |
 | `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). **Blank on the M920q as of 2026-10-12, so no backend push reaches a phone (W-51)**. The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
 
 ---
@@ -545,6 +546,7 @@ column for writes is enforced, not just described. Reads follow D14: several
 | `POST /api/auth/session`, `POST /api/auth/session/revoke` | AuthController | `session` needs a Google token, managed session or existing CabinSession; `revoke` is open on purpose (holding the token is the proof) |
 | `GET /api/cross-domain/cabin-status-summary` | CrossDomainController | gated, plus a per-route household-role check (D11) |
 | `POST /api/helpdesk/ask` | TinyHelpdeskController | any signed-in session; a guest token gets 403; `CREDENTIAL_POINTER` redaction happens inside the answer |
+| `POST /api/helpdesk/propose` (W-75, 2026-10-16) | HelpdeskProposeController | **off by default** (`CABIN_ASK_INTENT_ENABLED`, answers 404 while off); administrator session only. Body `{"text": "..."}`. Runs the intent/slot model, resolves the target against the assistant inventory and returns an answer, a clarification, a resolved target or a **proposal only** (plan hash, principal, inventory version, 5-minute expiry). **There is no executor behind it**: nothing it returns runs anything |
 | `GET /api/platform-import/records`, `/{platform}/proposals`; `POST /{platform}/confirm` | PlatformImportController | `records`: administrator or adult household member; the rest administrator only |
 | `GET /api/opportunities`, `PATCH /{id}/status` | OpportunitiesController | administrator only, every method |
 | `/api/schedule/rules`, `/api/schedule/holidays` | ScheduleRulesController, HolidaysController | gated |
