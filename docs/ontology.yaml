@@ -10730,3 +10730,831 @@ elements:
       class, does not change the bimodal data_class rule above, and is
       deliberately not MANUALLY_CURATED. See
       docs/ai-assistant/rag/c1a-iteration-2.md.
+
+# Doc 27 reusable candidate types — W-76 / UC-18 (not live instances)
+  - id: sensor_collection_box
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Sensor Collection Box
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Sensor Collection Box
+      systems: Sensor Collection Box type; candidate
+      technical: sensor_collection_box
+      compliance: Ordered/planned; not live-verified
+    definition: Composite monitoring-only assembly with SEN66, SHT45 and QT Py; no actuation.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+  - id: sensor_relay_box
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Sensor Relay Box
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Sensor Relay Box
+      systems: Sensor Relay Box type; candidate
+      technical: sensor_relay_box
+      compliance: Ordered/planned; not live-verified
+    definition: Sensor Collection Box profile associated with separately identified Zigbee control channels;
+      ESP32 does not drive mains relays.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: sensor_collection_box
+      type: extends
+      cardinality: N:1
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+  - id: sen66_environmental_sensor
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Environmental Sensor
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Environmental Sensor
+      systems: Environmental Sensor type; candidate
+      technical: sen66_environmental_sensor
+      compliance: Ordered/planned; not live-verified
+    definition: SEN66 multi-channel air sensor; PM, CO2, VOC and NOx indexes, temperature and humidity; not a
+      CO or smoke alarm.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: sht45_ambient_sensor
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Ambient Temperature Humidity Sensor
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Ambient Temperature Humidity Sensor
+      systems: Ambient Temperature Humidity Sensor type; candidate
+      technical: sht45_ambient_sensor
+      compliance: Ordered/planned; not live-verified
+    definition: SHT45 ambient temperature and relative-humidity source kept distinct from the SEN66 readings.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: qt_py_sensor_controller
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Sensor Node Controller
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Sensor Node Controller
+      systems: Sensor Node Controller type; candidate
+      technical: qt_py_sensor_controller
+      compliance: Ordered/planned; not live-verified
+    definition: QT Py ESP32-S3 PID 5426 Wi-Fi sensor host; no actuator connection inferred.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: sen6x_interface_adapter
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Sensor Interface Adapter
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Sensor Interface Adapter
+      systems: Sensor Interface Adapter type; candidate
+      technical: sen6x_interface_adapter
+      compliance: Ordered/planned; not live-verified
+    definition: Adafruit PID 6331 interface between the keyed SEN6x cable and STEMMA QT bus.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: isolated_node_power_supply
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Node Power Supply
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Node Power Supply
+      systems: Node Power Supply type; candidate
+      technical: isolated_node_power_supply
+      compliance: Ordered/planned; not live-verified
+    definition: IRM-05-5 module planned for control nodes; installation and low-voltage budget require review.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: metered_zigbee_relay
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Metered Relay
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Metered Relay
+      systems: Metered Relay type; candidate
+      technical: metered_zigbee_relay
+      compliance: Ordered/planned; not live-verified
+    definition: MINI-ZB1GSP independent switching and measured electrical services, subject to actual exposes
+      and load review.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+  - id: zigbee_controlled_outlet
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Controlled Outlet
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Controlled Outlet
+      systems: Controlled Outlet type; candidate
+      technical: zigbee_controlled_outlet
+      compliance: Ordered/planned; not live-verified
+    definition: S61SZBTPB on/off outlet candidate; exact protocol model, ratings and metering require receipt
+      verification.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+  - id: zigbee_temperature_humidity_sensor
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Temperature Humidity Sensor
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Temperature Humidity Sensor
+      systems: Temperature Humidity Sensor type; candidate
+      technical: zigbee_temperature_humidity_sensor
+      compliance: Ordered/planned; not live-verified
+    definition: SNZB-02P battery sensor; five Home room allocations and one Cabin lower-duct temperature reference; no leak-detection capability.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+  - id: connected_dehumidifier
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Connected Dehumidifier
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Connected Dehumidifier
+      systems: Connected Dehumidifier type; candidate
+      technical: connected_dehumidifier
+      compliance: Ordered/planned; not live-verified
+    definition: Midea Cube MAD50PS1QGR candidate LAN-connected dehumidifier; expose only capabilities discovered
+      on the delivered unit.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+    - target: humidity_topic
+      type: relates_to
+      cardinality: N:N
+  - id: inline_air_circulator
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Inline Air Circulator
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Inline Air Circulator
+      systems: Inline Air Circulator type; candidate
+      technical: inline_air_circulator
+      compliance: Ordered/planned; not live-verified
+    definition: CLOUDLINE S6 with supplied manual speed controller; circulation supports several purposes but
+      does not inherently heat, cool or dehumidify.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+    - target: heating_topic
+      type: relates_to
+      cardinality: N:N
+    - target: cooling_topic
+      type: relates_to
+      cardinality: N:N
+    - target: humidity_topic
+      type: relates_to
+      cardinality: N:N
+    - target: climate_topic
+      type: relates_to
+      cardinality: N:N
+  - id: local_control_switch
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Local Control Switch
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Local Control Switch
+      systems: Local Control Switch type; candidate
+      technical: local_control_switch
+      compliance: Ordered/planned; not live-verified
+    definition: Leviton 1451-2W physical control; approved input wiring and behavior remain to be established.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: node_enclosure
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Node Enclosure
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Node Enclosure
+      systems: Node Enclosure type; candidate
+      technical: node_enclosure
+      compliance: Ordered/planned; not live-verified
+    definition: Protective sensor assembly enclosure with reviewed ventilation, heat separation and electrical
+      compartments; drilled enclosure ingress rating not presumed.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: node_power_inlet
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Node Power Inlet
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Node Power Inlet
+      systems: Node Power Inlet type; candidate
+      technical: node_power_inlet
+      compliance: Ordered/planned; not live-verified
+    definition: Purchased fused IEC C14 inlet; rating, fuse and enclosure assignment pending electrical design.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: node_status_light_pipe
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Node Status Light Pipe
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Node Status Light Pipe
+      systems: Node Status Light Pipe type; candidate
+      technical: node_status_light_pipe
+      compliance: Ordered/planned; not live-verified
+    definition: Acrylic optical path from controller status LED to enclosure exterior; not itself an online-status
+      sensor.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: sensor_bus_interconnect
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Sensor Bus Interconnect
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Sensor Bus Interconnect
+      systems: Sensor Bus Interconnect type; candidate
+      technical: sensor_bus_interconnect
+      compliance: Ordered/planned; not live-verified
+    definition: Keyed JST GH sensor cable or STEMMA QT cable, with connector and voltage roles verified before
+      assembly.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: environmental_measurement_service
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Environmental Measurement Service
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Environmental Measurement Service
+      systems: Environmental Measurement Service type; candidate
+      technical: environmental_measurement_service
+      compliance: Ordered/planned; not live-verified
+    definition: A source-attributed measurement channel belonging to a physical sensor parent with quantity,
+      unit, observed time and availability.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: device_service_hierarchy
+      type: depends_on
+      cardinality: N:1
+  - id: guarded_switch_service
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Guarded Switch Service
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Guarded Switch Service
+      systems: Guarded Switch Service type; candidate
+      technical: guarded_switch_service
+      compliance: Ordered/planned; not live-verified
+    definition: On/off capability bound to a verified relay or outlet and actual load; blocked before commissioning
+      and subject to policy/confirmation.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: dehumidification_service
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Dehumidification Service
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Dehumidification Service
+      systems: Dehumidification Service type; candidate
+      technical: dehumidification_service
+      compliance: Ordered/planned; not live-verified
+    definition: Humidity-control capability offered only when exact appliance entity and permitted values are
+      discovered and commissioned.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: connected_dehumidifier
+      type: part_of
+      cardinality: N:1
+  - id: air_circulation_service
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Air Circulation Service
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Air Circulation Service
+      systems: Air Circulation Service type; candidate
+      technical: air_circulation_service
+      compliance: Ordered/planned; not live-verified
+    definition: Movement of air between verified spaces; separate power, commanded level and actual flow evidence.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: inline_air_circulator
+      type: part_of
+      cardinality: N:1
+  - id: climate_topic
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Climate
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Climate
+      systems: Climate type; candidate
+      technical: climate_topic
+      compliance: Ordered/planned; not live-verified
+    definition: Human-defined grouping of environmental monitoring and condition-management functions, not an
+      execution capability.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: heating_topic
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Heating
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Heating
+      systems: Heating type; candidate
+      technical: heating_topic
+      compliance: Ordered/planned; not live-verified
+    definition: Human-defined heating concern; membership does not imply heat generation or temperature-setting
+      capability.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: cooling_topic
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Cooling
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Cooling
+      systems: Cooling type; candidate
+      technical: cooling_topic
+      compliance: Ordered/planned; not live-verified
+    definition: Human-defined cooling concern; membership does not imply refrigeration or temperature-setting
+      capability.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+  - id: humidity_topic
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Humidity
+    source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
+    rendering:
+      semantic: Humidity
+      systems: Humidity type; candidate
+      technical: humidity_topic
+      compliance: Ordered/planned; not live-verified
+    definition: Human-defined moisture concern; membership does not establish active moisture removal.
+    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+
+  - id: carbon_dioxide_concentration
+    entity_type: owl:DatatypeProperty
+    layer: ontology
+    primitive: true
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:decimal
+    ui_display_name: Carbon Dioxide
+    source: SEN66; W-76 measurement mapping design
+    rendering:
+      semantic: Carbon Dioxide
+      systems: Carbon Dioxide (ppm)
+      technical: carbon_dioxide_concentration
+      compliance: Source and observed timestamp required
+    definition: Measured CO2 mole fraction. Reuse existing semantic co2 field; never substitute carbon monoxide
+      or infer quantity solely from ppm units.
+    relationships:
+    - target: environmental_measurement_service
+      type: consumed_by
+      cardinality: N:1
+    notes: 'Unit: ppm. Candidate ontology definition, not proof of a registered D7/D13 MeasurementType or live
+      value. Map actual HA device_class/unit and field keys in implementation; reject nonnumeric/unavailable/stale
+      values. Preserve existing temperature_celsius and humidity_percent definitions and per-sensor provenance.'
+  - id: pm1_mass_concentration
+    entity_type: owl:DatatypeProperty
+    layer: ontology
+    primitive: true
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:decimal
+    ui_display_name: PM1
+    source: SEN66; W-76 measurement mapping design
+    rendering:
+      semantic: PM1
+      systems: PM1 (µg/m³)
+      technical: pm1_mass_concentration
+      compliance: Source and observed timestamp required
+    definition: Particle mass concentration for the PM1 channel; retain size fraction and source.
+    relationships:
+    - target: environmental_measurement_service
+      type: consumed_by
+      cardinality: N:1
+    notes: 'Unit: µg/m³. Candidate ontology definition, not proof of a registered D7/D13 MeasurementType or live
+      value. Map actual HA device_class/unit and field keys in implementation; reject nonnumeric/unavailable/stale
+      values. Preserve existing temperature_celsius and humidity_percent definitions and per-sensor provenance.'
+  - id: pm2_5_mass_concentration
+    entity_type: owl:DatatypeProperty
+    layer: ontology
+    primitive: true
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:decimal
+    ui_display_name: PM2.5
+    source: SEN66; W-76 measurement mapping design
+    rendering:
+      semantic: PM2.5
+      systems: PM2.5 (µg/m³)
+      technical: pm2_5_mass_concentration
+      compliance: Source and observed timestamp required
+    definition: Particle mass concentration for the PM2.5 channel; not an AQI without a separately defined calculation.
+    relationships:
+    - target: environmental_measurement_service
+      type: consumed_by
+      cardinality: N:1
+    notes: 'Unit: µg/m³. Candidate ontology definition, not proof of a registered D7/D13 MeasurementType or live
+      value. Map actual HA device_class/unit and field keys in implementation; reject nonnumeric/unavailable/stale
+      values. Preserve existing temperature_celsius and humidity_percent definitions and per-sensor provenance.'
+  - id: pm4_mass_concentration
+    entity_type: owl:DatatypeProperty
+    layer: ontology
+    primitive: true
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:decimal
+    ui_display_name: PM4
+    source: SEN66; W-76 measurement mapping design
+    rendering:
+      semantic: PM4
+      systems: PM4 (µg/m³)
+      technical: pm4_mass_concentration
+      compliance: Source and observed timestamp required
+    definition: Particle mass concentration for the PM4 channel; retain size fraction and source.
+    relationships:
+    - target: environmental_measurement_service
+      type: consumed_by
+      cardinality: N:1
+    notes: 'Unit: µg/m³. Candidate ontology definition, not proof of a registered D7/D13 MeasurementType or live
+      value. Map actual HA device_class/unit and field keys in implementation; reject nonnumeric/unavailable/stale
+      values. Preserve existing temperature_celsius and humidity_percent definitions and per-sensor provenance.'
+  - id: pm10_mass_concentration
+    entity_type: owl:DatatypeProperty
+    layer: ontology
+    primitive: true
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:decimal
+    ui_display_name: PM10
+    source: SEN66; W-76 measurement mapping design
+    rendering:
+      semantic: PM10
+      systems: PM10 (µg/m³)
+      technical: pm10_mass_concentration
+      compliance: Source and observed timestamp required
+    definition: Particle mass concentration for the PM10 channel; retain size fraction and source.
+    relationships:
+    - target: environmental_measurement_service
+      type: consumed_by
+      cardinality: N:1
+    notes: 'Unit: µg/m³. Candidate ontology definition, not proof of a registered D7/D13 MeasurementType or live
+      value. Map actual HA device_class/unit and field keys in implementation; reject nonnumeric/unavailable/stale
+      values. Preserve existing temperature_celsius and humidity_percent definitions and per-sensor provenance.'
+  - id: volatile_organic_compound_index
+    entity_type: owl:DatatypeProperty
+    layer: ontology
+    primitive: true
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:decimal
+    ui_display_name: VOC Index
+    source: SEN66; W-76 measurement mapping design
+    rendering:
+      semantic: VOC Index
+      systems: VOC Index (dimensionless index)
+      technical: volatile_organic_compound_index
+      compliance: Source and observed timestamp required
+    definition: Sensirion relative VOC index; not VOC concentration, ppm or a generic airQualityIndex.
+    relationships:
+    - target: environmental_measurement_service
+      type: consumed_by
+      cardinality: N:1
+    notes: 'Unit: dimensionless index. Candidate ontology definition, not proof of a registered D7/D13 MeasurementType
+      or live value. Map actual HA device_class/unit and field keys in implementation; reject nonnumeric/unavailable/stale
+      values. Preserve existing temperature_celsius and humidity_percent definitions and per-sensor provenance.'
+  - id: nitrogen_oxide_index
+    entity_type: owl:DatatypeProperty
+    layer: ontology
+    primitive: true
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:decimal
+    ui_display_name: NOx Index
+    source: SEN66; W-76 measurement mapping design
+    rendering:
+      semantic: NOx Index
+      systems: NOx Index (dimensionless index)
+      technical: nitrogen_oxide_index
+      compliance: Source and observed timestamp required
+    definition: Sensirion relative NOx index; not NO2 concentration, ppm or a certified safety alarm.
+    relationships:
+    - target: environmental_measurement_service
+      type: consumed_by
+      cardinality: N:1
+    notes: 'Unit: dimensionless index. Candidate ontology definition, not proof of a registered D7/D13 MeasurementType
+      or live value. Map actual HA device_class/unit and field keys in implementation; reject nonnumeric/unavailable/stale
+      values. Preserve existing temperature_celsius and humidity_percent definitions and per-sensor provenance.'
+
+  - id: exhaust_fan
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Exhaust Fan
+    source: Doc 27 / Nate 2026-10-16; exact delivered or connected load evidence pending
+    rendering:
+      semantic: Exhaust Fan
+      systems: Exhaust Fan type
+      technical: exhaust_fan
+      compliance: Uncommissioned; exact load identification required
+    definition: Bathroom air-extraction load; Doc 27 allocation is Air King E130S, pending physical nameplate verification; distinct from the inter-level circulation
+      fan.
+    notes: W-76 candidate type only; no executable capability or runtime identity granted. See docs/hardware/doc27-schematics.md.
+  - id: space_heater
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Space Heater
+    source: Doc 27 / Nate 2026-10-16; exact delivered or connected load evidence pending
+    rendering:
+      semantic: Space Heater
+      systems: Space Heater type
+      technical: space_heater
+      compliance: Uncommissioned; exact load identification required
+    definition: Bathroom heating load, model/rating not supplied; preserve its independent thermal protection.
+      Not the existing W-75 heater identity.
+    notes: W-76 candidate type only; no executable capability or runtime identity granted. See docs/hardware/doc27-schematics.md.
+  - id: manual_fan_speed_controller
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Manual Fan Speed Controller
+    source: Doc 27 / Nate 2026-10-16; exact delivered or connected load evidence pending
+    rendering:
+      semantic: Manual Fan Speed Controller
+      systems: Manual Fan Speed Controller type
+      technical: manual_fan_speed_controller
+      compliance: Uncommissioned; exact load identification required
+    definition: Controller supplied with CLOUDLINE S6; manual adjustment does not imply Wi-Fi, cloud or HA speed
+      capability.
+    notes: W-76 candidate type only; no executable capability or runtime identity granted. See docs/hardware/doc27-schematics.md.
