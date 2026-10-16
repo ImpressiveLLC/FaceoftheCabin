@@ -222,6 +222,13 @@ services:
       # empty by default (CRITICAL events still persist, just no phone push).
       # Real value lives only in infra/.env on this host, never committed.
       CABIN_ALERT_NTFY_TOPIC: ${CABIN_ALERT_NTFY_TOPIC:-}
+      # Ask action proposals (W-75, HO-2026-10-16): POST /api/helpdesk/propose.
+      # OFF unless infra/.env on this host sets CABIN_ASK_INTENT_ENABLED=true
+      # (the route answers 404 while off). Proposal only: no executor exists
+      # behind it. The model tag is a local Ollama candidate that must be
+      # created first (scripts/host/intent-slot-baseline).
+      CABIN_ASK_INTENT_ENABLED: ${CABIN_ASK_INTENT_ENABLED:-false}
+      CABIN_ASK_INTENT_MODEL: ${CABIN_ASK_INTENT_MODEL:-cabin-intent-slot-prompt-r1}
       # "cabinCameraName:blinkDeviceName" pairs, comma-separated -- see
       # CameraMediaController's javadoc. Was never set here before
       # 2026-08-15 (the app-level @Value default silently covered the

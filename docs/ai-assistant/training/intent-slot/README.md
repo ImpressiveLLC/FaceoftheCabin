@@ -140,6 +140,39 @@ Missing/malformed responses count as failures, not dropped samples. Output
 includes raw predictions, per-case results, holdout hash and request timing.
 Exit 0 means the offline fixture thresholds passed, **never** permission to deploy.
 
+### Running the baseline and the shadow period on the M920q (HO-2026-10-16 steps 4 and 5)
+
+The ollama container publishes no host port, so `evaluate.py` cannot reach it from the host. The runner
+`scripts/host/intent-slot-baseline` does the README steps above for the prompt-only tag: it refuses a
+non-`cabin-intent-slot-*` tag or an active training/eval, records the host first, copies this package into an
+isolated directory, creates the candidate tag, runs `evaluate.py` in a throwaway Python container that shares the
+ollama container's network, samples peak container memory, and writes `evidence.md` for the PR. It deletes nothing
+and downloads nothing from the model registry. As the operator on the M920q (SSH needs Tailscale's check approved):
+
+```sh
+cd ~/FaceoftheCabin-deploy && git log -1 --oneline        # confirm the deploy worktree has the merge you mean
+bash ~/FaceoftheCabin-deploy/scripts/host/intent-slot-baseline
+```
+
+Then paste `~/eval-results/intent-slot/<date>-r1/evidence.md` on the PR. It reports structured-output rate, intent
+accuracy, slot micro F1, critical fixture failures, first-request / p50 / p95 / max latency, timeouts, peak memory,
+the model's ollama id and the raw-output path. The 22 fixtures measure the tooling, not the model's quality, and the
+integration gates stay `NOT_MEASURED`.
+
+**Shadow period (step 5).** `POST /api/helpdesk/propose` stays off until `infra/.env` on the host sets
+`CABIN_ASK_INTENT_ENABLED=true` and the backend is recreated (`docker compose -f docker-compose.yml -f
+docker-compose.m920q.yml up -d cabin-backend`). It is administrator only and returns proposals; there is no executor, so
+nothing runs. Every call writes one redacted JSON line on the `assistant.proposal.audit` logger. After a few days:
+
+```sh
+docker logs cabin-backend --since 72h 2>&1 | grep assistant.proposal.audit > /tmp/audit.log
+python3 -B ~/FaceoftheCabin-deploy/docs/ai-assistant/training/intent-slot/run_reports.py shadow /tmp/audit.log
+```
+
+The report counts calls by intent, status, refusal code and resolver outcome, gives model and whole-request latency,
+and lists every target that resolved (a person marks each right or wrong; the tool cannot) and every refused or
+ambiguous one. The live heater step needs Nate's explicit go after that report.
+
 ## Evaluation gates
 
 | Gate | Threshold | Evidence required |
