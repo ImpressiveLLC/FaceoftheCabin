@@ -1,5 +1,14 @@
 # Maintenance & Operations Guide
 
+## Doc 27 incoming environmental equipment
+
+The [canonical build plan](hardware/doc27-environmental-nodes.md#setup-maintenance-and-acceptance)
+owns receipt, calibration, cleaning, drain inspection, freshness and recovery checks;
+the [master inventory](hardware/doc27-device-inventory.json) records planned allocations.
+Record commissioning evidence before changing ordered status to installed/verified.
+Do not treat a retained online state, commanded outlet state or recirculation as proof
+of fresh telemetry, airflow or equal conditions between floors.
+
 *Audience: whoever is operating, deploying, or debugging this platform.
 For product/day-to-day usage, see [`USER_GUIDE.md`](USER_GUIDE.md). For
 standing up an independent instance, see [`REPLICATION.md`](REPLICATION.md).
@@ -2036,6 +2045,78 @@ project now has *two* places a location's connection info can live —
 the frontend build args (`VITE_*_API_BASE` etc., fixed at image-build
 time) and the `hub_location` database row (fetched and merged at
 runtime, taking priority). Changing only one is not enough; check both.
+
+### Reviving the Home Zigbee collector (W-82 runbook, Termux interim, 2026-10-16)
+
+Home's Zigbee2MQTT was last seen running in `~/z2m.log` on 2026-09-11 (the log
+ends 17:35 with `Not connected to MQTT server`); the phone left the tailnet on
+2026-09-19, `home_z2m/bridge/state` stayed `offline`, and nothing noticed for
+four weeks (W-57 adds the alarm; W-82 moves the collector to an always-on
+host, after which this section is replaced).
+Every command below was run on 2026-10-16 from `ilikethelights` with the phone
+(G3223, Android 8.0) on USB; nothing here is a guess.
+
+**Preconditions, check in this order** (`SSH="ssh -i $HOME/.ssh/mr5u_termux_ed25519 -p 8022 u0_a220@192.168.1.127"`;
+if SSH is refused run `sshd` in Termux, or `adb` to open Termux):
+
+1. `$SSH 'grep -A3 "^mqtt:" ~/.z2m/configuration.yaml'` must show
+   `base_topic: home_z2m` (any other value overwrites the cabin bridge's
+   retained state) and `server: mqtt://100.77.44.113:1883` (numeric; MagicDNS
+   does not resolve in Termux). `serial:` must be `tcp://192.168.1.142:6638`.
+2. `$SSH '(echo > /dev/tcp/192.168.1.142/6638 && echo OPEN)'` (the SLZB-MR5U).
+3. `$SSH '(timeout 5 bash -c "echo > /dev/tcp/100.77.44.113/1883" && echo OPEN)'`.
+   "No route to host" means Tailscale is not connected on the phone: open the
+   Tailscale app (`tailscale status` on any peer shows `g3223 ... offline`).
+4. Battery optimization: `adb shell dumpsys deviceidle whitelist | grep -E "tailscale|termux"`
+   must list **both** `com.termux` and `com.tailscale.ipn`. On 2026-10-16 only
+   Termux was exempt; Tailscale was not, the likely reason it dropped.
+
+**Start command** (installed copy is `~/z2m-run/node_modules/zigbee2mqtt`,
+v2.14.1; the log is `~/z2m.log`; keep the wake lock or Android will doze it):
+
+```bash
+termux-wake-lock; cd ~/z2m-run/node_modules/zigbee2mqtt && Z2M_ONBOARD_NO_SERVER=true ZIGBEE2MQTT_DATA=$HOME/.z2m setsid nohup node index.js > ~/z2m.log 2>&1 < /dev/null &
+```
+
+**Run it under the supervisor, not bare.** Found the same afternoon: two minutes
+after the first bare start, `MQTT error: read ECONNABORTED` and `Port Error: read
+ECONNABORTED` hit the MQTT and MR5U sockets at the same instant (the phone's
+network blipped), Z2M exited (`restart=false, code=2`) and stayed down, so
+`home_z2m/bridge/state` went `offline` before anyone paired anything. The loop in
+[`home-collector/z2m-supervise.sh`](../cabin-orchestration-platform/home-collector/z2m-supervise.sh)
+holds the wake lock, runs the command above, and restarts Z2M 15 s after any exit
+(its log: `~/z2m-supervisor.log`). Install: `scp -P 8022 -i ~/.ssh/mr5u_termux_ed25519 z2m-supervise.sh u0_a220@192.168.1.127:`
+then `$SSH 'chmod +x ~/z2m-supervise.sh; setsid nohup ~/z2m-supervise.sh > /dev/null 2>&1 < /dev/null &'`.
+
+Success is these lines in `~/z2m.log`: `zigbee-herdsman started (resumed)`,
+`Connected to MQTT server`, `Zigbee2MQTT started!`. Independent check on the
+M920q: `mosquitto_sub -h localhost -p 1883 -t home_z2m/bridge/state -C 1`
+must print `{"state":"online"}`. Not yet in place: `~/.termux/boot` (no
+Termux:Boot installed), so a phone reboot or Android killing Termux still needs
+the supervisor started by hand; W-82 removes that by moving the collector to an
+always-on host.
+
+**Backend must subscribe to Home.** Two variables, both unset in the live
+`.env` on 2026-10-16 (so the compose defaults `zigbee2mqtt` / `cabin` applied
+and Home's bridge was never listened to):
+`CABIN_ZIGBEE_TOPIC_PREFIXES=zigbee2mqtt,home_z2m` and
+`CABIN_ZIGBEE_LOCATIONS=cabin,home`. Read what the running backend uses with
+`docker exec cabin-backend printenv CABIN_ZIGBEE_TOPIC_PREFIXES CABIN_ZIGBEE_LOCATIONS`;
+after a restart the log line `Zigbee2MQTT adapter connected to ... (2 bridge(s)`
+confirms it. The live file is `~/FaceoftheCabin-deploy/.../infra/.env`, a
+symlink to `~/FaceoftheCabin/.../infra/.env`. A restart must keep the running
+image tag (`docker inspect cabin-backend --format '{{.Config.Image}}'`), or
+compose falls back to `cabin-backend:latest`. **Done 2026-10-16 17:00 CDT** (Nate approved): both
+lines appended to the live `.env`, then `IMAGE_TAG=f81147f docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-backend`
+(the deploy workflow's own form); `/actuator/health` UP in about 10 s and the log
+read `2 bridge(s): [zigbee2mqtt=cabin, home_z2m=home]`. Undo: delete the two
+lines and repeat the `up -d`.
+
+**Pairing payloads, read from Z2M 2.14.1's `dist/extension/bridge.js`**
+(`permitJoin`): it requires `time`, ignores `value`. The adapter's open
+payload `{"value":true,"time":254}` is accepted. Its close payload
+`{"value":false}` has no `time`, so Z2M answers `Invalid payload`; the window
+then closes only by timing out. Raised under W-83 with the fix (`{"time":0}`).
 
 ---
 

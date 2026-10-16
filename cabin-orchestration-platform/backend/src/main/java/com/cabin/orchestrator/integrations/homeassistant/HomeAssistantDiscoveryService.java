@@ -82,12 +82,14 @@ public class HomeAssistantDiscoveryService {
         // card lives client-side (Device Manager) -- this only supplies
         // the raw fact.
         Map<String, String> deviceIds = adapter.deviceIdsByEntity(location);
+        Map<String, String> zigbeeLocations = nativeZigbeeLocationsBySlug();
         for (HomeAssistantAdapter.DiscoveredEntity entity : adapter.discover(location)) {
             String domain = domain(entity.entityId());
             if (isPresence(entity, domain)) {
                 presenceSignals.record(location, entity.entityId(), isPresent(entity.state()));
             }
             if (!DEVICE_DOMAINS.contains(domain)) continue;
+            if (belongsToZigbeeDeviceAtAnotherLocation(entity.entityId(), location, zigbeeLocations)) continue;
 
             String generatedId = "ha-" + location + "-" + entity.entityId().replace('.', '-').replace('_', '-');
             String id = registry.descriptorByConnection("ha_rest", entity.entityId(), location)
@@ -195,6 +197,48 @@ public class HomeAssistantDiscoveryService {
                 newState, Instant.now(), merged, registered.location()));
             publishIfChanged(id, attrs, newState);
         }
+    }
+
+    /**
+     * Home's Zigbee2MQTT (a phone collector) publishes Home Assistant discovery
+     * to the shared broker, so the single HA instance on the M920q also sees
+     * Home's devices and every discovery pass here would import them as
+     * candidates labeled with that HA instance's location (cabin). The native
+     * z2m device already carries all of its readings at its true location, so
+     * the HA copies are skipped rather than mislabeled. Maps each native
+     * Zigbee device's friendly-name slug to its location ("" when two
+     * locations share a slug: ambiguous, never skipped).
+     */
+    private Map<String, String> nativeZigbeeLocationsBySlug() {
+        Map<String, String> bySlug = new HashMap<>();
+        for (DeviceStatus status : registry.all()) {
+            if (!status.deviceId().startsWith("z2m-")) continue;
+            Optional<DeviceDescriptor> descriptor = registry.descriptor(status.deviceId());
+            if (descriptor.isEmpty() || descriptor.get().location() == null) continue;
+            String connection = descriptor.get().connectionString();
+            if (connection == null || connection.indexOf('/') < 0) continue;
+            String slug = slug(connection.substring(connection.indexOf('/') + 1));
+            if (slug.isEmpty()) continue;
+            bySlug.merge(slug, descriptor.get().location(), (a, b) -> a.equals(b) ? a : "");
+        }
+        return bySlug;
+    }
+
+    private static boolean belongsToZigbeeDeviceAtAnotherLocation(
+            String entityId, String location, Map<String, String> bySlug) {
+        String objectId = entityId.substring(entityId.indexOf('.') + 1);
+        String bestSlug = null;
+        for (String slug : bySlug.keySet()) {
+            boolean matches = objectId.equals(slug) || objectId.startsWith(slug + "_");
+            if (matches && (bestSlug == null || slug.length() > bestSlug.length())) bestSlug = slug;
+        }
+        if (bestSlug == null) return false;
+        String owner = bySlug.get(bestSlug);
+        return !owner.isEmpty() && !owner.equals(location);
+    }
+
+    private static String slug(String friendlyName) {
+        return friendlyName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
     }
 
     /**

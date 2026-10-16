@@ -3658,28 +3658,44 @@ function DmAddView({ onDone, auth }) {
 }
 
 // ── Zigbee pairing flow ──
-function ZigbeePairingFlow({ onBack, onDone, auth }) {
+// A refused permit-join used to be ignored: the card counted down 4:14 for a window that was never opened (2026-10-16, a Home Sonoff that could not pair).
+export function pairingRefusedMessage(status) {
+  if (status === 401) return "You are signed out, so the hub did not open the pairing window. Sign in under Config, then try again.";
+  if (status === 403) return "This session is read-only (guest or demo), so the hub did not open the pairing window. Sign in as an administrator, then try again.";
+  return `The hub refused to open the pairing window (HTTP ${status}). Nothing is pairing.`;
+}
+
+export function ZigbeePairingFlow({ onBack, onDone, auth }) { // exported for src/App.test.jsx
   const doFetch = auth?.authedFetch || fetch;
   const PAIR_DURATION = 254; // seconds (~4m14s)
   const [phase, setPhase]         = useState("idle"); // idle | pairing | found | done
   const [secondsLeft, setSeconds] = useState(PAIR_DURATION);
   const [newDevices, setNewDevices] = useState([]);
   const [afterChoice, setAfterChoice] = useState(null); // "another" | "configure" | "seeall"
+  const [startError, setStartError] = useState(null);
   const timerRef = useRef(null);
   const pollRef  = useRef(null);
   const prevIds  = useRef(null);
 
   const startPairing = async () => {
+    setStartError(null);
     // Snapshot current device IDs before opening window
     const snap = await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
       .then(r => r.json()).catch(() => []);
     prevIds.current = new Set(snap.map(d => d.deviceId));
 
-    await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enable: true, duration: PAIR_DURATION })
-    });
+    let opened;
+    try {
+      opened = await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enable: true, duration: PAIR_DURATION })
+      });
+    } catch {
+      setStartError("The hub could not be reached, so no pairing window was opened. Check the connection, then try again.");
+      return;
+    }
+    if (!opened.ok) { setStartError(pairingRefusedMessage(opened.status)); return; }
     setPhase("pairing");
     setSeconds(PAIR_DURATION);
 
@@ -3724,6 +3740,7 @@ function ZigbeePairingFlow({ onBack, onDone, auth }) {
         <h3>Pair a Zigbee Device</h3>
         <p>Put your device into pairing mode (hold the button until the LED flashes), then open the pairing window.</p>
         <p className="config-hint">This location's Zigbee coordinator will accept new devices for 4 minutes 14 seconds.</p>
+        {startError && <p className="config-hint pairing-error" role="alert">{startError}</p>}
         <button className="btn-primary pairing-start-btn" onClick={startPairing}>
           Open pairing window
         </button>

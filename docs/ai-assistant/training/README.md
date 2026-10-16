@@ -1,5 +1,12 @@
 # POC1 — Local SFT fine-tuning pipeline
 
+## Environmental project and POC2 scope
+
+[Doc 27 / POC2 handoff](../../governance/handovers/HO-2026-10-16-doc27-poc2.md) records
+the prompt-first decision and deferred shadow mode. Keep factual device inventory in
+RAG/live resolution and reviewed intent semantics in SFT; no training run is authorized
+or claimed by that documentation update.
+
 **Status, 2026-09-14/15: Tier 1 (build) executed end-to-end on real M920q
 hardware, real results.** Real training run (5 PASS-graded examples,
 3 epochs, CPU-only, loss 4.34 → 2.98), real GGUF conversion (6.4GB), real

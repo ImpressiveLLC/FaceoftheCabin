@@ -1466,6 +1466,7 @@ body {
 .pairing-icon { color: var(--text-muted); }
 .pairing-success { color: var(--success) !important; }
 .pairing-active { border-color: var(--success); }
+.pairing-card .pairing-error { color: var(--danger); }
 .pairing-countdown {
   font-size: 56px; font-weight: 700; font-family: monospace;
   color: var(--success); letter-spacing: 0.05em;

@@ -265,4 +265,66 @@ class AskContextBuilderTest {
         }
         @Override public List<KnowledgeNode> loadAll() { return List.copyOf(nodes); }
     }
+
+    // ---- Doc 27 environmental guide (HO-2026-10-16-doc27-poc2, "Code / Ask") ----------------------
+
+    private static final String ENV_GUIDE = "doc:ai-assistant/user-guide/environmental-nodes.md#";
+
+    @Test
+    void doc27AcceptanceQuestionsRouteToTheEnvironmentalCategory() {
+        for (String question : List.of(
+                "How many environmental nodes are planned?",
+                "Does the fan heat, cool and dehumidify?",
+                "Set S6 speed to 50%",
+                "Is the Cube online?",
+                "Do we have CO2 support?",
+                "Turn on the bathroom heater",
+                "Main level is dry, so is the basement safe?")) {
+            assertThat(withDocs.categoryIdFor(question)).as(question).isEqualTo("environmental_nodes");
+        }
+    }
+
+    @Test
+    void aNeedStatementIsNotRoutedToTheEnvironmentalGuide() {
+        assertThat(withDocs.categoryIdFor("I'm cold")).isNull();
+    }
+
+    @Test
+    void liveReadingQuestionsKeepWinningOverTheBroadEnvironmentalWords() {
+        assertThat(withDocs.categoryIdFor("What is the basement temperature right now?")).isEqualTo("live_sensors");
+    }
+
+    @Test
+    void administratorGetsEverySectionOfTheEnvironmentalGuideIncludingTheExecutionBoundary() {
+        requireRepoDocs();
+
+        List<KnowledgeNode> result = withDocs.buildContext("How many environmental nodes are planned?",
+            HouseholdRole.ADMINISTRATOR);
+
+        assertThat(result).extracting(KnowledgeNode::entityRef).containsExactly(
+            ENV_GUIDE + "ordered-equipment-and-current-scope",
+            ENV_GUIDE + "what-the-devices-can-and-cannot-establish",
+            ENV_GUIDE + "year-round-circulation-and-temperature-difference",
+            ENV_GUIDE + "setup-and-maintenance",
+            ENV_GUIDE + "ask-behavior-and-execution-boundary");
+        assertThat(result).allSatisfy(n -> assertThat(n.source()).isEqualTo(KnowledgeSource.REVIEWED_DOCUMENT));
+        assertThat(result.get(0).content()).contains("Ordered does not mean received");
+    }
+
+    @Test
+    void everyOtherRoleAndNoRoleGetsTheFactualSectionsButNeverTheExecutionBoundary() {
+        requireRepoDocs();
+        String question = "Is the Cube online?";
+
+        for (HouseholdRole role : new HouseholdRole[] {HouseholdRole.ADULT_HOUSEHOLD_MEMBER, HouseholdRole.CHILD,
+                HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE, null}) {
+            assertThat(withDocs.buildContext(question, role)).as(String.valueOf(role))
+                .extracting(KnowledgeNode::entityRef)
+                .containsExactly(
+                    ENV_GUIDE + "ordered-equipment-and-current-scope",
+                    ENV_GUIDE + "what-the-devices-can-and-cannot-establish",
+                    ENV_GUIDE + "year-round-circulation-and-temperature-difference",
+                    ENV_GUIDE + "setup-and-maintenance");
+        }
+    }
 }
