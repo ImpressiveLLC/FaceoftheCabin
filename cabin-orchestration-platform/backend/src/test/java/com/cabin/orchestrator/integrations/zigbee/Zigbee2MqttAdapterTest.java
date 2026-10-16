@@ -512,4 +512,43 @@ class Zigbee2MqttAdapterTest {
         }
         @Override public Map<String, List<DeviceReportingRelationship>> loadAll() { return Map.of(); }
     }
+
+    // 2026-10-16: Z2M 2.14.1 answers {"value":false} (no "time") with "Invalid
+    // payload", so the hub's close request never closed anything on a 2.x
+    // bridge. Open and close must both carry "time", on every configured bridge.
+    private List<String> permitJoinPublishes(boolean enable, int duration) throws Exception {
+        adapter.configureBridgesForTest("zigbee2mqtt,home_z2m", "cabin,home");
+        org.eclipse.paho.client.mqttv3.MqttClient mqtt =
+            org.mockito.Mockito.mock(org.eclipse.paho.client.mqttv3.MqttClient.class);
+        org.mockito.Mockito.when(mqtt.isConnected()).thenReturn(true);
+        org.springframework.test.util.ReflectionTestUtils.setField(adapter, "client", mqtt);
+
+        adapter.permitJoin(enable, duration);
+
+        org.mockito.ArgumentCaptor<String> topics = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<MqttMessage> messages = org.mockito.ArgumentCaptor.forClass(MqttMessage.class);
+        org.mockito.Mockito.verify(mqtt, org.mockito.Mockito.times(2)).publish(topics.capture(), messages.capture());
+        List<String> out = new java.util.ArrayList<>();
+        for (int i = 0; i < topics.getAllValues().size(); i++) {
+            out.add(topics.getAllValues().get(i) + " " + new String(messages.getAllValues().get(i).getPayload()));
+        }
+        return out;
+    }
+
+    @Test
+    void closingThePairingWindowSendsTimeZeroToEveryBridgeSoZ2mTwoAcceptsIt() throws Exception {
+        List<String> sent = permitJoinPublishes(false, 0);
+
+        assertEquals(2, sent.size());
+        assertTrue(sent.contains("zigbee2mqtt/bridge/request/permit_join {\"value\":false,\"time\":0}"), sent.toString());
+        assertTrue(sent.contains("home_z2m/bridge/request/permit_join {\"value\":false,\"time\":0}"), sent.toString());
+    }
+
+    @Test
+    void openingThePairingWindowStillSendsTheRequestedDurationToEveryBridge() throws Exception {
+        List<String> sent = permitJoinPublishes(true, 254);
+
+        assertTrue(sent.contains("zigbee2mqtt/bridge/request/permit_join {\"value\":true,\"time\":254}"), sent.toString());
+        assertTrue(sent.contains("home_z2m/bridge/request/permit_join {\"value\":true,\"time\":254}"), sent.toString());
+    }
 }
