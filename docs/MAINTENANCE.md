@@ -2078,11 +2078,23 @@ v2.14.1; the log is `~/z2m.log`; keep the wake lock or Android will doze it):
 termux-wake-lock; cd ~/z2m-run/node_modules/zigbee2mqtt && Z2M_ONBOARD_NO_SERVER=true ZIGBEE2MQTT_DATA=$HOME/.z2m setsid nohup node index.js > ~/z2m.log 2>&1 < /dev/null &
 ```
 
+**Run it under the supervisor, not bare.** Found the same afternoon: two minutes
+after the first bare start, `MQTT error: read ECONNABORTED` and `Port Error: read
+ECONNABORTED` hit the MQTT and MR5U sockets at the same instant (the phone's
+network blipped), Z2M exited (`restart=false, code=2`) and stayed down, so
+`home_z2m/bridge/state` went `offline` before anyone paired anything. The loop in
+[`home-collector/z2m-supervise.sh`](../cabin-orchestration-platform/home-collector/z2m-supervise.sh)
+holds the wake lock, runs the command above, and restarts Z2M 15 s after any exit
+(its log: `~/z2m-supervisor.log`). Install: `scp -P 8022 -i ~/.ssh/mr5u_termux_ed25519 z2m-supervise.sh u0_a220@192.168.1.127:`
+then `$SSH 'chmod +x ~/z2m-supervise.sh; setsid nohup ~/z2m-supervise.sh > /dev/null 2>&1 < /dev/null &'`.
+
 Success is these lines in `~/z2m.log`: `zigbee-herdsman started (resumed)`,
 `Connected to MQTT server`, `Zigbee2MQTT started!`. Independent check on the
 M920q: `mosquitto_sub -h localhost -p 1883 -t home_z2m/bridge/state -C 1`
 must print `{"state":"online"}`. Not yet in place: `~/.termux/boot` (no
-Termux:Boot installed), so a reboot or crash needs this command typed again.
+Termux:Boot installed), so a phone reboot or Android killing Termux still needs
+the supervisor started by hand; W-82 removes that by moving the collector to an
+always-on host.
 
 **Backend must subscribe to Home.** Two variables, both unset in the live
 `.env` on 2026-10-16 (so the compose defaults `zigbee2mqtt` / `cabin` applied
@@ -2094,7 +2106,11 @@ after a restart the log line `Zigbee2MQTT adapter connected to ... (2 bridge(s)`
 confirms it. The live file is `~/FaceoftheCabin-deploy/.../infra/.env`, a
 symlink to `~/FaceoftheCabin/.../infra/.env`. A restart must keep the running
 image tag (`docker inspect cabin-backend --format '{{.Config.Image}}'`), or
-compose falls back to `cabin-backend:latest`.
+compose falls back to `cabin-backend:latest`. **Done 2026-10-16 17:00 CDT** (Nate approved): both
+lines appended to the live `.env`, then `IMAGE_TAG=f81147f docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-backend`
+(the deploy workflow's own form); `/actuator/health` UP in about 10 s and the log
+read `2 bridge(s): [zigbee2mqtt=cabin, home_z2m=home]`. Undo: delete the two
+lines and repeat the `up -d`.
 
 **Pairing payloads, read from Z2M 2.14.1's `dist/extension/bridge.js`**
 (`permitJoin`): it requires `time`, ignores `value`. The adapter's open
