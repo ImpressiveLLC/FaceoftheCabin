@@ -1,5 +1,14 @@
 # QA / Testing
 
+## Doc 27 commissioning and Ask acceptance (planned)
+
+Use [hardware acceptance](hardware/doc27-environmental-nodes.md#setup-maintenance-and-acceptance)
+and [Ask acceptance examples](governance/handovers/HO-2026-10-16-doc27-poc2.md#ask-and-training-acceptance-examples-review-before-freezing).
+Required evidence: exact SKU/count; sensor-source/unit fidelity; no unavailable-to-zero;
+parent/service deduplication; wrong-hub denial; manual/restart/load tests; blocked
+uncommissioned controls; exact-plan confirmation; no ordered-to-online answer claims.
+These are pending acceptance criteria, not a recorded automated or live test pass.
+
 Per-feature test coverage for this repo. Add a section per feature as it
 gains test coverage — this is not meant to be exhaustive on day one.
 
