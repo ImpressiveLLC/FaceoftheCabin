@@ -650,6 +650,87 @@ R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its
 
 ---
 
+## D27 — Ontology-driven context: metadata, human concepts and assignable actions
+
+**Status:** ratified 2026-10-14 for the Phase 1 POC start (Cowork). Nate answered Q-OC-1 to Q-OC-5 the same day, and Cowork voted on Q-OC-5 first as he asked. The relation semantics stay open to further development (Q-OC-6 onward). Proposed earlier the same day by Cowork from Nate's direction. **Use case:** [UC-17](../use-cases.md). **Work:** W-66 to W-74 ([backlog](../backlog.md)); C5 and POC2 ([Ask backlog](../../ai-assistant/wsjf-backlog.md)). **Builds on:** D7, D13, D15, D16 (services, measurement types, topics), D17 (`located_in`), D23 and D24 (locations), W-45 (services declared by class), W-26 (ontology-driven camera classes), PR #159 (intent/slot r1 package). Numbered D27 because the unmerged `claude-code/w64-security-drawer` branch cites a D26.
+
+**Problem.** Home Assistant already lists devices, entities and automations. What the platform should add on top of it is context: a user switches between views of their places by what they care about, and says what they need in their own words. Neither is possible today:
+
+- **No metadata.** There is no runtime relation store. `parentDeviceId` gives one level of "part of", `reports_to` is a computed topic, and `display_label` is the only human text. `relates_to`, `subject_of`, `topic_of` and human definitions exist only in the documentation-only `docs/ontology.yaml`, whose relation enum is unenforced and has drifted.
+- **No context switching.** Views are fixed: location, group-by and lifecycle filters. There are no saved, user-defined views.
+- **Controls aren't driven by the ontology.** Controls are inferred from a Home Assistant domain, and a hardcoded allowlist (`switch`, `input_boolean`; valve and lock denied) decides what may be switched.
+- **Ask is read-only.** Ask can't map "I'm cold" to an action, and the workflow engine has no time-based, recurring or "for N minutes" triggers and no Home Assistant service actions.
+
+**Direction (Nate, 2026-10-14).**
+
+1. **The ontology is the imperative.** It drives and accommodates every capability, view, control and workflow, including defined human interactions and desires.
+2. **Every action translates into a filter or a view.** Phase 1 covers all top-level parent devices, every HA service that appears under Monitoring, and **presence** (Q-OC-4). Phase 2 adds the remaining attributes that round out a service: battery level, stateful reporting and data elements under a parent.
+3. **Everything in scope carries metadata.** That means "relates to", "part of", "subject of", "topic of" and a human definition, so that it can be assigned to a human-language workflow.
+4. **The language chain is concept → ask → action.** A human concept ("I'm cold") becomes a human ask ("turn up the heat"), which becomes one or more suggested actions. The user picks one and runs it once, on a schedule (calendar-style recurrence), or on an event trigger ("when I turn on the LG TV").
+5. **Two entry points:** "use this" on any active card (optional, needs decomposition), or a typed request (required).
+6. **Ask-proposed actions are confirmed every time.** An automation the user saves and confirms then runs unattended.
+7. **Every primary/parent device is designed ready for automation control.** Valves and locks get the same control design, behind a guard: a lid that keeps the control unclickable until it is lifted, or an ontology block.
+8. **Saved schedules and triggers run in this platform's workflow engine**, not as generated Home Assistant automations. This reverses the standing `CLAUDE.md` rule (Q-OC-5).
+
+### Model
+
+| Term | Meaning |
+|---|---|
+| **Subject** | Anything addressable. Phase 1: a **Device** (parent, top level), a **Service** (one HA entity or service shown in Monitoring, the existing `ServiceEntity` / `device_reporting_relationship` row), and a **State** (presence first). Phase 2: other **Attributes** (battery, a state element under a parent). Identity follows D1: `entity_id` is canonical and never renamed. |
+| **State (atomic)** | Nate, 2026-10-14: a state is an atomic element. It can exist with **no** relation to anything ("someone is at the cabin"), or be related to a device 1:0..1 and to a person 1:0..1. A device in a presence relation is device 1:0 ↔ state 1:0: either side can exist without the other. That makes a state usable on its own as a trigger, condition or view filter, which is why presence is Phase 1. D24 still decides whose presence counts. |
+| **Metadata** | On every subject: `human_definition` (one or two sentences, user-editable), `aliases[]` (names people actually say), and typed relations. Each carries provenance (D4: who or what set it, when) and the D-status vocabulary (`proposed` / `ratified`). |
+| **Relations** (runtime vocabulary, reconciling the yaml enum) | `part_of` (structural, one parent; generalizes `parentDeviceId`); `relates_to` (symmetric, many-to-many); `subject_of` (this subject is what a **Concept** or workflow acts on: the heater is `subject_of` "warmth"); `topic_of` (this subject belongs to a user or D16 topic grouping: the heater is `topic_of` "Comfort"). Proposed meanings, see Q-OC-1. |
+| **Concept** | A human state or desire in the ontology's own vocabulary: `cold`, `hot`, `stuffy`, `dark`, `arriving`, `leaving`, `bedtime`, `tv_time`… Each concept lists the **Asks** it implies, for example `cold` → raise temperature, or turn on a heat source. |
+| **Capability** | What a subject can do, declared by class (W-45): `turn_on`, `turn_off`, `set_level`, `set_temperature`, `open`, `close`, `lock`, `unlock`. An Ask is satisfied by capabilities, so concept → ask → capability → subject is a walk over the ontology, not a guess by the model. |
+| **Control guard** | Per capability, from the ontology: `open` (shown and actionable); `lidded` (shown, but disabled until an authorized user lifts the lid, with confirmation and a receipt); `blocked` (the ontology refuses it, in the UI, from Ask and from automations). Replaces the hardcoded allowlist. Defaults: Q-OC-2. |
+| **View** | A saved ontology query over subjects (location, class, topic, relation, concept, status), with a layout. Monitoring and Device Manager render the same view definition. Choosing a view is the context switch. |
+| **Plan** | A proposed action or automation: target subjects, capability and value, plus one of `now`, `once at` time, `recurring` (RFC 5545 RRULE, edited like a calendar event), or `trigger` (a subject's state `changes_to` a value, optionally `for` a duration, with conditions). |
+
+### Requirements
+
+| ID | Requirement |
+|---|---|
+| R-OC-1 | **One metadata store.** Subjects, definitions, aliases and relations live in one runtime store with provenance. `docs/ontology.yaml` is reconciled to it, not the other way round. UI, Ask and the workflow engine read only this store for metadata. |
+| R-OC-2 | **Phase 1 inventory is complete.** Every parent device, and every HA entity or service that Monitoring shows, is a subject. HA domains Monitoring needs but discovery skips (for example `media_player` for the LG TV, and `climate`) are discovered. |
+| R-OC-3 | **Every control comes from the ontology.** A UI control, an Ask suggestion or an automation action exists only when the subject's class declares the capability and its guard is not `blocked`. No domain inference, no hardcoded allowlist. |
+| R-OC-4 | **Guards hold everywhere.** A `lidded` capability cannot be executed by any path (card, Ask, automation) without an authorized lift and a confirmation bound to that exact plan. `blocked` cannot be executed at all. The server enforces this, not the UI. |
+| R-OC-5 | **The model classifies; the ontology decides.** The language model (PR #159 contract) returns intent, slots, and a `concept` where one applies. Options come from walking concept → ask → capability → subject over the store, filtered by the caller's permissions and location. The model never names an entity, service or topic. |
+| R-OC-6 | **Options rather than dead ends.** For a concept with more than one satisfying subject, Ask lists the options (for example "raise the thermostat to …" and "turn on the mech room heater") and asks the user to pick one. Bare clarification is used only when no option exists or a value is missing (a unitless temperature). |
+| R-OC-7 | **Confirm every time.** An Ask- or card-proposed plan runs only after the user confirms that exact resolved plan (principal, targets, values, schedule, plan hash and expiry). A confirmed saved automation then runs unattended, with a receipt per run. |
+| R-OC-8 | **Schedules and triggers run in the workflow engine** (`WorkflowRuleService`), for both locations, with one audit trail. It gains time triggers (once, RRULE), `changes_to` and `for` duration state triggers, and capability actions that go through R-OC-3 and R-OC-4. |
+| R-OC-9 | **Views are data.** A view is a stored ontology query. Every action surface (a card, Ask, the automation composer) can open "show me what this affects" as a view. |
+| R-OC-10 | **States are first-class subjects in Phase 1; other attributes follow in Phase 2.** A presence state is a subject with its own metadata, optional relations to a device and a person, freshness (W-34), and D24 counting rules, and can be a trigger, condition or view filter. Phase 2 does the same for battery and other state elements (for example "when the door sensor battery falls below 20%"). |
+| R-OC-11 | **One interaction model.** A suggestion, a card action and an automation all end on the same confirm step. When exactly one option applies, it is shown as a single card and one tap confirms it. When several apply, the user picks one, and that tap is the confirm. |
+
+### Decided questions (Nate, 2026-10-14)
+
+| ID | Question | Decision |
+|---|---|---|
+| Q-OC-1 | Relation meanings: `subject_of` (what a concept or workflow acts on), `topic_of` (membership in a grouping), `relates_to` (loose association), `part_of` (structural containment), plus `human_definition`. | **Yes, as a starting point; to be developed further.** Start with these four plus `human_definition`. Q-OC-6 governs how the vocabulary grows. |
+| Q-OC-2 | Guard defaults for valves and locks. | **Direction-aware if feasible; if too complex for day 1, allow all.** Cowork: a guard is set per capability, and open/close and lock/unlock are separate capabilities, so direction-aware costs nothing extra. Build it from day 1: valve close `open`; valve open `lidded`; lock `open`; unlock `lidded` on cards and `blocked` for Ask and automations. "Allow all" is the recorded fallback only if W-69's design note finds a real obstacle, and it still keeps R-OC-7's confirm on every Ask or card action. |
+| Q-OC-3 | One option: show it as a choice? | **One tap applies when one option applies**, under a uniform interaction model (R-OC-11). |
+| Q-OC-4 | Is presence Phase 1? | **Yes, Phase 1.** A state is atomic: device 1:0 ↔ state 1:0, and a state can be independent of everything else. That flexibility and interoperability make it higher priority (Model: State; R-OC-10). |
+| Q-OC-5 | Engine for saved schedules and triggers, which reverses the `CLAUDE.md` rule. | **Yes, unless there is a firm reason to say no; Cowork votes first.** Cowork votes **yes, with a carve-out**. User-authored plans run in the platform workflow engine at both locations (D23: no HA at Home). The existing cabin safety automations (leak, freeze, siren) stay in Home Assistant, where they run and are tested. Cowork found no firm reason against this. The carve-out exists because those automations must keep working when the backend is down. `CLAUDE.md` is amended in the W-71 PR to say exactly this. |
+
+### Remaining questions (Cowork judgment unless marked for Nate)
+
+| ID | Question | Current answer |
+|---|---|---|
+| Q-OC-6 | How does the relation vocabulary grow (Q-OC-1 "further developed")? | Cowork proposes. A new predicate needs one concrete use case and a definition. It enters as `proposed`, and Cowork ratifies it in a PR. Nate is asked only when a predicate changes behaviour (a guard, a trigger). |
+| Q-OC-7 | Identity of an independent state: what is the canonical id of "someone is at the cabin" when no device backs it? | Cowork leaning: `state.<location>.<kind>[.<person>]`, minted by the platform, never renamed (D1). Settled in W-73's design note. |
+| Q-OC-8 | Who approves concept vocabulary entries (W-66)? | Cowork drafts; Nate reviews the first seed set once; after that Cowork ratifies additions, the same as Q-OC-6. |
+| Q-OC-9 | What can actually actuate at Home today, with no HA there (D23)? | Unknown. Code verifies the Home adapters (MQTT, http_poll) in W-67's design note. Until then, POC actions are cabin-only. |
+| Q-OC-10 | Plan confirmation lifetime and replay rules. | Cowork leaning: a confirmation expires after 5 minutes and is bound to the plan hash. Any inventory or plan change invalidates it. Settled in C5. |
+| Q-OC-11 (Nate) | Concept seed list: are `cold`, `hot`, `stuffy`, `dark`, `arriving`, `leaving`, `bedtime`, `tv_time` the right first eight, and what is missing? | Asked in W-66's PR; the POC uses `cold` only. |
+
+### What this is not
+
+- Not a build. Each W item carries its own design note and governance record.
+- Not permission to execute anything from Ask before the C5 gates pass. The one exception is the W-75 vertical POC, which may run only the cabin mech-room heater switch. That is the same authority the W-27 card button already grants, and it runs behind a feature flag, for an admin only, with a confirm every time.
+- Not a change to who may act (W-44 / W.6 roles still decide that).
+
+---
+
 ## PR — WSJF Priority Order
 
 01Identity scheme done28.0
