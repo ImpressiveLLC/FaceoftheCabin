@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# HO-2026-10-16 step 4: run the prompt-only intent/slot baseline on the M920q, isolated from production.
+#
+#   scripts/host/intent-slot-baseline            # run as the operator (nate), no sudo, from any directory
+#
+# What it does, in order:
+#   1. refuses unless the tag is a cabin-intent-slot-* candidate tag (never a production tag) and no
+#      training or other eval process is running (README "M920q execution handoff", routing load rule);
+#   2. records the host's RAM, disk, load and containers BEFORE doing anything (preflight.txt);
+#   3. copies the offline package into an isolated directory, with hashes, and works only from the copy;
+#   4. creates the candidate tag in the existing ollama container from Modelfile.intent-r1 (base model
+#      llama3.2:3b must already be pulled; this script downloads nothing from the model registry);
+#   5. runs evaluate.py in a throwaway python container that shares the ollama container's network, so it
+#      reaches Ollama at 127.0.0.1:11434 although the ollama container publishes no host port;
+#   6. samples the ollama container's memory every 2 s for the peak, and writes evidence.md for the PR.
+#
+# It never trains, never touches a production tag or data, never deletes, and never contacts HA, MQTT or the
+# backend. evaluate.py exits 1 when an offline gate fails; that is a result, not an error here.
+#
+# Settings (environment): INTENT_SLOT_TAG, INTENT_SLOT_SRC, INTENT_SLOT_OUT, INTENT_SLOT_OLLAMA_CONTAINER,
+# INTENT_SLOT_PY_IMAGE, REPLACE=1 (recreate an existing candidate tag), ALLOW_BUSY=1 (skip the busy check).
+set -euo pipefail
+
+DOCKER=${DOCKER:-docker}
+PGREP=${PGREP:-pgrep}
+TAG=${INTENT_SLOT_TAG:-cabin-intent-slot-prompt-r1}
+SRC=${INTENT_SLOT_SRC:-$HOME/FaceoftheCabin-deploy/docs/ai-assistant/training/intent-slot}
+OUT=${INTENT_SLOT_OUT:-$HOME/eval-results/intent-slot/$(date -u +%F)-r1}
+OLLAMA=${INTENT_SLOT_OLLAMA_CONTAINER:-ollama}
+PY_IMAGE=${INTENT_SLOT_PY_IMAGE:-python:3.12-slim}
+SAMPLE_SECONDS=${INTENT_SLOT_SAMPLE_SECONDS:-2}
+BASE_MODEL=llama3.2:3b
+FILES=(contract.py evaluate.py run_reports.py gold.jsonl intent-slot.schema.json system.txt requirements.txt Modelfile.intent-r1)
+
+die() { echo "intent-slot-baseline: $*" >&2; exit 2; }
+
+# ── 1. refusals that need no host access ────────────────────────────────
+[[ "$TAG" == cabin-intent-slot-* ]] || die "the tag must start with cabin-intent-slot- (never a production tag): $TAG"
+[[ "$TAG" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || die "the tag may only use a-z 0-9 . _ - : $TAG"
+if [[ "${ALLOW_BUSY:-0}" != 1 ]]; then
+  if busy=$("$PGREP" -af 'train_sft|ask_eval|grade_ask|run_iteration|eval_pipeline|grade_pipeline' 2>/dev/null) && [[ -n "$busy" ]]; then
+    die $'training or another eval looks active; not running (ALLOW_BUSY=1 overrides):\n'"$busy"
+  fi
+fi
+for f in "${FILES[@]}"; do [[ -f "$SRC/$f" ]] || die "missing $SRC/$f"; done
+[[ ! -e "$OUT/baseline.json" ]] || die "$OUT/baseline.json already exists; not overwriting evidence (set INTENT_SLOT_OUT)"
+
+# ── 2. preflight: record the host before touching it ────────────────────
+mkdir -p "$OUT/package"
+{
+  echo "# preflight $(date -u +%FT%TZ) on $(hostname)"
+  echo "## load";    uptime
+  echo "## memory";  free -m
+  echo "## disk";    df -h / /storage 2>/dev/null || df -h /
+  echo "## containers"; "$DOCKER" ps --format '{{.Names}}\t{{.Status}}'
+  echo "## container memory (one sample)"; "$DOCKER" stats --no-stream --format '{{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}'
+  echo "## ollama loaded models"; "$DOCKER" exec "$OLLAMA" ollama ps
+  echo "## ollama models";        "$DOCKER" exec "$OLLAMA" ollama list
+} >"$OUT/preflight.txt" 2>&1 || die "preflight failed; see $OUT/preflight.txt"
+
+models=$("$DOCKER" exec "$OLLAMA" ollama list)
+grep -q "^$BASE_MODEL[[:space:]]" <<<"$models" || die "base model $BASE_MODEL is not pulled in the $OLLAMA container; pull it first (nothing is downloaded by this script)"
+if grep -q "^$TAG:latest[[:space:]]" <<<"$models" || grep -q "^$TAG[[:space:]]" <<<"$models"; then
+  [[ "${REPLACE:-0}" == 1 ]] || die "candidate tag $TAG already exists; set REPLACE=1 to recreate it"
+fi
+
+# ── 3. isolated copy of the package, with hashes ────────────────────────
+for f in "${FILES[@]}"; do cp -- "$SRC/$f" "$OUT/package/$f"; done
+(cd "$OUT/package" && sha256sum -- "${FILES[@]}") >"$OUT/package.sha256"
+
+# ── 4. candidate tag ────────────────────────────────────────────────────
+"$DOCKER" cp "$OUT/package/Modelfile.intent-r1" "$OLLAMA:/tmp/Modelfile.intent-r1"
+"$DOCKER" exec "$OLLAMA" ollama create "$TAG" -f /tmp/Modelfile.intent-r1
+DIGEST=$("$DOCKER" exec "$OLLAMA" ollama list | awk -v t="$TAG:latest" '$1==t {print $2}')
+
+# ── 5. evaluate, sampling the ollama container's memory ─────────────────
+: >"$OUT/mem.samples"
+( while :; do "$DOCKER" stats --no-stream --format '{{.MemUsage}}' "$OLLAMA" >>"$OUT/mem.samples" 2>/dev/null || true; sleep "$SAMPLE_SECONDS"; done ) &
+SAMPLER=$!
+trap 'kill "$SAMPLER" 2>/dev/null || true' EXIT
+
+rc=0
+"$DOCKER" run --rm --network "container:$OLLAMA" -v "$OUT/package:/work:ro" -v "$OUT:/out" -w /work "$PY_IMAGE" \
+  sh -c 'pip install --quiet --no-cache-dir -r requirements.txt && python -B evaluate.py --model "$0" --output /out/baseline.json' "$TAG" \
+  >"$OUT/evaluate.stdout" 2>"$OUT/evaluate.stderr" || rc=$?
+kill "$SAMPLER" 2>/dev/null || true
+trap - EXIT
+# one last sample, so a run shorter than the interval still has a reading
+"$DOCKER" stats --no-stream --format '{{.MemUsage}}' "$OLLAMA" >>"$OUT/mem.samples" 2>/dev/null || true
+[[ $rc -le 1 ]] || die "evaluation did not run (exit $rc); see $OUT/evaluate.stderr"
+[[ -f "$OUT/baseline.json" ]] || die "evaluation wrote no baseline.json; see $OUT/evaluate.stderr"
+
+# ── 6. evidence for the PR ──────────────────────────────────────────────
+peak_mib() {
+  awk '{ v=$1; n=v+0; u=v; sub(/^[0-9.]+/,"",u)
+         m=(u=="GiB")?1024:(u=="MiB")?1:(u=="KiB")?1/1024:(u=="GB")?953.67:(u=="MB")?0.95367:(u=="kB")?0.00095:0
+         if (n*m>max) max=n*m } END { printf "%d", max+0.5 }' "$1"
+}
+PEAK=$(peak_mib "$OUT/mem.samples")
+{ echo "## after the run"; uptime; free -m; "$DOCKER" exec "$OLLAMA" ollama ps; } >"$OUT/postflight.txt" 2>&1 || true
+"$DOCKER" run --rm -v "$OUT:/out:ro" -v "$OUT/package:/work:ro" -w /work "$PY_IMAGE" \
+  python -B run_reports.py baseline /out/baseline.json --gold /work/gold.jsonl \
+    --peak-rss-mib "$PEAK" --digest "${DIGEST:-unknown}" --preflight /out/preflight.txt >"$OUT/evidence.md"
+
+echo "done. offline gates exit code: $rc (0 pass, 1 fail; neither is permission to deploy)"
+echo "evidence for the PR : $OUT/evidence.md"
+echo "raw outputs         : $OUT/baseline.json"
+echo "model $TAG ollama id: ${DIGEST:-unknown}; peak container memory ${PEAK} MiB"
+echo "to remove the candidate tag later: docker exec $OLLAMA ollama rm $TAG   (this script never does)"
