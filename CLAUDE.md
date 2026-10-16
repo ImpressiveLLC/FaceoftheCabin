@@ -554,6 +554,7 @@ column for writes is enforced, not just described. Reads follow D14: several
 | `GET /api/context/cabin-context.jsonld`, `GET /api/devices/{id}/jsonld` | JsonLdController | open `GET` |
 | `POST /api/webhooks/blink-motion` | BlinkMotionWebhookController | its own shared-secret header (`cabin.blinkMotionWebhook.apiKey`); 503 or 401 when the key is unset or wrong |
 | `GET`/`POST /api/locations`, `PATCH /{id}`, `POST /reorder`, `DELETE /{id}` | LocationsController | **writes are open, a known gap: W-32.** The UI sends signed-in users' tokens to the `apiBase` this controller stores |
+| `GET /api/assistant/inventory` (W-67 slice 1, 2026-10-16) | AssistantInventoryController | signed-in administrator or adult household member (an adult does not see locks or cameras); everyone else gets 403; demo DENY. A non-secret projection of in-scope devices for the Ask entity resolver (entity id, names, site, area/room, class, capabilities, availability, version hash); never connection strings, addresses, topics or tokens |
 
 Also corrected: `POST /api/devices/**` and every other non-`GET` under
 `/api/devices/**` need a signed-in session as of W-31. The `/api/devices` rows
