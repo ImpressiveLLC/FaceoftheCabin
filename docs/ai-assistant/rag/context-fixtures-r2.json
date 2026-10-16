@@ -694,6 +694,61 @@
         "K11"
       ],
       "contextDocuments": []
+    },
+    {
+      "id": "environmental_nodes",
+      "description": "Doc 27 environmental project: planned sensor/relay nodes, SEN66/SHT45/SNZB-02P sensing, Midea Cube dehumidifier, S6 circulation fan; what is ordered vs commissioned, what the hardware can and cannot establish, and why none of it is an Ask execution target yet",
+      "keywordPatterns": [
+        "environmental node",
+        "sensor collection box",
+        "sensor relay box",
+        "doc 27",
+        "dehumidifier",
+        "dehumidify",
+        "midea",
+        "cube",
+        "cloudline",
+        "s6",
+        "circulation fan",
+        "circulation loop",
+        "fan",
+        "sen66",
+        "sht45",
+        "snzb-02p",
+        "co2",
+        "bathroom",
+        "basement"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/environmental-nodes.md",
+          "section": "ordered-equipment-and-current-scope",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/environmental-nodes.md",
+          "section": "what-the-devices-can-and-cannot-establish",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/environmental-nodes.md",
+          "section": "year-round-circulation-and-temperature-difference",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/environmental-nodes.md",
+          "section": "setup-and-maintenance",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/environmental-nodes.md",
+          "section": "ask-behavior-and-execution-boundary",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -701,6 +756,7 @@
     "highest-score category wins instead of first declared match (r1's own description claimed this; the code did not do it)",
     "contextDocuments added: the DB holds none of the platform./system./family_hub. nodes r1 designates (2026-09-20 read-only check), so r1 context was empty for 16 of 17 categories",
     "credential_redaction boost 2: credential questions must reach the role-gated credential guidance even when another category also matches",
-    "2026-10-04 (D24, W-23): presence and location-role sections added to live_sensors (operations.md#presence-and-location-roles) and installation (independent-installation.md#presence-for-each-location)"
+    "2026-10-04 (D24, W-23): presence and location-role sections added to live_sensors (operations.md#presence-and-location-roles) and installation (independent-installation.md#presence-for-each-location)",
+    "2026-10-16 (Doc 27, HO-2026-10-16-doc27-poc2 'Code / Ask'): environmental_nodes category added, wiring ai-assistant/user-guide/environmental-nodes.md. Factual sections are household audience; the Ask behavior and execution boundary section is administrator only (fail-closed default, reviewable). No frozen question declares it (questions is empty), nothing is ingested or trained."
   ]
 }
