@@ -21,7 +21,7 @@ This document owns the initial design and seed gap register. Existing [use cases
 | UC-14 | Intrusion visible in-app with notification evidence | Door/motion seed broadens the camera example without inventing another UC |
 | UC-15 | Remote notification and audible-output policy | Conflict: existing manual-only sirens versus Nate's latest description of configured automatic sirens; preserve both pending explicit reconciliation |
 | UC-17 / D27 | Context relations and governed actions | Reuse subject_of, topic_of, relates_to, part_of and human_definition; propose any additional predicate through Q-OC-6 |
-| UC-18 in open PR #165 | Future environmental-device reuse | Reference only: not yet on main; no edits to its hardware or POC2 specification |
+| UC-18 (merged via #165, 2026-10-16) | Environmental-device reuse | Reference only; this proposal makes no edits to its hardware or POC2 specification |
 
 No new UC is needed for this baseline. Weekly discovery/review is a proposed acceptance extension to UC-6/UC-17. Cowork should decide whether its actor/outcome eventually warrants a separate UC before allocating one.
 
