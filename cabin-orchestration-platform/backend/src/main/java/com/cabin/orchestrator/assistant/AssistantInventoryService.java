@@ -6,6 +6,7 @@ import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.security.HouseholdRole;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -48,6 +49,7 @@ public class AssistantInventoryService {
     private final DeviceRegistry registry;
     private final Clock clock;
 
+    @Autowired
     public AssistantInventoryService(DeviceRegistry registry) {
         this(registry, Clock.systemUTC());
     }
