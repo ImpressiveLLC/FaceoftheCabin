@@ -778,8 +778,11 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         }
         try {
             Map<String, Object> body = new LinkedHashMap<>();
+            // Z2M 2.x rejects a request with no "time" ("Invalid payload", verified
+            // against 2.14.1's bridge.js and live 2026-10-16) and ignores "value";
+            // 1.x reads "value". Send both: time 0 is how 2.x closes the window.
             body.put("value", enable);
-            if (enable) body.put("time", duration);
+            body.put("time", enable ? duration : 0);
             String json = mapper.writeValueAsString(body);
             for (ZigbeeBridge bridge : bridges()) {
                 client.publish(bridge.prefix() + "bridge/request/permit_join",

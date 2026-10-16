@@ -1,5 +1,12 @@
 # Smrekar Platform — Strategic Roadmap & Architecture Brief
 
+## Doc 27 environmental monitoring and climate control preparation
+
+UC-18 / W-76: [three-node hardware/integration plan](docs/hardware/doc27-environmental-nodes.md),
+including Midea Cube, CLOUDLINE S6 and Home T/RH sensors. Purchased hardware and candidate
+ontology types are documented; firmware, device commissioning and application extensions
+remain planned. Coordinate with D27's inventory/metadata/guard/workflow work and POC2.
+
 > **Prepared:** 2026-07-27  
 > **Review checkpoint:** 2026-08-27 _(30 days — reassess phase status, update discovery flags, verify unicornpingpong.com tunnel)_  
 > **Audience:** Claude Code handoff · CIO · Product Lead · Data Architect · Ontology Lead  

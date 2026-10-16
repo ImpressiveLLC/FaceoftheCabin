@@ -1,5 +1,12 @@
 # POC1 — Local SFT fine-tuning pipeline
 
+## Environmental project and POC2 scope
+
+[Doc 27 / POC2 handoff](../../governance/handovers/HO-2026-10-16-doc27-poc2.md) records
+the prompt-first decision and deferred shadow mode. Keep factual device inventory in
+RAG/live resolution and reviewed intent semantics in SFT; no training run is authorized
+or claimed by that documentation update.
+
 **Status, 2026-09-14/15: Tier 1 (build) executed end-to-end on real M920q
 hardware, real results.** Real training run (5 PASS-graded examples,
 3 epochs, CPU-only, loss 4.34 → 2.98), real GGUF conversion (6.4GB), real
@@ -210,3 +217,10 @@ record, never silently anonymized into an unattributed fact.
   once, real, on the M920q (see status header). Tier 2 (does the trained
   tag actually answer better) has not — treat any claim about answer
   *quality* as unverified until a real Tier 2 comparison lands.
+
+## Intent / slot follow-on
+
+The [intent-slot r1 package](intent-slot/README.md) adds offline proposal schemas,
+source adapters, reviewed-data export and evaluation tooling for a hybrid
+RAG + semantic SFT + live resolver design. It is a reconstructed starter;
+resolver/runtime wiring, training and live evaluation remain follow-on work.

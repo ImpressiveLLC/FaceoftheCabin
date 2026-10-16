@@ -6,7 +6,7 @@ PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
 StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
-mergeStatusCheckItems, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
+mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, ZigbeePairingFlow, pairingRefusedMessage } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
@@ -3539,6 +3539,58 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     expect(setPendingDeviceFocus).toHaveBeenCalledWith(null);
   });
 
+  // 2026-10-12: Open device used to land on a panel that could hide the very
+  // device the person was sent to act on (saved State/Parent-only filter, or
+  // its group collapsed). A focus request now reveals its target.
+  function renderWithFocus(devices, focus) {
+    vi.stubGlobal("fetch", deviceManagerFetchMock());
+    return render(
+      <AppContext.Provider value={{
+        devices, workflows: [], activeLocation: "cabin",
+        refreshDevices: vi.fn(), setActivePanel: vi.fn(),
+        pendingDeviceFocus: focus, setPendingDeviceFocus: vi.fn(),
+      }}>
+        <DeviceManagerPanel />
+      </AppContext.Provider>
+    );
+  }
+
+  it("a focus request reveals a device the saved State filter was hiding", async () => {
+    const devices = [
+      ...twoDevices,
+      { deviceId: "d3", name: "Device Three", type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "DEFERRED" } },
+    ];
+    renderWithFocus(devices, "d3");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(screen.getAllByText("Device Three").length).toBeGreaterThan(0);
+    expect(JSON.parse(localStorage.getItem("devices.lifecycleFilter"))).toContain("DEFERRED");
+  });
+
+  it("a focus request leaves the saved filters alone when the target was already visible", async () => {
+    localStorage.setItem("devices.lifecycleFilter", JSON.stringify(["ASSIGNED"]));
+    renderWithFocus(twoDevices, "d2");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(JSON.parse(localStorage.getItem("devices.lifecycleFilter"))).toEqual(["ASSIGNED"]);
+  });
+
+  it("a focus request expands the target's collapsed group", async () => {
+    localStorage.setItem("collapsed.deviceGroups.cabin.type", JSON.stringify({ LOCK: true }));
+    renderWithFocus(twoDevices, "d2");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(screen.getByText("Device One")).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("collapsed.deviceGroups.cabin.type")).LOCK).toBe(false);
+  });
+
+  it("says so, instead of silently showing nothing, when the focused device is not in the list", async () => {
+    renderWithFocus(twoDevices, "ghost_device");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(screen.getByRole("status").textContent).toContain("ghost_device");
+  });
+
   it("force-expands a device group containing an active ALARM device, even if the user had collapsed it", async () => {
     localStorage.setItem("collapsed.deviceGroups.cabin.type", JSON.stringify({ LOCK: true }));
     const devices = [
@@ -6216,6 +6268,96 @@ describe("FamilyConfigPanel — Platform specs", () => {
   });
 });
 
+// 2026-10-12: safety floor + undo for Ignore/Snooze. An open-ended Ignore
+// must never hide a CRITICAL condition (same principle as the collapse floor),
+// and anything silenced has to stay findable and restorable.
+describe("Status Checks — silencing safety floor and restore", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const critical = { alertId: "device:leak_mech_room:device-alarm", sourceDeviceId: "leak_mech_room", location: "cabin",
+    severity: "CRITICAL", condition: "DEVICE_ALARM", title: "Mech Room Leak is in alarm", detail: "Water detected." };
+  const warn = { alertId: "device:door_front_contact:missed-checkin", sourceDeviceId: "door_front_contact", location: "cabin",
+    severity: "WARN", condition: "MISSED_CHECKIN", title: "Front Door missed check-in", detail: "No report." };
+
+  it("an IGNORED acknowledgment never hides a CRITICAL item, including ones already in the database", () => {
+    const items = mergeStatusCheckItems([critical], "cabin", [], [{ alertKey: critical.alertId, mode: "IGNORED" }]);
+    expect(items).toHaveLength(1);
+  });
+
+  it("a time-boxed SNOOZE still hides a CRITICAL item", () => {
+    const items = mergeStatusCheckItems([critical], "cabin", [],
+      [{ alertKey: critical.alertId, mode: "SNOOZED", snoozedUntil: new Date(Date.now() + 3600000).toISOString() }]);
+    expect(items).toHaveLength(0);
+  });
+
+  it("silencedStatusChecks lists hidden items, a visible CRITICAL-IGNORED one is not 'silenced', and orphaned keys are flagged", () => {
+    const acks = [
+      { alertKey: warn.alertId, mode: "IGNORED" },
+      { alertKey: critical.alertId, mode: "IGNORED" },
+      { alertKey: "device:gone:missed-checkin", mode: "IGNORED" },
+    ];
+    const entries = silencedStatusChecks([critical, warn], [], acks);
+    expect(entries.map(e => e.alertKey)).toEqual([warn.alertId, "device:gone:missed-checkin"]);
+    expect(entries[0]).toMatchObject({ title: "Front Door missed check-in", active: true });
+    expect(entries[1]).toMatchObject({ title: "device:gone:missed-checkin", active: false });
+  });
+
+  function renderCard(alerts, acks, authedFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })) {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const refreshAlertAcknowledgments = vi.fn();
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"], activeAlerts: alerts,
+        alertAcknowledgments: acks, refreshAlertAcknowledgments,
+      }}>
+        <RulesPanel auth={{ authedFetch }} />
+      </AppContext.Provider>
+    );
+    return { authedFetch, refreshAlertAcknowledgments };
+  }
+
+  it("a CRITICAL row offers no Ignore for now and only the 1 hour snooze", () => {
+    renderCard([critical], []);
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+
+    expect(screen.queryByRole("button", { name: "Ignore for now" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /remind me in/i }));
+    expect(screen.getByRole("button", { name: "1 hour" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "1 day" })).toBeNull();
+  });
+
+  it("a WARN row still offers Ignore for now and every snooze length", () => {
+    renderCard([warn], []);
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+
+    expect(screen.getByRole("button", { name: "Ignore for now" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /remind me in/i }));
+    expect(screen.getByRole("button", { name: "1 month" })).toBeTruthy();
+  });
+
+  it("lists silenced checks behind an 'N silenced' toggle and Restore DELETEs the key then refreshes", async () => {
+    const { authedFetch, refreshAlertAcknowledgments } = renderCard([warn], [{ alertKey: warn.alertId, mode: "IGNORED" }]);
+
+    expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /1 silenced/i }));
+    expect(screen.getByText("Front Door missed check-in")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => expect(authedFetch.mock.calls.find(([url]) => url.includes("/api/alerts/acknowledgments/"))).toBeTruthy());
+    const [url, options] = authedFetch.mock.calls.find(([u]) => u.includes("/api/alerts/acknowledgments/"));
+    expect(url).toContain(encodeURIComponent(warn.alertId));
+    expect(options.method).toBe("DELETE");
+    await waitFor(() => expect(refreshAlertAcknowledgments).toHaveBeenCalled());
+  });
+
+  it("with everything silenced, the empty state says so instead of claiming nothing is wrong", () => {
+    renderCard([warn], [{ alertKey: warn.alertId, mode: "IGNORED" }]);
+
+    expect(screen.getByText(/1 silenced by you/i)).toBeTruthy();
+    expect(screen.queryByText(/built-in safety rules are watching/i)).toBeNull();
+  });
+});
+
 
 // W-62 (Nate, 2026-10-13): the disk alert's Act step is a Trim control: how many
 // newest nightly copies to keep, what that frees, what the disk would be, then Go.
@@ -6448,5 +6590,57 @@ describe("On the Way is reachable from My Places and Monitoring", () => {
     fireEvent.click(btn);
     await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
     expect(JSON.parse(haCalls(authedFetch)[0][1].body).entity_id).toBe("input_boolean.on_the_way_to_cabin");
+  });
+});
+
+describe("ZigbeePairingFlow -- the pairing window must not pretend (2026-10-16)", () => {
+  afterEach(cleanup);
+  function authWithPermitJoin(permitJoin) {
+    return {
+      authedFetch: vi.fn((url) => url.includes("/permit-join")
+        ? permitJoin()
+        : Promise.resolve({ ok: true, status: 200, json: async () => [] })),
+    };
+  }
+  function openWindow(auth) {
+    render(<ZigbeePairingFlow onBack={() => {}} onDone={() => {}} auth={auth} />);
+    fireEvent.click(screen.getByRole("button", { name: /Open pairing window/ }));
+  }
+
+  it("starts the countdown when the hub accepts the request", async () => {
+    openWindow(authWithPermitJoin(() => Promise.resolve({ ok: true, status: 200, json: async () => ({}) })));
+    expect(await screen.findByText(/Pairing window open/)).toBeTruthy();
+  });
+
+  it.each([
+    [401, /signed out/],
+    [403, /read-only/],
+    [500, /HTTP 500/],
+  ])("says why and does NOT show a countdown when the hub answers %s", async (status, pattern) => {
+    openWindow(authWithPermitJoin(() => Promise.resolve({ ok: false, status, json: async () => ({}) })));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(pattern);
+    expect(screen.queryByText(/Pairing window open/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Open pairing window/ })).toBeTruthy();
+  });
+
+  it("says the hub could not be reached when the request itself fails", async () => {
+    openWindow(authWithPermitJoin(() => Promise.reject(new Error("network down"))));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/could not be reached/);
+    expect(screen.queryByText(/Pairing window open/)).toBeNull();
+  });
+
+  it("clears an earlier error when the next attempt succeeds", async () => {
+    let first = true;
+    const auth = authWithPermitJoin(() => {
+      if (first) { first = false; return Promise.resolve({ ok: false, status: 401, json: async () => ({}) }); }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    openWindow(auth);
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: /Open pairing window/ }));
+    expect(await screen.findByText(/Pairing window open/)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

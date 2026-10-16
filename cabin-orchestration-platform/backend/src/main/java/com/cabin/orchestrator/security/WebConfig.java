@@ -158,6 +158,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * silencing an alert above, never an anonymous one. Does not touch D14:
  * no read lives under this path.
  *
+ * /api/assistant — added 2026-10-16 (W-67 slice 1), every method. The
+ * inventory GET lists every device the Ask entity resolver may target, so
+ * it needs a resolved household role (AssistantInventoryController checks
+ * it); it is not an open read like /api/devices. Demo tokens: DENY.
+ *
  * cabin.security.googleAuth.enabled defaults to true (secure by default —
  * absence of the property changes nothing). The only reason it exists is
  * local verification: there's no way to obtain a real Google access token
@@ -187,6 +192,6 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
                 "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session",
                 "/api/presence/**", "/api/security/**", "/api/opportunities/**", "/api/alerts/**",
-                "/api/devices/**", "/api/ha/**", "/api/locations/**", "/api/system/storage/trim");
+                "/api/devices/**", "/api/ha/**", "/api/assistant/**", "/api/locations/**", "/api/system/storage/trim");
     }
 }
