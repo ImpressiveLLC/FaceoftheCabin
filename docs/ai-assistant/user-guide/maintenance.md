@@ -59,6 +59,10 @@ This is a **recovery scope**, not a verified backup procedure. Do not copy a liv
 
 Existing component guidance is available now: [REPLICATION section 10](../../REPLICATION.md#kuma-config-as-code-decision--poc-passed-production-approval-pending) records the Kuma 2.5.0 disposable reconciliation POC and distinguishes a monitor specification from a complete `/app/data` backup. It leaves production reconciliation separately pending and provides a manual monitor target list. Use that current record instead of the older Claude plan's proposed JSON-import wording. For camera/MQTT diagnosis, the same section explains the configured availability topic, frame checks and notification routing; a green service on the wrong broker/topic does not prove the intended path. See [recovered history H06](../corpus/local-history-evidence.md#findings-reconciled-with-current-source).
 
+## New hardware pending install (2026-10-16)
+
+[`docs/HARDWARE_INVENTORY_2026-10-16_sensor-relay-nodes-and-hvac.md`](../../HARDWARE_INVENTORY_2026-10-16_sensor-relay-nodes-and-hvac.md) and [D28](../../governance/decisions/ontology-decisions.md) record inbound hardware not yet installed or paired: three cabin sensor/relay enclosures, six home Zigbee temp/humidity sensors plus relays and plugs, a Midea Cube dehumidifier, and a Cloudline S6 duct fan controller. None of this changes current recovery or maintenance procedure yet — there is no deployed WiFi/ESPHome adapter, no Midea HA integration and no Cloudline control path until W-76/W-77/W-78 ship. Do not assume any of these units are live, pollable, or present in `device_state` until its own backlog item is marked merged and it is confirmed paired on the running stack.
+
 ## Close the incident
 
 Record the symptom, affected instance/capability, source/runtime version, bounded checks, cause evidence, authorized correction, verification and remaining uncertainty. Submit reusable facts or corrected instructions through the [shared contribution process](../contributing.md). Keep secret values and household telemetry out of the shared incident summary. Never label an inferred cause “confirmed” or a suggested command “executed.”
