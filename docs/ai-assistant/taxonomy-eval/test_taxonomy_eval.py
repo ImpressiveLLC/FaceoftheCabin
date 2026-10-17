@@ -100,9 +100,26 @@ class QuestionSet(unittest.TestCase):
             self.assertTrue(q["expected_element"] == v.NO_DATA or q["expected_element"] in ELEMENT_IDS, q["id"])
             self.assertLessEqual(len(q["start_context"]), 240, q["id"])
 
-    def test_rulings_are_marked_not_baked_in(self):
-        pending = {q["id"]: q["ruling_pending"] for q in QUESTIONS["questions"] if q.get("ruling_pending")}
-        self.assertEqual(pending, {"Q005": ["R4"], "Q011": ["R4"], "Q018": ["R3"]})
+    def test_rulings_are_recorded_and_the_questions_follow_them(self):
+        ruled = {q["id"]: q["ruled"] for q in QUESTIONS["questions"] if q.get("ruled")}
+        self.assertEqual(ruled, {"Q005": ["R4"], "Q011": ["R4"], "Q018": ["R3"]})
+        rulings = qc.load_rulings()
+        self.assertEqual(rulings["R3"]["homes"], {"Q018": "device_health"})
+        self.assertEqual(rulings["R4"]["homes"], {"Q005": "air_quality", "Q011": "security_presence"})
+        for r in rulings.values():
+            self.assertEqual((r["ruled_by"], r["ruled_on"]), ("Nate", "2026-10-17"))
+        expected = {q["id"]: q["expected_topic"] for q in QUESTIONS["questions"]}
+        for r in rulings.values():
+            for qid, home in r["homes"].items():
+                self.assertEqual(expected[qid], home, qid)
+
+    def test_a_question_that_disagrees_with_its_ruling_is_caught(self):
+        data = copy.deepcopy(QUESTIONS)
+        next(q for q in data["questions"] if q["id"] == "Q018")["expected_topic"] = "energy"
+        self.assertTrue(any("ruled home" in p for p in self.check(data)))
+        data = copy.deepcopy(QUESTIONS)
+        next(q for q in data["questions"] if q["id"] == "Q001")["ruled"] = ["R9"]
+        self.assertTrue(any("not recorded" in p for p in self.check(data)))
 
     def test_the_three_candidate_groupings_are_in_the_set(self):
         tags = {t for q in QUESTIONS["questions"] for t in q["edge_tags"]}

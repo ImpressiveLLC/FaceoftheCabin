@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "status": "ruled by Nate in chat on 2026-10-17. These are the only home of R3 and R4 until the D16 amendment (W-92) folds them into ontology-decisions.md; W-92 then deletes this file. A ruling applies at analysis time and never edits a run log.",
+  "rulings": [
+    {
+      "id": "R3",
+      "question": "Is a house or backup-power battery Energy or Device Health?",
+      "ruling": "Device Health. A house or backup-unit battery is handled like any device battery: its charge and condition are about that device, and the action is to charge or replace it.",
+      "ruled_by": "Nate",
+      "ruled_on": "2026-10-17",
+      "edge_tag": "dh-energy",
+      "homes": {"Q018": "device_health"}
+    },
+    {
+      "id": "R4",
+      "question": "Where do life-safety alarm flags (CO, smoke, leak) surface while staying alarm flags that never feed a comfort or air badge?",
+      "ruling": "Option B, stay with the measurement: the CO reading lives in Air Quality and the leak state in Security & Presence (as D16 already places leaks). The alarm state itself surfaces only through alerts and never feeds a topic badge. A dedicated Safety home (option A, the existing SAFETY device category) was considered and not chosen.",
+      "ruled_by": "Nate",
+      "ruled_on": "2026-10-17",
+      "edge_tag": "life-safety",
+      "homes": {"Q005": "air_quality", "Q011": "security_presence"}
+    }
+  ]
+}
