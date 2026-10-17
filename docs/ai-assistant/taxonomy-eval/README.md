@@ -36,9 +36,9 @@ Standard library only. (`-B` rather than `-I`: isolated mode would hide the sibl
 | 25 to 30 questions meeting the section 5.1 rules | Met: 29 questions, `questions_check.py` passes (every topic and view has at least 3; 21 target a hard edge, the rule is a third; 12 are unanswerable by design, the rule is 3) |
 | Verdict schema validated on 10 dry-run records, none unparseable | Met: `fixtures/dry-run-verdicts.jsonl`; the 14 negative fixtures are each rejected for the rule they break |
 | Edge tests drafted for every listed edge | Met: seven edges and three candidates in `edge-tests.draft.md`; every tag used by a question has a row |
-| Metric targets ratified by Nate | **Open**: `targets.json` is proposed only (R7) |
+| Metric targets ratified by Nate | **Met**: ratified as written by Nate on 2026-10-17 (R7), recorded in `targets.json`; R2 (the `none` label) accepted the same day |
 
-G1 is therefore **not passed**. W-90 and W-91 do not start until Nate ratifies the targets and answers R2.
+All four G1 exit criteria are met. **G1 passes when this PR merges**; W-90 and W-91 may start from fresh `main` after that, and not before.
 
 ## Where this differs from the plan, and why
 
@@ -52,5 +52,5 @@ G1 is therefore **not passed**. W-90 and W-91 do not start until Nate ratifies t
 
 ## Open for Nate
 
-R2 (the labeling population, with the correction above), R7 (ratify `targets.json`), R3 and R4 (house or UPS battery; where a
-life-safety alarm flag surfaces), which questions marked `ruling_pending` wait on.
+R2 and R7 are settled (2026-10-17). Still open: R3 and R4 (house or UPS battery; where a life-safety alarm flag surfaces), which
+the questions marked `ruling_pending` wait on, and which must be ruled before G4.

@@ -49,11 +49,11 @@ file and the labels are excluded from agreement scoring.
 
 `kind` is `human`, `agent` or `local_model`. `elements_sha256` pins the element list the labels were made against.
 
-**Population (R2, a correction for Nate).** The plan assumes the 154 raw, derived and composite elements all get a topic.
+**Population (R2, accepted by Nate on 2026-10-17).** The plan assumed the 154 raw, derived and composite elements all get a topic.
 Reading the list, most of them are not readings a person asks about (chores, rewards, parenting schedule, tokens, MQTT
 topic names, UI cards), so forcing a topic on each would measure nothing. This protocol therefore scores all 154 *and*
 reports agreement twice: over the elements either labeler placed in a topic, and over the `none` / topic decision itself.
-Nate confirms or changes this at G1.
+Nate accepted this at G1.
 
 **Agreement report (G2).** Raw agreement, Cohen's kappa overall and per topic, a confusion matrix by topic pair, the
 ambiguity list, and a 10 percent audit sample for Nate drawn with a fixed seed from the sha256 above, stratified by topic and

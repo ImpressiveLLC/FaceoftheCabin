@@ -1,8 +1,9 @@
 {
   "version": "g1-proposed",
-  "status": "proposed by Cowork in plan section 5.4. NOT ratified: Nate ratifies these at G1 (R7), and until then no gate may be treated as passed against them.",
-  "ratified_by": null,
-  "ratified_on": null,
+  "status": "ratified as written. Proposed by Cowork in plan section 5.4; Nate ratified them at G1 (R7) in chat on 2026-10-17 and accepted R2 (the `none` label) the same day. Any later change needs a new ratification recorded here.",
+  "ratified_by": "Nate",
+  "ratified_on": "2026-10-17",
+  "ratified_scope": "every metric below, as written, including the null decision_time target (baseline first); R2: the labeling population is all 154 non-conceptual elements with an explicit `none` label for elements that are not readings",
   "metrics": {
     "first_click_find_rate": {"definition": "Share of runs whose first topic matches the expected topic", "target": 0.85, "scope": "per question", "direction": "at_least"},
     "hops_median": {"definition": "Topics opened before the verdict", "target": 2, "direction": "at_most"},

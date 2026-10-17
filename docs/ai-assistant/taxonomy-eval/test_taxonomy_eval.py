@@ -262,6 +262,16 @@ class Targets(unittest.TestCase):
             self.assertIn(key, t["metrics"])
         self.assertEqual(t["metrics"]["inter_labeler_kappa"]["target"], 0.80)
 
+    def test_nate_ratified_the_targets_as_written_on_2026_10_17(self):
+        t = load("targets.json")
+        self.assertEqual((t["ratified_by"], t["ratified_on"]), ("Nate", "2026-10-17"))
+        self.assertIn("R2", t["ratified_scope"])
+        self.assertNotIn("NOT ratified", t["status"])
+        plan = (REPO / "docs" / "governance" / "proposals" / "2026-10-17-topic-taxonomy-evaluation.md").read_text(encoding="utf-8")
+        for key, text in (("first_click_find_rate", "85% or better"), ("top_two_margin", "0.30 or better"),
+                          ("inter_labeler_kappa", "0.80 or better"), ("audit_agreement", "90%")):
+            self.assertIn(text, plan, f"the plan no longer says {text!r} for {key}")
+
 
 if __name__ == "__main__":
     unittest.main()
