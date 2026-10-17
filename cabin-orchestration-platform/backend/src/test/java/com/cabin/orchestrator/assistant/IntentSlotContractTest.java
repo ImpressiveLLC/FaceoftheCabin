@@ -60,7 +60,7 @@ class IntentSlotContractTest {
             assertEquals(target.get("intent").asText(), parsed.intent(), row.get("id").asText());
             checked++;
         }
-        assertTrue(checked >= 48, "expected the 48 gold fixtures, found " + checked);
+        assertTrue(checked >= 47, "expected the 47 gold fixtures, found " + checked);
     }
 
     @Test

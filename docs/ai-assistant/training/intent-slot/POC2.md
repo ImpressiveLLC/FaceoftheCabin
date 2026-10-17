@@ -51,7 +51,7 @@ separate validation; nothing here schedules jobs.
 
 ## Fixtures and limits
 
-There are 48 provisional gold fixtures, including each concept (`light`, `nap` and `wake_up` added 2026-10-16), all new trigger
+There are 47 gold fixtures: 41 reviewed by Nate (gold v2, 2026-10-17) and gold-43..48 added 2026-10-16 for `light`, `wake_up`, `nap` and their boundaries, still pending review. They include each concept, all new trigger
 forms, immediate/delayed presence, selected cards, guarded valve opening,
 unsupported unlocking, wrong site, negation, injection and unitless temperature.
 Synthetic templates also generate each new trigger. No live entity IDs are used.

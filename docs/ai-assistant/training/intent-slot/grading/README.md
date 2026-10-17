@@ -6,7 +6,7 @@ Serve it with Python; opening index.html directly cannot load or save data.
 
 1. Start `server.py --package PATH_TO_MATCHING_PACKAGE --state PRIVATE_JOURNAL.json --port 8766`.
    The package needs gold.jsonl, contract.py, schemas and system.txt, plus its Python dependencies.
-   Current main supplies 48 fixtures.
+   Current main supplies 47 fixtures (41 already reviewed, 6 pending).
    **Vocabulary (2026-10-16).** `concepts.json` (11 human needs) and `areas.json` (rooms and sites) are part of the
    package and of the journal's fingerprint: changing either, the schema or `contract.py` makes an older journal
    refuse to load, on purpose, so start a new `--state` file after pulling this change.
