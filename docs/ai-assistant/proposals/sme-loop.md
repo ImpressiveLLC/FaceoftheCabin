@@ -64,3 +64,13 @@ Each row happened during the 2026-10-16/17 work.
 1. Acceptable evidence for phase 3: review all 42 gold, and how many of the 1,140 candidates before any SFT?
 2. Who grades phase 5's conceptual set (it needs a definition of "correct" where no document states the answer)?
 3. Is the 5-point plateau rule the right stop?
+
+## Round log
+
+| Round | Gold | Valid output | Intent | Slot F1 | Critical | Notes |
+|---|---|---|---|---|---|---|
+| r1 (prompt as of #171) | 41 reviewed | 75.6% | 41.5% | 0.510 | 18 | 10 invalid outputs; 8 had `concept` on a non-`express_need` intent |
+| r2 (ordered checks, format rules, aligned to reviewed labels) | same 41 | 73.2% | 56.1% | 0.442 | 16 | `compare` flags METRIC DROP on valid output and slot F1 |
+| r2 | all 47 on main (6 unreviewed `express_need`/`clarify` rows from #174) | 74.5% | 57.4% | 0.466 | 17 | host run 2026-10-17, tag `cabin-intent-slot-poc2-r2`; p50 9.0 s while the host was swapping |
+
+**Reading r2.** Routing improved: `set_device_state` 0/4 to 4/4, `clarify` 0/8 to 2/8, `unsupported` stayed 4/4. The phase-1 goal (valid output at least 95%) was **not** met and went slightly the wrong way. Eleven of r2's twelve invalid outputs are the same defect as r1: the model puts `concept` on an intent other than `express_need`, even though the prompt now says not to. `answer_question`, `propose_automation` and `set_device_attribute` are all still 0 for that reason alone. A prose rule did not stop a 3B model; the original line that lists `concept` among the slots allowed for every intent is the likely cause and is the next single change (r3). If r3 does not move valid output, stop prompting for this defect and fix it structurally (a per-intent schema in the constrained-output format, or a deterministic strip of `concept` outside `express_need` before validation), which is a contract change for the owner of the contract.

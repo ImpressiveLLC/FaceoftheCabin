@@ -53,5 +53,15 @@ class RoundLedgerTest(unittest.TestCase):
         self.assertTrue(any("GOLD CHANGED" in x for x in w))
 
 
+    def test_a_metric_that_gets_worse_is_flagged_even_when_no_fixture_flips(self):
+        a = rl.record(report({"g1": "set_device_state", "g2": "x", "g3": "x"}), GOLD, "r1", "P1")
+        b = rl.record(report({"g1": "set_device_state", "g2": "x", "g3": "x"}), GOLD, "r2", "P2")
+        b["valid_output_rate"] = a["valid_output_rate"] - 0.05
+        b["critical_fixture_failures"] = a["critical_fixture_failures"] + 1
+        _, w = rl.compare(a, b)
+        self.assertTrue(any("METRIC DROP" in x and "valid_output_rate" in x for x in w))
+        self.assertTrue(any("CRITICAL FAILURES ROSE" in x for x in w))
+
+
 if __name__ == "__main__":
     unittest.main()
