@@ -83,5 +83,5 @@ and by neighbor pair.
 ## 3. What these protocols do not do
 
 - They do not decide the topics. The D16 amendment (W-92) does, from the evidence.
-- They do not rule. Rulings (R3, R4) are Nate's and apply at analysis time, never by editing a run log.
+- They do not rule. Rulings (R3 and R4 are recorded in `rulings.json`) are Nate's and apply at analysis time, never by editing a run log.
 - They do not run anything: the probe runner (W-91) and the labeling tools (W-90) start only after G1 passes.
