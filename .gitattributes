@@ -16,3 +16,10 @@ scripts/host/blinkbridge-watchdog* text eol=lf
 
 # Extensionless host scripts (scripts/host/*) are copied to Linux and run directly.
 scripts/host/* text eol=lf
+
+# Intent/slot data is graded and fingerprinted by raw bytes (gold_sha256). A Windows autocrlf checkout
+# hashed differently from the Linux host and the grading UI rejected the 2026-10-17 baseline report.
+docs/ai-assistant/training/intent-slot/*.jsonl text eol=lf
+docs/ai-assistant/training/intent-slot/*.json text eol=lf
+docs/ai-assistant/training/intent-slot/system.txt text eol=lf
+docs/ai-assistant/training/intent-slot/Modelfile.* text eol=lf
