@@ -13,7 +13,8 @@ nothing here is ratified.
 | `questions_check.py` | Enforces plan section 5.1 on the question set and prints coverage |
 | `verdict.schema.json`, `verdicts.py` | The verdict record: schema, every cross-field rule, the harness-computed `found`/`hops`, the four-cell reading and the routing table |
 | `edge-tests.draft.md` | Drafted edge tests for every listed edge, plus three candidate groupings. Draft home of the future D16 amendment text |
-| `targets.json` | The metric targets, proposed and not ratified |
+| `targets.json` | The metric targets, ratified as written by Nate on 2026-10-17 |
+| `rulings.json` | R3 and R4 as ruled by Nate on 2026-10-17, with the questions each decides; folded into the D16 amendment (W-92) later |
 | `PROTOCOLS.md` | The blind labeling protocol and the human session protocol |
 | `fixtures/` | 10 dry-run verdict records that must all validate, and 14 records that must each be rejected for a named rule |
 | `test_taxonomy_eval.py` | Tests for all of the above |
@@ -45,12 +46,11 @@ All four G1 exit criteria are met. **G1 passes when this PR merges**; W-90 and W
 - **Location and format.** The plan proposes `eval/taxonomy/` and `questions.yaml`. This lives under `docs/ai-assistant/` with the repo's other
   evaluation tooling (the design constraints already allow Python there) and the question set is JSON, so the harness stays
   standard-library only (PyYAML is not installed on the maintainer's workstation; CI installs it only to cross-check the element reader).
-- **Optional question fields.** `ruling_pending` (R3, R4) and `note` (what a question was drawn from) are additions to the plan's field list.
+- **Optional question fields.** `ruled` (R3, R4, see `rulings.json`) and `note` (what a question was drawn from) are additions to the plan's field list.
 - **A `none` label.** Most of the 154 non-conceptual elements are not readings a person asks about (see `PROTOCOLS.md`, R2).
 - **Edge tests are a draft file.** Their eventual single home is the D16 amendment; this file is deleted when W-92 moves them.
 - **`views` get a `view-topic` edge** because the plan's own seed questions test it, though section 5.3 lists six edges.
 
 ## Open for Nate
 
-R2 and R7 are settled (2026-10-17). Still open: R3 and R4 (house or UPS battery; where a life-safety alarm flag surfaces), which
-the questions marked `ruling_pending` wait on, and which must be ruled before G4.
+R2, R3, R4 and R7 are settled (Nate, 2026-10-17; R3 and R4 are in `rulings.json`). Nothing is open for G4 from the plan's own list except what the evidence turns up.
