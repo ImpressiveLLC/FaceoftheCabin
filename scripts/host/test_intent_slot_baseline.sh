@@ -85,7 +85,7 @@ rm -rf "$W/out"; run
 check "an offline-gate failure (exit 1) is a result, not an error" "[ \$(rc) = 0 ] && grep -q 'gates exit code: 1' $W/stdout"
 check "the candidate tag was created in the ollama container" "grep -q 'exec ollama ollama create cabin-intent-slot-prompt-r1 -f /tmp/Modelfile.intent-r1' $W/log"
 check "evaluate ran in a throwaway container on the ollama network" "grep -q 'run --rm --network container:ollama' $W/log"
-check "the package copy and its hashes are kept" "[ -f $W/out/package/evaluate.py ] && [ \$(wc -l <$W/out/package.sha256) = 8 ]"
+check "the package copy and its hashes are kept" "[ -f $W/out/package/evaluate.py ] && [ \$(wc -l <$W/out/package.sha256) = 9 ]"
 check "the host state was recorded first" "grep -q '^## memory' $W/out/preflight.txt && grep -q '^## ollama models' $W/out/preflight.txt"
 check "peak memory comes from the samples (2.5 GiB = 2560 MiB)" "grep -q 'peak container memory 2560 MiB' $W/stdout"
 check "the model id is reported" "grep -q 'feedc0ffee12' $W/stdout"
