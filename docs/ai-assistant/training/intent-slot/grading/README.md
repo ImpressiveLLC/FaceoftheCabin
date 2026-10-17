@@ -6,9 +6,18 @@ Serve it with Python; opening index.html directly cannot load or save data.
 
 1. Start `server.py --package PATH_TO_MATCHING_PACKAGE --state PRIVATE_JOURNAL.json --port 8766`.
    The package needs gold.jsonl, contract.py, schemas and system.txt, plus its Python dependencies.
-   Current main supplies 22 fixtures; the separate provisional POC2 working package supplies 42.
+   Current main supplies 47 fixtures (41 already reviewed, 6 pending).
+   **Vocabulary (2026-10-16).** `concepts.json` (11 human needs) and `areas.json` (rooms and sites) are part of the
+   package and of the journal's fingerprint: changing either, the schema or `contract.py` makes an older journal
+   refuse to load, on purpose, so start a new `--state` file after pulling this change.
 2. Enter a reviewer name. Search/filter examples, correct intent/details or the advanced JSON,
    explain corrections/rejections, then approve, reject or save for later. Decisions persist on disk.
+   While you edit, the screen asks the server to check the answer (`/api/validate`, the same rules approval uses):
+   a room or site outside the vocabulary is flagged under its field and **Approve stays disabled** until it is fixed
+   (reject and save-for-later still work); `Mechanical Room`, `mech-room` and `the mech room` are saved as `mech room`
+   and the screen says so; a human need can be added only to a need request, each need shows its definition,
+   aliases and neighbours, and a direct command such as "turn on the hall lights" shows, read-only, which needs
+   it would satisfy. To add a room, edit `areas.json` in a PR; to add a need, edit `concepts.json` and re-run the tests.
 3. Fetch the selected pinned public sources with `collect_sources.py --package PATH_TO_MATCHING_PACKAGE --output PRIVATE_SOURCE_FOLDER`.
    This makes candidates.jsonl, quarantine.jsonl, manifest.json and upstream copies/license notices.
    Start a second server with `--dataset PRIVATE_SOURCE_FOLDER/candidates.jsonl --purpose training-candidate --port 8768`

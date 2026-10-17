@@ -278,12 +278,37 @@
   {
     "id": "train-need-dark",
     "utterances": [
-      "I need more light"
+      "It's too dark to see",
+      "I can't see anything in here",
+      "It's getting really dim in here"
     ],
     "target": {
       "intent": "express_need",
       "slots": {
         "concept": "dark"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-light",
+    "utterances": [
+      "I need more light",
+      "I could use some more light",
+      "It would help to have some light",
+      "I need it brighter",
+      "Can we get some brightness in here",
+      "Brighter please",
+      "Could you brighten things up in here",
+      "It could use some more brightness",
+      "We need it a lot brighter"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "light"
       },
       "requires_confirmation": true,
       "clarification": null,
@@ -323,12 +348,50 @@
   {
     "id": "train-need-bedtime",
     "utterances": [
-      "Time for bed"
+      "Time for bed",
+      "I'm going to sleep for the night",
+      "Heading to bed now"
     ],
     "target": {
       "intent": "express_need",
       "slots": {
         "concept": "bedtime"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-nap",
+    "utterances": [
+      "Time for a nap",
+      "I want to lie down for a bit",
+      "I'd like a quick nap",
+      "I'm going to rest for a while"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "nap"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-wake_up",
+    "utterances": [
+      "Time to get up",
+      "I'm getting out of bed",
+      "I just woke up",
+      "Rise and shine"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "wake_up"
       },
       "requires_confirmation": true,
       "clarification": null,

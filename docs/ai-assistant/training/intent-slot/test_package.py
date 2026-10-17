@@ -12,6 +12,7 @@ from evaluate import score, query
 from generate_synthetic import generate
 from import_sources import adapt
 from prepare_sft import split_rows
+from vocabulary import CONCEPT_IDS
 
 
 class PackageTests(unittest.TestCase):
@@ -31,7 +32,7 @@ class PackageTests(unittest.TestCase):
     def test_poc2_needs_and_coverage(self):
         needs = {r["target"]["slots"]["concept"] for r in self.gold
                  if r["target"]["intent"] == "express_need"}
-        self.assertEqual(needs, {"cold", "hot", "stuffy", "dark", "arriving", "leaving", "bedtime", "tv_time"})
+        self.assertEqual(needs, set(CONCEPT_IDS))
         self.assertTrue(any(r["text"] == "I'm cold" for r in self.gold))
         for slots in ({}, {"concept": "unknown"}):
             with self.assertRaises((ValueError, ValidationError)):

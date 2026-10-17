@@ -50,9 +50,12 @@
             "hot",
             "stuffy",
             "dark",
+            "light",
             "arriving",
             "leaving",
             "bedtime",
+            "nap",
+            "wake_up",
             "tv_time"
           ]
         }

@@ -11558,3 +11558,93 @@ elements:
     definition: Controller supplied with CLOUDLINE S6; manual adjustment does not imply Wi-Fi, cloud or HA speed
       capability.
     notes: W-76 candidate type only; no executable capability or runtime identity granted. See docs/hardware/doc27-schematics.md.
+  - id: human_need_concept
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: xsd:string
+    constraint:
+      enum: ["cold", "hot", "stuffy", "dark", "light", "arriving", "leaving", "bedtime", "nap", "wake_up", "tv_time"]
+      description: "Closed vocabulary of human needs the intent/slot model may return as the concept slot of an express_need request. docs/ai-assistant/training/intent-slot/concepts.json is the source; the schema enum, system prompts, Java copy and this list are tested against it."
+    ui_display_name: "Human need"
+    source: "D27 Concept (W-66, Cowork seed 2026-10-14, awaiting Nate per Q-OC-11). light, nap and wake_up added by Nate 2026-10-16; bright and every derivation of light or bright are aliases of light (one observational concept, different aliases)."
+    rendering:
+      semantic: "What the person needs, in their own words (cold, dark, light, nap...)"
+      systems: "concept slot of an express_need request, one of the ids in concept_vocabulary"
+      technical: "slots.concept in intent-slot.schema.json; never an entity, service or capability"
+      compliance: "Language label only. A need never selects a device and never authorizes an action; options come from the ontology walk and are confirmed every time (R-OC-5, R-OC-7)."
+    definition: "A human state or desire expressed in plain language. The model classifies the wording into one concept; the ontology, not the model, decides which subjects and capabilities could satisfy it."
+    relationships: []
+    concept_vocabulary:
+      - id: "cold"
+        label: "Cold"
+        definition: "The person feels too cold."
+        aliases: ["chilly", "freezing", "need warmth"]
+        relates_to:
+          - {id: "hot", relation: "inverse_of"}
+      - id: "hot"
+        label: "Hot"
+        definition: "The person feels too hot."
+        aliases: ["too warm", "sweltering", "need to cool off"]
+        relates_to:
+          - {id: "cold", relation: "inverse_of"}
+      - id: "stuffy"
+        label: "Stuffy"
+        definition: "The air feels stale or close. Not a temperature complaint, so never a temperature threshold."
+        aliases: ["stale air", "muggy", "needs air"]
+        relates_to: []
+      - id: "dark"
+        label: "Dark"
+        definition: "States that it is too dark: a lack of light described as a condition (\"it's dark in here\", \"I can't see\"). Wanting light or brightness as the thing asked for is `light`."
+        aliases: ["dim", "too dim", "can't see"]
+        relates_to:
+          - {id: "light", relation: "same_remedy_as"}
+      - id: "light"
+        label: "Light"
+        definition: "Wants light or more brightness, stated as the thing wanted (\"I need more light\", \"it needs to be brighter\"). 'Bright' and every other form of light or bright (brighter, brighten, brightness, lighten, lighting...) are the same observation and are aliases, not separate concepts. The opposite wish (too bright, want less light) is not in the vocabulary yet."
+        aliases: ["bright", "brighter", "brightest", "brighten", "brightness", "brightly", "lighter", "lighten", "lighting", "more light"]
+        relates_to:
+          - {id: "dark", relation: "same_remedy_as"}
+      - id: "arriving"
+        label: "Arriving"
+        definition: "The person is arriving, or about to arrive, at the place."
+        aliases: ["on my way in", "getting home", "pulling in"]
+        relates_to:
+          - {id: "leaving", relation: "inverse_of"}
+      - id: "leaving"
+        label: "Leaving"
+        definition: "The person is leaving, or about to leave, the place."
+        aliases: ["heading out", "going out"]
+        relates_to:
+          - {id: "arriving", relation: "inverse_of"}
+      - id: "bedtime"
+        label: "Bedtime"
+        definition: "Going to bed for the night."
+        aliases: ["time for bed", "going to sleep", "turning in"]
+        relates_to:
+          - {id: "wake_up", relation: "inverse_of"}
+          - {id: "nap", relation: "contrasts_with"}
+      - id: "nap"
+        label: "Nap"
+        definition: "A short rest during the day, not going to bed for the night."
+        aliases: ["lie down", "quick rest", "siesta"]
+        relates_to:
+          - {id: "bedtime", relation: "contrasts_with"}
+          - {id: "wake_up", relation: "followed_by"}
+      - id: "wake_up"
+        label: "Wake up"
+        definition: "Waking up or getting up now. A request to be woken at a future time (\"wake me at 7\") is a schedule, not this need."
+        aliases: ["getting up", "time to get up", "rise and shine"]
+        relates_to:
+          - {id: "bedtime", relation: "inverse_of"}
+          - {id: "nap", relation: "follows"}
+      - id: "tv_time"
+        label: "TV time"
+        definition: "The person wants to watch television."
+        aliases: ["watch tv", "watch television", "movie time"]
+        relates_to: []
+    notes: "Candidate only (D27 Phase 1). Asks (what could satisfy a need) live in concepts.json as proposals and are empty where no mapping has been reviewed. The opposite of light (too bright, want less light) is not in the vocabulary yet."
