@@ -1,0 +1,20 @@
+{
+  "version": "g1-proposed",
+  "status": "proposed by Cowork in plan section 5.4. NOT ratified: Nate ratifies these at G1 (R7), and until then no gate may be treated as passed against them.",
+  "ratified_by": null,
+  "ratified_on": null,
+  "metrics": {
+    "first_click_find_rate": {"definition": "Share of runs whose first topic matches the expected topic", "target": 0.85, "scope": "per question", "direction": "at_least"},
+    "hops_median": {"definition": "Topics opened before the verdict", "target": 2, "direction": "at_most"},
+    "hops_max": {"definition": "Topics opened before the verdict", "target": 3, "direction": "at_most"},
+    "top_two_margin": {"definition": "Share choosing the top placement minus share choosing the second, per element", "target": 0.30, "scope": "per element, or a recorded ruling", "direction": "at_least"},
+    "inter_labeler_kappa": {"definition": "Cohen's kappa between independent labelers", "target": 0.80, "scope": "per round, after at most one sharpening round", "direction": "at_least"},
+    "audit_agreement": {"definition": "Agreement of a 10 percent audit sample with the ruled label", "target": 0.90, "direction": "at_least"},
+    "positive_control_found": {"definition": "Positive controls found", "target": 0.95, "direction": "at_least"},
+    "negative_control_flagged": {"definition": "Negative controls flagged wrong_here", "target": 0.90, "direction": "at_least"},
+    "unanswerable_missing_or_broken": {"definition": "Unanswerable-by-design questions drawing missing_or_broken_here", "target": 0.90, "direction": "at_least"},
+    "abandonment_by_neighbor_pair": {"definition": "Human cannot_tell verdicts grouped by the pair of topics involved", "target": 0.05, "scope": "no pair above", "direction": "at_most"},
+    "runs_per_question": {"definition": "Probe repeats per question at G4", "target": 10, "direction": "at_least"},
+    "decision_time_seconds": {"definition": "Seconds from question shown to verdict (humans)", "target": null, "direction": "baseline_first"}
+  }
+}
