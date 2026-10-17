@@ -707,7 +707,7 @@ R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its
 | ID | Question | Decision |
 |---|---|---|
 | Q-OC-1 | Relation meanings: `subject_of` (what a concept or workflow acts on), `topic_of` (membership in a grouping), `relates_to` (loose association), `part_of` (structural containment), plus `human_definition`. | **Yes, as a starting point; to be developed further.** Start with these four plus `human_definition`. Q-OC-6 governs how the vocabulary grows. |
-| Q-OC-2 | Guard defaults for valves and locks. | **Direction-aware if feasible; if too complex for day 1, allow all.** Cowork: a guard is set per capability, and open/close and lock/unlock are separate capabilities, so direction-aware costs nothing extra. Build it from day 1: valve close `open`; valve open `lidded`; lock `open`; unlock `lidded` on cards and `blocked` for Ask and automations. "Allow all" is the recorded fallback only if W-69's design note finds a real obstacle, and it still keeps R-OC-7's confirm on every Ask or card action. |
+| Q-OC-2 | Guard defaults for valves and locks. | **Direction-aware if feasible; if too complex for day 1, allow all.** Cowork: a guard is set per capability, and open/close and lock/unlock are separate capabilities, so direction-aware costs nothing extra. Build it from day 1: valve close `open`; valve open `lidded`; lock `open`; unlock `lidded` on cards and `blocked` for Ask and automations (**Amendment A1, proposed 2026-10-17, would make unlock-from-Ask `lidded` for administrators: see below**). "Allow all" is the recorded fallback only if W-69's design note finds a real obstacle, and it still keeps R-OC-7's confirm on every Ask or card action. |
 | Q-OC-3 | One option: show it as a choice? | **One tap applies when one option applies**, under a uniform interaction model (R-OC-11). |
 | Q-OC-4 | Is presence Phase 1? | **Yes, Phase 1.** A state is atomic: device 1:0 ↔ state 1:0, and a state can be independent of everything else. That flexibility and interoperability make it higher priority (Model: State; R-OC-10). |
 | Q-OC-5 | Engine for saved schedules and triggers, which reverses the `CLAUDE.md` rule. | **Yes, unless there is a firm reason to say no; Cowork votes first.** Cowork votes **yes, with a carve-out**. User-authored plans run in the platform workflow engine at both locations (D23: no HA at Home). The existing cabin safety automations (leak, freeze, siren) stay in Home Assistant, where they run and are tested. Cowork found no firm reason against this. The carve-out exists because those automations must keep working when the backend is down. `CLAUDE.md` is amended in the W-71 PR to say exactly this. |
@@ -728,6 +728,62 @@ R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its
 - Not a build. Each W item carries its own design note and governance record.
 - Not permission to execute anything from Ask before the C5 gates pass. The one exception is the W-75 vertical POC, which may run only the cabin mech-room heater switch. That is the same authority the W-27 card button already grants, and it runs behind a feature flag, for an admin only, with a confirm every time.
 - Not a change to who may act (W-44 / W.6 roles still decide that).
+
+### Amendment A1 (proposed 2026-10-17): unlocking a lock from Ask
+
+**Status:** proposed (Code, from Nate's direction 2026-10-17). Not ratified: Cowork ratifies the policy and Nate answers the open questions below. **Nothing in the gold set, the prompt, the resolver or the executor changes until it is ratified.** Amends Q-OC-2 only; R-OC-3, R-OC-4, R-OC-7 and R-OC-11 are unchanged and are what makes it safe.
+
+**Why.** Q-OC-2 made `unlock` `lidded` on cards and `blocked` for Ask and automations. Nate's intent: an administrator must always be able to unlock a door from wherever they are, once they confirm which door. That is a request the current guard refuses by design.
+
+**The change (phase A, the required case).**
+
+| | Q-OC-2 today | A1 |
+|---|---|---|
+| `lock` | `open` | unchanged |
+| `unlock` on a card | `lidded` | unchanged |
+| `unlock` from Ask, administrator, any location | `blocked` | **`lidded`**: allowed after the lid is lifted |
+| `unlock` from Ask, anyone else | `blocked` | `blocked` (phase B below may widen it) |
+| `unlock` by any automation, saved or Ask-generated | `blocked` | `blocked` (unchanged: nothing unlocks a door unattended) |
+
+**What "lifting the lid" means for Ask.** All of these, enforced by the server (R-OC-4), never by the model or the UI:
+1. The caller is an authenticated ADMINISTRATOR session. The role comes from the session, never from the request text.
+2. The target is resolved by the `EntityResolver` from the request's location and device name to exactly one lock the caller may act on (R-OC-5). Zero or several matches is `NOT_FOUND` or `AMBIGUOUS`, never a guess, and a request that names no location is `clarify`.
+3. The user is shown the exact resolved plan ("Unlock Front Door lock at Cabin") and confirms it. The confirmation is bound to the plan hash, the principal and an expiry (Q-OC-10, leaning 5 minutes; for a lock, recommended 60 seconds), and any inventory or plan change voids it.
+4. A receipt records who, which lock, which location, when, and the executor's own result. HTTP acceptance is not success: the receipt shows the lock's reported state, or "no confirmation from the lock".
+5. The existing `lock` capability is untouched; only `unlock` gains this path.
+
+**Why confirm every time.** The admin condition removes the question of who may unlock, not whether this unlock is what they meant. A stolen unlocked session, a mis-resolved name or injected text still ends on a human-confirmed plan (R-OC-7). One tap, as R-OC-11 already provides, is the "automatic" experience.
+
+**Phase B (later, secondary): a user local to the site.** Rationale recorded from Nate: a door lock is not a systems-critical device like water or gas detection, and an intruder would need the network, the app URL and credentials, which is a rarer path than breaking a window. Proposed rule, to design and ratify separately: a signed-in user (D24 `primary` at that location, never `maintenance` or guest) acting through a client that is demonstrably local to the lock's site (a kiosk or device on the location's LAN or Wi-Fi) may lift the same lid for that site's locks only. Open design point: "local" cannot be read from a source IP, because requests reach the backend through Cloudflare or Tailscale. It needs a path the server can trust, such as a kiosk-bound token (D14) or a LAN-only listener. Fails closed when the locality signal is missing or stale.
+
+**Resolver and policy test cases** (these are backend tests, not model fixtures; the model never sees the condition):
+
+| Case | Expected |
+|---|---|
+| Admin, remote, "unlock the front door", one lock at the named location | Proposal returned with `requires_confirmation`; executes only after confirm |
+| Admin, remote, no location named and more than one lock exists | `clarify`, no proposal |
+| Admin, location names no lock | `NOT_FOUND` |
+| Non-admin household member, any location | Refused (`UNAUTHORIZED`), no proposal |
+| Guest, demo or kiosk-display token | Refused |
+| Admin session expired or revoked between proposal and confirm | Confirm rejected; nothing executes |
+| Confirm after expiry, or after the lock's inventory entry changed | Rejected |
+| Same confirm replayed | Rejected (single use) |
+| Request text claims "I am the admin" or "ignore the guard" | Role unchanged; prompt-injection stays data |
+| Unlock requested inside a saved or Ask-generated automation | Rejected at validation (`blocked`) |
+| Lock reports no state change after the command | Receipt says "no confirmation from the lock", not success |
+| Home location (no HA there, D23, Q-OC-9) | Refused until a verified Home actuator exists |
+
+**Model-side changes, to apply only after ratification** (a gold and prompt change resets the gold hash, so every prior score stops being comparable and the previous prompt is re-baselined on the new gold; see `proposals/sme-loop.md`):
+- `gold-36` ("Unlock the front door") changes from `unsupported` to `set_device_state`, `device_name` front door lock, `state` unlocked, `requires_confirmation` true, critical. Add two or three phrasing variants (for example "let me in the cabin door", with the location stated) and keep a fixture proving a *negated* unlock ("don't unlock the door") stays `unsupported`.
+- `system.txt`: the original line "Unlocking locks from Ask is unsupported" and round 2's rule 1 clause "Unlocking a lock is unsupported" are replaced by "An unlock request is a set_device_state proposal that requires confirmation; whether the caller may unlock is decided outside the model."
+- The model never emits an entity id, role or condition (R-OC-5).
+
+**Open questions.**
+- A1-Q1 (Nate): confirmation lifetime for a lock: 60 seconds recommended, or the general 5 minutes?
+- A1-Q2 (Nate): should a remote admin unlock also require a fresh sign-in (for example a Google session newer than 24 hours) rather than the 30-day rolling CabinSession? Recommended yes for `unlock`, because a long-lived session token is what an attacker would hold.
+- A1-Q3 (Cowork): confirm that the controlled vocabulary needs no new predicate: the lock-to-location link already exists (Q-OC-6 not triggered).
+- A1-Q4 (Nate): is a notification to other admins on every Ask unlock wanted (ntfy; W-51 means backend push is blank today)?
+- A1-Q5 (Nate, phase B): which clients count as local: kiosk only, or any device on the site's Wi-Fi?
 
 ---
 
