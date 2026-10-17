@@ -9,7 +9,8 @@
         "set_device_attribute",
         "propose_automation",
         "clarify",
-        "unsupported"
+        "unsupported",
+        "express_need"
       ]
     },
     "slots": {
@@ -42,6 +43,21 @@
         "unit": {
           "type": "string",
           "minLength": 1
+        },
+        "concept": {
+          "enum": [
+            "cold",
+            "hot",
+            "stuffy",
+            "dark",
+            "light",
+            "arriving",
+            "leaving",
+            "bedtime",
+            "nap",
+            "wake_up",
+            "tv_time"
+          ]
         }
       },
       "additionalProperties": false
@@ -65,61 +81,154 @@
           "type": "object",
           "properties": {
             "trigger": {
-              "type": "object",
-              "properties": {
-                "target": {
+              "oneOf": [
+                {
                   "type": "object",
                   "properties": {
-                    "device_name": {
+                    "target": {
+                      "type": "object",
+                      "properties": {
+                        "device_name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "location": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "site": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "device_name",
+                        "location",
+                        "site"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "attribute": {
                       "type": "string",
                       "minLength": 1
                     },
-                    "location": {
+                    "operator": {
+                      "enum": [
+                        "eq",
+                        "lt",
+                        "gt"
+                      ]
+                    },
+                    "value": {
                       "type": "string",
                       "minLength": 1
                     },
-                    "site": {
+                    "unit": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "target",
+                    "attribute",
+                    "operator",
+                    "value",
+                    "unit"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "time_once"
+                    },
+                    "at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "at"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "time_recurring"
+                    },
+                    "start_time": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "rrule": {
                       "type": "string",
                       "minLength": 1
                     }
                   },
                   "required": [
-                    "device_name",
-                    "location",
-                    "site"
+                    "kind",
+                    "start_time",
+                    "rrule"
                   ],
                   "additionalProperties": false
                 },
-                "attribute": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "operator": {
-                  "enum": [
-                    "eq",
-                    "lt",
-                    "gt"
-                  ]
-                },
-                "value": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "unit": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "state_changes_to"
+                    },
+                    "target": {
+                      "type": "object",
+                      "properties": {
+                        "device_name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "location": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "site": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "device_name",
+                        "location",
+                        "site"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "attribute": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "for_seconds": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "target",
+                    "attribute",
+                    "value"
+                  ],
+                  "additionalProperties": false
                 }
-              },
-              "required": [
-                "target",
-                "attribute",
-                "operator",
-                "value",
-                "unit"
-              ],
-              "additionalProperties": false
+              ]
             },
             "conditions": {
               "type": "array",

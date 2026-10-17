@@ -15,6 +15,8 @@ public final class ProposalModel {
         ANSWER,
         /** The model needs more from the person; {@code message} is the question. */
         CLARIFY,
+        /** express_need: the need was recognised and named, but no options are offered yet (no executor, no concept map). */
+        NEED,
         /** A read of one or more devices resolved to exactly one target each. Nothing to confirm. */
         TARGET,
         /** A mutation or automation resolved completely; {@code proposal} binds a later confirmation. */
@@ -23,9 +25,13 @@ public final class ProposalModel {
         REFUSED
     }
 
-    /** One resolved part of a plan. {@code role} is ACTION, TRIGGER or CONDITION. */
+    /**
+     * One resolved part of a plan. {@code role} is ACTION, TRIGGER or CONDITION. A time trigger names no device:
+     * its {@code entityId} is null, {@code action} is TIME_ONCE or TIME_RECURRING and {@code detail} holds the
+     * schedule. {@code detail} also carries a state trigger's "for N seconds".
+     */
     public record Step(String role, String entityId, String name, String site, String action, String attribute,
-                       String operator, String value, String unit, int delaySeconds) {}
+                       String operator, String value, String unit, int delaySeconds, String detail) {}
 
     /**
      * What a later confirmation must be bound to (D27 R-OC-7, Q-OC-10): the principal, the exact resolved steps

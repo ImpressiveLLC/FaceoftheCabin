@@ -6,9 +6,23 @@ It is tooling and provisional fixtures, not a trained or validated model.
 
 ## Needs and targets
 
-`express_need` requires a `concept` slot and confirmation. The seed concepts
-`cold`, `hot`, `stuffy`, `dark`, `arriving`, `leaving`, `bedtime` and `tv_time`
-await Nate's confirmation. “I'm cold” classifies as `express_need/cold`.
+`express_need` requires a `concept` slot and confirmation. The vocabulary lives in
+[`concepts.json`](concepts.json): `cold`, `hot`, `stuffy`, `dark`, `light`, `arriving`, `leaving`,
+`bedtime`, `nap`, `wake_up` and `tv_time`. The first eight are the D27 seed set awaiting Nate's
+confirmation; `light`, `nap` and `wake_up` were added by Nate on 2026-10-16 while grading, and `bright`
+and every derivation of light or bright (brighter, brighten, brightness, lighting...) are **aliases** of
+`light`, not separate concepts: one observational concept, different aliases (Nate, 2026-10-16). The aliases
+are shown to the reviewer and used in the corpus. Wording decides between neighbours: `dark` states a lack of light,
+`light` states a want for it; `bedtime` is going to bed for the night, `nap` a short daytime rest, and
+`wake_up` waking or getting up now (“wake me at 7” is a schedule, not a need). “I'm cold” classifies as
+`express_need/cold`. A concept may appear only on `express_need`; a direct command such as “turn on the
+hall lights” stays `set_device_state`, and the grading screen shows which needs such a command would
+satisfy as read-only context.
+
+Rooms and sites are a closed vocabulary too ([`areas.json`](areas.json)): the grading screen normalizes
+`Mechanical Room`, `mech-room` and `the mech room` to `mech room`, refuses a room it does not know, and
+`prepare_sft.py` refuses training rows that are not canonical. This is training-data hygiene, not the live
+inventory: the resolver still matches against the real device list.
 The model must not choose an actuator from a need. The ontology walk and policy
 layer supply options; W-75 separately implements the limited cold proof of concept.
 
@@ -38,7 +52,7 @@ separate validation; nothing here schedules jobs.
 
 ## Fixtures and limits
 
-There are 42 provisional gold fixtures, including each concept, all new trigger
+There are 47 gold fixtures: 41 reviewed by Nate (gold v2, 2026-10-17) and gold-43..48 added 2026-10-16 for `light`, `wake_up`, `nap` and their boundaries, still pending review. They include each concept, all new trigger
 forms, immediate/delayed presence, selected cards, guarded valve opening,
 unsupported unlocking, wrong site, negation, injection and unitless temperature.
 Synthetic templates also generate each new trigger. No live entity IDs are used.
