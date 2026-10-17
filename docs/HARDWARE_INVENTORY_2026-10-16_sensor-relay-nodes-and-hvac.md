@@ -17,7 +17,7 @@
 | Home relay ×4 | `ZigbeeMiniRelay` | TBD (Nate to assign at install) | `ZigbeeMiniRelay_{Location}_{Application}` | Zigbee | inbound |
 | Home plug ×2 | `ZigbeeSmartPlug` | TBD | `ZigbeeSmartPlug_Home_TBD{n}` | Zigbee | inbound |
 | Dehumidifier | `SmartDehumidifier` | Home — basement (TBD confirm) | `SmartDehumidifier_Home_Basement` | WiFi, HA-native (W-77) | inbound, addendum |
-| Duct fan controller | `DuctFanSpeedController` | TBD (cabin or home whole-home HVAC) | `DuctFanSpeedController_{Location}_WholeHomeHVAC` | open — Q-DN-1, W-78 | inbound, addendum |
+| Duct fan controller | `DuctFanSpeedController` | TBD (cabin or home whole-home HVAC) | `DuctFanSpeedController_{Location}_WholeHomeHVAC` | Q-DN-1 answered 2026-10-17: active control (Option B); W-78 designs the actuator | inbound, addendum |
 | Coordinators (owned, not new) | `ZigbeeCoordinator` | Cabin (SONOFF ZBDongle-E) / Home (SMLIGHT SLZB-MR5U) | unchanged — no rename (D1) | USB-serial / network | already live |
 
 **Box 1** (lower-level claim-zone `SensorCollectionBox`) is **deferred** — tariff timing and the circulator fan's air-mixing effect on that zone's readings, per the order record. It is the fourth member of the `SensorCollectionBox` type family and will take the next free location slot when it proceeds.
@@ -94,7 +94,7 @@ All pair to the home-location coordinator (SMLIGHT SLZB-MR5U, already live and r
 | Part | Role | Integration |
 |---|---|---|
 | Midea Cube MAD50PS1QGR | WiFi dehumidifier, direct | HA local-LAN Midea integration (W-77) — `SmartDehumidifier`, `related_to: [humidity, climate, comfort_air]` |
-| Cloudline S6 "Quiet" 6 in. inline duct fan speed controller | HVAC booster fan, humidistat-driven variable speed | **Open — Q-DN-1 (D28), W-78.** No native network interface; needs either a passive power-monitor plug/relay (Option A, default until decided) or an added 0–10V/PWM actuator for true speed control (Option B) |
+| Cloudline S6 "Quiet" 6 in. inline duct fan speed controller | HVAC booster fan, humidistat-driven variable speed | **Q-DN-1 answered 2026-10-17: active speed control (Option B), W-78 designs it.** No native network interface, so it needs an added 0–10V/PWM actuator for true speed control; not yet on order. A passive power-monitor plug/relay (Option A) is only the interim fallback |
 
 ## 3 — Integration and application architecture
 
@@ -126,6 +126,6 @@ Every unit above gets, at provisioning: `Device.capabilities[]` (D7), `measureme
 
 ## 5 — Open items
 
-- **Q-DN-1** (D28): Cloudline S6 control shape — passive monitor vs. active speed control. Nate's call.
+- **Q-DN-1** (D28): Cloudline S6 control shape. **Answered by Nate, 2026-10-17: active speed control (Option B).**
 - **Location/application TBDs**: 4× `ZigbeeMiniRelay`, 2× `ZigbeeSmartPlug`, `SmartDehumidifier`, `DuctFanSpeedController` — confirmed at physical install (W-80).
 - **W-84 design note**: ESPHome-native vs. new MQTT contract for the WiFi sensor boxes — recommendation is ESPHome-native, not yet ratified by Cowork.
