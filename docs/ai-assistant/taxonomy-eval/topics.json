@@ -1,0 +1,15 @@
+{
+  "version": "t1",
+  "status": "draft: the taxonomy under test, not decided. The D16 amendment (W-92) decides it from the evidence.",
+  "note": "Six topics that own data and two computed views. The one-line descriptions are all a blind probe or a human grader sees (plan section 5.2): the discriminating words must live here, so if a description cannot carry a distinction, the description is what is under test. Do not add edge rules, rulings or rationale to a description.",
+  "topics": [
+    {"id": "temp_humidity", "kind": "topic", "label": "Temp & Humidity", "description": "How the space feels: temperature and moisture (heat, cold, humidity)."},
+    {"id": "air_quality", "kind": "topic", "label": "Air Quality", "description": "What is in the air: CO2, gases, particles and an overall air-quality reading."},
+    {"id": "security_presence", "kind": "topic", "label": "Security & Presence", "description": "Who is here and whether the place is secure: motion, doors, locks, cameras, water leaks and who is home."},
+    {"id": "energy", "kind": "topic", "label": "Energy", "description": "What the building is using: power, energy, current and voltage of mains-powered loads and circuits."},
+    {"id": "connectivity", "kind": "topic", "label": "Connectivity", "description": "Whether the household's connections are up: the internet uplink, Wi-Fi, the VPN, the Zigbee network as a whole, and whether a phone or hub can be reached."},
+    {"id": "device_health", "kind": "topic", "label": "Device Health", "description": "How one device is doing: its battery, its signal to its hub, its last check-in, and whether it is online."},
+    {"id": "alert_history", "kind": "view", "label": "Alert History", "description": "What went wrong and when: past alerts from every topic (a computed view, not a source of readings)."},
+    {"id": "occupancy", "kind": "view", "label": "Occupancy", "description": "How busy the place is: a summary of recent motion and door activity over time (a computed view, not a source of readings)."}
+  ]
+}

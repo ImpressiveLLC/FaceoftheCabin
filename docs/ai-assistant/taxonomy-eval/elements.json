@@ -1,0 +1,2058 @@
+{
+  "source": "docs/ontology.yaml",
+  "commit": "58ecabcd4b3cc3c6598108d023bff314fdd4b4a0",
+  "git_blob": "32ead278322f29bc804bf6e1c68e0c0723ed7749",
+  "sha256": "1010489bcba8909f3082eb225b64cd775a4db5a082b5d64ce8af8b887e7315ee",
+  "counts": {
+    "composite": 20,
+    "conceptual": 73,
+    "derived": 61,
+    "raw": 73
+  },
+  "total": 227,
+  "elements": [
+    {
+      "id": "zigbee_ieee_address",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "The globally unique 64-bit hardware address burned into every Zigbee chip at manufacture. Immutable. The lowest-level identity of a physical device, independent of any pairing, naming, or software state."
+    },
+    {
+      "id": "zigbee_model",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "Manufacturer model string identifying the hardware capabilities and firmware baseline of a Zigbee device."
+    },
+    {
+      "id": "zigbee_vendor",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "Manufacturer name string as reported by the Zigbee device."
+    },
+    {
+      "id": "z2m_friendly_name",
+      "data_class": "raw",
+      "layer": "protocol",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown — use display_name instead)",
+      "definition": "The human-assigned snake_case name for a Zigbee device as configured in Zigbee2MQTT. Forms the MQTT topic path and is the stable internal key for all Z2M operations. Must use snake_case — spaces break MQTT topic parsing."
+    },
+    {
+      "id": "mqtt_topic",
+      "data_class": "derived",
+      "layer": "protocol",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "The MQTT publish/subscribe path for a device's state messages. Constructed from the Z2M topic prefix and the device friendly_name."
+    },
+    {
+      "id": "mqtt_availability_topic",
+      "data_class": "raw",
+      "layer": "protocol",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Connection status",
+      "definition": "Z2M publishes {\"state\":\"online\"} or {\"state\":\"offline\"} to this topic when a device joins or leaves the Zigbee mesh. This is the authoritative online/offline signal — more reliable than inferring from data messages."
+    },
+    {
+      "id": "fotc_device_id",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "FaceoftheCabin's internal stable identifier for a device. Prefixed with the integration source (z2m-, home-, etc.) to namespace across multiple integration adapters."
+    },
+    {
+      "id": "display_name",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Back Door Sensor",
+      "definition": "The human-readable name for a device as set by the user at install time or via the settings panel. Completely independent of z2m_friendly_name. This is what every non-technical audience sees everywhere in the platform."
+    },
+    {
+      "id": "device_room",
+      "data_class": "raw",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Kitchen",
+      "definition": "The room-level (L1) location of a device within the installation site. User selects from a curated soft-enum list. Custom values auto-submit a candidate_term_submission for master vocabulary review."
+    },
+    {
+      "id": "device_install_photo",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Photo",
+      "definition": "Photo taken at device install time showing the physical device and its location. Used as tile background or thumbnail. Serves as visual memory aid for all audiences and installation evidence for compliance."
+    },
+    {
+      "id": "location_context",
+      "data_class": "composite",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Location",
+      "definition": "The aggregate location identity for an installed device. Groups the full five-level location attribute set (L1 room, L2a zone, L2b qualifier, L3 free text, derived formatted string) under one class so automations, device naming pipelines, a"
+    },
+    {
+      "id": "device_location_zone",
+      "data_class": "raw",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Zone within room",
+      "definition": "The zone-level (L2a) sub-room location of a device. A structured selection from a curated soft-enum vocabulary scoped to the parent device_room. Custom values trigger a vocabulary candidacy submission and user alert, and are excluded from a"
+    },
+    {
+      "id": "device_location_qualifier",
+      "data_class": "raw",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Position within zone",
+      "definition": "The positional (L2b) descriptor within a zone. Answers \"where exactly within the zone.\" Soft enum scoped to parent device_location_zone. Custom values trigger candidacy submission and user alert."
+    },
+    {
+      "id": "device_location_text",
+      "data_class": "raw",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Description",
+      "definition": "A free-text narrative description of the device's physical location. Intended for human readability (semantic and compliance audiences) only. Not used in automation rules, device naming, or any derived computation. The semantic audience fal"
+    },
+    {
+      "id": "device_location_formatted",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "(system generated)",
+      "definition": "Protocol-safe location strings derived from device_room (L1), device_location_zone (L2a), and device_location_qualifier (L2b). Generated in multiple format variants to satisfy naming constraints across MQTT topics, HA entity IDs, Z2M friend"
+    },
+    {
+      "id": "location_vocabulary_term",
+      "data_class": "raw",
+      "layer": "ontology",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Location vocabulary term",
+      "definition": "A single entry in the master controlled vocabulary for location attributes. Shared by all three location soft-enum properties (device_room, L2a, L2b). Each term is scoped to one or more room types via parent_room_types, or global (applies t"
+    },
+    {
+      "id": "candidate_term_submission",
+      "data_class": "derived",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Candidate vocabulary term",
+      "definition": "A record created automatically whenever a user enters a value not present in the master location_vocabulary_term list for any soft-enum location attribute. Queued for manual review; eventually automated promotion based on submission frequen"
+    },
+    {
+      "id": "device_state",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Online",
+      "definition": "The current operational state of a device. Derived from Z2M availability topic (primary) and data message presence (secondary). UNKNOWN means the platform has not yet received a state signal since last restart."
+    },
+    {
+      "id": "device_checkin_status",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Checkin Status",
+      "definition": "User report, 2026-08-08, verbatim: \"devices that show offline are not necessarily offline just not reporting. this is misleading.\" device_state's binary ONLINE/OFFLINE conflated \"hasn't pushed an update yet\" with \"confirmed unreachable\" --"
+    },
+    {
+      "id": "device_candidate_lifecycle",
+      "data_class": "derived",
+      "layer": "fullstack",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Device Setup Status",
+      "definition": "Candidate is a review lifecycle, not device health. Merely opening, reviewing, closing, or submitting a no-op edit does not change it. Only an explicit persisted decision does: Use this device -> AVAILABLE; Not now -> DEFERRED; Ignore -> IG"
+    },
+    {
+      "id": "device_discovery_result",
+      "data_class": "composite",
+      "layer": "fullstack",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Device Self-Discovery Result",
+      "definition": "A proposal, never authoritative -- a discovery run's matches are produced by cabin-discovery (local Zigbee2MQTT/Home-Assistant discovery metadata, plus a keyless DuckDuckGo web-search lookup -- see cabin-discovery/app/web_lookup.py) and per"
+    },
+    {
+      "id": "device_workflow_affiliation",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Workflow",
+      "definition": "User request, 2026-08-11, verbatim: \"the ability to filter or toggle by concept (location, type, state, workflow affiliation like alerting vs automations vs hvac-oriented flows eventually).\" Location/ type/state already existed as group dim"
+    },
+    {
+      "id": "device_expected_checkin_minutes",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Expected Check-in",
+      "definition": "The lifecycle window used to distinguish a normally sleeping device from one that is late or no longer responding. Defaults are protocol and power aware: battery Zigbee 1560 minutes, mains Zigbee 10, HA 15, camera 5, unknown 30. MISSED begi"
+    },
+    {
+      "id": "linkquality",
+      "data_class": "raw",
+      "layer": "protocol",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Signal",
+      "definition": "Zigbee Link Quality Indicator. A 0–255 integer representing the RF signal quality between a device and its nearest mesh router or coordinator. Higher is better."
+    },
+    {
+      "id": "battery_percent",
+      "data_class": "raw",
+      "layer": "protocol",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Battery",
+      "definition": "Remaining battery level as reported by the device, expressed as a percentage of full charge."
+    },
+    {
+      "id": "event_severity",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Severity",
+      "definition": "The severity tier assigned to a CabinEvent at publish time, computed from the triggering message's raw attributes by AlertSeverityClassifier. CRITICAL = water_leak/smoke/alarm true. WARN = tamper true, battery_low true, or contact false (do"
+    },
+    {
+      "id": "cabin_event",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Cabin Event",
+      "definition": "One durable, timestamped fact about a device: a telemetry reading (event_type=TELEMETRY, e.g. a Zigbee humidity/temperature update) or a discrete state change (motion, contact, alarm, presence, security). This is the entity every Sensor His"
+    },
+    {
+      "id": "zigbee2mqtt_bridge",
+      "data_class": "raw",
+      "layer": "infra",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Zigbee2MQTT Ingestion Bridge",
+      "definition": "The single point through which every Zigbee-sourced device (all 13 cabin devices as of 2026-07-25, plus Home's own bridge once configured) reaches cabin_event and DeviceRegistry. Depends on two independent things both being healthy at once:"
+    },
+    {
+      "id": "telemetry_recovery_pipeline",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Telemetry Recovery Route",
+      "definition": "Ordered triage: (1) confirm the *source* service is actually still alive and publishing (its own container logs / a fresh MQTT subscribe, independent of cabin-backend's own state); (2) confirm cabin-backend's own MQTT client is actually rec"
+    },
+    {
+      "id": "temperature_celsius",
+      "data_class": "raw",
+      "layer": "protocol",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Temperature",
+      "definition": "Ambient temperature reading from a Zigbee temperature sensor, reported in degrees Celsius by Z2M."
+    },
+    {
+      "id": "humidity_percent",
+      "data_class": "raw",
+      "layer": "protocol",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Humidity",
+      "definition": "Relative humidity reading from a Zigbee humidity sensor, expressed as a percentage of saturation."
+    },
+    {
+      "id": "contact_state",
+      "data_class": "raw",
+      "layer": "protocol",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Open / Closed",
+      "definition": "Boolean state of a contact sensor — true when the magnetic contact is closed (door/window shut), false when open."
+    },
+    {
+      "id": "tailscale_ip",
+      "data_class": "raw",
+      "layer": "network",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "The stable private IP address assigned to a machine within the Tailscale mesh VPN. Used for cross-machine service access without exposing services to the public internet."
+    },
+    {
+      "id": "docker_network_cabin_default",
+      "data_class": "raw",
+      "layer": "infra",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "The Docker bridge network shared by all containers in the existing cabin stack (mosquitto, homeassistant, nodered, frigate, zigbee2mqtt, homepage, uptime-kuma, mediamtx). FaceoftheCabin's cabin-backend joins this network to reach mosquitto"
+    },
+    {
+      "id": "machine_hostname",
+      "data_class": "raw",
+      "layer": "infra",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "The OS hostname of a machine running FaceoftheCabin components. Used by the QA runner to auto-detect machine profile and apply the correct test suite and environment assumptions."
+    },
+    {
+      "id": "platform_secret",
+      "data_class": "raw",
+      "layer": "infra",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown — operator-only concept)",
+      "definition": "Any password, token, or client secret one platform component needs to authenticate to another — POSTGRES_PASSWORD, GRAFANA_PASSWORD, HA_TOKEN, GOOGLE_CLIENT_ID (public, not secret, but host-scoped the same way), the GitHub Actions runner re"
+    },
+    {
+      "id": "cabin_camera_event",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Camera Activity Event",
+      "definition": "A single motion or object-detection event from a Frigate-managed camera, normalized from Frigate's MQTT event stream into the platform's own CabinEvent shape. Two distinct topic shapes feed this: cabin/camera/events (rich JSON, camera+label"
+    },
+    {
+      "id": "cabin_camera_continuous_recording",
+      "data_class": "raw",
+      "layer": "infra",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Continuous Recording",
+      "definition": "Unedited camera footage recorded around the clock, independent of any detected event — distinct from cabin_camera_event_clip, which is only the buffered window around a specific detection. This is what \"(d) review of all DTM-based video\" in"
+    },
+    {
+      "id": "cabin_camera_event_clip",
+      "data_class": "derived",
+      "layer": "infra",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Event Clip",
+      "definition": "A trimmed video clip automatically created around a single detection event — NOT the same as cabin_camera_continuous_recording (which is unedited, always-on footage). This is what \"(b) stores video of the events minus 15 seconds and post ev"
+    },
+    {
+      "id": "cabin_camera_live_view",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Live Camera View",
+      "definition": "An on-demand live video session for one camera, viewable through cabin-ui — the \"(a) live view that acts like Blink\" requirement from the 2026-08-02 planning conversation. Unlike Blink's cloud-clip model (which explicitly starts recording w"
+    },
+    {
+      "id": "automation_alert_see_think_act",
+      "data_class": "derived",
+      "layer": "fullstack",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Automation Alert (See / Think / Act)",
+      "definition": "The flagship, fully-wired scenario is water-pressure-low: cabin unoccupied (PresenceProfile is AWAY or AT_HOME, i.e. nobody has a live presence signal AT_CABIN/BOTH_OCCUPIED) + psi below threshold = CRITICAL, \"unexpected use\" framing, a rea"
+    },
+    {
+      "id": "cabin_camera_overnight_alert",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Overnight Camera Alert",
+      "definition": "A push notification sent when Frigate detects an alert-tier object (person, car, bicycle, motorcycle, bus, bear, dog, or cat — see cabin_camera_event's objects.track/review.alerts.labels config) while the cabin is armed-away and the user is"
+    },
+    {
+      "id": "cabin_critical_event_alert",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Critical Event Alert",
+      "definition": "A push notification sent for any CabinEvent classified CRITICAL by AlertSeverityClassifier (water_leak, smoke, or alarm == true) -- not camera/object-detection specific like cabin_camera_overnight_alert, this is the general-purpose path for"
+    },
+    {
+      "id": "nvr_frigate",
+      "data_class": "raw",
+      "layer": "infra",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Frigate NVR",
+      "definition": "The self-hosted NVR handling detection, recording, and live view for both cabin cameras. Shared infrastructure, not tied to either individual camera."
+    },
+    {
+      "id": "zigbee_leak_alarm_bathroom",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Bathroom Leak Alarm",
+      "definition": "Physical water-leak/siren sensor mounted in the bathroom, one of 13 paired Zigbee devices on the cabin mesh. Reports water_leak (boolean), battery (0-100), battery_low (boolean), and linkquality (0-255) on every Z2M state message. Distinct"
+    },
+    {
+      "id": "zigbee_motion_entry",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Entry Motion Sensor",
+      "definition": "PIR motion + ambient-light sensor covering the cabin's entry area. Reports occupancy (boolean), illuminance (lux), battery, and linkquality. Unlike the leak sensors, occupancy is NOT one of AlertSeverityClassifier's CRITICAL/WARN conditions"
+    },
+    {
+      "id": "zigbee_door_front_contact",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Front Door Contact",
+      "definition": "Reed-switch contact sensor on the front door. Reports contact (boolean, false = open), tamper, battery, voltage, and linkquality. contact: false is one of AlertSeverityClassifier's WARN conditions (see event_severity) — a door open event is"
+    },
+    {
+      "id": "zigbee_door_second_contact",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Second Door Contact",
+      "definition": "Reed-switch contact sensor on the cabin's second door (not further specified which door in current documentation — worth clarifying with the user in a future pass, not assumed here). Same attribute set and event_severity WARN behavior as zi"
+    },
+    {
+      "id": "zigbee_temp_outside_lowest",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Outside Low Temperature Probe",
+      "definition": "Outdoor temperature/humidity probe, positioned (per its friendly_name) to read the coldest exterior point being tracked — relevant to freeze-risk monitoring for the cabin's plumbing (see CabinAutomations' leak_freeze_automations.yaml, a sep"
+    },
+    {
+      "id": "zigbee_temp_kitchen",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Kitchen Temperature/Humidity",
+      "definition": "Kitchen temperature/humidity sensor. Reports temperature, humidity, battery, linkquality — pure telemetry, not currently wired into any alerting logic."
+    },
+    {
+      "id": "zigbee_leak_mech_room",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Mechanical Room Leak Sensor",
+      "definition": "Water-leak sensor in the mechanical room (water heater/pump/valve area) — arguably the highest-consequence leak location on the mesh given what else is in that room. Reports water_leak, battery, battery_low, linkquality. No built-in siren o"
+    },
+    {
+      "id": "zigbee_leak_alarm_fridge",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Fridge Leak Alarm",
+      "definition": "Water-leak sensor positioned at the kitchen fridge (note: distinct from the Liebherr fridge's own smart_appliance_fridge_liebherr integration entity — this is an independent physical leak sensor, not part of the fridge's own SmartDevice tel"
+    },
+    {
+      "id": "zigbee_temp_mech_room",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Mechanical Room Temperature/Humidity",
+      "definition": "Mechanical room temperature/humidity sensor — relevant to freeze-risk monitoring (same caveat as zigbee_temp_outside_lowest: the actual freeze-risk automation logic lives in the separate CabinAutomations repo, not tracked by code in this on"
+    },
+    {
+      "id": "zigbee_heater_mech_room",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Mechanical Room Heater Plug",
+      "definition": "Smart plug controlling the mechanical room's freeze-prevention heater. Unlike the sensor-only devices above, this is a COMMAND-capable actuator (on/off, and this model's power/energy monitoring), not just telemetry — reports state (on/off),"
+    },
+    {
+      "id": "zigbee_main_water_valve",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Main Water Valve",
+      "definition": "COMMAND-capable relay actuating the cabin's main water shutoff valve — the highest-consequence actuator on this mesh, since triggering it (correctly or incorrectly) cuts water to the entire property. Reports state (on/off = valve open/close"
+    },
+    {
+      "id": "zigbee_leak_alarm_dishwasher",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Dishwasher Leak Alarm",
+      "definition": "Water-leak sensor positioned at the kitchen dishwasher (note: distinct from smart_appliance_dishwasher_bosch, which is a not-yet-built Home Connect cloud integration for the dishwasher itself — this is an independent physical leak sensor)."
+    },
+    {
+      "id": "zigbee_smart_switch_breaker_box",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Breaker Box Smart Switch",
+      "definition": "Smart plug at the breaker box — COMMAND-capable (on/off) with power/energy monitoring (power, energy, current, voltage, linkquality), same capability set as zigbee_heater_mech_room but a different controlled load and location. Exact control"
+    },
+    {
+      "id": "camera_catalog",
+      "data_class": "conceptual",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Camera Catalog",
+      "definition": "The complete set of cameras registered to the platform, regardless of role, mounted location, or active/disabled status. Exists so that any location-based (front/back/indoor/outdoor), status-based (active/disabled/removed), or workflow-base"
+    },
+    {
+      "id": "hw_camera_reolink_rlc820a_01",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Reolink RLC-820A (unit 01)",
+      "definition": "The physical hardware unit — make, model, and native protocol capability only. Says nothing about where it's mounted, what it's used for, or whether it's currently reachable/configured; that's camera_role_front_door, which currently points"
+    },
+    {
+      "id": "camera_role_front_door",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Front Door Camera",
+      "definition": "The role \"monitors the front door / driveway approach area,\" currently assigned to hw_camera_reolink_rlc820a_01. This is what would change if the camera were remounted to cover a different area, or if a different physical unit were swapped"
+    },
+    {
+      "id": "hw_camera_blink_outdoor4_01",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Blink Outdoor 4 ('DHEE', unit 01)",
+      "definition": "The physical hardware unit only. Says nothing about where it's mounted or how it's integrated into this platform; that's camera_role_driveway, which currently points at this entry."
+    },
+    {
+      "id": "camera_role_driveway",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Driveway Camera",
+      "definition": "The role \"monitors the driveway approach, different angle than the front-door role,\" currently assigned to hw_camera_blink_outdoor4_01, integrated via a third-party bridge since the hardware has no native local RTSP/API. This role, not the"
+    },
+    {
+      "id": "smart_appliance_fridge_liebherr",
+      "data_class": "raw",
+      "layer": "integration",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Loonie Mc Frigerton (Liebherr Combi Fridge)",
+      "definition": "The cabin's Liebherr Combi refrigerator/freezer, registered in HA under the user's own custom device name \"Loonie Mc Frigerton\" (not a generic \"fridge\" label — this is why a keyword search for fridge/refrigerator/liebherr missed it entirely"
+    },
+    {
+      "id": "smart_appliance_co_air_quality_kidde",
+      "data_class": "raw",
+      "layer": "integration",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Living Room Kidde CO/Temp/Humidity (Cabin Upstairs)",
+      "definition": "The cabin's Kidde CO alarm with indoor air quality monitoring: CO level, CO2 level, TVOC, overall/indoor air quality index, indoor temperature, humidity, air pressure, battery level/state, WiFi signal/SSID, weeks-to-replace, last-seen, plus"
+    },
+    {
+      "id": "device_reports_fields",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Reports",
+      "definition": "DeviceType.telemetryFields() is now the one canonical, backend-side answer to \"which CabinEvent payload fields can a device of this type report\" -- mirrors App.jsx's SENSOR_FIELD_OPTIONS types arrays exactly (kept in sync by hand, same disc"
+    },
+    {
+      "id": "device_service_hierarchy",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Device belongs to (parent device)",
+      "definition": "Formalizes what was, until 2026-08-27, only cosmetic: entities' `haDeviceId` attribute (HomeAssistantDiscoveryService, from HA's own device registry) groups sibling entities into one expandable card client-side, but was never itself a persi"
+    },
+    {
+      "id": "smart_appliance_dishwasher_bosch",
+      "data_class": "raw",
+      "layer": "integration",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Kitchen Dishwasher (Bosch)",
+      "definition": "The cabin's Bosch dishwasher, connectable via Bosch's Home Connect platform (shared across Bosch/Siemens/Neff/Balay appliances)."
+    },
+    {
+      "id": "hw_router_c4000lg",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "C4000LG Router",
+      "definition": "The physical router hardware only — make, model, and network address as UPnP-discovered. Clarified by the user 2026-08-07: this unit has no assigned network role — it's kept as backup/spare hardware, potentially to be pressed into service l"
+    },
+    {
+      "id": "hw_starlink_terminal",
+      "data_class": "raw",
+      "layer": "hardware",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Starlink Terminal",
+      "definition": "The property's internet uplink hardware. Unlike the router-role question above, this device's role is unambiguous — there is one Starlink terminal and it does one job (internet uplink) — so no separate derived \"role\" entry was created; hard"
+    },
+    {
+      "id": "automation_cabin_security_publish_arm_state",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Publish Arm-Away State",
+      "definition": "Republishes input_boolean.cabin_security_armed_away's ON/OFF state to the retained MQTT topic cabin/security/armed_away every time it changes, via an allow-listed shell_command (cabin_security_mqtt_publish.py) that only permits this exact t"
+    },
+    {
+      "id": "automation_cabin_security_publish_nate_presence",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Publish Nate Presence (person entity)",
+      "definition": "Republishes person.natecabin's home/not_home state to the retained MQTT topic cabin/presence/nate whenever it changes, same allow-listed publish mechanism as the arm-state automation above."
+    },
+    {
+      "id": "automation_cabin_security_publish_state_at_startup",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Publish Security State At Startup",
+      "definition": "Re-publishes the current armed-away state (always) and the current person.natecabin-derived presence state (only if it's currently home or not_home, not unknown) 5 seconds after every HA restart. This is the real, existing self-healing mech"
+    },
+    {
+      "id": "automation_cabin_security_publish_nate_presence_from_phone",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Publish Nate Presence (phone WiFi)",
+      "definition": "Republishes home/not_home to cabin/presence/nate based on whether Nate's phone answers an ARP check on the cabin's LAN. Deliberately ASYMMETRIC debounce: \"home\" publishes immediately on detection, \"not_home\" requires 3 continuous minutes of"
+    },
+    {
+      "id": "automation_home_presence_publish_nate_presence_from_phone_gps",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Publish Nate Presence (phone GPS zone — home)",
+      "definition": "Republishes home/not_home to home/presence/nate based on whether the paired phone's device_tracker reports inside the `zone.house` zone entry (real lat/long supplied at setup time, never committed to this repo — see REPLICATION.md's \"Home/c"
+    },
+    {
+      "id": "check_authorized_user_phone_wifi",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Authorized User Phone On WiFi (check)",
+      "definition": "Whether the named authorized, primary-role user's phone is associated with this location's LAN, found by pinging the LAN to warm the ARP cache and then looking for the phone's WiFi MAC. It holds no person or site data of its own, so the sam"
+    },
+    {
+      "id": "nodered_cabin_security_siren_gate",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Intrusion Siren Gate",
+      "definition": "Turns a closed-to-open door transition into an alarm candidate only when the automation is enabled, the system is armed away, and the authorized user's presence reads exactly not_home after the entry delay. An authorized user whose phone re"
+    },
+    {
+      "id": "automation_cabin_presence_publish_nate_presence_from_phone_gps",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Publish Presence (phone GPS zone — cabin)",
+      "definition": "Publishes home the moment the paired phone enters zone.cabin and not_home after three continuous minutes outside it (a delay on the leave branch; mode: restart cancels it if the phone returns), the same asymmetric debounce as the House auto"
+    },
+    {
+      "id": "presence_last_seen",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Presence Signal Last Seen",
+      "definition": "The moment the authorized user's phone last reported to Home Assistant, not \"now\", so a silent phone's value does not advance and ages out. It is the age source for the siren gate's stale-presence rule (W-33) and the hub badge's \"Presence u"
+    },
+    {
+      "id": "location_role",
+      "data_class": "conceptual",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Location Role",
+      "definition": "A person's relationship to ONE location. primary: an active user of the location, who lives there or uses it; their phone is checked and their presence counts. maintenance: establishes and maintains the location, does not own it, holds the"
+    },
+    {
+      "id": "active_presence_profile",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "used",
+      "ui_display_name": "Active Presence Profile",
+      "definition": "The platform-wide presence state AutomationRuleService uses to scale real security-event severity (an armed-adjacent event reads differently AT_CABIN than AWAY) and the toolbar's map-pin widget displays. Deliberately N-people x M-locations,"
+    },
+    {
+      "id": "automation_cabin_security_publish_presence_at_startup",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Publish Phone-Based Presence At Startup",
+      "definition": "Same self-healing role as automation_cabin_security_publish_state_at_startup, scoped to the phone-WiFi presence signal specifically."
+    },
+    {
+      "id": "ha_sun_position",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Sun Position",
+      "definition": "HA's built-in astronomical calculation — next dawn/dusk/sunrise/ sunset/solar-noon/solar-midnight, plus current solar elevation and azimuth. Not currently consumed by anything in this repo's own automation logic — recognized and entered bec"
+    },
+    {
+      "id": "ha_backup_manager",
+      "data_class": "derived",
+      "layer": "integration",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Home Assistant Backup Manager",
+      "definition": "Whether and when HA's own configuration/database has last been automatically backed up — a real, relevant piece of disaster- recovery posture for the whole cabin automation system, distinct from any other \"backup\" concept this platform may"
+    },
+    {
+      "id": "device_command",
+      "data_class": "composite",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Sound alarm",
+      "definition": "A user-initiated instruction sent to a physical device via the FaceoftheCabin backend, routed through Home Assistant for execution, logging, and automation awareness."
+    },
+    {
+      "id": "action_confirmation_copy",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Confirmation message",
+      "definition": "Plain-language consequence description shown to the user before any action that is irreversible, safety-relevant, or has liability implications. Required for: silence alarm, bypass sensor, unlock door."
+    },
+    {
+      "id": "audit_log",
+      "data_class": "composite",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Activity history",
+      "definition": "Append-only timestamped record of every device command, alert trigger, sensor state change, and system event. The compliance and liability record of platform activity."
+    },
+    {
+      "id": "semantic_layer_toggle",
+      "data_class": "raw",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "View: Simple / Detailed / Technical",
+      "definition": "User preference controlling how all data elements are rendered across the platform. Persisted in localStorage. Determines which label and which attributes are visible for every element in every view."
+    },
+    {
+      "id": "data_dictionary_ui",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Help — What does this mean?",
+      "definition": "Searchable, filterable reference of all platform elements rendered per the current audience context. Sourced from this ontology file. Accessible from the detail sheet (\"What is linkquality?\") and from the settings panel."
+    },
+    {
+      "id": "hub_family_name",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Smrekar",
+      "definition": "The family name entered by the administrator in Settings. Drives all personalized text across the Family Hub — greeting, brand block, and custody status messages. Template variable enabling reuse across different family units without code c"
+    },
+    {
+      "id": "hub_config",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "App settings",
+      "definition": "The persisted configuration object for the Family Hub. Stores all admin-entered settings including family name, Google OAuth client ID, calendar ID, slideshow interval, and max photos. Loaded at startup, saved on Settings → Save."
+    },
+    {
+      "id": "hub_brand_block",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Smrekar Family Hub",
+      "definition": "The visual identity element in the upper-left of the Family Hub display. Comprises the Hodgson family crest SVG (78px) and the family name (\"Smrekar\") above the subtitle \"Family Hub\" in gold. Driven by hub_family_name so each family deploym"
+    },
+    {
+      "id": "hub_location",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "used",
+      "ui_display_name": "Hub Location",
+      "definition": "One property/hub this platform instance manages — its display label plus every downstream service URL a UI surface needs to link to or embed (backend API, WebSocket, Grafana, Node-RED, Home Assistant, Frigate, Zigbee2MQTT, that location's o"
+    },
+    {
+      "id": "instance_template_config",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "used",
+      "ui_display_name": "Instance Template Config",
+      "definition": "The platform/cloud description and remote-access method(s) a template clone is expected to set at deploy time — the concrete answer to ROADMAP.md Northstar Goal #1's \"configurable upstream inputs/downstream outputs\" for the parts of that go"
+    },
+    {
+      "id": "family_profile",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Family member",
+      "definition": "A record representing one family member (parent, child, pet, or Friends & Family guest). Defines the individual's role, display name, avatar emoji, age (for chore eligibility), relationship (for guests), and accent color. Used to personaliz"
+    },
+    {
+      "id": "current_actor",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Who are you?",
+      "definition": "Which family_profile the current browser tab is \"speaking/acting as.\" Set once at Dashboard > Overview, then used as the shared default for every feature that previously had its own separate, narrower \"who is this for\" selector (notepad aut"
+    },
+    {
+      "id": "parenting_schedule_anchor",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Schedule start date",
+      "definition": "The reference date marking day 0 of the 14-day parenting custody cycle. All custody calculations count forward from this anchor using modular arithmetic on the day difference. Configurable in Settings."
+    },
+    {
+      "id": "parenting_home_days",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Nights at Dad's",
+      "definition": "The set of day indices within the 14-day cycle on which the children are at the Dad's home. Index 0 = parenting_schedule_anchor date. Configurable in Settings via the 14-day cycle day picker grid."
+    },
+    {
+      "id": "custody_status",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Kids at Dad's tonight",
+      "definition": "The computed current custody state — whether the children are scheduled to be at the Dad's home tonight or at the other parent's home. Derived from the parenting schedule cycle and today's date. Updates every minute."
+    },
+    {
+      "id": "next_custody_transition",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Back to Dad's Fri Aug 1",
+      "definition": "The next calendar date on which custody changes from the current state (home→away or away→home). Displayed in the custody_status_card below the current state label. Scanned forward up to 14 days from today."
+    },
+    {
+      "id": "parenting_schedule_rule_version",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Schedule version",
+      "definition": "One version of the 14-day custody rule, effective from a given date forward. Supersedes parenting_schedule_anchor + parenting_home_days as a single flat value — the schedule is now a list of these, so a change to today's pattern never rewri"
+    },
+    {
+      "id": "holiday_override",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Holiday / vacation",
+      "definition": "A specific calendar date that belongs wholly to one parent regardless of what the active schedule rule would otherwise assign — for named holidays, school breaks, or agreed vacation days. Any signed-in user can add, edit, or delete one from"
+    },
+    {
+      "id": "upcoming_holidays_view",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Upcoming Holidays",
+      "definition": "A browsing view over holiday_override distinct from the add/edit/ delete list — every future holiday (date >= today), soonest first, filterable by owner (all/Dad's/Mom's), narrowable by date range (3mo/ 6mo/1yr/all future), and searchable b"
+    },
+    {
+      "id": "holiday_history_entry",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Holiday change history",
+      "definition": "One append-only log entry per add/edit/delete of a holiday_override, timestamped and attributed to whichever signed-in user made the change — same pattern as reward_history_entry. Visible in the Holidays section's \"Show History\" toggle, mos"
+    },
+    {
+      "id": "theme_preference",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "used",
+      "ui_display_name": "Theme",
+      "definition": "Which visual theme is active — a full palette + font-pair swap via CSS custom properties (--night, --glass, --gold, --teal, --rose, --cream, --radius, --font-display, --font-ui), applied by setting them on document.documentElement and a dat"
+    },
+    {
+      "id": "family_hub_access_log",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Access Log (admin only)",
+      "definition": "First-seen timestamp + session duration per signed-in Google account, visible and JSON-exportable only to accounts in ADMIN_EMAILS. Distinct from audit_log (a Postgres-backed device-command/state-change record on the cabin-backend) — this i"
+    },
+    {
+      "id": "custody_day_log",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Custody day record",
+      "definition": "A materialized, append-only record of which parent actually had the children on each date, walked forward one day at a time from the earliest known schedule version through today. Once a date is recorded it is never overwritten by a later r"
+    },
+    {
+      "id": "observation_report",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Observations",
+      "definition": "Pivot-style reporting of nights per parent over a selected period — current 2-week cycle, trailing/upcoming 3 months, or a discrete calendar year (Jan 1 - Dec 31). Splits each period into \"recorded\" (dates up to today, from custody_day_log)"
+    },
+    {
+      "id": "custody_status_card",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Kids at Dad's / Kids at Mom's",
+      "definition": "The glass card in the upper-right corner of the Family Hub display showing the current custody state (home or away icon, text label) and next transition date below it. Updates every minute via setInterval."
+    },
+    {
+      "id": "chore_definition",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Brush teeth",
+      "definition": "A named household task with a minimum age threshold and tags indicating category (hygiene, tidy, responsibility, learning, care). Defines the universe of tasks that can be assigned to kids."
+    },
+    {
+      "id": "chore_assignment",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Today's chores for Sam",
+      "definition": "The computed list of chores assigned to a specific child on a specific calendar day. Derived from the child's age (for eligibility), the day of the month (for rotating extra chore), and the fixed daily set."
+    },
+    {
+      "id": "chore_completion_state",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Done ✓",
+      "definition": "The persisted record of which chores have been completed by which child on which day. Stored as a nested JSON structure keyed by date, kid ID, and chore ID. Written on every tap of a chore row."
+    },
+    {
+      "id": "chore_daily_success",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Qualifying day",
+      "definition": "Whether a kid completed enough chores (the existing >=3 threshold already used by rewardEligibility()) on a given day to count as a \"successful day.\" The comparison logic already exists and is correct — what's queued is persisting the *resu"
+    },
+    {
+      "id": "chore_weekly_success",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Reward-eligible week",
+      "definition": "Whether a kid qualified for a reward in a rolling 7-day window (the existing >=4-qualifying-days threshold in reward_eligibility). Same \"persist the derived fact, don't only compute it live\" reasoning as chore_daily_success — lets a week's"
+    },
+    {
+      "id": "family_note",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Family Note",
+      "definition": "A single free-text message left on the shared family notepad — \"same trust as a fridge note,\" any signed-in actor can post as any profile (attributed via the shared currentActorId acting context — see current_actor's 2026-08-02 update — not"
+    },
+    {
+      "id": "chore_daily_view",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Today's chores and anything left from yesterday",
+      "definition": "The primary chore interaction surface in the Dashboard's Chore Tracker tab. Shows: reward progress bar at top, today's chores with completion checkboxes, and any incomplete chores from yesterday (if kids were home). Weekly history is collap"
+    },
+    {
+      "id": "yesterday_carryover",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Left over from yesterday",
+      "definition": "The subset of yesterday's chore assignments that were not completed, surfaced in today's view as a carryover reminder — but only on days when the kids were home yesterday."
+    },
+    {
+      "id": "reward_definition",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Choose the weekend movie",
+      "definition": "A named privilege or treat that a child earns by meeting the chore completion threshold over a rolling 7-day period. Fully user-managed — not a fixed list — via add/edit/delete in the Rewards tab."
+    },
+    {
+      "id": "reward_history_entry",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Reward change history",
+      "definition": "One append-only log entry per add/edit/delete of a reward_definition, timestamped and attributed to whichever signed-in user (or \"local, not signed in\") made the change. Visible in the Rewards tab's \"Show History\" toggle, most recent first,"
+    },
+    {
+      "id": "reward_eligibility",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "3 of 4 nights — 1 more night needed",
+      "definition": "Whether a child has earned a reward. Requires completing at least 3 chores on at least 4 of the last 7 nights when the child was home."
+    },
+    {
+      "id": "reward_progress_bar",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Progress toward reward",
+      "definition": "A visual burndown bar showing how many qualifying nights a child has completed out of 4 required for reward eligibility. Gold bar on dark background."
+    },
+    {
+      "id": "google_access_token",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "The short-lived OAuth 2.0 access token obtained from Google Sign-In via the implicit grant flow. Used as a Bearer token for Google Calendar and Google Photos API requests."
+    },
+    {
+      "id": "google_oauth_client_id",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "The Web application OAuth 2.0 client ID created in Google Cloud Console. Required to initialize Google Sign-In. Configured once by the administrator in Settings and persisted in hub_config."
+    },
+    {
+      "id": "photo_metadata",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Selected family photos",
+      "definition": "Persisted metadata for photos selected via the Google Photos Picker. Stores media item ID, authenticated base URL, filename, and MIME type. Base URL is re-fetched on sign-in to get a fresh authenticated URL."
+    },
+    {
+      "id": "photo_google_base_url",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "The authenticated base URL returned by Google Photos API for a media item. Requires appending dimension parameters and an Authorization header."
+    },
+    {
+      "id": "photo_slideshow",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Family photo background",
+      "definition": "The ambient background slideshow cycling through selected family photos. Photos are displayed full-screen behind all UI elements with a dark overlay gradient. Interval configurable (8–60 seconds) in Settings."
+    },
+    {
+      "id": "google_calendar_id",
+      "data_class": "raw",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Family calendar",
+      "definition": "The Google Calendar ID (email address format) of the calendar to display. Accepts the raw email, a calendar embed URL, or an iframe embed src — all normalized to the email address by normalizeCalendarId()."
+    },
+    {
+      "id": "calendar_event",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Upcoming event",
+      "definition": "A single event fetched from the Google Calendar API, representing a scheduled family event within the next 14 days. Rendered in the left-column calendar card grouped by day."
+    },
+    {
+      "id": "ui_top_bar",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Top bar",
+      "definition": "The full-width top row of the Family Hub layout. Contains the hub brand block (upper-left), the large clock and date (center), and the custody status card (upper-right). Spans all three grid columns."
+    },
+    {
+      "id": "ui_cal_card",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Upcoming events and birthdays",
+      "definition": "The left-column glass card showing upcoming Google Calendar events (next 14 days, grouped by day) and a birthday list from family profiles."
+    },
+    {
+      "id": "ui_today_chores_card",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Today's Chores",
+      "definition": "The right-column glass card on the main ambient display. Shows per-kid chore completion status for today with tap-to-complete checkboxes and a reward progress bar. Primary touch surface for kids."
+    },
+    {
+      "id": "ui_chore_tracker_tab",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Chore Tracker",
+      "definition": "The Chore Tracker tab inside the Dashboard overlay. Shows reward progress bar, today's chores, yesterday carryover, and collapsible recent history."
+    },
+    {
+      "id": "ui_rewards_tab",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Rewards",
+      "definition": "The Rewards tab in the Dashboard overlay. Shows the reward menu, per-kid progress bars showing qualifying nights, and the eligibility unlock message."
+    },
+    {
+      "id": "ui_dashboard_overlay",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Dashboard",
+      "definition": "The full-screen slide-up panel containing all administrative and family-interactive tabs: Overview, Schedule, Chores, Rewards, and Family Profiles. Opened via the Dashboard FAB button at lower-right."
+    },
+    {
+      "id": "settings_panel",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Settings",
+      "definition": "The slide-in settings panel (from the right edge). Contains all configurable fields: family name, Google OAuth client ID, calendar ID, slideshow interval, max photos, parenting schedule, and theme picker."
+    },
+    {
+      "id": "tech_id_finding",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Opportunity",
+      "definition": "A single research finding about a cataloged ontology entity (and optionally related ones — see relatedEntityIds), submitted by any tech-scanning provider — this platform's own scheduled Claude Code routine, an operator's paid higher-tier sc"
+    },
+    {
+      "id": "tech_id_finding_action",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "Opportunity Action",
+      "definition": "One human interaction with an Opportunity (tech_id_finding), recorded so any action taken from the Opportunity Map is durable data, not just an executed-and-forgotten click — the user's own explicit requirement: \"any new inputs on actions t"
+    },
+    {
+      "id": "ontology_entity_lookup_api",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Ontology Entity Lookup",
+      "definition": "Resolves raw ontology entity ids to their ui_display_name (and entity_type) so no UI surface ever has to render a snake_case id directly — built specifically to make the Opportunity Map's lineage chips (\"because you have: {device}\") show re"
+    },
+    {
+      "id": "cabin_grafana_public_access",
+      "data_class": "derived",
+      "layer": "infra",
+      "primitive": "false",
+      "lifecycle_status": "",
+      "ui_display_name": "Grafana Remote Access",
+      "definition": "Grafana was Tailscale-only by design, same as every other admin/reconfiguration surface (HA, Node-RED, Zigbee2MQTT) -- built 2026-08-04 as an explicit, one-off exception after the user asked for real off-Tailscale reachability (not just a w"
+    },
+    {
+      "id": "cabin_grafana_frigate_dashboard",
+      "data_class": "derived",
+      "layer": "infra",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Frigate Monitoring Dashboard",
+      "definition": "A pre-built, provisioned Grafana dashboard (21 panels) covering Frigate's own exposed metrics -- detection/tracking performance, camera FPS, process resource usage. Answers the \"we need a dashboard configured for Home and Cabin\" part of the"
+    },
+    {
+      "id": "signal_quality_prototype",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "used",
+      "ui_display_name": "Signal Quality Prototype (Zigbee LQI)",
+      "definition": "A prototype, explicitly staged as \"observe and evaluate,\" for whether Zigbee LQI fluctuation across this instance's existing mesh can serve as a presence/obstruction detection signal -- evaluated as the low-cost alternative to WiFi RSSI-bas"
+    },
+    {
+      "id": "camera_health_panel",
+      "data_class": "derived",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "used",
+      "ui_display_name": "Camera Health Panel",
+      "definition": "Replaced the embedded Grafana iframe entirely, 2026-08-08, after three separate fix attempts failed against what turned out to be a single unrelated bug (see cabin_grafana_public_access's notes -- the real blocker was hub_locations being se"
+    },
+    {
+      "id": "rules_panel_location_context",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "true",
+      "lifecycle_status": "used",
+      "ui_display_name": "Rules & Alerts — Location Context",
+      "definition": "User report, 2026-08-08, verbatim: \"places-based contexts for rules & alerts isn't set; I only see one node red... same context shift behavior for all locations.\" Before this, RulesPanel always embedded a single Node-RED iframe (locationCfg"
+    },
+    {
+      "id": "production_stack_compose_project",
+      "data_class": "raw",
+      "layer": "infra",
+      "primitive": "true",
+      "lifecycle_status": "",
+      "ui_display_name": "(not shown)",
+      "definition": "The M920q's actual running camera/automation/messaging stack — mosquitto, homeassistant, nodered, frigate, zigbee2mqtt, blinkbridge, mediamtx, cloudflared, uptime-kuma, homepage — was, until 2026-08-14, a completely separate, git-untracked"
+    },
+    {
+      "id": "trigger_water_leak_detected",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Water leak detected",
+      "definition": "Fires when any WATER_LEAK_SENSOR/ALARM-capable device reports water_leak=true. Matches by device TYPE, not physical instance — any future leak sensor is eligible with zero new ontology entries. First of the new trigger_definition/action_def"
+    },
+    {
+      "id": "trigger_water_leak_cleared",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Water leak cleared",
+      "definition": "Added 2026-08-21, the inverse signal of trigger_water_leak_detected. Before this, a water_leak=false event only fed WorkflowRuleService.handleTriggerCleared() -- bookkeeping that auto-clears an AUTO_ON_CLEAR workflow's active execution, nev"
+    },
+    {
+      "id": "workflow_action_cooldown_seconds",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "used",
+      "ui_display_name": "Don't repeat for (seconds)",
+      "definition": "Per-action, not per-workflow (an explicit design choice, confirmed with the user 2026-08-21 over the alternative of one shared setting for the whole rule): null preserves the original behavior -- the action always runs whenever its rule fir"
+    },
+    {
+      "id": "action_main_water_valve_off",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Turn off main water valve",
+      "definition": "Commands zigbee_main_water_valve off via DeviceRegistry -> MqttProtocolAdapter (new 2026-08-14, closes a real gap: Zigbee2MqttAdapter never implemented ProtocolAdapter, so this command path was a silent no-op for every Zigbee device before"
+    },
+    {
+      "id": "action_main_water_valve_open",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Reopen main water valve",
+      "definition": "Commands zigbee_main_water_valve back on. Instance-specific by design, not type-generic -- this is \"the\" single main shutoff, not \"a\" valve of a class. Human-invoked only (a MANUAL trigger_kind WorkflowRule, never matched against an incomin"
+    },
+    {
+      "id": "notify_critical",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Notify",
+      "definition": "Publishes a WORKFLOW_ACTION event reusing AutomationRuleService's own see/think/act/tags payload shape, so NtfyAlertPublisher and AutomationAlertCard need zero changes to render it. Documented here 2026-08-18 -- this action kind, and log_ev"
+    },
+    {
+      "id": "log_event",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Log",
+      "definition": "Exists purely so a human building a workflow sees \"log\" as an explicit, selectable step rather than a workflow with zero user-visible actions looking broken or incomplete. See notify_critical's own notes for why this and log_event were undo"
+    },
+    {
+      "id": "trigger_camera_detection",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Camera detects something",
+      "definition": "Fires on Frigate's own object-detection pipeline recognizing a new tracked object (see cabin_camera_event) -- NOT on MOTION_ON/OFF (Blink's simpler PIR-style signal, no label/score/clip) and NOT on DETECTION_UPDATE/END (the same already-tra"
+    },
+    {
+      "id": "active_alert_condition",
+      "data_class": "derived",
+      "layer": "fullstack",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Current Alert Condition",
+      "definition": "A current DEVICE_ALARM (CRITICAL) or MISSED_CHECKIN (WARN) belonging to a device whose lifecycle is ASSIGNED and whose descriptor is enabled. ALARM takes priority over MISSED_CHECKIN for one device. LATE and raw OFFLINE are not independentl"
+    },
+    {
+      "id": "automation_rule_status",
+      "data_class": "derived",
+      "layer": "fullstack",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Backend Automation Rule Status",
+      "definition": "Read-only rule metadata including id, trigger, action, severity, enabled state, owner, configuration mode, and configuration key. It describes only CABIN_BACKEND rules. It makes no claim that a matching Home Assistant or Node-RED flow exist"
+    },
+    {
+      "id": "ui_rules_panel",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Rules & Alerts panel",
+      "definition": "The top-level UI panel identified by activePanel === \"RULES_ENGINE\". A click-through destination other entities' relates_to.ui_components point at, not itself derived from anything."
+    },
+    {
+      "id": "ui_device_manager_panel",
+      "data_class": "composite",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Device Manager panel",
+      "definition": "The top-level UI panel identified by activePanel === \"DEVICE_MANAGER\". A click-through destination other entities' relates_to.ui_components point at (e.g. an alert row's \"Open device\" action), not itself derived from anything."
+    },
+    {
+      "id": "ui_status_check_item",
+      "data_class": "derived",
+      "layer": "fullstack",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Status Check item",
+      "definition": "A single alert-shaped entry in the merged Status Checks list, sourced from exactly one of active_alert_condition or automation_alert_see_think_act, normalized to a common shape so both render identically. Not a new fact -- a presentation-la"
+    },
+    {
+      "id": "nav_alert_summary_banner",
+      "data_class": "derived",
+      "layer": "frontend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Alert summary banner",
+      "definition": "A single-line, panel-top summary of the same total ui_status_check_item count, clickable to navigate to ui_rules_panel where the full list lives. Answers \"is anything wrong\" without leaving the current panel; answers \"what, exactly\" by taki"
+    },
+    {
+      "id": "trigger_rf_tripwire_crossed",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "RF tripwire crossed",
+      "definition": "Intended to fire when one of the spare-router-based RF tripwires (CLAUDE.md's hardware backlog) detects a crossing near the cabin perimeter -- modeled as a discrete event with no symmetric clear signal, the same shape as trigger_camera_dete"
+    },
+    {
+      "id": "action_entry_light_on",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Turn on the entry light",
+      "definition": "Intended shape for commanding the entry light on, mirroring action_main_water_valve_off/_open's DeviceRegistry.sendCommand pattern exactly -- an on/off pair per actuator, not a single toggle action, matching this vocabulary's existing conve"
+    },
+    {
+      "id": "action_entry_light_off",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Turn off the entry light",
+      "definition": "The off half of the action_entry_light_on/_off pair -- see that entity's definition, same reasoning in reverse."
+    },
+    {
+      "id": "action_deterrent_plug_on",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Turn on the deterrent plug",
+      "definition": "Intended shape for a smart plug driving whatever deterrent device (light, speaker, siren) ends up plugged into it -- same on/off pair convention as action_entry_light_on/_off. What exactly is plugged in is undetermined; this entity document"
+    },
+    {
+      "id": "action_deterrent_plug_off",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Turn off the deterrent plug",
+      "definition": "The off half of the action_deterrent_plug_on/_off pair -- see that entity's definition, same reasoning in reverse."
+    },
+    {
+      "id": "action_spare_siren_on",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Sound the spare siren",
+      "definition": "Intended shape for commanding the spare siren on -- same on/off pair convention as the other candidate actuators here. Unlike notify_critical (a push notification only), this is a physical, audible action -- CRITICAL-severity by nature, not"
+    },
+    {
+      "id": "action_spare_siren_off",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Silence the spare siren",
+      "definition": "The off half of the action_spare_siren_on/_off pair -- see that entity's definition, same reasoning in reverse. Given the false- positive cost noted there, this is also the natural pairing for a cooldown-bounded or MANUAL-only silence actio"
+    },
+    {
+      "id": "action_water_heater_switch_on",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Turn on the water heater",
+      "definition": "Intended shape for a smart switch on the water heater's power circuit -- same on/off pair convention as the other candidate actuators here. The obvious pairing (mirroring action_main_water_valve_off's own role) is a freeze-risk or unoccupie"
+    },
+    {
+      "id": "action_water_heater_switch_off",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Turn off the water heater",
+      "definition": "The off half of the action_water_heater_switch_on/_off pair -- see that entity's definition, same reasoning in reverse."
+    },
+    {
+      "id": "trigger_door_contact_opened",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Door contact opened",
+      "definition": "Fires when any CONTACT_SENSOR reports contact=false (open) -- contact:false = open is zigbee_door_front_contact's own documented field convention, not a guess. Matches by device TYPE, same trigger_water_leak_detected precedent; triggerDevic"
+    },
+    {
+      "id": "trigger_door_contact_closed",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Door contact closed",
+      "definition": "The cleared side of trigger_door_contact_opened -- see that entity's own definition. A separate workflow can be built against this id directly (e.g. \"notify when the door closes again\"), same pattern trigger_water_leak_cleared already estab"
+    },
+    {
+      "id": "trigger_motion_detected",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Motion detected",
+      "definition": "Fires when any MOTION_SENSOR reports occupancy=true -- the Zigbee PIR sensor's own field (zigbee_motion_entry's documented shape), distinct from trigger_camera_detection (Frigate's own vision-based DETECTION_NEW) and trigger_blink_motion_de"
+    },
+    {
+      "id": "trigger_motion_cleared",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Motion cleared",
+      "definition": "The cleared side of trigger_motion_detected -- see that entity's own definition."
+    },
+    {
+      "id": "trigger_tamper_detected",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Tamper detected",
+      "definition": "Fires on tamper=true from any device reporting it -- not device-TYPE-scoped like water-leak/contact/motion, since tamper is a generic Zigbee exposes property several device types can carry (zigbee_door_front_contact's own field list include"
+    },
+    {
+      "id": "trigger_tamper_cleared",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Tamper cleared",
+      "definition": "The cleared side of trigger_tamper_detected -- see that entity's own definition."
+    },
+    {
+      "id": "trigger_battery_low_detected",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Battery low",
+      "definition": "Fires on battery_low=true from any battery-powered device reporting it -- zigbee_leak_alarm_bathroom's own field list confirms this is a real, live-verified field, not guessed. Not device-TYPE-scoped, same reasoning as trigger_tamper_detect"
+    },
+    {
+      "id": "trigger_battery_low_cleared",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Battery no longer low",
+      "definition": "The cleared side of trigger_battery_low_detected -- fires once the battery is replaced and the device next reports in."
+    },
+    {
+      "id": "trigger_plug_turned_on",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Device turned on",
+      "definition": "Fires when a COMMAND-capable plug/switch (zigbee_heater_mech_room, zigbee_smart_switch_breaker_box -- both documented reporting state on/off) reports ON, whether that ON was caused by a person, a workflow's own action, or CabinAutomations'"
+    },
+    {
+      "id": "trigger_plug_turned_off",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Device turned off",
+      "definition": "The cleared side of trigger_plug_turned_on -- see that entity's own definition."
+    },
+    {
+      "id": "trigger_freeze_risk_detected",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Freeze risk (below 32°F)",
+      "definition": "Fires when any TEMPERATURE_SENSOR (zigbee_temp_outside_lowest/ zigbee_temp_mech_room/zigbee_temp_kitchen, all documented reporting `temperature`) drops below 32°F. Unlike the boolean field triggers above, this is a numeric threshold, not a"
+    },
+    {
+      "id": "trigger_freeze_risk_cleared",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Freeze risk cleared (36°F or above)",
+      "definition": "The cleared side of trigger_freeze_risk_detected -- see that entity's own definition and notes for the hysteresis reasoning."
+    },
+    {
+      "id": "trigger_mold_risk_detected",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Mold risk (60% humidity or above)",
+      "definition": "Fires when any device reporting a `humidity` field (both HUMIDITY_SENSOR, e.g. Kidde's dedicated humidity entity, and TEMPERATURE_SENSOR combo sensors that also report humidity, e.g. zigbee_temp_mech_room) reaches or exceeds 60% relative hu"
+    },
+    {
+      "id": "trigger_mold_risk_cleared",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Mold risk cleared (below 58% humidity)",
+      "definition": "The cleared side of trigger_mold_risk_detected -- see that entity's own definition and notes for the hysteresis reasoning and the applies_to_device_type=null rationale."
+    },
+    {
+      "id": "trigger_blink_motion_detected",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Camera motion detected (Blink)",
+      "definition": "Fires on Blink's own MOTION_ON, a distinct CabinEvent.eventType() value (not a payload field, unlike the FIELD_TRIGGERS-table triggers above) -- a different signal from Frigate's vision-based trigger_camera_detection and Zigbee's PIR-based"
+    },
+    {
+      "id": "trigger_blink_motion_cleared",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Camera motion cleared (Blink)",
+      "definition": "The cleared side of trigger_blink_motion_detected -- see that entity's own definition."
+    },
+    {
+      "id": "trigger_security_armed",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Armed away",
+      "definition": "Fires when {location}/security/armed_away (real, HA-published, see automation_cabin_security_publish_arm_state) reports ON. Before 2026-08-21 this only ever updated SecurityStateRegistry (MqttBridgeService.handleArmedTopic()) -- never publi"
+    },
+    {
+      "id": "trigger_security_disarmed",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Disarmed",
+      "definition": "The cleared side of trigger_security_armed -- see that entity's own definition."
+    },
+    {
+      "id": "trigger_presence_arrived",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Someone arrived",
+      "definition": "Fires when {location}/presence/{personId} reports \"home\". Before 2026-08-21 this only ever updated PresenceSignalRegistry (MqttBridgeService.handlePresenceTopic()) -- never published a CabinEvent. Now does, additively (the existing presence"
+    },
+    {
+      "id": "trigger_presence_departed",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Someone departed",
+      "definition": "The cleared side of trigger_presence_arrived -- see that entity's own definition. Per-person, not \"everyone left\" -- a household with two people at one location produces one PRESENCE_CHANGED per person, not an aggregate."
+    },
+    {
+      "id": "trigger_ha_entity_state_changed",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Home Assistant entity changed",
+      "definition": "The generic answer to Kidde CO/air-quality, the Liebherr fridge, and every other HA-polled entity having had literally no event pipeline before this: HomeAssistantDiscoveryService.discoverLocation() already refreshes every HA entity's live"
+    },
+    {
+      "id": "trigger_kidde_co_alarm",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Kidde CO alarm active",
+      "definition": "Fires on the Kidde HomeSafe integration's real CO-alarm binary sensor, entity_id binary_sensor.living_room_kidde_co_temp_and_humidity_cabin_upstairs_co_alarm -- confirmed directly against the M920q's own .storage/core.entity_registry via SS"
+    },
+    {
+      "id": "trigger_kidde_co_alarm_cleared",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Kidde CO alarm cleared",
+      "definition": "The cleared side of trigger_kidde_co_alarm -- see that entity's own definition and deployment notes."
+    },
+    {
+      "id": "trigger_liebherr_door_open",
+      "data_class": "conceptual",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Liebherr fridge door open",
+      "definition": "Intended to fire on the Liebherr fridge's own door-open alert, via a genuine push channel (per the user's own domain knowledge: \"yes it can be polled (it's on and cooling) but there should be push notifications from separate services on tha"
+    },
+    {
+      "id": "knowledge_chunk_type",
+      "data_class": "raw",
+      "layer": "backend",
+      "primitive": "true",
+      "lifecycle_status": "used",
+      "ui_display_name": "Knowledge Chunk Type",
+      "definition": "The kind of information a knowledge_node row holds — a device description, a setup procedure, a troubleshooting note, a pointer to a credential's location (never the credential itself), or a relationship between entities."
+    },
+    {
+      "id": "knowledge_node",
+      "data_class": "composite",
+      "layer": "backend",
+      "primitive": "false",
+      "lifecycle_status": "used",
+      "ui_display_name": "Knowledge Node",
+      "definition": "One retrievable fact Tiny Helpdesk can answer from — either auto-derived from existing device/registry data, or a human-curated addition for anything the generator can't or shouldn't produce on its own (setup steps, troubleshooting, credent"
+    },
+    {
+      "id": "sensor_collection_box",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Sensor Collection Box",
+      "definition": "Composite monitoring-only assembly with SEN66, SHT45 and QT Py; no actuation."
+    },
+    {
+      "id": "sensor_relay_box",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Sensor Relay Box",
+      "definition": "Sensor Collection Box profile associated with separately identified Zigbee control channels;"
+    },
+    {
+      "id": "sen66_environmental_sensor",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Environmental Sensor",
+      "definition": "SEN66 multi-channel air sensor; PM, CO2, VOC and NOx indexes, temperature and humidity; not a"
+    },
+    {
+      "id": "sht45_ambient_sensor",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Ambient Temperature Humidity Sensor",
+      "definition": "SHT45 ambient temperature and relative-humidity source kept distinct from the SEN66 readings."
+    },
+    {
+      "id": "qt_py_sensor_controller",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Sensor Node Controller",
+      "definition": "QT Py ESP32-S3 PID 5426 Wi-Fi sensor host; no actuator connection inferred."
+    },
+    {
+      "id": "sen6x_interface_adapter",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Sensor Interface Adapter",
+      "definition": "Adafruit PID 6331 interface between the keyed SEN6x cable and STEMMA QT bus."
+    },
+    {
+      "id": "isolated_node_power_supply",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Node Power Supply",
+      "definition": "IRM-05-5 module planned for control nodes; installation and low-voltage budget require review."
+    },
+    {
+      "id": "metered_zigbee_relay",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Metered Relay",
+      "definition": "MINI-ZB1GSP independent switching and measured electrical services, subject to actual exposes"
+    },
+    {
+      "id": "zigbee_controlled_outlet",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Controlled Outlet",
+      "definition": "S61SZBTPB on/off outlet candidate; exact protocol model, ratings and metering require receipt"
+    },
+    {
+      "id": "zigbee_temperature_humidity_sensor",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Temperature Humidity Sensor",
+      "definition": "SNZB-02P battery sensor; five Home room allocations and one Cabin lower-duct temperature reference; no leak-detection capability."
+    },
+    {
+      "id": "connected_dehumidifier",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Connected Dehumidifier",
+      "definition": "Midea Cube MAD50PS1QGR candidate LAN-connected dehumidifier; expose only capabilities discovered"
+    },
+    {
+      "id": "inline_air_circulator",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Inline Air Circulator",
+      "definition": "CLOUDLINE S6 with supplied manual speed controller; circulation supports several purposes but"
+    },
+    {
+      "id": "local_control_switch",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Local Control Switch",
+      "definition": "Leviton 1451-2W physical control; approved input wiring and behavior remain to be established."
+    },
+    {
+      "id": "node_enclosure",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Node Enclosure",
+      "definition": "Protective sensor assembly enclosure with reviewed ventilation, heat separation and electrical"
+    },
+    {
+      "id": "node_power_inlet",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Node Power Inlet",
+      "definition": "Purchased fused IEC C14 inlet; rating, fuse and enclosure assignment pending electrical design."
+    },
+    {
+      "id": "node_status_light_pipe",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Node Status Light Pipe",
+      "definition": "Acrylic optical path from controller status LED to enclosure exterior; not itself an online-status"
+    },
+    {
+      "id": "sensor_bus_interconnect",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Sensor Bus Interconnect",
+      "definition": "Keyed JST GH sensor cable or STEMMA QT cable, with connector and voltage roles verified before"
+    },
+    {
+      "id": "environmental_measurement_service",
+      "data_class": "conceptual",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Environmental Measurement Service",
+      "definition": "A source-attributed measurement channel belonging to a physical sensor parent with quantity,"
+    },
+    {
+      "id": "guarded_switch_service",
+      "data_class": "conceptual",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Guarded Switch Service",
+      "definition": "On/off capability bound to a verified relay or outlet and actual load; blocked before commissioning"
+    },
+    {
+      "id": "dehumidification_service",
+      "data_class": "conceptual",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Dehumidification Service",
+      "definition": "Humidity-control capability offered only when exact appliance entity and permitted values are"
+    },
+    {
+      "id": "air_circulation_service",
+      "data_class": "conceptual",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Air Circulation Service",
+      "definition": "Movement of air between verified spaces; separate power, commanded level and actual flow evidence."
+    },
+    {
+      "id": "climate_topic",
+      "data_class": "conceptual",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Climate",
+      "definition": "Human-defined grouping of environmental monitoring and condition-management functions, not an"
+    },
+    {
+      "id": "heating_topic",
+      "data_class": "conceptual",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Heating",
+      "definition": "Human-defined heating concern; membership does not imply heat generation or temperature-setting"
+    },
+    {
+      "id": "cooling_topic",
+      "data_class": "conceptual",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Cooling",
+      "definition": "Human-defined cooling concern; membership does not imply refrigeration or temperature-setting"
+    },
+    {
+      "id": "humidity_topic",
+      "data_class": "conceptual",
+      "layer": "ontology",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Humidity",
+      "definition": "Human-defined moisture concern; membership does not establish active moisture removal."
+    },
+    {
+      "id": "carbon_dioxide_concentration",
+      "data_class": "raw",
+      "layer": "ontology",
+      "primitive": "true",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Carbon Dioxide",
+      "definition": "Measured CO2 mole fraction. Reuse existing semantic co2 field; never substitute carbon monoxide"
+    },
+    {
+      "id": "pm1_mass_concentration",
+      "data_class": "raw",
+      "layer": "ontology",
+      "primitive": "true",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "PM1",
+      "definition": "Particle mass concentration for the PM1 channel; retain size fraction and source."
+    },
+    {
+      "id": "pm2_5_mass_concentration",
+      "data_class": "raw",
+      "layer": "ontology",
+      "primitive": "true",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "PM2.5",
+      "definition": "Particle mass concentration for the PM2.5 channel; not an AQI without a separately defined calculation."
+    },
+    {
+      "id": "pm4_mass_concentration",
+      "data_class": "raw",
+      "layer": "ontology",
+      "primitive": "true",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "PM4",
+      "definition": "Particle mass concentration for the PM4 channel; retain size fraction and source."
+    },
+    {
+      "id": "pm10_mass_concentration",
+      "data_class": "raw",
+      "layer": "ontology",
+      "primitive": "true",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "PM10",
+      "definition": "Particle mass concentration for the PM10 channel; retain size fraction and source."
+    },
+    {
+      "id": "volatile_organic_compound_index",
+      "data_class": "raw",
+      "layer": "ontology",
+      "primitive": "true",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "VOC Index",
+      "definition": "Sensirion relative VOC index; not VOC concentration, ppm or a generic airQualityIndex."
+    },
+    {
+      "id": "nitrogen_oxide_index",
+      "data_class": "raw",
+      "layer": "ontology",
+      "primitive": "true",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "NOx Index",
+      "definition": "Sensirion relative NOx index; not NO2 concentration, ppm or a certified safety alarm."
+    },
+    {
+      "id": "exhaust_fan",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Exhaust Fan",
+      "definition": "Bathroom air-extraction load; Doc 27 allocation is Air King E130S, pending physical nameplate verification; distinct from the inter-level circulation"
+    },
+    {
+      "id": "space_heater",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Space Heater",
+      "definition": "Bathroom heating load, model/rating not supplied; preserve its independent thermal protection."
+    },
+    {
+      "id": "manual_fan_speed_controller",
+      "data_class": "conceptual",
+      "layer": "hardware",
+      "primitive": "false",
+      "lifecycle_status": "candidate",
+      "ui_display_name": "Manual Fan Speed Controller",
+      "definition": "Controller supplied with CLOUDLINE S6; manual adjustment does not imply Wi-Fi, cloud or HA speed"
+    }
+  ]
+}

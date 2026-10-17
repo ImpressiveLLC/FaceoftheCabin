@@ -1059,7 +1059,9 @@ themselves, they just never had anything to trip on before:
 
 - No Python beyond `watchdog.py`, the `docs/ai-assistant/` corpus/
   eval tooling (`scripts/build-corpus-inventory.py`,
-  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`),
+  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`,
+  and, since 2026-10-17, `taxonomy-eval/`, the standard-library harness that tests where data
+  elements live under a human-centered topic, W-89),
   **and** the Home Assistant side of `infra/cabin-security/homeassistant/`:
   `cabin_security_mqtt_publish.py` (the publish allow-list HA's
   `shell_command` runs inside HA's own container, not in the backend) and
