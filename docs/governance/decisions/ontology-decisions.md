@@ -772,6 +772,7 @@ R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its
 | Unlock requested inside a saved or Ask-generated automation | Rejected at validation (`blocked`) |
 | Lock reports no state change after the command | Receipt says "no confirmation from the lock", not success |
 | Home location (no HA there, D23, Q-OC-9) | Refused until a verified Home actuator exists. Nate: the refusal should carry a reason Ask can state ("Home has no verified lock actuator yet"); the resolver's typed refusals already carry reasons, and surfacing them in Ask is wanted, not yet verified |
+| Home, once a verified lock actuator exists | Same rule as Cabin, no extra step (Nate 2026-10-17: "no difference") |
 | Admin with no active session | Not refused: prompted to sign in, then the same request continues |
 
 **Model-side changes, to apply only after ratification** (a gold and prompt change resets the gold hash, so every prior score stops being comparable and the previous prompt is re-baselined on the new gold; see `proposals/sme-loop.md`):
