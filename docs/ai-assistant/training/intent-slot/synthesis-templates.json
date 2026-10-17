@@ -114,10 +114,12 @@
       "The air feels stale"
     ],
     "target": {
-      "intent": "clarify",
-      "slots": {},
-      "requires_confirmation": false,
-      "clarification": "Which room and what change would you like?",
+      "intent": "express_need",
+      "slots": {
+        "concept": "stuffy"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
       "automation": null
     }
   },
@@ -241,6 +243,277 @@
       "requires_confirmation": false,
       "clarification": null,
       "automation": null
+    }
+  },
+  {
+    "id": "train-need-cold",
+    "utterances": [
+      "I could use some warmth"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-hot",
+    "utterances": [
+      "I need to cool off"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "hot"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-dark",
+    "utterances": [
+      "I need more light"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "dark"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-arriving",
+    "utterances": [
+      "I am on my way in"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "arriving"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-leaving",
+    "utterances": [
+      "I am heading out"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "leaving"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-bedtime",
+    "utterances": [
+      "Time for bed"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "bedtime"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-tv_time",
+    "utterances": [
+      "Time to watch television"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "tv_time"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-poc2-once",
+    "utterances": [
+      "Turn off the selected lamp at 2027-01-04T09:15:00-06:00"
+    ],
+    "card_target": {
+      "device_name": "lamp",
+      "location": "study",
+      "site": "home"
+    },
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_once",
+          "at": "2027-01-04T09:15:00-06:00"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "lamp",
+              "location": "study",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-poc2-recurring",
+    "utterances": [
+      "Turn off the selected lamp every Monday, Wednesday and Friday starting 2027-01-04T09:15:00-06:00"
+    ],
+    "card_target": {
+      "device_name": "lamp",
+      "location": "study",
+      "site": "home"
+    },
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2027-01-04T09:15:00-06:00",
+          "rrule": "FREQ=WEEKLY;BYDAY=MO,WE,FR"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "lamp",
+              "location": "study",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-poc2-presence",
+    "utterances": [
+      "When home study presence changes to absent, turn off the selected lamp"
+    ],
+    "card_target": {
+      "device_name": "lamp",
+      "location": "study",
+      "site": "home"
+    },
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "presence",
+            "location": "study",
+            "site": "home"
+          },
+          "attribute": "state",
+          "value": "absent"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "lamp",
+              "location": "study",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-poc2-presence-delay",
+    "utterances": [
+      "When home study presence changes to absent for 90 seconds, turn off the selected lamp"
+    ],
+    "card_target": {
+      "device_name": "lamp",
+      "location": "study",
+      "site": "home"
+    },
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "presence",
+            "location": "study",
+            "site": "home"
+          },
+          "attribute": "state",
+          "value": "absent",
+          "for_seconds": 90
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "lamp",
+              "location": "study",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
     }
   }
 ]
