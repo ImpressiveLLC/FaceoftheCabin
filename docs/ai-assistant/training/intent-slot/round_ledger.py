@@ -61,6 +61,11 @@ def compare(prev, cur):
     regressed = sorted(set(cur["failed"]) - set(prev["failed"]))
     if regressed:
         warnings.append(f"REGRESSION: previously passing fixtures now fail: {', '.join(regressed)}")
+    for key in ("valid_output_rate", "intent_accuracy", "slot_micro_f1"):
+        if cur[key] is not None and prev[key] is not None and cur[key] < prev[key] - 0.01:
+            warnings.append(f"METRIC DROP: {key} fell from {prev[key]:.3f} to {cur[key]:.3f}; a change that helps one metric and hurts another is not an improvement.")
+    if cur["critical_fixture_failures"] is not None and prev["critical_fixture_failures"] is not None             and cur["critical_fixture_failures"] > prev["critical_fixture_failures"]:
+        warnings.append(f"CRITICAL FAILURES ROSE: {prev['critical_fixture_failures']} -> {cur['critical_fixture_failures']}.")
     new_critical = [i for i in regressed if cur["failed"][i]["critical"]]
     if new_critical:
         warnings.append(f"NEW CRITICAL FAILURES: {', '.join(new_critical)}; stop and revert the prompt change before iterating.")

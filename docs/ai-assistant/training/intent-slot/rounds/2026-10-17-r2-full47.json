@@ -1,0 +1,157 @@
+{
+  "round": "2026-10-17-r2-full47",
+  "model": "cabin-intent-slot-poc2-r2",
+  "prompt_sha256": "23494aa094537bd1f4d24e0965e5871134dfe8985e4a4164406d172bf8762037",
+  "gold_sha256": "2d2ca07caffa6f2ff05f9ec183fb49052a7e3d76801273e9041cd8f599b0e8bb",
+  "fixtures": 47,
+  "valid_output_rate": 0.7446808510638298,
+  "intent_accuracy": 0.574468085106383,
+  "slot_micro_f1": 0.46551724137931033,
+  "critical_fixture_failures": 17,
+  "per_intent": {
+    "answer_question": {
+      "correct": 0,
+      "total": 4
+    },
+    "clarify": {
+      "correct": 2,
+      "total": 9
+    },
+    "express_need": {
+      "correct": 15,
+      "total": 15
+    },
+    "get_device_state": {
+      "correct": 2,
+      "total": 2
+    },
+    "propose_automation": {
+      "correct": 0,
+      "total": 5
+    },
+    "set_device_attribute": {
+      "correct": 0,
+      "total": 3
+    },
+    "set_device_state": {
+      "correct": 4,
+      "total": 5
+    },
+    "unsupported": {
+      "correct": 4,
+      "total": 4
+    }
+  },
+  "confusions": {
+    "clarify->set_device_state": 5,
+    "propose_automation->INVALID": 5,
+    "answer_question->INVALID": 4,
+    "set_device_attribute->set_device_state": 2,
+    "clarify->INVALID": 2,
+    "set_device_attribute->INVALID": 1,
+    "set_device_state->express_need": 1
+  },
+  "failed": {
+    "gold-07": {
+      "want": "set_device_attribute",
+      "got": "set_device_state",
+      "critical": false
+    },
+    "gold-08": {
+      "want": "set_device_attribute",
+      "got": "INVALID",
+      "critical": false
+    },
+    "gold-09": {
+      "want": "answer_question",
+      "got": "INVALID",
+      "critical": false
+    },
+    "gold-10": {
+      "want": "answer_question",
+      "got": "INVALID",
+      "critical": false
+    },
+    "gold-11": {
+      "want": "answer_question",
+      "got": "INVALID",
+      "critical": false
+    },
+    "gold-13": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-14": {
+      "want": "set_device_attribute",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-15": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-16": {
+      "want": "clarify",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-21": {
+      "want": "answer_question",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-22": {
+      "want": "propose_automation",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-31": {
+      "want": "propose_automation",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-32": {
+      "want": "propose_automation",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-33": {
+      "want": "propose_automation",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-37": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-38": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-40": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-42": {
+      "want": "propose_automation",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-47": {
+      "want": "clarify",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-48": {
+      "want": "set_device_state",
+      "got": "express_need",
+      "critical": false
+    }
+  },
+  "released": false
+}
