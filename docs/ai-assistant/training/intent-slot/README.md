@@ -209,3 +209,7 @@ gates `NOT_MEASURED` and `release_eligible: false`. Schema rejection of an
 cannot prove executor enforcement. Small fixtures measure tooling, not deployment
 readiness. Human review of fixtures, expanded holdout, runtime gates and hardware
 results remain open. Ratification and release authority stay with existing governance.
+
+## Future concept-map inputs (D28, not in POC2 scope)
+
+[D28](../../../governance/decisions/ontology-decisions.md) adds `heating`, `cooling`, `humidity` and `climate` as `related_to[]` values on two inbound HVAC devices (a dehumidifier and a duct booster-fan controller), and D27's own concept seed list (Q-OC-11) already includes `cold`/`hot`. Once those devices are paired (W-77/W-78/W-80) and `Device.related_to[]` ships (W-79), they become additional resolver targets for the existing `cold`/`hot` concepts — not a new intent, not a new slot shape, and not in scope for the current `cold`-only POC (W-75). No model or prompt change is needed for this; it is inventory growth the resolver already walks.
