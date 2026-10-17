@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Taxonomy placement verdict (one record per probe run or human tap)",
+  "description": "Plan section 5.2. The probe returns only path, verdict, reason, target, runner_up and note; the harness adds qid, run_id, probe_version, taxonomy_version, found and hops. A probe output that carries found or hops is an instrument defect. Cross-field rules are enforced by verdicts.py and listed under x-cross-field-rules; a record that fails either is discarded and counted as an instrument defect, never repaired.",
+  "type": "object",
+  "properties": {
+    "qid": {"type": "string", "pattern": "^Q[0-9]{3}$"},
+    "run_id": {"type": "string", "minLength": 1},
+    "probe_version": {"type": "string", "minLength": 1},
+    "taxonomy_version": {"type": "string", "minLength": 1},
+    "path": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {"type": "string", "pattern": "^[a-z_]+(/[a-z0-9_-]+)?$"},
+      "description": "Topics opened, in order, each `topic` or `topic/subclass`. The first segment must be a topic or view id from topics.json; the last topic is where the verdict was given."
+    },
+    "hops": {"type": "integer", "minimum": 1, "maximum": 8, "description": "Harness-computed: the number of entries in path."},
+    "found": {"type": "boolean", "description": "Harness-computed: the topic where the verdict was given equals the question's expected_topic. Never reported by the probe."},
+    "verdict": {"enum": ["right_here", "wrong_here", "cannot_tell"]},
+    "reason": {
+      "enum": [null, "missing_or_broken_here", "belongs_in", "duplicate_of", "cannot_tell_apart_from",
+               "missing_information", "missing_context", "invalid_flow"]
+    },
+    "target": {"type": ["string", "null"], "description": "A topic id (belongs_in) or an element id from elements.json (duplicate_of, cannot_tell_apart_from)."},
+    "runner_up": {"type": ["string", "null"], "description": "A topic or view id: the second-best home. Required unless the verdict is right_here."},
+    "note": {"type": ["string", "null"], "maxLength": 240, "description": "One line. Required for cannot_tell: what was missing."}
+  },
+  "required": ["qid", "run_id", "probe_version", "taxonomy_version", "path", "hops", "found", "verdict", "reason", "target", "runner_up", "note"],
+  "additionalProperties": false,
+  "x-cross-field-rules": [
+    "verdict is never null.",
+    "right_here: reason, target and runner_up may be null; reason must be null.",
+    "wrong_here requires a reason of missing_or_broken_here, belongs_in, duplicate_of or cannot_tell_apart_from.",
+    "belongs_in requires a target that is a topic or view id other than the topic where the verdict was given.",
+    "duplicate_of and cannot_tell_apart_from require a target that is an element id from elements.json.",
+    "missing_or_broken_here takes no target.",
+    "cannot_tell requires a reason of missing_information, missing_context or invalid_flow, and a note.",
+    "runner_up is required, and must be a topic or view id, whenever the verdict is not right_here.",
+    "path entries start with a known topic or view id; hops equals len(path).",
+    "found is true exactly when the topic where the verdict was given equals the question's expected_topic."
+  ]
+}
