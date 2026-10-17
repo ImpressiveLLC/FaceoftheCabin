@@ -733,7 +733,7 @@ R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its
 
 ## D28 — Physical unit type-naming convention; Midea Cube and Cloudline S6 HVAC integration
 
-**Status:** ratified 2026-10-16 for the naming convention and the `related_to[]` property (Nate's direction, same day, recorded verbatim below). Final control/connectivity for the Cloudline S6 is **open** (Q-DN-1) pending a design note. **Use case:** [UC-18](../use-cases.md). **Work:** W-76 to W-81 ([backlog](../backlog.md)). **Builds on:** D1 (entity_id is canonical, snake_case, never renamed), D7/D13 (Service Entity, `display_label`), D14 (`user_provided_name`/`device_name_from_system`), D15/D16 (`reports_to[]`, Reporting Topics), D27 (Subject/Device/Service model, `part_of`, `relates_to`, `topic_of`, `human_definition`), D8 (no second coordinator; enrichment only on-demand).
+**Status:** ratified 2026-10-16 for the naming convention and the `related_to[]` property (Nate's direction, same day, recorded verbatim below). Final control/connectivity for the Cloudline S6 is **open** (Q-DN-1) pending a design note. **Use case:** [UC-20](../use-cases.md). **Work:** W-77 to W-81 and W-84 ([backlog](../backlog.md)). **Builds on:** D1 (entity_id is canonical, snake_case, never renamed), D7/D13 (Service Entity, `display_label`), D14 (`user_provided_name`/`device_name_from_system`), D15/D16 (`reports_to[]`, Reporting Topics), D27 (Subject/Device/Service model, `part_of`, `relates_to`, `topic_of`, `human_definition`), D8 (no second coordinator; enrichment only on-demand).
 
 **Problem.** Doc 27's sensor/relay build (3 of 4 planned enclosures, cabin claim zone) and a parallel home-location Zigbee sensor rollout are now inbound hardware with no entity_id yet — they haven't been provisioned. Two new HVAC devices (a WiFi dehumidifier and a duct booster-fan speed controller) were ordered as an addendum and have no ontology placement at all. Nate asked for (1) a naming convention where a unit's *type* name is inherited verbatim into both its technical and UI names rather than invented per physical unit, and (2) a `related_to` tag so a device whose action serves several use cases (a booster fan that is simultaneously heating-, cooling- and humidity-relevant) isn't forced into one.
 
@@ -747,7 +747,7 @@ A **Device Type Name** is a PascalCase, singular noun phrase describing what the
 
 | Device Type Name | What it is | Protocol / adapter |
 |---|---|---|
-| `SensorCollectionBox` | DIY enclosure: SEN66 (particulate/VOC/CO₂*) + SEN6x breakout + SHT45 + QT Py ESP32-S3, sensor-only, no relay | WiFi / ESPHome → HA (new adapter class, W-76) |
+| `SensorCollectionBox` | DIY enclosure: SEN66 (particulate/VOC/CO₂*) + SEN6x breakout + SHT45 + QT Py ESP32-S3, sensor-only, no relay | WiFi / ESPHome → HA (new adapter class, W-84) |
 | `RelayControlBox` | DIY enclosure: the same sensor package **plus** one or more Zigbee relay modules and a manual toggle override, hardwired via Mean Well IRM-05-5 | Composite — sensor half WiFi/ESPHome, relay half Zigbee (see "Composite enclosures" below) |
 | `UtilityRelayNode` | Plug-and-play vented enclosure housing one owned Sonoff ZBMINIR2 relay, USB-powered, no sensor package | Zigbee (existing Z2M path, no new adapter) |
 | `ZigbeeTempHumiditySensor` | SONOFF SNZB-02P battery temp/humidity sensor | Zigbee |

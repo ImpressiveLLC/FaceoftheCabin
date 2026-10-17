@@ -1,6 +1,6 @@
 # Hardware inventory and integration reference — doc 27 build + home Zigbee + HVAC addendum
 
-**Date:** 2026-10-16. **Decision record:** [D28](governance/decisions/ontology-decisions.md). **Use case:** [UC-18](governance/use-cases.md). **Backlog:** W-76 to W-81 ([backlog.md](governance/backlog.md)). **Status:** hardware ordered/inbound, not yet physically installed or provisioned in HA/Z2M. This doc is the master reference Nate asked for — full inventory, wiring/schematic reference, naming per D28, and ontology placement per unit. Keep it current per W-81 rather than opening a new dated doc for the next hardware change.
+**Date:** 2026-10-16. **Decision record:** [D28](governance/decisions/ontology-decisions.md). **Use case:** [UC-20](governance/use-cases.md). **Backlog:** W-77 to W-81 and W-84 ([backlog.md](governance/backlog.md)). **Status:** hardware ordered/inbound, not yet physically installed or provisioned in HA/Z2M. This doc is the master reference Nate asked for — full inventory, wiring/schematic reference, naming per D28, and ontology placement per unit. Keep it current per W-81 rather than opening a new dated doc for the next hardware change.
 
 **Source order record (claude.ai project, not this repo):** `claim/2026-10-15-doc27-sensor-relay-node-live-carts-built.md` — DigiKey $313.58, Adafruit $100.05, Amazon ×2 ($98.19 + $147.44), Home Depot $1.70. Grand total $660.96 for the build below, plus the Midea Cube and Cloudline S6 addendum (ordered separately, not in that total).
 
@@ -10,7 +10,7 @@
 
 | Unit | D28 type | Location | `display_label` | Protocol | Status |
 |---|---|---|---|---|---|
-| Box 2 | `SensorCollectionBox` | Cabin — upstairs claim zone | `SensorCollectionBox_Cabin_Upstairs` | WiFi/ESPHome (W-76) | inbound |
+| Box 2 | `SensorCollectionBox` | Cabin — upstairs claim zone | `SensorCollectionBox_Cabin_Upstairs` | WiFi/ESPHome (W-84) | inbound |
 | Box 3 | `RelayControlBox` | Cabin — bathroom | `RelayControlBox_Cabin_BathroomExhaustHeat` | composite: WiFi/ESPHome (sensor) + Zigbee (2× relay) | inbound |
 | Box 4 | `UtilityRelayNode` | Cabin — mech room / breaker box | `UtilityRelayNode_Cabin_MechRoomBreaker` | Zigbee (existing Z2M path) | inbound |
 | Home sensor ×5 + 1 spare | `ZigbeeTempHumiditySensor` | Home — mech room, laundry, kitchen/dishwasher-sink, garage, basement storage, +1 spare | `ZigbeeTempHumiditySensor_Home_{Location}` | Zigbee, via SLZB-MR5U | inbound |
@@ -51,7 +51,7 @@ Shared sensor package:
                  └───────────────────────────────────┼───────────────────┘
                                                        ▼
                                            ESPHome API → Home Assistant
-                                           (W-76 — adapter decision)
+                                           (W-84 — adapter decision)
 ```
 
 ### 2.2 `RelayControlBox` (Box 3) — relay half
@@ -112,20 +112,20 @@ Box3 relays   Box4 relay  (existing   Home temp/   Home relay  Home smart    Mid
 PM)                       mesh)                                             (WiFi / open,
                                                                               not Zigbee)
                                      │
-                           WiFi / ESPHome (W-76, new adapter path)
+                           WiFi / ESPHome (W-84, new adapter path)
                       ┌──────────────┴──────────────┐
                  Box2 sensor package          Box3 sensor package
              (SEN66 + SHT45 + QT Py)       (SEN66 + SHT45 + QT Py)
 ```
 
-Every unit lands on the platform through an adapter that already exists in `cabin-orchestration-platform/backend/.../integrations/`, except the ESPHome/WiFi sensor path (W-76, new) and the Midea Cube (W-77, new HA-side integration, existing `ha_rest` adapter on this platform's side once paired) and the Cloudline S6 (open, W-78). No new coordinator (D8) and no new cabin-backend adapter class beyond the one W-76 scopes.
+Every unit lands on the platform through an adapter that already exists in `cabin-orchestration-platform/backend/.../integrations/`, except the ESPHome/WiFi sensor path (W-84, new) and the Midea Cube (W-77, new HA-side integration, existing `ha_rest` adapter on this platform's side once paired) and the Cloudline S6 (open, W-78). No new coordinator (D8) and no new cabin-backend adapter class beyond the one W-84 scopes.
 
 ## 4 — Ontology placement summary
 
-Every unit above gets, at provisioning: `Device.capabilities[]` (D7), `measurement_type`/`reports_to[]` for each Service Entity it exposes (D7/D13/D15/D16), `Device.related_to[]` where it applies (D28 — currently only the two HVAC units), D28's `display_label`/`entity_id` pair, and, for `RelayControlBox`'s composite case, the `part_of` relation tying its sensor and relay Devices to the shared enclosure grouping (D27). None of this is build work by itself — it is the checklist Code's design notes (W-76/W-77/W-78) and the provisioning pass (W-80) work from.
+Every unit above gets, at provisioning: `Device.capabilities[]` (D7), `measurement_type`/`reports_to[]` for each Service Entity it exposes (D7/D13/D15/D16), `Device.related_to[]` where it applies (D28 — currently only the two HVAC units), D28's `display_label`/`entity_id` pair, and, for `RelayControlBox`'s composite case, the `part_of` relation tying its sensor and relay Devices to the shared enclosure grouping (D27). None of this is build work by itself — it is the checklist Code's design notes (W-84/W-77/W-78) and the provisioning pass (W-80) work from.
 
 ## 5 — Open items
 
 - **Q-DN-1** (D28): Cloudline S6 control shape — passive monitor vs. active speed control. Nate's call.
 - **Location/application TBDs**: 4× `ZigbeeMiniRelay`, 2× `ZigbeeSmartPlug`, `SmartDehumidifier`, `DuctFanSpeedController` — confirmed at physical install (W-80).
-- **W-76 design note**: ESPHome-native vs. new MQTT contract for the WiFi sensor boxes — recommendation is ESPHome-native, not yet ratified by Cowork.
+- **W-84 design note**: ESPHome-native vs. new MQTT contract for the WiFi sensor boxes — recommendation is ESPHome-native, not yet ratified by Cowork.
