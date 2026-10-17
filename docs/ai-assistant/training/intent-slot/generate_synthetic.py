@@ -3,7 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-from contract import ROOT, validate, write_jsonl
+from contract import ROOT, validate, write_jsonl, request_content
 
 
 def generate(path):
@@ -11,13 +11,16 @@ def generate(path):
     digest = hashlib.sha256(raw).hexdigest()
     rows = []
     for template in json.loads(raw):
-        validate(template["target"])
+        validate(template["target"], template.get("card_target"))
         for i, text in enumerate(template["utterances"]):
+            request_content(text, template.get("card_target"))
             rows.append({"id": f"synthetic-{template['id']}-{i}", "group": template["id"],
                          "text": text, "target": template["target"],
                          "provenance": {"source": "synthetic", "revision": digest,
                                         "sha256": digest, "license": "project-authored",
                                         "record": i, "review_status": "unreviewed"}})
+            if "card_target" in template:
+                rows[-1]["card_target"] = template["card_target"]
     return rows
 
 

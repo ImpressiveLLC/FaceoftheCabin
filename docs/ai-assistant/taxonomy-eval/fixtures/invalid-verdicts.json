@@ -1,0 +1,270 @@
+[
+  {
+    "rule": "never null",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": null,
+      "reason": "missing_or_broken_here",
+      "target": null,
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "wrong_here requires a reason",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": null,
+      "target": null,
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "belongs_in requires a target",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": "belongs_in",
+      "target": null,
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "different topic",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": "belongs_in",
+      "target": "connectivity",
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "element id",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": "duplicate_of",
+      "target": "not_an_element",
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "takes no target",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": "missing_or_broken_here",
+      "target": "cabin_event",
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "cannot_tell requires a reason",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "cannot_tell",
+      "reason": "belongs_in",
+      "target": null,
+      "runner_up": "device_health",
+      "note": "x"
+    }
+  },
+  {
+    "rule": "one-line note",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "cannot_tell",
+      "reason": "invalid_flow",
+      "target": null,
+      "runner_up": "device_health",
+      "note": null
+    }
+  },
+  {
+    "rule": "runner_up is required",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": "missing_or_broken_here",
+      "target": null,
+      "runner_up": null,
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "hops must equal",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 3,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": "missing_or_broken_here",
+      "target": null,
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "unknown topics",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity",
+        "nonsense"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": "missing_or_broken_here",
+      "target": null,
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "unexpected field",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": "missing_or_broken_here",
+      "target": null,
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink",
+      "extra": "x"
+    }
+  },
+  {
+    "rule": "right_here takes no reason",
+    "record": {
+      "qid": "Q019",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "right_here",
+      "reason": "belongs_in",
+      "target": null,
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  },
+  {
+    "rule": "qid must look like",
+    "record": {
+      "qid": "Q1",
+      "run_id": "dry-04",
+      "probe_version": "p0-dry",
+      "taxonomy_version": "t1",
+      "path": [
+        "connectivity"
+      ],
+      "hops": 1,
+      "found": true,
+      "verdict": "wrong_here",
+      "reason": "missing_or_broken_here",
+      "target": null,
+      "runner_up": "device_health",
+      "note": "nothing here measures the uplink"
+    }
+  }
+]
