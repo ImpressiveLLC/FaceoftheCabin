@@ -1,5 +1,15 @@
 # Intent / slot training r1 — Ask and Tiny Helpdesk
 
+## Current POC2 handoff and next experiment
+
+[Doc 27 / POC2 decision](../../../governance/handovers/HO-2026-10-16-doc27-poc2.md):
+prompt and contract work first, human-review/expand gold, then consider reviewed SFT
+if needed; larger-model evaluation is a later comparison. Shadow mode is deferred.
+The linked PR #164 baseline is collaborator-posted evidence, not reproduced here.
+New hardware facts belong in reviewed RAG and live inventory, not identity memorization
+in SFT. The [environmental guide](../../user-guide/environmental-nodes.md) is prepared
+source content; routing, ingestion and trained-model changes are not implied.
+
 Status: reconstructed implementation starter and proposal, 2026-10-14.
 The prior chat's ZIP was unavailable in this Windows session. This is a new,
 reviewable reconstruction of the described package, not a byte-identical recovery.

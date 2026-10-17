@@ -6,7 +6,7 @@ PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
 StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
-mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY } from "./App.jsx";
+mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, ZigbeePairingFlow, pairingRefusedMessage } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
@@ -6590,5 +6590,57 @@ describe("On the Way is reachable from My Places and Monitoring", () => {
     fireEvent.click(btn);
     await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
     expect(JSON.parse(haCalls(authedFetch)[0][1].body).entity_id).toBe("input_boolean.on_the_way_to_cabin");
+  });
+});
+
+describe("ZigbeePairingFlow -- the pairing window must not pretend (2026-10-16)", () => {
+  afterEach(cleanup);
+  function authWithPermitJoin(permitJoin) {
+    return {
+      authedFetch: vi.fn((url) => url.includes("/permit-join")
+        ? permitJoin()
+        : Promise.resolve({ ok: true, status: 200, json: async () => [] })),
+    };
+  }
+  function openWindow(auth) {
+    render(<ZigbeePairingFlow onBack={() => {}} onDone={() => {}} auth={auth} />);
+    fireEvent.click(screen.getByRole("button", { name: /Open pairing window/ }));
+  }
+
+  it("starts the countdown when the hub accepts the request", async () => {
+    openWindow(authWithPermitJoin(() => Promise.resolve({ ok: true, status: 200, json: async () => ({}) })));
+    expect(await screen.findByText(/Pairing window open/)).toBeTruthy();
+  });
+
+  it.each([
+    [401, /signed out/],
+    [403, /read-only/],
+    [500, /HTTP 500/],
+  ])("says why and does NOT show a countdown when the hub answers %s", async (status, pattern) => {
+    openWindow(authWithPermitJoin(() => Promise.resolve({ ok: false, status, json: async () => ({}) })));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(pattern);
+    expect(screen.queryByText(/Pairing window open/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Open pairing window/ })).toBeTruthy();
+  });
+
+  it("says the hub could not be reached when the request itself fails", async () => {
+    openWindow(authWithPermitJoin(() => Promise.reject(new Error("network down"))));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/could not be reached/);
+    expect(screen.queryByText(/Pairing window open/)).toBeNull();
+  });
+
+  it("clears an earlier error when the next attempt succeeds", async () => {
+    let first = true;
+    const auth = authWithPermitJoin(() => {
+      if (first) { first = false; return Promise.resolve({ ok: false, status: 401, json: async () => ({}) }); }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    openWindow(auth);
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: /Open pairing window/ }));
+    expect(await screen.findByText(/Pairing window open/)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

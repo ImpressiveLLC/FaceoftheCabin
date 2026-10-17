@@ -1,5 +1,10 @@
 # Family Hub & FaceOfTheCabin — User Guide
 
+## Environmental monitoring project
+
+See [environmental nodes and climate equipment](ai-assistant/user-guide/environmental-nodes.md)
+for what is ordered, what it can measure, and which controls remain unavailable.
+
 *Audience: family members and guests using the platform day to day —
 on the wall-mounted kiosk, a phone, or a laptop. For technical
 operation, see [`MAINTENANCE.md`](MAINTENANCE.md). For standing up your
