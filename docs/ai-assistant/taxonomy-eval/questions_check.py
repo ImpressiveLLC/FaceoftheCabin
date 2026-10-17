@@ -18,8 +18,8 @@ from verdicts import NO_DATA, load_element_ids, load_topics
 HERE = Path(__file__).resolve().parent
 SOURCES = ("ask_log", "alert_history", "family", "synthetic")
 RULINGS = ("R3", "R4")
-FIELDS = {"id", "problem", "start_context", "expected_topic", "expected_element", "edge_tags", "source", "note", "ruling_pending"}
-REQUIRED = FIELDS - {"ruling_pending"}
+FIELDS = {"id", "problem", "start_context", "expected_topic", "expected_element", "edge_tags", "source", "note", "ruled"}
+REQUIRED = FIELDS - {"ruled"}
 # Words that name a topic or a view. A question that contains one is leading the grader to the answer.
 TOPIC_WORDS = ("temp & humidity", "air quality", "security & presence", "connectivity", "device health", "alert history",
                "occupancy", "energy")
@@ -40,8 +40,13 @@ def is_hard_edge(question):
     return any(not tag.startswith("candidate-") for tag in question["edge_tags"])
 
 
-def check(data, topics, element_ids, drafted_tags):
+def load_rulings(path=HERE / "rulings.json"):
+    return {r["id"]: r for r in json.loads(Path(path).read_text(encoding="utf-8"))["rulings"]}
+
+
+def check(data, topics, element_ids, drafted_tags, rulings=None):
     """(problems, coverage)."""
+    rulings = load_rulings() if rulings is None else rulings
     problems, qs = [], data["questions"]
     topic_ids = {t["id"] for t in topics}
     if not 25 <= len(qs) <= 30:
@@ -72,9 +77,14 @@ def check(data, topics, element_ids, drafted_tags):
             for tag in q["edge_tags"]:
                 if tag not in drafted_tags:
                     problems.append(f"{qid}: edge tag {tag!r} has no drafted edge test")
-        for r in q.get("ruling_pending", []):
-            if r not in RULINGS:
-                problems.append(f"{qid}: unknown ruling {r!r}")
+        for r in q.get("ruled", []):
+            ruling = rulings.get(r)
+            if ruling is None:
+                problems.append(f"{qid}: ruling {r!r} is not recorded in rulings.json")
+            elif qid not in ruling["homes"]:
+                problems.append(f"{qid}: {r} does not list this question")
+            elif ruling["homes"][qid] != q["expected_topic"]:
+                problems.append(f"{qid}: expected_topic {q['expected_topic']!r} differs from the ruled home {ruling['homes'][qid]!r}")
         for field in ("problem", "start_context"):
             text = q[field]
             if not isinstance(text, str) or not text.strip():
@@ -105,7 +115,7 @@ def check(data, topics, element_ids, drafted_tags):
     if unanswerable < 3:
         problems.append(f"at least 3 questions must be unanswerable by design, found {unanswerable}")
     coverage = {"questions": len(qs), "by_topic": dict(sorted(by_topic.items())), "hard_edge": hard,
-                "unanswerable_by_design": unanswerable, "ruling_pending": sum(1 for q in qs if q.get("ruling_pending")),
+                "unanswerable_by_design": unanswerable, "ruled": sum(1 for q in qs if q.get("ruled")),
                 "by_source": dict(sorted(Counter(q.get("source") for q in qs).items()))}
     return problems, coverage
 
