@@ -14,7 +14,7 @@ check(){ if eval "$2"; then ok "$1"; else bad "$1  [$2]"; fi; }
 
 # scratch package
 SRC="$W/src"; mkdir -p "$SRC"
-for f in contract.py evaluate.py run_reports.py gold.jsonl intent-slot.schema.json system.txt requirements.txt Modelfile.intent-r1; do echo "x" >"$SRC/$f"; done
+for f in contract.py evaluate.py run_reports.py gold.jsonl intent-slot.schema.json request.schema.json system.txt requirements.txt Modelfile.intent-r1; do echo "x" >"$SRC/$f"; done
 
 # fake docker: logs every call; models come from $W/models; `run` of evaluate writes baseline.json
 cat >"$W/docker" <<'EOF'

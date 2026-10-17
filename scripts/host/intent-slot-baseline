@@ -30,7 +30,7 @@ OLLAMA=${INTENT_SLOT_OLLAMA_CONTAINER:-ollama}
 PY_IMAGE=${INTENT_SLOT_PY_IMAGE:-python:3.12-slim}
 SAMPLE_SECONDS=${INTENT_SLOT_SAMPLE_SECONDS:-2}
 BASE_MODEL=llama3.2:3b
-FILES=(contract.py evaluate.py run_reports.py gold.jsonl intent-slot.schema.json system.txt requirements.txt Modelfile.intent-r1)
+FILES=(contract.py evaluate.py run_reports.py gold.jsonl intent-slot.schema.json request.schema.json system.txt requirements.txt Modelfile.intent-r1)
 
 die() { echo "intent-slot-baseline: $*" >&2; exit 2; }
 
