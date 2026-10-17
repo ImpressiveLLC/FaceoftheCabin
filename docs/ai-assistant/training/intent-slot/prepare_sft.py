@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 from contract import ROOT, SYSTEM, read_jsonl, validate, write_jsonl, request_content
+from vocabulary import field_errors, normalize_target
 
 
 def normalize(text):
@@ -29,6 +30,11 @@ def split_rows(rows, gold):
             raise ValueError("Missing paraphrase family")
         seen.add(text)
         validate(row["target"], row.get("card_target"))
+        problems = field_errors(row["target"])
+        if not problems and normalize_target(row["target"])[1]:
+            problems = {"canonical": "a room or site is not in its canonical form; approve it in the grading screen, which normalizes it"}
+        if problems:
+            raise ValueError(f"Room, site or need not in the vocabulary ({row['id']}): {'; '.join(problems.values())}")
         bucket = int(hashlib.sha256(row["group"].encode()).hexdigest(), 16) % 10
         split = "test" if bucket == 0 else "validation" if bucket == 1 else "train"
         result[split].append({"messages": [{"role": "system", "content": SYSTEM},

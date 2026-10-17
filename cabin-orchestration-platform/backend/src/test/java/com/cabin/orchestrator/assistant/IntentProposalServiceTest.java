@@ -229,9 +229,15 @@ class IntentProposalServiceTest {
         Response r = propose(intent("set_device_attribute",
             "{\"device_name\":\"thermostat\",\"attribute_type\":\"temperature\",\"attribute_value\":\"19\"}", true), "set the thermostat to 19");
 
+        // The POC2 contract already refuses a temperature setting with no C or F ("otherwise clarify"), before the resolver sees it.
         assertEquals(Status.REFUSED, r.status());
-        assertEquals("INVALID_VALUE", r.refusals().get(0).outcome());
-        assertTrue(r.message().contains("unit"));
+        assertEquals("MALFORMED_MODEL_OUTPUT", r.code());
+        assertNull(r.proposal());
+        assertTrue(audit.get(audit.size() - 1).validation().contains("unit"));
+        // A model that clarifies instead is the intended path.
+        Response clarified = propose("{\"intent\":\"clarify\",\"slots\":{},\"requires_confirmation\":false,"
+            + "\"clarification\":\"Celsius or Fahrenheit?\",\"automation\":null}", "set the thermostat to 19");
+        assertEquals(Status.CLARIFY, clarified.status());
     }
 
     // ── the other intents ────────────────────────────────────────────────
@@ -262,10 +268,80 @@ class IntentProposalServiceTest {
     void theModelOnlySeesTheTypedTextAndTheConfiguredTag() {
         propose(intent("unsupported", "{}", false), "turn on the heater");
 
-        assertEquals(List.of("cabin-intent-slot-prompt-r1|turn on the heater"), prompts);
+        // The prompt says "Input is a JSON request with text", so that is exactly what the model is given.
+        assertEquals(List.of("cabin-intent-slot-prompt-r1|{\"text\": \"turn on the heater\"}"), prompts);
     }
 
     // ── audit ────────────────────────────────────────────────────────────
+
+    @Test
+    void aNeedIsNamedButNoOptionsOrActionsAreOffered() {
+        for (String concept : List.of("light", "nap", "wake_up", "cold", "dark")) {
+            Response r = propose("{\"intent\":\"express_need\",\"slots\":{\"concept\":\"" + concept
+                + "\"},\"requires_confirmation\":true,\"clarification\":null,\"automation\":null}", "I need something");
+
+            assertEquals(Status.NEED, r.status(), concept);
+            assertEquals("express_need", r.intent());
+            assertTrue(r.message().contains(concept.replace('_', ' ')), r.message());
+            assertNull(r.proposal(), "a need never becomes a plan by itself");
+            assertTrue(r.steps().isEmpty());
+            assertTrue(r.refusals().isEmpty());
+        }
+    }
+
+    private static final String HEATER_ON = "{\"target\":{\"device_name\":\"heater\",\"location\":\"mech room\",\"site\":\"cabin\"},"
+        + "\"operation\":\"on\",\"attribute\":null,\"value\":null,\"unit\":null,\"delay_seconds\":0}";
+
+    private static String automationWith(String trigger, String action) {
+        return "{\"intent\":\"propose_automation\",\"slots\":{},\"requires_confirmation\":true,\"clarification\":null,"
+            + "\"automation\":{\"trigger\":" + trigger + ",\"conditions\":[],\"actions\":[" + action + "]}}";
+    }
+
+    @Test
+    void aTimeTriggerNamesNoDeviceAndItsActionStillHasToResolve() {
+        String at7 = "{\"kind\":\"time_once\",\"at\":\"2027-01-01T07:00:00-06:00\"}";
+        Response r = propose(automationWith(at7, HEATER_ON), "turn the heater on at 7 tomorrow");
+
+        assertEquals(Status.PROPOSAL, r.status());
+        assertEquals(List.of("TRIGGER", "ACTION"), r.steps().stream().map(ProposalModel.Step::role).toList());
+        ProposalModel.Step trigger = r.steps().get(0);
+        assertNull(trigger.entityId());
+        assertEquals("TIME_ONCE", trigger.action());
+        assertEquals("at 2027-01-01T07:00:00-06:00", trigger.detail());
+        assertEquals("heater_mech_room", r.steps().get(1).entityId());
+
+        String at8 = at7.replace("07:00", "08:00");
+        assertNotEquals(r.proposal().planHash(), propose(automationWith(at8, HEATER_ON), "same at 8").proposal().planHash(),
+            "the schedule is part of what a confirmation binds to");
+
+        Response unknown = propose(automationWith(at7, HEATER_ON.replace("heater", "jacuzzi")), "jacuzzi at 7");
+        assertEquals(Status.REFUSED, unknown.status());
+        assertNull(unknown.proposal(), "a schedule is never proposed with an action that does not resolve");
+    }
+
+    @Test
+    void aRecurringTriggerCarriesItsRule() {
+        Response r = propose(automationWith("{\"kind\":\"time_recurring\",\"start_time\":\"2027-01-01T07:00:00Z\","
+            + "\"rrule\":\"FREQ=WEEKLY;BYDAY=MO,TU\"}", HEATER_ON), "heater on weekday mornings");
+
+        assertEquals(Status.PROPOSAL, r.status());
+        assertEquals("TIME_RECURRING", r.steps().get(0).action());
+        assertEquals("from 2027-01-01T07:00:00Z, repeat FREQ=WEEKLY;BYDAY=MO,TU", r.steps().get(0).detail());
+    }
+
+    @Test
+    void aStateChangeTriggerResolvesItsDeviceAndCarriesTheDuration() {
+        Response r = propose(automationWith("{\"kind\":\"state_changes_to\",\"target\":{\"device_name\":\"front door contact\","
+            + "\"location\":\"front door\",\"site\":\"cabin\"},\"attribute\":\"state\",\"value\":\"open\",\"for_seconds\":60}", HEATER_ON),
+            "heater on when the front door has been open for a minute");
+
+        assertEquals(Status.PROPOSAL, r.status());
+        ProposalModel.Step trigger = r.steps().get(0);
+        assertEquals("door_front_contact", trigger.entityId());
+        assertEquals("changes_to", trigger.operator());
+        assertEquals("open", trigger.value());
+        assertEquals("for 60 seconds", trigger.detail());
+    }
 
     @Test
     void everyCallIsAuditedWithTheModelOutputValidationDecisionsAndProposal() {

@@ -721,7 +721,7 @@ R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its
 | Q-OC-8 | Who approves concept vocabulary entries (W-66)? | Cowork drafts; Nate reviews the first seed set once; after that Cowork ratifies additions, the same as Q-OC-6. |
 | Q-OC-9 | What can actually actuate at Home today, with no HA there (D23)? | Unknown. Code verifies the Home adapters (MQTT, http_poll) in W-67's design note. Until then, POC actions are cabin-only. |
 | Q-OC-10 | Plan confirmation lifetime and replay rules. | Cowork leaning: a confirmation expires after 5 minutes and is bound to the plan hash. Any inventory or plan change invalidates it. Settled in C5. |
-| Q-OC-11 (Nate) | Concept seed list: are `cold`, `hot`, `stuffy`, `dark`, `arriving`, `leaving`, `bedtime`, `tv_time` the right first eight, and what is missing? | Asked in W-66's PR; the POC uses `cold` only. |
+| Q-OC-11 (Nate) | Concept seed list: are `cold`, `hot`, `stuffy`, `dark`, `arriving`, `leaving`, `bedtime`, `tv_time` the right first eight, and what is missing? | Asked in W-66's PR; the POC uses `cold` only. **Nate, 2026-10-16** (grading gold-01): the list is missing `light` (the want for light; "bright" is a synonym, so an alias of `light`, not a second concept), and `nap` and `wake_up` beside `bedtime`. Added as `proposed` in `concepts.json`; the original eight remain unratified. |
 
 ### What this is not
 

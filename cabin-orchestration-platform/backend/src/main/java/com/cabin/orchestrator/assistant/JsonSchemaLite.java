@@ -2,6 +2,8 @@ package com.cabin.orchestrator.assistant;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -10,8 +12,9 @@ import java.util.List;
  * The small subset of JSON Schema that docs/ai-assistant/training/intent-slot/intent-slot.schema.json uses, so
  * the backend validates model output against the same file the offline tooling does and the two cannot drift
  * (no schema library is on the classpath). Supported: type (one or several), enum, properties, required,
- * additionalProperties:false, minLength, minimum, maximum, minItems, maxItems, items, anyOf. Anything else in a
- * schema is ignored, so this is for that contract only, not a general validator.
+ * additionalProperties:false, minLength, minimum, maximum, minItems, maxItems, items, anyOf, oneOf (exactly one
+ * option), const, and format "date-time" (an RFC 3339 timestamp with an offset). Anything else in a schema is
+ * ignored, so this is for that contract only, not a general validator.
  */
 final class JsonSchemaLite {
 
@@ -34,6 +37,22 @@ final class JsonSchemaLite {
             errors.add(path + ": matches none of the allowed shapes");
             return;
         }
+        if (schema.has("oneOf")) {
+            int matched = 0;
+            for (JsonNode option : schema.get("oneOf")) {
+                List<String> attempt = new ArrayList<>();
+                check(value, option, path, attempt);
+                if (attempt.isEmpty()) matched++;
+            }
+            if (matched != 1) {
+                errors.add(path + ": must match exactly one allowed shape but matches " + matched);
+                return;
+            }
+        }
+        if (schema.has("const") && !schema.get("const").equals(value)) {
+            errors.add(path + ": must be " + schema.get("const"));
+            return;
+        }
         if (schema.has("type") && !typeMatches(value, schema.get("type"))) {
             errors.add(path + ": expected " + schema.get("type") + " but found " + describe(value));
             return;
@@ -47,6 +66,13 @@ final class JsonSchemaLite {
         }
         if (value.isTextual() && schema.has("minLength") && value.asText().length() < schema.get("minLength").asInt()) {
             errors.add(path + ": shorter than " + schema.get("minLength").asInt());
+        }
+        if (value.isTextual() && "date-time".equals(schema.path("format").asText())) {
+            try {
+                OffsetDateTime.parse(value.asText());
+            } catch (DateTimeParseException e) {
+                errors.add(path + ": not an RFC 3339 date-time with an offset");
+            }
         }
         if (value.isIntegralNumber()) {
             if (schema.has("minimum") && value.asLong() < schema.get("minimum").asLong()) errors.add(path + ": below " + schema.get("minimum"));
