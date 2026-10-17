@@ -66,7 +66,10 @@ class ConceptVocabulary(unittest.TestCase):
     def test_bright_is_an_alias_of_light_not_a_second_concept(self):
         self.assertNotIn("bright", v.CONCEPT_IDS)
         light = next(c for c in v.CONCEPTS if c["id"] == "light")
-        self.assertTrue({"bright", "brighter", "brightness"} <= set(light["aliases"]))
+        # Nate, 2026-10-16: light, bright and any derivation are one observational concept with different aliases.
+        self.assertTrue({"bright", "brighter", "brightest", "brighten", "brightness", "lighten", "lighting"} <= set(light["aliases"]))
+        for alias in light["aliases"]:
+            self.assertEqual(v.normalize(alias), alias, f"{alias!r} should be stored normalized")
 
     def test_new_needs_exist_and_are_connected_to_their_neighbours(self):
         for needed in ("light", "nap", "wake_up", "bedtime", "dark"):

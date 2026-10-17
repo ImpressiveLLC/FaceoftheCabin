@@ -11571,7 +11571,7 @@ elements:
       enum: ["cold", "hot", "stuffy", "dark", "light", "arriving", "leaving", "bedtime", "nap", "wake_up", "tv_time"]
       description: "Closed vocabulary of human needs the intent/slot model may return as the concept slot of an express_need request. docs/ai-assistant/training/intent-slot/concepts.json is the source; the schema enum, system prompts, Java copy and this list are tested against it."
     ui_display_name: "Human need"
-    source: "D27 Concept (W-66, Cowork seed 2026-10-14, awaiting Nate per Q-OC-11). light, nap and wake_up added by Nate 2026-10-16; bright is an alias of light."
+    source: "D27 Concept (W-66, Cowork seed 2026-10-14, awaiting Nate per Q-OC-11). light, nap and wake_up added by Nate 2026-10-16; bright and every derivation of light or bright are aliases of light (one observational concept, different aliases)."
     rendering:
       semantic: "What the person needs, in their own words (cold, dark, light, nap...)"
       systems: "concept slot of an express_need request, one of the ids in concept_vocabulary"
@@ -11605,8 +11605,8 @@ elements:
           - {id: "light", relation: "same_remedy_as"}
       - id: "light"
         label: "Light"
-        definition: "Wants light or more brightness, stated as the thing wanted (\"I need more light\", \"it needs to be brighter\"). 'Bright' and 'brighter' mean the same and are aliases, not a second concept. The opposite wish (too bright, want less light) is not in the vocabulary yet."
-        aliases: ["bright", "brighter", "brightness", "more light"]
+        definition: "Wants light or more brightness, stated as the thing wanted (\"I need more light\", \"it needs to be brighter\"). 'Bright' and every other form of light or bright (brighter, brighten, brightness, lighten, lighting...) are the same observation and are aliases, not separate concepts. The opposite wish (too bright, want less light) is not in the vocabulary yet."
+        aliases: ["bright", "brighter", "brightest", "brighten", "brightness", "brightly", "lighter", "lighten", "lighting", "more light"]
         relates_to:
           - {id: "dark", relation: "same_remedy_as"}
       - id: "arriving"

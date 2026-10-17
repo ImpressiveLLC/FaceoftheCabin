@@ -10,8 +10,9 @@ It is tooling and provisional fixtures, not a trained or validated model.
 [`concepts.json`](concepts.json): `cold`, `hot`, `stuffy`, `dark`, `light`, `arriving`, `leaving`,
 `bedtime`, `nap`, `wake_up` and `tv_time`. The first eight are the D27 seed set awaiting Nate's
 confirmation; `light`, `nap` and `wake_up` were added by Nate on 2026-10-16 while grading, and `bright`
-is an **alias** of `light`, not a second concept (one idea, one label; the aliases are shown to the
-reviewer and used in the corpus). Wording decides between neighbours: `dark` states a lack of light,
+and every derivation of light or bright (brighter, brighten, brightness, lighting...) are **aliases** of
+`light`, not separate concepts: one observational concept, different aliases (Nate, 2026-10-16). The aliases
+are shown to the reviewer and used in the corpus. Wording decides between neighbours: `dark` states a lack of light,
 `light` states a want for it; `bedtime` is going to bed for the night, `nap` a short daytime rest, and
 `wake_up` waking or getting up now (“wake me at 7” is a schedule, not a need). “I'm cold” classifies as
 `express_need/cold`. A concept may appear only on `express_need`; a direct command such as “turn on the

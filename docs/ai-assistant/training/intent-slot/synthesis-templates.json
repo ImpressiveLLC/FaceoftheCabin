@@ -300,7 +300,10 @@
       "It would help to have some light",
       "I need it brighter",
       "Can we get some brightness in here",
-      "Brighter please"
+      "Brighter please",
+      "Could you brighten things up in here",
+      "It could use some more brightness",
+      "We need it a lot brighter"
     ],
     "target": {
       "intent": "express_need",

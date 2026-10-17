@@ -4,7 +4,7 @@
   "note": "Single source for the human-need vocabulary (D27 Concept, W-66). The intent-slot schema enum, the system prompts, the ontology entity human_need_concept, the Java bundled schema and the grading screen must all list exactly these ids; test_vocabulary.py and the Java tests fail if any of them drifts. Definitions, aliases and asks are proposals awaiting Nate's review (Q-OC-11). Asks are deliberately empty where nobody has reviewed a mapping: a need never picks a device by itself.",
   "decided": {
     "cold, hot, stuffy, dark, arriving, leaving, bedtime, tv_time": "Seed set from D27 (Cowork, 2026-10-14); awaiting Nate (Q-OC-11).",
-    "light, nap, wake_up": "Added by Nate, 2026-10-16, while grading gold-01: the vocabulary had dark but not the want for light, and bedtime but not nap or wake up. 'bright' is a synonym of light, recorded as an alias so one idea has one label."
+    "light, nap, wake_up": "Added by Nate, 2026-10-16, while grading gold-01: the vocabulary had dark but not the want for light, and bedtime but not nap or wake up. 'bright' and its derivations are synonyms of light, recorded as aliases so one idea has one label (Nate confirmed this on 2026-10-16: one observational concept, different aliases)."
   },
   "concepts": [
     {
@@ -46,8 +46,8 @@
     {
       "id": "light",
       "label": "Light",
-      "definition": "Wants light or more brightness, stated as the thing wanted (\"I need more light\", \"it needs to be brighter\"). 'Bright' and 'brighter' mean the same and are aliases, not a second concept. The opposite wish (too bright, want less light) is not in the vocabulary yet.",
-      "aliases": ["bright", "brighter", "brightness", "more light"],
+      "definition": "Wants light or more brightness, stated as the thing wanted (\"I need more light\", \"it needs to be brighter\"). 'Bright' and every other form of light or bright (brighter, brighten, brightness, lighten, lighting...) are the same observation and are aliases, not separate concepts. The opposite wish (too bright, want less light) is not in the vocabulary yet.",
+      "aliases": ["bright", "brighter", "brightest", "brighten", "brightness", "brightly", "lighter", "lighten", "lighting", "more light"],
       "relates_to": [{"id": "dark", "relation": "same_remedy_as", "note": "Wording decides: a stated want is light, a stated lack is dark."}],
       "examples": ["I need more light", "It needs to be brighter in here"],
       "asks": [{"text": "Turn on lights", "intent": "set_device_state", "device_words": ["light", "lamp"], "state": "on"}]
