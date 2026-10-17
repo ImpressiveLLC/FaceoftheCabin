@@ -95,7 +95,9 @@ file lives in `ImpressiveLLC/CabinAutomations` (`automations/leak_freeze_automat
 [POC2](docs/ai-assistant/wsjf-backlog.md),
 [W-66 / W-75](docs/governance/backlog.md), and the
 [intent-slot package](docs/ai-assistant/training/intent-slot/README.md).
-The current schema and Java contract do **not** accept `express_need` or `concept`.
+The Python schema and, since 2026-10-16, the Java contract accept `express_need` and `concept` (11 needs in
+[`concepts.json`](docs/ai-assistant/training/intent-slot/concepts.json), also the ontology entity `human_need_concept`; `bright` is an
+alias of `light`); the route answers a need with its name and no options.
 The admin-only, flag-off `/api/helpdesk/propose` route returns proposals only and
 has no executor. This handoff neither completes POC2 nor enables W-75.
 

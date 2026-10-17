@@ -97,7 +97,7 @@ public class IntentProposalService {
         long modelMillis = 0;
         String validation = "NOT_RUN";
 
-        Optional<IntentChatClient.ChatResult> chat = chatClient.chat(model, contract.systemPrompt(), text, contract.schema());
+        Optional<IntentChatClient.ChatResult> chat = chatClient.chat(model, contract.systemPrompt(), contract.requestContent(text), contract.schema());
         Response response;
         ParsedIntent parsed = null;
         if (chat.isEmpty()) {
@@ -135,6 +135,11 @@ public class IntentProposalService {
                     helpdesk.ask(text, role));
             case "clarify":
                 return new Response(requestId, Status.CLARIFY, intent, null, parsed.clarification(), null, List.of(), List.of(), null);
+            case "express_need":
+                // The need is named and nothing more: choosing options is the ontology walk (W-66/W-68/W-75), not the model.
+                return new Response(requestId, Status.NEED, intent, null,
+                    "I understood that as the need “" + parsed.slots().get("concept").replace('_', ' ')
+                        + "”. I can't suggest actions for it yet.", null, List.of(), List.of(), null);
             case "unsupported":
                 return refused(requestId, intent, "UNSUPPORTED", "I can't help with that request.");
             default:
@@ -149,6 +154,12 @@ public class IntentProposalService {
         List<Step> steps = new ArrayList<>();
         List<Refusal> refusals = new ArrayList<>();
         for (Part part : parts) {
+            if (part.target() == null) {
+                // A time trigger names no device, so there is nothing to resolve.
+                steps.add(new Step(part.role(), null, null, null, part.kind(), null, null, null, null, 0, part.detail()));
+                decisions.add(new ProposalAuditLog.Decision(part.role(), "NOT_APPLICABLE", null, List.of("time trigger names no device")));
+                continue;
+            }
             Resolution r = resolver.resolve(part.target(), part.action(), inventory, role);
             decisions.add(new ProposalAuditLog.Decision(part.role(), r.outcome().name(),
                 r.target() == null ? null : r.target().entityId(), r.reasons()));
@@ -157,7 +168,7 @@ public class IntentProposalService {
                 boolean set = a.kind() == ActionKind.SET_ATTRIBUTE;
                 steps.add(new Step(part.role(), r.target().entityId(), r.target().name(), r.target().site(), a.kind().name(),
                     set ? a.attribute() : part.attribute(), part.operator(), set ? a.canonicalValue() : part.value(),
-                    set ? a.canonicalUnit() : part.unit(), part.delaySeconds()));
+                    set ? a.canonicalUnit() : part.unit(), part.delaySeconds(), part.detail()));
             } else {
                 refusals.add(new Refusal(part.role(), r.outcome().name(),
                     r.candidates().stream().map(c -> new Candidate(c.entityId(), c.name(), c.site())).toList(), r.reasons()));
@@ -179,7 +190,12 @@ public class IntentProposalService {
     // ── turning the validated intent into resolver inputs ────────────────
 
     private record Part(String role, SemanticTarget target, ActionRequest action, String attribute, String operator,
-                        String value, String unit, int delaySeconds) {}
+                        String value, String unit, int delaySeconds, String detail, String kind) {
+        Part(String role, SemanticTarget target, ActionRequest action, String attribute, String operator,
+             String value, String unit, int delaySeconds) {
+            this(role, target, action, attribute, operator, value, unit, delaySeconds, null, null);
+        }
+    }
 
     private static List<Part> partsOf(ParsedIntent parsed) {
         Map<String, String> s = parsed.slots();
@@ -202,7 +218,7 @@ public class IntentProposalService {
     private static List<Part> automationParts(JsonNode automation) {
         if (automation == null) return null;
         List<Part> parts = new ArrayList<>();
-        parts.add(watchPart("TRIGGER", automation.get("trigger")));
+        parts.add(triggerPart(automation.get("trigger")));
         for (JsonNode condition : automation.path("conditions")) parts.add(watchPart("CONDITION", condition));
         for (JsonNode action : automation.path("actions")) {
             SemanticTarget target = targetOf(action.get("target"));
@@ -214,6 +230,25 @@ public class IntentProposalService {
                 text(action.get("unit")), action.path("delay_seconds").asInt(0)));
         }
         return parts;
+    }
+
+    /** The trigger shapes of the POC2 contract: a device predicate, one time, a recurring time, or a state change. */
+    private static Part triggerPart(JsonNode trigger) {
+        String kind = text(trigger.get("kind"));
+        if (kind == null) return watchPart("TRIGGER", trigger);
+        switch (kind) {
+            case "time_once":
+                return new Part("TRIGGER", null, null, null, null, null, null, 0, "at " + text(trigger.get("at")), "TIME_ONCE");
+            case "time_recurring":
+                return new Part("TRIGGER", null, null, null, null, null, null, 0,
+                    "from " + text(trigger.get("start_time")) + ", repeat " + text(trigger.get("rrule")), "TIME_RECURRING");
+            default: { // state_changes_to
+                JsonNode seconds = trigger.get("for_seconds");
+                return new Part("TRIGGER", targetOf(trigger.get("target")), ActionRequest.read(), text(trigger.get("attribute")),
+                    "changes_to", text(trigger.get("value")), null, 0,
+                    seconds == null || seconds.isNull() ? null : "for " + seconds.asInt() + " seconds", null);
+            }
+        }
     }
 
     /** A trigger or condition only has to name one readable device; its value test is carried through unchanged. */
@@ -258,7 +293,7 @@ public class IntentProposalService {
         for (Step s : steps) {
             canonical.append(String.join("\u001f", s.role(), s.entityId(), s.action(), String.valueOf(s.attribute()),
                 String.valueOf(s.operator()), String.valueOf(s.value()), String.valueOf(s.unit()),
-                Integer.toString(s.delaySeconds()))).append('\n');
+                Integer.toString(s.delaySeconds()), String.valueOf(s.detail()))).append('\n');
         }
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")

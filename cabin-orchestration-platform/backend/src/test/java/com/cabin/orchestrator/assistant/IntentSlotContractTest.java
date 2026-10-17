@@ -60,7 +60,77 @@ class IntentSlotContractTest {
             assertEquals(target.get("intent").asText(), parsed.intent(), row.get("id").asText());
             checked++;
         }
-        assertTrue(checked >= 22, "expected the 22 gold fixtures, found " + checked);
+        assertTrue(checked >= 47, "expected the 47 gold fixtures, found " + checked);
+    }
+
+    @Test
+    void everyHumanNeedIsAcceptedAndBrightIsNotASeparateConcept() throws ContractViolation {
+        for (String concept : List.of("cold", "hot", "stuffy", "dark", "light", "arriving", "leaving", "bedtime", "nap", "wake_up", "tv_time")) {
+            ParsedIntent parsed = contract.validate(need(concept));
+            assertEquals("express_need", parsed.intent());
+            assertEquals(concept, parsed.slots().get("concept"));
+            assertTrue(parsed.requiresConfirmation());
+        }
+        // bright is an alias of light (concepts.json), so the model may not return it as a concept
+        violation(contract, need("bright"));
+        violation(contract, need("nap_time"));
+    }
+
+    private static String need(String concept) {
+        return "{\"intent\":\"express_need\",\"slots\":{\"concept\":\"" + concept
+            + "\"},\"requires_confirmation\":true,\"clarification\":null,\"automation\":null}";
+    }
+
+    @Test
+    void aNeedRequiresAConceptConfirmationAndNothingElseMayCarryAConcept() {
+        violation(contract, "{\"intent\":\"express_need\",\"slots\":{},\"requires_confirmation\":true,\"clarification\":null,\"automation\":null}");
+        assertTrue(violation(contract, need("light").replace("\"requires_confirmation\":true", "\"requires_confirmation\":false"))
+            .getMessage().contains("confirmation"));
+        violation(contract, "{\"intent\":\"set_device_state\",\"slots\":{\"device_name\":\"lights\",\"state\":\"on\",\"concept\":\"dark\"},"
+            + "\"requires_confirmation\":true,\"clarification\":null,\"automation\":null}");
+        violation(contract, "{\"intent\":\"answer_question\",\"slots\":{\"concept\":\"cold\"},\"requires_confirmation\":false,\"clarification\":null,\"automation\":null}");
+    }
+
+    @Test
+    void aTemperatureSettingNeedsAUnitCOrF() throws ContractViolation {
+        String set = "{\"intent\":\"set_device_attribute\",\"slots\":{\"device_name\":\"thermostat\",\"attribute_type\":\"temperature\","
+            + "\"attribute_value\":\"19\"%s},\"requires_confirmation\":true,\"clarification\":null,\"automation\":null}";
+        violation(contract, set.formatted(""));
+        violation(contract, set.formatted(",\"unit\":\"K\""));
+        assertEquals("F", contract.validate(set.formatted(",\"unit\":\"F\"")).slots().get("unit"));
+    }
+
+    private static String automation(String trigger) {
+        return "{\"intent\":\"propose_automation\",\"slots\":{},\"requires_confirmation\":true,\"clarification\":null,\"automation\":{\"trigger\":"
+            + trigger + ",\"conditions\":[],\"actions\":[{\"target\":{\"device_name\":\"heater\",\"location\":\"mech room\",\"site\":\"cabin\"},"
+            + "\"operation\":\"on\",\"attribute\":null,\"value\":null,\"unit\":null,\"delay_seconds\":0}]}}";
+    }
+
+    @Test
+    void theNewTriggerKindsAreAcceptedAndUnknownOnesAreNot() {
+        assertDoesNotThrow(() -> contract.validate(automation("{\"kind\":\"time_once\",\"at\":\"2027-01-01T07:00:00-06:00\"}")));
+        assertDoesNotThrow(() -> contract.validate(automation("{\"kind\":\"time_recurring\",\"start_time\":\"2027-01-01T07:00:00Z\",\"rrule\":\"FREQ=DAILY;COUNT=5\"}")));
+        assertDoesNotThrow(() -> contract.validate(automation("{\"kind\":\"state_changes_to\",\"target\":{\"device_name\":\"presence\",\"location\":\"mech room\",\"site\":\"cabin\"},\"attribute\":\"state\",\"value\":\"present\",\"for_seconds\":60}")));
+        violation(contract, automation("{\"kind\":\"cron\",\"expr\":\"* * * * *\"}"));
+        violation(contract, automation("{\"kind\":\"time_once\",\"at\":\"2027-01-01T07:00:00-06:00\",\"extra\":1}"));
+        violation(contract, automation("{\"kind\":\"state_changes_to\",\"target\":{\"device_name\":\"presence\",\"location\":\"mech room\",\"site\":\"cabin\"},\"attribute\":\"state\",\"value\":\"present\",\"for_seconds\":-1}"));
+    }
+
+    @Test
+    void aScheduleNeedsAnExplicitOffsetAndAWellFormedRecurrenceRule() {
+        violation(contract, automation("{\"kind\":\"time_once\",\"at\":\"2027-01-01T07:00:00\"}"));
+        violation(contract, automation("{\"kind\":\"time_once\",\"at\":\"tomorrow at 7\"}"));
+        violation(contract, automation("{\"kind\":\"time_recurring\",\"start_time\":\"2027-01-01T07:00:00\",\"rrule\":\"FREQ=DAILY\"}"));
+        for (String rule : List.of("DAILY", "FREQ=DAILY;FREQ=WEEKLY", "FREQ=DAILY;COUNT=3;UNTIL=20270101T000000Z", "FREQ=DAILY;COUNT=0",
+                "FREQ=DAILY;INTERVAL=-1", "FREQ=DAILY;COUNT=x", "FREQ=DAILY;BYDAY", "FREQ=DAILY\\nDTSTART:20270101")) {
+            violation(contract, automation("{\"kind\":\"time_recurring\",\"start_time\":\"2027-01-01T07:00:00Z\",\"rrule\":\"" + rule + "\"}"));
+        }
+    }
+
+    @Test
+    void theRequestEnvelopeMatchesContractPyAndEscapesTheText() {
+        assertEquals("{\"text\": \"turn on the hall lights\"}", contract.requestContent("turn on the hall lights"));
+        assertEquals("{\"text\": \"say \\\"hi\\\"\\nand café\"}", contract.requestContent("say \"hi\"\nand café"));
     }
 
     @Test

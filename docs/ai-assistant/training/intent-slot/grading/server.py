@@ -41,10 +41,18 @@ class ReviewStore:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self.validator = module.validate
+        # The room/site/need vocabulary lives next to the contract; an older package without it is graded as before.
+        vocab_path = self.package / "vocabulary.py"
+        self.vocabulary = None
+        if vocab_path.exists():
+            vspec = importlib.util.spec_from_file_location("grading_vocabulary", vocab_path)
+            self.vocabulary = importlib.util.module_from_spec(vspec)
+            vspec.loader.exec_module(self.vocabulary)
         self.has_card = "card_target" in inspect.signature(self.validator).parameters
         self.schema = module.SCHEMA
+        vocabulary_files = [f for f in ("vocabulary.py", "concepts.json", "areas.json") if (self.package / f).exists()]
         self.contract_hash = digest(b"".join((self.package / f).read_bytes() for f in
-                                           ["contract.py"] + sorted(p.name for p in self.package.glob("*.schema.json"))))
+                                           ["contract.py"] + vocabulary_files + sorted(p.name for p in self.package.glob("*.schema.json"))))
         self.state = {"version": 1, "purpose": purpose, "dataset_sha256": self.dataset_hash,
                       "contract_sha256": self.contract_hash, "reviews": {}, "audit": [],
                       "report": None, "model_reviews": {}}
@@ -72,8 +80,34 @@ class ReviewStore:
 
     def snapshot(self):
         with self.lock:
+            extra = {"vocabulary": self.vocabulary.public_vocabulary()} if self.vocabulary else {}
             return copy.deepcopy({**self.state, "rows": self.rows, "schema": self.schema,
-                                  "package": str(self.package), "state_file": str(self.path), "purpose": self.purpose})
+                                  "package": str(self.package), "state_file": str(self.path), "purpose": self.purpose, **extra})
+
+    def normalized(self, target):
+        """The answer with rooms and sites in canonical form, and the changes that took."""
+        if not self.vocabulary:
+            return target, []
+        return self.vocabulary.normalize_target(target)
+
+    def check_draft(self, data):
+        """Live, side-effect-free check of an answer being edited: field errors, contract error, what normalization
+        would change, and the needs a direct command supports. The same rules save_review enforces on approval."""
+        with self.lock:
+            row = self.by_id[data["id"]]
+            target = data["target"]
+            if not isinstance(target, dict) or not isinstance(target.get("slots"), dict):
+                raise ValueError("Expected an answer object with slots")
+            normalized, changes = self.normalized(target)
+            fields = self.vocabulary.field_errors(normalized) if self.vocabulary else {}
+            contract = None
+            try:
+                self.validate(normalized, row)
+            except Exception as exc:  # includes jsonschema.ValidationError
+                contract = str(exc).splitlines()[0]
+            supports = self.vocabulary.supported_needs(normalized) if self.vocabulary else []
+            return {"fields": fields, "contract": contract, "normalized": normalized, "changes": changes,
+                    "supports": supports, "ok": not fields and contract is None}
 
     def save_review(self, data):
         with self.lock:
@@ -88,9 +122,15 @@ class ReviewStore:
             if len(notes) > 10000:
                 raise ValueError("Notes are too long")
             target = data.get("target", row["target"])
-            revised = target != row["target"]
+            normalized, changes = self.normalized(target)
             if decision == "approved":
+                # Approval stores the canonical form; a room that is only spelled differently is not a correction.
+                target = normalized
+                fields = self.vocabulary.field_errors(target) if self.vocabulary else {}
+                if fields:
+                    raise ValueError("Fix before approving: " + "; ".join(f"{path}: {message}" for path, message in fields.items()))
                 self.validate(target, row)
+            revised = target != (self.normalized(row["target"])[0] if decision == "approved" else row["target"])
             if (decision == "rejected" or revised) and not notes:
                 raise ValueError("Add a reason for a rejection or corrected answer")
             previous = self.state["reviews"].get(row["id"], {})
@@ -99,6 +139,8 @@ class ReviewStore:
             review = {"decision": decision, "target": target, "reviewer": reviewer,
                       "notes": notes, "reviewed_at": datetime.now(timezone.utc).isoformat(),
                       "revision": previous.get("revision", 0) + 1, "revised": revised}
+            if decision == "approved" and changes:
+                review["normalized"] = changes
             next_state = copy.deepcopy(self.state)
             next_state["reviews"][row["id"]] = review
             next_state["audit"].append({"type": "gold_review", "id": row["id"], **review})
@@ -242,6 +284,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Request must be between 1 byte and 4 MB")
             data = json.loads(self.rfile.read(length))
             methods = {"/api/review": self.server.store.save_review,
+                       "/api/validate": self.server.store.check_draft,
                        "/api/report": self.server.store.import_report,
                        "/api/model-review": self.server.store.save_model_review}
             if self.path not in methods:

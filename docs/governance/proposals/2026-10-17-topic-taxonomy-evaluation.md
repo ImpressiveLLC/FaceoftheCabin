@@ -253,7 +253,7 @@ R-labels are local to this proposal. They become Q-IDs inside the D16 amendment 
 
 | Ref | Item | Why it matters | Owner | Needed by |
 |---|---|---|---|---|
-| R1 | What are "Ask question modifiers"? A repo-wide search finds no such term; the closest object is Ask's 18 context categories, mostly platform and process questions. | Ask alignment is a stated goal, and the wrong object would be aligned. | Nate | G0 |
+| R1 | **Answered (Nate, 2026-10-17, 03:21 CDT):** "Ask question modifiers" is not a repo object. It means the naming taxonomy and how it may change Ask question design and the meaning of Ask outputs. It does not block anything. Ask alignment is therefore a consequence of the ruled taxonomy and is handled with R5 after G4. This wording supersedes the earlier G0 note that read R1 as the 18 Ask context categories. | Ask alignment is a stated goal; it follows the taxonomy rather than constraining it. | Nate | closed |
 | R2 | Labeling population. Assumption: the 154 raw, derived and composite elements get a topic, and the 73 conceptual elements link to the topic used to check them. | Sets the size and meaning of the agreement score. | Nate | G1 |
 | R3 | Does a house or UPS battery belong in Energy or Device Health? | Decides the Device Health vs Energy edge. | Nate | G4 |
 | R4 | Where do life-safety alarm flags (CO, smoke, leak) surface while staying alarm flags? | They must never feed a comfort or air badge, but they still need a home. | Nate | G4 |
