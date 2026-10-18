@@ -51,7 +51,7 @@ def baseline_evidence(report, gold_path=ROOT / "gold.jsonl", peak_rss_mib=None, 
     lines = [
         f"## Prompt-only baseline: `{report.get('model')}`",
         "",
-        f"**What this measures:** {report['count']} project-authored gold fixtures, labels still `pending-human-review`. It tests the "
+        f"**What this measures:** {report['count']} project-authored gold fixtures, labels `{report.get('fixture_review_status', 'pending-human-review')}`. It tests the "
         "tooling and gives a first look at the prompt-only model. It is **not** a quality result and not release evidence.",
         "",
         "| Gate (offline) | Result | Threshold | Pass |",

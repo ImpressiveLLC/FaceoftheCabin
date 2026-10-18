@@ -104,7 +104,7 @@ def main():
     report = score(gold, predictions)
     report.update(model=args.model, gold_sha256=hashlib.sha256(args.gold.read_bytes()).hexdigest(),
                   timings_seconds=timings, transport_errors=errors, predictions=predictions,
-                  fixture_review_status="pending-human-review")
+                  fixture_review_status=("approved" if all(r.get("provenance", {}).get("review_status") == "approved" for r in gold) else "pending-human-review"))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k not in {"details", "predictions", "timings_seconds"}}))
