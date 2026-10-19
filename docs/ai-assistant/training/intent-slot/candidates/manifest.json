@@ -1,0 +1,95 @@
+{
+  "created_at": "2026-10-19T20:01:19.871140+00:00",
+  "sources": [
+    {
+      "source": "enfuse",
+      "url": "https://huggingface.co/datasets/enfuse/joint-intent-slot-smarthome/resolve/39056ca057ae92d71fb7a272f7960567e55dca70/train.jsonl",
+      "revision": "39056ca057ae92d71fb7a272f7960567e55dca70",
+      "sha256": "4cab14301b1d13c711169a2c30dac5acea1f0266ca8431f03610b6c236f3dd36",
+      "license": "Apache-2.0",
+      "input_records": 2016,
+      "candidates": 941,
+      "quarantine_records": 1075
+    },
+    {
+      "source": "ha",
+      "url": "https://raw.githubusercontent.com/OHF-Voice/intents/a64026f9359dc705138314d7c363fef1f6d7bf5d/tests/en/HassTurnOn/name_only.yaml",
+      "revision": "a64026f9359dc705138314d7c363fef1f6d7bf5d",
+      "sha256": "927c786bed3462ab55918fda8971c30256948dc2d60c19cedb6a70a08bc72578",
+      "license": "CC-BY-4.0",
+      "input_records": 8,
+      "candidates": 19,
+      "quarantine_records": 4
+    },
+    {
+      "source": "ha",
+      "url": "https://raw.githubusercontent.com/OHF-Voice/intents/a64026f9359dc705138314d7c363fef1f6d7bf5d/tests/en/HassTurnOn/area_domain.yaml",
+      "revision": "a64026f9359dc705138314d7c363fef1f6d7bf5d",
+      "sha256": "b89b53096fcf0b4f5bd7fa9c06a7582ae00e104fd8ea9ce00dbc5c1419f1f72f",
+      "license": "CC-BY-4.0",
+      "input_records": 2,
+      "candidates": 24,
+      "quarantine_records": 0
+    },
+    {
+      "source": "ha",
+      "url": "https://raw.githubusercontent.com/OHF-Voice/intents/a64026f9359dc705138314d7c363fef1f6d7bf5d/tests/en/HassTurnOff/name_only.yaml",
+      "revision": "a64026f9359dc705138314d7c363fef1f6d7bf5d",
+      "sha256": "059cd35692e11012900b66a47759403eadb537a03c37f7a61202ddbfd665ca2d",
+      "license": "CC-BY-4.0",
+      "input_records": 9,
+      "candidates": 21,
+      "quarantine_records": 4
+    },
+    {
+      "source": "ha",
+      "url": "https://raw.githubusercontent.com/OHF-Voice/intents/a64026f9359dc705138314d7c363fef1f6d7bf5d/tests/en/HassTurnOff/area_domain.yaml",
+      "revision": "a64026f9359dc705138314d7c363fef1f6d7bf5d",
+      "sha256": "39095341e99439f40f171aa56ec266be868ba0d09a3ce4f8830da4f2a443729b",
+      "license": "CC-BY-4.0",
+      "input_records": 2,
+      "candidates": 23,
+      "quarantine_records": 3
+    }
+  ],
+  "candidate_count": 1028,
+  "quarantine_count": 1086,
+  "candidate_sha256": "6846f3a46c8b92655fbd34f97db61006fc32e14250b8a78b80813bb289538fce",
+  "by_source": {
+    "enfuse": 941,
+    "ha": 87
+  },
+  "excluded_sources": [
+    "snips"
+  ],
+  "by_intent": {
+    "get_device_state": 187,
+    "set_device_attribute": 303,
+    "set_device_state": 538
+  },
+  "by_source_and_intent": {
+    "enfuse": {
+      "get_device_state": 187,
+      "set_device_attribute": 303,
+      "set_device_state": 451
+    },
+    "ha": {
+      "set_device_state": 87
+    }
+  },
+  "quarantine_by_reason": {
+    "Exact duplicate or overlap with held-out gold": 549,
+    "State is not explicit on/off; numeric or compound labels require correction": 259,
+    "Temperature needs explicit unit review and label correction": 139,
+    "Duplicate slot: device_name": 72,
+    "Duplicate slot: attribute_type": 37,
+    "Duplicate slot: state": 19,
+    "HA lock/valve/cover or unknown domain requires governed manual mapping": 8,
+    "Duplicate slot: location": 2,
+    "Duplicate slot: attribute_value": 1
+  },
+  "training_run": false,
+  "human_approved": 0,
+  "model_evaluated": false,
+  "note": "Selected HA concrete on/off files only. Source-file groups unsplit. Quarantine retained. CASAS deferred: not an intent corpus."
+}

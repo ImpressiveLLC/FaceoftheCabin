@@ -30,7 +30,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--exclude", nargs="*", default=[], choices=["enfuse", "ha", "snips"],
+                        help="sources to leave out entirely: nothing from them is downloaded or imported")
     args = parser.parse_args()
+    excluded_sources = sorted(set(args.exclude))
     sys.path.insert(0, str(args.package.resolve()))
     from import_sources import adapt
     from contract import proposal, validate
@@ -48,19 +51,23 @@ def main():
         (raw_dir / name).write_bytes(raw)
         return raw
 
-    fetch("enfuse-README.md", f"https://huggingface.co/datasets/enfuse/joint-intent-slot-smarthome/resolve/{ENFUSE}/README.md")
-    fetch("ha-LICENSE", f"https://raw.githubusercontent.com/OHF-Voice/intents/{HA}/LICENSE.md")
-    fetch("snips-LICENSE", f"https://raw.githubusercontent.com/snipsco/snips-nlu/{SNIPS}/LICENSE")
-    sources = [("enfuse", ENFUSE, "Apache-2.0", "train.jsonl",
-                f"https://huggingface.co/datasets/enfuse/joint-intent-slot-smarthome/resolve/{ENFUSE}/train.jsonl")]
-    for intent in ["HassTurnOn", "HassTurnOff"]:
-        for name in ["name_only", "area_domain"]:
-            path = f"tests/en/{intent}/{name}.yaml"
-            sources.append(("ha", HA, "CC-BY-4.0", path,
-                            f"https://raw.githubusercontent.com/OHF-Voice/intents/{HA}/{path}"))
-    sources.append(("snips", SNIPS, "Apache-2.0 (repository LICENSE; sample only)",
-                    "sample_datasets/lights_dataset.json",
-                    f"https://raw.githubusercontent.com/snipsco/snips-nlu/{SNIPS}/sample_datasets/lights_dataset.json"))
+    sources = []
+    if "enfuse" not in excluded_sources:
+        fetch("enfuse-README.md", f"https://huggingface.co/datasets/enfuse/joint-intent-slot-smarthome/resolve/{ENFUSE}/README.md")
+        sources.append(("enfuse", ENFUSE, "Apache-2.0", "train.jsonl",
+                        f"https://huggingface.co/datasets/enfuse/joint-intent-slot-smarthome/resolve/{ENFUSE}/train.jsonl"))
+    if "ha" not in excluded_sources:
+        fetch("ha-LICENSE", f"https://raw.githubusercontent.com/OHF-Voice/intents/{HA}/LICENSE.md")
+        for intent in ["HassTurnOn", "HassTurnOff"]:
+            for name in ["name_only", "area_domain"]:
+                path = f"tests/en/{intent}/{name}.yaml"
+                sources.append(("ha", HA, "CC-BY-4.0", path,
+                                f"https://raw.githubusercontent.com/OHF-Voice/intents/{HA}/{path}"))
+    if "snips" not in excluded_sources:
+        fetch("snips-LICENSE", f"https://raw.githubusercontent.com/snipsco/snips-nlu/{SNIPS}/LICENSE")
+        sources.append(("snips", SNIPS, "Apache-2.0 (repository LICENSE; sample only)",
+                        "sample_datasets/lights_dataset.json",
+                        f"https://raw.githubusercontent.com/snipsco/snips-nlu/{SNIPS}/sample_datasets/lights_dataset.json"))
     for source, revision, license_name, path, url in sources:
         raw = fetch(source + "-" + path.replace("/", "-"), url)
         sha = hashlib.sha256(raw).hexdigest()
@@ -119,6 +126,11 @@ def main():
               "candidate_count": len(rows), "quarantine_count": len(excluded),
               "candidate_sha256": hashlib.sha256((args.output / "candidates.jsonl").read_bytes()).hexdigest(),
               "by_source": dict(Counter(r["provenance"]["source"] for r in rows)),
+              "excluded_sources": excluded_sources,
+              "by_intent": dict(sorted(Counter(r["target"]["intent"] for r in rows).items())),
+              "by_source_and_intent": {s: dict(sorted(Counter(r["target"]["intent"] for r in rows if r["provenance"]["source"] == s).items()))
+                                       for s in sorted({r["provenance"]["source"] for r in rows})},
+              "quarantine_by_reason": dict(Counter(x["reason"] for x in excluded).most_common(12)),
               "training_run": False, "human_approved": 0, "model_evaluated": False,
               "note": "Selected HA concrete on/off files only. Source-file groups unsplit. Quarantine retained. CASAS deferred: not an intent corpus."}
     (args.output / "manifest.json").write_text(json.dumps(report, indent=2)+"\n", encoding="utf-8")
