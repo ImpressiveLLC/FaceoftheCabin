@@ -64,6 +64,9 @@ Existing circulation is user-reported; the newly ordered S6 has not been commiss
 | Leviton 1451-2W, 15 A toggle | 2 | Bathroom local controls; manufacturer-approved relay switch-input topology to be confirmed |
 | Midea Cube MAD50PS1QGR | 1 | Cabin dehumidification; exact room/drain route pending |
 | AC Infinity CLOUDLINE S6, 6 in, supplied speed controller | 1 | Fixed inter-level loop: lower air upstairs, upper air returns downstairs; mount/service access still to mark |
+| Freenove ESP32-S3 development board, 8 MB flash (Amazon B0DHJYR4D4) | 1 | S6 speed node (W-78), ordered 2026-10-19, $14.95 |
+| NOYITO PC817 1-channel optocoupler isolation module, 3-5 V input (Amazon B0B5373L4P) | 2 (one pack) | One isolates the S6 speed signal (W-78), one spare; ordered 2026-10-19, $6.99 |
+| AC Infinity UIS extension cable, 10 ft, female to male (Amazon B09V1TG17Z) | 1 | Cut to tap the S6 control port so the fan's own cable stays intact (W-78); ordered 2026-10-19, $11.99 |
 | Adafruit PCB coaster, PID 5719 | 1, $0.00 | Promotional non-system accessory, no service/ontology capability |
 | Carlon boxes, blank covers, cords, mesh | On hand; quantities uncounted | Inspect, assign and record adequacy before assembly |
 | Home SMLIGHT SLZB-MR5U coordinator; existing leak alarms | On hand, per user/source | No new coordinator or leak sensors purchased; verify live bridge independently |
@@ -77,6 +80,8 @@ Corrected receipt totals (user supplied 2026-10-16):
 | Amazon, two orders | Not fully itemized | — | Not separated | Not separated | **$98.19 + $147.44** |
 | Home Depot toggles | Earlier summary | — | — | Not separated | **$1.70** |
 | Accounted-for Doc 27 total | | | | | **$709.07** |
+
+S6 speed-control order (Amazon, 2026-10-19, user confirmed): **$33.93 before tax**, estimated delivery 2026-10-20; not counted in the $709.07 above.
 
 This supersedes the preliminary $660.96: that omitted $19.81 Adafruit shipping/tax
 and $28.30 DigiKey tax. Midea and S6 prices remain excluded because not supplied.
