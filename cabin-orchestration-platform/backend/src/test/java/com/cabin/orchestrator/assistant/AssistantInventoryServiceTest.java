@@ -166,8 +166,9 @@ class AssistantInventoryServiceTest {
         // The registry also holds the disabled home camera seeds, whose rtsp URLs embed a password placeholder and a LAN address.
         String json = JSON.writeValueAsString(service.snapshot(HouseholdRole.ADMINISTRATOR));
 
+        // ":8123" and not "8123": the JSON carries wall-clock timestamps whose digits can contain "8123" by chance (flaked the deploy gate 2026-10-19).
         for (String forbidden : List.of("192.168", "aa:bb:cc:dd:ee:ff", "SECRETTOKENVALUE", "hunter2", "camerapass",
-                "FRIGATE_RTSP_PASSWORD", "rtsp", "http://", "https://", "://", "zigbee2mqtt/", "/set", "cabin-hub", "8123",
+                "FRIGATE_RTSP_PASSWORD", "rtsp", "http://", "https://", "://", "zigbee2mqtt/", "/set", "cabin-hub", ":8123",
                 "ip_address", "mqtt_topic", "ha_token", "password", "connectionString", "switch.heater_mech_room")) {
             assertFalse(json.contains(forbidden), "inventory leaked '" + forbidden + "': " + json);
         }
