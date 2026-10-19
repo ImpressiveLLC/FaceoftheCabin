@@ -39,6 +39,50 @@ class PerIntentSchemaTest {
         assertFalse(JsonSchemaLite.validate(JSON.readTree("\"allowed\""), overlap).isEmpty());
     }
 
+    @Test
+    void unitIsAClosedListAndAnOffsetUntilCannotBeGenerated() throws Exception {
+        JsonNode schema = contract.schema();
+        for (String unit : new String[] {"C", "F", "K", "percent", "lux", "seconds", "minutes", "hours"}) {
+            ObjectNode ok = envelope("set_device_attribute");
+            ((ObjectNode) ok.get("slots")).put("unit", unit);
+            assertTrue(JsonSchemaLite.validate(ok, schema).isEmpty(), unit);
+        }
+        // Observed in r4 (gold-08, gold-40): spelled-out and decorated units.
+        for (String unit : new String[] {"Fahrenheit", "°F", "none", "None", "unknown", "null"}) {
+            ObjectNode bad = envelope("set_device_attribute");
+            ((ObjectNode) bad.get("slots")).put("unit", unit);
+            assertFalse(JsonSchemaLite.validate(bad, schema).isEmpty(), unit);
+        }
+        assertTrue(JsonSchemaLite.validate(recurring("FREQ=DAILY;UNTIL=20271231T235959Z"), schema).isEmpty());
+        assertTrue(JsonSchemaLite.validate(recurring("FREQ=WEEKLY;BYDAY=MO,-1FR;INTERVAL=2"), schema).isEmpty());
+        // Observed in r4 (gold-32, gold-47): a datetime-with-offset UNTIL.
+        assertFalse(JsonSchemaLite.validate(recurring("FREQ=DAILY;UNTIL=2026-12-31T23:59:59-06:00"), schema).isEmpty());
+        assertFalse(JsonSchemaLite.validate(recurring("FREQ=DAILY;UNTIL=2026-12-31T23H59M-06"), schema).isEmpty());
+        assertFalse(JsonSchemaLite.validate(recurring("FREQ=DAILY;FOO=1"), schema).isEmpty());
+        assertFalse(JsonSchemaLite.validate(recurring("DAILY"), schema).isEmpty());
+    }
+
+    private static ObjectNode recurring(String rrule) {
+        ObjectNode value = envelope("propose_automation");
+        ObjectNode automation = value.putObject("automation");
+        ObjectNode trigger = automation.putObject("trigger");
+        trigger.put("kind", "time_recurring");
+        trigger.put("start_time", "2027-01-01T07:00:00Z");
+        trigger.put("rrule", rrule);
+        automation.putArray("conditions");
+        ObjectNode action = automation.putArray("actions").addObject();
+        ObjectNode target = action.putObject("target");
+        target.put("device_name", "heater");
+        target.put("location", "mech room");
+        target.put("site", "cabin");
+        action.put("operation", "on");
+        action.putNull("attribute");
+        action.putNull("value");
+        action.putNull("unit");
+        action.put("delay_seconds", 0);
+        return value;
+    }
+
     private static ObjectNode envelope(String intent) {
         ObjectNode value = JSON.createObjectNode();
         value.put("intent", intent);

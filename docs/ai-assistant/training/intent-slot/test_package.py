@@ -69,7 +69,8 @@ class PackageTests(unittest.TestCase):
                      "FREQ=DAILY;UNTIL=2026-12-31T23:59:59-06:00", "FREQ=DAILY;UNTIL=2027-01-01",
                      "FREQ=DAILY;UNTIL=20271231", "FREQ=DAILY;UNTIL=20270101T000000", "FREQ=DAILY;UNTIL=20270101T000000+0100"):
             row["target"]["automation"]["trigger"]["rrule"] = rule
-            with self.subTest(rule=rule), self.assertRaises(ValueError):
+            # The schema (pattern) now rejects some of these before contract.py's semantic checks run.
+            with self.subTest(rule=rule), self.assertRaises((ValueError, ValidationError)):
                 validate(row["target"])
 
     def test_well_formed_until_is_accepted(self):
