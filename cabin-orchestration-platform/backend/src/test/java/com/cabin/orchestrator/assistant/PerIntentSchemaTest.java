@@ -16,7 +16,10 @@ class PerIntentSchemaTest {
         JsonNode schema = contract.schema();
         JsonNode concepts = schema.path("oneOf").get(1).path("properties")
             .path("slots").path("properties").path("concept").path("enum");
-        for (JsonNode intent : schema.path("oneOf").get(0).path("properties").path("intent").path("enum")) {
+        java.util.List<JsonNode> others = new java.util.ArrayList<>();
+        schema.path("oneOf").get(0).path("properties").path("intent").path("enum").forEach(others::add);
+        schema.path("oneOf").get(2).path("properties").path("intent").path("enum").forEach(others::add);
+        for (JsonNode intent : others) {
             ObjectNode value = envelope(intent.asText());
             assertTrue(JsonSchemaLite.validate(value, schema).isEmpty(), intent.asText());
             for (JsonNode concept : concepts) {
@@ -37,6 +40,24 @@ class PerIntentSchemaTest {
         assertFalse(JsonSchemaLite.validate(JSON.readTree("null"), schema).isEmpty());
         JsonNode overlap = JSON.readTree("{\"oneOf\":[{\"type\":\"string\"},{\"type\":\"string\"}]}");
         assertFalse(JsonSchemaLite.validate(JSON.readTree("\"allowed\""), overlap).isEmpty());
+    }
+
+    @Test
+    void intentsWhoseGoldHasNoSlotsCannotCarryAny() {
+        JsonNode schema = contract.schema();
+        for (String intent : new String[] {"answer_question", "clarify", "propose_automation"}) {
+            assertTrue(JsonSchemaLite.validate(envelope(intent), schema).isEmpty(), intent);
+            for (String key : new String[] {"device_name", "location", "unit"}) {
+                ObjectNode bad = envelope(intent);
+                ((ObjectNode) bad.get("slots")).put(key, "x");
+                assertFalse(JsonSchemaLite.validate(bad, schema).isEmpty(), intent + "/" + key);
+            }
+        }
+        for (String intent : new String[] {"set_device_state", "get_device_state", "set_device_attribute", "unsupported"}) {
+            ObjectNode ok = envelope(intent);
+            ((ObjectNode) ok.get("slots")).put("device_name", "lights");
+            assertTrue(JsonSchemaLite.validate(ok, schema).isEmpty(), intent);
+        }
     }
 
     @Test
