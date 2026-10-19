@@ -1,5 +1,6 @@
 import copy
 import json
+import sys
 import tempfile
 import threading
 import unittest
@@ -196,6 +197,64 @@ class GradingTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
+
+    def run_collector(self, *extra):
+        """Run collect_sources.main with every network call replaced by a tiny fixed answer; returns (urls requested, manifest)."""
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        from grading import collect_sources
+        urls = []
+        enfuse = json.dumps({"text": "turn on the kitchen light", "intent": "set_device_state", "slots": [
+            {"slot_type": "device_name", "slot_value": "light"}, {"slot_type": "location", "slot_value": "kitchen"},
+            {"slot_type": "state", "slot_value": "on"}]}).encode() + b"\n"
+
+        class Response:
+            def __init__(self, body):
+                self.body = body
+            def __enter__(self):
+                return self
+            def __exit__(self, *exc):
+                return False
+            def read(self):
+                return self.body
+
+        def fake(request, timeout=0):
+            url = request.full_url
+            urls.append(url)
+            if url.endswith("train.jsonl"):
+                return Response(enfuse)
+            if url.endswith(".yaml"):
+                return Response(b"tests: []\nentities: []\n")
+            if url.endswith("lights_dataset.json"):
+                return Response(b'{"intents": {}}')
+            return Response(b"licence text")
+
+        out = Path(self.temp.name) / "collected"
+        with patch.object(collect_sources.urllib.request, "urlopen", fake),                 patch.object(sys, "argv", ["collect_sources.py", "--package", str(ROOT), "--output", str(out), *extra]),                 redirect_stdout(io.StringIO()):
+            collect_sources.main()
+        return urls, json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+
+    def test_an_excluded_source_is_never_requested_and_the_manifest_says_so(self):
+        urls, manifest = self.run_collector("--exclude", "snips")
+        self.assertFalse([u for u in urls if "snips" in u.lower()], urls)
+        self.assertTrue(any("huggingface.co" in u for u in urls) and any("OHF-Voice" in u for u in urls))
+        self.assertEqual(manifest["excluded_sources"], ["snips"])
+        self.assertEqual(manifest["by_source"], {"enfuse": 1})
+        self.assertEqual(manifest["by_intent"], {"set_device_state": 1})
+        self.assertNotIn("snips", {s["source"] for s in manifest["sources"]})
+
+    def test_excluding_enfuse_and_ha_requests_only_the_rest(self):
+        urls, manifest = self.run_collector("--exclude", "enfuse", "ha")
+        self.assertTrue(urls and all("snips" in u.lower() for u in urls), urls)
+        self.assertEqual(manifest["excluded_sources"], ["enfuse", "ha"])
+        self.assertEqual(manifest["by_source"], {})
+
+    def test_with_no_exclusion_all_three_sources_are_requested(self):
+        urls, manifest = self.run_collector()
+        self.assertEqual(manifest["excluded_sources"], [])
+        for needle in ("huggingface.co", "OHF-Voice", "snips"):
+            self.assertTrue(any(needle in u for u in urls), needle)
 
     def test_http_loopback_csrf_and_exports(self):
         server = Server(("127.0.0.1", 0), self.store)

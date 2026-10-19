@@ -1,0 +1,5 @@
+# Only manifest.json and README.md are committed here. Candidate rows, quarantine and upstream downloads stay private.
+*
+!.gitignore
+!README.md
+!manifest.json
