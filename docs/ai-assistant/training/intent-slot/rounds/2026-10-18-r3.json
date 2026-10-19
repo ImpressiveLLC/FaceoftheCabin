@@ -143,5 +143,7 @@
       "critical": false
     }
   },
-  "released": false
+  "released": false,
+  "schema_sha256": "768e0c1fe1e15227f67a36e64807068650bfffbfd691544c08ef7a2d7a247d97",
+  "schema_hash_provenance": "Verified 2026-10-18 against M920q r3/package/intent-slot.schema.json and Git f40b243; metrics unchanged."
 }

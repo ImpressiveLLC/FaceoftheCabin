@@ -23,7 +23,7 @@ class ConceptVocabulary(unittest.TestCase):
     def test_ids_are_unique_and_match_the_schema_enum_exactly(self):
         self.assertEqual(len(v.CONCEPT_IDS), len(set(v.CONCEPT_IDS)))
         schema = json.loads((ROOT / "intent-slot.schema.json").read_text(encoding="utf-8"))
-        self.assertEqual(schema["properties"]["slots"]["properties"]["concept"]["enum"], v.CONCEPT_IDS)
+        self.assertEqual(schema["oneOf"][1]["properties"]["slots"]["properties"]["concept"]["enum"], v.CONCEPT_IDS)
 
     def test_both_prompts_name_every_concept_and_nothing_else(self):
         for name in ("system.txt", "Modelfile.intent-poc2"):

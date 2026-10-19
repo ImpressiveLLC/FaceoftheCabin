@@ -103,6 +103,8 @@ def main():
             timings[row["id"]] = time.monotonic() - start
     report = score(gold, predictions)
     report.update(model=args.model, gold_sha256=hashlib.sha256(args.gold.read_bytes()).hexdigest(),
+                  schema_sha256=hashlib.sha256((ROOT / "intent-slot.schema.json").read_bytes()).hexdigest(),
+                  prompt_sha256=hashlib.sha256((ROOT / "system.txt").read_bytes()).hexdigest(),
                   timings_seconds=timings, transport_errors=errors, predictions=predictions,
                   fixture_review_status=("approved" if all(r.get("provenance", {}).get("review_status") == "approved" for r in gold) else "pending-human-review"))
     args.output.parent.mkdir(parents=True, exist_ok=True)

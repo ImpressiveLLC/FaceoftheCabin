@@ -213,3 +213,30 @@ results remain open. Ratification and release authority stay with existing gover
 ## Future concept-map inputs (D28, not in POC2 scope)
 
 [D28](../../../governance/decisions/ontology-decisions.md) adds `heating`, `cooling`, `humidity` and `climate` as `related_to[]` values on two inbound HVAC devices (a dehumidifier and a duct booster-fan controller), and D27's own concept seed list (Q-OC-11) already includes `cold`/`hot`. Once those devices are paired (W-77/W-78/W-80) and `Device.related_to[]` ships (W-79), they become additional resolver targets for the existing `cold`/`hot` concepts — not a new intent, not a new slot shape, and not in scope for the current `cold`-only POC (W-75). No model or prompt change is needed for this; it is inventory growth the resolver already walks.
+
+
+## Per-intent constrained output (HO-2026-10-18)
+
+The output schema has two disjoint `oneOf` branches: the seven existing non-need
+intents exclude `slots.concept`, and `express_need` retains its vocabulary. Each
+branch closes both the envelope and slots with `additionalProperties: false`.
+All other constraints remain unchanged; `contract.py` and `IntentSlotContract`
+continue to enforce confirmation, required concepts, units and automation semantics.
+`JsonSchemaLite` already supports this shape; schema-layer parity tests cover it.
+The duplicated branch definitions avoid introducing `$ref` support into the decoder
+or backend. Do not tighten unrelated rules in this measurement round.
+
+`evaluate.py` records raw prompt and schema SHA-256 values alongside the gold hash.
+`round_ledger.py record` now requires those report hashes to match `--prompt` and
+`--schema` (defaults are the files beside the tool). Old reports without them must
+not be relabeled using arbitrary current files. Recover hashes from their archived
+package and document provenance, as done for r3. `compare` distinguishes a schema-only
+round from an unchanged-input rerun and flags changes to both schema and prompt.
+
+The grading UI supports both this schema and archived flat schemas. Review-state
+files are contract-fingerprinted: do not open `reviews-8770.json` with the new schema
+or rewrite its fingerprint to force acceptance. Keep it with its archived package;
+the unchanged, already-approved `gold.jsonl` can be evaluated directly without new
+human grading. A new review session against the new contract needs a new state file.
+
+See [the implementation evidence and merge hold](../../../governance/handovers/HO-2026-10-18-codex-per-intent-schema-result.md).

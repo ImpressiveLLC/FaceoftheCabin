@@ -37,7 +37,7 @@ class PackageTests(unittest.TestCase):
         for slots in ({}, {"concept": "unknown"}):
             with self.assertRaises((ValueError, ValidationError)):
                 proposal("express_need", slots)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             proposal("answer_question", {"concept": "cold"})
 
     def automation_case(self, kind):
