@@ -7,9 +7,9 @@ from contract import SCHEMA, VALIDATOR, read_jsonl, ROOT
 
 class PerIntentSchemaTest(unittest.TestCase):
     def test_every_non_need_intent_rejects_every_concept_at_schema_layer(self):
-        ordinary, need = SCHEMA["oneOf"]
+        ordinary, need, slotless = SCHEMA["oneOf"]
         concepts = need["properties"]["slots"]["properties"]["concept"]["enum"]
-        for intent in ordinary["properties"]["intent"]["enum"]:
+        for intent in ordinary["properties"]["intent"]["enum"] + slotless["properties"]["intent"]["enum"]:
             value = dict(intent=intent, slots={}, requires_confirmation=True,
                          clarification=None, automation=None)
             self.assertTrue(VALIDATOR.is_valid(value), intent)
@@ -50,6 +50,22 @@ class PerIntentSchemaTest(unittest.TestCase):
             value = copy.deepcopy(row["target"])
             value["automation"]["trigger"]["rrule"] = rule
             self.assertEqual(VALIDATOR.is_valid(value), ok, rule)
+
+    def test_intents_whose_gold_has_no_slots_cannot_carry_any(self):
+        # r5: 56 of 94 false-positive slots came from answer_question, clarify and propose_automation,
+        # whose gold rows never have slots.
+        for intent in ("answer_question", "clarify", "propose_automation"):
+            empty = dict(intent=intent, slots={}, requires_confirmation=True, clarification=None, automation=None)
+            self.assertTrue(VALIDATOR.is_valid(empty), intent)
+            for slots in ({"device_name": "sensor"}, {"location": "unknown"}, {"unit": "C"}):
+                self.assertFalse(VALIDATOR.is_valid(dict(empty, slots=slots)), (intent, slots))
+        for intent in ("set_device_state", "get_device_state", "set_device_attribute", "unsupported"):
+            self.assertTrue(VALIDATOR.is_valid(dict(intent=intent, slots={"device_name": "lights"},
+                requires_confirmation=True, clarification=None, automation=None)), intent)
+
+    def test_every_gold_row_still_validates_with_its_slots(self):
+        for row in read_jsonl(ROOT / "gold.jsonl"):
+            self.assertTrue(VALIDATOR.is_valid(row["target"]), row["id"])
 
 
 if __name__ == "__main__":

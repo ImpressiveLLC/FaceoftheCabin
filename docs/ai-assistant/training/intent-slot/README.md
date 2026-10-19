@@ -217,8 +217,10 @@ results remain open. Ratification and release authority stay with existing gover
 
 ## Per-intent constrained output (HO-2026-10-18)
 
-The output schema has two disjoint `oneOf` branches: the seven existing non-need
-intents exclude `slots.concept`, and `express_need` retains its vocabulary. Each
+The output schema has three disjoint `oneOf` branches: `set_device_state`, `get_device_state`,
+`set_device_attribute` and `unsupported` exclude `slots.concept`; `express_need` retains its
+vocabulary; and `answer_question`, `clarify` and `propose_automation` allow no slots at all
+(r6: their gold rows never have any). Each
 branch closes both the envelope and slots with `additionalProperties: false`.
 All other constraints remain unchanged; `contract.py` and `IntentSlotContract`
 continue to enforce confirmation, required concepts, units and automation semantics.
