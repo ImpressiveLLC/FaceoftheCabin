@@ -53,7 +53,7 @@ class HumanNeedVocabularyParityTest {
         JSON.readTree(concepts.toFile()).get("concepts").forEach(c -> source.add(c.get("id").asText()));
 
         try (InputStream in = getClass().getClassLoader().getResourceAsStream("assistant/intent-slot.schema.json")) {
-            List<String> schema = concepts(JSON.readTree(in).path("properties").path("slots").path("properties").path("concept").path("enum"));
+            List<String> schema = concepts(JSON.readTree(in).path("oneOf").get(1).path("properties").path("slots").path("properties").path("concept").path("enum"));
             assertEquals(source, schema, "the bundled schema's concept enum drifted from concepts.json");
         }
 
