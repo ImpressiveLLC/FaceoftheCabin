@@ -64,9 +64,19 @@ class PackageTests(unittest.TestCase):
         row = self.automation_case("time_recurring")
         for rule in ("FREQ=NOPE", "FREQ=DAILY;COUNT=0", "FREQ=DAILY;INTERVAL=0",
                      "FREQ=DAILY;FREQ=WEEKLY", "FREQ=DAILY;COUNT=2;UNTIL=20270101T000000Z",
-                     "FREQ=DAILY\nEXDATE:20270101T000000Z"):
+                     "FREQ=DAILY\nEXDATE:20270101T000000Z",
+                     # r4 candidate (gold-32, gold-47): an ISO datetime with an offset, or a bare date, is not a valid UNTIL.
+                     "FREQ=DAILY;UNTIL=2026-12-31T23:59:59-06:00", "FREQ=DAILY;UNTIL=2027-01-01",
+                     "FREQ=DAILY;UNTIL=20271231", "FREQ=DAILY;UNTIL=20270101T000000", "FREQ=DAILY;UNTIL=20270101T000000+0100"):
             row["target"]["automation"]["trigger"]["rrule"] = rule
             with self.subTest(rule=rule), self.assertRaises(ValueError):
+                validate(row["target"])
+
+    def test_well_formed_until_is_accepted(self):
+        row = self.automation_case("time_recurring")
+        for rule in ("FREQ=DAILY;UNTIL=20271231T235959Z",):
+            row["target"]["automation"]["trigger"]["rrule"] = rule
+            with self.subTest(rule=rule):
                 validate(row["target"])
 
     def test_trusted_card_cannot_be_overridden(self):

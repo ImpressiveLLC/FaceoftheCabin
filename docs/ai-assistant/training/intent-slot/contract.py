@@ -1,5 +1,6 @@
 """Offline proposal contract; never resolves entities or executes actions."""
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 from dateutil.rrule import rrulestr
@@ -54,6 +55,8 @@ def validate(value, card_target=None):
             fields = dict(part.split("=", 1) for part in parts)
             if "COUNT" in fields and "UNTIL" in fields:
                 raise ValueError("RRULE cannot combine COUNT and UNTIL")
+            if "UNTIL" in fields and not re.fullmatch(r"\d{8}T\d{6}Z", fields["UNTIL"]):
+                raise ValueError("RRULE UNTIL must be a UTC date-time YYYYMMDDTHHMMSSZ (DTSTART is a date-time), not an ISO datetime with an offset or a bare date")
             for key in ("COUNT", "INTERVAL"):
                 if key in fields and (not fields[key].isdigit() or int(fields[key]) < 1):
                     raise ValueError("RRULE COUNT and INTERVAL must be positive integers")
