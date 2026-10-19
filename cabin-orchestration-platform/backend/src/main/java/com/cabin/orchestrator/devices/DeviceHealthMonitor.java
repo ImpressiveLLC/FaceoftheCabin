@@ -265,10 +265,13 @@ public class DeviceHealthMonitor {
      * a power-of-two multiple of the first-stale time (1min, 2min, 4min, 8min…).
      */
     private void scheduleReconnect(String deviceId, DeviceStatus status) {
-        String adapter = registry.descriptor(deviceId)
-            .map(d -> d.protocolAdapter())
-            .orElse("unknown");
+        Optional<DeviceDescriptor> descriptor = registry.descriptor(deviceId);
+        String adapter = descriptor.map(d -> d.protocolAdapter()).orElse("unknown");
         if (!"mqtt".equals(adapter)) return; // HA/RTSP reconnect is handled by their own adapters
+        // Cameras also use the "mqtt" adapter (Frigate topics), but nothing
+        // reconnects them through the Z2M bridge, so the Z2M wording below
+        // would be false for them (2026-10-19, driveway).
+        if (!isZ2mDevice(deviceId, descriptor)) return;
 
         int attempts = reconnectAttempts.merge(deviceId, 1, Integer::sum);
         // Only log/act on power-of-two attempts to avoid log spam
@@ -276,6 +279,13 @@ public class DeviceHealthMonitor {
             log.info("Z2M device {} off-schedule, reconnect attempt #{} — waiting for Z2M bridge to push state",
                 deviceId, attempts);
         }
+    }
+
+    private static boolean isZ2mDevice(String deviceId, Optional<DeviceDescriptor> descriptor) {
+        if (deviceId.startsWith("z2m-")) return true;
+        String connection = descriptor.map(DeviceDescriptor::connectionString).orElse("");
+        return connection != null
+            && (connection.startsWith("zigbee2mqtt/") || connection.startsWith("home_z2m/"));
     }
 
     private Duration staleThresholdFor(String deviceId, DeviceStatus status) {

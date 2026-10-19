@@ -333,6 +333,8 @@ public class MqttBridgeService implements MqttCallback {
     private void handleCameraTopic(String[] parts, String payload) {
         if (parts.length == 3 && "events".equals(parts[2])) {
             handleFrigateDetectionEvent(payload);
+        } else if (parts.length == 3 && "stats".equals(parts[2])) {
+            handleFrigateStats(payload);
         } else if (parts.length == 4 && "motion".equals(parts[3])) {
             String cameraId = parts[2];
             touchCamera(cameraId);
@@ -352,6 +354,22 @@ public class MqttBridgeService implements MqttCallback {
         // published as CabinEvents — they'd mirror the JSON stream
         // cabin/camera/events already sends and fire far too often to be
         // useful "events", even though they're useful for touchCamera().
+    }
+
+    /**
+     * cabin/camera/stats -- Frigate's periodic stats JSON. Refreshes only the
+     * Blink-relayed cameras (cabin.devices.cameras.blinkCameraMap): they are
+     * motion-gated, so their motion/count topics stay silent on a quiet day
+     * and a backend restart would otherwise age them to off-schedule (see
+     * FrigateStatsLiveness). Other cameras are left alone on purpose -- stats
+     * names are Frigate's own and can differ from the platform's device ids,
+     * and touching an unknown name would register a stray candidate.
+     */
+    private void handleFrigateStats(String payload) {
+        Set<String> blinkCameras = blinkLiveviewService.blinkCameraMap().keySet();
+        for (String camera : FrigateStatsLiveness.cameraNames(payload)) {
+            if (blinkCameras.contains(camera)) touchCamera(camera);
+        }
     }
 
     /**

@@ -5,10 +5,15 @@ import com.cabin.orchestrator.devices.model.*;
 import com.cabin.orchestrator.integrations.zigbee.Zigbee2MqttAdapter;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.signalquality.SignalQualityRegistry;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -312,6 +317,49 @@ class DeviceHealthMonitorTest {
             "the event-driven exemption applies regardless of whatever checkin status a device was previously stuck at");
         assertEquals("ONLINE", registry.get("kidde-co-2").state(),
             "a device incorrectly left OFFLINE from before this fix must self-correct, not stay stuck");
+    }
+
+    // 2026-10-19: cameras use the "mqtt" adapter too, and the off-schedule
+    // log told operators a camera was "waiting for Z2M bridge to push state".
+    private List<String> logMessagesWhileChecking(DeviceRegistry registry) {
+        Logger monitorLog = (Logger) LoggerFactory.getLogger(DeviceHealthMonitor.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        monitorLog.addAppender(appender);
+        try {
+            monitorWith(registry).checkHealth();
+        } finally {
+            monitorLog.detachAppender(appender);
+        }
+        return appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+    }
+
+    @Test
+    void offScheduleCameraIsNotDescribedAsAZ2mDevice() {
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of());
+        registry.registerDescriptor(new DeviceDescriptor("driveway", "driveway", DeviceType.CAMERA,
+            Set.of(DeviceCapability.STREAM), "mqtt", "cabin/camera/driveway", true, "cabin"));
+        registry.update(new DeviceStatus("driveway", DeviceType.CAMERA, "driveway", "ONLINE",
+            Instant.now().minus(Duration.ofMinutes(6)), Map.of(), "cabin"));
+
+        List<String> messages = logMessagesWhileChecking(registry);
+
+        assertTrue(messages.stream().anyMatch(m -> m.contains("Device driveway went off-schedule")));
+        assertTrue(messages.stream().noneMatch(m -> m.contains("Z2M")),
+            "a camera is not reconnected through the Z2M bridge: " + messages);
+    }
+
+    @Test
+    void offScheduleZigbeeDeviceStillGetsTheZ2mReconnectLine() {
+        DeviceRegistry registry = new DeviceRegistry(java.util.List.of());
+        registry.registerDescriptor(new DeviceDescriptor("z2m-motion", "Motion", DeviceType.MOTION_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/motion", true, "cabin"));
+        registry.update(new DeviceStatus("z2m-motion", DeviceType.MOTION_SENSOR, "Motion", "ONLINE",
+            Instant.now().minus(Duration.ofMinutes(11)), Map.of(), "cabin"));
+
+        List<String> messages = logMessagesWhileChecking(registry);
+
+        assertTrue(messages.stream().anyMatch(m -> m.contains("Z2M device z2m-motion off-schedule")), messages.toString());
     }
 
     @Test
