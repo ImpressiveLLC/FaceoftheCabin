@@ -110,6 +110,7 @@ class IntentSlotContractTest {
     void theNewTriggerKindsAreAcceptedAndUnknownOnesAreNot() {
         assertDoesNotThrow(() -> contract.validate(automation("{\"kind\":\"time_once\",\"at\":\"2027-01-01T07:00:00-06:00\"}")));
         assertDoesNotThrow(() -> contract.validate(automation("{\"kind\":\"time_recurring\",\"start_time\":\"2027-01-01T07:00:00Z\",\"rrule\":\"FREQ=DAILY;COUNT=5\"}")));
+        assertDoesNotThrow(() -> contract.validate(automation("{\"kind\":\"time_recurring\",\"start_time\":\"2027-01-01T07:00:00Z\",\"rrule\":\"FREQ=DAILY;UNTIL=20271231T235959Z\"}")));
         assertDoesNotThrow(() -> contract.validate(automation("{\"kind\":\"state_changes_to\",\"target\":{\"device_name\":\"presence\",\"location\":\"mech room\",\"site\":\"cabin\"},\"attribute\":\"state\",\"value\":\"present\",\"for_seconds\":60}")));
         violation(contract, automation("{\"kind\":\"cron\",\"expr\":\"* * * * *\"}"));
         violation(contract, automation("{\"kind\":\"time_once\",\"at\":\"2027-01-01T07:00:00-06:00\",\"extra\":1}"));
@@ -122,7 +123,10 @@ class IntentSlotContractTest {
         violation(contract, automation("{\"kind\":\"time_once\",\"at\":\"tomorrow at 7\"}"));
         violation(contract, automation("{\"kind\":\"time_recurring\",\"start_time\":\"2027-01-01T07:00:00\",\"rrule\":\"FREQ=DAILY\"}"));
         for (String rule : List.of("DAILY", "FREQ=DAILY;FREQ=WEEKLY", "FREQ=DAILY;COUNT=3;UNTIL=20270101T000000Z", "FREQ=DAILY;COUNT=0",
-                "FREQ=DAILY;INTERVAL=-1", "FREQ=DAILY;COUNT=x", "FREQ=DAILY;BYDAY", "FREQ=DAILY\\nDTSTART:20270101")) {
+                "FREQ=DAILY;INTERVAL=-1", "FREQ=DAILY;COUNT=x", "FREQ=DAILY;BYDAY", "FREQ=DAILY\\nDTSTART:20270101",
+                // Observed in the r4 candidate (gold-32, gold-47): an ISO datetime with an offset is not a valid UNTIL.
+                "FREQ=DAILY;UNTIL=2026-12-31T23:59:59-06:00", "FREQ=DAILY;UNTIL=2027-01-01", "FREQ=DAILY;UNTIL=20271231", "FREQ=DAILY;UNTIL=20270101T000000",
+                "FREQ=DAILY;UNTIL=20270101T000000+0100")) {
             violation(contract, automation("{\"kind\":\"time_recurring\",\"start_time\":\"2027-01-01T07:00:00Z\",\"rrule\":\"" + rule + "\"}"));
         }
     }

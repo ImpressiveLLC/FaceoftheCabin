@@ -136,6 +136,10 @@ public class IntentSlotContract {
             }
         }
         if (parts.containsKey("COUNT") && parts.containsKey("UNTIL")) violations.add("an RRULE cannot combine COUNT and UNTIL");
+        String until = parts.get("UNTIL");
+        if (until != null && !until.matches("[0-9]{8}T[0-9]{6}Z")) {
+            violations.add("RRULE UNTIL must be a UTC date-time YYYYMMDDTHHMMSSZ (DTSTART is a date-time), not an ISO datetime with an offset or a bare date");
+        }
         for (String key : List.of("COUNT", "INTERVAL")) {
             String number = parts.get(key);
             if (number != null && !number.matches("[1-9][0-9]*")) violations.add("RRULE " + key + " must be a positive integer");
