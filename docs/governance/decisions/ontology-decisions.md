@@ -824,7 +824,7 @@ R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its
 
 ## D28 — Physical unit type-naming convention; Midea Cube and Cloudline S6 HVAC integration
 
-**Status:** ratified 2026-10-16 for the naming convention and the `related_to[]` property (Nate's direction, same day, recorded verbatim below). Cloudline S6 control shape **answered 2026-10-17 (Q-DN-1): active speed control, Option B**; the part choice and design note (W-78) are still to do. **Use case:** [UC-20](../use-cases.md). **Work:** W-77 to W-81 and W-84 ([backlog](../backlog.md)). **Builds on:** D1 (entity_id is canonical, snake_case, never renamed), D7/D13 (Service Entity, `display_label`), D14 (`user_provided_name`/`device_name_from_system`), D15/D16 (`reports_to[]`, Reporting Topics), D27 (Subject/Device/Service model, `part_of`, `relates_to`, `topic_of`, `human_definition`), D8 (no second coordinator; enrichment only on-demand).
+**Status:** ratified 2026-10-16 (naming convention and the `related_to` tag, Nate's direction recorded verbatim below); **amended 2026-10-19 by [A1](#d28-amendment-a1-2026-10-19)**, which reconciles D28 with Doc 27 ([`docs/hardware/doc27-environmental-nodes.md`](../../hardware/doc27-environmental-nodes.md), merged in #165): one naming rule, one hardware allocation, `related_to` stored as D27 `relates_to`, and the Cloudline S6 carrying **both** power monitoring and speed control. **Use cases:** [UC-20](../use-cases.md) (provisioning and naming) and [UC-18](../use-cases.md) (operating the same hardware). **Work:** W-77 to W-80, W-84 and W-95 ([backlog](../backlog.md)); W-81 closed by A1. **Builds on:** D1 (entity_id is canonical, snake_case, never renamed), D7/D13 (Service Entity, `display_label`), D14 (`user_provided_name`/`device_name_from_system`), D15/D16 (`reports_to[]`, Reporting Topics), D27 (Subject/Device/Service model, `part_of`, `relates_to`, `topic_of`, `human_definition`), D8 (no second coordinator; enrichment only on-demand).
 
 **Problem.** Doc 27's sensor/relay build (3 of 4 planned enclosures, cabin claim zone) and a parallel home-location Zigbee sensor rollout are now inbound hardware with no entity_id yet — they haven't been provisioned. Two new HVAC devices (a WiFi dehumidifier and a duct booster-fan speed controller) were ordered as an addendum and have no ontology placement at all. Nate asked for (1) a naming convention where a unit's *type* name is inherited verbatim into both its technical and UI names rather than invented per physical unit, and (2) a `related_to` tag so a device whose action serves several use cases (a booster fan that is simultaneously heating-, cooling- and humidity-relevant) isn't forced into one.
 
@@ -839,75 +839,110 @@ A **Device Type Name** is a PascalCase, singular noun phrase describing what the
 | Device Type Name | What it is | Protocol / adapter |
 |---|---|---|
 | `SensorCollectionBox` | DIY enclosure: SEN66 (particulate/VOC/CO₂*) + SEN6x breakout + SHT45 + QT Py ESP32-S3, sensor-only, no relay | WiFi / ESPHome → HA (new adapter class, W-84) |
-| `RelayControlBox` | DIY enclosure: the same sensor package **plus** one or more Zigbee relay modules and a manual toggle override, hardwired via Mean Well IRM-05-5 | Composite — sensor half WiFi/ESPHome, relay half Zigbee (see "Composite enclosures" below) |
-| `UtilityRelayNode` | Plug-and-play vented enclosure housing one owned Sonoff ZBMINIR2 relay, USB-powered, no sensor package | Zigbee (existing Z2M path, no new adapter) |
+| `RelayControlBox` | DIY enclosure: the same sensor package **plus** one or more Zigbee relay modules, with a manual toggle override where the load has one. Power source does not change the type (Box 3 Mean Well IRM-05-5, Box 4 USB plug-in) | Composite — sensor half WiFi/ESPHome, relay half Zigbee (see "Composite enclosures" below) |
+| `UtilityRelayNode` | Plug-and-play vented enclosure housing a relay module, no sensor package. **Registered type, no current unit (A1):** Box 4 carries a sensor package, so it is a `RelayControlBox` | Zigbee (existing Z2M path, no new adapter) |
 | `ZigbeeTempHumiditySensor` | SONOFF SNZB-02P battery temp/humidity sensor | Zigbee |
-| `ZigbeeMiniRelay` | SONOFF MINI-ZB1GSP / MINI ONE PM / ZBMINIR2 relay module, standalone (not inside a `RelayControlBox`/`UtilityRelayNode`) | Zigbee |
+| `ZigbeeMiniRelay` | SONOFF MINI-ZB1GSP (sold as MINI One PM; power metering W, A, V, kWh) or the owned ZBMINIR2. Inside an enclosure it is its own Device, `part_of` that enclosure | Zigbee |
 | `ZigbeeSmartPlug` | SONOFF S61SZBTPB | Zigbee |
 | `ZigbeeCoordinator` | SONOFF ZBDongle-E (cabin, USB) / SMLIGHT SLZB-MR5U (home, network-attached) — named here for naming-scheme consistency only; **entity_id and friendly_name are not renamed** (D1, D8) | USB-serial / network |
-| `SmartDehumidifier` | Midea Cube MAD50PS1QGR, WiFi direct | WiFi, HA integration (open — see Midea section) |
-| `DuctFanSpeedController` | Cloudline S6 "Quiet" 6 in. inline duct booster fan speed controller | Open — see Cloudline section |
+| `SmartDehumidifier` | Midea Cube MAD50PS1QGR, WiFi | WiFi, HA local-LAN integration (W-77) |
+| `DuctFanSpeedController` | AC Infinity CLOUDLINE S6 6 in. inline fan (PWM EC motor) with its supplied 10-speed controller | Power metering and on/off via a `ZigbeeMiniRelay`; speed via the fan's UIS control port (W-78) |
 
 *CO₂ measurement from the SEN66 is informational only; `co2` is not in the platform's `measurement_type` vocabulary (D13) and must never be surfaced as a reportable service entity under that name.
 
-### Naming derivation (mechanical, no per-unit invention)
+### Naming derivation (mechanical, no per-unit invention; clarified by A1)
 
 ```
-entity_id       (D1, snake_case, minted once, never renamed)
-  = {device_type_name_snake}_{location_snake}[_{application_snake}]
+entity_id       (D1, snake_case, minted once at install, never renamed)
+  = {device_type_name_snake}_{hub_snake}_{room_snake}[_{application_snake}]
 
-display_label   (D13/D14, PascalCase, human-facing — UI, Ask, KB)
-  = {DeviceTypeName}_{Location}[_{Application}]
+display_label   (D13/D14, PascalCase segments joined by "_", human-facing in UI, Ask and KB)
+  = {DeviceTypeName}_{Hub}_{Room}[_{Application}]
 ```
 
-The `[_{application}]` segment is included only when the type name and location alone don't disambiguate two units of the same type at the same location (D28 follows D13's existing rule that a display string must be human-meaningful, never a bare device-type repeat). This reproduces Nate's own example exactly: type `SensorCollectionBox`, location `Basement`, application `HVAC` → `SensorCollectionBox_Basement_HVAC` (UI) / `sensor_collection_box_basement_hvac` (entity_id).
+- **Hub is always present** (Cabin or Home, D23), so two locations can never mint the same name. **Room** is the installed room or zone. Each is its own segment; segments are never merged (`Bathroom_ExhaustHeat`, not `BathroomExhaustHeat`).
+- **Application** is added only when hub, room and type do not already tell two units apart, or when the unit's purpose is the thing a person will look for. It is the human-defined function (`ExhaustHeat`, `ClimateControl`, `DuctReference`).
+- Nate's example `SensorCollectionBox_Basement_HVAC` follows the same pattern with the hub added: `SensorCollectionBox_Cabin_Basement_HVAC` / `sensor_collection_box_cabin_basement_hvac`.
+- This is the only naming rule. Doc 27's earlier rendering ("Sensor Collection Box — Cabin / Main level / Air quality") is withdrawn there in favour of this one (A1). Its hardware-identity rules stay: hardware ids, HA unique ids and ESPHome hostnames are separate from these names and never derived from them.
+- Child services inherit the parent label plus the source or channel: `RelayControlBox_Cabin_Bathroom_ExhaustHeat` has `..._SHT45_Humidity`; its relays are `ZigbeeMiniRelay_Cabin_Bathroom_Exhaust` and `ZigbeeMiniRelay_Cabin_Bathroom_Heat`, each `part_of` the box.
 
-Worked examples for the inbound hardware (final location/application assignment for a few units is Nate's to confirm at install time — marked TBD; the pattern does not change):
+Allocation of the ordered hardware (A1: reconciled with the 2026-10-15 purchase record and Nate's later 2026-10-16 clarifications in Doc 27; TBD rooms are named at install, the pattern does not change):
 
-| Device Type Name | Location | Application | `display_label` | `entity_id` |
-|---|---|---|---|---|
-| SensorCollectionBox | Cabin / Upstairs | — | `SensorCollectionBox_Cabin_Upstairs` | `sensor_collection_box_cabin_upstairs` |
-| RelayControlBox | Cabin / Bathroom | ExhaustHeat | `RelayControlBox_Cabin_BathroomExhaustHeat` | `relay_control_box_cabin_bathroom_exhaust_heat` |
-| UtilityRelayNode | Cabin / MechRoom | Breaker | `UtilityRelayNode_Cabin_MechRoomBreaker` | `utility_relay_node_cabin_mech_room_breaker` |
-| ZigbeeTempHumiditySensor | Home / MechRoom | — | `ZigbeeTempHumiditySensor_Home_MechRoom` | `zigbee_temp_humidity_sensor_home_mech_room` |
-| ZigbeeTempHumiditySensor | Home / Laundry | — | `ZigbeeTempHumiditySensor_Home_Laundry` | `zigbee_temp_humidity_sensor_home_laundry` |
-| ZigbeeTempHumiditySensor | Home / Kitchen | DishwasherSink | `ZigbeeTempHumiditySensor_Home_KitchenDishwasherSink` | `zigbee_temp_humidity_sensor_home_kitchen_dishwasher_sink` |
-| ZigbeeTempHumiditySensor | Home / Garage | — | `ZigbeeTempHumiditySensor_Home_Garage` | `zigbee_temp_humidity_sensor_home_garage` |
-| ZigbeeTempHumiditySensor | Home / Basement | Storage | `ZigbeeTempHumiditySensor_Home_BasementStorage` | `zigbee_temp_humidity_sensor_home_basement_storage` |
-| ZigbeeTempHumiditySensor | Home / Spare | — | `ZigbeeTempHumiditySensor_Home_Spare` | `zigbee_temp_humidity_sensor_home_spare` |
-| ZigbeeSmartPlug | Home / TBD | — (×2) | `ZigbeeSmartPlug_Home_TBD1` / `_TBD2` | `zigbee_smart_plug_home_tbd_1` / `_2` |
-| SmartDehumidifier | Home / Basement (TBD) | — | `SmartDehumidifier_Home_Basement` | `smart_dehumidifier_home_basement` |
-| DuctFanSpeedController | Cabin or Home / TBD | WholeHomeHVAC | `DuctFanSpeedController_Cabin_WholeHomeHVAC` | `duct_fan_speed_controller_cabin_whole_home_hvac` |
+| Unit | Device Type Name | Hub / Room | Application | `display_label` | `entity_id` |
+|---|---|---|---|---|---|
+| Box 2 (SEN66 + SHT45 + QT Py, Mean Well) | SensorCollectionBox | Cabin / Upstairs (main level) | — | `SensorCollectionBox_Cabin_Upstairs` | `sensor_collection_box_cabin_upstairs` |
+| Box 3 (sensor package, Mean Well, 2 toggles) | RelayControlBox | Cabin / Bathroom | ExhaustHeat | `RelayControlBox_Cabin_Bathroom_ExhaustHeat` | `relay_control_box_cabin_bathroom_exhaust_heat` |
+| Box 3 relay 1 (MINI-ZB1GSP) | ZigbeeMiniRelay | Cabin / Bathroom | Exhaust | `ZigbeeMiniRelay_Cabin_Bathroom_Exhaust` | `zigbee_mini_relay_cabin_bathroom_exhaust` |
+| Box 3 relay 2 (MINI-ZB1GSP) | ZigbeeMiniRelay | Cabin / Bathroom | Heat | `ZigbeeMiniRelay_Cabin_Bathroom_Heat` | `zigbee_mini_relay_cabin_bathroom_heat` |
+| Box 4 (sensor package, USB plug-in power) | RelayControlBox | Cabin / MechRoom | ClimateControl | `RelayControlBox_Cabin_MechRoom_ClimateControl` | `relay_control_box_cabin_mech_room_climate_control` |
+| Box 4 relay A (MINI-ZB1GSP) | ZigbeeMiniRelay | Cabin / MechRoom | Circulation (feeds the S6) | `ZigbeeMiniRelay_Cabin_MechRoom_Circulation` | `zigbee_mini_relay_cabin_mech_room_circulation` |
+| Box 4 relay B (MINI-ZB1GSP) | ZigbeeMiniRelay | Cabin / MechRoom | Reserved (load named at install) | `ZigbeeMiniRelay_Cabin_MechRoom_{Load}` | named at install |
+| Box 1 (deferred, not purchased) | SensorCollectionBox | Cabin / LowerLevel | — | `SensorCollectionBox_Cabin_LowerLevel` | not minted |
+| SNZB-02P ×5 | ZigbeeTempHumiditySensor | Home / MechRoom, Laundry, Kitchen (DishwasherSink), Garage, Basement (Storage) | as shown | `ZigbeeTempHumiditySensor_Home_MechRoom`, `..._Home_Laundry`, `..._Home_Kitchen_DishwasherSink`, `..._Home_Garage`, `..._Home_Basement_Storage` | snake_case of each |
+| SNZB-02P #6 (was "spare") | ZigbeeTempHumiditySensor | Cabin / LowerLevel | DuctReference | `ZigbeeTempHumiditySensor_Cabin_LowerLevel_DuctReference` | `zigbee_temp_humidity_sensor_cabin_lower_level_duct_reference` |
+| S61SZBTPB ×2 | ZigbeeSmartPlug | Cabin / room at install | load at install | `ZigbeeSmartPlug_Cabin_{Room}_{Load}` | named at install |
+| Midea Cube MAD50PS1QGR | SmartDehumidifier | Cabin / room at install (drain route decides) | — | `SmartDehumidifier_Cabin_{Room}` | named at install |
+| CLOUDLINE S6 | DuctFanSpeedController | Cabin / mount room at install | InterLevelLoop | `DuctFanSpeedController_Cabin_{Room}_InterLevelLoop` | named at install |
+| Owned ZBMINIR2 ×2 | ZigbeeMiniRelay | unassigned spares | — | named when assigned | not minted |
+| Coordinators | ZigbeeCoordinator | Cabin ZBDongle-E / Home SLZB-MR5U | — | unchanged (D1, D8) | unchanged |
 
-**Composite enclosures (`RelayControlBox`).** One physical box can carry two independent protocol stacks: the QT Py sensor package (WiFi/ESPHome) and one-to-several Zigbee relay modules. Rather than inventing a cross-protocol parent device, each stack is provisioned as its own Device under the existing adapter it actually speaks (ESPHome→HA for the sensor service; Z2M for each relay), and the two are tied together with D27's `part_of` relation into a shared non-addressable grouping subject named for the enclosure (`relay_control_box_cabin_bathroom_exhaust_heat` as the `part_of` target, not a live device itself). This is the first real use of `part_of` for something other than Zigbee's existing `parentDeviceId` — a deliberate, in-scope extension, not a new relation.
+No `entity_id` is minted before the unit is installed in its final room (D1). Where a row says "at install", Nate names the room or load on the day; Code records it and nothing else changes.
 
-### `Device.related_to[]` (L2 Semantic, new property — extends D27)
+**Composite enclosures (`RelayControlBox`).** One physical box can carry two independent protocol stacks: the QT Py sensor package (WiFi/ESPHome) and one-to-several Zigbee relay modules. Rather than inventing a cross-protocol parent device, each stack is provisioned as its own Device under the existing adapter it actually speaks (ESPHome→HA for the sensor service; Z2M for each relay), and the two are tied together with D27's `part_of` relation into a shared non-addressable grouping subject named for the enclosure (`relay_control_box_cabin_bathroom_exhaust_heat` and `relay_control_box_cabin_mech_room_climate_control` as the `part_of` targets, not live devices themselves). This is the first real use of `part_of` for something other than Zigbee's existing `parentDeviceId` — a deliberate, in-scope extension, not a new relation.
 
-`reports_to[]` (D15/D16) says what a device's **telemetry** feeds. `related_to[]` says what functional **domains the device's action or presence serves** — the gap Nate named: a unit can matter to several use cases (heating *and* cooling *and* humidity) without any one of them being its sole "topic." `related_to[]` is additive, multi-valued, and distinct from both `reports_to[]` (telemetry) and D27's `topic_of` (saved-view grouping) — a device can carry all three independently.
+### The `related_to` tag (amended by A1: Nate's term, stored as D27 `relates_to`)
 
-| Property | Layer | Required | Description |
-|---|---|---|---|
-| `Device.related_to[]` | L2 Semantic | No (empty = not yet classified) | Controlled vocab of functional domains this device's capability or presence serves. Seeded from D16's five Reporting Topics plus two HVAC-specific additions: `heating`, `cooling`, `humidity`, `climate` (umbrella covering all three), `energy`, `security_presence`, `comfort_air`. Growth follows D27's Q-OC-6 rule (one concrete use case + definition, enters `proposed`, Cowork ratifies). |
+Nate's need stands as ratified: a unit whose action serves several functional domains carries all of them, and is never forced into one (the S6 normalizes air for heating, cooling and humidity at once). A1 decides only how it is stored. D27 already defines `relates_to` (symmetric, many-to-many, **no control authority or proof of effect**), and Doc 27 asks that no separate `related_to` property be revived beside it. So:
 
-Assignments for the two new HVAC devices, exactly as Nate framed them:
+- **Storage:** D27 `relates_to` edges from the device to **domain subjects**, one per value of a controlled vocabulary: `heating`, `cooling`, `humidity`, `climate` (umbrella covering the first three), `energy`, `security_presence`, `comfort_air`. Each domain subject has a `human_definition`. Growth follows D27 Q-OC-6.
+- **Surface:** the UI, API and Ask present it with Nate's wording, "Related to: heating, cooling, humidity, climate". `GET /api/devices/{id}` returns it as `relatedTo: [...]`, derived from the edges, so there is one store and no third predicate.
+- **Distinct from:** `reports_to[]` (where telemetry feeds, D15/D16) and `topic_of` (membership in a saved view). A device can carry all three.
+- **Never implies capability:** relating the S6 to `heating` does not grant `set_temperature`; relating it to `humidity` does not mean it removes moisture (Doc 27, Relationships).
 
-- `DuctFanSpeedController` (Cloudline S6): `related_to: [heating, cooling, humidity, climate]` — it normalizes air for whichever of those is active, so it is never exclusively one.
-- `SmartDehumidifier` (Midea Cube): `related_to: [humidity, climate, comfort_air]`.
+Assignments, exactly as Nate framed them:
+
+- `DuctFanSpeedController` (CLOUDLINE S6): related to `heating`, `cooling`, `humidity`, `climate`.
+- `SmartDehumidifier` (Midea Cube): related to `humidity`, `climate`, `comfort_air`.
 
 ### Midea Cube MAD50PS1QGR — integration
 
-WiFi, local-network device, no Zigbee. Home Assistant has a community integration for Midea-protocol dehumidifiers/AC units (local-LAN control via the device's own key/token, no cloud round-trip once paired) — this is the expected path ("direct via HA," per Nate's framing) rather than Z2M or a cabin-backend-side adapter. Setup friction is typically the one-time device key/token extraction, not ongoing maintenance. **W-77** scopes the actual HA-side setup; this platform then sees it as an ordinary `HOME_ASSISTANT_ENTITY`-class device via the existing `ha_rest` adapter, same as the mech-room heater (W-27/W-28), with `related_to` from this decision.
+WiFi, local-network device, no Zigbee. Home Assistant has a community integration for Midea-protocol dehumidifiers/AC units (local-LAN control via the device's own key/token, no cloud round-trip once paired) — this is the expected path ("direct via HA," per Nate's framing) rather than Z2M or a cabin-backend-side adapter. Setup friction is typically the one-time device key/token extraction, not ongoing maintenance. **W-77** scopes the actual HA-side setup; this platform then sees it as an ordinary `HOME_ASSISTANT_ENTITY`-class device via the existing `ha_rest` adapter, same as the mech-room heater (W-27/W-28), with its `related_to` domains from this decision. **Location (A1):** Cabin, room set by the drain route at install; Doc 27's Midea integration decision owns the arrival tests (exact-model support, IP reservation, drain and bucket-full behaviour).
 
-### Cloudline S6, Q-DN-1 (answered 2026-10-17: Option B, active speed control)
+### CLOUDLINE S6, Q-DN-1 (re-answered by Nate 2026-10-19: power monitoring **and** speed control)
 
-The Cloudline S6 is a variable-speed **humidistat-driven analog controller**: out of the box it has no network interface of its own. "Final control and connectivity must be ontology-defined" (Nate) is therefore not yet answerable from the hardware alone — it depends on which of two integration shapes Nate wants:
+Nate, 2026-10-19: "cloudline s6 has power monitoring and speed control, these are not mutually exclusive." The 2026-10-17 framing (Option A passive monitor **or** Option B active speed control) is withdrawn. The S6 is one `DuctFanSpeedController` with two capability paths that coexist:
 
-| Option | What it gives | What it doesn't |
+| Capability | Path | Hardware | Status |
+|---|---|---|---|
+| Power and energy telemetry (W, A, V, kWh), on/off | Box 4 relay A, `ZigbeeMiniRelay_Cabin_MechRoom_Circulation`, on the S6 supply | MINI-ZB1GSP, owned (ordered 2026-10-15) | Commission after a motor-load and restart test (Doc 27). One S61SZBTPB plug is the fallback supply path, never in series with the relay |
+| Speed, `set_level` over 10 steps | The S6's UIS control port (PWM-controlled EC motor; the supplied controller keeps the last speed through a power cut) | **Not yet owned.** W-78 designs it (below) | Design note, then build |
+
+**W-78 design direction (Cowork, 2026-10-19), for Code's design note:**
+
+1. **Preferred, fully local:** an ESPHome node driving the fan's speed signal through an **opto-isolated** PWM output, exposed to HA as a speed fan (10 steps) and reached by the platform through `ha_rest` like any other HA entity. Community builds exist for AC Infinity S-series fans (ESP32 with ESPHome, LEDC PWM, optocoupler on the ESP side). **Isolation is mandatory:** a reported failure mode of non-isolated builds is line voltage leaking over a shared ground.
+2. **Fallback, off the shelf:** an AC Infinity UIS WiFi controller with the community HA integration. Less work, but it goes through AC Infinity's cloud, which cuts against local-first. Use only if option 1 fails its bench test.
+3. **First step before ordering anything specific:** photograph and meter the S6's controller connector (pin count, signal voltage with the supplied controller attached), because connector revisions differ and guides written for the older Molex version may not match. Then the design note names exact parts.
+4. **Likely parts for option 1** (confirm in the design note): one ESP32 board (a fourth QT Py ESP32-S3 keeps the fleet uniform), one optocoupler module, and a sacrificial or adapter cable for the fan's control connector so the factory cable is not cut.
+
+Rules carried from the 2026-10-17 answer, unchanged: no speed claim in any UI, doc or Ask answer before it is real; automation that drives the fan lives in `WorkflowRuleService` (D27 Q-OC-5); a level change is a state-changing command under the normal confirmation and permission rules; no `entity_id` before install (D1).
+
+### D28 Amendment A1 (2026-10-19)
+
+Recorded by Cowork at Nate's direction ("lets clarify all now"), resolving the conflicts between D28 as merged in #167 and Doc 27 as merged in #165. Logged as [DL-2026-10-19-01](../discrepancy-log.md).
+
+| Conflict | Ruling | Basis |
 |---|---|---|
-| **A — passive monitor.** A smart plug/relay (`ZigbeeSmartPlug` or `ZigbeeMiniRelay`) on its supply circuit, reporting power draw (D14 `power`/`energy`) and giving on/off control only | Energy telemetry, hard on/off, cheapest, uses hardware already on order | No variable-speed control from the hub; the humidistat still runs its own logic locally |
-| **B — active speed control.** An added 0–10V or PWM smart actuator module in front of the S6's control input, giving the platform true `set_level` capability | Full `DuctFanSpeedController` capability per the ontology (`turn_on`/`turn_off`/`set_level`), matching D27's capability model | New hardware not yet on order; a design note and a part choice are needed first (W-78) |
-
-**Q-DN-1 (Nate), answered 2026-10-17, in chat: "S6 is active controls."** The Cloudline S6 is an actively controlled device: Option B, a platform-controllable variable-speed fan with the full `DuctFanSpeedController` capability set (`turn_on`/`turn_off`/`set_level`). Option A is no longer the target shape. Consequences: (1) the 0-10V or PWM actuator is **not yet on order**, so W-78 now designs and chooses it (part, wiring, BOM and cost) rather than choosing between options; (2) no Cloudline wiring or control code is built before that design note is accepted, and no `entity_id` is minted before physical install (D1); (3) any automation that drives the fan belongs in the existing `WorkflowRuleService` (D27 Q-OC-5), not in a new engine, and a level change is a state-changing command that follows the normal confirmation and permission rules. Until the actuator is installed the S6 stays unmodeled or provisioned as the passive shape above; do not claim speed control in any UI, doc or Ask answer before it is real.
+| Two naming rules (D28 PascalCase; Doc 27 spaced rendering with hub) | D28's rule, with hub always present and segments never merged | Nate ratified D28's form; Doc 27's hub segment prevents Home/Cabin collisions |
+| Box 4: relay-only `UtilityRelayNode` with the old ZBMINIR2 (D28 inventory) vs sensor plus relays (Doc 27) | Sensor package plus two MINI-ZB1GSP, a `RelayControlBox`, USB plug-in power | Purchase record: SEN66, SHT45 and QT Py cut from 4 to 3 only because Box 1 was deferred, so Boxes 2 to 4 each get one; Box 4 was specified plug-and-play |
+| 4 MINI-ZB1GSP at Home, TBD (D28 inventory), plus 2 "MINI ONE PM" in Box 3 | 4 MINI-ZB1GSP total, all Cabin: Box 3 exhaust and heat, Box 4 circulation and reserved | MINI ONE PM is the MINI-ZB1GSP (same Amazon listing); only 4 were bought, in the Cabin-build order group |
+| 2 S61SZBTPB at Home | Cabin outlets | Cabin-build order group; Doc 27 |
+| 6th SNZB-02P: Home spare | Cabin lower-level duct reference | Nate's later clarification (Doc 27, 2026-10-16) supersedes the 2026-10-15 "1 spare" |
+| Midea Cube: Home basement (TBD) | Cabin, room by drain route | Doc 27 (Nate's later confirmation); D28's location was marked TBD |
+| S6: Cabin or Home, TBD | Cabin inter-level loop | Doc 27: lower-level air up, upper air back down |
+| Mean Well ×2: control nodes 3 and 4 (Doc 27) vs Boxes 2 and 3 (D28 inventory, build instructions) | Boxes 2 and 3; Box 4 plug-in USB | Box 4 specified plug-and-play; confirm at assembly |
+| `Device.related_to[]` as a new property | Nate's term, stored as D27 `relates_to` | Nate stated no preference on storage; one relation model (D27) |
+| S6 passive **or** active | Both, two capability paths | Nate, 2026-10-19 |
+| Second hardware master list (`HARDWARE_INVENTORY_2026-10-16_...`) | Retired; its unreviewed extra facts move to a WSJF review package (W-95) | One fact, one home; Nate, 2026-10-19 |
 
 ### What this is not
 

@@ -43,6 +43,9 @@ Each decision carries exactly one status. These are the only allowed values.
 | D23 | The M920q is the head for both locations; there is no Home Assistant at Home | ratified | [link](ontology-decisions.md#d23--the-m920q-is-the-head-for-both-locations-there-is-no-home-assistant-at-home) |
 | D24 | Location roles: primary and maintenance (presence counts primary only) | ratified | [link](ontology-decisions.md#d24--location-roles-primary-and-maintenance) |
 | D25 | Vault commits to `main`: a narrow exemption for rotate-secrets | ratified | [link](ontology-decisions.md#d25--vault-commits-to-main-a-narrow-exemption-for-rotate-secrets) |
+| D26 | Not allocated (no D26 section exists in `ontology-decisions.md`; noted 2026-10-19) | — | — |
+| D27 | Ontology-driven context: metadata, human concepts and assignable actions | ratified for the Phase 1 POC start (2026-10-14); Amendment A1 phase A ratified 2026-10-19 | [link](ontology-decisions.md#d27--ontology-driven-context-metadata-human-concepts-and-assignable-actions) |
+| D28 | Physical unit type-naming convention; Midea Cube and Cloudline S6 HVAC integration | ratified 2026-10-16; amended by A1 2026-10-19 | [link](ontology-decisions.md#d28--physical-unit-type-naming-convention-midea-cube-and-cloudline-s6-hvac-integration) |
 
 D-numbering note: the retired claude.ai project copy (`ontology/cabin-ontology-decisions.md`, 2026-09-05) numbers Energy as D14 and Reporting Topics as D15. This record is authoritative: D14 is Kiosk Auth, D15 Energy, D16 Reporting Topics. Logged as [DL-2026-09-23-03](../discrepancy-log.md).
 

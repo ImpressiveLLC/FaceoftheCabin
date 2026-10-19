@@ -33,7 +33,7 @@ The supplied handover says `WEBUI_AUTH=false` is intentional with Tailscale as t
 
 ## New device classes, not yet configurable (2026-10-16)
 
-[D28](../../governance/decisions/ontology-decisions.md) names three device classes with no configuration surface yet: the WiFi/ESPHome sensor-box adapter (W-84), the Midea Cube HA integration (W-77, local-LAN device key/token, no env var exists for it today) and the Cloudline S6 control path (open, W-78). No `application.yml` property, Compose env var or UI setting exists for any of them as of this entry. Do not answer a configuration question about these units from inference — there is nothing configured to describe yet.
+[D28](../../governance/decisions/ontology-decisions.md) names three device classes with no configuration surface yet: the WiFi/ESPHome sensor-box adapter (W-84), the Midea Cube HA integration (W-77, local-LAN device key/token, no env var exists for it today) and the CLOUDLINE S6 power and speed paths (W-78: relay metering, then a speed node). No `application.yml` property, Compose env var or UI setting exists for any of them as of this entry. Do not answer a configuration question about these units from inference — there is nothing configured to describe yet.
 
 ## Remaining configuration work
 
