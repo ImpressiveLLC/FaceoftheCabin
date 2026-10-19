@@ -30,6 +30,27 @@ class PerIntentSchemaTest(unittest.TestCase):
                          requires_confirmation=True, clarification=None, automation=None)
             self.assertTrue(VALIDATOR.is_valid(value), concept)
 
+    def test_unit_is_a_closed_list(self):
+        for unit in ("C", "F", "K", "percent", "lux", "seconds", "minutes", "hours"):
+            value = dict(intent="set_device_attribute", slots={"unit": unit},
+                         requires_confirmation=True, clarification=None, automation=None)
+            self.assertTrue(VALIDATOR.is_valid(value), unit)
+        # Observed in r4 (gold-08, gold-40): spelled-out and decorated units.
+        for unit in ("Fahrenheit", "°F", "none", "None", "unknown", "null"):
+            value = dict(intent="set_device_attribute", slots={"unit": unit},
+                         requires_confirmation=True, clarification=None, automation=None)
+            self.assertFalse(VALIDATOR.is_valid(value), unit)
+
+    def test_an_offset_until_cannot_be_generated(self):
+        row = next(r for r in read_jsonl(ROOT / "gold.jsonl")
+                   if (r["target"].get("automation") or {}).get("trigger", {}).get("kind") == "time_recurring")
+        for rule, ok in (("FREQ=DAILY;UNTIL=20271231T235959Z", True), ("FREQ=WEEKLY;BYDAY=MO,-1FR;INTERVAL=2", True),
+                         ("FREQ=DAILY;UNTIL=2026-12-31T23:59:59-06:00", False), ("FREQ=DAILY;UNTIL=2026-12-31T23H59M-06", False),
+                         ("FREQ=DAILY;FOO=1", False), ("FREQ=DAILY;UNTIL=20269999T235959Z", False), ("DAILY", False)):
+            value = copy.deepcopy(row["target"])
+            value["automation"]["trigger"]["rrule"] = rule
+            self.assertEqual(VALIDATOR.is_valid(value), ok, rule)
+
 
 if __name__ == "__main__":
     unittest.main()

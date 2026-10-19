@@ -7,12 +7,13 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * The small subset of JSON Schema that docs/ai-assistant/training/intent-slot/intent-slot.schema.json uses, so
  * the backend validates model output against the same file the offline tooling does and the two cannot drift
  * (no schema library is on the classpath). Supported: type (one or several), enum, properties, required,
- * additionalProperties:false, minLength, minimum, maximum, minItems, maxItems, items, anyOf, oneOf (exactly one
+ * additionalProperties:false, minLength, pattern (unanchored match, as in JSON Schema), minimum, maximum, minItems, maxItems, items, anyOf, oneOf (exactly one
  * option), const, and format "date-time" (an RFC 3339 timestamp with an offset). Anything else in a schema is
  * ignored, so this is for that contract only, not a general validator.
  */
@@ -66,6 +67,10 @@ final class JsonSchemaLite {
         }
         if (value.isTextual() && schema.has("minLength") && value.asText().length() < schema.get("minLength").asInt()) {
             errors.add(path + ": shorter than " + schema.get("minLength").asInt());
+        }
+        if (value.isTextual() && schema.has("pattern")
+                && !Pattern.compile(schema.get("pattern").asText()).matcher(value.asText()).find()) {
+            errors.add(path + ": does not match " + schema.get("pattern").asText());
         }
         if (value.isTextual() && "date-time".equals(schema.path("format").asText())) {
             try {
