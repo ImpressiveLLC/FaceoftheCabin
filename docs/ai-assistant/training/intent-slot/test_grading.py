@@ -457,5 +457,18 @@ class SessionGitFlowTests(unittest.TestCase):
         self.assertNotIn("git flow", (self.pkg / "gold.jsonl").read_text(encoding="utf-8"))
 
 
+class SessionInstructions(unittest.TestCase):
+    """The start-up steps shown on the page must work in Windows PowerShell 5.1, which has no `&&`."""
+
+    def test_page_and_messages_point_at_the_start_script_and_avoid_and_and(self):
+        grading = Path(__file__).resolve().parent / "grading"
+        self.assertTrue((grading / "start.ps1").is_file())
+        page = (grading / "index.html").read_text(encoding="utf-8")
+        self.assertIn("start.ps1", page)
+        self.assertNotIn("&&", page)
+        self.assertNotIn("&amp;&amp;", page)
+        self.assertNotIn("&&", (grading / "server.py").read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()
