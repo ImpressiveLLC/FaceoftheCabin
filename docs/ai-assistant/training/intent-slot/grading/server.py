@@ -243,7 +243,7 @@ class ReviewStore:
             "Approved examples go into gold when you press Done.")
         if self.code_fingerprint(self.dataset_file) != self.started_fingerprint:
             add("restart", "fail", "This tool is out of date", "Files changed on disk since it started (a git pull, or a finished session).",
-                "Stop the tool (Ctrl+C in its terminal) and start it again.")
+                "Run start.ps1 again (it stops the old tool for you), or stop the tool (Ctrl+C in its terminal) and start it again.")
         else:
             add("restart", "ok", "This tool is running the current files")
         code, top, _ = run_git(self.package, "rev-parse", "--show-toplevel")
@@ -254,7 +254,7 @@ class ReviewStore:
         _, branch, _ = run_git(top, "rev-parse", "--abbrev-ref", "HEAD")
         if branch != "main":
             add("branch", "fail", f"You are on branch {branch}, not main", "A grading session must start from the latest main.",
-                "Run: git checkout main && git pull   then stop and restart this tool.")
+                "Run start.ps1 from a folder that is on main (git switch main), then reload this page.")
         else:
             add("branch", "ok", "On main")
         if fetch:
@@ -263,7 +263,7 @@ class ReviewStore:
             fcode, ferr = 0, ""
         if fcode != 0:
             add("fresh", "warn", "Could not reach GitHub to check for updates", ferr.splitlines()[0] if ferr else "",
-                "Run: git pull   before you start, then restart this tool.")
+                "Run: git pull   before you start, then run start.ps1 again.")
         else:
             _, counted, _ = run_git(top, "rev-list", "--left-right", "--count", "HEAD...origin/main")
             try:
@@ -272,7 +272,7 @@ class ReviewStore:
                 ahead = behind = 0
             if behind:
                 add("fresh", "fail", f"Your copy is {behind} change{'s' if behind != 1 else ''} behind main",
-                    "Someone merged work you do not have yet.", "Run: git pull   then stop and restart this tool.")
+                    "Someone merged work you do not have yet.", "Run start.ps1 again: it does git pull and restarts this tool.")
             elif ahead and branch == "main":
                 add("fresh", "warn", f"Your main has {ahead} commit{'s' if ahead != 1 else ''} that GitHub does not", "", "Tell Code before you continue.")
             else:

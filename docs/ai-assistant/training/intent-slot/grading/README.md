@@ -6,13 +6,18 @@ Serve it with Python; opening index.html directly cannot load or save data.
 
 ## Every session, in order (the screen shows these too)
 
-1. `git checkout main && git pull` in your clone.
-2. Stop the old server (Ctrl+C) and start it again: `python docs/ai-assistant/training/intent-slot/grading/server.py`.
+1. Open **PowerShell** in your clone (the folder that holds `docs`) and run `.\docs\ai-assistant\training\intent-slot\grading\start.ps1`
+   (if scripts are disabled: `powershell -ExecutionPolicy Bypass -File .\docs\ai-assistant\training\intent-slot\grading\start.ps1`).
+   It checks you are on main, pulls the latest, stops any old copy of the tool (even one you cannot find), and starts the tool in
+   that window; leave the window open, Ctrl+C stops it. Windows PowerShell 5.1 has no `&&`: use `;` between commands.
+   On macOS or Linux: `git checkout main && git pull`, then stop the old server and run
+   `python docs/ai-assistant/training/intent-slot/grading/server.py`.
+   If the tool cannot find the packages it needs, run once: `python -m pip install -r docs/ai-assistant/training/intent-slot/requirements.txt`.
    No other options are needed: the journal is kept in `~/.fotc-grading/`, one file per dataset and contract, so a
    changed vocabulary or contract starts a fresh journal by itself (the old one is left there, untouched).
-3. Open http://127.0.0.1:8766. The checklist at the top must be all green: on main, up to date, gold clean, code unchanged since start.
-4. Grade.
-5. Press **Done, move to gold**, then confirm. The tool merges your approved examples into `gold.jsonl`, runs the package
+2. Open http://127.0.0.1:8766. The checklist at the top must be all green: on main, up to date, gold clean, code unchanged since start.
+3. Grade.
+4. Press **Done, move to gold**, then confirm. The tool merges your approved examples into `gold.jsonl`, runs the package
    tests (and puts the file back if they fail), creates a `grading/gold-YYYYMMDD-HHMM` branch, commits, pushes it, and shows
    the pull request link. It never touches main and never merges. Tell Code or Cowork "gold PR ready".
    In a candidate session (`--purpose training-candidate`) the button writes `<journal>.approved.jsonl` instead and never edits gold.
