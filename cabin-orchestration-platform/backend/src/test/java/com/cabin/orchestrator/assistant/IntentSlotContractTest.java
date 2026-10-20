@@ -65,7 +65,7 @@ class IntentSlotContractTest {
 
     @Test
     void everyHumanNeedIsAcceptedAndBrightIsNotASeparateConcept() throws ContractViolation {
-        for (String concept : List.of("cold", "hot", "stuffy", "dark", "light", "arriving", "leaving", "bedtime", "nap", "wake_up", "tv_time")) {
+        for (String concept : List.of("cold", "hot", "humid", "dark", "light", "arriving", "leaving", "bedtime", "nap", "wake_up", "tv_time")) {
             ParsedIntent parsed = contract.validate(need(concept));
             assertEquals("express_need", parsed.intent());
             assertEquals(concept, parsed.slots().get("concept"));

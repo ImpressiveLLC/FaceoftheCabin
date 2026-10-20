@@ -11568,7 +11568,7 @@ elements:
     data_class: conceptual
     data_type: xsd:string
     constraint:
-      enum: ["cold", "hot", "stuffy", "dark", "light", "arriving", "leaving", "bedtime", "nap", "wake_up", "tv_time"]
+      enum: ["cold", "hot", "humid", "dark", "light", "arriving", "leaving", "bedtime", "nap", "wake_up", "tv_time"]
       description: "Closed vocabulary of human needs the intent/slot model may return as the concept slot of an express_need request. docs/ai-assistant/training/intent-slot/concepts.json is the source; the schema enum, system prompts, Java copy and this list are tested against it."
     ui_display_name: "Human need"
     source: "D27 Concept (W-66, Cowork seed 2026-10-14, awaiting Nate per Q-OC-11). light, nap and wake_up added by Nate 2026-10-16; bright and every derivation of light or bright are aliases of light (one observational concept, different aliases)."
@@ -11592,11 +11592,13 @@ elements:
         aliases: ["too warm", "sweltering", "need to cool off"]
         relates_to:
           - {id: "cold", relation: "inverse_of"}
-      - id: "stuffy"
-        label: "Stuffy"
-        definition: "The air feels stale or close. Not a temperature complaint, so never a temperature threshold."
-        aliases: ["stale air", "muggy", "needs air"]
-        relates_to: []
+          - {id: "humid", relation: "same_remedy_as"}
+      - id: "humid"
+        label: "Humid"
+        definition: "The air feels too moist, clammy or stuffy, which the person often experiences as extra warmth or as stale, close air. Moisture in the air, not a wet surface or a leak: water on a surface is never this need."
+        aliases: ["too humid", "humidity", "muggy", "sticky", "clammy", "need to dry the air", "stuffy", "stale air", "needs air"]
+        relates_to:
+          - {id: "hot", relation: "same_remedy_as"}
       - id: "dark"
         label: "Dark"
         definition: "States that it is too dark: a lack of light described as a condition (\"it's dark in here\", \"I can't see\"). Wanting light or brightness as the thing asked for is `light`."
