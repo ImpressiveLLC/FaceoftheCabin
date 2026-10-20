@@ -4,12 +4,27 @@ This screen reviews expected labels and, separately, actual model responses.
 No model is trained or called by the screen. No devices are controlled.
 Serve it with Python; opening index.html directly cannot load or save data.
 
+## Every session, in order (the screen shows these too)
+
+1. `git checkout main && git pull` in your clone.
+2. Stop the old server (Ctrl+C) and start it again: `python docs/ai-assistant/training/intent-slot/grading/server.py`.
+   No other options are needed: the journal is kept in `~/.fotc-grading/`, one file per dataset and contract, so a
+   changed vocabulary or contract starts a fresh journal by itself (the old one is left there, untouched).
+3. Open http://127.0.0.1:8766. The checklist at the top must be all green: on main, up to date, gold clean, code unchanged since start.
+4. Grade.
+5. Press **Done, move to gold**, then confirm. The tool merges your approved examples into `gold.jsonl`, runs the package
+   tests (and puts the file back if they fail), creates a `grading/gold-YYYYMMDD-HHMM` branch, commits, pushes it, and shows
+   the pull request link. It never touches main and never merges. Tell Code or Cowork "gold PR ready".
+   In a candidate session (`--purpose training-candidate`) the button writes `<journal>.approved.jsonl` instead and never edits gold.
+
+## Details
+
 1. Start `server.py --package PATH_TO_MATCHING_PACKAGE --state PRIVATE_JOURNAL.json --port 8766`.
    The package needs gold.jsonl, contract.py, schemas and system.txt, plus its Python dependencies.
    Current main supplies 47 fixtures (41 already reviewed, 6 pending).
    **Vocabulary (2026-10-16).** `concepts.json` (11 human needs) and `areas.json` (rooms and sites) are part of the
    package and of the journal's fingerprint: changing either, the schema or `contract.py` makes an older journal
-   refuse to load, on purpose, so start a new `--state` file after pulling this change.
+   refuse to load, on purpose, so the default journal name (which includes the hashes) changes by itself; with an explicit `--state` start a new file.
 2. Enter a reviewer name. Search/filter examples, correct intent/details or the advanced JSON,
    explain corrections/rejections, then approve, reject or save for later. Decisions persist on disk.
    While you edit, the screen asks the server to check the answer (`/api/validate`, the same rules approval uses):

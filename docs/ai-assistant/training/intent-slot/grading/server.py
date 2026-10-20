@@ -6,6 +6,7 @@ import importlib.util
 import inspect
 import json
 import secrets
+import subprocess
 import sys
 import threading
 from datetime import datetime, timezone
@@ -24,12 +25,28 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
 
+def run_git(cwd, *args, timeout=20):
+    """(returncode, stdout, stderr) of a git command; never raises, so a missing git or a slow network is a result, not a crash."""
+    try:
+        out = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
+        return out.returncode, (out.stdout or "").strip(), (out.stderr or "").strip()
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return 127, "", str(exc)
+
+
+def default_journal(purpose, dataset_hash, contract_hash):
+    """One journal per dataset and contract, so a changed vocabulary or gold starts a fresh journal on its own."""
+    return Path.home() / ".fotc-grading" / f"journal-{purpose}-{dataset_hash[:8]}-{contract_hash[:8]}.json"
+
+
+
 class ReviewStore:
     def __init__(self, package, state_file, dataset=None, purpose="evaluation-only"):
         self.package = Path(package).resolve()
-        self.path = Path(state_file).resolve()
+        self.path = Path(state_file).resolve() if state_file else None
         self.lock = threading.RLock()
         self.purpose = purpose
+        self.check_command = None  # tests substitute a stub; None runs the package's own unit tests
         raw = Path(dataset or self.package / "gold.jsonl").read_bytes()
         self.dataset_hash = digest(raw)
         self.rows = [json.loads(line) for line in raw.decode("utf-8-sig").splitlines() if line.strip()]
@@ -53,6 +70,10 @@ class ReviewStore:
         vocabulary_files = [f for f in ("vocabulary.py", "concepts.json", "areas.json") if (self.package / f).exists()]
         self.contract_hash = digest(b"".join((self.package / f).read_bytes() for f in
                                            ["contract.py"] + vocabulary_files + sorted(p.name for p in self.package.glob("*.schema.json"))))
+        if self.path is None:
+            self.path = default_journal(purpose, self.dataset_hash, self.contract_hash).resolve()
+        self.started_fingerprint = self.code_fingerprint(dataset)
+        self.dataset_file = Path(dataset or self.package / "gold.jsonl").resolve()
         self.state = {"version": 1, "purpose": purpose, "dataset_sha256": self.dataset_hash,
                       "contract_sha256": self.contract_hash, "reviews": {}, "audit": [],
                       "report": None, "model_reviews": {}}
@@ -192,6 +213,148 @@ class ReviewStore:
             self.persist(next_state)
             return entry
 
+    def code_fingerprint(self, dataset=None):
+        """Hash of every file this session depends on: the tool, the contract, the vocabulary and the examples. If it changes
+        while the tool runs (a git pull, a finished session), the tool is out of date and must be restarted."""
+        names = sorted(p for p in HERE.glob("*") if p.suffix in {".py", ".js", ".html", ".css"})
+        names += [self.package / f for f in ("contract.py", "vocabulary.py", "concepts.json", "areas.json", "system.txt")
+                  if (self.package / f).exists()]
+        names += sorted(self.package.glob("*.schema.json"))
+        names.append(Path(dataset or self.package / "gold.jsonl"))
+        return digest(b"".join(Path(n).read_bytes() for n in names if Path(n).exists()))
+
+    def counts(self):
+        counts = {"approved": 0, "rejected": 0, "later": 0, "pending": 0}
+        for row in self.rows:
+            decision = self.state["reviews"].get(row["id"], {}).get("decision")
+            key = {"approved": "approved", "rejected": "rejected"}.get(decision, "later" if decision else "pending")
+            counts[key] += 1
+        return counts
+
+    def preflight(self, fetch=True):
+        """The checklist shown above the examples. Each check is ok, warn (does not block) or fail (blocks Done)."""
+        checks = []
+
+        def add(cid, status, label, detail="", fix=""):
+            checks.append({"id": cid, "status": status, "label": label, "detail": detail, "fix": fix})
+
+        counts = self.counts()
+        add("work", "ok", f"{counts['approved']} approved, {counts['pending'] + counts['later']} still to review, {counts['rejected']} rejected",
+            "Approved examples go into gold when you press Done.")
+        if self.code_fingerprint(self.dataset_file) != self.started_fingerprint:
+            add("restart", "fail", "This tool is out of date", "Files changed on disk since it started (a git pull, or a finished session).",
+                "Stop the tool (Ctrl+C in its terminal) and start it again.")
+        else:
+            add("restart", "ok", "This tool is running the current files")
+        code, top, _ = run_git(self.package, "rev-parse", "--show-toplevel")
+        if code != 0:
+            add("git", "warn", "Not inside a git checkout", "Done will still save gold.jsonl here, but it cannot make a branch for you.",
+                "Run the tool from a clone of the repository.")
+            return {"checks": checks, "blockers": sum(c["status"] == "fail" for c in checks), "repo": None}
+        _, branch, _ = run_git(top, "rev-parse", "--abbrev-ref", "HEAD")
+        if branch != "main":
+            add("branch", "fail", f"You are on branch {branch}, not main", "A grading session must start from the latest main.",
+                "Run: git checkout main && git pull   then stop and restart this tool.")
+        else:
+            add("branch", "ok", "On main")
+        if fetch:
+            fcode, _, ferr = run_git(top, "fetch", "origin", "main", timeout=20)
+        else:
+            fcode, ferr = 0, ""
+        if fcode != 0:
+            add("fresh", "warn", "Could not reach GitHub to check for updates", ferr.splitlines()[0] if ferr else "",
+                "Run: git pull   before you start, then restart this tool.")
+        else:
+            _, counted, _ = run_git(top, "rev-list", "--left-right", "--count", "HEAD...origin/main")
+            try:
+                ahead, behind = (int(x) for x in counted.split())
+            except ValueError:
+                ahead = behind = 0
+            if behind:
+                add("fresh", "fail", f"Your copy is {behind} change{'s' if behind != 1 else ''} behind main",
+                    "Someone merged work you do not have yet.", "Run: git pull   then stop and restart this tool.")
+            elif ahead and branch == "main":
+                add("fresh", "warn", f"Your main has {ahead} commit{'s' if ahead != 1 else ''} that GitHub does not", "", "Tell Code before you continue.")
+            else:
+                add("fresh", "ok", "Up to date with GitHub main")
+        rel = str(self.dataset_file.relative_to(Path(top).resolve())) if self.dataset_file.is_relative_to(Path(top).resolve()) else None
+        _, dirty, _ = run_git(top, "status", "--porcelain", "--", rel) if rel else (0, "", "")
+        if dirty:
+            add("clean", "fail", "gold.jsonl has changes that are not saved in git", dirty,
+                "Ask Code to commit or discard them first.")
+        else:
+            add("clean", "ok", "No unsaved changes to gold")
+        return {"checks": checks, "blockers": sum(c["status"] == "fail" for c in checks), "repo": top, "branch": branch}
+
+    def finish(self, data=None):
+        """Done, move to gold: write the approved examples into gold.jsonl, prove the package still passes its own tests, then
+        put them on a new branch and push it for review. Never touches main."""
+        with self.lock:
+            rows = self.approved_rows()
+            if not rows:
+                raise ValueError("Nothing is approved yet. Approve at least one example, then press Done.")
+            if self.purpose != "evaluation-only":
+                out = self.path.with_name(self.path.stem + ".approved.jsonl")
+                out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+                return {"mode": "candidates", "count": len(rows), "path": str(out),
+                        "message": "Approved candidates saved next to your journal. Candidates are never added to gold."}
+            report = self.preflight(fetch=True)
+            blockers = [c for c in report["checks"] if c["status"] == "fail"]
+            if blockers:
+                raise RuntimeError("Not ready: " + "; ".join(f"{c['label']}. {c['fix']}" for c in blockers))
+            gold = self.dataset_file
+            original = gold.read_bytes()
+            if digest(original) != self.dataset_hash:
+                raise RuntimeError("gold.jsonl changed since this tool started. Stop the tool and start it again.")
+            by_id = {r["id"]: r for r in rows}
+            merged = [by_id.get(r["id"], r) for r in self.rows]
+            temp = gold.with_name(gold.name + ".tmp")
+            temp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in merged), encoding="utf-8")
+            temp.replace(gold)
+            try:
+                command = self.check_command or [sys.executable, "-B", "-m", "unittest", "discover", "-s", str(self.package), "-p", "test_*.py"]
+                result = subprocess.run(command, cwd=str(self.package), capture_output=True, text=True, timeout=180)
+                tests_ok, tail = result.returncode == 0, (result.stderr or result.stdout).strip().splitlines()[-6:]
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                tests_ok, tail = False, [str(exc)]
+            if not tests_ok:
+                gold.write_bytes(original)
+                raise ValueError("The package's own checks failed with these examples, so nothing was changed. " + " | ".join(tail))
+            reply = {"mode": "gold", "count": len(rows), "tests": "passed", "branch": None, "pushed": False, "pr_url": None,
+                     "commands": []}
+            top = report.get("repo")
+            if top:
+                branch = "grading/gold-" + datetime.now().strftime("%Y%m%d-%H%M")
+                rel = str(gold.relative_to(Path(top).resolve()))
+                steps = [("checkout", "-b", branch), ("add", "--", rel),
+                         ("commit", "-m", f"gold: apply grading session ({len(rows)} approved)")]
+                for step in steps:
+                    code, _, err = run_git(top, *step)
+                    if code != 0:
+                        reply["commands"] = [f"git {' '.join(x)}" for x in steps[steps.index(step):]] + [f"git push -u origin {branch}"]
+                        reply["message"] = f"Gold is updated on disk, but git said: {err.splitlines()[0] if err else 'failed'}"
+                        break
+                else:
+                    reply["branch"] = branch
+                    code, _, err = run_git(top, "push", "-u", "origin", branch, timeout=90)
+                    reply["pushed"] = code == 0
+                    if code == 0:
+                        _, remote, _ = run_git(top, "config", "--get", "remote.origin.url")
+                        slug = remote.removesuffix(".git").split("github.com")[-1].lstrip(":/")
+                        reply["pr_url"] = f"https://github.com/{slug}/compare/main...{branch}?expand=1" if "github.com" in remote else None
+                        run_git(top, "checkout", "main")
+                        reply["message"] = "Moved to gold on a new branch and pushed it. Open the pull request, then tell Code."
+                    else:
+                        reply["commands"] = [f"git push -u origin {branch}"]
+                        reply["message"] = f"Committed on branch {branch}, but the push failed: {err.splitlines()[0] if err else 'unknown'}"
+            else:
+                reply["message"] = "Gold is updated in this folder. Tell Code to commit it."
+            state = copy.deepcopy(self.state)
+            state["audit"].append({"type": "gold_applied", "count": len(rows), "at": datetime.now(timezone.utc).isoformat(),
+                                   "branch": reply["branch"]})
+            self.persist(state)
+            return reply
+
     def approved_rows(self):
         with self.lock:
             result = []
@@ -256,6 +419,8 @@ class Handler(BaseHTTPRequestHandler):
         route = urlparse(self.path).path
         if route == "/api/state":
             self.send(200, {**self.server.store.snapshot(), "token": self.server.token})
+        elif route == "/api/preflight":
+            self.send(200, self.server.store.preflight())
         elif route == "/api/export/gold":
             rows = self.server.store.approved_rows()
             if not rows:
@@ -268,9 +433,9 @@ class Handler(BaseHTTPRequestHandler):
             data.pop("schema")
             data["release_eligible"] = False
             self.send(200, data, filename="poc2-human-reviews.json")
-        elif route in {"/", "/app.js", "/style.css"}:
-            name = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}[route]
-            mime = {"/": "text/html; charset=utf-8", "/app.js": "text/javascript; charset=utf-8", "/style.css": "text/css; charset=utf-8"}[route]
+        elif route in {"/", "/app.js", "/session.js", "/style.css"}:
+            name = {"/": "index.html", "/app.js": "app.js", "/session.js": "session.js", "/style.css": "style.css"}[route]
+            mime = {"/": "text/html; charset=utf-8", "/app.js": "text/javascript; charset=utf-8", "/session.js": "text/javascript; charset=utf-8", "/style.css": "text/css; charset=utf-8"}[route]
             self.send(200, (HERE / name).read_bytes(), mime)
         else:
             self.send(404, {"error": "Not found"})
@@ -286,7 +451,8 @@ class Handler(BaseHTTPRequestHandler):
             methods = {"/api/review": self.server.store.save_review,
                        "/api/validate": self.server.store.check_draft,
                        "/api/report": self.server.store.import_report,
-                       "/api/model-review": self.server.store.save_model_review}
+                       "/api/model-review": self.server.store.save_model_review,
+                       "/api/finish": self.server.store.finish}
             if self.path not in methods:
                 self.send(404, {"error": "Not found"})
                 return
@@ -304,7 +470,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, default=HERE.parent,
                         help="Folder containing gold.jsonl and its matching contract.py/schema")
-    parser.add_argument("--state", type=Path, required=True, help="Private local review journal")
+    parser.add_argument("--state", type=Path, help="Private local review journal (default: a per-dataset file under ~/.fotc-grading, so a changed gold or vocabulary starts a fresh one)")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--dataset", type=Path, help="Explicit candidate JSONL; defaults to package gold")
     parser.add_argument("--purpose", choices=["evaluation-only", "training-candidate"], default="evaluation-only")

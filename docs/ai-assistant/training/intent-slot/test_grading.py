@@ -1,9 +1,13 @@
 import copy
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -282,6 +286,175 @@ class GradingTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
+
+
+def copy_package(destination):
+    """A throwaway copy of the intent-slot package, so finishing a session can rewrite its gold.jsonl safely."""
+    shutil.copytree(ROOT, destination, ignore=shutil.ignore_patterns("__pycache__", "candidates", "rounds", "sft", ".venv", "*.tmp"))
+    return Path(destination)
+
+
+def git(cwd, *args):
+    return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, check=True).stdout.strip()
+
+
+class SessionFlowTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self.temp.name)
+        self.pkg = copy_package(self.tmp / "pkg")
+        self.store = ReviewStore(self.pkg, self.tmp / "journal.json")
+        self.store.check_command = [sys.executable, "-c", "pass"]
+        self.row = self.store.rows[0]
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def approve(self, store=None, index=0, notes="ok"):
+        store = store or self.store
+        row = store.rows[index]
+        store.save_review({"id": row["id"], "reviewer": "Nate", "decision": "approved", "notes": notes,
+                           "target": copy.deepcopy(row["target"]), "revision": store.state["reviews"].get(row["id"], {}).get("revision", 0)})
+
+    def test_default_journal_is_per_dataset_and_contract(self):
+        with mock.patch.object(Path, "home", return_value=self.tmp):
+            store = ReviewStore(self.pkg, None)
+        self.assertEqual(store.path.parent, (self.tmp / ".fotc-grading").resolve())
+        self.assertIn(store.dataset_hash[:8], store.path.name)
+        self.assertIn(store.contract_hash[:8], store.path.name)
+
+    def test_preflight_outside_git_warns_but_does_not_block(self):
+        report = self.store.preflight()
+        self.assertEqual(report["blockers"], 0)
+        self.assertIn("git", {c["id"] for c in report["checks"] if c["status"] == "warn"})
+
+    def test_a_changed_file_means_restart(self):
+        (self.pkg / "concepts.json").write_text((self.pkg / "concepts.json").read_text() + "\n")
+        checks = {c["id"]: c for c in self.store.preflight()["checks"]}
+        self.assertEqual(checks["restart"]["status"], "fail")
+        self.assertIn("start it again", checks["restart"]["fix"])
+
+    def test_done_moves_only_approved_rows_and_keeps_the_rest_byte_identical(self):
+        before = [l for l in (self.pkg / "gold.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.approve(notes="Nate approved this one")
+        result = self.store.finish()
+        self.assertEqual((result["mode"], result["count"], result["tests"]), ("gold", 1, "passed"))
+        after = (self.pkg / "gold.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(after), len(before))
+        self.assertEqual(after[1:], before[1:])
+        moved = json.loads(after[0])
+        self.assertEqual(moved["provenance"]["review_status"], "approved")
+        self.assertEqual(moved["provenance"]["reviewer"], "Nate")
+        self.assertEqual(moved["provenance"]["review_notes"], "Nate approved this one")
+
+    def test_done_with_nothing_approved_changes_nothing(self):
+        before = (self.pkg / "gold.jsonl").read_bytes()
+        with self.assertRaises(ValueError):
+            self.store.finish()
+        self.assertEqual((self.pkg / "gold.jsonl").read_bytes(), before)
+
+    def test_failing_package_checks_roll_the_file_back(self):
+        before = (self.pkg / "gold.jsonl").read_bytes()
+        self.approve(notes="changed so the bytes differ")
+        self.store.check_command = [sys.executable, "-c", "import sys; print('drift'); sys.exit(1)"]
+        with self.assertRaises(ValueError) as raised:
+            self.store.finish()
+        self.assertIn("nothing was changed", str(raised.exception))
+        self.assertEqual((self.pkg / "gold.jsonl").read_bytes(), before)
+
+    def test_candidate_sessions_never_write_gold(self):
+        gold = (self.pkg / "gold.jsonl").read_bytes()
+        cand = self.tmp / "candidates.jsonl"
+        shutil.copy(self.pkg / "gold.jsonl", cand)
+        store = ReviewStore(self.pkg, self.tmp / "cand-journal.json", cand, "training-candidate")
+        self.approve(store)
+        result = store.finish()
+        self.assertEqual(result["mode"], "candidates")
+        self.assertTrue(Path(result["path"]).exists())
+        self.assertEqual((self.pkg / "gold.jsonl").read_bytes(), gold)
+
+    def test_endpoints_need_the_token_and_report_state(self):
+        server = Server(("127.0.0.1", 0), self.store)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            with urllib.request.urlopen(base + "/api/preflight") as response:
+                report = json.load(response)
+            self.assertIn("checks", report)
+            with urllib.request.urlopen(base + "/session.js") as response:
+                self.assertIn("Done, move to gold", response.read().decode())
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                urllib.request.urlopen(urllib.request.Request(base + "/api/finish", data=b"{}"))
+            self.assertEqual(raised.exception.code, 403)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+
+class SessionGitFlowTests(unittest.TestCase):
+    """The real path: a clone of main, a remote, a pull request branch, and the repo left on main."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self.temp.name)
+        self.remote = self.tmp / "remote.git"
+        git(self.tmp, "init", "--bare", "-b", "main", str(self.remote))
+        self.work = self.tmp / "work"
+        self.work.mkdir()
+        git(self.work, "init", "-b", "main")
+        git(self.work, "config", "user.email", "nate@example.com")
+        git(self.work, "config", "user.name", "Nate")
+        self.pkg = copy_package(self.work / "pkg")
+        git(self.work, "add", "-A")
+        git(self.work, "commit", "-m", "base")
+        git(self.work, "remote", "add", "origin", "https://github.com/ImpressiveLLC/FaceoftheCabin.git")
+        git(self.work, "config", "url." + str(self.remote) + ".insteadOf", "https://github.com/ImpressiveLLC/FaceoftheCabin.git")
+        git(self.work, "push", "-u", "origin", "main")
+        self.store = ReviewStore(self.pkg, self.tmp / "journal.json")
+        self.store.check_command = [sys.executable, "-c", "pass"]
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def approve(self):
+        row = self.store.rows[0]
+        self.store.save_review({"id": row["id"], "reviewer": "Nate", "decision": "approved", "notes": "git flow",
+                                "target": copy.deepcopy(row["target"]), "revision": 0})
+
+    def test_a_fresh_clone_on_main_is_green(self):
+        report = self.store.preflight()
+        self.assertEqual(report["blockers"], 0, report)
+        self.assertEqual({c["id"]: c["status"] for c in report["checks"]}["fresh"], "ok")
+
+    def test_behind_main_blocks_with_the_pull_instruction(self):
+        other = self.tmp / "other"
+        git(self.tmp, "clone", str(self.remote), str(other))
+        git(other, "config", "user.email", "x@example.com")
+        git(other, "config", "user.name", "X")
+        (other / "NOTE.txt").write_text("a merge landed\n")
+        git(other, "add", "-A")
+        git(other, "commit", "-m", "someone merged")
+        git(other, "push", "origin", "main")
+        checks = {c["id"]: c for c in self.store.preflight()["checks"]}
+        self.assertEqual(checks["fresh"]["status"], "fail")
+        self.assertIn("git pull", checks["fresh"]["fix"])
+        self.approve()
+        with self.assertRaises(RuntimeError):
+            self.store.finish()
+
+    def test_done_branches_pushes_and_leaves_the_repo_on_main(self):
+        self.approve()
+        result = self.store.finish()
+        self.assertTrue(result["pushed"], result)
+        self.assertTrue(result["branch"].startswith("grading/gold-"))
+        self.assertIn("compare/main..." + result["branch"], result["pr_url"])
+        self.assertEqual(git(self.work, "rev-parse", "--abbrev-ref", "HEAD"), "main")
+        self.assertIn(result["branch"], git(self.remote, "branch", "--list"))
+        on_branch = git(self.remote, "show", f"{result['branch']}:pkg/gold.jsonl").splitlines()[0]
+        self.assertEqual(json.loads(on_branch)["provenance"]["review_notes"], "git flow")
+        self.assertNotIn("git flow", (self.pkg / "gold.jsonl").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
