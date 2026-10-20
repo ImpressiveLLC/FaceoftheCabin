@@ -7,7 +7,7 @@ It is tooling and provisional fixtures, not a trained or validated model.
 ## Needs and targets
 
 `express_need` requires a `concept` slot and confirmation. The vocabulary lives in
-[`concepts.json`](concepts.json): `cold`, `hot`, `stuffy`, `dark`, `light`, `arriving`, `leaving`,
+[`concepts.json`](concepts.json): `cold`, `hot`, `humid`, `dark`, `light`, `arriving`, `leaving`,
 `bedtime`, `nap`, `wake_up` and `tv_time`. The first eight are the D27 seed set awaiting Nate's
 confirmation; `light`, `nap` and `wake_up` were added by Nate on 2026-10-16 while grading, and `bright`
 and every derivation of light or bright (brighter, brighten, brightness, lighting...) are **aliases** of

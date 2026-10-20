@@ -116,7 +116,7 @@
     "target": {
       "intent": "express_need",
       "slots": {
-        "concept": "stuffy"
+        "concept": "humid"
       },
       "requires_confirmation": true,
       "clarification": null,
