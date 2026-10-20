@@ -112,7 +112,7 @@ Nate's ruling (2026-10-16): a human or a human proxy (Cowork, Codex) satisfies "
 | Step | What | Owner | Exit |
 |---|---|---|---|
 | S0 | **Regenerate the candidates** from the pinned revisions (a download from three public sources; needs Nate's explicit yes). Record counts, hashes and licenses. **Exclude Snips (12 rows) until its dataset license is verified.** | Code | `manifest.json` committed (hashes only, never the files) |
-| S1 | Coverage audit: map the candidates to classes, de-duplicate, draw the stratified sample | Code | sample list with strata counts; the rest stays unreviewed |
+| S1 | Coverage audit: map the candidates to classes, de-duplicate, draw the stratified sample | Code | sample list with strata counts; the rest stays unreviewed Done 2026-10-19: [`sft/s1/`](../training/intent-slot/sft/s1/README.md) (305 distinct wordings, not 941; the sample is 300 of them) |
 | S2 | Author the training families (clarify first, with minimal pairs) | Codex and Code | families committed in `synthesis-templates.json` form |
 | S3 | Author the frozen test and safety set | Cowork | sealed: committed as hashes and counts only until freeze |
 | S4 | Blind proxy review, Tracks A, B and C | Cowork and Codex as reviewers | agreement report per track; disagreement queue |
