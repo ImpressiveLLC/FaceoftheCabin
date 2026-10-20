@@ -202,7 +202,7 @@ class TargetChecks(unittest.TestCase):
         command = lambda name, state: {"intent": "set_device_state", "slots": {"device_name": name, "state": state}}
         self.assertEqual(v.supported_needs(command("lights", "on")), ["dark", "light"])
         self.assertEqual(v.supported_needs(command("hall lamp", "On")), ["dark", "light"])
-        self.assertEqual(v.supported_needs(command("fan", "on")), ["hot", "stuffy"])
+        self.assertEqual(v.supported_needs(command("fan", "on")), ["hot", "stuffy", "humid"])
         self.assertEqual(v.supported_needs(command("heater", "on")), ["cold"])
         self.assertEqual(v.supported_needs(command("lights", "off")), [])
         self.assertEqual(v.supported_needs(self.need(concept="light")), [])

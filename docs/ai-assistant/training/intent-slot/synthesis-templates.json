@@ -578,5 +578,37 @@
         ]
       }
     }
+  },
+  {
+    "id": "train-humid",
+    "utterances": [
+      "The air in here feels sticky",
+      "It is really clammy today"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "humid"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-need-humid",
+    "utterances": [
+      "I need to dry out the air",
+      "There is too much moisture in the air"
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "humid"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
   }
 ]
