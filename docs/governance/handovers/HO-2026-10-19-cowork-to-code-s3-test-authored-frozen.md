@@ -7,8 +7,8 @@ The 170 authored rows are **not in this repo** and must never be committed, past
 | Set | `test` authored part, frozen 2026-10-19 (Nate's go) |
 | Rows | 170 |
 | SHA-256 (exact bytes, not a reserialization) | `df98ae133a9b9c060c7f03a9f177251b4461d0aaa14e810f0f8ed73ceb6a33f2` |
-| Bytes | 75,803 |
-| Lineage (superseded, same IDs) | v1 `3d0808ed…d1cd1ba`, v2 `8702684e…ca3275` |
+| Bytes | 76,292 |
+| Lineage (superseded, same IDs) | v1 `3d0808ed…487cd1ba`, v2 `8702684e…ca3275` |
 | Validation | every row passes the repo's `contract.validate`, including its card target; text unique within the file and against dev gold and the sealed safety set (no exact or 80%-overlap match). Full schema runs, model runs, integration: `NOT_RUN` |
 
 ## Counts by class (authored)
