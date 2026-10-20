@@ -143,7 +143,7 @@ class CommittedRecord(unittest.TestCase):
         text = (COMMITTED / "s1-manifest.json").read_text(encoding="utf-8") + (COMMITTED / "families.json").read_text(encoding="utf-8")
         self.assertLess(len(text), 120000)
         self.assertIsNone(re.search(r'"(text|original|utterance|sentences)"', text))
-        self.assertEqual(sorted(p.name for p in COMMITTED.iterdir()), ["README.md", "families.json", "s1-manifest.json"])
+        self.assertEqual(sorted(p.name for p in COMMITTED.iterdir()), ["README.md", "families.json", "reserved-ohf.json", "s1-manifest.json"])
 
 
 if __name__ == "__main__":
