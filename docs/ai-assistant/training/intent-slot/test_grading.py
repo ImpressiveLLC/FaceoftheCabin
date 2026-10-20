@@ -37,6 +37,9 @@ class GradingTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name) / "reviews.json"
+        patcher = mock.patch.object(ReviewStore, "seed_from_gold", lambda self: None)  # these tests start from an all-pending journal
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.store = ReviewStore(ROOT, self.path)
         self.row = self.store.rows[0]
 
@@ -303,6 +306,9 @@ class SessionFlowTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.tmp = Path(self.temp.name)
         self.pkg = copy_package(self.tmp / "pkg")
+        patcher = mock.patch.object(ReviewStore, "seed_from_gold", lambda self: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.store = ReviewStore(self.pkg, self.tmp / "journal.json")
         self.store.check_command = [sys.executable, "-c", "pass"]
         self.row = self.store.rows[0]
@@ -412,6 +418,9 @@ class SessionGitFlowTests(unittest.TestCase):
         git(self.work, "remote", "add", "origin", "https://github.com/ImpressiveLLC/FaceoftheCabin.git")
         git(self.work, "config", "url." + str(self.remote) + ".insteadOf", "https://github.com/ImpressiveLLC/FaceoftheCabin.git")
         git(self.work, "push", "-u", "origin", "main")
+        patcher = mock.patch.object(ReviewStore, "seed_from_gold", lambda self: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.store = ReviewStore(self.pkg, self.tmp / "journal.json")
         self.store.check_command = [sys.executable, "-c", "pass"]
 
@@ -468,6 +477,80 @@ class SessionInstructions(unittest.TestCase):
         self.assertNotIn("&&", page)
         self.assertNotIn("&amp;&amp;", page)
         self.assertNotIn("&&", (grading / "server.py").read_text(encoding="utf-8"))
+
+
+class KeepApprovalsTests(unittest.TestCase):
+    """A new session asks only about new work; editing proposed asks does not throw graded work away."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self.temp.name)
+        self.pkg = copy_package(self.tmp / "pkg")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def make(self):
+        store = ReviewStore(self.pkg, self.tmp / "journal.json")
+        store.check_command = [sys.executable, "-c", "pass"]
+        return store
+
+    def set_pending(self, row_id):
+        gold = self.pkg / "gold.jsonl"
+        rows = [json.loads(line) for line in gold.read_text(encoding="utf-8").splitlines()]
+        for row in rows:
+            if row["id"] == row_id:
+                row["provenance"]["review_status"] = "pending"
+        gold.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+
+    def test_rows_already_approved_in_gold_start_approved(self):
+        counts = self.make().counts()
+        self.assertEqual((counts["approved"], counts["pending"], counts["new"]), (49, 0, 0))
+
+    def test_done_with_only_carried_over_rows_has_nothing_new_to_move(self):
+        store = self.make()
+        before = (self.pkg / "gold.jsonl").read_bytes()
+        with self.assertRaises(ValueError) as raised:
+            store.finish()
+        self.assertIn("Nothing new", str(raised.exception))
+        self.assertEqual((self.pkg / "gold.jsonl").read_bytes(), before)
+
+    def test_only_the_new_row_is_rewritten_and_every_other_line_keeps_its_bytes(self):
+        self.set_pending("gold-05")
+        store = self.make()
+        before = (self.pkg / "gold.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual((store.counts()["pending"], store.counts()["approved"]), (1, 48))
+        row = next(r for r in store.rows if r["id"] == "gold-05")
+        store.save_review({"id": "gold-05", "reviewer": "Nate", "decision": "approved", "notes": "",
+                           "target": copy.deepcopy(row["target"]), "revision": 0})
+        self.assertEqual(store.counts()["new"], 1)
+        result = store.finish()
+        self.assertEqual(result["count"], 1)
+        after = (self.pkg / "gold.jsonl").read_text(encoding="utf-8").splitlines()
+        changed = [i for i, (a, b) in enumerate(zip(before, after)) if a != b]
+        self.assertEqual([json.loads(after[i])["id"] for i in changed], ["gold-05"])
+
+    def test_a_carried_over_row_that_no_longer_passes_the_contract_is_asked_again(self):
+        gold = self.pkg / "gold.jsonl"
+        rows = [json.loads(line) for line in gold.read_text(encoding="utf-8").splitlines()]
+        need = next(r for r in rows if r["target"]["intent"] == "express_need")
+        need["target"]["slots"]["concept"] = "no_such_need"
+        gold.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+        store = self.make()
+        self.assertEqual(store.state["reviews"].get(need["id"]), None)
+        self.assertEqual(store.counts()["pending"], 1)
+
+    def test_editing_proposed_asks_keeps_the_fingerprint_but_changing_an_alias_does_not(self):
+        base = self.make().contract_hash
+        path = self.pkg / "concepts.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["concepts"][0]["asks"].append({"text": "Another option", "intent": "set_device_state", "device_words": ["x"], "state": "on"})
+        data["concepts"][0]["definition"] += " Reworded."
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        self.assertEqual(ReviewStore(self.pkg, self.tmp / "j2.json").contract_hash, base)
+        data["concepts"][0]["aliases"].append("brand new alias")
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        self.assertNotEqual(ReviewStore(self.pkg, self.tmp / "j3.json").contract_hash, base)
 
 
 if __name__ == "__main__":
