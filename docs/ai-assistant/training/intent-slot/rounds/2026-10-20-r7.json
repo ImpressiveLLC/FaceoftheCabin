@@ -1,0 +1,107 @@
+{
+  "round": "2026-10-20-r7",
+  "model": "cabin-intent-slot-poc2-r7",
+  "prompt_sha256": "3d76a3b14789ac32591c792574290e8508c856fe613fd04c370c0f347edda43b",
+  "gold_sha256": "ef2f2288bf7c3e0a255e4d23788c901bdec67069b3167214d1e07e58c95e86b2",
+  "schema_sha256": "7c884202d835310313cf19f8f2b268f8244aa59eddba963e858b2ecc198c194e",
+  "fixtures": 49,
+  "valid_output_rate": 0.9387755102040817,
+  "intent_accuracy": 0.7959183673469388,
+  "slot_micro_f1": 0.5688073394495413,
+  "critical_fixture_failures": 16,
+  "per_intent": {
+    "answer_question": {
+      "correct": 4,
+      "total": 4
+    },
+    "clarify": {
+      "correct": 3,
+      "total": 9
+    },
+    "express_need": {
+      "correct": 17,
+      "total": 17
+    },
+    "get_device_state": {
+      "correct": 2,
+      "total": 2
+    },
+    "propose_automation": {
+      "correct": 4,
+      "total": 5
+    },
+    "set_device_attribute": {
+      "correct": 0,
+      "total": 3
+    },
+    "set_device_state": {
+      "correct": 5,
+      "total": 5
+    },
+    "unsupported": {
+      "correct": 4,
+      "total": 4
+    }
+  },
+  "confusions": {
+    "clarify->set_device_state": 3,
+    "set_device_attribute->set_device_state": 2,
+    "clarify->unsupported": 2,
+    "set_device_attribute->INVALID": 1,
+    "clarify->INVALID": 1,
+    "propose_automation->INVALID": 1
+  },
+  "failed": {
+    "gold-07": {
+      "want": "set_device_attribute",
+      "got": "INVALID",
+      "critical": false
+    },
+    "gold-08": {
+      "want": "set_device_attribute",
+      "got": "set_device_state",
+      "critical": false
+    },
+    "gold-13": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-14": {
+      "want": "set_device_attribute",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-15": {
+      "want": "clarify",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-16": {
+      "want": "clarify",
+      "got": "unsupported",
+      "critical": true
+    },
+    "gold-31": {
+      "want": "propose_automation",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-37": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-40": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-47": {
+      "want": "clarify",
+      "got": "unsupported",
+      "critical": true
+    }
+  },
+  "released": false
+}
