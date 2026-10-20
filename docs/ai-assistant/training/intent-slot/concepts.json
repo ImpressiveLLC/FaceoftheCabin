@@ -3,9 +3,9 @@
   "status": "proposed",
   "note": "Single source for the human-need vocabulary (D27 Concept, W-66). The intent-slot schema enum, the system prompts, the ontology entity human_need_concept, the Java bundled schema and the grading screen must all list exactly these ids; test_vocabulary.py and the Java tests fail if any of them drifts. Definitions, aliases and asks are proposals awaiting Nate's review (Q-OC-11). Asks are deliberately empty where nobody has reviewed a mapping: a need never picks a device by itself.",
   "decided": {
-    "cold, hot, stuffy, dark, arriving, leaving, bedtime, tv_time": "Seed set from D27 (Cowork, 2026-10-14); awaiting Nate (Q-OC-11).",
+    "cold, hot, stuffy, dark, arriving, leaving, bedtime, tv_time": "Seed set from D27 (Cowork, 2026-10-14); awaiting Nate (Q-OC-11). stuffy was folded into humid on 2026-10-19 (see humid).",
     "light, nap, wake_up": "Added by Nate, 2026-10-16, while grading gold-01: the vocabulary had dark but not the want for light, and bedtime but not nap or wake up. 'bright' and its derivations are synonyms of light, recorded as aliases so one idea has one label (Nate confirmed this on 2026-10-16: one observational concept, different aliases).",
-    "humid": "Added 2026-10-19 at Nate's direction (replacing the draft word 'damp'): humidity is moisture in the air, often felt as extra warmth, and splits the moisture meaning out of stuffy per Nate's gold-25 note. Aliases include muggy (moved from stuffy). 'Damp' is deliberately not an alias: wet surfaces and leaks belong to the leak and freeze flows, never to this need. The asks are Cowork proposals awaiting Nate's review; the server, not the model, chooses any response."
+    "humid": "Added 2026-10-19 at Nate's direction (replacing the draft word 'damp'): humidity is moisture in the air, often felt as extra warmth. Nate, 2026-10-19 (grading gold-25 and in chat): 'stuffy is a pseudonym for Humid, treat them as the same concept', so stuffy, muggy, stale air and needs air are aliases of humid and stuffy is no longer a concept. 'Damp' is deliberately not an alias: wet surfaces and leaks belong to the leak and freeze flows, never to this need. The asks are Cowork proposals awaiting Nate's review; the server, not the model, chooses any response."
   },
   "concepts": [
     {
@@ -27,21 +27,12 @@
       "asks": [{"text": "Turn on a fan", "intent": "set_device_state", "device_words": ["fan"], "state": "on"}]
     },
     {
-      "id": "stuffy",
-      "label": "Stuffy",
-      "definition": "The air feels stale or close from poor air movement. Not a temperature complaint, so never a temperature threshold. Moisture is humid, not this.",
-      "aliases": ["stale air", "needs air"],
-      "relates_to": [{"id": "humid", "relation": "same_remedy_as"}],
-      "examples": ["The room feels stuffy"],
-      "asks": [{"text": "Turn on a fan", "intent": "set_device_state", "device_words": ["fan"], "state": "on"}]
-    },
-    {
       "id": "humid",
       "label": "Humid",
-      "definition": "The air feels too moist or clammy, which the person often experiences as extra warmth. Moisture in the air, not a wet surface or a leak: water on a surface is never this need.",
-      "aliases": ["too humid", "humidity", "muggy", "sticky", "clammy", "need to dry the air"],
-      "relates_to": [{"id": "hot", "relation": "same_remedy_as"}, {"id": "stuffy", "relation": "same_remedy_as"}],
-      "examples": ["It is too humid in here", "The air feels sticky"],
+      "definition": "The air feels too moist, close or stuffy, which the person often experiences as extra warmth or stale air. Moisture or poor air movement in the air, not a wet surface or a leak: water on a surface is never this need.",
+      "aliases": ["too humid", "humidity", "muggy", "sticky", "clammy", "stuffy", "stale air", "needs air", "need to dry the air"],
+      "relates_to": [{"id": "hot", "relation": "same_remedy_as"}],
+      "examples": ["It is too humid in here", "The air feels sticky", "The room feels stuffy"],
       "asks": [{"text": "Turn on a dehumidifier", "intent": "set_device_state", "device_words": ["dehumidifier"], "state": "on"}, {"text": "Turn on a fan", "intent": "set_device_state", "device_words": ["fan"], "state": "on"}]
     },
     {

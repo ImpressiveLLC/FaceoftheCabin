@@ -24,7 +24,7 @@ Repository baseline: `409e1804311b79eafcfa15f24aeac91b588b353c`.
    proposal does not claim a vector service is already deployed.
 2. **Intent/slot SFT for language:** learn semantic request structure, not
    credentials, hardware inventory, MQTT topics or stale HA IDs. POC2 classifies “It is stuffy”
-   as `express_need` with concept `stuffy`; it does not invent thresholds or devices.
+   as `express_need` with concept `humid` (stuffy is an alias since 2026-10-19); it does not invent thresholds or devices.
 3. **Live EntityResolver:** planned Java component joins permission-filtered,
    non-secret inventory with site, room, aliases and capabilities. Return exactly
    one supported match or request clarification. Unknown, ambiguous, stale,
