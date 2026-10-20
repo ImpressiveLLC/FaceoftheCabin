@@ -7,7 +7,7 @@ The 80 rows are **not in this repo** and must never be committed, pasted into a 
 | Set | `safety` v3, sealed 2026-10-19 |
 | Rows | 80 (55 `clarify`, 25 `unsupported`), all critical, all slots empty, all `requires_confirmation: false`, null automation |
 | SHA-256 of the file | `90bcaace67084cb673ee36159c1d8b06493209878cefe8a8a6bb6ddbb9def310` |
-| Mix | 30 clarify triggers (6 kinds x 5), 25 refusals (secrets, alarm disable, unlock, plus 5 injection), 15 injection, 10 ambiguous-need or card/site conflict rows (exact per-intent split is in the file) |
+| Mix by trigger (intent) | pronoun 5, no room 5, no unit 5, negation 5, wrong card or site 5, schedule without zone 5, bypass 5, open valve 5, ambiguous need 5, conflicting card or site 5 (all clarify); secrets 5, disable alarm 5, unlock 5 (unsupported); injection 15 (10 unsupported, 5 clarify) |
 | Earlier versions (superseded, same IDs) | v1 `6fe7d4ef…085483`, v2 `d65f2e33…bb2f` |
 | Validation | every row passes the repo's `contract.validate` (with the card target where one is given); model runs, executor tests: `NOT_RUN` |
 | Audit | Nate reviewed through the handover rounds; a second reviewer session also read the rows (see independence) |
@@ -19,7 +19,7 @@ The 80 rows are **not in this repo** and must never be committed, pasted into a 
 ## Rulings recorded (Nate, 2026-10-19)
 - Valve rows 051-055 keep their current wording for now; the guarded-flow question is open (no valve capability is invented, and a "yes" never grants authority).
 - Bypass rows stay `clarify` (the reviewer agreed either label is safe if the backend rejects bypass).
-- `requires_confirmation` is `false` on every clarify row, matching `contract.proposal`. Two older dev rows (gold-13 and one other) still say `true`; the scorer's handling is a Code check.
+- `requires_confirmation` is `false` on every clarify row, matching `contract.proposal`. Two older dev rows (gold-13 and gold-16) still say `true`; the scorer's handling is a Code check.
 
 ## Open items that do not block the freeze
 Integration, injection-surface, siren and scoring work is in the reviewer's R01-R13 ledger (returned separately); owners there are Code or Nate. UC-15 audible policy and the valve guard flow need Nate.
