@@ -21,6 +21,20 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def semantic_vocabulary(package):
+    """The parts of concepts.json and areas.json that decide whether an answer is valid: ids and aliases only."""
+    parts = []
+    concepts = package / "concepts.json"
+    if concepts.exists():
+        data = json.loads(concepts.read_text(encoding="utf-8"))
+        parts.append(["concepts", sorted((c["id"], sorted(c.get("aliases", []))) for c in data["concepts"])])
+    areas = package / "areas.json"
+    if areas.exists():
+        data = json.loads(areas.read_text(encoding="utf-8"))
+        parts.append(["areas", sorted((a["id"], sorted(a.get("aliases", []))) for a in data["areas"]), sorted(data.get("sites", []))])
+    return canonical(parts).encode()
+
+
 def canonical(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
@@ -67,9 +81,11 @@ class ReviewStore:
             vspec.loader.exec_module(self.vocabulary)
         self.has_card = "card_target" in inspect.signature(self.validator).parameters
         self.schema = module.SCHEMA
-        vocabulary_files = [f for f in ("vocabulary.py", "concepts.json", "areas.json") if (self.package / f).exists()]
-        self.contract_hash = digest(b"".join((self.package / f).read_bytes() for f in
-                                           ["contract.py"] + vocabulary_files + sorted(p.name for p in self.package.glob("*.schema.json"))))
+        # What decides whether an approval is still valid: the contract, the schemas, and the vocabulary's ids and aliases.
+        # Concept definitions, examples, relations and proposed asks do not change what a correct answer is, so editing
+        # them must not throw away graded work.
+        raw_files = [f for f in ("contract.py", "vocabulary.py") if (self.package / f).exists()] + sorted(p.name for p in self.package.glob("*.schema.json"))
+        self.contract_hash = digest(b"".join((self.package / f).read_bytes() for f in raw_files) + semantic_vocabulary(self.package))
         if self.path is None:
             self.path = default_journal(purpose, self.dataset_hash, self.contract_hash).resolve()
         self.started_fingerprint = self.code_fingerprint(dataset)
@@ -83,6 +99,31 @@ class ReviewStore:
                     or state.get("contract_sha256") != self.contract_hash):
                 raise ValueError("Saved reviews belong to a different dataset/contract. Choose a new state file; never reuse stale approvals.")
             self.state = state
+        elif purpose == "evaluation-only":
+            self.seed_from_gold()
+
+    def seed_from_gold(self):
+        """A new journal starts with the examples gold already records as approved, so a session only asks about new work.
+        An example is carried over only if it still passes the contract and its rooms and needs are already in canonical form."""
+        seeded = 0
+        for row in self.rows:
+            prov = row.get("provenance", {})
+            if prov.get("review_status") != "approved":
+                continue
+            try:
+                self.validate(row["target"], row)
+                if self.normalized(row["target"])[0] != row["target"]:
+                    continue
+                if self.vocabulary and self.vocabulary.field_errors(row["target"]):
+                    continue
+            except Exception:
+                continue
+            self.state["reviews"][row["id"]] = {"decision": "approved", "target": row["target"], "reviewer": prov.get("reviewer", ""),
+                                               "notes": prov.get("review_notes", ""), "reviewed_at": prov.get("reviewed_at", ""),
+                                               "revision": 1, "revised": False, "seeded": True}
+            seeded += 1
+        if seeded:
+            self.state["audit"].append({"type": "seeded_from_gold", "count": seeded, "at": datetime.now(timezone.utc).isoformat()})
 
     def validate(self, target, row):
         if self.has_card:
@@ -224,9 +265,12 @@ class ReviewStore:
         return digest(b"".join(Path(n).read_bytes() for n in names if Path(n).exists()))
 
     def counts(self):
-        counts = {"approved": 0, "rejected": 0, "later": 0, "pending": 0}
+        counts = {"approved": 0, "rejected": 0, "later": 0, "pending": 0, "new": 0}
         for row in self.rows:
-            decision = self.state["reviews"].get(row["id"], {}).get("decision")
+            review = self.state["reviews"].get(row["id"], {})
+            decision = review.get("decision")
+            if decision == "approved" and not review.get("seeded"):
+                counts["new"] += 1
             key = {"approved": "approved", "rejected": "rejected"}.get(decision, "later" if decision else "pending")
             counts[key] += 1
         return counts
@@ -239,8 +283,8 @@ class ReviewStore:
             checks.append({"id": cid, "status": status, "label": label, "detail": detail, "fix": fix})
 
         counts = self.counts()
-        add("work", "ok", f"{counts['approved']} approved, {counts['pending'] + counts['later']} still to review, {counts['rejected']} rejected",
-            "Approved examples go into gold when you press Done.")
+        add("work", "ok", f"{counts['approved']} approved ({counts['new']} new this session), {counts['pending'] + counts['later']} still to review, {counts['rejected']} rejected",
+            "Only examples approved or corrected this session are written when you press Done.")
         if self.code_fingerprint(self.dataset_file) != self.started_fingerprint:
             add("restart", "fail", "This tool is out of date", "Files changed on disk since it started (a git pull, or a finished session).",
                 "Run start.ps1 again (it stops the old tool for you), or stop the tool (Ctrl+C in its terminal) and start it again.")
@@ -290,9 +334,9 @@ class ReviewStore:
         """Done, move to gold: write the approved examples into gold.jsonl, prove the package still passes its own tests, then
         put them on a new branch and push it for review. Never touches main."""
         with self.lock:
-            rows = self.approved_rows()
+            rows = self.approved_rows(only_new=self.purpose == "evaluation-only")
             if not rows:
-                raise ValueError("Nothing is approved yet. Approve at least one example, then press Done.")
+                raise ValueError("Nothing new to move. Approve or correct at least one example this session, then press Done.")
             if self.purpose != "evaluation-only":
                 out = self.path.with_name(self.path.stem + ".approved.jsonl")
                 out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
@@ -355,13 +399,15 @@ class ReviewStore:
             self.persist(state)
             return reply
 
-    def approved_rows(self):
+    def approved_rows(self, only_new=False):
         with self.lock:
             result = []
             for original in self.rows:
                 review = self.state["reviews"].get(original["id"], {})
                 if review.get("decision") != "approved":
                     continue
+                if only_new and review.get("seeded"):
+                    continue  # already approved in gold: leave its bytes alone
                 self.validate(review["target"], original)
                 row = copy.deepcopy(original)
                 row["target"] = review["target"]

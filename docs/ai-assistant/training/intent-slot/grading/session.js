@@ -20,7 +20,7 @@
     button.textContent = confirming ? `Yes, move ${approved} approved example${approved === 1 ? "" : "s"} to gold` : "Done, move to gold";
     button.classList.toggle("confirm", confirming);
     button.disabled = blockers > 0 || approved === 0;
-    why.textContent = blockers > 0 ? "Fix the red lines on the left first." : approved === 0 ? "Approve at least one example first." : confirming ? "Click again to confirm, or reload the page to cancel." : "";
+    why.textContent = blockers > 0 ? "Fix the red lines on the left first." : approved === 0 ? "Approve or correct at least one example first." : confirming ? "Click again to confirm, or reload the page to cancel." : "";
   }
 
   async function refresh() {
@@ -28,7 +28,7 @@
     try {
       const state = await call("/api/state");
       token = state.token;
-      approved = Object.values(state.reviews || {}).filter(r => r.decision === "approved").length;
+      approved = Object.values(state.reviews || {}).filter(r => r.decision === "approved" && !r.seeded).length;
       const report = await call("/api/preflight");
       blockers = report.blockers;
       $("preflight").innerHTML = report.checks.map(c => `<li class="check ${c.status}"><b>${c.status === "ok" ? "✓" : c.status === "warn" ? "!" : "✕"}</b><span>${esc(c.label)}${c.detail ? `<small>${esc(c.detail)}</small>` : ""}${c.status !== "ok" && c.fix ? `<em>${esc(c.fix)}</em>` : ""}</span></li>`).join("");
@@ -68,6 +68,6 @@
     $("done").addEventListener("click", done);
     refresh();
     // Approvals change while grading: keep the count honest without a reload.
-    document.addEventListener("click", () => setTimeout(async () => { try { const s = await call("/api/state"); approved = Object.values(s.reviews || {}).filter(r => r.decision === "approved").length; renderDone(); } catch (_) {} }, 600));
+    document.addEventListener("click", () => setTimeout(async () => { try { const s = await call("/api/state"); approved = Object.values(s.reviews || {}).filter(r => r.decision === "approved" && !r.seeded).length; renderDone(); } catch (_) {} }, 600));
   });
 })();

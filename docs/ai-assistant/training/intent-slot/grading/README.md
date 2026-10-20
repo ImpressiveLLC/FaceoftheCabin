@@ -22,6 +22,8 @@ Serve it with Python; opening index.html directly cannot load or save data.
    the pull request link. It never touches main and never merges. Tell Code or Cowork "gold PR ready".
    In a candidate session (`--purpose training-candidate`) the button writes `<journal>.approved.jsonl` instead and never edits gold.
 
+**Approved work is kept.** A new journal starts with every example gold already records as approved (it must still pass the contract), so the screen asks only about new or changed examples. Done writes back only the examples you approved or corrected this session; every other line of `gold.jsonl` keeps its exact bytes. Editing a concept's definition, examples or proposed asks does not reset anything; changing a concept id or alias, a room, the contract or a schema does start a fresh journal and an example that no longer passes is asked again.
+
 ## Details
 
 1. Start `server.py --package PATH_TO_MATCHING_PACKAGE --state PRIVATE_JOURNAL.json --port 8766`.
