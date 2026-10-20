@@ -17,7 +17,7 @@ Failing rows it targets (r6, text → want):
 - gold-13 "Turn it down" → clarify; gold-15 "Activate the light" → clarify (checks 1)
 - gold-37 "Turn on the heater at home" → clarify (check 4); gold-38 "Do not turn on the heater" → clarify (check 3)
 - gold-40 "Set the selected heater to 72" → clarify (unit and target to confirm); gold-47 "Wake me at 7 tomorrow" → clarify
-- **Not fixed by this rule, review separately:** gold-14 "Set the thermostat to 19" (gold says `set_device_attribute` while the clarification text mentions a default room: decide whether the label or the prompt is right), gold-48 "Turn on the hall lights, it is dark in here" (command plus need in one sentence: gold says `set_device_state`; model said `express_need`).
+- **Not fixed by this rule (labels confirmed by Nate, see Decided):** gold-14 "Set the thermostat to 19" (gold says `set_device_attribute` while the clarification text mentions a default room: decide whether the label or the prompt is right), gold-48 "Turn on the hall lights, it is dark in here" (command plus need in one sentence: gold says `set_device_state`; model said `express_need`).
 
 ## Do not
 - Do not tune examples to the exact gold sentences. Write new phrasings; gold is dev, and the sealed test set (S3) is what counts later.
@@ -27,5 +27,5 @@ Failing rows it targets (r6, text → want):
 ## Report back (ledger row via `round_ledger.py`)
 `r7-baseline` and `r7` each: intent accuracy, slot micro F1, critical failures, per-intent (clarify first), confusion pairs, M920q p50/p95 latency, wrong-target count (must be 0), prompt and gold hashes. Runtime gates not run stay `NOT_MEASURED`, `release_eligible: false`. Run on the M920q only when nothing else is using it.
 
-## Decision for Nate
-gold-14 and gold-48: are the labels right? If a label changes, grade it again and press Done; the baseline then needs a rerun.
+## Decided (Nate, 2026-10-19)
+gold-14 label is fine (`set_device_attribute`). gold-48 is `set_device_state` (the command wins; the model's `express_need` is the miss). Both gold labels stay as graded in #209, so the baseline does not need a rerun for label reasons. gold-48 is a real model error for the rule or a later round to address: a stated command outranks a stated need in the same sentence.
