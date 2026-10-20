@@ -34,7 +34,7 @@
       "aliases": ["too humid", "humidity", "muggy", "sticky", "clammy", "need to dry the air", "stuffy", "stale air", "needs air"],
       "relates_to": [{"id": "hot", "relation": "same_remedy_as"}],
       "examples": ["It is too humid in here", "The air feels sticky", "The room feels stuffy"],
-      "asks": [{"text": "Turn on a dehumidifier", "intent": "set_device_state", "device_words": ["dehumidifier"], "state": "on"}, {"text": "Turn on a fan", "intent": "set_device_state", "device_words": ["fan"], "state": "on"}]
+      "asks": [{"text": "Turn on a dehumidifier", "intent": "set_device_state", "device_words": ["dehumidifier"], "state": "on"}, {"text": "Turn on a fan", "intent": "set_device_state", "device_words": ["fan"], "state": "on"}, {"text": "Lower the thermostat setting", "intent": "set_device_attribute", "device_words": ["thermostat"], "state": "lower"}, {"text": "Run a mini-split in dehumidify mode (planned, not installed yet)", "intent": "set_device_attribute", "device_words": ["mini-split", "mini split"], "state": "dehumidify"}]
     },
     {
       "id": "dark",
