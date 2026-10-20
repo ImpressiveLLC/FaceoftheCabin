@@ -38,18 +38,43 @@ foreach ($owner in ($listeners | Select-Object -ExpandProperty OwningProcess -Un
     }
 }
 
-# Pick a Python that has the packages the tool needs.
+# Run a native command and hand back only its exit code. Windows PowerShell 5.1 turns any stderr text from a native
+# command into a terminating error when $ErrorActionPreference is 'Stop', so the probe relaxes it for its own lifetime.
+function Get-ExitCode([string[]]$command) {
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $rest = @($command | Select-Object -Skip 1)
+        & $command[0] @rest 2>&1 | Out-Null
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $saved
+    }
+}
+
+# Pick a Python that really runs (not the Microsoft Store stub), then make sure it has the packages the tool needs.
 $python = $null
-foreach ($candidate in @('python', 'py')) {
-    if (-not (Get-Command $candidate -ErrorAction SilentlyContinue)) { continue }
-    & $candidate -c "import jsonschema, yaml, dateutil" 2>$null
-    if ($LASTEXITCODE -eq 0) { $python = $candidate; break }
+foreach ($candidate in @(@('python'), @('py', '-3'))) {
+    if (-not (Get-Command $candidate[0] -ErrorAction SilentlyContinue)) { continue }
+    if ((Get-ExitCode ($candidate + @('-c', 'import sys'))) -eq 0) { $python = $candidate; break }
 }
 if (-not $python) {
-    Write-Host "No Python with the needed packages was found. Run once:" -ForegroundColor Red
-    Write-Host "  python -m pip install -r `"$(Join-Path $package 'requirements.txt')`""
+    Write-Host "No working Python was found. Install Python 3 from python.org (tick 'Add to PATH'), then run this again." -ForegroundColor Red
     exit 1
+}
+$needed = @('-c', 'import jsonschema, yaml, dateutil')
+if ((Get-ExitCode ($python + $needed)) -ne 0) {
+    $requirements = Join-Path $package 'requirements.txt'
+    Write-Host "Installing the packages the tool needs, once (jsonschema, PyYAML, python-dateutil) into $($python -join ' ')..."
+    $rest = @($python | Select-Object -Skip 1)
+    & $python[0] @rest -m pip install --quiet -r $requirements
+    if ($LASTEXITCODE -ne 0 -or (Get-ExitCode ($python + $needed)) -ne 0) {
+        Write-Host "Could not install them. Run this yourself, then start again:" -ForegroundColor Red
+        Write-Host "  $($python -join ' ') -m pip install -r `"$requirements`""
+        exit 1
+    }
 }
 
 Write-Host "Starting the grading tool at http://127.0.0.1:$port  (leave this window open; Ctrl+C stops it)"
-& $python -B $server
+$rest = @($python | Select-Object -Skip 1)
+& $python[0] @rest -B $server
