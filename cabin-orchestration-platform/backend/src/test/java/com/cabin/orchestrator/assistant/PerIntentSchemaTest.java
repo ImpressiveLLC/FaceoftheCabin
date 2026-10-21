@@ -19,6 +19,7 @@ class PerIntentSchemaTest {
         java.util.List<JsonNode> others = new java.util.ArrayList<>();
         schema.path("oneOf").get(0).path("properties").path("intent").path("enum").forEach(others::add);
         schema.path("oneOf").get(2).path("properties").path("intent").path("enum").forEach(others::add);
+        others.add(schema.path("oneOf").get(3).path("properties").path("intent").path("const"));
         for (JsonNode intent : others) {
             ObjectNode value = envelope(intent.asText());
             assertTrue(JsonSchemaLite.validate(value, schema).isEmpty(), intent.asText());
@@ -40,6 +41,19 @@ class PerIntentSchemaTest {
         assertFalse(JsonSchemaLite.validate(JSON.readTree("null"), schema).isEmpty());
         JsonNode overlap = JSON.readTree("{\"oneOf\":[{\"type\":\"string\"},{\"type\":\"string\"}]}");
         assertFalse(JsonSchemaLite.validate(JSON.readTree("\"allowed\""), overlap).isEmpty());
+    }
+
+    @Test
+    void clarifyCannotAskForConfirmationButOtherIntentsAreUnchanged() {
+        JsonNode schema = contract.schema();
+        ObjectNode clarify = envelope("clarify");
+        clarify.put("clarification", "Which device?");
+        assertTrue(JsonSchemaLite.validate(clarify, schema).isEmpty());
+        clarify.put("requires_confirmation", true);
+        assertFalse(JsonSchemaLite.validate(clarify, schema).isEmpty());
+        ObjectNode answer = envelope("answer_question");
+        answer.put("requires_confirmation", false);
+        assertTrue(JsonSchemaLite.validate(answer, schema).isEmpty());
     }
 
     @Test
@@ -108,7 +122,7 @@ class PerIntentSchemaTest {
         ObjectNode value = JSON.createObjectNode();
         value.put("intent", intent);
         value.putObject("slots");
-        value.put("requires_confirmation", true);
+        value.put("requires_confirmation", !"clarify".equals(intent));
         value.putNull("clarification");
         value.putNull("automation");
         return value;

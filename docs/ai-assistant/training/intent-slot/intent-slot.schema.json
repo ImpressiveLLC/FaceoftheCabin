@@ -767,7 +767,6 @@
         "intent": {
           "enum": [
             "answer_question",
-            "clarify",
             "propose_automation"
           ]
         },
@@ -778,6 +777,338 @@
         },
         "requires_confirmation": {
           "type": "boolean"
+        },
+        "clarification": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "automation": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "trigger": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "operator": {
+                          "enum": [
+                            "eq",
+                            "lt",
+                            "gt"
+                          ]
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "unit": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "target",
+                        "attribute",
+                        "operator",
+                        "value",
+                        "unit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_once"
+                        },
+                        "at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "at"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_recurring"
+                        },
+                        "start_time": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "rrule": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "^FREQ=[A-Z]+(;(COUNT|INTERVAL|BYDAY|BYMONTH|BYMONTHDAY|BYSETPOS|BYYEARDAY|BYWEEKNO|BYHOUR|BYMINUTE|BYSECOND|WKST)=[A-Za-z0-9,+-]+|;UNTIL=[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]Z)*$"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "start_time",
+                        "rrule"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "state_changes_to"
+                        },
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "for_seconds": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "target",
+                        "attribute",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "attribute": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "operator": {
+                        "enum": [
+                          "eq",
+                          "lt",
+                          "gt"
+                        ]
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "attribute",
+                      "operator",
+                      "value",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "actions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "operation": {
+                        "enum": [
+                          "on",
+                          "off",
+                          "set"
+                        ]
+                      },
+                      "attribute": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "value": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "delay_seconds": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 86400
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "operation",
+                      "attribute",
+                      "value",
+                      "unit",
+                      "delay_seconds"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "trigger",
+                "conditions",
+                "actions"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "intent",
+        "slots",
+        "requires_confirmation",
+        "clarification",
+        "automation"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "intent": {
+          "const": "clarify"
+        },
+        "slots": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "requires_confirmation": {
+          "const": false
         },
         "clarification": {
           "type": [
