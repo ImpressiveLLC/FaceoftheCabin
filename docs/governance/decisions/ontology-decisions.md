@@ -342,9 +342,9 @@ Not all sensors emit data continuously. The Kidde CO + Temp + Humidity monitor i
 
 **CO vs CO2 — revised 2026-09-04:** `measurement_type=co` means carbon monoxide; `measurement_type=co2` means carbon dioxide — both are real, valid, distinct entries, and both back real Kidde-unit entities today (co-level and co2-level are separate HA entities on the same physical device). The bug was never that CO2 lacks a place in the vocabulary — it was that the CO-level entity (no device_class, no unit) was falling through discovery's classification logic and landing on the wrong DeviceType, so a CO reading could show up mislabeled under a CO2-titled card. Fixed by giving `HomeAssistantDiscoveryService.inferType()` a friendly_name-based fallback for CO_SENSOR — the classification bug is gone; CO2_SENSOR itself was never the problem and is not being removed.
 
-### D13 Amendment A1 (implemented 2026-10-21, awaiting ratification): the Zigbee device is the parent of its Home Assistant entities
+### D13 Amendment A1 (ratified 2026-10-21): the Zigbee device is the parent of its Home Assistant entities
 
-**Status:** implemented-awaiting-ratification (Code, from Nate's direction 2026-10-21, [PR #220](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/220), work item W-88). Cowork ratifies; nothing below changes the D13 display rule or the Service Entity definition.
+**Status:** **ratified 2026-10-21 (Cowork)**, with one follow-up condition (C-A1-1) and one clarification (C-A1-2), below. Implemented by Code from Nate's direction 2026-10-21 ([PR #220](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/220), W-88). Nothing below changes the D13 display rule or the Service Entity definition.
 
 **Found live (2026-10-21).** The attic SONOFF SNZB-02P sensor was charted twice from one device, and the cabin dehumidifier's SONOFF S61SZBTPB switch was listed as a native `z2m-*` device and as unlinked `ha-cabin-*` entities. The attic device had been linked the wrong way round (the native device was a child of its own humidity entity).
 
@@ -356,6 +356,13 @@ Not all sensors emit data continuously. The Kidde CO + Temp + Humidity monitor i
 5. A switch, plug or relay that exposes power is a `POWER_METER` (the D15 outlet/smart-plug class), and a `switch`/`light`/`fan`/`cover` expose carries the device's COMMAND capability. This applies to devices paired after 2026-10-21; a configured device keeps its type and capabilities until a person re-detects them (W-93).
 
 The D15 measurement types (`power` W, `energy` kWh, `current` A, `voltage` V) and the D15 card rules (power primary, energy secondary, voltage and current tertiary) apply unchanged to the parent. The S61SZBTPB advertises all four; see `zigbee_controlled_outlet` in `docs/ontology.yaml`.
+
+**Cowork ratification (2026-10-21).** Reviewed against `main` @ `82680e0`: `HomeAssistantDiscoveryService` (`nativeZigbeeIdsBySlug`, `nativeParentFor`, `linkUnderNative`, the `sensor`-domain skip), `DeviceRegistry.setDiscoveredParent`, and `Zigbee2MqttAdapter` (null properties dropped; `switch`/`light`/`fan`/`cover` features recursed for COMMAND; power-measuring switch, plug, outlet or relay typed `POWER_METER`), with the tests added in #220. Rules 1 to 5 match the code as written. Ratified because it gives each measurement one lineage (Service, Device, physical asset), which is D13's purpose, and it fixes two live defects (a double-charted sensor, a plug with no command capability) without deleting history.
+
+| ID | Kind | Text |
+|---|---|---|
+| C-A1-1 | Follow-up condition (does not block; tracked as [W-94](../backlog.md)) | Rule 3 skips **every** `sensor` entity linked under a native device. That is right for entities that repeat a reading the native device already logs, but it would also silence a Home Assistant entity the native device does not report: a template, statistics or derived sensor whose object id happens to start with the device's slug (for example a dew-point sensor built from the attic sensor). The skip must apply only when the native device reports that entity's `measurement_type`; an entity with a measurement the native device lacks keeps logging under its own id. Regression test required. Until W-94 merges, name derived HA sensors so they do **not** start with a Zigbee device's friendly-name slug |
+| C-A1-2 | Clarification | `POWER_METER` is the measurement class (D15), not control authority. A power-measuring relay that drives a load (the MINI-ZB1GSP relays in D28's boxes 3 and 4) is typed `POWER_METER` and stays commandable through COMMAND; who may command it is decided by D27's guards and the roles in W-44, as for any capability. The runtime `DeviceType` and D28's Device Type Name (`ZigbeeMiniRelay`, a naming registry) are separate and coexist |
 
 ------------------------------------------------------------------------
 

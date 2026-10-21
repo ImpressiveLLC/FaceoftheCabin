@@ -30,7 +30,7 @@ Each decision carries exactly one status. These are the only allowed values.
 | D10 | External Platform Import Pipeline | ratified | [link](ontology-decisions.md#d10--external-platform-import-pipeline) |
 | D11 | Family Hub / Cabin Orchestration Boundary | ratified | [link](ontology-decisions.md#d11--family-hub--cabin-orchestration-boundary) |
 | D12 | Guest Access & Non-Google Auth | ratified; route-shape deviation under conditional ruling ([SO-2026-09-23-r1](../signoffs/SO-2026-09-23-r1.md) §3.1) | [link](ontology-decisions.md#d12--guest-access--non-google-auth) |
-| D13 | Service-Level Data Lineage | ratified | [link](ontology-decisions.md#d13--service-level-data-lineage) |
+| D13 | Service-Level Data Lineage | ratified; Amendment A1 (Zigbee device is the parent of its HA entities) ratified 2026-10-21 | [link](ontology-decisions.md#d13--service-level-data-lineage) |
 | D14 | Kiosk Auth Model — Public Read Tier + CabinSession | ratified | [link](ontology-decisions.md#d14--kiosk-auth-model--public-read-tier--cabinsession) |
 | D15 | Energy Device Ontology | ratified | [link](ontology-decisions.md#d15--energy-device-ontology) |
 | D16 | Reporting Topics IA | ratified | [link](ontology-decisions.md#d16--reporting-topics-ia) |
