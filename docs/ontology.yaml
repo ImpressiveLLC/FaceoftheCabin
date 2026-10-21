@@ -11736,6 +11736,8 @@ elements:
     notes: "Candidate only (D27 Phase 1). Asks (what could satisfy a need) live in concepts.json as proposals and are empty where no mapping has been reviewed. The opposite of light (too bright, want less light) is not in the vocabulary yet."
 
   - id: cabin_kiosk
+
+  - id: family_hub_kiosk
     entity_type: owl:Class
     layer: frontend
     primitive: false
@@ -11749,3 +11751,11 @@ elements:
       Family Hub navigation carries kiosk and theme state without credentials.
     transformation: KioskControls.jsx initialKiosk(), toggle(), and hubLink()
     notes: "Display only; does not change authentication, permissions or device state."
+
+    source: localStorage["familyHub.kiosk"]
+    definition: >
+      Per-browser Family Hub display preference. Explicit kiosk=1 or kiosk=0
+      overrides saved state; controls persist it and request optional fullscreen.
+      Cross-app links carry only kiosk and theme parameters, never authentication.
+    transformation: family-hub/kiosk.js render() and fullscreen()
+    notes: "Display only; not an authentication gate, device command, OS lockdown, or wake lock."
