@@ -314,6 +314,7 @@ Source: Nate, 2026-10-14; [D27](../governance/decisions/ontology-decisions.md) (
 |---|---|---|---|---|---|---|---|---|
 | POC2 Intent/slot r1 extended for D27 | 7 | 8 | 9 | 6 | 30 | 3 | 10.0 | PR #159 merged (offline tooling) |
 | C5 Ask action proposals, general | 9 | 10 | 9 | 5 | 33 | 8 | 4.125 | POC2, W-75 evidence, W-66 to W-69 |
+| C6 Repeat-run variance floor for intent/slot evaluation | 4 | 3 | 7 | 6 | 20 | 2 | 10.0 | None (existing `evaluate.py` and gold set) |
 
 ### [POC2] Intent/slot r1 extended for D27 (Codex)
 
@@ -330,3 +331,18 @@ Offline only. Extend the PR #159 contract and data:
 ### [C5] Ask action proposals, general (Code with Codex)
 
 C5 generalizes W-75 once its evidence is in. It replaces the static concept map with walking the W-68 store, uses the W-67 inventory, and applies W-69 guards and the caller's permissions. Its options use the R-OC-11 single confirm model. Execution outside the W-75 heater scope needs the PR #159 runtime gates (zero invented entities accepted, zero runs without confirmation, zero critical safety failures), the RAG regression suite and Nate's go.
+
+## Evaluation variance ruling and C6 — 2026-10-21 (Cowork)
+
+Ownership (Nate, 2026-10-21): Cowork owns and scores this backlog; Codex supplies design and technical evaluation and review.
+
+**Ruling on PR #224's r8 reading.** Two runs at temperature 0 with pinned inputs show the observed run-to-run spread (about 0.01 slot F1, 2 of 49 rows); they do not establish a noise floor. Until C6 is done, a change under about 0.015 slot F1 or one row of intent accuracy is reported as "within observed variance (2 runs)", never as noise, and no round is accepted or rejected on that basis alone. Earlier readings that called such a change noise are provisional. `proposals/sme-loop.md` is corrected to this wording.
+
+### [C6] Repeat-run variance floor for intent/slot evaluation (Codex design and run; Cowork ratifies)
+
+- Run the current gold set and the current prompt at least **5 times** with identical inputs and settings, on the same host.
+- Report per metric (intent accuracy, slot F1, slot true positives, critical count): every run's value, the range, and the rows that flip between runs.
+- The floor for each metric is the **largest run-to-run difference** observed. A later round's change counts as real only when it exceeds that floor.
+- Record the floor, the run count and the date in this file; re-measure when the gold set, prompt or model changes.
+- **AC:** five or more run reports committed (ids and hashes, no private data); the floor table above; `sme-loop.md`'s r8 note updated with the measured floor.
+
