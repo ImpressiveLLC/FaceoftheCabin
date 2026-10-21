@@ -13,8 +13,8 @@
     },
     "measurement_type": {
       "type": "string",
-      "enum": ["temperature", "humidity", "co2", "air_quality_index", "co", "pressure", "power", "battery"],
-      "description": "The physical quantity this relationship describes. Deliberately closed today, not open -- extend only when a real new measurement type is onboarded (matching cabin-3rd-party-device-onboarding's own discipline), not speculatively."
+      "enum": ["temperature", "humidity", "co2", "air_quality_index", "co", "pressure", "power", "battery", "energy", "current", "voltage", "occupancy", "contact", "water_leak"],
+      "description": "The physical quantity this relationship describes. Deliberately closed today, not open -- extend only when a real new measurement type is onboarded (matching cabin-3rd-party-device-onboarding's own discipline), not speculatively. This enum is the single source: D7MeasurementTypes (backend) must list exactly these values, and D7MeasurementTypesTest fails if either list changes without the other (DL-2026-10-21-01)."
     },
     "semantic_field": {
       "type": "string",

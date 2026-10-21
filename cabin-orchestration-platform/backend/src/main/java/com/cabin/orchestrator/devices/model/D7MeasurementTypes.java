@@ -32,6 +32,11 @@ public final class D7MeasurementTypes {
 
     private D7MeasurementTypes() {}
 
+    /** The whole closed vocabulary; D7MeasurementTypesTest holds it equal to the schema's enum. */
+    public static Set<String> all() {
+        return TYPES;
+    }
+
     /**
      * A CabinEvent payload key (e.g. "temperature", or camelCase like
      * "airQualityIndex") mapped to its measurement_type enum value, or

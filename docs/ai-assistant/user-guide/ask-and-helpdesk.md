@@ -24,9 +24,9 @@ The shared vocabulary is served at `/api/context/cabin-context.jsonld`. Reuse it
 
 These are acceptance rules from the handover and [eval set](../rag/eval-questions.md), not claims all enforcement is implemented in the existing service. Its prompt asks the LLM to stay grounded, but runtime tests must assess the actual output.
 
-## D28 naming and `related_to` — not yet in the knowledge base
+## D28 naming and the "related to" tag — not yet in the knowledge base
 
-[D28](../../governance/decisions/ontology-decisions.md) defines a type-name/entity_id/display_label derivation and a new `Device.related_to[]` property, and names two new HVAC device classes. None of this is generated into a KnowledgeNode today: `KbGeneratorService` generates metadata only for devices that exist in the live `device_state`/`devices` tables, and the hardware this decision covers is not yet paired (see `docs/HARDWARE_INVENTORY_2026-10-16_sensor-relay-nodes-and-hvac.md`). A question like "what is `related_to` on the duct fan controller" has no grounded answer until the device is provisioned (W-80) and `Device.related_to[]` ships (W-79) — Ask should refuse rather than explain the ontology decision as if it were already live device state.
+[D28](../../governance/decisions/ontology-decisions.md) defines a type-name/entity_id/display_label derivation and a "related to" tag (stored as D27 `relates_to` edges, D28 A1), and names two new HVAC device classes. None of this is generated into a KnowledgeNode today: `KbGeneratorService` generates metadata only for devices that exist in the live `device_state`/`devices` tables, and the hardware this decision covers is not yet paired (see `docs/hardware/doc27-environmental-nodes.md`). A question like "what is the duct fan related to" has no grounded answer until the device is provisioned (W-80) and the tag ships (W-79) — Ask should refuse rather than explain the ontology decision as if it were already live device state.
 
 ## Add or correct knowledge
 

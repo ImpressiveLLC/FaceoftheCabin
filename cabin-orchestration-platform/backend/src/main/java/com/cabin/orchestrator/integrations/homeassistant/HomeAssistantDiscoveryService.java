@@ -204,9 +204,11 @@ public class HomeAssistantDiscoveryService {
             if (nativeId != null) linkUnderNative(id, nativeId);
             // A sensor entity of a Zigbee device repeats readings the native device already logs
             // (found 2026-10-21: the attic sensor charted twice, once per device id). The entity
-            // keeps its live state above; only the duplicate TELEMETRY row is skipped. Switches
-            // and binary sensors still publish so workflows watching them keep firing.
-            if (nativeId != null && "sensor".equals(domain)) continue;
+            // keeps its live state above; only the duplicate TELEMETRY row is skipped, and only when
+            // the native device reports that same measurement_type (D13 A1, condition C-A1-1): a
+            // derived, template or statistics sensor under the same device keeps logging under its own
+            // id. Switches and binary sensors still publish so workflows watching them keep firing.
+            if (nativeId != null && "sensor".equals(domain) && nativeReportsSameMeasurement(nativeId, entity)) continue;
             publishIfChanged(id, attrs, newState);
         }
     }
@@ -270,6 +272,25 @@ public class HomeAssistantDiscoveryService {
             // A parent link is a convenience; never let one bad record stop the discovery cycle.
             log.debug("Could not link {} under {}: {}", entityDeviceId, nativeId, e.getMessage());
         }
+    }
+
+    /**
+     * D13 A1 / C-A1-1: does the native Zigbee device itself report the measurement this HA sensor
+     * carries? The sensor's measurement_type comes from its HA device_class through the closed D7
+     * vocabulary; the native device reports it when its vendor-reported fields name it or its own
+     * state already carries a reading under that key. A sensor with no recognised device_class
+     * (dew point, a template or statistics sensor) is never treated as a duplicate.
+     */
+    private boolean nativeReportsSameMeasurement(String nativeId, HomeAssistantAdapter.DiscoveredEntity entity) {
+        Object deviceClass = entity.attributes().get("device_class");
+        if (!(deviceClass instanceof String cls) || cls.isBlank()) return false;
+        Optional<String> measurement = D7MeasurementTypes.toMeasurementType(cls.trim().toLowerCase(Locale.ROOT));
+        if (measurement.isEmpty()) return false;
+        DeviceStatus nativeStatus = registry.get(nativeId);
+        if (nativeStatus == null) return false;
+        Object reported = nativeStatus.attributes().get("vendorReportedFields");
+        if (reported instanceof Collection<?> fields && fields.contains(measurement.get())) return true;
+        return nativeStatus.attributes().get(measurement.get()) instanceof Number;
     }
 
     private static String parentOf(DeviceStatus status) {
