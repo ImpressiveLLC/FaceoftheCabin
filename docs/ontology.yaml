@@ -10757,7 +10757,7 @@ elements:
     - target: hub_location
       type: located_in
       cardinality: N:1
-  - id: sensor_relay_box
+  - id: relay_control_box
     entity_type: owl:Class
     layer: hardware
     primitive: false
@@ -10766,16 +10766,17 @@ elements:
     lifecycle_status: candidate
     data_class: conceptual
     data_type: owl:Class
-    ui_display_name: Sensor Relay Box
+    ui_display_name: Relay Control Box
     source: Nate, 2026-10-16; Doc 27 purchase summary dated 2026-10-15; docs/hardware/doc27-environmental-nodes.md
     rendering:
-      semantic: Sensor Relay Box
-      systems: Sensor Relay Box type; candidate
-      technical: sensor_relay_box
+      semantic: Relay Control Box
+      systems: Relay Control Box type; candidate
+      technical: relay_control_box
       compliance: Ordered/planned; not live-verified
-    definition: Sensor Collection Box profile associated with separately identified Zigbee control channels;
-      ESP32 does not drive mains relays.
-    notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
+    definition: Sensor Collection Box profile (SEN66, SHT45, QT Py) housed with two separately identified Zigbee relays (MINI-ZB1GSP);
+      the ESP32 never drives mains. D28 Amendment A1 type RelayControlBox, Box 3 (bathroom exhaust and heat, Mean Well power)
+      and Box 4 (mech room, USB plug-in power). Replaces the earlier candidate key sensor_relay_box.
+    notes: W-76 / UC-18 design entry, aligned to D28 A1 under W-80 (2026-10-21), not an executable DeviceType or runtime capability declaration. Instance
       identity stays in the registry; display aliases derive from this type label plus hub location, room and
       human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
       and doc27-schematics.md. No first_verified_live claim.
@@ -10783,6 +10784,84 @@ elements:
     - target: sensor_collection_box
       type: extends
       cardinality: N:1
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+  - id: esp32_controller
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: ESP32 Controller
+    source: Nate, 2026-10-19 (S6 speed-control parts ordered); D28 Amendment A1; docs/hardware/doc27-device-inventory.json
+    rendering:
+      semantic: ESP32 Controller
+      systems: ESP32 Controller type; candidate
+      technical: esp32_controller
+      compliance: Ordered/planned; not live-verified
+    definition: General-purpose ESP32-S3 development board used as a single-purpose controller (W-78 speed path, ESPHome PWM through a
+      signal isolator to the CLOUDLINE S6 control port). Distinct from the QT Py sensor controller in the sensor boxes.
+    notes: W-78 / D28 A1 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+  - id: signal_isolator
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Signal Isolator
+    source: Nate, 2026-10-19 (S6 speed-control parts ordered); D28 Amendment A1; docs/hardware/doc27-device-inventory.json
+    rendering:
+      semantic: Signal Isolator
+      systems: Signal Isolator type; candidate
+      technical: signal_isolator
+      compliance: Ordered/planned; not live-verified
+    definition: Optocoupler isolation module (PC817) between a controller output and an appliance control port. Isolation between the
+      ESP32 and the fan port is mandatory (D28 A1).
+    notes: W-78 / D28 A1 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+  - id: fan_control_interconnect
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Fan Control Interconnect
+    source: Nate, 2026-10-19 (S6 speed-control parts ordered); D28 Amendment A1; docs/hardware/doc27-device-inventory.json
+    rendering:
+      semantic: Fan Control Interconnect
+      systems: Fan Control Interconnect type; candidate
+      technical: fan_control_interconnect
+      compliance: Ordered/planned; not live-verified
+    definition: Passive cable used to tap an inline fan's UIS control port (AC Infinity UIS extension cable, cut for the W-78 speed path).
+      No active function of its own.
+    notes: W-78 / D28 A1 design entry, not an executable DeviceType or runtime capability declaration. Instance
+      identity stays in the registry; display aliases derive from this type label plus hub location, room and
+      human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
+      and doc27-schematics.md. No first_verified_live claim.
+    relationships:
     - target: hub_location
       type: located_in
       cardinality: N:1
