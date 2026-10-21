@@ -516,8 +516,13 @@ class HomeAssistantDiscoveryServiceTest {
     // link by hand, and the attic sensor had been linked the wrong way round (the device under its
     // own humidity entity), so it was charted once per device id.
     private void registerCabinNative(String friendlyName) {
+        registerCabinNative(friendlyName, List.of("power", "voltage", "current", "energy", "temperature", "humidity", "battery"));
+    }
+
+    private void registerCabinNative(String friendlyName, List<String> reportedFields) {
         registry.registerCandidate(new DeviceDescriptor("z2m-" + friendlyName, friendlyName, DeviceType.POWER_METER,
-            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/" + friendlyName, false, "cabin"), Map.of());
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/" + friendlyName, false, "cabin"),
+            Map.of("vendorReportedFields", reportedFields));
     }
 
     private void discoverSwitchAndPower(String friendly, String switchState, String watts) {
@@ -600,6 +605,48 @@ class HomeAssistantDiscoveryServiceTest {
             .doesNotContain("ha-cabin-sensor-0xa4c1381f3884ffff-power");
         // The live reading itself is still kept on the entity.
         assertThat(registry.get("ha-cabin-sensor-0xa4c1381f3884ffff-power").attributes().get("value")).isEqualTo("418");
+    }
+
+    // C-A1-1 (W-94): a duplicate humidity entity is skipped; a derived entity under the same device is not.
+    @Test
+    void aDuplicateHumidityEntityIsSkippedButADerivedDewPointEntityKeepsLogging() {
+        registerCabinNative("0xb0e8e8fffef4e8ae", List.of("battery", "temperature", "humidity"));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+        when(adapter.discover("cabin")).thenReturn(attic("53.6", "9.1"));
+        service.discoverLocation("cabin");
+        eventPublisher.published.clear();
+        when(adapter.discover("cabin")).thenReturn(attic("54.2", "9.4"));
+
+        service.discoverLocation("cabin");
+
+        assertThat(eventPublisher.published).extracting(CabinEvent::sourceDeviceId)
+            .contains("ha-cabin-sensor-0xb0e8e8fffef4e8ae-dew-point")
+            .doesNotContain("ha-cabin-sensor-0xb0e8e8fffef4e8ae-humidity");
+        // Both are linked under the Zigbee device either way.
+        assertThat(parentOf(registry.get("ha-cabin-sensor-0xb0e8e8fffef4e8ae-dew-point"))).isEqualTo("z2m-0xb0e8e8fffef4e8ae");
+    }
+
+    @Test
+    void aSensorOfAMeasurementTheNativeDeviceDoesNotReportKeepsLogging() {
+        registerCabinNative("0xb0e8e8fffef4e8ae", List.of("battery", "temperature"));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+        when(adapter.discover("cabin")).thenReturn(attic("53.6", "9.1"));
+        service.discoverLocation("cabin");
+        eventPublisher.published.clear();
+        when(adapter.discover("cabin")).thenReturn(attic("54.2", "9.4"));
+
+        service.discoverLocation("cabin");
+
+        assertThat(eventPublisher.published).extracting(CabinEvent::sourceDeviceId)
+            .contains("ha-cabin-sensor-0xb0e8e8fffef4e8ae-humidity");
+    }
+
+    private static List<HomeAssistantAdapter.DiscoveredEntity> attic(String humidity, String dewPoint) {
+        return List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.0xb0e8e8fffef4e8ae_humidity", humidity,
+                Map.of("friendly_name", "Attic Humidity", "device_class", "humidity")),
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.0xb0e8e8fffef4e8ae_dew_point", dewPoint,
+                Map.of("friendly_name", "Attic Dew Point", "unit_of_measurement", "C")));
     }
 
     @Test
