@@ -7,6 +7,8 @@ import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Service
 public class HomeAssistantDiscoveryService {
+    private static final Logger log = LoggerFactory.getLogger(HomeAssistantDiscoveryService.class);
     // number/select added 2026-08-18: found live that the Liebherr fridge's
     // two setpoint entities (number.*) and its icemaker mode (select.*)
     // were silently skipped by this allowlist every discovery cycle,
@@ -83,6 +86,7 @@ public class HomeAssistantDiscoveryService {
         // the raw fact.
         Map<String, String> deviceIds = adapter.deviceIdsByEntity(location);
         Map<String, String> zigbeeLocations = nativeZigbeeLocationsBySlug();
+        Map<String, List<String>> nativeIdsBySlug = nativeZigbeeIdsBySlug(location);
         for (HomeAssistantAdapter.DiscoveredEntity entity : adapter.discover(location)) {
             String domain = domain(entity.entityId());
             if (isPresence(entity, domain)) {
@@ -195,8 +199,90 @@ public class HomeAssistantDiscoveryService {
             String newState = safetyAlarm ? "ALARM" : adapter.normalizedState(entity.state());
             registry.update(new DeviceStatus(id, registered.type(), registered.name(),
                 newState, Instant.now(), merged, registered.location()));
+            // W-88: the Zigbee device is the parent, its Home Assistant entities are its services.
+            String nativeId = nativeParentFor(entity.entityId(), nativeIdsBySlug);
+            if (nativeId != null) linkUnderNative(id, nativeId);
+            // A sensor entity of a Zigbee device repeats readings the native device already logs
+            // (found 2026-10-21: the attic sensor charted twice, once per device id). The entity
+            // keeps its live state above; only the duplicate TELEMETRY row is skipped. Switches
+            // and binary sensors still publish so workflows watching them keep firing.
+            if (nativeId != null && "sensor".equals(domain)) continue;
             publishIfChanged(id, attrs, newState);
         }
+    }
+
+    /**
+     * W-88: ids of the native Zigbee devices at this location, by friendly-name slug. More than
+     * one id under a slug means the name is ambiguous, so nothing is linked to it.
+     */
+    private Map<String, List<String>> nativeZigbeeIdsBySlug(String location) {
+        Map<String, List<String>> bySlug = new HashMap<>();
+        for (DeviceStatus status : registry.all()) {
+            if (!status.deviceId().startsWith("z2m-")) continue;
+            Optional<DeviceDescriptor> descriptor = registry.descriptor(status.deviceId());
+            if (descriptor.isEmpty() || !location.equals(descriptor.get().location())) continue;
+            String slug = nativeSlug(descriptor.get());
+            if (!slug.isEmpty()) bySlug.computeIfAbsent(slug, k -> new ArrayList<>()).add(status.deviceId());
+        }
+        return bySlug;
+    }
+
+    private static String nativeSlug(DeviceDescriptor descriptor) {
+        String connection = descriptor.connectionString();
+        if (connection == null || connection.indexOf('/') < 0) return "";
+        return slug(connection.substring(connection.indexOf('/') + 1));
+    }
+
+    /** The one native Zigbee device whose longest name slug starts this entity's object id, or null. */
+    private static String nativeParentFor(String entityId, Map<String, List<String>> bySlug) {
+        String objectId = entityId.substring(entityId.indexOf('.') + 1);
+        String bestSlug = null;
+        for (String slug : bySlug.keySet()) {
+            boolean matches = objectId.equals(slug) || objectId.startsWith(slug + "_");
+            if (matches && (bestSlug == null || slug.length() > bestSlug.length())) bestSlug = slug;
+        }
+        if (bestSlug == null) return null;
+        List<String> ids = bySlug.get(bestSlug);
+        return ids.size() == 1 ? ids.get(0) : null;
+    }
+
+    /**
+     * Make the native Zigbee device the parent of one of its Home Assistant entities. It only
+     * ever replaces a link that discovery itself would have drawn the other way round (no parent,
+     * or a sibling entity of the same Zigbee device, which is how the attic sensor ended up as
+     * its own entity's child); a parent a person chose elsewhere is left alone.
+     */
+    private void linkUnderNative(String entityDeviceId, String nativeId) {
+        try {
+            DeviceStatus nativeStatus = registry.get(nativeId);
+            Optional<DeviceDescriptor> nativeDescriptor = registry.descriptor(nativeId);
+            if (nativeStatus == null || nativeDescriptor.isEmpty()) return;
+            String slug = nativeSlug(nativeDescriptor.get());
+            String nativeParent = parentOf(nativeStatus);
+            if (!nativeParent.isEmpty() && isEntityOfNative(nativeParent, slug)) {
+                registry.setDiscoveredParent(nativeId, "");
+            }
+            String current = parentOf(registry.get(entityDeviceId));
+            if (current.isEmpty() || (!current.equals(nativeId) && isEntityOfNative(current, slug))) {
+                registry.setDiscoveredParent(entityDeviceId, nativeId);
+            }
+        } catch (RuntimeException e) {
+            // A parent link is a convenience; never let one bad record stop the discovery cycle.
+            log.debug("Could not link {} under {}: {}", entityDeviceId, nativeId, e.getMessage());
+        }
+    }
+
+    private static String parentOf(DeviceStatus status) {
+        Object parent = status == null ? null : status.attributes().get("parentDeviceId");
+        return parent == null ? "" : String.valueOf(parent).trim();
+    }
+
+    private boolean isEntityOfNative(String deviceId, String nativeSlug) {
+        DeviceStatus status = registry.get(deviceId);
+        Object entityId = status == null ? null : status.attributes().get("entityId");
+        if (!(entityId instanceof String id) || id.indexOf('.') < 0) return false;
+        String objectId = id.substring(id.indexOf('.') + 1);
+        return objectId.equals(nativeSlug) || objectId.startsWith(nativeSlug + "_");
     }
 
     /**

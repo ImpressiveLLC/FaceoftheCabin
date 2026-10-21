@@ -407,6 +407,33 @@ public class DeviceRegistry {
     }
 
     /**
+     * W-88: link a discovered device under its parent without treating the link as a person
+     * accepting or configuring the device. Unlike {@link #saveConfiguration} this leaves the
+     * descriptor, the lifecycle state and the "configuration asserted" flag exactly as they are,
+     * so a candidate stays a candidate and later discovery can still refresh it. The parent is
+     * validated like any other (exists, same location, no self or cycle). Returns whether
+     * anything changed; a blank parent clears the link.
+     */
+    public boolean setDiscoveredParent(String deviceId, String parentDeviceId) {
+        synchronized (lockFor(deviceId)) {
+            DeviceDescriptor existing = descriptors.get(deviceId);
+            if (existing == null) return false;
+            DeviceLifecycleState current = lifecycleState(deviceId);
+            if (current.isPreviouslyExposed()) return false;
+            String next = parentDeviceId == null ? "" : parentDeviceId.trim();
+            DeviceStatus status = statuses.get(deviceId);
+            Object have = status == null ? null : status.attributes().get("parentDeviceId");
+            if (next.equals(have == null ? "" : String.valueOf(have).trim())) return false;
+            validateParentDeviceId(deviceId, existing.location(), next);
+            DeviceLifecycleRecord record = new DeviceLifecycleRecord(
+                existing, current, configurationAsserted.contains(deviceId), Map.of("parentDeviceId", next));
+            lifecycleStore.save(record);
+            applyPersistedRecord(record);
+            return true;
+        }
+    }
+
+    /**
      * Real invariants for the device→services hierarchy's MVP
      * parentDeviceId link (2026-08-25): a blank value clears the parent
      * and is always valid. A non-blank value must name a real, existing

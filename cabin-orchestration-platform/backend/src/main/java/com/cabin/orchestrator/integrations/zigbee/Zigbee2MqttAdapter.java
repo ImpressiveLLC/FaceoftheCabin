@@ -524,7 +524,12 @@ public class Zigbee2MqttAdapter implements MqttCallback {
 
             Boolean previousOccupancy = existing.attributes().get("occupancy") instanceof Boolean b ? b : null;
             Map<String, Object> attrs = new LinkedHashMap<>(existing.attributes());
-            node.fields().forEachRemaining(e -> attrs.put(e.getKey(), jsonNodeToValue(e.getValue())));
+            // Z2M publishes null for a property the device has not reported yet (a new plug's
+            // power, voltage, current and energy). Storing the text "null" over a real earlier
+            // reading, or as a "reading" at all, is what showed "unknown" on the dashboard.
+            node.fields().forEachRemaining(e -> {
+                if (!e.getValue().isNull()) attrs.put(e.getKey(), jsonNodeToValue(e.getValue()));
+            });
 
             // PROTOTYPE, 2026-08-08 -- see SignalQualityRegistry's own
             // comment. linkquality was already parsed into attrs on every
@@ -639,6 +644,17 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 caps.add(DeviceCapability.COMMAND);
                 caps.add(DeviceCapability.ACCESS_CONTROL);
             }
+            case "switch", "light", "fan", "cover" -> {
+                // Z2M groups a controllable device's writable state under one of these
+                // specific types; the top level carries no access flag. Without recursing,
+                // a plug with no other writable setting (Sonoff S61SZBTPB, found
+                // 2026-10-21) was registered with no COMMAND capability at all.
+                JsonNode features = expose.path("features");
+                if (features.isArray()) {
+                    for (JsonNode sub : features) processExpose(sub, caps);
+                }
+                caps.add(DeviceCapability.TELEMETRY);
+            }
             case "composite" -> {
                 // Recurse into sub-features (e.g. water_leak_buzzer on THIRDREALITY)
                 JsonNode features = expose.path("features");
@@ -731,6 +747,13 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         if (model.contains("snzb-03") || desc.contains("motion"))      return DeviceType.MOTION_SENSOR;
         if (model.contains("snzb-04") || desc.contains("contact"))     return DeviceType.CONTACT_SENSOR;
         if (model.contains("snzb-02") || desc.contains("temperature")) return DeviceType.TEMPERATURE_SENSOR;
+        // A switch or plug that also measures power is a power meter (the dashboard's power
+        // tile, the power monitoring page and the power-draw suggestions all key on this type).
+        // Checked before the generic switch rule below, which would otherwise win because most
+        // Z2M descriptions say "switch".
+        if (caps.contains(DeviceCapability.POWER_MONITOR)
+                && (desc.contains("switch") || desc.contains("plug") || desc.contains("outlet") || desc.contains("relay")))
+            return DeviceType.POWER_METER;
         if (model.contains("zbminir") || desc.contains("switch"))      return DeviceType.HOME_ASSISTANT_ENTITY;
         if (desc.contains("smoke") || desc.contains("co alarm"))       return DeviceType.SMOKE_ALARM;
         if (desc.contains("smart plug") || desc.contains("outlet"))    return DeviceType.POWER_METER;
