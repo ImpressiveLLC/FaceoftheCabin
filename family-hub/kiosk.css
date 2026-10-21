@@ -1,0 +1,17 @@
+.display-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.display-controls button, .display-controls a {
+  display:inline-flex; align-items:center; justify-content:center; min-height:44px;
+  padding:8px 12px; border:1px solid var(--glass-border); border-radius:8px;
+  background:var(--night); color:var(--cream); font:inherit; text-decoration:none; cursor:pointer;
+}
+.display-controls [hidden] { display:none; }
+.display-controls :focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+#kiosk-controls { display:none; }
+.kiosk-mode #kiosk-controls {
+  display:flex; position:fixed; top:0; left:0; right:0; z-index:10001;
+  padding:4px 12px; background:var(--night); border-bottom:1px solid var(--glass-border);
+}
+.kiosk-mode #app { padding-top:116px; }
+.kiosk-mode #dash-topbar { padding-top:108px; }
+.kiosk-mode #settings-btn { display:none; }
+@media print { #kiosk-controls { display:none !important; } }

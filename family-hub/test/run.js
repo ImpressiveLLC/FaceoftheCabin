@@ -573,6 +573,39 @@ function check(label, actual, expected) {
 
   await mobile.close();
 
+  // Kiosk is a display preference, including when fullscreen is denied.
+  const kiosk = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await kiosk.addInitScript(() => {
+    document.documentElement.requestFullscreen = () => Promise.reject(new Error('denied'));
+  });
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1');
+  await kiosk.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
+  check('URL enters kiosk', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), true);
+  check('kiosk exit remains visible on mobile', await kiosk.locator('#kiosk-controls [data-kiosk-toggle]').isVisible(), true);
+  const box = await kiosk.locator('#kiosk-controls').boundingBox();
+  check('kiosk controls fit mobile width', box.x >= 0 && box.x + box.width <= 390, true);
+  await kiosk.locator('#kiosk-controls [data-kiosk-fullscreen]').click();
+  check('denied fullscreen keeps kiosk usable', await kiosk.locator('#kiosk-controls [data-kiosk-toggle]').innerText(), 'Exit kiosk');
+  // Capture the actual same-tab navigation without reaching a live service.
+  await kiosk.route('https://cabin.unicornpingpong.com/**', route => route.fulfill({ body: '<p>Cabin</p>', contentType: 'text/html' }));
+  await kiosk.locator('#kiosk-controls [data-cabin-link]').click();
+  check('cross-app destination', new URL(kiosk.url()).hostname, 'cabin.unicornpingpong.com');
+  check('cross-app kiosk mode', new URL(kiosk.url()).searchParams.get('kiosk'), '1');
+  check('cross-app theme', new URL(kiosk.url()).searchParams.get('theme'), 'modern');
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html');
+  check('saved kiosk survives navigation', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), true);
+  await kiosk.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
+  await kiosk.locator('#kiosk-controls [data-kiosk-toggle]').click();
+  await kiosk.reload();
+  check('exit survives reload', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), false);
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1');
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=0');
+  check('explicit off overrides saved kiosk', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), false);
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1');
+  await kiosk.keyboard.press('Escape');
+  check('Escape exits kiosk', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), false);
+  await kiosk.close();
+
   await browser.close();
   await new Promise(r => server.close(r));
 
