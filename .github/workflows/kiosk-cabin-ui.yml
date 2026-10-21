@@ -1,0 +1,21 @@
+name: Cabin UI PR checks
+on:
+  pull_request:
+    paths: ['cabin-orchestration-platform/ui/**', '.github/workflows/kiosk-cabin-ui.yml']
+permissions:
+  contents: read
+jobs:
+  cabin-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: cabin-orchestration-platform/ui
+      - run: npm test
+        working-directory: cabin-orchestration-platform/ui
+      - run: npm run build
+        working-directory: cabin-orchestration-platform/ui

@@ -31,6 +31,7 @@ import {
   Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download, Power, Car
 } from "lucide-react";
 import "./styles.css";
+import KioskControls from "./KioskControls.jsx";
 
 // ─── Temperature unit ──────────────────────────────────────────────────────
 function useTempUnit() {
@@ -9075,6 +9076,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       <div className="app-shell">
         <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />
         <main className="main-area">
+          <KioskControls familyHubUrl={locationCfg?.familyHubUrl} showAppLink={!isDemo} />
           {isDemo && <DemoBanner />}
           <div className="main-toolbar">
             <span className="platform-name">{locationLabel} — Orchestration Hub</span>

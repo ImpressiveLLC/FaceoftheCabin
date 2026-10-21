@@ -11734,3 +11734,18 @@ elements:
         aliases: ["watch tv", "watch television", "movie time"]
         relates_to: []
     notes: "Candidate only (D27 Phase 1). Asks (what could satisfy a need) live in concepts.json as proposals and are empty where no mapping has been reviewed. The opposite of light (too bright, want less light) is not in the vocabulary yet."
+
+  - id: cabin_kiosk
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    data_class: composite
+    data_type: owl:Class
+    ui_display_name: "Kiosk mode"
+    source: localStorage["cabin.kiosk"]
+    definition: >
+      Per-browser cabin UI display preference, overridden by explicit kiosk=1
+      or kiosk=0. Hides navigation chrome while retaining status and exit controls.
+      Family Hub navigation carries kiosk and theme state without credentials.
+    transformation: KioskControls.jsx initialKiosk(), toggle(), and hubLink()
+    notes: "Display only; does not change authentication, permissions or device state."

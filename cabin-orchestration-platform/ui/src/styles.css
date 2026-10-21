@@ -2554,3 +2554,12 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 .on-the-way-btn-prominent:hover:not(:disabled), .on-the-way-btn-prominent:focus-visible { outline: 2px solid var(--text-muted); }
 .on-the-way-btn-prominent:disabled { opacity: 0.6; cursor: wait; }
+
+/* Consistent display and app controls stay available in kiosk mode. */
+.display-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:4px 12px; flex-shrink:0; background:var(--bg-secondary); border-bottom:1px solid var(--border); }
+.display-controls button, .display-controls a { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:8px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; text-decoration:none; cursor:pointer; }
+.display-controls :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.kiosk-mode .nav-rail, .kiosk-mode .main-toolbar .platform-name, .kiosk-mode .device-count-toggle { display:none; }
+.kiosk-mode .main-toolbar { height:auto; min-height:48px; flex-shrink:0; }
+.kiosk-mode .toolbar-right { flex-wrap:wrap; }
+.kiosk-mode .app-shell { height:100dvh; }
