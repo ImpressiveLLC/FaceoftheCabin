@@ -342,6 +342,21 @@ Not all sensors emit data continuously. The Kidde CO + Temp + Humidity monitor i
 
 **CO vs CO2 — revised 2026-09-04:** `measurement_type=co` means carbon monoxide; `measurement_type=co2` means carbon dioxide — both are real, valid, distinct entries, and both back real Kidde-unit entities today (co-level and co2-level are separate HA entities on the same physical device). The bug was never that CO2 lacks a place in the vocabulary — it was that the CO-level entity (no device_class, no unit) was falling through discovery's classification logic and landing on the wrong DeviceType, so a CO reading could show up mislabeled under a CO2-titled card. Fixed by giving `HomeAssistantDiscoveryService.inferType()` a friendly_name-based fallback for CO_SENSOR — the classification bug is gone; CO2_SENSOR itself was never the problem and is not being removed.
 
+### D13 Amendment A1 (implemented 2026-10-21, awaiting ratification): the Zigbee device is the parent of its Home Assistant entities
+
+**Status:** implemented-awaiting-ratification (Code, from Nate's direction 2026-10-21, [PR #220](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/220), work item W-88). Cowork ratifies; nothing below changes the D13 display rule or the Service Entity definition.
+
+**Found live (2026-10-21).** The attic SONOFF SNZB-02P sensor was charted twice from one device, and the cabin dehumidifier's SONOFF S61SZBTPB switch was listed as a native `z2m-*` device and as unlinked `ha-cabin-*` entities. The attic device had been linked the wrong way round (the native device was a child of its own humidity entity).
+
+**Rule.** Where one physical device reaches the platform both natively (Zigbee2MQTT, `z2m-*`) and through Home Assistant discovery (`ha-<location>-*`), the **native device is the parent (the Device) and each Home Assistant entity is one of its services**:
+1. The link is made by the entity id's object-id starting with the native device's friendly-name slug, at the same location. The longest slug wins. A slug shared by two native devices is never linked.
+2. A link drawn the other way round is repaired. A parent a person chose elsewhere is never replaced. Linking is not acceptance: a candidate stays a candidate.
+3. **Only the parent logs the reading.** A `sensor` entity of a native Zigbee device keeps its live value but writes no second `TELEMETRY` series, so a measurement has one lineage (Service → Device) and one chart series. Switches and binary sensors still publish, so workflows watching them keep firing. History already written under the entity ids is left in place; deleting telemetry is an owner-run dry-run script, never an agent session.
+4. A property Z2M reports as `null` means *not yet reported*. It is never stored as a value and never overwrites a real reading.
+5. A switch, plug or relay that exposes power is a `POWER_METER` (the D15 outlet/smart-plug class), and a `switch`/`light`/`fan`/`cover` expose carries the device's COMMAND capability. This applies to devices paired after 2026-10-21; a configured device keeps its type and capabilities until a person re-detects them (W-93).
+
+The D15 measurement types (`power` W, `energy` kWh, `current` A, `voltage` V) and the D15 card rules (power primary, energy secondary, voltage and current tertiary) apply unchanged to the parent. The S61SZBTPB advertises all four; see `zigbee_controlled_outlet` in `docs/ontology.yaml`.
+
 ------------------------------------------------------------------------
 
 ## D14 — Kiosk Auth Model — Public Read Tier + CabinSession
