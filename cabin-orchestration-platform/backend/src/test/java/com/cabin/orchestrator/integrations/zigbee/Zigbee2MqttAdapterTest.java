@@ -291,6 +291,51 @@ class Zigbee2MqttAdapterTest {
         assertEquals(List.of("battery", "voltage", "temperature", "humidity"), fields);
     }
 
+    // 2026-10-21 (found on the cabin dehumidifier switch, SONOFF S61SZBTPB): Z2M puts a
+    // controllable device's on/off under a "switch" expose whose own access flag is absent, so no
+    // COMMAND capability was inferred; and because its description says "switch" it was typed as a
+    // generic entity although it reports power, which hid it from the power tile and monitoring.
+    private void registerPowerSwitch(String friendlyName) throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"%s","type":"Router","definition":{
+              "model":"S61SZBTPB","vendor":"SONOFF","description":"Zigbee smart switch (US version)",
+              "exposes":[
+                {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7,"value_on":"ON","value_off":"OFF"}]},
+                {"type":"numeric","name":"power","property":"power","access":1,"unit":"W"},
+                {"type":"numeric","name":"voltage","property":"voltage","access":1,"unit":"V"},
+                {"type":"numeric","name":"current","property":"current","access":1,"unit":"A"},
+                {"type":"numeric","name":"energy","property":"energy","access":1,"unit":"kWh"},
+                {"type":"numeric","name":"linkquality","property":"linkquality","access":1}
+              ]}}]
+            """.formatted(friendlyName));
+    }
+
+    @Test
+    void aSwitchThatMeasuresPowerIsAPowerMeterWithAnOnOffCommand() throws Exception {
+        registerPowerSwitch("0xa4c1381f3884ffff");
+
+        var descriptor = registry.descriptor("z2m-0xa4c1381f3884ffff").orElseThrow();
+        assertEquals(com.cabin.orchestrator.devices.model.DeviceType.POWER_METER, descriptor.type());
+        assertTrue(descriptor.capabilities().contains(com.cabin.orchestrator.devices.model.DeviceCapability.COMMAND));
+        assertTrue(descriptor.capabilities().contains(com.cabin.orchestrator.devices.model.DeviceCapability.POWER_MONITOR));
+    }
+
+    @Test
+    void aNullReadingIsNotStoredAsTheTextNullAndNeverOverwritesARealOne() throws Exception {
+        registerPowerSwitch("0xa4c1381f3884ffff");
+
+        deliver("zigbee2mqtt/0xa4c1381f3884ffff", "{\"state\":\"ON\",\"power\":null,\"voltage\":null,\"linkquality\":148}");
+        var first = registry.get("z2m-0xa4c1381f3884ffff").attributes();
+        assertEquals("ON", first.get("state"));
+        assertFalse(first.containsKey("power"), "an unreported power must be absent, not the text null");
+        assertFalse(first.containsKey("voltage"));
+
+        deliver("zigbee2mqtt/0xa4c1381f3884ffff", "{\"power\":412.5,\"voltage\":121.4}");
+        deliver("zigbee2mqtt/0xa4c1381f3884ffff", "{\"power\":null}");
+        var later = registry.get("z2m-0xa4c1381f3884ffff").attributes();
+        assertEquals(412.5, ((Number) later.get("power")).doubleValue(), 0.0001);
+    }
+
     // D16 (Reporting Topics IA), Cowork ratification 2026-09-05: before this,
     // motion/contact/leak devices never got a device_reporting_relationship
     // row for their own binary reading at all -- only numeric exposes were

@@ -63,6 +63,18 @@ Existing component guidance is available now: [REPLICATION section 10](../../REP
 
 [`docs/HARDWARE_INVENTORY_2026-10-16_sensor-relay-nodes-and-hvac.md`](../../HARDWARE_INVENTORY_2026-10-16_sensor-relay-nodes-and-hvac.md) and [D28](../../governance/decisions/ontology-decisions.md) record inbound hardware not yet installed or paired: three cabin sensor/relay enclosures, six home Zigbee temp/humidity sensors plus relays and plugs, a Midea Cube dehumidifier, and a Cloudline S6 duct fan controller. None of this changes current recovery or maintenance procedure yet — there is no deployed WiFi/ESPHome adapter, no Midea HA integration and no Cloudline control path until W-84/W-77/W-78 ship. Do not assume any of these units are live, pollable, or present in `device_state` until its own backlog item is marked merged and it is confirmed paired on the running stack.
 
+## A Zigbee plug or sensor is listed twice, charts twice, or shows power as unknown (W-88, 2026-10-21)
+
+Audience: operator. A Zigbee device appears as a native `z2m-*` device and as separate Home Assistant `ha-cabin-*` entities of the same hardware. The platform treats the **Zigbee device as the parent** and each Home Assistant entity as one of its **services**: one card, with the other services underneath and still usable. Only the parent's readings are logged, so one sensor produces one chart series. If an entity is not underneath its Zigbee device, check that its Home Assistant entity id starts with the Zigbee friendly name at the same location; a name shared by two devices is deliberately not linked. A parent a person chose is not overridden.
+
+| Observation | Safe next question/check | What it does not prove |
+|---|---|---|
+| Power, voltage, current or energy read unknown | Has the device ever reported them? Z2M sends `null` until the first report. Try Reconfigure in the Zigbee2MQTT UI and cycle the load once. | An empty reading is not a faulty plug or a platform outage. |
+| The card has no on/off or power tile | Is the device enabled (not just assigned)? Is its type Power meter? Devices registered before 2026-10-21 may carry the old generic type (W-93). | "Assigned" does not mean enabled or monitored. |
+| A chart shows two aligned lines for one sensor | Which two device ids? One `z2m-*` and one `ha-cabin-*` of the same hardware are the old double logging; new readings go to the parent only. | Old rows remain; they are history, not a current fault. Deleting telemetry is a dry-run script run by the owner, never an agent session. |
+
+Full steps: [Maintenance guide, adding a Zigbee smart plug or switch that measures power](../../MAINTENANCE.md).
+
 ## Close the incident
 
 Record the symptom, affected instance/capability, source/runtime version, bounded checks, cause evidence, authorized correction, verification and remaining uncertainty. Submit reusable facts or corrected instructions through the [shared contribution process](../contributing.md). Keep secret values and household telemetry out of the shared incident summary. Never label an inferred cause “confirmed” or a suggested command “executed.”

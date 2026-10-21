@@ -2118,6 +2118,27 @@ payload `{"value":true,"time":254}` is accepted. Its close payload
 `{"value":false}` has no `time`, so Z2M answers `Invalid payload`; the window
 then closes only by timing out. Raised under W-83 with the fix (`{"time":0}`).
 
+### Adding a Zigbee smart plug or switch that measures power (W-88 use case, 2026-10-21)
+
+**Found with:** the cabin dehumidifier plugged into a new SONOFF S61SZBTPB switch, and the attic
+SONOFF SNZB-02P sensor. Four symptoms, three causes.
+
+| Symptom | Cause | What the platform does now |
+|---|---|---|
+| The switch is listed twice (a `z2m-*` device and `ha-cabin-*` entities), with no link, or linked the wrong way round | HA discovery imported each entity of a Zigbee device as its own unrelated candidate; the attic sensor had been drawn as a *child of its own humidity entity* | Discovery makes the native `z2m-*` device the **parent** and each Home Assistant entity of it a **service** (a child), matched by friendly-name slug at the same location (longest slug wins; a name shared by two devices is never linked). It repairs the reversed link. It never replaces a parent a person chose elsewhere, and a candidate stays a candidate |
+| The attic humidity (and temperature) chart showed two aligned series from one sensor | The native device and its HA humidity/temperature entities each logged `TELEMETRY` under their own device id | A `sensor` entity of a native Zigbee device keeps its live value but writes no second telemetry series; only the Zigbee parent is logged (D13: the device is the lineage, the measurement type is the service). Switches and binary sensors still publish so workflows watching them keep firing. **Old double-logged rows were left alone**; deleting telemetry is a dry-run script the owner runs |
+| Power, voltage, current and energy read "unknown" | Z2M publishes `null` for a property the device has not reported yet; the adapter stored the text `null` | Nulls are skipped, never stored, and never overwrite a real earlier reading. An empty reading now means "nothing reported yet" |
+| No on/off control and no power tile on the card | Z2M puts the on/off under a `switch` expose whose access flag is absent, so no COMMAND capability was inferred; the description said "switch", so the device was typed as a generic entity instead of a power meter | A switch, plug or relay that exposes power is typed `POWER_METER` and a `switch`, `light`, `fan` or `cover` expose now contributes COMMAND. Applies to devices paired after this change |
+
+**Steps for the next smart plug:**
+1. Pair it (Device Manager, Add, pairing window). It appears as a Candidate `z2m-<friendly name>` plus its `ha-cabin-*` entities, already linked under it.
+2. Check the parent card says **Power meter**, has an on/off control and lists the HA entities underneath. Rename the parent; the entities keep their ids.
+3. **Enable it.** "Assigned" is a lifecycle label only: a device that is assigned but not enabled is not on the dashboard and not monitored. Turn on *Enabled* in the card's edit form (a person's decision, never automatic).
+4. Power still empty after a few minutes with a load connected: this is the device not reporting yet, not a platform fault. In the Zigbee2MQTT UI open the device and use **Reconfigure**, then switch the load on and off once; check Z2M's log for the device's first power report. Do not conclude the plug is faulty from one empty reading.
+5. Monitoring and the weekly power suggestions read the Zigbee parent's readings, so they begin once real power values arrive; allow the usual window of consistent draw before expecting a suggestion.
+
+**A device registered before this change keeps its old shape** (type and capabilities are sticky once configured, by design). The cabin dehumidifier switch `z2m-0xa4c1381f3884ffff` is one: use *Re-check device info* on its card, or the one-time `discovery/apply` `mode=replace` correction in the `cabin-3rd-party-device-onboarding` skill, Step 4 (confirm with the owner first). Tracked as W-93.
+
 ---
 
 ## Known Issues & Operational Lessons

@@ -267,6 +267,33 @@ around the same moment is what actually distinguishes "this vendor is
 just slow/pull-based" from "this integration is broken and needs
 attention" -- don't report one when you mean the other.
 
+## Zigbee-native devices and their Home Assistant entities: the parent rule (W-88, 2026-10-21)
+
+A Zigbee2MQTT device reaches the platform twice: as the native `z2m-*` device and, through HA discovery,
+as one `ha-<location>-*` candidate per entity. The rule (D13, service as the atomic data element):
+**the Zigbee device is the parent; its HA entities are its services.** `HomeAssistantDiscoveryService`
+links them by friendly-name slug at the same location (longest slug; a shared slug is never linked),
+repairs a link drawn the other way round (the attic sensor was a child of its own humidity entity),
+and leaves a parent a person chose alone. It links with `DeviceRegistry.setDiscoveredParent`, which does
+not touch lifecycle or the configured flag, so a candidate stays a candidate. A `sensor` entity of a
+native Zigbee device keeps its live value but publishes no TELEMETRY row (the parent already logs it);
+switches and binary sensors still publish.
+
+When onboarding a new Zigbee plug, switch or sensor, check these four things, which all failed at once
+on the dehumidifier switch (SONOFF S61SZBTPB):
+
+- `Zigbee2MqttAdapter.inferType`: a switch/plug/relay that exposes power must be `POWER_METER`; the
+  generic "description contains switch" rule used to win first.
+- `processExpose`: a Z2M `switch`/`light`/`fan`/`cover` expose carries its writable state in `features`
+  and has no access flag of its own; without recursing, no COMMAND capability is inferred.
+- Z2M sends `null` for a property not yet reported. Never store it as the text `null` or let it
+  overwrite a real reading; an absent value means "nothing reported yet".
+- `enabled` is a person's decision: "Assigned" alone is not on the dashboard and not monitored.
+
+All of this applies to *new* devices. A device configured before the fix keeps its type and
+capabilities (Step 4 above); correct it with the same `discovery/apply` `mode=replace`, with the owner's
+confirmation (tracked as W-93). Never delete the old double-logged telemetry from an agent session.
+
 ## Quick checklist
 
 - [ ] Confirmed a maintained HA integration exists (or built the MQTT
@@ -282,5 +309,7 @@ attention" -- don't report one when you mean the other.
       `DeviceType`, not hardcoded to the first native case
 - [ ] Checked whether any already-configured device of this vendor needs
       a one-time `discovery/apply` `mode=replace` type correction
+- [ ] For a Zigbee device: native device is the parent of its HA entities, type/COMMAND inferred from
+      its exposes, no `null` stored as a reading (see the parent-rule section)
 - [ ] `docs/ontology.yaml` updated in the same commit
 - [ ] Real tests added on both sides, wired into the existing CI gate
