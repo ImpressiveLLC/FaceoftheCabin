@@ -27,12 +27,16 @@ drawings**. Open engineering items are listed below rather than filled with assu
 
 ## Three-node decision
 
-| Reusable type | Human type name | Active allocation | Original reference | Function |
+Type names and every unit's name follow [D28](../governance/decisions/ontology-decisions.md#d28--physical-unit-type-naming-convention-midea-cube-and-cloudline-s6-hvac-integration) as amended by A1 (2026-10-19); D28's allocation table is the one home for unit names.
+
+| D28 type (snake key) | Unit | Allocation | Power | Function |
 |---|---|---|---|---|
-| `sensor_collection_box` | Sensor Collection Box | Cabin / Main level / Air quality | box 2 | Monitoring only: SEN66 + SHT45 + QT Py |
-| `sensor_relay_box` | Sensor Relay Box | Cabin / Bathroom / Exhaust and heat | box 3 | Same sensing profile plus independently identified exhaust and heat controls |
-| `sensor_relay_box` | Sensor Relay Box | Cabin / Mechanical room / Climate control | box 4 | Same sensing profile plus active controls; final load allocation still needed |
-| `sensor_collection_box` | Sensor Collection Box | Cabin / Lower level / Air quality | box 1 | Deferred; no fourth sensor set purchased |
+| `SensorCollectionBox` (`sensor_collection_box`) | box 2 | Cabin / Upstairs (main level) | Mean Well IRM-05-5 | Monitoring only: SEN66 + SHT45 + QT Py |
+| `RelayControlBox` (`relay_control_box`) | box 3 | Cabin / Bathroom / ExhaustHeat | Mean Well IRM-05-5 | Same sensing profile plus independently identified exhaust and heat relays (2 MINI-ZB1GSP) and 2 toggles |
+| `RelayControlBox` (`relay_control_box`) | box 4 | Cabin / MechRoom / ClimateControl | USB plug-in (plug-and-play) | Same sensing profile plus relay A (circulation, feeds the S6) and relay B (reserved) |
+| `SensorCollectionBox` (`sensor_collection_box`) | box 1 | Cabin / LowerLevel | — | Deferred; no fourth sensor set purchased |
+
+The earlier candidate key `sensor_relay_box` is replaced by D28's `relay_control_box` (A1); `docs/ontology.yaml` and the device inventory JSON are aligned by Code under W-80.
 
 The two control nodes are retained intact, not redundant monitoring nodes. Inter-level
 circulation is the user's reason to accept one general monitoring zone for now; it is
@@ -46,7 +50,7 @@ Existing circulation is user-reported; the newly ordered S6 has not been commiss
 |---|---:|---|
 | Sensirion SEN66-SIN-T | 3 | One per active node |
 | SEN5X 6-pin JST GHR-06V-S cable set | 3 | SEN66-to-breakout; verify keyed pin mapping before power |
-| Mean Well IRM-05-5, 5 V / 1 A module | 2 | Planned control-node supplies; enclosure and mains design not yet signed off |
+| Mean Well IRM-05-5, 5 V / 1 A module | 2 | Boxes 2 and 3 (D28 A1); box 4 runs from a USB plug-in supply. Confirm at assembly; enclosure and mains design not yet signed off |
 | Adafruit STEMMA QT/Qwiic 100 mm cable, PID 4210 | 9 | Three budgeted per node; unused runs remain spare |
 | Adafruit SHT45 breakout with PTFE, PID 6174 | 3 | One per active node, ambient T/RH reference |
 | Adafruit SEN6x breakout, PID 6331 | 3 | One per active node |
@@ -60,6 +64,9 @@ Existing circulation is user-reported; the newly ordered S6 has not been commiss
 | Leviton 1451-2W, 15 A toggle | 2 | Bathroom local controls; manufacturer-approved relay switch-input topology to be confirmed |
 | Midea Cube MAD50PS1QGR | 1 | Cabin dehumidification; exact room/drain route pending |
 | AC Infinity CLOUDLINE S6, 6 in, supplied speed controller | 1 | Fixed inter-level loop: lower air upstairs, upper air returns downstairs; mount/service access still to mark |
+| Freenove ESP32-S3 development board, 8 MB flash (Amazon B0DHJYR4D4) | 1 | S6 speed node (W-78), ordered 2026-10-19, $14.95 |
+| NOYITO PC817 1-channel optocoupler isolation module, 3-5 V input (Amazon B0B5373L4P) | 2 (one pack) | One isolates the S6 speed signal (W-78), one spare; ordered 2026-10-19, $6.99 |
+| AC Infinity UIS extension cable, 10 ft, female to male (Amazon B09V1TG17Z) | 1 | Cut to tap the S6 control port so the fan's own cable stays intact (W-78); ordered 2026-10-19, $11.99 |
 | Adafruit PCB coaster, PID 5719 | 1, $0.00 | Promotional non-system accessory, no service/ontology capability |
 | Carlon boxes, blank covers, cords, mesh | On hand; quantities uncounted | Inspect, assign and record adequacy before assembly |
 | Home SMLIGHT SLZB-MR5U coordinator; existing leak alarms | On hand, per user/source | No new coordinator or leak sensors purchased; verify live bridge independently |
@@ -73,6 +80,8 @@ Corrected receipt totals (user supplied 2026-10-16):
 | Amazon, two orders | Not fully itemized | — | Not separated | Not separated | **$98.19 + $147.44** |
 | Home Depot toggles | Earlier summary | — | — | Not separated | **$1.70** |
 | Accounted-for Doc 27 total | | | | | **$709.07** |
+
+S6 speed-control order (Amazon, 2026-10-19, user confirmed): **$33.93 before tax**, estimated delivery 2026-10-20; not counted in the $709.07 above.
 
 This supersedes the preliminary $660.96: that omitted $19.81 Adafruit shipping/tax
 and $28.30 DigiKey tax. Midea and S6 prices remain excluded because not supplied.
@@ -91,32 +100,13 @@ not independently verified procurement advice.
 
 ## Identity and inherited names
 
-Follow existing `display_name`, `location_context`, `hub_location` and D1 rather
-than making a room name an immutable identity. The type key is snake_case and stable;
-the exact human type label prefixes the UI name. Proposed name rendering:
+Naming is owned by [D28](../governance/decisions/ontology-decisions.md) (amended by A1, 2026-10-19): `{type}_{hub}_{room}[_{application}]` for the `entity_id`, PascalCase segments for the `display_label`, hub always present. This section keeps only the identity rules D28 relies on:
 
-- Technical alias: `<type_key>_<hub_location_slug>_<room_slug>_<purpose_slug>`.
-  Example: `sensor_collection_box_cabin_main_level_air_quality`.
-- UI: `<Human Type Name> — <Hub location> / <Room> / <Purpose>`.
-  Example: **Sensor Collection Box — Cabin / Main level / Air quality**.
-- The user's `SensorCollectionBox_Basement_HVAC` is a useful display alias; snake_case
-  matches ontology IDs and including the hub avoids Home/Cabin collisions.
-- Use current room/zone/qualifier attributes; keep purpose/function separately.
-  If two instances share all descriptors, add a stable short hardware-identity suffix
-  after enrollment, not “box 1/2” as the type. The inventory's temporary allocation
-  key is not an HA entity ID, MAC, IEEE address or minted platform `deviceId`.
-- Preserve immutable `deviceId`/hardware identity and HA unique IDs when location or
-  purpose changes; regenerate display aliases only. ESPHome hostnames are separate
-  lowercase/hyphenated protocol names validated for that platform's length limits.
-- Child names inherit their parent plus sensor/source or channel, for example
-  **Sensor Relay Box — Cabin / Bathroom / Exhaust and heat — SHT45 humidity**.
-  Keep standalone relays/plugs visible in the master hardware inventory even when
-  their services are grouped under a physical assembly in Device Manager.
-
-The two reusable box types share the same sensor profile; `sensor_relay_box` extends
-`sensor_collection_box` semantically with control associations. Hardware association
-does not make the ESP32 a relay driver: Sonoff controls have their own Zigbee path.
-New ontology entries are `candidate`, not new executable DeviceType enum values.
+- Preserve immutable `deviceId`/hardware identity and HA unique IDs when location or purpose changes; regenerate display labels only. No `entity_id` before final install (D1).
+- ESPHome hostnames are separate lowercase/hyphenated protocol names validated for that platform's length limits; they are not derived from display labels.
+- If two units share every descriptor, add a stable short hardware-identity suffix after enrollment, not "box 1/2". The inventory's temporary allocation key is not an HA entity ID, MAC, IEEE address or minted platform `deviceId`.
+- Child services inherit the parent label plus sensor/source or channel (D28 examples). Keep standalone relays and plugs visible in the master inventory even when their services are grouped under a physical assembly in Device Manager.
+- Hardware association does not make the ESP32 a relay driver: Sonoff relays have their own Zigbee path. New ontology entries are `candidate`, not new executable DeviceType enum values.
 
 ## Services, measurements and capability model
 
@@ -129,7 +119,7 @@ New ontology entries are `candidate`, not new executable DeviceType enum values.
 | S61SZBTPB | Verify actual converter exposes, model string and ratings on arrival | Candidate on/off; energy channels only if discovered |
 | SNZB-02P | Temperature, RH, battery/link/availability as actually exposed | Read only |
 | Midea Cube | Candidate humidity reading, target RH, on/off, mode/fan and bucket/pump diagnostics **only if this unit exposes them** | Dehumidification control through verified HA entities; do not invent pump or drain-state services |
-| CLOUDLINE S6 | Manual speed now; candidate outlet power/state, later supported UIS speed/state | Commissioned outlet on/off initially; network speed remains unavailable without a compatible controller/bridge |
+| CLOUDLINE S6 | Power W, A, V, kWh and on/off through box 4 relay A (MINI-ZB1GSP); speed level (10 steps) once W-78's speed path exists; manual speed via the supplied controller until then | On/off after commissioning; `set_level` only after W-78 is built and verified (D28 A1). Commanded speed, reported level and actual airflow stay distinct |
 
 SEN66 is not a CO, oxygen, radon, mold or smoke-alarm sensor. VOC/NOx indexes are
 dimensionless indexes, not ppm concentrations or a universal AQI. Keep SEN66 and
@@ -146,7 +136,7 @@ rely on a units-only ppm inference to distinguish them.
 ## Relationships and multi-purpose circulation
 
 Use D27's semantic relations as the target model, preserving the existing YAML
-`relationships` representation. Do not silently migrate legacy `related_to` edges
+`relationships` representation. Nate's "related to" tag (D28) is stored as `relates_to` edges to domain subjects and shown as "Related to" (D28 A1); it is not a separate property. Do not silently migrate legacy `related_to` edges
 or the YAML's supplemental `relates_to` map; W-68 owns runtime reconciliation.
 
 | Relation | Meaning here | Example |
@@ -176,8 +166,10 @@ flowchart LR
   CZ --> MQTT[Existing broker / location-scoped topics]
   HZ --> MQTT
   M[Midea Cube] -->|candidate local LAN integration| HA
-  FAN[S6 + manual speed controller] -->|commissioned switched supply only| PLUG[Assigned Zigbee outlet]
-  PLUG --> CZ
+  FAN[S6 + supplied speed controller] -->|switched, metered supply| RELA[Box 4 relay A, MINI-ZB1GSP]
+  RELA --> CZ
+  SPD[W-78 isolated ESPHome PWM node] -.->|speed signal, after W-78| FAN
+  SPD -.->|Wi-Fi / ESPHome API| HA
   HA --> ADAPT[Existing HA discovery / adapter]
   MQTT --> ZA[Existing Zigbee adapter]
   ADAPT --> REG[Registry: parent devices + child services]
@@ -215,17 +207,12 @@ before unattended operation. Exact MAD50PS1QGR support remains an arrival test.
 
 ### CLOUDLINE control decision
 
-For ordered hardware, retain the supplied speed controller and select a fixed,
-commissioned mixing speed. Selected remote-control design is mechanical-room relay A for on/off, **only after** motor-load rating and restart tests. One purchased Zigbee outlet is the fallback if a suitable relay installation cannot be made; select one power-control path, not both in series. Until
-then it is manual-only. An unused relay is not assumed a motor speed controller.
-The manufacturer's PWM motor description is not a documented ESP32 pinout.
+Amended by D28 A1 (Nate, 2026-10-19: power monitoring and speed control are not mutually exclusive). Two coexisting paths:
 
-For future variable speed, the documented HA community integration uses a supported
-Wi-Fi UIS controller (for example Controller 69 Pro) and the UIS cloud. No such
-controller is in the ordered BOM. Treat it as an optional procurement/design gap,
-not an inbound product or local-only integration. Verify the shipped S6 connector
-revision/controller compatibility before selecting it. Keep desired/commanded speed,
-reported level and actual airflow distinct; no airflow sensor was ordered.
+- **Power, energy and on/off:** box 4 relay A (MINI-ZB1GSP) on the S6 supply, **only after** motor-load rating and restart tests. One purchased Zigbee outlet is the fallback if a suitable relay installation cannot be made; select one power path, never both in series. The supplied controller keeps its last speed through a power cut, so relay on/off does not lose the set speed.
+- **Speed:** W-78. Preferred: an opto-isolated ESPHome PWM node on the fan's control port, reached through HA. Fallback: a UIS Wi-Fi controller with the community HA integration, which depends on AC Infinity's cloud. First step: photograph and meter the shipped S6's connector, because revisions differ and the manufacturer's PWM motor description is not a documented pinout. No speed claim before it is real.
+
+Keep desired/commanded speed, reported level and actual airflow distinct; no airflow sensor was ordered.
 
 ### Workflow ownership and use cases
 

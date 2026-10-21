@@ -626,9 +626,46 @@
       "control_allocation_key": null,
       "service_type_refs": [],
       "note": "Planning record, not an additional separate purchase. Confirm exact model, rating and wiring before enabling any control."
+    },
+    {
+      "allocation_key": "circulator-speed-node",
+      "type_ref": "esp32_controller",
+      "hub_location": "cabin",
+      "room": "pending_location",
+      "purpose": "inter_level_air_mixing_speed",
+      "technical_alias": null,
+      "ui_name": null,
+      "manufacturer_model": "Freenove ESP32-S3 development board, 8 MB flash (Amazon B0DHJYR4D4)",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "circulator",
+      "service_type_refs": [],
+      "note": "W-78 speed path (D28 A1): ESPHome LEDC PWM on GPIO4 through the PC817 isolator to the S6 UIS control port. Ordered 2026-10-19, $14.95. Name minted at install per D28."
+    },
+    {
+      "allocation_key": "circulator-speed-isolator",
+      "type_ref": "signal_isolator",
+      "hub_location": "cabin",
+      "room": "pending_location",
+      "purpose": "inter_level_air_mixing_speed",
+      "technical_alias": null,
+      "ui_name": null,
+      "manufacturer_model": "NOYITO 1-channel PC817 optocoupler isolation module, 3-5 V input, pack of 2 (Amazon B0B5373L4P)",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "circulator-speed-node",
+      "service_type_refs": [],
+      "note": "One used, one spare. Isolation between the ESP and the fan port is mandatory (no shared ground). Ordered 2026-10-19, $6.99 for 2."
     }
   ],
   "passive_materials": [
+    {
+      "type_ref": "fan_control_interconnect",
+      "model": "AC Infinity UIS extension cable, 10 ft, female to male (Amazon B09V1TG17Z); cut to tap the S6 control port for W-78",
+      "quantity": 1
+    },
     {
       "type_ref": "sensor_bus_interconnect",
       "model": "SEN5X JST GH cable set",
@@ -723,9 +760,19 @@
     "amazon_order_a": 98.19,
     "amazon_order_b": 147.44,
     "home_depot": 1.7,
-    "total_excluding_midea_and_s6": 709.07
+    "total_excluding_midea_and_s6": 709.07,
+    "amazon_order_c_2026_10_19_s6_speed_parts_before_tax": 33.93
   },
   "delivery_estimates": [
+    {
+      "products": [
+        "circulator-speed-node",
+        "circulator-speed-isolator",
+        "UIS extension cable"
+      ],
+      "date": "2026-10-20",
+      "status": "user_reported_estimate_not_received"
+    },
     {
       "products": [
         "relay-1",
