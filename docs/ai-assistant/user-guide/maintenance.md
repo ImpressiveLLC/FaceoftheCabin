@@ -69,7 +69,7 @@ Audience: operator. A Zigbee device appears as a native `z2m-*` device and as se
 
 | Observation | Safe next question/check | What it does not prove |
 |---|---|---|
-| Power, voltage, current or energy read unknown | Has the device ever reported them? Z2M sends `null` until the first report. Try Reconfigure in the Zigbee2MQTT UI and cycle the load once. | An empty reading is not a faulty plug or a platform outage. |
+| Power, voltage, current or energy read unknown | Is the model supported by the running Zigbee2MQTT? In its device list, `supported: false` with "Automatically generated definition" means it has no converters, so every reading stays `null` and Reconfigure cannot help; a newer Zigbee2MQTT is the fix (found on a new SONOFF S61SZBTPB, 2026-10-21). If it is supported, Z2M sends `null` until the first report: Reconfigure in the Zigbee2MQTT UI and cycle the load once. | An empty reading is not a faulty plug or a platform outage. A Zigbee2MQTT upgrade affects every Zigbee device; back up its data folder first. |
 | The card has no on/off or power tile | Is the device enabled (not just assigned)? Is its type Power meter? Devices registered before 2026-10-21 may carry the old generic type (W-93). | "Assigned" does not mean enabled or monitored. |
 | A chart shows two aligned lines for one sensor | Which two device ids? One `z2m-*` and one `ha-cabin-*` of the same hardware are the old double logging; new readings go to the parent only. | Old rows remain; they are history, not a current fault. Deleting telemetry is a dry-run script run by the owner, never an agent session. |
 

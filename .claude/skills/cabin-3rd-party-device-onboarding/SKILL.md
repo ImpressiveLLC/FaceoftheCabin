@@ -289,6 +289,10 @@ on the dehumidifier switch (SONOFF S61SZBTPB):
 - Z2M sends `null` for a property not yet reported. Never store it as the text `null` or let it
   overwrite a real reading; an absent value means "nothing reported yet".
 - `enabled` is a person's decision: "Assigned" alone is not on the dashboard and not monitored.
+- Check Zigbee2MQTT's own `supported` flag first (`zigbee2mqtt/bridge/devices`). `supported: false`
+  ("Automatically generated definition") means no converters: power and other readings stay `null`
+  and Reconfigure cannot help. The S61SZBTPB was unsupported by Z2M 2.12.1 (2026-10-21); the fix is a
+  Z2M upgrade, an owner action with a data-folder backup, never an agent session.
 
 All of this applies to *new* devices. A device configured before the fix keeps its type and
 capabilities (Step 4 above); correct it with the same `discovery/apply` `mode=replace`, with the owner's
