@@ -71,6 +71,7 @@ Rules:
 | `discrepancy-log.md` | Whoever finds the mismatch | Cowork rules each entry |
 | `use-cases.md` | Cowork, from Nate's stated needs | Nate |
 | `backlog.md` | Cowork scores; any agent proposes ad-hoc items with a score | Nate |
+| `docs/ai-assistant/wsjf-backlog.md` (Ask track) | Cowork owns and scores; Codex supplies design and technical evaluation and review, and proposes items with a score | Nate |
 | `definition-of-done.md` | Cowork drafts | Nate |
 | `signoffs/` | Cowork only. Append-only: a later sign-off supersedes, never edits, an earlier one | — |
 | `iterations/` | Cowork drafts; Code confirms feasibility | Nate |
