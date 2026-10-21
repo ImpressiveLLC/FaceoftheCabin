@@ -304,7 +304,7 @@
          content's natural size so the card's own overflow-y:auto (from
          .glass-card) can take over instead of the card — or the whole
          #app grid — overflowing past the viewport. */
-      max-height:100%;
+      max-height:min(100%, var(--chores-max-height, 100%));
       min-height:0;
       animation: slideRight .8s .3s ease both;
     }
@@ -1894,6 +1894,13 @@
       border-color: var(--layer-1-edge);
       border-width: var(--layer-1-border-width);
       box-shadow: var(--layer-1-shadow), var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
+    }
+    /* Settings panel edge uses the same layer-1 edge colour/width as the cards
+       beside it (it is a flush side panel, so only the left edge is drawn). The
+       :root prefix outranks the per-theme #settings-panel overrides above. */
+    :root #settings-panel {
+      border-left-color: var(--layer-1-edge);
+      border-left-width: var(--layer-1-border-width);
     }
     :is(.bday-item, .reward-strip, .location-link, .cabin-activity-row, .chore-day-block,
         .kid-reward-row, .reward-tile, .reward-rule-card, .profile-card, .profiles-form-col,
@@ -5746,6 +5753,7 @@ const NOTEPAD_TOP_ABSOLUTE_MIN = 90;  // never cover the clock/header
 const NOTEPAD_TOP_GAP = 16;
 const NOTEPAD_BOTTOM_GAP = 16;
 const NOTEPAD_MIN_HEIGHT = 260; // enough for compose box + a few note rows
+const NOTEPAD_CHORES_MIN_HEIGHT = 64; // chores shrink to this before the notepad does
 function computeNotepadTop() {
   const isNarrow = window.innerWidth < 900;
   const choresEl = document.getElementById('chores-card');
@@ -5782,6 +5790,16 @@ function computeNotepadTop() {
     return;
   }
 
+  // The notepad is the primary object here: chores flex/scroll first. Cap the
+  // chores card so the notepad always keeps NOTEPAD_MIN_HEIGHT below it; the
+  // card's own overflow-y:auto scrolls the remainder. The floor only keeps
+  // chores usable on viewports too short for both to fit.
+  if (choresEl) {
+    const choresTop = choresEl.getBoundingClientRect().top;
+    const choresCap = Math.max(NOTEPAD_CHORES_MIN_HEIGHT,
+      hardBottom - NOTEPAD_MIN_HEIGHT - NOTEPAD_TOP_GAP - choresTop);
+    document.documentElement.style.setProperty('--chores-max-height', `${Math.round(choresCap)}px`);
+  }
   const preferredTop = choresEl
     ? Math.round(choresEl.getBoundingClientRect().bottom + NOTEPAD_TOP_GAP)
     : NOTEPAD_TOP_ABSOLUTE_MIN;

@@ -606,6 +606,36 @@ function check(label, actual, expected) {
   check('Escape exits kiosk', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), false);
   await kiosk.close();
 
+  // Layout priority on a short desktop viewport: kiosk controls must not cost
+  // vertical space, the notepad keeps its protected minimum height, chores
+  // shrink first, and the settings panel edge matches the card layer tokens.
+  const short = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await short.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1');
+  await short.waitForTimeout(400);
+  await short.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
+  await short.evaluate(() => computeNotepadTop());
+  const shortGeo = await short.evaluate(() => {
+    const cs = id => getComputedStyle(document.getElementById(id));
+    const root = getComputedStyle(document.documentElement);
+    const controls = document.getElementById('kiosk-controls').getBoundingClientRect();
+    const settings = cs('settings-panel');
+    return {
+      appPaddingTop: cs('app').paddingTop,
+      controlsAtBottom: controls.top > window.innerHeight / 2,
+      npMax: parseFloat(root.getPropertyValue('--np-max-height')),
+      choresCap: parseFloat(root.getPropertyValue('--chores-max-height')),
+      settingsEdge: settings.borderLeftColor + '|' + settings.borderLeftWidth,
+      layerEdge: root.getPropertyValue('--layer-1-border-width').trim(),
+    };
+  });
+  check('kiosk controls add no top padding to the app', shortGeo.appPaddingTop !== '116px', true);
+  check('kiosk controls float at the bottom, not the top', shortGeo.controlsAtBottom, true);
+  check('notepad keeps its protected minimum height on a short viewport', shortGeo.npMax >= 260, true);
+  check('chores card is capped so it shrinks before the notepad', shortGeo.choresCap > 0 && shortGeo.choresCap < 720, true);
+  check('settings panel edge width follows the card layer border width',
+    shortGeo.settingsEdge.split('|')[1], shortGeo.layerEdge);
+  await short.close();
+
   await browser.close();
   await new Promise(r => server.close(r));
 

@@ -7,11 +7,13 @@
 .display-controls [hidden] { display:none; }
 .display-controls :focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
 #kiosk-controls { display:none; }
+/* Kiosk controls float over the bottom-left corner instead of reserving a
+   top bar: they must never take vertical space from the cards (the notepad
+   in particular). Faded until hovered/focused so a wall display stays clean. */
 .kiosk-mode #kiosk-controls {
-  display:flex; position:fixed; top:0; left:0; right:0; z-index:10001;
-  padding:4px 12px; background:var(--night); border-bottom:1px solid var(--glass-border);
+  display:flex; position:fixed; left:12px; bottom:12px; z-index:10001;
+  max-width:calc(100vw - 24px); opacity:.45; transition:opacity .2s;
 }
-.kiosk-mode #app { padding-top:116px; }
-.kiosk-mode #dash-topbar { padding-top:108px; }
+.kiosk-mode #kiosk-controls:hover, .kiosk-mode #kiosk-controls:focus-within { opacity:1; }
 .kiosk-mode #settings-btn { display:none; }
 @media print { #kiosk-controls { display:none !important; } }

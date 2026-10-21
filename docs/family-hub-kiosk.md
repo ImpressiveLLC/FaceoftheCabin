@@ -6,7 +6,7 @@ browser. A visible **Exit kiosk** button always restores the normal display;
 Escape also exits the display preference when the page receives that key.
 Browser Escape can leave fullscreen first; use Exit kiosk to leave both.
 
-The kiosk toolbar and Settings offer **FaceoftheCabin** in the same tab. Links
+In kiosk mode a faded control row floats in the bottom-left corner (it never reserves vertical space, so the chores card and notepad keep their room). It and Settings offer **FaceoftheCabin** in the same tab. Links
 carry only `kiosk=1` (or `0`) and the selected theme. Each app still applies its
 own authentication. This is a display mode, not an OS lockdown or a sign-in bypass.
 It does not keep a sleeping computer awake.
