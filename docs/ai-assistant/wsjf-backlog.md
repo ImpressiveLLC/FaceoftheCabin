@@ -342,7 +342,7 @@ Ownership (Nate, 2026-10-21): Cowork owns and scores this backlog; Codex supplie
 
 - Run the current gold set and the current prompt at least **5 times** with identical inputs and settings, on the same host.
 - Report per metric (intent accuracy, slot F1, slot true positives, critical count): every run's value, the range, and the rows that flip between runs.
-- The floor for each metric is the **largest run-to-run difference** observed. A later round's change counts as real only when it exceeds that floor.
-- Record the floor, the run count and the date in this file; re-measure when the gold set, prompt or model changes.
-- **AC:** five or more run reports committed (ids and hashes, no private data); the floor table above; `sme-loop.md`'s r8 note updated with the measured floor.
+- Report the observed range as descriptive evidence. Exceeding it alone does not establish improvement; compare repeated baseline and candidate runs.
+- Record the observed range, the run count and the date in this file; re-measure when the gold set, prompt or model changes.
+- **AC:** five or more run reports committed (ids and hashes, no private data); the observed-range table above; `sme-loop.md`'s r8 note updated with the measured range.
 
