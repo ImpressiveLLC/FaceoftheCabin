@@ -6917,7 +6917,7 @@ elements:
     entity_type: owl:Class
     layer: backend
     primitive: true
-    schema_version: "0.1.0"
+    schema_version: "0.2.0"
     migration_status: complete
     data_class: raw
     data_type: xsd:complexType
@@ -6930,11 +6930,11 @@ elements:
     source: >
       cabin-backend POST/GET /api/notes (Postgres table family_notes),
       mirrored into localStorage["smrekar_family_notes"] as an offline
-      cache/fallback when signed out or cabin-backend is unreachable.
+      read cache. Writes preserve the draft on server failure; local-only writes are allowed only when no shared service is configured.
     rendering:
       semantic: "<author avatar> <author name>: <text>, <relative time>"
       systems: Family Notepad entry (id, authorId, text, ts)
-      technical: "FamilyNote(id, authorId, text, ts) — Spring Data JdbcTemplate row in family_notes"
+      technical: "FamilyNote(id, authorId, text, ts, kind, dateType, date, replyToId, replyText, replyAuthorId) — Spring Data JdbcTemplate row in family_notes"
       compliance: Family Notepad Message Record
     definition: >
       A single free-text message left on the shared family notepad —
@@ -6942,13 +6942,16 @@ elements:
       profile (attributed via the shared currentActorId acting context —
       see current_actor's 2026-08-02 update — not access-controlled per
       author). Requires an explicitly selected actor; never silently
-      defaults to a profile no one chose.
+      defaults to a profile no one chose. STICKY notes are larger, bold, and labelled
+      Due by or List date with an ISO calendar date instead of the sender. Replies
+      retain a server-captured original text and author snapshot even after pruning.
+      Text is limited to 2000 characters; the dated-list fields are validated server-side.
     relationships:
       - target: family_profile
         type: depends_on
         cardinality: "N:1"
     transformation: >
-      User types + sendNote() → POST /api/notes {authorId, text} (Bearer:
+      User types + sendNote() → POST /api/notes {authorId, text, kind, dateType, date, replyToId} (Bearer:
       signed-in Google access token, validated server-side against Google's
       tokeninfo endpoint) → server assigns id ("n_<epochMs>_<rand6>") and ts,
       inserts, prunes anything past the newest 50, returns the created row.
@@ -11755,6 +11758,20 @@ elements:
     data_type: owl:Class
     ui_display_name: "Kiosk mode"
     source: localStorage["cabin.kiosk"]
-    definition: Per-browser cabin UI display preference, overridden by explicit kiosk=1 or kiosk=0. Hides navigation chrome while retaining status and exit controls; carries kiosk and theme to Family Hub.
+    definition: Per-browser cabin UI display preference, overridden by explicit kiosk=1 or kiosk=0. Keeps the navigation rail and its bottom Kiosk switch; carries kiosk and theme to Family Hub.
     transformation: KioskControls.jsx initialKiosk(), toggle(), and hubLink()
     notes: "Display only; does not change authentication, permissions, device state or computer sleep."
+
+  - id: family_hub_google_session
+    entity_type: owl:Class
+    layer: frontend
+    primitive: false
+    data_class: composite
+    data_type: owl:Class
+    ui_display_name: "Remember sign-in in this tab"
+    source: sessionStorage["familyHub.googleSession"]
+    definition: >
+      Origin-scoped Google access token with client ID and absolute expiry. Validated
+      using Google userinfo before restoring after navigation; removed on sign-out,
+      expiration or rejection. Never passed in cross-app URLs or stored in localStorage.
+    transformation: hub-session.js HubSession and restoreGoogleSession()

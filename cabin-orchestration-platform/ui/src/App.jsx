@@ -8845,7 +8845,7 @@ function ArmedWhileOccupiedNotice() {
 }
 
 // ─── Navigation Rail ───────────────────────────────────────────────────────
-function NavRail({ active, onSelect, alertLevels }) {
+function NavRail({ active, onSelect, alertLevels, children }) {
   const alerts = alertLevels;
   // Asteroid City loads a second, purpose-recolored crest file (2026-08-19
   // approval) -- an <img> can't be recolored via the host page's CSS, and
@@ -8885,6 +8885,7 @@ function NavRail({ active, onSelect, alertLevels }) {
           </button>
         );
       })}
+      {children}
     </nav>
   );
 }
@@ -9074,9 +9075,10 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       pendingDeviceFocus, setPendingDeviceFocus,
     }}>
       <div className="app-shell">
-        <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />
-        <main className="main-area">
+        <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels}>
           <KioskControls familyHubUrl={locationCfg?.familyHubUrl} showAppLink={!isDemo} />
+        </NavRail>
+        <main className="main-area">
           {isDemo && <DemoBanner />}
           <div className="main-toolbar">
             <span className="platform-name">{locationLabel} — Orchestration Hub</span>

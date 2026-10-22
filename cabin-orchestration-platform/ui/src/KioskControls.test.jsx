@@ -13,14 +13,14 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); delete document.documentEleme
 describe('kiosk display and app navigation', () => {
   it('toggles and persists even when fullscreen is rejected, preserving the panel', async () => {
     render(<KioskControls />);
-    fireEvent.click(screen.getByRole('button', { name: 'Kiosk mode' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Kiosk' }));
     await waitFor(() => expect(localStorage.getItem('cabin.kiosk')).toBe('1'));
     expect(document.documentElement.classList.contains('kiosk-mode')).toBe(true);
     expect(new URL(location.href).searchParams.get('panel')).toBe('CAMERA_EVENTS');
     const link = screen.getByRole('link', { name: 'Family Hub' });
     expect(link.getAttribute('href')).toBe('https://hub.unicornpingpong.com/?kiosk=1&theme=modern');
     expect(link.hasAttribute('target')).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Exit kiosk' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Kiosk' }));
     await waitFor(() => expect(localStorage.getItem('cabin.kiosk')).toBe('0'));
   });
   it('honors explicit off before saved state and explicit on before storage', () => {
@@ -34,9 +34,9 @@ describe('kiosk display and app navigation', () => {
   it('restores saved state and exits with Escape without hiding the exit path', () => {
     localStorage.setItem('cabin.kiosk', '1');
     render(<KioskControls />);
-    expect(screen.getByRole('button', { name: 'Exit kiosk' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Kiosk' })).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.getByRole('button', { name: 'Kiosk mode' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Kiosk' })).toBeTruthy();
     expect(document.documentElement.classList.contains('kiosk-mode')).toBe(false);
   });
   it('works without storage and without the fullscreen API', () => {
@@ -44,8 +44,8 @@ describe('kiosk display and app navigation', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
     delete document.documentElement.requestFullscreen;
     render(<KioskControls />);
-    fireEvent.click(screen.getByRole('button', { name: 'Kiosk mode' }));
-    expect(screen.getByRole('button', { name: 'Exit kiosk' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('switch', { name: 'Kiosk' }));
+    expect(screen.getByRole('switch', { name: 'Kiosk' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Fullscreen' })).toBeNull();
   });
   it('keeps app navigation out of demo mode', () => {

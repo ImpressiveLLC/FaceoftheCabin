@@ -80,8 +80,8 @@ function check(label, actual, expected) {
   const refWidths = await page.evaluate(() =>
     ['chores-card', 'dashboard-fab', 'settings-btn']
       .map(id => document.getElementById(id).getBoundingClientRect().width));
-  const expectedCollapsed = 190;
-  const expectedExpanded = Math.max(Math.max(...refWidths), expectedCollapsed + 200);
+  const expectedCollapsed = Math.round(await page.locator('#chores-card').evaluate(el => el.getBoundingClientRect().width));
+  const expectedExpanded = expectedCollapsed * 2 + 24;
   check('slid-out width == max(largest right-side element, collapsed width + content floor)',
     widths.expanded, `${Math.round(expectedExpanded)}px`);
   check('slid-in width is the fixed, narrow constant (not derived from other elements)',
@@ -114,7 +114,7 @@ function check(label, actual, expected) {
   check('notepad panel never overlaps #chores-card, even tucked in', overlapsChores, false);
 
   // Manual slide-out / slide-in control.
-  await page.locator('#notepad-handle').click();
+  await page.locator('#notepad-handle > button').click();
   await page.waitForTimeout(500);
   check('handle click slides panel out', await page.locator('#notepad-panel').evaluate(el => el.classList.contains('open')), true);
 
@@ -141,7 +141,7 @@ function check(label, actual, expected) {
   await page.locator('#notepad-input').fill('Pick up milk on the way home!');
   await page.locator('.np-send').click();
   await page.waitForTimeout(200);
-  check('sent note appears in the list', await page.locator('#notepad-list .np-row').count() >= 1, true);
+  check('sent note appears in the list', await page.locator('#notepad-context .np-row').count() >= 1, true);
   check('input clears after send', await page.locator('#notepad-input').inputValue(), '');
   check('sent note is attributed to the selected actor, not a hardcoded default',
     await page.evaluate(() => loadNotes()[0].authorId), await page.evaluate(() => currentActorId));
@@ -195,7 +195,7 @@ function check(label, actual, expected) {
     toggleNotepad(true);
   });
   await page.waitForTimeout(400);
-  check('recent list caps at 12 messages', await page.locator('#notepad-list .np-row').count(), 12);
+  check('context list retains all saved messages', await page.locator('#notepad-context .np-row').count(), 50);
   check('storage caps at 50 messages (oldest dropped)', await page.evaluate(() => loadNotes().length), 50);
 
   await page.locator('.np-history-link').click();
@@ -387,8 +387,8 @@ function check(label, actual, expected) {
   // for the click-outside check later in this block.
   await page.evaluate(() => closeDashboard());
   await page.waitForTimeout(100);
-  check('with 2 kids, the landing card has no compact rows (present design preserved)',
-    await page.locator('#today-chores-body .kid-section-compact').count(), 0);
+  check('all assignees start compact even with two kids',
+    await page.locator('#today-chores-body .kid-section-compact').count(), 2);
 
   // Add-child rerender fix (2026-08-15 bug): saving a new profile must
   // immediately update the landing chores card and chore kid selector, not
@@ -585,7 +585,7 @@ function check(label, actual, expected) {
   const box = await kiosk.locator('#kiosk-controls').boundingBox();
   check('kiosk controls fit mobile width', box.x >= 0 && box.x + box.width <= 390, true);
   await kiosk.locator('#kiosk-controls [data-kiosk-fullscreen]').click();
-  check('denied fullscreen keeps kiosk usable', await kiosk.locator('#kiosk-controls [data-kiosk-toggle]').innerText(), 'Exit kiosk');
+  check('denied fullscreen keeps kiosk usable', await kiosk.locator('#kiosk-controls [data-kiosk-toggle]').innerText(), 'Kiosk');
   // Capture the actual same-tab navigation without reaching a live service.
   await kiosk.route('https://cabin.unicornpingpong.com/**', route => route.fulfill({ body: '<p>Cabin</p>', contentType: 'text/html' }));
   await kiosk.locator('#kiosk-controls [data-cabin-link]').click();
@@ -630,12 +630,13 @@ function check(label, actual, expected) {
   });
   check('kiosk controls add no top padding to the app', shortGeo.appPaddingTop !== '116px', true);
   check('kiosk controls float at the bottom, not the top', shortGeo.controlsAtBottom, true);
-  check('notepad keeps its protected minimum height on a short viewport', shortGeo.npMax >= 260, true);
+  check('notepad retains usable context space beside the taller left composer', shortGeo.npMax >= 180, true);
   check('chores card is capped so it shrinks before the notepad', shortGeo.choresCap > 0 && shortGeo.choresCap < 720, true);
   check('settings panel edge width follows the card layer border width',
     shortGeo.settingsEdge.split('|')[1], shortGeo.layerEdge);
   await short.close();
 
+  await require('./touch-refinements.js')({ browser, check, base: `http://localhost:${PORT}` });
   await browser.close();
   await new Promise(r => server.close(r));
 

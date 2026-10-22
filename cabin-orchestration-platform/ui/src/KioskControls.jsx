@@ -51,9 +51,13 @@ export default function KioskControls({ familyHubUrl, showAppLink = true }) {
       try { await document.exitFullscreen(); } catch { /* browser owns fullscreen */ }
     }
   }
-  return <nav className="display-controls" aria-label="Display and apps">
-    <button type="button" onClick={toggle} aria-pressed={enabled}>{enabled ? 'Exit kiosk' : 'Kiosk mode'}</button>
-    {enabled && !full && document.documentElement.requestFullscreen && <button type="button" onClick={fullscreen}>Fullscreen</button>}
+  return <div className="display-controls" role="group" aria-label="Display and apps">
+    <button type="button" className="kiosk-switch" role="switch" aria-label="Kiosk" onClick={toggle} aria-checked={enabled}><span>Kiosk</span><span className="kiosk-slider" aria-hidden="true" /></button>
+    {enabled && !full && document.documentElement.requestFullscreen && <button type="button" onClick={fullscreen} aria-label="Fullscreen" title="Fullscreen">⛶</button>}
     {showAppLink && href && <a href={href}>Family Hub</a>}
-  </nav>;
+  </div>;
 }
+
+import './touch-scroll.js';
+
+import './touch-display.css';

@@ -23,9 +23,6 @@ public class NotesController {
     public FamilyNote add(@RequestBody Map<String, String> body) {
         String authorId = body.get("authorId");
         String text = body.get("text");
-        if (authorId == null || authorId.isBlank() || text == null || text.isBlank()) {
-            throw new IllegalArgumentException("authorId and text are required");
-        }
-        return notes.add(authorId, text.trim());
+        return notes.add(authorId, text, body.get("kind"), body.get("dateType"), body.get("date"), body.get("replyToId"));
     }
 }
