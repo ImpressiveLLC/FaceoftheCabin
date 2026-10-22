@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
 StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
@@ -5582,6 +5582,67 @@ describe("cameraHealthLabel", () => {
   it("reports unknown rather than down when fps data is simply absent", () => {
     expect(cameraHealthLabel(null)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
     expect(cameraHealthLabel(undefined)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
+    expect(cameraHealthLabel(null, true)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
+  });
+
+  // 2026-10-21: idle Blink cameras (driveway, home_aldrich_front) sit at
+  // exactly 0.0 fps until Blink's cloud sees motion; the tile read "No signal".
+  it("reports an idle motion-gated camera at exactly zero fps as idle, not no signal", () => {
+    expect(cameraHealthLabel(0, true)).toEqual({ label: "Idle · waits for motion", className: "camera-health-idle" });
+  });
+
+  it("still reports fps for a motion-gated camera while it is live", () => {
+    expect(cameraHealthLabel(5.1, true)).toEqual({ label: "5.1 fps", className: "camera-health-ok" });
+  });
+
+  it("keeps a continuous camera at zero fps as no signal", () => {
+    expect(cameraHealthLabel(0, false)).toEqual({ label: "No signal", className: "camera-health-down" });
+  });
+});
+
+describe("cameraBelongsToLocation", () => {
+  it("keeps Home cameras out of the Cabin panel and the reverse", () => {
+    expect(cameraBelongsToLocation("home_aldrich_front", "cabin")).toBe(false);
+    expect(cameraBelongsToLocation("driveway", "cabin")).toBe(true);
+    expect(cameraBelongsToLocation("home_aldrich_front", "home")).toBe(true);
+    expect(cameraBelongsToLocation("driveway", "home")).toBe(false);
+  });
+
+  it("does not hide anything for a location it has no naming rule for", () => {
+    expect(cameraBelongsToLocation("driveway", "lake-house")).toBe(true);
+    expect(cameraBelongsToLocation("home_aldrich_front", "lake-house")).toBe(true);
+  });
+});
+
+describe("CameraHealthPanel", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const metrics = {
+    cabin_outside_reolink: { cameraFps: 0, motionGated: false },
+    driveway: { cameraFps: 0, motionGated: true },
+    home_aldrich_front: { cameraFps: 0, motionGated: true },
+  };
+
+  function renderPanel(id) {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ json: () => Promise.resolve(metrics) });
+    return render(<CameraHealthPanel locCfg={{ id, label: id, apiBase: "http://api", grafanaUrl: "" }} />);
+  }
+
+  it("shows the idle Blink camera as idle and the dead continuous camera as no signal in the Cabin panel", async () => {
+    renderPanel("cabin");
+    const driveway = (await screen.findByText("driveway")).closest(".camera-health-tile");
+    expect(within(driveway).getByText("Idle · waits for motion")).toBeTruthy();
+    expect(driveway.className).toContain("camera-health-idle");
+    const reolink = screen.getByText("cabin_outside_reolink").closest(".camera-health-tile");
+    expect(within(reolink).getByText("No signal")).toBeTruthy();
+    expect(screen.queryByText("home_aldrich_front")).toBeNull();
+  });
+
+  it("lists the Home camera in the Home panel only", async () => {
+    renderPanel("home");
+    const aldrich = (await screen.findByText("home_aldrich_front")).closest(".camera-health-tile");
+    expect(within(aldrich).getByText("Idle · waits for motion")).toBeTruthy();
+    expect(screen.queryByText("driveway")).toBeNull();
   });
 });
 

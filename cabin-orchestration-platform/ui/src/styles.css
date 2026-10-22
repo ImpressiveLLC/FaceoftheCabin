@@ -470,6 +470,7 @@ body {
 .camera-health-value { margin-left: auto; padding-left: 12px; }
 .camera-health-ok .camera-health-value { color: var(--success); }
 .camera-health-down .camera-health-value { color: var(--danger); }
+.camera-health-idle .camera-health-value { color: var(--text-dim); }
 .camera-health-unknown .camera-health-value { color: var(--text-dim); font-style: italic; }
 
 /* ─── Rules Panel ───────────────────────────────────────────────────────── */

@@ -5077,11 +5077,26 @@ export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied, auth 
 // separate from "no data yet" (fps === undefined/null) so an unreachable
 // Prometheus never reads as "camera confirmed down," same reasoning as
 // SecurityBadge's Unknown state.
-export function cameraHealthLabel(fps) {
+//
+// motionGated (2026-10-21, from /api/frigate-metrics): Blink-relayed cameras
+// have no continuous stream -- they only run while Blink's cloud sees motion
+// -- so exactly 0 fps is their normal idle state, not a lost signal. A
+// continuous camera at 0 fps is still "No signal".
+export function cameraHealthLabel(fps, motionGated = false) {
   if (fps == null) return { label: "Unknown", className: "camera-health-unknown" };
-  return fps > 0
-    ? { label: `${fps.toFixed(1)} fps`, className: "camera-health-ok" }
+  if (fps > 0) return { label: `${fps.toFixed(1)} fps`, className: "camera-health-ok" };
+  return motionGated
+    ? { label: "Idle · waits for motion", className: "camera-health-idle" }
     : { label: "No signal", className: "camera-health-down" };
+}
+
+// Camera ids carry their location as a "home_" prefix (the same convention
+// MqttBridgeService.deriveCameraLocation uses); /api/frigate-metrics returns
+// every Frigate camera regardless of site. Only the two known sites filter --
+// any other configured location keeps showing everything.
+export function cameraBelongsToLocation(cameraId, locationId) {
+  if (locationId !== "cabin" && locationId !== "home") return true;
+  return (cameraId.startsWith("home_") ? "home" : "cabin") === locationId;
 }
 
 function useFrigateMetrics(apiBase) {
@@ -5096,9 +5111,9 @@ function useFrigateMetrics(apiBase) {
   return metrics;
 }
 
-function CameraHealthPanel({ locCfg }) {
+export function CameraHealthPanel({ locCfg }) {
   const metrics = useFrigateMetrics(locCfg.apiBase);
-  const cameraIds = Object.keys(metrics);
+  const cameraIds = Object.keys(metrics).filter(id => cameraBelongsToLocation(id, locCfg.id));
   const dashboardUid = GRAFANA_DASHBOARD_UID[locCfg.id];
 
   return (
@@ -5109,7 +5124,7 @@ function CameraHealthPanel({ locCfg }) {
           <p className="config-desc">No camera metrics available yet.</p>
         )}
         {cameraIds.map(id => {
-          const { label, className } = cameraHealthLabel(metrics[id]?.cameraFps);
+          const { label, className } = cameraHealthLabel(metrics[id]?.cameraFps, metrics[id]?.motionGated === true);
           return (
             <div key={id} className={`camera-health-tile ${className}`}>
               <Camera size={16} />
