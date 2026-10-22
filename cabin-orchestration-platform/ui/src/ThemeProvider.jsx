@@ -3,8 +3,8 @@
  *
  * Presets: Modern (default), Impressive (matches impressive.llc's live
  * palette, added 2026-08-21 for cross-site continuity), LCARS, Monolith,
- * Retro-CRT, Bluefin-mono, Mad Science, Deep Space, 80s Neon, Pac-Man,
- * Asteroid City -- same 11-preset catalog as
+ * Bluefin-mono, Mad Science, Deep Space, 80s Neon, Pac-Man,
+ * Asteroid City -- same 10-preset catalog as
  * family-hub.html's own THEMES object (kept in sync manually as of
  * 2026-08-07; see docs/ontology.yaml's theme_preference entry for the
  * cross-app drift this file and family-hub.html are both prone to --
@@ -155,33 +155,6 @@ export const THEMES = {
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--text-muted', '--text', '--success'] },
-  },
-
-  retrocrt: {
-    id: "retrocrt",
-    label: "Retro-CRT",
-    vars: {
-      "--bg":           "#050a05",
-      "--bg-secondary": "#071007",
-      "--bg-tertiary":  "#0a1a0a",
-      "--surface":      "#071007",
-      "--border":       "#1a4a1a",
-      "--border-focus": "#00ff41",
-      "--text":         "#00ff41",
-      "--text-muted":   "#00aa2a",
-      "--text-dim":     "#006618",
-      "--accent":       "#00cc33",
-      "--accent-hover": "#00ff41",
-      "--success":      "#00ff41",
-      "--warning":      "#ffcc00",
-      "--danger":       "#ff3300",
-      "--font-display": "'VT323', 'Share Tech Mono', monospace",
-      "--font-mono":    "'VT323', monospace",
-      "--radius":       "0px",
-      "--radius-sm":    "0px",
-    },
-    // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
-    layers: { hues: ['--accent', '--warning', '--success'] },
   },
 
   bluefin: {

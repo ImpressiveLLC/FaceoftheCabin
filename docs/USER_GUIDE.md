@@ -209,8 +209,8 @@ finer-grained permission tier for video versus the rest of the app.
 
 ## Themes
 
-Family Hub ships with 8 visual themes (Settings → Theme): Modern, LCARS,
-Monolith, Retro-CRT, Mad Science, 80s Neon, Pac-Man, and Deep Space.
+Family Hub ships with 7 visual themes (Settings → Theme): Modern, LCARS,
+Monolith, Mad Science, 80s Neon, Pac-Man, and Deep Space.
 Purely cosmetic — pick whatever the household likes best; every feature
 works identically regardless of theme. `cabin-ui` has its own, separate
 7-theme set, since it's a different application with its own visual
