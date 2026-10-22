@@ -7,8 +7,9 @@ One-time steps to run the rewritten bridge. Run on the M920q after PR #237 is me
 
 ```bash
 cd ~/FaceoftheCabin-deploy/cabin-orchestration-platform/infra
+PROJ=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' blinkbridge)   # reuse the running stack's compose project, else mediamtx "name already in use"
 docker tag "$(docker inspect -f '{{.Image}}' blinkbridge)" blinkbridge:legacy
-docker compose -f production-stack/docker-compose.yml -f blinkbridge/docker-compose.cutover.yml up -d --build blinkbridge
+docker compose -p "$PROJ" -f production-stack/docker-compose.yml -f blinkbridge/docker-compose.cutover.yml up -d --build --no-deps blinkbridge
 ```
 
 Needs nothing new: `.env` already has `BLINK_USERNAME`/`BLINK_PASSWORD`; `/storage/services/blinkbridge/config.json` and
