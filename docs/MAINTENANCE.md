@@ -862,6 +862,10 @@ about 5 fps with detection running. Two things in its log look alarming but are
 not the cause: `Could not extract events: An app update is required` is
 blinkpy's retired `get_events` call (blinkpy issue #757), and the startup line
 `Unexpected error: days=...; must have magnitude` appears on every start.
+> **Superseded 2026-10-21:** the legacy bridge described in this and the next sections is replaced by the in-repo
+> rewrite (see "blinkbridge rewrite" below and `docs/BLINKBRIDGE_INSTALL_GUIDE.md`). The log-silence diagnosis below
+> applies only while the legacy image is still running.
+
 **Prevention (staged, not installed):** `scripts/host/blinkbridge-watchdog`
 restarts it after 10 minutes of log silence, run every 5 minutes by
 `blinkbridge-watchdog.timer`. Install with sudo:
@@ -1169,6 +1173,9 @@ daylight footage (sunlit trees, visible ground debris) — a stark
 contrast from the stale nighttime IR frame every attempt showed before
 the `blinkpy` patch.
 
+> **Superseded 2026-10-21:** after cutover, rebuild with the compose override in `docs/BLINKBRIDGE_INSTALL_GUIDE.md`,
+> not the hand-built `docker run` below (kept for the legacy image only).
+
 **Rebuild/redeploy procedure** (for the next time `blinkbridge`
 needs a code change):
 ```bash
@@ -1304,7 +1311,13 @@ exponential backoff with jitter; a throttle signal pauses all Blink calls for 5 
 poll succeeded for 30 min; a Docker HEALTHCHECK uses it; a watchdog thread exits the process if the loop dies for 10 min.
 Tests (fake blinkpy and ffmpeg) run in `.github/workflows/blinkbridge-tooling.yml`.
 
-Cutover and rollback: [`BLINKBRIDGE_CUTOVER_RUNBOOK.md`](BLINKBRIDGE_CUTOVER_RUNBOOK.md). Support steps:
+How it self-heals: a failed liveview (Blink ended it, `Broken pipe`, stalled ffmpeg, open timeout) is torn down and
+retried by the camera's own backoff (5 s doubling to 5 min, jittered); a Blink throttle pauses every Blink call for
+5 to 30 min; an expired token triggers a fresh login. Diagnose: `docker ps` shows `(healthy)`/`(unhealthy)`;
+`docker logs -t --tail 20 blinkbridge` should show `motion poll ok` every 30 to 40 s; `docker exec blinkbridge wget -qO-
+http://127.0.0.1:8811/healthz` gives loop age, last good poll age and per-camera state. Install, cutover and rollback:
+[`BLINKBRIDGE_INSTALL_GUIDE.md`](BLINKBRIDGE_INSTALL_GUIDE.md) and
+[`BLINKBRIDGE_CUTOVER_RUNBOOK.md`](BLINKBRIDGE_CUTOVER_RUNBOOK.md). Support steps:
 [`BLINKBRIDGE_SUPPORT_GUIDE.md`](BLINKBRIDGE_SUPPORT_GUIDE.md). `scripts/host/blinkbridge-watchdog` now also restarts on
 Docker `unhealthy`. The legacy source under `/storage/services/blinkbridge-src` stays until a quiet week after cutover.
 

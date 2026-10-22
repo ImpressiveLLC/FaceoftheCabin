@@ -2,6 +2,15 @@
 
 For whoever answers "the Blink camera is offline". Plain steps first, details after.
 
+## What family and staff see
+
+| On screen | Meaning | Action |
+|---|---|---|
+| Camera black or "no picture" until you press Watch Live | **Idle.** Blink cameras only stream while watched or after motion | Press Watch Live; picture in ~10-20 s |
+| Watch Live says "reconnecting" | Blink is slow or limiting requests | Wait 5 minutes, press once. Do not repeat |
+| Camera Health tile red / bridge down | **Down.** The bridge itself stopped | Tell Nate; it normally restarts itself within ~10 minutes |
+| Alert only on Blink motion, no video | Webhook worked, live view could not open | Same as "reconnecting" |
+
 ## 30-second triage
 
 1. **A Frigate 404 from mediamtx is normal for an idle Blink camera.** It only has a stream while someone is watching or motion started one.
