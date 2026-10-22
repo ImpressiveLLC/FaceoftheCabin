@@ -68,6 +68,23 @@ retry, settings, a safe alternative, or relevant documentation.
 - Focus, labels, headings, state text, and keyboard order must convey the same
   meaning as the visual presentation.
 
+## Proxy styleguide (bones)
+
+Pinned 2026-10-21. There is no single governed Styleguide yet. What exists is a
+*proxy*: repeating UX patterns that follow the northstar goals above, written
+down in pieces. Until one document is declared the governed Styleguide, this
+index is where to look first. Add a row when a pattern repeats a second time;
+do not invent a rule that no shipped surface follows.
+
+| Pattern | Rule | Source of truth |
+|---|---|---|
+| Surfaces | panel > row > chip; one layer per box, theme owns palette only | "Visual system" below; `surfaceLayers.js`, `hubLayerVars` |
+| Edges | any boxed surface (including flush side panels like Settings) uses `--layer-N-edge` / `--layer-N-border-width`, never its own colour or width | layer block in `family-hub.html` |
+| Primary object | the object the family reaches for most (the Notepad) gets a protected minimum height; secondary cards (chores) scroll or shrink first | `computeNotepadTop()` (`NOTEPAD_MIN_HEIGHT`, `--chores-max-height`) |
+| Chrome costs no space | display controls (kiosk, fullscreen, cross-app link) float over a corner or live in Settings; they never reserve a top bar | `family-hub/kiosk.css` |
+| Filled, not just empty | a surface is reviewed with real content: readable, scrollable, composer inside its frame, on short and keyboard-reduced viewports | `family-hub/test/run.js` filled-notepad checks |
+| Unavailable is designed | state what and why, offer a next step | "Product promise" above |
+
 ## Visual system — surfaces, tabs and themes (Cabin UI and Family Hub)
 
 Added 2026-09-19. Until then there was no written standard, and it showed: about
