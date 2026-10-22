@@ -634,6 +634,23 @@ function check(label, actual, expected) {
   check('chores card is capped so it shrinks before the notepad', shortGeo.choresCap > 0 && shortGeo.choresCap < 720, true);
   check('settings panel edge width follows the card layer border width',
     shortGeo.settingsEdge.split('|')[1], shortGeo.layerEdge);
+  // Filled notepad (not just empty): composer stays inside the panel and the
+  // note list keeps readable, scrollable room on a short viewport.
+  await short.evaluate(() => {
+    const notes = [];
+    for (let i = 0; i < 12; i++) notes.push({ id: 'fill' + i, authorId: profiles[0].id, text: 'Filled note ' + i + ': pick up milk, eggs and the long reminder about the dentist on Thursday', ts: Date.now() - i * 3600e3 });
+    saveNotes(notes); renderNotepad(); toggleNotepad(true); computeNotepadTop();
+  });
+  await short.waitForTimeout(700);
+  const filled = await short.evaluate(() => {
+    const np = document.getElementById('notepad-panel').getBoundingClientRect();
+    const c = document.getElementById('notepad-compose').getBoundingClientRect();
+    const l = document.getElementById('notepad-list');
+    return { composeInside: c.top >= np.top && c.bottom <= np.bottom + 1, listH: l.clientHeight, scrolls: l.scrollHeight > l.clientHeight };
+  });
+  check('filled notepad: composer stays inside the panel', filled.composeInside, true);
+  check('filled notepad: note list keeps >=60px reading room', filled.listH >= 60, true);
+  check('filled notepad: long list scrolls', filled.scrolls, true);
   await short.close();
 
   await browser.close();

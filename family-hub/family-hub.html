@@ -1118,6 +1118,17 @@
     }
     .np-send:hover { transform:translateY(-1px); }
     .np-send:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+    /* Short docked panel: the composer must never squeeze the note list to
+       nothing. Compact = one-line input beside Send, save hint hidden, so the
+       list keeps real reading room. Class is set by computeNotepadTop(). */
+    #notepad-panel.np-compact:not(.expanded) #notepad-compose {
+      display:grid; grid-template-columns:1fr auto; align-items:end; column-gap:6px;
+    }
+    #notepad-panel.np-compact:not(.expanded) #notepad-compose > :not(.np-input):not(.np-send) { grid-column:1 / -1; }
+    #notepad-panel.np-compact:not(.expanded) .np-input { height:34px; min-height:0; }
+    #notepad-panel.np-compact:not(.expanded) .np-send { align-self:end; height:34px; }
+    #notepad-panel.np-compact:not(.expanded) #notepad-footer { margin-top:6px; padding-top:4px; }
+    #notepad-panel.np-compact:not(.expanded) .np-save-hint { display:none; }
     #notepad-footer {
       flex-shrink:0; margin-top:10px; padding-top:8px;
       border-top:1px solid var(--glass-border);
@@ -5753,6 +5764,7 @@ const NOTEPAD_TOP_ABSOLUTE_MIN = 90;  // never cover the clock/header
 const NOTEPAD_TOP_GAP = 16;
 const NOTEPAD_BOTTOM_GAP = 16;
 const NOTEPAD_MIN_HEIGHT = 260; // enough for compose box + a few note rows
+const NOTEPAD_COMPACT_BELOW = 340; // below this docked height, use the compact composer
 const NOTEPAD_CHORES_MIN_HEIGHT = 64; // chores shrink to this before the notepad does
 function computeNotepadTop() {
   const isNarrow = window.innerWidth < 900;
@@ -5786,7 +5798,10 @@ function computeNotepadTop() {
     const bottomOffset = Math.max(NOTEPAD_BOTTOM_GAP, Math.round(window.innerHeight - hardBottom + keyboardInset));
     document.documentElement.style.setProperty('--np-bottom', `${bottomOffset}px`);
     const available = hardBottom - NOTEPAD_TOP_ABSOLUTE_MIN;
-    document.documentElement.style.setProperty('--np-max-height', `${Math.round(Math.max(NOTEPAD_MIN_HEIGHT, Math.min(available, 620)))}px`);
+    const narrowMax = Math.max(NOTEPAD_MIN_HEIGHT, Math.min(available, 620));
+    document.documentElement.style.setProperty('--np-max-height', `${Math.round(narrowMax)}px`);
+    const npNarrowEl = document.getElementById('notepad-panel');
+    if (npNarrowEl) npNarrowEl.classList.toggle('np-compact', narrowMax < NOTEPAD_COMPACT_BELOW);
     return;
   }
 
@@ -5817,6 +5832,8 @@ function computeNotepadTop() {
   document.documentElement.style.setProperty('--np-top', `${top}px`);
   const capped = Math.max(0, Math.min(hardBottom - top, 620));
   document.documentElement.style.setProperty('--np-max-height', `${Math.round(capped)}px`);
+  const npEl = document.getElementById('notepad-panel');
+  if (npEl) npEl.classList.toggle('np-compact', capped < NOTEPAD_COMPACT_BELOW);
 }
 
 // iOS Safari (and some other mobile browsers) don't shrink the layout
