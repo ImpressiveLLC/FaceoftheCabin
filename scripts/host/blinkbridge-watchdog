@@ -24,6 +24,16 @@ running=$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null || echo fal
 started=$(docker inspect -f '{{.State.StartedAt}}' "$NAME")
 [ $(( now - $(date -d "$started" +%s) )) -gt $(( STALE_MIN * 60 )) ] || exit 0   # just (re)started
 
+# The rewritten bridge has a Docker HEALTHCHECK (/healthz). Unhealthy = poll loop stale or Blink
+# silent for 30 min; Docker's restart policy ignores that, so act on it here.
+health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$NAME" 2>/dev/null || true)
+if [ "$health" = unhealthy ]; then
+  logger -t blinkbridge-watchdog "$NAME reports unhealthy: restarting"
+  docker restart "$NAME" >/dev/null
+  exit 0
+fi
+[ -z "$health" ] || exit 0   # has a healthcheck and it is not unhealthy: trust it, skip the log-silence heuristic
+
 last=$(docker logs --tail 1 -t "$NAME" 2>&1 | awk 'NR==1 {print $1}')
 if [ -n "$last" ] && last_s=$(date -d "$last" +%s 2>/dev/null); then
   silent=$(( now - last_s ))

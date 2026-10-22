@@ -1290,6 +1290,24 @@ Item 3) — not built as of this entry.
 
 ---
 
+### blinkbridge rewrite (built 2026-10-21, not yet deployed)
+
+The third-party bridge hung silently three times (08-03, 08-06, 10-10) and again 2026-10-20 (ffmpeg `Broken pipe`,
+then blinkpy "possibly down or throttled", then 30+ hours with no log line and `RestartCount 0`). It was replaced by an
+in-repo rewrite at `cabin-orchestration-platform/infra/blinkbridge/` (infra convention: next to `production-stack`,
+own Dockerfile and tests, built by hand on the host).
+
+Design: per-camera state machine (idle, starting, live, backoff); every Blink and ffmpeg call has a timeout; ffmpeg is
+terminated, killed and reaped on every exit path; teardown steps are isolated so one error cannot stop the loop;
+exponential backoff with jitter; a throttle signal pauses all Blink calls for 5 to 30 minutes; a status line containing
+"motion poll" is logged at least every 35 s; `GET :8811/healthz` returns 503 when the loop is stale (2 min) or no Blink
+poll succeeded for 30 min; a Docker HEALTHCHECK uses it; a watchdog thread exits the process if the loop dies for 10 min.
+Tests (fake blinkpy and ffmpeg) run in `.github/workflows/blinkbridge-tooling.yml`.
+
+Cutover and rollback: [`BLINKBRIDGE_CUTOVER_RUNBOOK.md`](BLINKBRIDGE_CUTOVER_RUNBOOK.md). Support steps:
+[`BLINKBRIDGE_SUPPORT_GUIDE.md`](BLINKBRIDGE_SUPPORT_GUIDE.md). `scripts/host/blinkbridge-watchdog` now also restarts on
+Docker `unhealthy`. The legacy source under `/storage/services/blinkbridge-src` stays until a quiet week after cutover.
+
 ## Overnight Camera Alerts (Node-RED)
 
 **Status 2026-10-12 (read-only checks).** Two reasons this flow could not have
