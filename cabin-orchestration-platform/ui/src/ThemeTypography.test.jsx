@@ -30,3 +30,10 @@ it("switches the reading tier separately from headings and restores the default 
   }
   expect(document.body.style.fontFamily).not.toMatch(/Crackman|Baumans|Oxanium|VT323/);
 });
+
+it("has no Retro-CRT theme and falls back to modern for a saved retrocrt id", () => {
+  expect(THEMES.retrocrt).toBeUndefined();
+  localStorage.setItem("cabin-theme", "retrocrt");
+  render(<ThemeProvider><Switcher /></ThemeProvider>);
+  expect(document.documentElement.getAttribute("data-theme")).toBe("modern");
+});

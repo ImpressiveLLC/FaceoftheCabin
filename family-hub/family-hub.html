@@ -6092,24 +6092,6 @@ const THEMES = {
     layers: { hues: ['#666666', '#cccccc', '#448844'] },
     fonts: [{ id:'fh-font-monolith', href:'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap' }],
   },
-  retrocrt: {
-    label: 'Retro-CRT', id: 'retrocrt',
-    vars: {
-      '--night':'#050a05', '--glass':'rgba(7,16,7,0.88)', '--glass-light':'rgba(0,255,65,0.04)',
-      '--glass-border':'rgba(0,255,65,0.18)', '--shadow':'0 10px 60px rgba(0,0,0,.95)',
-      '--gold':'#00ff41', '--gold-glow':'rgba(0,255,65,0.28)', '--gold-faint':'rgba(0,255,65,0.08)',
-      '--teal':'#00cc33', '--teal-glow':'rgba(0,204,51,0.18)',
-      '--rose':'#ff3300', '--rose-glow':'rgba(255,51,0,0.18)',
-      '--cream':'#00ff41', '--cream-dim':'rgba(0,255,65,0.70)', '--cream-ghost':'rgba(0,255,65,0.30)',
-      '--radius':'0px', '--font-display':"'Share Tech Mono','VT323',monospace", '--font-ui':"'VT323','Share Tech Mono',monospace",
-    },
-    /* VT323 turns to jagged mush at the big clock's ~100px size — Share
-       Tech Mono is still an unmistakably terminal/CRT monospace but with
-       clean vector strokes, so headings stay readable; VT323 keeps doing
-       the gritty-terminal texture at the smaller UI sizes where it works. */
-    layers: { hues: ['#00cc33', '#ffcc00', '#00ff41'] },
-    fonts: [{ id:'fh-font-retrocrt', href:'https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap' }],
-  },
   bluefin: {
     label: 'Bluefin', id: 'bluefin',
     vars: {
@@ -6243,7 +6225,7 @@ const THEMES = {
 // over this app's own last-saved choice on first load only; every
 // subsequent in-app change persists to localStorage as before.
 const THEME_FROM_URL = new URLSearchParams(window.location.search).get('theme');
-let activeThemeId = (THEME_FROM_URL && THEMES[THEME_FROM_URL]) ? THEME_FROM_URL : (localStorage.getItem(THEME_KEY) || 'modern');
+let activeThemeId = (THEME_FROM_URL && THEMES[THEME_FROM_URL]) ? THEME_FROM_URL : (THEMES[localStorage.getItem(THEME_KEY)] ? localStorage.getItem(THEME_KEY) : 'modern');
 
 // This app's palette names differ from cabin-ui's (--night = page, --gold =
 // accent, --cream = text, and the glass variables are translucent), so they are
@@ -6269,7 +6251,7 @@ function hubLayerVars(t) {
 }
 
 function applyTheme(id) {
-  const t = THEMES[id] || THEMES.deepspace;
+  const t = THEMES[id] || THEMES.modern;
   activeThemeId = t.id;
   const root = document.documentElement;
   Object.entries(t.vars).forEach(([k, v]) => root.style.setProperty(k, v));

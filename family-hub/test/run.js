@@ -489,6 +489,12 @@ function check(label, actual, expected) {
   check('?theme= URL param is applied on load, not just the last-saved localStorage value',
     await themedPage.evaluate(() => activeThemeId), 'asteroidcity');
   check('?theme= param application produces no JS errors', themedJsErrors, []);
+  check('no Retro-CRT theme in registry', await themedPage.evaluate(() => 'retrocrt' in THEMES), false);
+  const crtPage = await browser.newPage();
+  await crtPage.addInitScript(() => localStorage.setItem('cabin-theme', 'retrocrt'));
+  await crtPage.goto(`http://localhost:${PORT}/family-hub.html`, { waitUntil: 'load' });
+  check('saved retrocrt theme falls back to modern', await crtPage.evaluate(() => activeThemeId), 'modern');
+  await crtPage.close();
   const themedControlStyles = await themedPage.evaluate(() => {
     const select = getComputedStyle(document.getElementById('set-interval'));
     const close = getComputedStyle(document.getElementById('dash-close'));
