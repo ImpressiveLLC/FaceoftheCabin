@@ -9091,7 +9091,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       <div className="app-shell">
         <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />
         <main className="main-area">
-          <KioskControls familyHubUrl={locationCfg?.familyHubUrl} showAppLink={!isDemo} />
+          <KioskControls />
           {isDemo && <DemoBanner />}
           <div className="main-toolbar">
             <span className="platform-name">{locationLabel} — Orchestration Hub</span>
