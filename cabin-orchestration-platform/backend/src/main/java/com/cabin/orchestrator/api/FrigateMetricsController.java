@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.integrations.cameras.BlinkLiveviewService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Added 2026-08-08, replacing the Grafana iframe embed after three
@@ -47,6 +49,16 @@ public class FrigateMetricsController {
     @Value("${cabin.prometheus.url:http://prometheus:9090}")
     private String prometheusUrl;
 
+    // The Blink-relayed cameras (cabin.devices.cameras.blinkCameraMap) are
+    // motion-gated: idle is 0.0 fps and healthy. The same set drives
+    // MqttBridgeService's Frigate-stats heartbeat, so the Camera Health tile
+    // and the device health monitor agree on which cameras those are.
+    private final BlinkLiveviewService blinkLiveviewService;
+
+    public FrigateMetricsController(BlinkLiveviewService blinkLiveviewService) {
+        this.blinkLiveviewService = blinkLiveviewService;
+    }
+
     @GetMapping
     public Map<String, Object> get() {
         try {
@@ -68,17 +80,20 @@ public class FrigateMetricsController {
      * Pure parsing, no HTTP -- exported shape so this is directly unit
      * testable against a canned Prometheus response instead of needing
      * to mock HttpClient. Keyed by camera_name (whatever Prometheus
-     * actually knows about, not a hardcoded list) -> { cameraFps }.
+     * actually knows about, not a hardcoded list) -> { cameraFps,
+     * motionGated }. motionGated is true for Blink-relayed cameras, whose idle
+     * state is 0.0 fps, so the UI can tell "idle" from "no signal".
      */
     Map<String, Object> parseCameraFps(String prometheusJson) {
         Map<String, Object> out = new LinkedHashMap<>();
+        Set<String> motionGated = blinkLiveviewService.blinkCameraMap().keySet();
         try {
             JsonNode root = mapper.readTree(prometheusJson);
             for (JsonNode result : root.path("data").path("result")) {
                 String camera = result.path("metric").path("camera_name").asText(null);
                 if (camera == null) continue;
                 double fps = Double.parseDouble(result.path("value").get(1).asText("0"));
-                out.put(camera, Map.of("cameraFps", fps));
+                out.put(camera, Map.of("cameraFps", fps, "motionGated", motionGated.contains(camera)));
             }
         } catch (Exception e) {
             log.warn("Failed to parse Prometheus response: {}", e.getMessage());
