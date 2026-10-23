@@ -9,10 +9,17 @@ if (requested !== '1' && requested !== '0') {
 function render() {
   document.documentElement.classList.toggle('kiosk-mode', enabled);
   document.querySelectorAll('[data-kiosk-toggle]').forEach(button => {
-    button.textContent = enabled ? 'Exit kiosk' : 'Kiosk mode';
-    button.setAttribute('aria-pressed', String(enabled));
+    button.innerHTML = '<span>Kiosk</span><span class="kiosk-slider" aria-hidden="true"></span>';
+    button.classList.add('kiosk-switch');
+    button.setAttribute('role', 'switch');
+    button.setAttribute('aria-label', 'Kiosk');
+    button.setAttribute('aria-checked', String(enabled));
+    button.removeAttribute('aria-pressed');
   });
   document.querySelectorAll('[data-kiosk-fullscreen]').forEach(button => {
+    button.textContent = '⛶';
+    button.setAttribute('aria-label', 'Fullscreen');
+    button.title = 'Fullscreen';
     button.hidden = !enabled || !!document.fullscreenElement || !document.documentElement.requestFullscreen;
   });
   const url = new URL(location.href);

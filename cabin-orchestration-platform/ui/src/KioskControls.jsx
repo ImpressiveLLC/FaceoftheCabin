@@ -45,5 +45,9 @@ export default function KioskControls() {
       try { await document.exitFullscreen(); } catch { /* browser owns fullscreen */ }
     }
   }
-  return <button type="button" className={`btn-secondary kiosk-toggle${enabled ? " active" : ""}`} onClick={toggle} aria-pressed={enabled}>Kiosk</button>;
+  return <button type="button" className="btn-secondary kiosk-toggle kiosk-switch" role="switch" aria-label="Kiosk" onClick={toggle} aria-checked={enabled}><span>Kiosk</span><span className="kiosk-slider" aria-hidden="true" /></button>;
 }
+
+import './touch-scroll.js';
+
+import './touch-display.css';

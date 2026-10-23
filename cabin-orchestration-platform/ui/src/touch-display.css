@@ -1,0 +1,32 @@
+/* Same touch controls as Family Hub, mapped to cabin theme tokens. */
+:root { --scroll-size:16px; --scroll-thumb:var(--accent); --scroll-track:var(--bg); --display-bg:var(--bg); --display-text:var(--text); --display-edge:var(--layer-1-edge, var(--border)); --display-muted:var(--text-muted); --display-accent:var(--accent); }
+:root.scroll-active { --scroll-size:32px; }
+* { scrollbar-width:auto !important; scrollbar-color:var(--scroll-thumb) var(--scroll-track) !important; }
+*::-webkit-scrollbar { display:block !important; width:var(--scroll-size) !important; height:var(--scroll-size) !important; }
+*::-webkit-scrollbar-track { background:var(--scroll-track) !important; }
+*::-webkit-scrollbar-thumb { background:var(--scroll-thumb) !important; border:3px solid var(--scroll-track); border-radius:12px; min-height:44px; }
+*::-webkit-scrollbar-corner { background:var(--scroll-track); }
+[hidden] { display:none !important; }
+.display-controls { gap:4px; padding:0; }
+.display-controls button, .display-controls a { min-height:44px; padding:6px 8px; border:2px solid var(--display-edge); border-radius:8px; background:var(--display-bg); color:var(--display-text); font:600 12px var(--font-ui, sans-serif); text-decoration:none; }
+.kiosk-switch { display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+.kiosk-slider { display:inline-block; width:28px; height:18px; flex-shrink:0; border-radius:12px; background:var(--display-muted); position:relative; }
+.kiosk-slider::after { content:''; position:absolute; top:3px; left:3px; width:12px; height:12px; border-radius:50%; background:var(--display-bg); transition:transform .15s; }
+.kiosk-switch[aria-checked="true"] .kiosk-slider { background:var(--display-accent); }
+.kiosk-switch[aria-checked="true"] .kiosk-slider::after { transform:translateX(10px); }
+
+.nav-rail { width:120px; overflow-y:auto; flex-shrink:0; }
+.nav-rail > * { flex-shrink:0; }
+.nav-rail .display-controls { margin-top:auto; display:flex; flex-direction:column; align-items:stretch; width:100%; max-width:96px; padding-top:12px; }
+.kiosk-mode .nav-rail { display:none; }
+.kiosk-mode .main-toolbar .platform-name, .kiosk-mode .device-count-toggle { display:none; }
+.kiosk-mode .main-toolbar { height:auto; min-height:48px; flex-shrink:0; }
+.kiosk-mode .toolbar-right { flex-wrap:wrap; }
+.app-shell { height:100dvh; }
+@supports selector(::-webkit-scrollbar) { * { scrollbar-color:auto !important; } }
+@media (max-width:768px) {
+  .nav-rail { overflow-y:auto; overflow-x:hidden; }
+  .nav-rail .display-controls { flex-shrink:0; }
+}
+
+.panel-header-bar { flex-wrap:wrap; gap:10px; }

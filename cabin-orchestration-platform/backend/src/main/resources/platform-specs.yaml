@@ -125,6 +125,27 @@ groups:
           - cabin-orchestration-platform/discovery-service/test/Dockerfile
           - cabin-orchestration-platform/infra/docker-compose.yml
           - cabin-orchestration-platform/locations/home/docker-compose.yml
+      - id: rt.blinkbridge-rewrite
+        name: Blinkbridge rewrite image (manual cutover only)
+        kind: image
+        keys: ["blinkbridge:rewrite"]
+        declared: rewrite
+        track: floating
+        sources: [cabin-orchestration-platform/infra/blinkbridge/docker-compose.cutover.yml]
+      - id: rt.blinkbridge-python
+        name: Blinkbridge Python image
+        kind: image
+        keys: ["python:3.12-alpine"]
+        declared: 3.12-alpine
+        track: series
+        sources: [cabin-orchestration-platform/infra/blinkbridge/Dockerfile]
+      - id: rt.blinkbridge-ffmpeg
+        name: Blinkbridge ffmpeg
+        kind: build-step
+        keys: ["apk add --no-cache ffmpeg"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/infra/blinkbridge/Dockerfile]
       - id: rt.backend-image-tools
         name: Node.js, npm and the Bitwarden CLI inside the backend image
         kind: build-step
