@@ -1,0 +1,277 @@
+"""Local human review of gold fixtures. No model calls, training or execution."""
+import argparse
+import copy
+import hashlib
+import importlib.util
+import inspect
+import json
+import secrets
+import sys
+import threading
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse
+
+HERE = Path(__file__).resolve().parent
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+class ReviewStore:
+    def __init__(self, package, state_file, dataset=None, purpose="evaluation-only"):
+        self.package = Path(package).resolve()
+        self.path = Path(state_file).resolve()
+        self.lock = threading.RLock()
+        self.purpose = purpose
+        raw = Path(dataset or self.package / "gold.jsonl").read_bytes()
+        self.dataset_hash = digest(raw)
+        self.rows = [json.loads(line) for line in raw.decode("utf-8-sig").splitlines() if line.strip()]
+        self.by_id = {row["id"]: row for row in self.rows}
+        if not self.rows or len(self.rows) != len(self.by_id):
+            raise ValueError("Gold must contain unique IDs and at least one example")
+        # Load the selected package's real validator rather than duplicating its rules.
+        spec = importlib.util.spec_from_file_location("grading_contract", self.package / "contract.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.validator = module.validate
+        self.has_card = "card_target" in inspect.signature(self.validator).parameters
+        self.schema = module.SCHEMA
+        self.contract_hash = digest(b"".join((self.package / f).read_bytes() for f in
+                                           ["contract.py"] + sorted(p.name for p in self.package.glob("*.schema.json"))))
+        self.state = {"version": 1, "purpose": purpose, "dataset_sha256": self.dataset_hash,
+                      "contract_sha256": self.contract_hash, "reviews": {}, "audit": [],
+                      "report": None, "model_reviews": {}}
+        if self.path.exists():
+            state = json.loads(self.path.read_text(encoding="utf-8"))
+            if (state.get("version") != 1 or state.get("purpose", "evaluation-only") != purpose or state.get("dataset_sha256") != self.dataset_hash
+                    or state.get("contract_sha256") != self.contract_hash):
+                raise ValueError("Saved reviews belong to a different dataset/contract. Choose a new state file; never reuse stale approvals.")
+            self.state = state
+
+    def validate(self, target, row):
+        if self.has_card:
+            self.validator(target, card_target=row.get("card_target"))
+        else:
+            if row.get("card_target"):
+                raise ValueError("Selected validator does not support card targets")
+            self.validator(target)
+
+    def persist(self, state):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temp = self.path.with_name(self.path.name + ".tmp")
+        temp.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        temp.replace(self.path)
+        self.state = state
+
+    def snapshot(self):
+        with self.lock:
+            return copy.deepcopy({**self.state, "rows": self.rows, "schema": self.schema,
+                                  "package": str(self.package), "state_file": str(self.path), "purpose": self.purpose})
+
+    def save_review(self, data):
+        with self.lock:
+            row = self.by_id[data["id"]]
+            reviewer = str(data.get("reviewer", "")).strip()
+            notes = str(data.get("notes", "")).strip()
+            decision = data.get("decision")
+            if not reviewer or len(reviewer) > 120:
+                raise ValueError("Enter your reviewer name (up to 120 characters)")
+            if decision not in {"approved", "rejected", "pending"}:
+                raise ValueError("Choose approve, reject or pending")
+            if len(notes) > 10000:
+                raise ValueError("Notes are too long")
+            target = data.get("target", row["target"])
+            revised = target != row["target"]
+            if decision == "approved":
+                self.validate(target, row)
+            if (decision == "rejected" or revised) and not notes:
+                raise ValueError("Add a reason for a rejection or corrected answer")
+            previous = self.state["reviews"].get(row["id"], {})
+            if data.get("revision", 0) != previous.get("revision", 0):
+                raise RuntimeError("This example changed in another tab. Reload before saving.")
+            review = {"decision": decision, "target": target, "reviewer": reviewer,
+                      "notes": notes, "reviewed_at": datetime.now(timezone.utc).isoformat(),
+                      "revision": previous.get("revision", 0) + 1, "revised": revised}
+            next_state = copy.deepcopy(self.state)
+            next_state["reviews"][row["id"]] = review
+            next_state["audit"].append({"type": "gold_review", "id": row["id"], **review})
+            # Changing an expected answer invalidates a model judgment against it.
+            if previous.get("target", row["target"]) != target:
+                next_state["model_reviews"].pop(row["id"], None)
+            self.persist(next_state)
+            return review
+
+    def import_report(self, report):
+        with self.lock:
+            if report.get("gold_sha256") != self.dataset_hash:
+                raise ValueError("Report gold hash does not match this dataset. Run evaluation against these exact fixtures first.")
+            predictions = report.get("predictions")
+            if not isinstance(predictions, dict) or not predictions or set(predictions) - set(self.by_id):
+                raise ValueError("Report needs predictions keyed by known fixture IDs")
+            report_hash = digest(canonical(report).encode())
+            next_state = copy.deepcopy(self.state)
+            if (self.state.get("report") or {}).get("sha256") != report_hash:
+                next_state["model_reviews"] = {}
+            next_state["report"] = {"sha256": report_hash, "data": report}
+            next_state["audit"].append({"type": "report_import", "sha256": report_hash,
+                                        "at": datetime.now(timezone.utc).isoformat()})
+            self.persist(next_state)
+            return {"model": report.get("model"), "count": len(predictions)}
+
+    def save_model_review(self, data):
+        with self.lock:
+            row = self.by_id[data["id"]]
+            report = self.state.get("report")
+            if not report or row["id"] not in report["data"]["predictions"]:
+                raise ValueError("No model response is loaded for this example")
+            if data.get("report_sha256") != report["sha256"]:
+                raise RuntimeError("The loaded report changed. Reload before grading.")
+            review = self.state["reviews"].get(row["id"], {})
+            target = review.get("target", row["target"])
+            if data.get("gold_revision", 0) != review.get("revision", 0):
+                raise RuntimeError("The expected answer changed. Reload before grading.")
+            if data.get("decision") not in {"pass", "fail", "unsure"} or not str(data.get("reviewer", "")).strip():
+                raise ValueError("Enter a reviewer and select pass, fail or unsure")
+            if data["decision"] != "pass" and not str(data.get("notes", "")).strip():
+                raise ValueError("Add a reason for fail or unsure")
+            entry = {"decision": data["decision"], "reviewer": str(data["reviewer"]).strip(),
+                     "notes": str(data.get("notes", "")), "reviewed_at": datetime.now(timezone.utc).isoformat(),
+                     "report_sha256": report["sha256"], "target_sha256": digest(canonical(target).encode())}
+            next_state = copy.deepcopy(self.state)
+            next_state["model_reviews"][row["id"]] = entry
+            next_state["audit"].append({"type": "model_review", "id": row["id"], **entry})
+            self.persist(next_state)
+            return entry
+
+    def approved_rows(self):
+        with self.lock:
+            result = []
+            for original in self.rows:
+                review = self.state["reviews"].get(original["id"], {})
+                if review.get("decision") != "approved":
+                    continue
+                self.validate(review["target"], original)
+                row = copy.deepcopy(original)
+                row["target"] = review["target"]
+                row["provenance"].update(review_status="approved", reviewer=review["reviewer"],
+                                         reviewed_at=review["reviewed_at"], review_notes=review["notes"],
+                                         original_dataset_sha256=self.dataset_hash,
+                                         contract_sha256=self.contract_hash, purpose=self.purpose)
+                result.append(row)
+            return result
+
+
+class Server(ThreadingHTTPServer):
+    def __init__(self, address, store):
+        super().__init__(address, Handler)
+        self.store = store
+        self.token = secrets.token_urlsafe(32)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *_):
+        pass
+
+    def send(self, code, content, content_type="application/json; charset=utf-8", filename=None):
+        if not isinstance(content, bytes):
+            content = json.dumps(content, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+        if filename:
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.end_headers()
+        self.wfile.write(content)
+
+    def allowed(self, write=False):
+        port = self.server.server_port
+        hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if self.headers.get("Host") not in hosts:
+            self.send(403, {"error": "Local host only"})
+            return False
+        origin = self.headers.get("Origin")
+        if origin and origin not in {f"http://{h}" for h in hosts}:
+            self.send(403, {"error": "Local origin only"})
+            return False
+        if write and self.headers.get("X-Review-Token") != self.server.token:
+            self.send(403, {"error": "Reload the grading page before saving"})
+            return False
+        return True
+
+    def do_GET(self):
+        if not self.allowed():
+            return
+        route = urlparse(self.path).path
+        if route == "/api/state":
+            self.send(200, {**self.server.store.snapshot(), "token": self.server.token})
+        elif route == "/api/export/gold":
+            rows = self.server.store.approved_rows()
+            if not rows:
+                self.send(400, {"error": "Approve at least one expected answer before exporting"})
+                return
+            self.send(200, "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows).encode(),
+                      "application/x-ndjson", f"approved-{self.server.store.purpose}-{len(rows)}.jsonl")
+        elif route == "/api/export/reviews":
+            data = self.server.store.snapshot()
+            data.pop("schema")
+            data["release_eligible"] = False
+            self.send(200, data, filename="poc2-human-reviews.json")
+        elif route in {"/", "/app.js", "/style.css"}:
+            name = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}[route]
+            mime = {"/": "text/html; charset=utf-8", "/app.js": "text/javascript; charset=utf-8", "/style.css": "text/css; charset=utf-8"}[route]
+            self.send(200, (HERE / name).read_bytes(), mime)
+        else:
+            self.send(404, {"error": "Not found"})
+
+    def do_POST(self):
+        if not self.allowed(write=True):
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 4_000_000:
+                raise ValueError("Request must be between 1 byte and 4 MB")
+            data = json.loads(self.rfile.read(length))
+            methods = {"/api/review": self.server.store.save_review,
+                       "/api/report": self.server.store.import_report,
+                       "/api/model-review": self.server.store.save_model_review}
+            if self.path not in methods:
+                self.send(404, {"error": "Not found"})
+                return
+            self.send(200, methods[self.path](data))
+        except RuntimeError as exc:
+            self.send(409, {"error": str(exc)})
+        except (ValueError, KeyError, TypeError) as exc:
+            self.send(400, {"error": str(exc)})
+        except Exception as exc:
+            # Includes jsonschema.ValidationError; no request content or stack traces in logs.
+            self.send(400, {"error": str(exc).splitlines()[0]})
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--package", type=Path, default=HERE.parent,
+                        help="Folder containing gold.jsonl and its matching contract.py/schema")
+    parser.add_argument("--state", type=Path, required=True, help="Private local review journal")
+    parser.add_argument("--port", type=int, default=8766)
+    parser.add_argument("--dataset", type=Path, help="Explicit candidate JSONL; defaults to package gold")
+    parser.add_argument("--purpose", choices=["evaluation-only", "training-candidate"], default="evaluation-only")
+    args = parser.parse_args()
+    if args.dataset and args.purpose != "training-candidate":
+        parser.error("External datasets must remain training-candidate until a separate holdout is curated")
+    server = Server(("127.0.0.1", args.port), ReviewStore(args.package, args.state, args.dataset, args.purpose))
+    print(f"Grading screen: http://127.0.0.1:{server.server_port}/", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
