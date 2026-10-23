@@ -692,7 +692,19 @@ public class DeviceRegistry {
         if (status == null) return null;
         Map<String, Object> attrs = new LinkedHashMap<>(status.attributes());
         attrs.put("category", status.type().category().name());
-        attrs.put("reportsFields", status.type().telemetryFields().stream().sorted().toList());
+        SmartSwitchMetadata.enrich(status, attrs, statuses.values());
+        DeviceDescriptor sourceDescriptor = descriptors.get(status.deviceId());
+        if (sourceDescriptor != null && "ha_rest".equals(sourceDescriptor.protocolAdapter())
+                && status.type() == DeviceType.POWER_METER && !attrs.containsKey("sourceReportedFields")) {
+            // A saved service absent from current HA discovery has no verified quantity.
+            attrs.putIfAbsent("entityId", sourceDescriptor.connectionString());
+            attrs.put("sourceReportedFields", List.of());
+            attrs.put("serviceRole", "unresolved");
+        }
+        Object sourceFields = attrs.get("sourceReportedFields");
+        if (sourceFields == null && status.deviceId().startsWith("z2m-")) sourceFields = attrs.get("vendorReportedFields");
+        attrs.put("reportsFields", sourceFields instanceof List<?> fields
+            ? fields : status.type().telemetryFields().stream().sorted().toList());
         DeviceDescriptor descriptor = descriptors.get(status.deviceId());
         if (descriptor != null) {
             attrs.put("capabilities", descriptor.capabilities().stream().map(Enum::name).sorted().toList());

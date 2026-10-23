@@ -261,9 +261,9 @@ describe("kpiTileFor", () => {
     expect(kpiTileFor(device, "F", {}).label).toBe("smart_switch @ breaker_box");
   });
 
-  it("shows an em dash when a power meter has no readings yet, not '— W'", () => {
+  it("names unavailable quantities when a power meter has no readings", () => {
     const device = { deviceId: "z2m-new-plug", name: "New Plug", type: "POWER_METER", state: "ONLINE", attributes: {} };
-    expect(kpiTileFor(device, "F").value).toBe("—");
+    expect(kpiTileFor(device, "F").value).toBe("Power unavailable · Energy unavailable");
   });
 });
 
@@ -833,6 +833,23 @@ describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)",
 
     const inn = renderWith({ signedIn: true });
     expect(within(inn.container.querySelector(".kpi-grid")).getByText("Motion")).toBeTruthy();
+  });
+
+  it("renders an enrolled switch through its enabled service without enabling the parent", () => {
+    const parent={deviceId:"legacy-parent",name:"Dehumidifier",type:"HOME_ASSISTANT_ENTITY",
+      location:"cabin",state:"UNKNOWN",attributes:{enabled:false,smartSwitch:true,deviceLifecycle:"ASSIGNED"}};
+    const service={deviceId:"ha-watts",name:"Duplicate watts",type:"POWER_METER",location:"cabin",
+      state:"ONLINE",attributes:{enabled:true,parentDeviceId:"legacy-parent",entityId:"sensor.watts",
+        serviceRole:"measurement",sourceReportedFields:["power"],power:0}};
+    const {container}=render(<AppContext.Provider value={{displayConfigs:{}}}>
+      <MnSeeView devices={[parent,service]} activeLocation="cabin" active={false} reorderMode={false}/>
+    </AppContext.Provider>);
+    const grid=container.querySelector(".kpi-grid");
+    expect(within(grid).getByText("Dehumidifier")).toBeTruthy();
+    expect(within(grid).getByText("0 W · Energy unavailable")).toBeTruthy();
+    expect(within(grid).queryByText("Duplicate watts")).toBeNull();
+    expect(within(grid).getByText("Enabled services; parent disabled")).toBeTruthy();
+    expect(parent.attributes.enabled).toBe(false);
   });
 
   it("renders tiles in the saved order, not the old fixed type-bucket order", () => {

@@ -11021,11 +11021,12 @@ elements:
       compliance: Ordered/planned; not live-verified
     definition: S61SZBTPB on/off outlet candidate; exact protocol model, ratings and metering require receipt
       verification. First unit paired 2026-10-21 (cabin, controlling an existing dehumidifier, not the ordered
-      Midea Cube; device id z2m-0xa4c1381f3884ffff). Zigbee2MQTT advertises on/off plus the four D15
-      measurement types (power W, voltage V, current A, energy kWh) for it, so it is typed POWER_METER with
-      COMMAND and POWER_MONITOR. No real power reading had arrived at that point (the device reported null),
-      so metering is advertised, not yet confirmed live. D13 Amendment A1 applies - the Zigbee device is
-      the parent and its Home Assistant entities are its services.
+      Midea Cube; historical device id z2m-0xa4c1381f3884ffff). The installation's experimental converter
+      exposed power W, voltage V and current A in the 2026-10-23 inspection; energy kWh was not exposed.
+      Advertised product capabilities are not verified channels. Unknown energy remains unavailable.
+      D13 Amendment A1 applies - the physical device is the parent and HA entities retain service identities.
+      Read-only Monitoring groups source-qualified IEEE aliases without changing observation IDs, enrollment,
+      command routes or history. Ambiguous physical assignments remain unresolved.
     notes: W-76 / UC-18 design entry, not an executable DeviceType or runtime capability declaration. Instance
       identity stays in the registry; display aliases derive from this type label plus hub location, room and
       human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json

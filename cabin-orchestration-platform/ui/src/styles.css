@@ -2574,3 +2574,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .kiosk-mode .main-toolbar { height:auto; min-height:48px; flex-shrink:0; }
 .kiosk-mode .toolbar-right { flex-wrap:wrap; }
 .kiosk-mode .app-shell { height:100dvh; }
+
+.kpi-note { font-size:11px; color:var(--text-muted); overflow-wrap:anywhere; }
+.kpi-electrical-details { font-size:12px; margin:6px 0; }
+.kpi-electrical-details summary { cursor:pointer; min-height:24px; }

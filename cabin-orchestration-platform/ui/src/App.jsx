@@ -1,3 +1,4 @@
+import { electricalMonitoringDevices, electricalValue } from "./electricalMonitoring";
 /**
  * Cabin Orchestration Platform — Shell UI
  *
@@ -5215,11 +5216,10 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     // voltage/current are tertiary/collapsed -- available in the device
     // detail view's full attributes list and Sensor History, not this tile.
     case "POWER_METER": {
-      const watts = device.attributes?.power;
-      const kwh = device.attributes?.energy;
-      const val = [watts != null && `${watts} W`, kwh != null && `${kwh} kWh`].filter(Boolean).join(" · ") || "—";
+      const val = electricalValue(device.attributes);
       return { icon: Zap, label: curatedLabel("power") || device.name, deviceId: device.deviceId,
-        value: val, state: device.state };
+        value: val, state: device.state, note: device.attributes?.monitoringSourceNote,
+        electricalDetails: device.attributes?.monitoringGroup ? device.attributes : null };
     }
     case "LOCK":
       return { icon: Lock, label: device.name, deviceId: device.deviceId, value: device.state, state: device.state };
@@ -6073,7 +6073,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
   const kpiEntries = devices
     .map((d, globalIdx) => ({ d, globalIdx }))
     .filter(({ d }) => !d.location || d.location === locCfg.id)
-    .filter(({ d }) => d.attributes?.enabled !== false)
+    .filter(({ d }) => d.attributes?.enabled !== false || d.attributes?.monitoringGroup)
     .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit, reportingRelationships, { signedIn: !!auth?.signedIn }) }))
     .filter(({ tile }) => tile !== null);
 
@@ -6209,8 +6209,8 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
   const locDevices = activeLocation === "both"
-    ? devices
-    : devices.filter(d => !d.location || d.location === activeLocation);
+    ? electricalMonitoringDevices(devices)
+    : electricalMonitoringDevices(devices).filter(d => !d.location || d.location === activeLocation);
 
   const { ordered, pinnedCount, reorder } = useDraggableOrder(
     `order.monitoring.${activeLocation}`, locDevices, isAlarm
@@ -6429,7 +6429,7 @@ function severityClass(override) {
 // MnSeeView already built for the old separate list view, just wired
 // onto the actual tile instead. All undefined/false outside reorder
 // mode, so normal (non-reorder) rendering is untouched.
-function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPinned, isOver,
+function KpiTile({ icon: Icon, label, value, state, note, electricalDetails, deviceId, reorderMode, isPinned, isOver,
     onDragStart, onDragOver, onDrop, onDragEnd }) {
   const { displayConfigs } = useApp();
   const cfg = deviceId ? displayConfigs?.[deviceId] : null;
@@ -6454,6 +6454,12 @@ function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPin
       <Icon size={22} />
       <div className="kpi-label">{effectiveLabel}</div>
       <div className="kpi-value">{effectiveValue}</div>
+      {note && <div className="kpi-note">{note}</div>}
+      {electricalDetails && <details className="kpi-electrical-details"><summary>Electrical details</summary>
+        <div>{typeof electricalDetails.voltage === 'number' ? electricalDetails.voltage + ' V' : 'Voltage unavailable'}</div>
+        <div>{typeof electricalDetails.current === 'number' ? electricalDetails.current + ' A' : 'Current unavailable'}</div>
+        {electricalDetails.unresolvedServiceCount > 0 && <div>{electricalDetails.unresolvedServiceCount} service(s) awaiting source verification</div>}
+      </details>}
       <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>
   );

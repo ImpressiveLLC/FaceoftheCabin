@@ -150,3 +150,17 @@ None yet — see Known gaps below.
 - Untested: behavior across a Termux/Android update, a Zigbee2MQTT version
   bump, or a different phone model — this pass covered exactly one specific
   hardware/software combination.
+## Smart-switch Monitoring release slice — 2026-10-23, PR #247
+
+Scope: physical parent cards and source-qualified electrical values across both locations.
+- Native metering parents and enabled HA measurement services use the same W/kWh display. V/A are available under Electrical details.
+- Zero is a real reading; absent/unsupported values say unavailable. SONOFF's experimental W/V/A converter does not supply kWh.
+- Config/diagnostic entities retain their own records and are not silently used as measured watts.
+- IEEE plus location supplies read-only alias grouping. One assigned physical record wins; ambiguous assignments stay unresolved.
+- An enabled service under a disabled assigned parent can appear on that parent's grouped card, explicitly labeled. This does not enable the parent or copy disabled candidate readings into an active card.
+- Every observation ID, history record, label, enrollment and command route remains unchanged. No relay control is added.
+- Values are labeled reported, with acquisition time unverified. Cached HA polls are not fresh-acquisition proof.
+
+Traceability: #244 holds the broader measurement architecture and operator migration/converter work; #246 tracks recovered local work; #247 delivers this bounded UI/backend slice. Persistent identity/alias mutation and an authenticated apply/rollback migration remain separate work under #244, not implied completed by this read-only presentation change.
+
+Regression evidence: source unit conversion and unknown clearing; IEEE rename and assignment ambiguity; location isolation; enabled/disabled enrollment; diagnostics and competing sources; realistic rendered disabled-parent service card. Full suite and deployment results are recorded on #247 at the checked head.

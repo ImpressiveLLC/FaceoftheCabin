@@ -444,6 +444,11 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 discovery.put("discoveredFrom", "Zigbee2MQTT bridge/devices");
                 discovery.put("model", definition.path("model").asText(""));
                 discovery.put("vendor", definition.path("vendor").asText(""));
+                String ieee = device.path("ieee_address").asText("").toLowerCase(Locale.ROOT);
+                if (ieee.matches("0x[0-9a-f]{16}")) discovery.put("ieeeAddress", ieee);
+                discovery.put("smartSwitch", caps.contains(DeviceCapability.COMMAND)
+                    && caps.contains(DeviceCapability.POWER_MONITOR));
+                discovery.put("sourceReportedFields", vendorReportedFields);
                 // D7 (docs/ontology/DECISIONS.md): forwarded wholesale to
                 // cabin-discovery via DiscoveryServiceClient's discoveryAttributes
                 // passthrough -- its LocalCatalogProvider uses this for a free,
@@ -529,6 +534,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
             // reading, or as a "reading" at all, is what showed "unknown" on the dashboard.
             node.fields().forEachRemaining(e -> {
                 if (!e.getValue().isNull()) attrs.put(e.getKey(), jsonNodeToValue(e.getValue()));
+                else if (Set.of("power", "energy", "voltage", "current").contains(e.getKey()))
+                    attrs.remove(e.getKey());
             });
 
             // PROTOTYPE, 2026-08-08 -- see SignalQualityRegistry's own
