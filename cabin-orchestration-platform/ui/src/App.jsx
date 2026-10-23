@@ -6458,6 +6458,7 @@ function KpiTile({ icon: Icon, label, value, state, note, electricalDetails, dev
       {electricalDetails && <details className="kpi-electrical-details"><summary>Electrical details</summary>
         <div>{typeof electricalDetails.voltage === 'number' ? electricalDetails.voltage + ' V' : 'Voltage unavailable'}</div>
         <div>{typeof electricalDetails.current === 'number' ? electricalDetails.current + ' A' : 'Current unavailable'}</div>
+        {electricalDetails.unresolvedServiceCount > 0 && <div>{electricalDetails.unresolvedServiceCount} service(s) awaiting source verification</div>}
       </details>}
       <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>

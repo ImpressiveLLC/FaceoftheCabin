@@ -37,6 +37,10 @@ export function electricalMonitoringDevices(devices) {
       // Ambiguous services remain visible separately; never silently choose one.
       if (native || matches.length === 1) matches.forEach(d => hidden.add(d.deviceId));
     }
+    const unresolved = children.filter(d => d.type === 'POWER_METER' &&
+      d.attributes?.serviceRole === 'unresolved');
+    unresolved.forEach(d => hidden.add(d.deviceId));
+    attrs.unresolvedServiceCount = unresolved.length;
     const switches = children.filter(d => d.attributes?.entityId?.startsWith('switch.'));
     const states = switches.map(d => d.attributes.state);
     if (!states.length && active(parent) && ['ON','OFF'].includes(attrs.state)) states.push(attrs.state);

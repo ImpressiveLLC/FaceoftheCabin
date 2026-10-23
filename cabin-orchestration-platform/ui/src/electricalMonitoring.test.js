@@ -64,3 +64,13 @@ describe('source identity and ambiguity', () => {
     expect(result[0].attributes.power).toBeUndefined();
   });
 });
+
+it('retains an orphan service in parent details without inventing kWh or a duplicate blank card', () => {
+ const p={deviceId:'p',location:'cabin',type:'POWER_METER',attributes:{enabled:true,power:0}};
+ const orphan={deviceId:'old-energy',location:'cabin',type:'POWER_METER',attributes:{
+   enabled:true,parentDeviceId:'p',serviceRole:'unresolved',sourceReportedFields:[]}};
+ const result=electricalMonitoringDevices([p,orphan]);
+ expect(result).toHaveLength(1);
+ expect(result[0].attributes.unresolvedServiceCount).toBe(1);
+ expect(result[0].attributes.energy).toBeUndefined();
+});
