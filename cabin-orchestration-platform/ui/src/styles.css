@@ -2562,7 +2562,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
   bottom: max(12px, env(safe-area-inset-bottom)); z-index: 100;
   min-height: 44px; padding: 8px 12px;
 }
-.kiosk-toggle[aria-pressed="true"] {
+.kiosk-toggle[aria-checked="true"] {
   color: var(--selected-color, var(--accent));
   border-color: var(--selected-color, var(--accent));
   background: color-mix(in srgb, var(--selected-color, var(--accent)) 18%, var(--control-surface, var(--bg)));

@@ -8865,7 +8865,7 @@ function ArmedWhileOccupiedNotice() {
 }
 
 // ─── Navigation Rail ───────────────────────────────────────────────────────
-function NavRail({ active, onSelect, alertLevels }) {
+function NavRail({ active, onSelect, alertLevels, children }) {
   const alerts = alertLevels;
   // Asteroid City loads a second, purpose-recolored crest file (2026-08-19
   // approval) -- an <img> can't be recolored via the host page's CSS, and
@@ -8905,6 +8905,7 @@ function NavRail({ active, onSelect, alertLevels }) {
           </button>
         );
       })}
+      {children}
     </nav>
   );
 }

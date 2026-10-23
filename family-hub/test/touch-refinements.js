@@ -1,0 +1,97 @@
+module.exports = async function ({ browser, check, base }) {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, hasTouch: true });
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(base + '/family-hub.html?kiosk=1');
+  await page.evaluate(() => {
+    document.getElementById('auth-overlay').classList.add('hidden');
+    profiles = Array.from({ length: 9 }, (_, i) => ({ id: 'p' + i, name: i === 8 ? 'Grandparent' : 'Child ' + i, role: i === 8 ? 'family' : 'kid', age: 10, avatar: '🙂' }));
+    choreLibrary = Array.from({ length: 20 }, (_, i) => ({ id: 'c' + i, label: 'Task ' + i, active: true }));
+    choreAssignments = profiles.flatMap(p => choreLibrary.map((c, i) => ({ id: p.id + c.id, childId: p.id, choreDefinitionId: c.id, recurrence: 'DAILY', effectiveStart: '2000-01-01', displayOrder: i })));
+    saveNotes(Array.from({ length: 50 }, (_, i) => ({ id: 'note' + i, authorId: 'p0', text: 'Message ' + i + ' ' + 'context '.repeat(40), ts: Date.now() - i * 1000 })));
+    expandedLandingKidId = null;
+    renderTodayChores(); renderNotepad(); toggleNotepad(false);
+    computeNotepadWidths(); computeNotepadTop();
+  });
+  await page.waitForTimeout(500);
+  check('all nine assignees begin collapsed', await page.locator('[data-landing-kid-compact]').count(), 9);
+  check('latest note visible while notepad rests', await page.locator('#notepad-context .np-row').first().isVisible(), true);
+  const widths = await page.evaluate(() => ['chores-card', 'notepad-panel'].map(id => Math.round(document.getElementById(id).getBoundingClientRect().width)));
+  check('resting notes width matches chores', widths[0], widths[1]);
+  const geometry = await page.locator('#chores-card').evaluate(el => ({ height: el.clientHeight, content: el.scrollHeight, overflow: getComputedStyle(el).overflowY, thumb: getComputedStyle(el, '::-webkit-scrollbar').width }));
+  check('many assignees have a real scroll region', geometry.content > geometry.height && geometry.overflow === 'auto', true);
+  check('scrollbar is visible at rest', parseInt(geometry.thumb) >= 16, true);
+  // Chromium touch gesture: real panning, not setting scrollTop directly.
+  const cdp = await page.context().newCDPSession(page);
+  const box = await page.locator('#chores-card').boundingBox();
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + 100, y: box.y + box.height - 30 }] });
+  for (let step = 1; step <= 8; step++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: box.x + 100, y: box.y + box.height - 30 - step * 12 }] });
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(250);
+  check('finger swipe scrolls chores without mouse or keyboard', await page.locator('#chores-card').evaluate(el => el.scrollTop > 0), true);
+  check('touch doubles scrollbar prominence', await page.locator('#chores-card').evaluate(el => getComputedStyle(el, '::-webkit-scrollbar').width), '32px');
+  await page.locator('[data-landing-kid-compact="p8"]').tap();
+  check('grandparent can expand assigned chores', await page.locator('[data-landing-kid-expanded="p8"] .chore-row').count(), 20);
+  await page.locator('[data-landing-kid-compact="p1"]').tap();
+  check('selecting another assignee collapses the previous one', await page.locator('[data-landing-kid-expanded]').count(), 1);
+  check('selected assignee is the new one', await page.locator('[data-landing-kid-expanded]').getAttribute('data-landing-kid-expanded'), 'p1');
+  await page.locator('#notepad-handle > button').tap();
+  await page.waitForTimeout(500);
+  check('expanded notepad keeps recent context visible', await page.locator('#notepad-context').isVisible(), true);
+  check('context exposes all retained messages without full history', await page.locator('#notepad-context .np-row').count(), 50);
+  const panels = await page.evaluate(() => ['notepad-main', 'notepad-handle'].map(id => { const b = document.getElementById(id).getBoundingClientRect(); return { x:b.x, right:b.right, y:b.y, bottom:b.bottom }; }));
+  check('composer unrolls toward center, beside context', panels[0].x < panels[1].x && panels[0].right <= panels[1].x + 3, true);
+  check('taller composer stays within screen', panels[0].y >= 0 && panels[0].bottom <= 800, true);
+  await page.locator('#notepad-context .np-reply').first().tap();
+  check('reply retains quoted original context', (await page.locator('#note-reply-context').innerText()).includes('Message 0'), true);
+  await page.evaluate(() => setCurrentActor('p0'));
+  await page.locator('#notepad-input').fill('Reply with context');
+  await page.locator('.np-send').tap();
+  check('posted reply stores original ID', await page.evaluate(() => loadNotes()[0].replyToId), 'note0');
+  check('posted reply shows quoted context', await page.locator('#notepad-context .np-row').first().locator('.np-quote').count(), 1);
+  await page.locator('#note-sticky-toggle').tap();
+  await page.locator('#note-date-type').selectOption('DUE_BY');
+  await page.locator('#note-date').fill('2026-11-10');
+  await page.locator('#notepad-input').fill('Shopping\nMilk\nBread');
+  await page.locator('.np-send').tap();
+  check('sticky list stored with due date', await page.evaluate(() => [loadNotes()[0].kind, loadNotes()[0].dateType, loadNotes()[0].date]), ['STICKY', 'DUE_BY', '2026-11-10']);
+  check('sticky heading uses date instead of sender', await page.locator('#notepad-context .np-row').first().locator('.np-row-name').innerText(), 'Due by 2026-11-10');
+  check('sticky text is larger and bolder', await page.locator('#notepad-context .np-sticky .np-row-text').first().evaluate(el => parseInt(getComputedStyle(el).fontSize) >= 18 && Number(getComputedStyle(el).fontWeight) >= 700), true);
+  await page.locator('#note-date-type').selectOption('LIST_DATE');
+  await page.locator('#notepad-input').fill('Dinner: pasta');
+  await page.locator('.np-send').tap();
+  check('list-date heading is supported', await page.locator('#notepad-context .np-row').first().locator('.np-row-name').innerText(), 'List date 2026-11-10');
+  // A docked OS keyboard reduces the usable browser viewport by one quarter.
+  await page.setViewportSize({ width:1280, height:600 });
+  await page.locator('#notepad-input').focus();
+  await page.waitForTimeout(600);
+  const keyboardBox = await page.locator('#notepad-input').boundingBox();
+  check('composer input stays reachable with quarter-screen keyboard space', keyboardBox.y >= 0 && keyboardBox.y + keyboardBox.height <= 600, true);
+  await page.setViewportSize({ width:1280, height:800 });
+  await page.evaluate(() => { applyTheme('modern'); });
+  check('dashboard outline matches chores', await page.evaluate(() => ['dashboard-fab', 'chores-card'].map(id => { const s=getComputedStyle(document.getElementById(id)); return s.borderTopWidth + s.borderTopColor; })), await page.evaluate(() => { const s=getComputedStyle(document.getElementById('chores-card')); return [s.borderTopWidth+s.borderTopColor,s.borderTopWidth+s.borderTopColor]; }));
+
+  // Fresh navigation back to this origin restores a valid tab session, not a new OAuth prompt.
+  await page.route('https://www.googleapis.com/oauth2/v3/userinfo', route => route.fulfill({ json: { email:'test@example.invalid', name:'Test User' } }));
+  await page.route('https://www.googleapis.com/calendar/**', route => route.fulfill({ json:{items:[]} }));
+  await page.evaluate(() => HubSession.save(CFG.clientId, 'test-valid-token', 3600));
+  await page.goto('about:blank');
+  await page.goto(base + '/family-hub.html');
+  await page.waitForFunction(() => document.getElementById('auth-overlay').classList.contains('hidden'));
+  check('return navigation restores the valid session', await page.evaluate(() => accessToken), 'test-valid-token');
+  await page.evaluate(() => signOut());
+  check('explicit sign-out clears remembered session', await page.evaluate(() => HubSession.read(CFG.clientId)), null);
+  await page.evaluate(() => { sessionStorage.setItem('familyHub.googleSession', JSON.stringify({ clientId: CFG.clientId, token:'expired', expiresAt:Date.now()-1000 })); });
+  await page.reload();
+  check('expired token does not restore sign-in', await page.evaluate(() => accessToken), null);
+  await page.route('https://www.googleapis.com/oauth2/v3/userinfo', route => route.fulfill({ status:401, json:{error:'invalid_token'} }));
+  await page.evaluate(() => HubSession.save(CFG.clientId, 'revoked-token', 3600));
+  await page.reload();
+  await page.waitForTimeout(200);
+  check('rejected token never restores the signed-in view', await page.evaluate(() => accessToken), null);
+  check('rejected cached token is removed', await page.evaluate(() => HubSession.read(CFG.clientId)), null);
+  check('touch refinement journeys produce no JS errors', errors, []);
+  await page.close();
+};
