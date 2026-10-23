@@ -617,4 +617,19 @@ class Zigbee2MqttAdapterTest {
         deliver("zigbee2mqtt/arbitrary", "{\"power\":null}");
         assertNull(registry.get("z2m-arbitrary").attributes().get("power"));
     }
+
+    @Test
+    void batteryVoltageAndWritableCalibrationDoNotMakeATemperatureSensorASwitch() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"temp_anywhere","ieee_address":"0x1234567890abcdef",
+            "definition":{"description":"Temperature sensor","exposes":[
+              {"type":"numeric","name":"temperature","property":"temperature","access":1},
+              {"type":"numeric","name":"voltage","property":"voltage","access":1},
+              {"type":"numeric","name":"temperature_calibration","property":"temperature_calibration",
+               "category":"config","access":3}]}}]
+          """);
+        var found=registry.get("z2m-temp_anywhere");
+        assertEquals(false,found.attributes().get("smartSwitch"));
+        assertEquals(DeviceType.TEMPERATURE_SENSOR,found.type());
+    }
 }

@@ -446,8 +446,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 discovery.put("vendor", definition.path("vendor").asText(""));
                 String ieee = device.path("ieee_address").asText("").toLowerCase(Locale.ROOT);
                 if (ieee.matches("0x[0-9a-f]{16}")) discovery.put("ieeeAddress", ieee);
-                discovery.put("smartSwitch", caps.contains(DeviceCapability.COMMAND)
-                    && caps.contains(DeviceCapability.POWER_MONITOR));
+                discovery.put("smartSwitch", hasRelay(definition.path("exposes")));
                 discovery.put("sourceReportedFields", vendorReportedFields);
                 // D7 (docs/ontology/DECISIONS.md): forwarded wholesale to
                 // cabin-discovery via DiscoveryServiceClient's discoveryAttributes
@@ -590,6 +589,17 @@ public class Zigbee2MqttAdapter implements MqttCallback {
      * composite features that have sub-features (e.g. water_leak_buzzer
      * nested under a composite).
      */
+    private boolean hasRelay(JsonNode exposes) {
+        if (!exposes.isArray()) return false;
+        for (JsonNode expose : exposes) {
+            String property = expose.path("property").asText(expose.path("name").asText(""));
+            if ("binary".equals(expose.path("type").asText()) && "state".equals(property)
+                    && (expose.path("access").asInt(1) & 2) != 0) return true;
+            if (hasRelay(expose.path("features"))) return true;
+        }
+        return false;
+    }
+
     private Set<DeviceCapability> inferCapabilities(JsonNode definition) {
         Set<DeviceCapability> caps = new HashSet<>();
         if (definition.isMissingNode()) {
