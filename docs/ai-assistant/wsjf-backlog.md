@@ -346,3 +346,21 @@ Ownership (Nate, 2026-10-21): Cowork owns and scores this backlog; Codex supplie
 - Record the observed range, the run count and the date in this file; re-measure when the gold set, prompt or model changes.
 - **AC:** five or more run reports committed (ids and hashes, no private data); the observed-range table above; `sme-loop.md`'s r8 note updated with the measured range.
 
+
+
+## Measurement context research and recommendations C7/C8
+
+Origin: Nate’s 2026-10-22 proxy-PO/SME delegation for #241/#242; use case [UC-21](../governance/use-cases.md). Product/architecture and sources live only in [measurement framework sections 11–13](../governance/proposals/2026-10-22-measurement-attention-framework.md#11-proxy-product-owner-decisions-and-implementation-authorization). Cowork remains this backlog’s owner; these are **proxy-PO proposed scores**, not Cowork ratification. Platform dictionary/evaluator/rollout scores are not duplicated here.
+
+| Item | Safety | Usability | Extensibility | Time | CoD | Size | WSJF | Status / depends on |
+|---|---|---|---|---|---|---|---|---|
+| C7 User-initiated measurement research and approved dictionary corpus | 4 | 7 | 7 | 3 | 25 | 3 | 8.333 | proposed; W-98 dictionary, approved source content and existing C2 index contract |
+| C8 Evaluated source-grounded measurement recommendations | 7 | 8 | 7 | 2 | 31 | 8 | 3.875 | held; C7, W-106 evidence, representative gold/held-out evaluation and separate recommendation-policy review |
+
+### C7 acceptance and owner request
+
+Cowork owns source/index eligibility and wording; Code implements; Codex reviews privacy/evaluation. Reuse C2’s approved document indexing rather than create a parallel corpus. Every answer/search context names measurement, provider scheme, units, method/window and policy version. External search is explicitly initiated by the user with a preview of the public terms being sent; household IDs, precise location and raw observations are excluded by default. No network call on simply opening the dictionary. Disabled provider/network failure keeps local definitions and direct citations usable. Tests cover incompatible AQI/VOC/CO2, privacy, permissions, stale index and unsupported-source refusal. Record indexing/version and actual retrieval evidence.
+
+### C8 acceptance and owner request
+
+Cowork/domain reviewer authors sources and recommendation policy; Code implements; Codex evaluates. Specify whether deterministic guidance suffices before selecting a model. Freeze reviewed scenarios, sources, scope and abstention rules; hold out eval families. Test claim-level grounding, misleading unit/scheme conversions, missing/stale data, conflicting guidance, unsupported health/engineering advice and unsafe implied actions. Numeric quality/latency targets require the design/eval protocol before implementation, not an invented pass claim. Recommendations remain informational and source-linked; existing device guards/confirmation never disappear. No automatic actuation, personal health inference or extension to life-safety control is authorized by C8. Exit requires independent domain/eval review and Nate’s release authority. This remains an explicitly held later product slice, not hidden W-98 work.
