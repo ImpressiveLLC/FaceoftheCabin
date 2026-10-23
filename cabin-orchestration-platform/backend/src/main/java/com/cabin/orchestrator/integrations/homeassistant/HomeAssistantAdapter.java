@@ -199,6 +199,7 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
                 Map<?, ?> attrs = (attrsObj instanceof Map) ? (Map<?, ?>) attrsObj : Collections.emptyMap();
                 Map<String, Object> attributes = new LinkedHashMap<>();
                 attrs.forEach((k, v) -> attributes.put(String.valueOf(k), v));
+                ElectricalMeasurement.normalize(descriptor.connectionString(), state, attributes);
                 return Optional.of(new DeviceStatus(
                     descriptor.deviceId(), descriptor.type(), descriptor.name(),
                     mapHaState(state), Instant.now(), attributes, descriptor.location()));

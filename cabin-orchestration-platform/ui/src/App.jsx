@@ -1,3 +1,4 @@
+import { electricalMonitoringDevices, electricalValue } from "./electricalMonitoring";
 /**
  * Cabin Orchestration Platform — Shell UI
  *
@@ -5215,9 +5216,7 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     // voltage/current are tertiary/collapsed -- available in the device
     // detail view's full attributes list and Sensor History, not this tile.
     case "POWER_METER": {
-      const watts = device.attributes?.power;
-      const kwh = device.attributes?.energy;
-      const val = [watts != null && `${watts} W`, kwh != null && `${kwh} kWh`].filter(Boolean).join(" · ") || "—";
+      const val = electricalValue(device.attributes);
       return { icon: Zap, label: curatedLabel("power") || device.name, deviceId: device.deviceId,
         value: val, state: device.state };
     }
@@ -6209,8 +6208,8 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
   const locDevices = activeLocation === "both"
-    ? devices
-    : devices.filter(d => !d.location || d.location === activeLocation);
+    ? electricalMonitoringDevices(devices)
+    : electricalMonitoringDevices(devices).filter(d => !d.location || d.location === activeLocation);
 
   const { ordered, pinnedCount, reorder } = useDraggableOrder(
     `order.monitoring.${activeLocation}`, locDevices, isAlarm
@@ -9068,8 +9067,8 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   // (locDevices, found 2026-08-08); the toolbar count just never got the
   // same filter applied.
   const toolbarDevices = activeLocation === "both"
-    ? devices
-    : devices.filter(d => !d.location || d.location === activeLocation);
+    ? electricalMonitoringDevices(devices)
+    : electricalMonitoringDevices(devices).filter(d => !d.location || d.location === activeLocation);
 
   if (isDemo && cameraAuth.demoInactive) return <DemoInactive />;
 

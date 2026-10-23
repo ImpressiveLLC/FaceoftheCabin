@@ -188,12 +188,14 @@ public class HomeAssistantDiscoveryService {
             if (attrs.containsKey("battery_level") && !attrs.containsKey("battery")) {
                 attrs.put("battery", attrs.get("battery_level"));
             }
+            ElectricalMeasurement.normalize(entity.entityId(), entity.state(), attrs);
             registry.registerCandidate(descriptor, attrs);
             DeviceStatus current = registry.get(id);
             if (current == null) continue; // device was removed concurrently
             DeviceDescriptor registered = registry.descriptor(id).orElse(descriptor);
             Map<String, Object> merged = new LinkedHashMap<>(current.attributes());
             merged.putAll(attrs);
+            ElectricalMeasurement.normalize(entity.entityId(), entity.state(), merged);
             boolean safetyAlarm = Set.of(DeviceType.SMOKE_ALARM, DeviceType.CO_ALARM,
                 DeviceType.WATER_LEAK_SENSOR).contains(registered.type()) && isPresent(entity.state());
             String newState = safetyAlarm ? "ALARM" : adapter.normalizedState(entity.state());
@@ -422,7 +424,7 @@ public class HomeAssistantDiscoveryService {
         if (deviceClass.contains("door") || deviceClass.contains("opening")) return DeviceType.CONTACT_SENSOR;
         if (deviceClass.contains("temperature")) return DeviceType.TEMPERATURE_SENSOR;
         if (deviceClass.contains("humidity")) return DeviceType.HUMIDITY_SENSOR;
-        if (deviceClass.contains("power") || deviceClass.contains("energy")) return DeviceType.POWER_METER;
+        if ("sensor".equals(domain) && Set.of("power", "energy", "voltage", "current").contains(deviceClass)) return DeviceType.POWER_METER;
         // Added 2026-08-27 for Kidde's HA-discovered air-quality entities
         // (indoor CO2/TVOC/air-quality-index) -- see
         // docs/ontology.yaml's smart_appliance_co_air_quality_kidde.

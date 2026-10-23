@@ -45,6 +45,36 @@ class HomeAssistantDiscoveryServiceTest {
     private RecordingEventPublisher eventPublisher;
     private HomeAssistantDiscoveryService service;
 
+    @Test
+    void electricalServicesKeepTheirOwnQuantityAndNormalizeUnitsAtBothLocations() {
+        for (String site : List.of("cabin", "home")) {
+            when(adapter.discover(site)).thenReturn(List.of(
+                new HomeAssistantAdapter.DiscoveredEntity("sensor.arbitrary_plug_power", "0", Map.of("device_class", "power", "unit_of_measurement", "kW")),
+                new HomeAssistantAdapter.DiscoveredEntity("sensor.arbitrary_plug_energy", "48320", Map.of("device_class", "energy", "unit_of_measurement", "Wh")),
+                new HomeAssistantAdapter.DiscoveredEntity("sensor.arbitrary_plug_voltage", "122.3", Map.of("device_class", "voltage", "unit_of_measurement", "V")),
+                new HomeAssistantAdapter.DiscoveredEntity("number.power_threshold", "3200", Map.of("device_class", "power", "unit_of_measurement", "W"))));
+            service.discoverLocation(site);
+            assertThat(registry.get("ha-" + site + "-sensor-arbitrary-plug-power").attributes())
+                .containsEntry("power", 0.0).containsEntry("reportsFields", List.of("power"));
+            assertThat(registry.get("ha-" + site + "-sensor-arbitrary-plug-energy").attributes())
+                .containsEntry("energy", 48.32).containsEntry("reportsFields", List.of("energy"));
+            assertThat(registry.get("ha-" + site + "-sensor-arbitrary-plug-voltage").attributes())
+                .containsEntry("voltage", 122.3).containsEntry("reportsFields", List.of("voltage"));
+            assertThat(registry.get("ha-" + site + "-number-power-threshold").attributes())
+                .doesNotContainKey("power").containsEntry("reportsFields", List.of());
+        }
+    }
+
+    @Test
+    void unavailableElectricalObservationDoesNotRetainLastValueAsCurrent() {
+        when(adapter.discover("cabin")).thenReturn(List.of(new HomeAssistantAdapter.DiscoveredEntity(
+            "sensor.plug_energy", "48.32", Map.of("device_class", "energy", "unit_of_measurement", "kWh"))));
+        service.discoverLocation("cabin");
+        when(adapter.discover("cabin")).thenReturn(List.of(new HomeAssistantAdapter.DiscoveredEntity(
+            "sensor.plug_energy", "unavailable", Map.of("device_class", "energy", "unit_of_measurement", "kWh"))));
+        service.discoverLocation("cabin");
+        assertThat(registry.get("ha-cabin-sensor-plug-energy").attributes()).doesNotContainKey("energy");
+    }
     @BeforeEach
     void setUp() {
         adapter = mock(HomeAssistantAdapter.class);
