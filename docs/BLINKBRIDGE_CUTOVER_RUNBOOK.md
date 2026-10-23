@@ -34,9 +34,10 @@ Nate chooses the moment (a restart clears the current hang; nothing is lost, the
 ```bash
 cd ~/FaceoftheCabin-deploy/cabin-orchestration-platform/infra   # after the PR is merged and pulled
 # 1. keep the old image runnable under a fixed tag
+PROJ=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' blinkbridge)   # reuse the running stack's compose project, else mediamtx "name already in use"
 docker tag "$(docker inspect -f '{{.Image}}' blinkbridge)" blinkbridge:legacy
 # 2. build and swap (same container name, same env, same volumes)
-docker compose -f production-stack/docker-compose.yml -f blinkbridge/docker-compose.cutover.yml up -d --build blinkbridge
+docker compose -p "$PROJ" -f production-stack/docker-compose.yml -f blinkbridge/docker-compose.cutover.yml up -d --build --no-deps blinkbridge
 ```
 
 ## Verify (within 2 min)
@@ -57,9 +58,9 @@ Also open Watch Live on the driveway from the UI once.
 
 ```bash
 cd ~/FaceoftheCabin-deploy/cabin-orchestration-platform/infra
-docker compose -f production-stack/docker-compose.yml up -d --build blinkbridge   # no override: legacy source at /storage/services/blinkbridge-src
+docker compose -p "$PROJ" -f production-stack/docker-compose.yml up -d --build --no-deps blinkbridge   # no override: legacy source at /storage/services/blinkbridge-src
 # if that build fails, run the saved image directly with the same mounts/env:
-#   docker tag blinkbridge:legacy <compose image name> && docker compose -f production-stack/docker-compose.yml up -d --no-build blinkbridge
+#   docker tag blinkbridge:legacy <compose image name> && docker compose -p "$PROJ" -f production-stack/docker-compose.yml up -d --no-build --no-deps blinkbridge
 ```
 
 Legacy source (`/storage/services/blinkbridge-src`) and `blinkbridge:legacy` stay in place until Nate deletes them
