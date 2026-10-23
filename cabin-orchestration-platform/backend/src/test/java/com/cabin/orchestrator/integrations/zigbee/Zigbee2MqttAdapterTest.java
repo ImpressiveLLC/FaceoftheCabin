@@ -321,7 +321,7 @@ class Zigbee2MqttAdapterTest {
     }
 
     @Test
-    void aNullReadingIsNotStoredAsTheTextNullAndNeverOverwritesARealOne() throws Exception {
+    void anExplicitNullClearsTheCurrentReadingWithoutFabricatingZero() throws Exception {
         registerPowerSwitch("0xa4c1381f3884ffff");
 
         deliver("zigbee2mqtt/0xa4c1381f3884ffff", "{\"state\":\"ON\",\"power\":null,\"voltage\":null,\"linkquality\":148}");
@@ -333,7 +333,8 @@ class Zigbee2MqttAdapterTest {
         deliver("zigbee2mqtt/0xa4c1381f3884ffff", "{\"power\":412.5,\"voltage\":121.4}");
         deliver("zigbee2mqtt/0xa4c1381f3884ffff", "{\"power\":null}");
         var later = registry.get("z2m-0xa4c1381f3884ffff").attributes();
-        assertEquals(412.5, ((Number) later.get("power")).doubleValue(), 0.0001);
+        assertNull(later.get("power"));
+        assertEquals(121.4, ((Number) later.get("voltage")).doubleValue(), 0.0001);
     }
 
     // D16 (Reporting Topics IA), Cowork ratification 2026-09-05: before this,
@@ -595,5 +596,25 @@ class Zigbee2MqttAdapterTest {
 
         assertTrue(sent.contains("zigbee2mqtt/bridge/request/permit_join {\"value\":true,\"time\":254}"), sent.toString());
         assertTrue(sent.contains("home_z2m/bridge/request/permit_join {\"value\":true,\"time\":254}"), sent.toString());
+    }
+
+    @Test
+    void smartSwitchDiscoveryCarriesSourceIdentityAndNullClearsOldPower() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"arbitrary","ieee_address":"0x1234567890abcdef",
+            "definition":{"model":"3RSP02064Z","description":"Smart plug","exposes":[
+              {"type":"binary","name":"state","access":3},
+              {"type":"numeric","name":"power","property":"power","access":1},
+              {"type":"numeric","name":"energy","property":"energy","access":1},
+              {"type":"numeric","name":"power_limit","category":"config","access":3}]}}]
+          """);
+        var found=registry.get("z2m-arbitrary");
+        assertEquals("zigbee:cabin:0x1234567890abcdef",found.attributes().get("physicalIdentity"));
+        assertEquals(true,found.attributes().get("smartSwitch"));
+        assertEquals(List.of("power","energy"),found.attributes().get("reportsFields"));
+        assertEquals(false,found.attributes().get("enabled"));
+        deliver("zigbee2mqtt/arbitrary", "{\"power\":12}");
+        deliver("zigbee2mqtt/arbitrary", "{\"power\":null}");
+        assertNull(registry.get("z2m-arbitrary").attributes().get("power"));
     }
 }

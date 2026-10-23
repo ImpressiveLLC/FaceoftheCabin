@@ -5218,7 +5218,8 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     case "POWER_METER": {
       const val = electricalValue(device.attributes);
       return { icon: Zap, label: curatedLabel("power") || device.name, deviceId: device.deviceId,
-        value: val, state: device.state };
+        value: val, state: device.state, note: device.attributes?.monitoringSourceNote,
+        electricalDetails: device.attributes?.monitoringGroup ? device.attributes : null };
     }
     case "LOCK":
       return { icon: Lock, label: device.name, deviceId: device.deviceId, value: device.state, state: device.state };
@@ -6072,7 +6073,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
   const kpiEntries = devices
     .map((d, globalIdx) => ({ d, globalIdx }))
     .filter(({ d }) => !d.location || d.location === locCfg.id)
-    .filter(({ d }) => d.attributes?.enabled !== false)
+    .filter(({ d }) => d.attributes?.enabled !== false || d.attributes?.monitoringGroup)
     .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit, reportingRelationships, { signedIn: !!auth?.signedIn }) }))
     .filter(({ tile }) => tile !== null);
 
@@ -6428,7 +6429,7 @@ function severityClass(override) {
 // MnSeeView already built for the old separate list view, just wired
 // onto the actual tile instead. All undefined/false outside reorder
 // mode, so normal (non-reorder) rendering is untouched.
-function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPinned, isOver,
+function KpiTile({ icon: Icon, label, value, state, note, electricalDetails, deviceId, reorderMode, isPinned, isOver,
     onDragStart, onDragOver, onDrop, onDragEnd }) {
   const { displayConfigs } = useApp();
   const cfg = deviceId ? displayConfigs?.[deviceId] : null;
@@ -6453,6 +6454,11 @@ function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPin
       <Icon size={22} />
       <div className="kpi-label">{effectiveLabel}</div>
       <div className="kpi-value">{effectiveValue}</div>
+      {note && <div className="kpi-note">{note}</div>}
+      {electricalDetails && <details className="kpi-electrical-details"><summary>Electrical details</summary>
+        <div>{typeof electricalDetails.voltage === 'number' ? electricalDetails.voltage + ' V' : 'Voltage unavailable'}</div>
+        <div>{typeof electricalDetails.current === 'number' ? electricalDetails.current + ' A' : 'Current unavailable'}</div>
+      </details>}
       <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>
   );
@@ -9067,8 +9073,8 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   // (locDevices, found 2026-08-08); the toolbar count just never got the
   // same filter applied.
   const toolbarDevices = activeLocation === "both"
-    ? electricalMonitoringDevices(devices)
-    : electricalMonitoringDevices(devices).filter(d => !d.location || d.location === activeLocation);
+    ? devices
+    : devices.filter(d => !d.location || d.location === activeLocation);
 
   if (isDemo && cameraAuth.demoInactive) return <DemoInactive />;
 

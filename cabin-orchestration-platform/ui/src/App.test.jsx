@@ -261,9 +261,9 @@ describe("kpiTileFor", () => {
     expect(kpiTileFor(device, "F", {}).label).toBe("smart_switch @ breaker_box");
   });
 
-  it("shows an em dash when a power meter has no readings yet, not '— W'", () => {
+  it("names unavailable quantities when a power meter has no readings", () => {
     const device = { deviceId: "z2m-new-plug", name: "New Plug", type: "POWER_METER", state: "ONLINE", attributes: {} };
-    expect(kpiTileFor(device, "F").value).toBe("—");
+    expect(kpiTileFor(device, "F").value).toBe("Power unavailable · Energy unavailable");
   });
 });
 

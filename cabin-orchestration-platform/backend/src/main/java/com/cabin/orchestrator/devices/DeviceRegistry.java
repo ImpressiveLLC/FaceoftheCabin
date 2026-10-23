@@ -692,6 +692,7 @@ public class DeviceRegistry {
         if (status == null) return null;
         Map<String, Object> attrs = new LinkedHashMap<>(status.attributes());
         attrs.put("category", status.type().category().name());
+        SmartSwitchMetadata.enrich(status, attrs, statuses.values());
         Object sourceFields = attrs.get("sourceReportedFields");
         if (sourceFields == null && status.deviceId().startsWith("z2m-")) sourceFields = attrs.get("vendorReportedFields");
         attrs.put("reportsFields", sourceFields instanceof List<?> fields

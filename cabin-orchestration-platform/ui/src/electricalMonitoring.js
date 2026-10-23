@@ -1,42 +1,62 @@
-// Composition only: enrollment, source records, history and command targets stay unchanged.
-const electricalFields = ['power', 'energy', 'voltage', 'current'];
+// A read-only projection. Source records, enrollment, history and control targets are untouched.
+const fields = ['power', 'energy', 'voltage', 'current'];
 const active = d => d.attributes?.enabled !== false && !d.attributes?.candidate &&
   !['CANDIDATE', 'IGNORED', 'DEFERRED', 'REMOVED'].includes(d.attributes?.deviceLifecycle);
+const eligible = d => !d.attributes?.candidate &&
+  !['CANDIDATE', 'IGNORED', 'DEFERRED', 'REMOVED'].includes(d.attributes?.deviceLifecycle);
+const finite = value => typeof value === 'number' && Number.isFinite(value);
+const measurement = d => d.attributes?.entityId?.startsWith('sensor.') &&
+  ['measurement', undefined].includes(d.attributes?.serviceRole) &&
+  d.attributes?.sourceReportedFields?.length === 1 &&
+  fields.includes(d.attributes.sourceReportedFields[0]);
+
 export function electricalMonitoringDevices(devices) {
-  const hidden = new Set();
-  const cards = new Map();
+  const byId = new Map(devices.map(d => [d.deviceId, d]));
+  const canonical = id => byId.get(id)?.attributes?.canonicalPhysicalId || id;
+  const hidden = new Set(), cards = new Map();
   for (const parent of devices) {
-    if (!active(parent) || parent.attributes?.parentDeviceId ||
+    if (!eligible(parent) || parent.attributes?.parentDeviceId ||
+        canonical(parent.deviceId) !== parent.deviceId ||
         !(parent.type === 'POWER_METER' || parent.attributes?.smartSwitch === true)) continue;
-    const children = devices.filter(d => d.attributes?.parentDeviceId === parent.deviceId &&
+    const children = devices.filter(d => d.attributes?.parentDeviceId &&
+      canonical(d.attributes.parentDeviceId) === parent.deviceId &&
       d.location === parent.location && active(d));
-    const attrs = {...parent.attributes};
-    for (const child of children) {
-      const fields = child.attributes?.sourceReportedFields;
-      if (!child.attributes?.entityId?.startsWith('sensor.') || !Array.isArray(fields) || fields.length !== 1) continue;
-      const field = fields[0];
-      if (!electricalFields.includes(field) || child.attributes?.serviceRole === 'configuration') continue;
-      // A native channel remains authoritative even when its current value is missing.
-      if (!attrs.vendorReportedFields?.includes(field) && attrs[field] == null &&
-          children.filter(d => d.attributes?.sourceReportedFields?.includes(field)).length === 1) {
-        attrs[field] = child.attributes[field];
+    const readings = children.filter(measurement);
+    if (!active(parent) && !readings.length) continue;
+    const attrs = {...parent.attributes, monitoringGroup: true, measurementSources: {}};
+    if (!active(parent)) fields.forEach(field => delete attrs[field]);
+    for (const field of fields) {
+      const matches = readings.filter(d => d.attributes.sourceReportedFields[0] === field);
+      const native = active(parent) && (attrs.sourceReportedFields || attrs.vendorReportedFields || []).includes(field);
+      if (native || (active(parent) && finite(attrs[field]))) {
+        attrs.measurementSources[field] = parent.deviceId;
+      } else if (matches.length === 1) {
+        attrs[field] = matches[0].attributes[field];
+        attrs.measurementSources[field] = matches[0].deviceId;
       }
-      hidden.add(child.deviceId);
+      // Ambiguous services remain visible separately; never silently choose one.
+      if (native || matches.length === 1) matches.forEach(d => hidden.add(d.deviceId));
     }
-    const states = children.filter(d => d.attributes?.entityId?.startsWith('switch.'))
-      .map(d => d.attributes?.state).filter(s => s === 'ON' || s === 'OFF');
-    if (states.length && new Set(states).size === 1) attrs.mappedSwitchState = states[0];
-    cards.set(parent.deviceId, {...parent, attributes:attrs});
+    const switches = children.filter(d => d.attributes?.entityId?.startsWith('switch.'));
+    const states = switches.map(d => d.attributes.state);
+    if (!states.length && active(parent) && ['ON','OFF'].includes(attrs.state)) states.push(attrs.state);
+    if (states.length && states.every(s => s === states[0] && ['ON','OFF'].includes(s))) {
+      attrs.mappedSwitchState = states[0];
+    }
+    attrs.monitoringServices = children.map(d => ({deviceId:d.deviceId, role:d.attributes?.serviceRole || 'service'}));
+    attrs.monitoringSourceNote = active(parent) ? 'Reported readings; acquisition time unverified' : 'Enabled services; parent disabled';
+    cards.set(parent.deviceId, {...parent, type:'POWER_METER', attributes:attrs});
   }
   return devices.filter(d => !hidden.has(d.deviceId)).map(d => cards.get(d.deviceId) || d);
 }
 
 export function electricalValue(attributes = {}) {
-  const finite = value => typeof value === 'number' && Number.isFinite(value);
-  const metrics = [['power','W'], ['energy','kWh'], ['voltage','V'], ['current','A']]
-    .filter(([field]) => finite(attributes[field])).map(([field,unit]) => `${attributes[field]} ${unit}`);
-  if (!finite(attributes.power) && !attributes.sourceReportedFields?.length) metrics.unshift('Power unavailable');
-  if (!finite(attributes.energy) && !attributes.sourceReportedFields?.length) metrics.push('Energy unavailable');
+  const single = attributes.sourceReportedFields?.length === 1 && !attributes.monitoringGroup;
+  const quantities = single ? fields.filter(f => attributes.sourceReportedFields.includes(f)) : ['power','energy'];
+  const units = {power:'W',energy:'kWh',voltage:'V',current:'A'};
+  const metrics = quantities.map(field => finite(attributes[field])
+    ? attributes[field] + ' ' + units[field]
+    : (field === 'energy' ? 'Energy' : field === 'power' ? 'Power' : field === 'voltage' ? 'Voltage' : 'Current') + ' unavailable');
   if (attributes.mappedSwitchState) metrics.push(attributes.mappedSwitchState);
   return metrics.join(' · ') || 'Measurement unavailable';
 }

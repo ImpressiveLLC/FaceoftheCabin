@@ -19,10 +19,14 @@ describe('one physical smart-switch card', () => {
     expect(result[1]).toBe(disabled);
     expect(result[2]).toBe(candidate);
   });
-  it('does not swallow an enabled child of a disabled parent or a service at another location', () => {
+  it('groups enabled services without enabling their parent and isolates locations', () => {
     const disabled={...parent('p'),attributes:{enabled:false,deviceLifecycle:'ASSIGNED'}};
     const service=child('power','p','power',12);
-    expect(electricalMonitoringDevices([disabled,service])).toEqual([disabled,service]);
+    const result = electricalMonitoringDevices([disabled,service]);
+    expect(result).toHaveLength(1);
+    expect(result[0].attributes.enabled).toBe(false);
+    expect(result[0].attributes.monitoringGroup).toBe(true);
+    expect(result[0].attributes.power).toBe(12);
     expect(electricalMonitoringDevices([parent('p','home'),service])).toHaveLength(2);
   });
   it('uses existing unambiguous switch state, never a relay command or configuration threshold', () => {
@@ -32,5 +36,31 @@ describe('one physical smart-switch card', () => {
     expect(switchService.attributes).not.toHaveProperty('mappedSwitchState');
     const conflicting={...switchService,deviceId:'other',attributes:{...switchService.attributes,state:'OFF'}};
     expect(electricalMonitoringDevices([parent('p'),switchService,conflicting])[0].attributes.mappedSwitchState).toBeUndefined();
+  });
+});
+
+describe('source identity and ambiguity', () => {
+  it('groups a renamed SONOFF through the backend canonical identity without enabling its alias', () => {
+    const original={deviceId:'z2m-0x1234567890abcdef',location:'cabin',type:'HOME_ASSISTANT_ENTITY',
+      attributes:{enabled:false,deviceLifecycle:'ASSIGNED',smartSwitch:true}};
+    const alias={...original,deviceId:'z2m-new-name',attributes:{enabled:false,candidate:true,
+      smartSwitch:true,canonicalPhysicalId:original.deviceId,power:99}};
+    const meter={deviceId:'ha-power',location:'cabin',type:'POWER_METER',
+      attributes:{enabled:true,parentDeviceId:original.deviceId,entityId:'sensor.power',
+      serviceRole:'measurement',sourceReportedFields:['power'],power:0}};
+    const result=electricalMonitoringDevices([original,alias,meter]);
+    expect(result[0].attributes.power).toBe(0);
+    expect(result[0].attributes.energy).toBeUndefined();
+    expect(result[0].attributes.enabled).toBe(false);
+    expect(result[1]).toBe(alias);
+  });
+  it('keeps diagnostics and competing sources visible instead of choosing a value', () => {
+    const p={deviceId:'p',location:'home',type:'POWER_METER',attributes:{enabled:true}};
+    const child=(id,role='measurement')=>({deviceId:id,location:'home',type:'POWER_METER',
+      attributes:{enabled:true,parentDeviceId:'p',entityId:'sensor.'+id,
+        sourceReportedFields:['power'],serviceRole:role,power:10}});
+    const result=electricalMonitoringDevices([p,child('a'),child('b'),child('diagnostic','diagnostic')]);
+    expect(result).toHaveLength(4);
+    expect(result[0].attributes.power).toBeUndefined();
   });
 });
