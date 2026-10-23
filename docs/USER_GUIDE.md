@@ -268,3 +268,10 @@ rotating a password, changing who has admin access, standing up a new
 instance for another family — that's covered in
 [`MAINTENANCE.md`](MAINTENANCE.md) and [`REPLICATION.md`](REPLICATION.md),
 not this guide.
+
+### Smart switches in Monitoring
+Each enrolled physical switch has one electrical card. Watts and kWh share the same layout;
+expand Electrical details for volts and amps. Unavailable is different from zero.
+The card can represent enabled services even when the parent itself is disabled; it says so.
+This display does not turn the load on, enable devices, or alter history. Ambiguous source
+matches stay separate until reviewed. The SONOFF experimental converter currently has no kWh channel.
