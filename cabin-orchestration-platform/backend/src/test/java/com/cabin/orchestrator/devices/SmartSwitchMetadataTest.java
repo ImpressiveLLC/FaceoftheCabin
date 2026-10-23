@@ -24,7 +24,7 @@ class SmartSwitchMetadataTest {
     @Test void conflictingAssignmentsAreUnresolvedAndUnknownIdentityIsNotGuessed() {
         var a=device("z2m-a","cabin",Map.of("ieeeAddress","0x1234567890abcdef","deviceLifecycle","ASSIGNED"));
         var b=device("z2m-b","cabin",a.attributes());
-        Map<String,Object> attrs=new HashMap<>();
+        Map<String,Object> attrs=new HashMap<>(Map.of("canonicalPhysicalId","stale"));
         SmartSwitchMetadata.enrich(a,attrs,List.of(a,b));
         assertEquals("ambiguous",attrs.get("physicalIdentityStatus"));
         assertFalse(attrs.containsKey("canonicalPhysicalId"));

@@ -16,6 +16,9 @@ public final class SmartSwitchMetadata {
     }
 
     static void enrich(DeviceStatus status, Map<String, Object> attrs, Collection<DeviceStatus> all) {
+        attrs.remove("canonicalPhysicalId");
+        attrs.remove("physicalIdentityStatus");
+        attrs.remove("physicalIdentity");
         String identity = identity(status);
         if (identity.isEmpty()) return;
         attrs.put("physicalIdentity", identity);
