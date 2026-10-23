@@ -138,7 +138,6 @@ Ten synchronized presets via `ThemeProvider` and Family Hub:
 | **Modern** | GitHub-dark inspired |
 | **LCARS** | Star Trek orange |
 | **Monolith** | Near-black minimal |
-| **Retro-CRT** | Phosphor green |
 | **Bluefin-mono** | Navy monochrome |
 | **Mad Science** | Neon green / UV purple on near-black |
 | **Deep Space** | HAL-inspired matte black / data cyan |

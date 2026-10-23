@@ -199,6 +199,9 @@
 
 ## Next Session — Open Items
 
+- **2026-10-22 measurement implementation:** UC-21 / DOC-7 / W-93 / W-96–W-108 and Ask C7/C8. Product decisions and evidence gates: [framework sections 11–13](governance/proposals/2026-10-22-measurement-attention-framework.md#11-proxy-product-owner-decisions-and-implementation-authorization). Assignments: [Cowork / Code / Work handoff](governance/handovers/HO-2026-10-22-measurement-attention.md). Dehumidifier has generated/unsupported converter and friendly-name identity duplication; repair not complete. Operator boundary and exact candidate/backup/rollback are in framework 12.1. Do not confuse merged planning with implemented/live-tested cards.
+
+
 - **2026-10-12 — open from the 2026-10-03 to 2026-10-12 presence, camera and
   governance session** (dates read from git and GitHub on 2026-10-12; the full
   ledger is in the close-out at the end of this file):

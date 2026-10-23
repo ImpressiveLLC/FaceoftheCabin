@@ -21,6 +21,17 @@ Step S1 of the [fine-tuning data path](../../../../proposals/sft-data-path.md). 
 - **Sample:** one row per family (the lowest seeded hash). Strata are intent × device class × attribute class (27 cells here), read from the sentence, not the source label. Every cell gets up to 3, the rest in proportion to the square root of the cell size, and within a cell the next pick is the least represented room.
 - Deterministic for a seed (`s1-2026-10-19`); `sample_sha256` and `families_sha256` pin the result.
 
+## The 103 held-out Enfuse rows stay out (Cowork, 2026-10-21)
+
+Only 30 OHF-Voice families are reserved for the frozen test (`reserved-ohf.json`), so the 103 Enfuse rows that S1 dropped for sharing a family with the other 6 OHF families could in principle return to the pool. They **stay out of S1 for now**. A row is readmitted only when all of these hold, and only the rows that clear them:
+
+1. Documented provenance (source file, revision, licence, record position) is on the row.
+2. Checked for exact, normalized and semantic overlap against every sealed evaluation set (safety 80, authored test 170, the 30 reserved OHF rows), on the freeze machine where those files exist.
+3. Any overlap, and any case the check cannot decide, is quarantined, not admitted.
+4. Source-family grouping is preserved across splits (a family is in exactly one set).
+
+Redrawing the S1 sample after readmission is a new, separately numbered step; the merged sample and `families.json` are unchanged by this note.
+
 ## Not covered
 
 - Device class and attribute class come from keyword lists; a sentence outside them lands in `other`/`none`.

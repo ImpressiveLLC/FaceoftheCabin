@@ -130,7 +130,6 @@ theme's `layers.hues`), don't restyle a class. Current picks and measured result
 | impressive | `#3d3dff` | `#989d9e` | `#eff0ec` | 3.6 | 3.4 | 6.9 | 14.7 |
 | lcars | `#cc6600` | `#ff9900` | `#99cc00` | 5.5 | 7.0 | 7.1 | 8.6 |
 | monolith | `#666666` | `#cccccc` | `#448844` | 3.1 | 5.4 | 3.1 | 10.9 |
-| retrocrt | `#00cc33` | `#ffcc00` | `#00ff41` | 5.5 | 6.0 | 6.6 | 12.5 |
 | bluefin | `#4080c0` | `#a0c8f0` | `#40a080` | 3.0 | 4.7 | 3.3 | 9.2 |
 | madscience | `#39ff14` | `#bf00ff` | `#f5f500` | 7.1 | 3.0 | 6.6 | 14.8 |
 | deepspace | `#00a3ff` | `#ff9500` | `#ffffff` | 3.9 | 3.8 | 7.2 | 16.2 |

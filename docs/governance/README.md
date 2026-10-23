@@ -11,6 +11,8 @@ This folder is the single home for how platform work is decided, prioritized, ac
 | Find what was decided and why (D1–D21) | [Decisions](decisions/README.md) |
 | Check whether spec and code disagree | [Discrepancy log](discrepancy-log.md) |
 | Trace a feature back to the need it serves | [Use cases](use-cases.md) |
+| Explore measurement attention, sourced ranges, unit crosswalks and the Act dictionary | [Framework + proxy decisions](proposals/2026-10-22-measurement-attention-framework.md) — UC-21 / DOC-7 / W-93 / W-96–W-108; implementation uncompleted |
+| Pick up measurement implementation assignments | [Cowork / Code / Work handoff](handovers/HO-2026-10-22-measurement-attention.md) |
 | See what is prioritized and why | [Backlog](backlog.md) |
 | Know what "done" means before a merge or a release | [Definition of Done](definition-of-done.md) |
 | Know whether something may merge or ship | [Sign-offs](signoffs/) — newest first by filename |

@@ -6407,7 +6407,7 @@ elements:
     data_class: raw
     data_type: xsd:string
     constraint:
-      enum: "deepspace | modern | lcars | monolith | retrocrt | bluefin | madscience | neon80s | pacman | asteroidcity"
+      enum: "deepspace | modern | lcars | monolith | bluefin | madscience | neon80s | pacman | asteroidcity"
     ui_display_name: "Theme"
     source: localStorage["cabin-theme"]
     rendering:
@@ -6431,8 +6431,11 @@ elements:
       ui_components: [settings_panel]
       elements: []
     notes: >
+      2026-10-22: retrocrt (Retro-CRT) REMOVED from both apps. A saved
+      cabin-theme of "retrocrt" falls back to modern. Text below is historical.
+
       9 presets as of 2026-08-07, added incrementally across sessions:
-      deepspace (default), modern, lcars, monolith, retrocrt, bluefin,
+      deepspace (default), modern, lcars, monolith, bluefin,
       madscience, neon80s ("80s Neon" — magenta/cyan/yellow, Monoton +
       Orbitron, sharp 2px radius), pacman ("Pac-Man" — black/yellow/blue/red,
       Press Start 2P + VT323, 16px radius, animated flashing .ev-pip dots

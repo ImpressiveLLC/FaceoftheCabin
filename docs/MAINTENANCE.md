@@ -862,6 +862,10 @@ about 5 fps with detection running. Two things in its log look alarming but are
 not the cause: `Could not extract events: An app update is required` is
 blinkpy's retired `get_events` call (blinkpy issue #757), and the startup line
 `Unexpected error: days=...; must have magnitude` appears on every start.
+> **Superseded 2026-10-21:** the legacy bridge described in this and the next sections is replaced by the in-repo
+> rewrite (see "blinkbridge rewrite" below and `docs/BLINKBRIDGE_INSTALL_GUIDE.md`). The log-silence diagnosis below
+> applies only while the legacy image is still running.
+
 **Prevention (staged, not installed):** `scripts/host/blinkbridge-watchdog`
 restarts it after 10 minutes of log silence, run every 5 minutes by
 `blinkbridge-watchdog.timer`. Install with sudo:
@@ -1169,6 +1173,9 @@ daylight footage (sunlit trees, visible ground debris) — a stark
 contrast from the stale nighttime IR frame every attempt showed before
 the `blinkpy` patch.
 
+> **Superseded 2026-10-21:** after cutover, rebuild with the compose override in `docs/BLINKBRIDGE_INSTALL_GUIDE.md`,
+> not the hand-built `docker run` below (kept for the legacy image only).
+
 **Rebuild/redeploy procedure** (for the next time `blinkbridge`
 needs a code change):
 ```bash
@@ -1289,6 +1296,30 @@ indicator is a real, scoped follow-up (see this session's plan file,
 Item 3) — not built as of this entry.
 
 ---
+
+### blinkbridge rewrite (built 2026-10-21, not yet deployed)
+
+The third-party bridge hung silently three times (08-03, 08-06, 10-10) and again 2026-10-20 (ffmpeg `Broken pipe`,
+then blinkpy "possibly down or throttled", then 30+ hours with no log line and `RestartCount 0`). It was replaced by an
+in-repo rewrite at `cabin-orchestration-platform/infra/blinkbridge/` (infra convention: next to `production-stack`,
+own Dockerfile and tests, built by hand on the host).
+
+Design: per-camera state machine (idle, starting, live, backoff); every Blink and ffmpeg call has a timeout; ffmpeg is
+terminated, killed and reaped on every exit path; teardown steps are isolated so one error cannot stop the loop;
+exponential backoff with jitter; a throttle signal pauses all Blink calls for 5 to 30 minutes; a status line containing
+"motion poll" is logged at least every 35 s; `GET :8811/healthz` returns 503 when the loop is stale (2 min) or no Blink
+poll succeeded for 30 min; a Docker HEALTHCHECK uses it; a watchdog thread exits the process if the loop dies for 10 min.
+Tests (fake blinkpy and ffmpeg) run in `.github/workflows/blinkbridge-tooling.yml`.
+
+How it self-heals: a failed liveview (Blink ended it, `Broken pipe`, stalled ffmpeg, open timeout) is torn down and
+retried by the camera's own backoff (5 s doubling to 5 min, jittered); a Blink throttle pauses every Blink call for
+5 to 30 min; an expired token triggers a fresh login. Diagnose: `docker ps` shows `(healthy)`/`(unhealthy)`;
+`docker logs -t --tail 20 blinkbridge` should show `motion poll ok` every 30 to 40 s; `docker exec blinkbridge wget -qO-
+http://127.0.0.1:8811/healthz` gives loop age, last good poll age and per-camera state. Install, cutover and rollback:
+[`BLINKBRIDGE_INSTALL_GUIDE.md`](BLINKBRIDGE_INSTALL_GUIDE.md) and
+[`BLINKBRIDGE_CUTOVER_RUNBOOK.md`](BLINKBRIDGE_CUTOVER_RUNBOOK.md). Support steps:
+[`BLINKBRIDGE_SUPPORT_GUIDE.md`](BLINKBRIDGE_SUPPORT_GUIDE.md). `scripts/host/blinkbridge-watchdog` now also restarts on
+Docker `unhealthy`. The legacy source under `/storage/services/blinkbridge-src` stays until a quiet week after cutover.
 
 ## Overnight Camera Alerts (Node-RED)
 
@@ -2828,3 +2859,7 @@ trusted at face value.
 Check it by hand against the host: `GET http://<m920q>:8090/api/system/storage` should match `df -h /storage /` (the HDD figure comes through the archive mount `/app/archives/cabin_event`, which reports the whole `/storage` filesystem). Change the lines with `STORAGE_WARN_PERCENT`, `STORAGE_CRITICAL_PERCENT`, `STORAGE_RENOTIFY_HOURS` in `infra/.env` (the compose file must pass them through), or switch it off with `STORAGE_MONITOR_ENABLED=false`.
 
 **It never deletes anything.** When it fires, the owner decides: prune old nightly backups with `scripts/prune-storage-backups.sh` (dry run first), review recording retention, check `docker system df`. BI telemetry is never removed without a warning (`docs/STORAGE_ARCHITECTURE.md`).
+
+### Camera Health tile: idle Blink cameras read "Idle", not "No signal" (2026-10-21)
+
+`driveway` and `home_aldrich_front` are motion-gated Blink relays: Frigate reports exactly 0.0 fps for them until Blink's cloud sees motion, so the Monitoring "Camera Health" tile showed "No signal" for a healthy idle camera. `GET /api/frigate-metrics` now adds `motionGated` per camera (true for the keys of `cabin.devices.cameras.blinkCameraMap`, the same set the Frigate-stats heartbeat in `MqttBridgeService` uses), and the tile shows "Idle · waits for motion" for those at 0 fps. A continuous camera (`cabin_outside_reolink`) at 0 fps still reads "No signal". The panel also lists only cameras for its own site (`home_` prefix = Home), so `home_aldrich_front` no longer shows under Cabin. Design: `docs/governance/proposals/2026-10-19-blink-camera-health-design.md`.

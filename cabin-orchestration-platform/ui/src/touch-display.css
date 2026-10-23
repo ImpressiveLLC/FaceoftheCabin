@@ -18,7 +18,7 @@
 .nav-rail { width:120px; overflow-y:auto; flex-shrink:0; }
 .nav-rail > * { flex-shrink:0; }
 .nav-rail .display-controls { margin-top:auto; display:flex; flex-direction:column; align-items:stretch; width:100%; max-width:96px; padding-top:12px; }
-.kiosk-mode .nav-rail { display:flex; }
+.kiosk-mode .nav-rail { display:none; }
 .kiosk-mode .main-toolbar .platform-name, .kiosk-mode .device-count-toggle { display:none; }
 .kiosk-mode .main-toolbar { height:auto; min-height:48px; flex-shrink:0; }
 .kiosk-mode .toolbar-right { flex-wrap:wrap; }
