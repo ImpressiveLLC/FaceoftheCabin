@@ -1,4 +1,4 @@
-# Intent / slot training r1 — Ask and Tiny Helpdesk
+# Intent / slot training — r1 foundation and offline POC2
 
 Status: reconstructed implementation starter and proposal, 2026-10-14.
 The prior chat's ZIP was unavailable in this Windows session. This is a new,
@@ -13,8 +13,8 @@ Repository baseline: `409e1804311b79eafcfa15f24aeac91b588b353c`.
    `TinyHelpdeskService` uses word-overlap retrieval of knowledge nodes; this
    proposal does not claim a vector service is already deployed.
 2. **Intent/slot SFT for language:** learn semantic request structure, not
-   credentials, hardware inventory, MQTT topics or stale HA IDs. “It is stuffy”
-   needs clarification, not an invented 74°F threshold or switch mapping.
+   credentials, hardware inventory, MQTT topics or stale HA IDs. POC2 classifies “It is stuffy”
+   as `express_need` with concept `stuffy`; it does not invent thresholds or devices.
 3. **Live EntityResolver:** planned Java component joins permission-filtered,
    non-secret inventory with site, room, aliases and capabilities. Return exactly
    one supported match or request clarification. Unknown, ambiguous, stale,
@@ -49,11 +49,18 @@ This package only runs local data preparation and evaluation.
   cabin-style seed set. Every output starts unreviewed; names are synthetic.
 - `prepare_sft.py`: human-review/provenance gate, duplicate/gold exclusion and
   stable 80/10/10 group-hash split, in the existing trainer's `messages` format.
-- `system.txt`, `Modelfile.intent-r1`: shared policy prompt and optional baseline
+- `system.txt`, `Modelfile.intent-poc2`: POC2 policy prompt and optional baseline
   wrapper. The Modelfile does **not** contain trained weights.
-- `gold.jsonl`, `evaluate.py`: 22 provisional gold fixtures, strict local Ollama
+- `gold.jsonl`, `evaluate.py`: 42 provisional gold fixtures, strict local Ollama
   schema output and offline scoring. Gold labels still need human review.
 - `test_package.py`: contract, adapter, scoring, leakage and approval checks.
+
+## POC2 extension
+
+See [POC2.md](POC2.md) for the offline request contract, provisional vocabulary,
+schedule semantics, trusted card context and limits. The original
+`Modelfile.intent-r1` is preserved as a historical prompt baseline; use
+`Modelfile.intent-poc2` with the current schema and evaluator.
 
 ## Local preparation
 
@@ -128,8 +135,8 @@ exported model; `train_sft.py` performs LoRA training with Transformers/PEFT.
 Optional prompt-only baseline (manually on the intended local Ollama host):
 
 ```sh
-ollama create cabin-intent-slot-prompt-r1 -f Modelfile.intent-r1
-python evaluate.py --model cabin-intent-slot-prompt-r1 --output /tmp/intent-r1/baseline.json
+ollama create cabin-intent-slot-prompt-poc2 -f Modelfile.intent-poc2
+python evaluate.py --model cabin-intent-slot-prompt-poc2 --output /tmp/intent-r1/baseline.json
 python evaluate.py --model cabin-intent-slot-r1 --output /tmp/intent-r1/candidate.json
 ```
 

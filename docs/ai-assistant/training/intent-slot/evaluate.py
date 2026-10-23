@@ -5,7 +5,7 @@ import json
 import time
 import urllib.request
 from pathlib import Path
-from contract import ROOT, SCHEMA, SYSTEM, read_jsonl, validate
+from contract import ROOT, SCHEMA, SYSTEM, read_jsonl, validate, request_content
 
 
 def slot_pairs(value):
@@ -21,12 +21,12 @@ def score(gold, predictions):
     valid = correct = tp = fp = fn = critical = 0
     details = []
     for row in gold:
-        validate(row["target"])
+        validate(row["target"], row.get("card_target"))
         expected = row["target"]
         actual = predictions.get(row["id"])
         error = None
         try:
-            validate(actual)
+            validate(actual, row.get("card_target"))
         except Exception as exc:
             error = str(exc).splitlines()[0]
         passed = error is None
@@ -62,10 +62,11 @@ def score(gold, predictions):
             "release_eligible": False, "details": details}
 
 
-def query(text, model, endpoint, timeout):
+def query(text, model, endpoint, timeout, card_target=None):
     body = {"model": model, "stream": False, "format": SCHEMA,
             "options": {"temperature": 0}, "messages": [
-                {"role": "system", "content": SYSTEM}, {"role": "user", "content": text}]}
+                {"role": "system", "content": SYSTEM},
+                {"role": "user", "content": request_content(text, card_target)}]}
     request = urllib.request.Request(endpoint, data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -95,7 +96,7 @@ def main():
         for row in gold:
             start = time.monotonic()
             try:
-                predictions[row["id"]] = query(row["text"], args.model, args.endpoint, args.timeout)
+                predictions[row["id"]] = query(row["text"], args.model, args.endpoint, args.timeout, row.get("card_target"))
             except Exception as exc:
                 errors[row["id"]] = type(exc).__name__
                 predictions[row["id"]] = None

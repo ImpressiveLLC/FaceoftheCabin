@@ -3,7 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-from contract import ROOT, SYSTEM, read_jsonl, validate, write_jsonl
+from contract import ROOT, SYSTEM, read_jsonl, validate, write_jsonl, request_content
 
 
 def normalize(text):
@@ -28,11 +28,11 @@ def split_rows(rows, gold):
         if not row["group"]:
             raise ValueError("Missing paraphrase family")
         seen.add(text)
-        validate(row["target"])
+        validate(row["target"], row.get("card_target"))
         bucket = int(hashlib.sha256(row["group"].encode()).hexdigest(), 16) % 10
         split = "test" if bucket == 0 else "validation" if bucket == 1 else "train"
         result[split].append({"messages": [{"role": "system", "content": SYSTEM},
-                                            {"role": "user", "content": row["text"]},
+                                            {"role": "user", "content": request_content(row["text"], row.get("card_target"))},
                                             {"role": "assistant", "content": json.dumps(row["target"])}],
                               "id": row["id"], "group": row["group"], "provenance": provenance})
     if any(not result[k] for k in result):
