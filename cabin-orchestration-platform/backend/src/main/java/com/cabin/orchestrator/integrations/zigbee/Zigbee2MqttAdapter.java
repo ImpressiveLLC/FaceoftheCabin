@@ -166,6 +166,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         final String topicPrefix;
         final String location;
         final Set<String> knownFriendlyNames = ConcurrentHashMap.newKeySet();
+        /** friendly name -> the registry id its state and availability messages belong to. */
+        final Map<String, String> idByFriendlyName = new ConcurrentHashMap<>();
 
         ZigbeeBridge(String topicPrefix, String location) {
             this.topicPrefix = topicPrefix;
@@ -263,6 +265,34 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         return "cabin".equals(bridge.location)
             ? DEVICE_ID_PREFIX + slug
             : DEVICE_ID_PREFIX + bridge.location + "-" + slug;
+    }
+
+    /** The id a friendly name's messages belong to: the identity-reconciled id, else the name's own slug. */
+    private static String knownDeviceId(ZigbeeBridge bridge, String friendlyName) {
+        String known = bridge.idByFriendlyName.get(friendlyName);
+        return known != null ? known : deviceId(bridge, friendlyName);
+    }
+
+    /**
+     * A Zigbee device keeps its registry id when its Z2M friendly name changes (2026-10-24, the
+     * Sonoff S61 dehumidifier switch: renamed in Z2M after it was assigned as z2m-0xa4c1...).
+     * Slugging the new name registered a second, candidate row that received every reading
+     * while the assigned, canonical row stayed empty, so its Monitoring card lost power and
+     * ON/OFF. The assigned row is found by IEEE address: a legacy id named by the address, or a
+     * registered Zigbee row of this location that records the same address.
+     */
+    private String reconcileDeviceId(ZigbeeBridge bridge, String friendlyName, String ieee) {
+        String slugId = deviceId(bridge, friendlyName);
+        if (!ieee.matches("0x[0-9a-f]{16}")) return slugId;
+        String legacyId = deviceId(bridge, ieee);
+        if (!legacyId.equals(slugId) && registry.get(legacyId) != null) return legacyId;
+        List<String> matches = registry.all().stream()
+            .filter(s -> s.deviceId().startsWith(DEVICE_ID_PREFIX) && !s.deviceId().equals(slugId))
+            .filter(s -> bridge.location.equals(s.location()))
+            .filter(s -> ieee.equalsIgnoreCase(String.valueOf(s.attributes().get("ieeeAddress"))))
+            .filter(s -> "ASSIGNED".equals(s.attributes().get("deviceLifecycle")))
+            .map(DeviceStatus::deviceId).toList();
+        return matches.size() == 1 ? matches.get(0) : slugId;
     }
 
     @PostConstruct
@@ -387,7 +417,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     }
 
     private void handleAvailability(ZigbeeBridge bridge, String friendlyName, String payload, boolean retained) {
-        String deviceId = deviceId(bridge, friendlyName);
+        String deviceId = knownDeviceId(bridge, friendlyName);
         try {
             JsonNode node = mapper.readTree(payload);
             String avail = node.has("state") ? node.get("state").asText() : payload.trim();
@@ -423,11 +453,13 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 if (friendlyName == null || friendlyName.equals("Coordinator")) continue;
                 processed++;
                 bridge.knownFriendlyNames.add(friendlyName);
-                String deviceId = deviceId(bridge, friendlyName);
+                String ieee = device.path("ieee_address").asText("").toLowerCase(Locale.ROOT);
+                String deviceId = reconcileDeviceId(bridge, friendlyName, ieee);
+                bridge.idByFriendlyName.put(friendlyName, deviceId);
 
                 JsonNode definition = device.path("definition");
                 Set<DeviceCapability> caps = inferCapabilities(definition);
-                DeviceType type = inferType(definition, caps);
+                DeviceType type = inferType(definition, caps, friendlyName);
                 List<String> vendorReportedFields = extractVendorReportedFields(definition, type);
 
                 DeviceDescriptor desc = new DeviceDescriptor(
@@ -444,9 +476,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 discovery.put("discoveredFrom", "Zigbee2MQTT bridge/devices");
                 discovery.put("model", definition.path("model").asText(""));
                 discovery.put("vendor", definition.path("vendor").asText(""));
-                String ieee = device.path("ieee_address").asText("").toLowerCase(Locale.ROOT);
                 if (ieee.matches("0x[0-9a-f]{16}")) discovery.put("ieeeAddress", ieee);
-                discovery.put("smartSwitch", isSmartSwitch(definition));
+                discovery.put("smartSwitch", isSmartSwitch(definition, friendlyName));
                 discovery.put("sourceReportedFields", vendorReportedFields);
                 // D7 (docs/ontology/DECISIONS.md): forwarded wholesale to
                 // cabin-discovery via DiscoveryServiceClient's discoveryAttributes
@@ -518,7 +549,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
      * Unknown properties are stored in attributes as-is.
      */
     private void handleDeviceState(ZigbeeBridge bridge, String friendlyName, String payload, boolean retained) {
-        String deviceId = deviceId(bridge, friendlyName);
+        String deviceId = knownDeviceId(bridge, friendlyName);
         try {
             JsonNode node = mapper.readTree(payload);
             if (!node.isObject()) return;
@@ -591,12 +622,17 @@ public class Zigbee2MqttAdapter implements MqttCallback {
      * also carry a writable binary state but are not smart switches, so their subtrees are
      * skipped, and so are configuration/diagnostic settings. A water-valve actuator exposes the
      * same on/off shape; it is a safety shut-off, not a smart switch, so it is excluded by its
-     * definition text.
+     * definition text or friendly name. A leak or smoke sensor with a siren state is excluded too.
      */
-    private boolean isSmartSwitch(JsonNode definition) {
-        String text = (definition.path("description").asText("") + " " + definition.path("model").asText(""))
-            .toLowerCase(Locale.ROOT);
+    private boolean isSmartSwitch(JsonNode definition, String friendlyName) {
+        String text = (definition.path("description").asText("") + " " + definition.path("model").asText("")
+            + " " + friendlyName).toLowerCase(Locale.ROOT);
+        // A valve actuator can be a plain "1 gang switch" to Z2M (Tuya TS0001), so the person's
+        // own friendly name is evidence too. A leak or smoke sensor's siren "state" is not a
+        // load relay either.
         if (text.contains("valve")) return false;
+        if (hasExposeProperty(definition.path("exposes"), "water_leak")
+                || hasExposeProperty(definition.path("exposes"), "smoke")) return false;
         return hasRelay(definition.path("exposes"));
     }
 
@@ -687,7 +723,12 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                     caps.add(DeviceCapability.ALARM);
                 } else if (property.contains("occupancy") || property.contains("presence")) {
                     caps.add(DeviceCapability.PRESENCE);
-                } else if (property.contains("contact") || property.contains("lock")) {
+                } else if (property.contains("contact")) {
+                    // A reed contact reports open/closed; it controls no access (a door contact
+                    // was typed LOCK from ACCESS_CONTROL when its description lacked "contact").
+                    caps.add(DeviceCapability.TELEMETRY);
+                    if (writable) caps.add(DeviceCapability.COMMAND);
+                } else if (property.contains("lock")) {
                     if (writable) caps.add(DeviceCapability.COMMAND);
                     caps.add(DeviceCapability.ACCESS_CONTROL);
                 } else {
@@ -810,7 +851,17 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         }
     }
 
-    private DeviceType inferType(JsonNode definition, Set<DeviceCapability> caps) {
+    private boolean hasExposeProperty(JsonNode exposes, String name) {
+        if (!exposes.isArray()) return false;
+        for (JsonNode expose : exposes) {
+            String property = expose.path("property").asText(expose.path("name").asText(""));
+            if (property.equals(name) && !"config".equals(expose.path("category").asText(""))) return true;
+            if (hasExposeProperty(expose.path("features"), name)) return true;
+        }
+        return false;
+    }
+
+    private DeviceType inferType(JsonNode definition, Set<DeviceCapability> caps, String friendlyName) {
         String model = definition.path("model").asText("").toLowerCase();
         String desc = definition.path("description").asText("").toLowerCase();
         String vendor = definition.path("vendor").asText("").toLowerCase();
@@ -823,8 +874,9 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         // tile, the power monitoring page and the power-draw suggestions all key on this type).
         // Checked before the generic switch rule below, which would otherwise win because most
         // Z2M descriptions say "switch".
-        if (caps.contains(DeviceCapability.POWER_MONITOR)
-                && (desc.contains("switch") || desc.contains("plug") || desc.contains("outlet") || desc.contains("relay")))
+        if (isSmartSwitch(definition, friendlyName)
+                || (caps.contains(DeviceCapability.POWER_MONITOR)
+                    && (desc.contains("switch") || desc.contains("plug") || desc.contains("outlet") || desc.contains("relay"))))
             return DeviceType.POWER_METER;
         if (model.contains("zbminir") || desc.contains("switch"))      return DeviceType.HOME_ASSISTANT_ENTITY;
         if (desc.contains("smoke") || desc.contains("co alarm"))       return DeviceType.SMOKE_ALARM;
@@ -832,6 +884,13 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         if (caps.contains(DeviceCapability.CLIMATE))                   return DeviceType.THERMOSTAT;
         if (caps.contains(DeviceCapability.ACCESS_CONTROL))            return DeviceType.LOCK;
         if (caps.contains(DeviceCapability.ALARM))                     return DeviceType.WATER_LEAK_SENSOR;
+        // No description rule matched: classify from what the device actually exposes, so a
+        // Zigbee parent is not left generic merely because its description is unusual.
+        JsonNode exposes = definition.path("exposes");
+        if (hasExposeProperty(exposes, "occupancy"))                   return DeviceType.MOTION_SENSOR;
+        if (hasExposeProperty(exposes, "contact"))                     return DeviceType.CONTACT_SENSOR;
+        if (hasExposeProperty(exposes, "temperature"))                 return DeviceType.TEMPERATURE_SENSOR;
+        if (hasExposeProperty(exposes, "humidity"))                    return DeviceType.HUMIDITY_SENSOR;
         return DeviceType.HOME_ASSISTANT_ENTITY;
     }
 

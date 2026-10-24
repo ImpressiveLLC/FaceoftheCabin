@@ -101,6 +101,39 @@ describe('relay status stays independent of power draw', () => {
     const device = {...parent('switch'), state:'ONLINE'};
     const [card] = electricalMonitoringDevices([device]);
     expect(card.attributes.mappedSwitchState).toBeUndefined();
-    expect(electricalValue(card.attributes)).toBe('0 W \u00b7 48.32 kWh');
+    expect(electricalValue(card.attributes)).toBe('0 W \u00b7 48.32 kWh \u00b7 State unknown');
+  });
+});
+
+describe('smart-switch card always shows power and relay state together (post-#248 regression)', () => {
+  const s61 = (extra = {}) => ({deviceId:'z2m-0xa4c1381f3884ffff', name:'Smart Switch | Dehumidifier', type:'HOME_ASSISTANT_ENTITY', location:'cabin',
+    attributes:{enabled:true, deviceLifecycle:'ASSIGNED', smartSwitch:true, canonicalPhysicalId:'z2m-0xa4c1381f3884ffff', ...extra}});
+  const renamed = (extra = {}) => ({deviceId:'z2m-Smart_Switch_Zigbee_|_Dehumidifier', name:'Smart Switch Zigbee | Dehumidifier', type:'POWER_METER', location:'cabin',
+    attributes:{enabled:false, deviceLifecycle:'CANDIDATE', candidate:true, smartSwitch:true, canonicalPhysicalId:'z2m-0xa4c1381f3884ffff', ...extra}});
+  it('takes live watts and ON from a renamed alias when the assigned row is empty', () => {
+    const result = electricalMonitoringDevices([s61(), renamed({state:'ON', power:263.26, voltage:122.8})]);
+    const card = result.find(d => d.deviceId === 'z2m-0xa4c1381f3884ffff');
+    expect(card.attributes.power).toBe(263.26);
+    expect(card.attributes.mappedSwitchState).toBe('ON');
+    expect(electricalValue(card.attributes)).toBe('263.26 W · Energy unavailable · ON');
+  });
+  it('shows ON at 0 W as ON and 0 W, and OFF independently of watts', () => {
+    const on = electricalMonitoringDevices([{...parent('p'), attributes:{...parent('p').attributes, state:'ON', power:0}}])[0];
+    expect(electricalValue(on.attributes)).toContain('0 W');
+    expect(electricalValue(on.attributes)).toMatch(/ ON$/);
+    const off = electricalMonitoringDevices([{...parent('q'), attributes:{...parent('q').attributes, state:'OFF', power:0}}])[0];
+    expect(electricalValue(off.attributes)).toMatch(/ OFF$/);
+  });
+  it('never infers a state: an unreported relay says State unknown, even at 0 W and ONLINE', () => {
+    const p = {...parent('p'), state:'ONLINE'};
+    const card = electricalMonitoringDevices([p])[0];
+    expect(card.attributes.mappedSwitchState).toBeUndefined();
+    expect(electricalValue(card.attributes)).toMatch(/0 W.*State unknown$/);
+  });
+  it('shows watts and ON from the HA children when the parent reports neither', () => {
+    const sw = {deviceId:'sw', type:'HOME_ASSISTANT_ENTITY', location:'cabin', attributes:{enabled:true, parentDeviceId:'z2m-0xa4c1381f3884ffff', entityId:'switch.x', state:'ON'}};
+    const pw = child('pw', 'z2m-0xa4c1381f3884ffff', 'power', 263.26, {serviceRole:'measurement'});
+    const card = electricalMonitoringDevices([s61(), sw, pw]).find(d => d.deviceId === 'z2m-0xa4c1381f3884ffff');
+    expect(electricalValue(card.attributes)).toBe('263.26 W · Energy unavailable · ON');
   });
 });
