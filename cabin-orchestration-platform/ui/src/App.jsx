@@ -1677,7 +1677,7 @@ function useCheckinDetails(apiBase, authedFetch = fetch) {
 
 function deviceIcon(type) {
   const map = {
-    CAMERA: Camera, WATER_PRESSURE_SENSOR: Droplets, TEMPERATURE_SENSOR: Thermometer,
+    CAMERA: Camera, WATER_PRESSURE_SENSOR: Droplets, WATER_VALVE: Droplets, TEMPERATURE_SENSOR: Thermometer,
     THERMOSTAT: Thermometer, SMOKE_ALARM: ShieldAlert, CO_ALARM: ShieldAlert,
     LOCK: Lock, MOTION_SENSOR: Activity, HOME_ASSISTANT_ENTITY: Wifi,
     DISHWASHER: Cpu, WASHING_MACHINE: Cpu, DRYER: Cpu, POWER_METER: Zap,
@@ -3980,7 +3980,7 @@ function ManualAddForm({ onBack, onDone, auth }) {
         <label>Display Name <input value={form.name} placeholder="e.g. Home Garage Lock" onChange={e=>setForm({...form,name:e.target.value})}/></label>
         <label>Type
           <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
-            {["LOCK","THERMOSTAT","SMOKE_ALARM","CAMERA","WATER_PRESSURE_SENSOR","WATER_LEAK_SENSOR",
+            {["LOCK","THERMOSTAT","SMOKE_ALARM","CAMERA","WATER_PRESSURE_SENSOR","WATER_LEAK_SENSOR","WATER_VALVE",
               "MOTION_SENSOR","CONTACT_SENSOR","DISHWASHER","WASHING_MACHINE","DRYER","POWER_METER",
               "HOME_ASSISTANT_ENTITY"].map(t=><option key={t}>{t}</option>)}
           </select>

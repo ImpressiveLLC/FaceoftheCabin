@@ -31,6 +31,9 @@ public enum DeviceType {
     SMOKE_ALARM(DeviceCategory.SAFETY),
     CO_ALARM(DeviceCategory.SAFETY),
     WATER_LEAK_SENSOR(DeviceCategory.SAFETY),
+    // A water shut-off actuator (zigbee_main_water_valve): a safety device, never a smart switch
+    // or an electrical card, even though Z2M exposes it as a plain on/off relay.
+    WATER_VALVE(DeviceCategory.SAFETY),
     // Security
     CAMERA(DeviceCategory.SECURITY),
     LOCK(DeviceCategory.SECURITY),

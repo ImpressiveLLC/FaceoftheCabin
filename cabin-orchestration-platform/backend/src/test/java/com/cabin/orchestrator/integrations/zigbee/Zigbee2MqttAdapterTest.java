@@ -828,5 +828,8 @@ class Zigbee2MqttAdapterTest {
             assertNotEquals(DeviceType.POWER_METER, registry.descriptor(id).orElseThrow().type(), id);
         }
         assertEquals(DeviceType.WATER_LEAK_SENSOR, registry.descriptor("z2m-leak_fridge").orElseThrow().type());
+        assertEquals(DeviceType.WATER_VALVE, registry.descriptor("z2m-main_water_valve").orElseThrow().type());
+        assertEquals(Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY),
+            registry.descriptor("z2m-main_water_valve").orElseThrow().capabilities());
     }
 }

@@ -624,13 +624,15 @@ public class Zigbee2MqttAdapter implements MqttCallback {
      * same on/off shape; it is a safety shut-off, not a smart switch, so it is excluded by its
      * definition text or friendly name. A leak or smoke sensor with a siren state is excluded too.
      */
+    /** A valve actuator can be a plain "1 gang switch" to Z2M (Tuya TS0001), so the friendly name counts. */
+    private boolean isValveActuator(JsonNode definition, String friendlyName) {
+        return (definition.path("description").asText("") + " " + definition.path("model").asText("")
+            + " " + friendlyName).toLowerCase(Locale.ROOT).contains("valve");
+    }
+
     private boolean isSmartSwitch(JsonNode definition, String friendlyName) {
-        String text = (definition.path("description").asText("") + " " + definition.path("model").asText("")
-            + " " + friendlyName).toLowerCase(Locale.ROOT);
-        // A valve actuator can be a plain "1 gang switch" to Z2M (Tuya TS0001), so the person's
-        // own friendly name is evidence too. A leak or smoke sensor's siren "state" is not a
-        // load relay either.
-        if (text.contains("valve")) return false;
+        // A leak or smoke sensor's siren "state" is not a load relay either.
+        if (isValveActuator(definition, friendlyName)) return false;
         if (hasExposeProperty(definition.path("exposes"), "water_leak")
                 || hasExposeProperty(definition.path("exposes"), "smoke")) return false;
         return hasRelay(definition.path("exposes"));
@@ -874,6 +876,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         // tile, the power monitoring page and the power-draw suggestions all key on this type).
         // Checked before the generic switch rule below, which would otherwise win because most
         // Z2M descriptions say "switch".
+        if (isValveActuator(definition, friendlyName) && hasRelay(definition.path("exposes")))
+            return DeviceType.WATER_VALVE;
         if (isSmartSwitch(definition, friendlyName)
                 || (caps.contains(DeviceCapability.POWER_MONITOR)
                     && (desc.contains("switch") || desc.contains("plug") || desc.contains("outlet") || desc.contains("relay"))))
@@ -891,6 +895,10 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         if (hasExposeProperty(exposes, "contact"))                     return DeviceType.CONTACT_SENSOR;
         if (hasExposeProperty(exposes, "temperature"))                 return DeviceType.TEMPERATURE_SENSOR;
         if (hasExposeProperty(exposes, "humidity"))                    return DeviceType.HUMIDITY_SENSOR;
+        // Nothing identified this Zigbee parent. It stays generic only because the vocabulary has
+        // no class for it yet (a light, cover or fan); say so rather than hide the gap.
+        log.warn("Z2M device '{}' (model {}) matched no device class; left as a generic entity",
+            friendlyName, model);
         return DeviceType.HOME_ASSISTANT_ENTITY;
     }
 
