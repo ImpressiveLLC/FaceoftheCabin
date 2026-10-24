@@ -201,3 +201,12 @@ W-93 dry run (offline, read-only; `ZigbeeRedetectDryRunTest`, run with `-Dredete
 `-Dredetect.out=`): proposed changes only for the S61 (generic entity, no COMMAND -> POWER_METER with COMMAND),
 the temperature sensors (COMMAND/POWER_MONITOR removed) and the motion/contact sensors (COMMAND, ACCESS_CONTROL,
 POWER_MONITOR removed). Nothing was applied; applying needs Nate's approval.
+
+Addendum (2026-10-24, Nate): a Zigbee water-shut-off actuator (Tuya TS0001 `main_water_valve`, a plain "1 gang switch"
+to Z2M) now gets its own safety class `WATER_VALVE` (zigbee_main_water_valve in the ontology), recognized by "valve" in
+its definition text or friendly name plus a writable relay, so it is never a smart switch or an electrical card. An
+unclassifiable Zigbee parent is logged at WARN instead of silently staying generic. UNKNOWN state right after a
+backend restart is a populate delay, not a classification fault: Z2M state messages that arrive before
+`bridge/devices` are dropped, and a battery sensor does not report again for hours (ONLINE needs a message with
+`linkquality`). Restoring last-known state at startup is a separate change. Children of the valve (switch and
+power-on-behavior entities) stay `HOME_ASSISTANT_ENTITY`, the service-entity class under a parent.
