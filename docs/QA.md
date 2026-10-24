@@ -173,3 +173,11 @@ parent's type even when stale metadata says smartSwitch. Tile chrome is reduced 
 reading and state; source notes and electrical detail text are removed. All ordinary device tiles
 open the known same-location parent in Devices by click, Enter or Space. Reorder mode does not
 navigate; missing links/cycles do not jump to an arbitrary device. Tests cover these paths.
+
+Cowork review addendum (2026-10-24): classification evidence also excludes lights, locks, covers,
+fans, climate controls and water-valve actuators, and detects multi-gang relays (`state_l1`,
+`state_l2`). A writable configuration setting no longer infers COMMAND, and voltage infers
+POWER_MONITOR only alongside reported power, energy or current. Temperature sensors configured
+while the defect was live keep their sticky capabilities until re-detected (W-93). Unresolved
+electrical services are no longer summarized on the tile; they remain reachable from the parent
+in Devices.

@@ -276,4 +276,4 @@ The card can represent enabled services even when the parent itself is disabled;
 This display does not turn the load on, enable devices, or alter history. Ambiguous source
 matches stay separate until reviewed. The SONOFF experimental converter currently has no kWh channel.
 
-Smart-switch tiles retain the reported ON/OFF relay state alongside watts and energy. ON with 0 W can mean the connected appliance needs attention; zero consumption never implies OFF. Relay state is shown only when the source reports an unambiguous state.
+Smart-switch tiles retain the reported ON/OFF relay state alongside watts and energy. ON with 0 W means the relay is closed but the load is drawing nothing (for example the appliance's own switch is off, it is idle, or it is faulty); zero consumption never implies OFF. Relay state is shown only when the source reports an unambiguous state.
