@@ -848,8 +848,30 @@ describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)",
     expect(within(grid).getByText("Dehumidifier")).toBeTruthy();
     expect(within(grid).getByText("0 W · Energy unavailable")).toBeTruthy();
     expect(within(grid).queryByText("Duplicate watts")).toBeNull();
-    expect(within(grid).getByText("Enabled services; parent disabled")).toBeTruthy();
+    expect(within(grid).queryByText(/Reported readings|Electrical details|Enabled services/)).toBeNull();
     expect(parent.attributes.enabled).toBe(false);
+  });
+
+  it("opens the parent device from a service tile by click and keyboard, but not while reordering", () => {
+    const parent={...tempA,deviceId:"parent"};
+    const service={...tempB,attributes:{temperature:22,parentDeviceId:"parent"}};
+    const focus=vi.fn(), panel=vi.fn();
+    const renderTiles=reorder=>render(<AppContext.Provider value={{displayConfigs:{},
+      devices:[parent,service],setPendingDeviceFocus:focus,setActivePanel:panel}}>
+      <MnSeeView devices={[service]} activeLocation="cabin" active={false} reorderMode={reorder}/>
+    </AppContext.Provider>);
+    const view=renderTiles(false);
+    const tile=screen.getByRole("button",{name:"Open Temp B in Devices"});
+    fireEvent.click(tile);
+    expect(focus).toHaveBeenLastCalledWith("parent");
+    expect(panel).toHaveBeenLastCalledWith("DEVICE_MANAGER");
+    fireEvent.keyDown(tile,{key:"Enter"});
+    fireEvent.keyDown(tile,{key:" "});
+    expect(focus).toHaveBeenCalledTimes(3);
+    view.unmount(); focus.mockClear(); panel.mockClear();
+    const reordered=renderTiles(true);
+    fireEvent.click(reordered.container.querySelector(".kpi-tile"));
+    expect(focus).not.toHaveBeenCalled();
   });
 
   it("renders tiles in the saved order, not the old fixed type-bucket order", () => {

@@ -271,7 +271,9 @@ not this guide.
 
 ### Smart switches in Monitoring
 Each enrolled physical switch has one electrical card. Watts and kWh share the same layout;
-expand Electrical details for volts and amps. Unavailable is different from zero.
-The card can represent enabled services even when the parent itself is disabled; it says so.
+click or keyboard-activate the tile to open its parent in Devices for volts, amps and other details. Unavailable is different from zero.
+The card can represent enabled services even when the parent itself is disabled; enrollment remains visible in Devices.
 This display does not turn the load on, enable devices, or alter history. Ambiguous source
 matches stay separate until reviewed. The SONOFF experimental converter currently has no kWh channel.
+
+Smart-switch tiles retain the reported ON/OFF relay state alongside watts and energy. ON with 0 W can mean the connected appliance needs attention; zero consumption never implies OFF. Relay state is shown only when the source reports an unambiguous state.
