@@ -717,4 +717,116 @@ class Zigbee2MqttAdapterTest {
           """);
         assertEquals(false, registry.get("z2m-status_only").attributes().get("smartSwitch"));
     }
+
+    // 2026-10-24 regression after #248: the Sonoff S61 dehumidifier switch. Exposes below are
+    // the real definition.exposes of S61SZBTPB read from the live bridge/devices (state, power,
+    // current, voltage, linkquality; no energy). The 3RSP02064Z reference models the live
+    // reference switches (power, voltage, current, energy).
+    private static final String S61_FRIENDLY = "Smart Switch Zigbee | Dehumidifier";
+    private static final String S61_IEEE = "0xa4c1381f3884ffff";
+    private static final String S61_DEVICE = """
+        {"friendly_name":"Smart Switch Zigbee | Dehumidifier","ieee_address":"0xa4c1381f3884ffff",
+         "definition":{"model":"S61SZBTPB","vendor":"SONOFF",
+          "description":"Smart plug: experimental state and metering adapter","exposes":[
+           {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7,
+             "value_on":"ON","value_off":"OFF"}]},
+           {"type":"numeric","name":"power","property":"power","access":5,"unit":"W"},
+           {"type":"numeric","name":"current","property":"current","access":5,"unit":"A"},
+           {"type":"numeric","name":"voltage","property":"voltage","access":5,"unit":"V"},
+           {"type":"numeric","name":"linkquality","property":"linkquality","access":1,"category":"diagnostic"}]}}
+        """;
+    private static final String THIRD_REALITY_PLUG = """
+        {"friendly_name":"heater_mech_room","ieee_address":"0x1234567890abcde0",
+         "definition":{"model":"3RSP02064Z","vendor":"Third Reality","description":"Zigbee / BLE smart plug with power","exposes":[
+           {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]},
+           {"type":"numeric","name":"power","property":"power","access":5,"unit":"W"},
+           {"type":"numeric","name":"voltage","property":"voltage","access":5,"unit":"V"},
+           {"type":"numeric","name":"current","property":"current","access":5,"unit":"A"},
+           {"type":"numeric","name":"energy","property":"energy","access":5,"unit":"kWh"},
+           {"type":"numeric","name":"power_drop_threshold","property":"power_drop_threshold","access":7,"category":"config"},
+           {"type":"enum","name":"power_on_behavior","property":"power_on_behavior","access":7,"category":"config"}]}}
+        """;
+
+    @Test
+    void theS61GetsTheSameClassAndCapabilitiesAsTheReferenceSwitch() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", "[" + S61_DEVICE + "," + THIRD_REALITY_PLUG + "]");
+        var s61 = registry.descriptor("z2m-Smart_Switch_Zigbee_|_Dehumidifier").orElseThrow();
+        var ref = registry.descriptor("z2m-heater_mech_room").orElseThrow();
+        assertEquals(DeviceType.POWER_METER, ref.type());
+        assertEquals(ref.type(), s61.type());
+        assertEquals(ref.capabilities(), s61.capabilities());
+        assertEquals(Set.of(DeviceCapability.COMMAND, DeviceCapability.POWER_MONITOR, DeviceCapability.TELEMETRY),
+            s61.capabilities());
+    }
+
+    @Test
+    void aRenamedZ2mDeviceKeepsItsAssignedRegistryIdAndReceivesItsReadings() throws Exception {
+        String legacyId = "z2m-" + S61_IEEE;
+        registry.registerConfiguredDevice(new DeviceDescriptor(legacyId, "Smart Switch | Dehumidifier",
+            DeviceType.HOME_ASSISTANT_ENTITY, Set.of(DeviceCapability.POWER_MONITOR, DeviceCapability.TELEMETRY),
+            "mqtt", "zigbee2mqtt/" + S61_IEEE, true, "cabin"));
+
+        deliver("zigbee2mqtt/bridge/devices", "[" + S61_DEVICE + "]");
+        deliver("zigbee2mqtt/" + S61_FRIENDLY, "{\"state\":\"ON\",\"power\":263.26,\"voltage\":122.8,\"current\":2.24,\"linkquality\":120}");
+
+        assertNull(registry.get("z2m-Smart_Switch_Zigbee_|_Dehumidifier"),
+            "a rename must not register a second row for the same physical device");
+        var live = registry.get(legacyId);
+        assertEquals("ON", live.attributes().get("state"));
+        assertEquals(263.26, ((Number) live.attributes().get("power")).doubleValue(), 0.001);
+        assertEquals("ONLINE", live.state());
+        assertEquals("zigbee2mqtt/" + S61_FRIENDLY, registry.descriptor(legacyId).orElseThrow().connectionString());
+    }
+
+    @Test
+    void anOnSwitchAtZeroWattsKeepsItsOnStateAndZeroPower() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", "[" + THIRD_REALITY_PLUG + "]");
+        deliver("zigbee2mqtt/heater_mech_room", "{\"state\":\"ON\",\"power\":0,\"current\":0}");
+        var a = registry.get("z2m-heater_mech_room").attributes();
+        assertEquals("ON", a.get("state"));
+        assertEquals(0, ((Number) a.get("power")).intValue());
+    }
+
+    /** Nate's rule: no Zigbee-reported parent is left generic when its exposes identify a class. */
+    @Test
+    void noZigbeeParentWithKnownExposesEndsAsAGenericEntity() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", "[" + S61_DEVICE + "," + THIRD_REALITY_PLUG + """
+          ,{"friendly_name":"odd_temp","definition":{"description":"Environment probe","exposes":[
+             {"type":"numeric","name":"temperature","property":"temperature","access":1}]}}
+          ,{"friendly_name":"odd_motion","definition":{"description":"Presence thing","exposes":[
+             {"type":"binary","name":"occupancy","property":"occupancy","access":1}]}}
+          ,{"friendly_name":"odd_contact","definition":{"description":"Opening thing","exposes":[
+             {"type":"binary","name":"contact","property":"contact","access":1}]}}
+          ,{"friendly_name":"in_wall","definition":{"description":"Wall unit","exposes":[
+             {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]}]}}
+          ,{"friendly_name":"gang2","definition":{"description":"Wall unit 2","exposes":[
+             {"type":"switch","endpoint":"l1","features":[{"type":"binary","name":"state","property":"state_l1","access":7}]},
+             {"type":"switch","endpoint":"l2","features":[{"type":"binary","name":"state","property":"state_l2","access":7}]}]}}
+          ]""");
+        for (String id : List.of("z2m-Smart_Switch_Zigbee_|_Dehumidifier", "z2m-heater_mech_room", "z2m-odd_temp",
+                "z2m-odd_motion", "z2m-odd_contact", "z2m-in_wall", "z2m-gang2")) {
+            assertNotEquals(DeviceType.HOME_ASSISTANT_ENTITY, registry.descriptor(id).orElseThrow().type(), id);
+        }
+        assertEquals(DeviceType.POWER_METER, registry.descriptor("z2m-in_wall").orElseThrow().type());
+        assertEquals(DeviceType.POWER_METER, registry.descriptor("z2m-gang2").orElseThrow().type());
+        assertTrue(registry.descriptor("z2m-gang2").orElseThrow().capabilities().contains(DeviceCapability.COMMAND));
+    }
+
+    // Real live shapes: the Third Reality 3RWS18BZ leak sensor exposes a siren "state" switch, and
+    // the main water valve is a Tuya TS0001 "1 gang switch" to Z2M. Neither is a smart switch.
+    @Test
+    void aLeakSensorSirenAndANamedValveActuatorAreNotSmartSwitchesOrPowerMeters() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"leak_fridge","definition":{"model":"3RWS18BZ","description":"Water sensor","exposes":[
+              {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]},
+              {"type":"binary","name":"water_leak","property":"water_leak","access":1}]}},
+           {"friendly_name":"main_water_valve","definition":{"model":"TS0001","description":"1 gang switch","exposes":[
+              {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]}]}}]
+          """);
+        for (String id : List.of("z2m-leak_fridge", "z2m-main_water_valve")) {
+            assertEquals(false, registry.get(id).attributes().get("smartSwitch"), id);
+            assertNotEquals(DeviceType.POWER_METER, registry.descriptor(id).orElseThrow().type(), id);
+        }
+        assertEquals(DeviceType.WATER_LEAK_SENSOR, registry.descriptor("z2m-leak_fridge").orElseThrow().type());
+    }
 }

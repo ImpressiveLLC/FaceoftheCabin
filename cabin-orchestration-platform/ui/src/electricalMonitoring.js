@@ -22,17 +22,27 @@ export function electricalMonitoringDevices(devices) {
       canonical(d.attributes.parentDeviceId) === parent.deviceId &&
       d.location === parent.location && active(d));
     const readings = children.filter(measurement);
+    // The same physical device can be listed under a second id (a Z2M rename registers the new
+    // name as its own row that carries the live reading, the assigned row stays empty). Its
+    // live values belong on the one card, never a second card or a blank one.
+    const aliases = devices.filter(d => d.deviceId !== parent.deviceId && !d.attributes?.parentDeviceId &&
+      canonical(d.deviceId) === parent.deviceId && d.location === parent.location &&
+      !['IGNORED', 'REMOVED'].includes(d.attributes?.deviceLifecycle));
     if (!active(parent) && !readings.length) continue;
     const attrs = {...parent.attributes, monitoringGroup: true, measurementSources: {}};
     if (!active(parent)) fields.forEach(field => delete attrs[field]);
     for (const field of fields) {
       const matches = readings.filter(d => d.attributes.sourceReportedFields[0] === field);
       const native = active(parent) && (attrs.sourceReportedFields || attrs.vendorReportedFields || []).includes(field);
+      const alias = matches.length === 1 ? null : aliases.find(d => finite(d.attributes?.[field]));
       if (native || (active(parent) && finite(attrs[field]))) {
         attrs.measurementSources[field] = parent.deviceId;
       } else if (matches.length === 1) {
         attrs[field] = matches[0].attributes[field];
         attrs.measurementSources[field] = matches[0].deviceId;
+      } else if (alias) {
+        attrs[field] = alias.attributes[field];
+        attrs.measurementSources[field] = alias.deviceId;
       }
       // Ambiguous services remain visible separately; never silently choose one.
       if (native || matches.length === 1) matches.forEach(d => hidden.add(d.deviceId));
@@ -43,7 +53,11 @@ export function electricalMonitoringDevices(devices) {
     attrs.unresolvedServiceCount = unresolved.length;
     const switches = children.filter(d => d.attributes?.entityId?.startsWith('switch.'));
     const states = switches.map(d => d.attributes.state);
-    if (!states.length && active(parent) && ['ON','OFF'].includes(attrs.state)) states.push(attrs.state);
+    // The device's own reported relay state, its alias's, then the mapped switch entities'.
+    // Never inferred from watts or from ONLINE: ON at 0 W is a real state (nothing drawing).
+    const ownState = ['ON','OFF'].includes(attrs.state) && active(parent) ? attrs.state
+      : aliases.map(d => d.attributes?.state).find(v => ['ON','OFF'].includes(v));
+    if (!states.length && ownState) states.push(ownState);
     if (states.length && states.every(s => s === states[0] && ['ON','OFF'].includes(s))) {
       attrs.mappedSwitchState = states[0];
     }
@@ -61,7 +75,9 @@ export function electricalValue(attributes = {}) {
   const metrics = quantities.map(field => finite(attributes[field])
     ? attributes[field] + ' ' + units[field]
     : (field === 'energy' ? 'Energy' : field === 'power' ? 'Power' : field === 'voltage' ? 'Voltage' : 'Current') + ' unavailable');
+  // A smart-switch card always shows relay state next to power: unknown is said, never blank.
   if (attributes.mappedSwitchState) metrics.push(attributes.mappedSwitchState);
+  else if (attributes.monitoringGroup) metrics.push('State unknown');
   return metrics.join(' · ') || 'Measurement unavailable';
 }
 

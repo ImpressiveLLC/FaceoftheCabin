@@ -846,7 +846,7 @@ describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)",
     </AppContext.Provider>);
     const grid=container.querySelector(".kpi-grid");
     expect(within(grid).getByText("Dehumidifier")).toBeTruthy();
-    expect(within(grid).getByText("0 W · Energy unavailable")).toBeTruthy();
+    expect(within(grid).getByText("0 W · Energy unavailable · State unknown")).toBeTruthy();
     expect(within(grid).queryByText("Duplicate watts")).toBeNull();
     expect(within(grid).queryByText(/Reported readings|Electrical details|Enabled services/)).toBeNull();
     expect(parent.attributes.enabled).toBe(false);

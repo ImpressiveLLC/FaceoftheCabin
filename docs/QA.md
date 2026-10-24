@@ -181,3 +181,23 @@ POWER_MONITOR only alongside reported power, energy or current. Temperature sens
 while the defect was live keep their sticky capabilities until re-detected (W-93). Unresolved
 electrical services are no longer summarized on the tile; they remain reachable from the parent
 in Devices.
+
+### Regression fix — Sonoff S61 rename and card state (2026-10-24, after #248)
+Cause (read live, 2026-10-24): the S61's Z2M friendly name changed to `Smart Switch Zigbee | Dehumidifier`.
+The adapter derives the registry id from the friendly name, so it registered a second CANDIDATE row
+that received every reading (ON, 263 W) while the assigned, canonical `z2m-0xa4c1381f3884ffff` row stayed
+empty (UNKNOWN, no state, no power). The card is built on the canonical row, so power and ON/OFF vanished.
+Fix: the adapter resolves a device by IEEE address (legacy IEEE-named id, or one assigned row recording the
+address) and keeps that id across a rename; state and availability follow the same mapping. The card also
+falls back to a same-identity alias's live values and always shows relay state beside power (`State unknown`
+when none is reported; ON at 0 W stays ON; state is never inferred from watts or ONLINE).
+Classification: any writable-relay device is `POWER_METER` (S61, in-wall and multi-gang switches), excluding
+lights, locks, covers, fans, climate, valves (by definition text or friendly name) and leak/smoke sensors
+whose siren has a `state`. A device with no description match is classified from its exposes
+(occupancy, contact, temperature, humidity) before falling back to a generic entity; a reed contact no
+longer infers ACCESS_CONTROL. Gap: lights, covers, fans and valve actuators have no `DeviceType`, so they
+remain generic until the vocabulary adds one.
+W-93 dry run (offline, read-only; `ZigbeeRedetectDryRunTest`, run with `-Dredetect.bridge=` `-Dredetect.live=`
+`-Dredetect.out=`): proposed changes only for the S61 (generic entity, no COMMAND -> POWER_METER with COMMAND),
+the temperature sensors (COMMAND/POWER_MONITOR removed) and the motion/contact sensors (COMMAND, ACCESS_CONTROL,
+POWER_MONITOR removed). Nothing was applied; applying needs Nate's approval.
