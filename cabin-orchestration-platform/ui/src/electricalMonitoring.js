@@ -17,7 +17,7 @@ export function electricalMonitoringDevices(devices) {
   for (const parent of devices) {
     if (!eligible(parent) || parent.attributes?.parentDeviceId ||
         canonical(parent.deviceId) !== parent.deviceId ||
-        !(parent.type === 'POWER_METER' || parent.attributes?.smartSwitch === true)) continue;
+        !(parent.type === 'POWER_METER' || (parent.type === 'HOME_ASSISTANT_ENTITY' && parent.attributes?.smartSwitch === true))) continue;
     const children = devices.filter(d => d.attributes?.parentDeviceId &&
       canonical(d.attributes.parentDeviceId) === parent.deviceId &&
       d.location === parent.location && active(d));
@@ -63,4 +63,23 @@ export function electricalValue(attributes = {}) {
     : (field === 'energy' ? 'Energy' : field === 'power' ? 'Power' : field === 'voltage' ? 'Voltage' : 'Current') + ' unavailable');
   if (attributes.mappedSwitchState) metrics.push(attributes.mappedSwitchState);
   return metrics.join(' · ') || 'Measurement unavailable';
+}
+
+// Follow only known same-location parent links. Cycles never send the user to an arbitrary device.
+export function monitoringDeviceTarget(deviceId, devices = []) {
+  const byId = new Map(devices.map(d => [d.deviceId, d]));
+  let current = byId.get(deviceId);
+  if (!current) return deviceId;
+  const seen = new Set([deviceId]);
+  while (current) {
+    const alias = current.attributes?.canonicalPhysicalId;
+    const nextId = alias && alias !== current.deviceId ? alias : current.attributes?.parentDeviceId;
+    if (!nextId) return current.deviceId;
+    const next = byId.get(nextId);
+    if (!next || next.location !== current.location) return current.deviceId;
+    if (seen.has(nextId)) return deviceId;
+    seen.add(nextId);
+    current = next;
+  }
+  return deviceId;
 }

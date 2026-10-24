@@ -1,4 +1,4 @@
-import { electricalMonitoringDevices, electricalValue } from "./electricalMonitoring";
+import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget } from "./electricalMonitoring";
 /**
  * Cabin Orchestration Platform — Shell UI
  *
@@ -5218,8 +5218,7 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     case "POWER_METER": {
       const val = electricalValue(device.attributes);
       return { icon: Zap, label: curatedLabel("power") || device.name, deviceId: device.deviceId,
-        value: val, state: device.state, note: device.attributes?.monitoringSourceNote,
-        electricalDetails: device.attributes?.monitoringGroup ? device.attributes : null };
+        value: val, state: device.state };
     }
     case "LOCK":
       return { icon: Lock, label: device.name, deviceId: device.deviceId, value: device.state, state: device.state };
@@ -6429,9 +6428,15 @@ function severityClass(override) {
 // MnSeeView already built for the old separate list view, just wired
 // onto the actual tile instead. All undefined/false outside reorder
 // mode, so normal (non-reorder) rendering is untouched.
-function KpiTile({ icon: Icon, label, value, state, note, electricalDetails, deviceId, reorderMode, isPinned, isOver,
+function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPinned, isOver,
     onDragStart, onDragOver, onDrop, onDragEnd }) {
-  const { displayConfigs } = useApp();
+  const { displayConfigs, devices = [], setActivePanel, setPendingDeviceFocus } = useApp();
+  const canOpen = !reorderMode && deviceId && setActivePanel && setPendingDeviceFocus;
+  const openDevice = () => {
+    if (!canOpen) return;
+    setPendingDeviceFocus(monitoringDeviceTarget(deviceId, devices));
+    setActivePanel("DEVICE_MANAGER");
+  };
   const cfg = deviceId ? displayConfigs?.[deviceId] : null;
 
   const effectiveLabel = cfg?.displayName || label;
@@ -6442,6 +6447,13 @@ function KpiTile({ icon: Icon, label, value, state, note, electricalDetails, dev
   return (
     <div
       className={`kpi-tile kpi-${stCls} ${reorderMode ? "reorder-card" : ""} ${isOver ? "drag-over-card" : ""}`}
+      role={canOpen ? "button" : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      aria-label={canOpen ? `Open ${effectiveLabel} in Devices` : undefined}
+      onClick={canOpen ? openDevice : undefined}
+      onKeyDown={canOpen ? event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openDevice(); }
+      } : undefined}
       draggable={reorderMode && !isPinned}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -6454,12 +6466,6 @@ function KpiTile({ icon: Icon, label, value, state, note, electricalDetails, dev
       <Icon size={22} />
       <div className="kpi-label">{effectiveLabel}</div>
       <div className="kpi-value">{effectiveValue}</div>
-      {note && <div className="kpi-note">{note}</div>}
-      {electricalDetails && <details className="kpi-electrical-details"><summary>Electrical details</summary>
-        <div>{typeof electricalDetails.voltage === 'number' ? electricalDetails.voltage + ' V' : 'Voltage unavailable'}</div>
-        <div>{typeof electricalDetails.current === 'number' ? electricalDetails.current + ' A' : 'Current unavailable'}</div>
-        {electricalDetails.unresolvedServiceCount > 0 && <div>{electricalDetails.unresolvedServiceCount} service(s) awaiting source verification</div>}
-      </details>}
       <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>
   );

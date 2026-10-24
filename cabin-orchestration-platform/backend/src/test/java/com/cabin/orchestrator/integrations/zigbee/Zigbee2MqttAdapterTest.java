@@ -617,4 +617,104 @@ class Zigbee2MqttAdapterTest {
         deliver("zigbee2mqtt/arbitrary", "{\"power\":null}");
         assertNull(registry.get("z2m-arbitrary").attributes().get("power"));
     }
+
+    @Test
+    void batteryVoltageAndWritableCalibrationDoNotMakeATemperatureSensorASwitch() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"temp_anywhere","ieee_address":"0x1234567890abcdef",
+            "definition":{"description":"Temperature sensor","exposes":[
+              {"type":"numeric","name":"temperature","property":"temperature","access":1},
+              {"type":"numeric","name":"voltage","property":"voltage","access":1},
+              {"type":"numeric","name":"temperature_calibration","property":"temperature_calibration",
+               "category":"config","access":3}]}}]
+          """);
+        var found=registry.get("z2m-temp_anywhere");
+        assertEquals(false,found.attributes().get("smartSwitch"));
+        assertEquals(DeviceType.TEMPERATURE_SENSOR,found.type());
+    }
+
+    // #248 review (Cowork, 2026-10-24): capability and smart-switch evidence beyond the
+    // temperature case. A config setting is not a command; battery voltage is not metering;
+    // lights, locks and valve actuators carry a writable on/off but are not smart switches;
+    // a multi-gang relay publishes per-endpoint state keys.
+
+    @Test
+    void aTemperatureSensorGetsNeitherCommandNorPowerMonitorFromCalibrationAndBatteryVoltage() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"temp_attic","ieee_address":"0x00124b0000000001",
+            "definition":{"model":"SNZB-02P","description":"Temperature and humidity sensor","exposes":[
+              {"type":"numeric","name":"temperature","property":"temperature","access":1,"unit":"C"},
+              {"type":"numeric","name":"humidity","property":"humidity","access":1,"unit":"%"},
+              {"type":"numeric","name":"battery","property":"battery","access":1,"category":"diagnostic"},
+              {"type":"numeric","name":"voltage","property":"voltage","access":1,"unit":"mV","category":"diagnostic"},
+              {"type":"numeric","name":"temperature_calibration","property":"temperature_calibration",
+               "category":"config","access":3}]}}]
+          """);
+        var caps = registry.descriptor("z2m-temp_attic").orElseThrow().capabilities();
+        assertFalse(caps.contains(DeviceCapability.COMMAND), caps.toString());
+        assertFalse(caps.contains(DeviceCapability.POWER_MONITOR), caps.toString());
+        assertEquals(false, registry.get("z2m-temp_attic").attributes().get("smartSwitch"));
+    }
+
+    @Test
+    void voltageWithoutPowerEnergyOrCurrentIsNotPowerMonitoringEvenWithoutACategory() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"contact_back","definition":{"description":"Door sensor","exposes":[
+              {"type":"binary","name":"contact","property":"contact","access":1},
+              {"type":"numeric","name":"voltage","property":"voltage","access":1}]}}]
+          """);
+        assertFalse(registry.descriptor("z2m-contact_back").orElseThrow().capabilities()
+            .contains(DeviceCapability.POWER_MONITOR));
+    }
+
+    @Test
+    void aPowerLimitSettingAloneDoesNotMakeMetering() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"plain_relay","definition":{"description":"Smart switch","exposes":[
+              {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]},
+              {"type":"numeric","name":"power_outage_count","property":"power_outage_count","access":1,"category":"diagnostic"},
+              {"type":"numeric","name":"power_limit","property":"power_limit","access":3,"category":"config"}]}}]
+          """);
+        var d = registry.descriptor("z2m-plain_relay").orElseThrow();
+        assertFalse(d.capabilities().contains(DeviceCapability.POWER_MONITOR), d.capabilities().toString());
+        assertTrue(d.capabilities().contains(DeviceCapability.COMMAND));
+        assertEquals(true, registry.get("z2m-plain_relay").attributes().get("smartSwitch"),
+            "a non-metering relay is still a smart switch");
+    }
+
+    @Test
+    void aMultiGangRelayWithPerEndpointStateIsASmartSwitch() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"two_gang","definition":{"description":"Smart switch 2 gang","exposes":[
+              {"type":"switch","endpoint":"l1","features":[{"type":"binary","name":"state","property":"state_l1","access":7}]},
+              {"type":"switch","endpoint":"l2","features":[{"type":"binary","name":"state","property":"state_l2","access":7}]}]}}]
+          """);
+        assertEquals(true, registry.get("z2m-two_gang").attributes().get("smartSwitch"));
+    }
+
+    @Test
+    void lightsLocksAndValveActuatorsAreNotSmartSwitches() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"bulb","definition":{"description":"Smart bulb","exposes":[
+              {"type":"light","features":[{"type":"binary","name":"state","property":"state","access":7},
+                {"type":"numeric","name":"brightness","property":"brightness","access":7}]}]}},
+           {"friendly_name":"front_lock","definition":{"description":"Smart lock","exposes":[
+              {"type":"lock","features":[{"type":"binary","name":"state","property":"state","access":7,
+                "value_on":"LOCK","value_off":"UNLOCK"}]}]}},
+           {"friendly_name":"main_valve","definition":{"description":"Smart water valve","exposes":[
+              {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]}]}}]
+          """);
+        assertEquals(false, registry.get("z2m-bulb").attributes().get("smartSwitch"));
+        assertEquals(false, registry.get("z2m-front_lock").attributes().get("smartSwitch"));
+        assertEquals(false, registry.get("z2m-main_valve").attributes().get("smartSwitch"));
+    }
+
+    @Test
+    void aReadOnlyStateIsNotRelayEvidence() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"status_only","definition":{"description":"Status reporter","exposes":[
+              {"type":"binary","name":"state","property":"state","access":1}]}}]
+          """);
+        assertEquals(false, registry.get("z2m-status_only").attributes().get("smartSwitch"));
+    }
 }

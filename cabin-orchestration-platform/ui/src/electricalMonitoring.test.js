@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { electricalMonitoringDevices } from './electricalMonitoring';
+import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget } from './electricalMonitoring';
 const parent = (id, location = 'cabin', energy = 48.32) => ({deviceId:id, name:id, type:'POWER_METER', location, attributes:{enabled:true, deviceLifecycle:'ASSIGNED', vendorReportedFields:['power','voltage', ...(energy == null ? [] : ['energy'])], power:0, voltage:122.3, ...(energy == null ? {} : {energy})}});
 const child = (id, pid, field, value, extra = {}) => ({deviceId:id, name:id, type:'POWER_METER', location:'cabin', attributes:{enabled:true, deviceLifecycle:'ASSIGNED', parentDeviceId:pid, entityId:`sensor.${id}`, sourceReportedFields:[field], [field]:value, ...extra}});
 describe('one physical smart-switch card', () => {
@@ -73,4 +73,34 @@ it('retains an orphan service in parent details without inventing kWh or a dupli
  expect(result).toHaveLength(1);
  expect(result[0].attributes.unresolvedServiceCount).toBe(1);
  expect(result[0].attributes.energy).toBeUndefined();
+});
+
+it('preserves temperature cards even if old backend metadata mistakenly marks a switch', () => {
+ const temp={deviceId:'temp_kitchen',type:'TEMPERATURE_SENSOR',location:'cabin',
+   attributes:{enabled:true,smartSwitch:true,temperature:21,voltage:3100}};
+ expect(electricalMonitoringDevices([temp])[0]).toBe(temp);
+});
+it('resolves physical aliases but refuses cycles and cross-location navigation', () => {
+ const p={deviceId:'parent',location:'cabin',attributes:{}};
+ const a={deviceId:'alias',location:'cabin',attributes:{canonicalPhysicalId:'parent'}};
+ const c={deviceId:'child',location:'cabin',attributes:{parentDeviceId:'alias'}};
+ expect(monitoringDeviceTarget('child',[p,a,c])).toBe('parent');
+ expect(monitoringDeviceTarget('child',[{...p,location:'home'},a,c])).toBe('alias');
+ expect(monitoringDeviceTarget('child',[{...p,attributes:{parentDeviceId:'child'}},a,c])).toBe('child');
+});
+
+
+describe('relay status stays independent of power draw', () => {
+  it.each(['ON', 'OFF'])('shows %s even when the attached load draws zero watts', state => {
+    const device = parent('switch');
+    device.attributes.state = state;
+    const [card] = electricalMonitoringDevices([device]);
+    expect(electricalValue(card.attributes)).toBe(`0 W \u00b7 48.32 kWh \u00b7 ${state}`);
+  });
+  it('does not infer off from zero watts or online connectivity', () => {
+    const device = {...parent('switch'), state:'ONLINE'};
+    const [card] = electricalMonitoringDevices([device]);
+    expect(card.attributes.mappedSwitchState).toBeUndefined();
+    expect(electricalValue(card.attributes)).toBe('0 W \u00b7 48.32 kWh');
+  });
 });

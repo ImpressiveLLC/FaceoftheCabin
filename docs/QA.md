@@ -164,3 +164,20 @@ Scope: physical parent cards and source-qualified electrical values across both 
 Traceability: #244 holds the broader measurement architecture and operator migration/converter work; #246 tracks recovered local work; #247 delivers this bounded UI/backend slice. Persistent identity/alias mutation and an authenticated apply/rollback migration remain separate work under #244, not implied completed by this read-only presentation change.
 
 Regression evidence: source unit conversion and unknown clearing; IEEE rename and assignment ambiguity; location isolation; enabled/disabled enrollment; diagnostics and competing sources; realistic rendered disabled-parent service card. Full suite and deployment results are recorded on #247 at the checked head.
+
+
+### Follow-up acceptance — PR #248
+Live verification found battery temperature sensors classified by voltage/calibration capabilities.
+Classification now requires a writable relay state. Monitoring also preserves a known temperature
+parent's type even when stale metadata says smartSwitch. Tile chrome is reduced to name, primary
+reading and state; source notes and electrical detail text are removed. All ordinary device tiles
+open the known same-location parent in Devices by click, Enter or Space. Reorder mode does not
+navigate; missing links/cycles do not jump to an arbitrary device. Tests cover these paths.
+
+Cowork review addendum (2026-10-24): classification evidence also excludes lights, locks, covers,
+fans, climate controls and water-valve actuators, and detects multi-gang relays (`state_l1`,
+`state_l2`). A writable configuration setting no longer infers COMMAND, and voltage infers
+POWER_MONITOR only alongside reported power, energy or current. Temperature sensors configured
+while the defect was live keep their sticky capabilities until re-detected (W-93). Unresolved
+electrical services are no longer summarized on the tile; they remain reachable from the parent
+in Devices.
