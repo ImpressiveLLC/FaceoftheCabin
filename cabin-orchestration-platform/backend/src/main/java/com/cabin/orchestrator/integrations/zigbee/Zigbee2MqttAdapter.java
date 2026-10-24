@@ -446,7 +446,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 discovery.put("vendor", definition.path("vendor").asText(""));
                 String ieee = device.path("ieee_address").asText("").toLowerCase(Locale.ROOT);
                 if (ieee.matches("0x[0-9a-f]{16}")) discovery.put("ieeeAddress", ieee);
-                discovery.put("smartSwitch", hasRelay(definition.path("exposes")));
+                discovery.put("smartSwitch", isSmartSwitch(definition));
                 discovery.put("sourceReportedFields", vendorReportedFields);
                 // D7 (docs/ontology/DECISIONS.md): forwarded wholesale to
                 // cabin-discovery via DiscoveryServiceClient's discoveryAttributes
@@ -584,22 +584,54 @@ public class Zigbee2MqttAdapter implements MqttCallback {
     }
 
     /**
-     * Infers DeviceCapabilities from definition.exposes[].
-     * Handles generic feature types ('binary', 'numeric', 'enum') and
-     * composite features that have sub-features (e.g. water_leak_buzzer
-     * nested under a composite).
+     * Smart-switch evidence (#248, UC-21 / W-102): a writable on/off relay state, not any
+     * writable setting and not power-like numbers. Counts a binary {@code state} (or a
+     * per-endpoint {@code state_l1}, {@code state_left}...) with set access, at the top level or
+     * inside a {@code switch}/composite expose. Lights, locks, covers, fans and climate controls
+     * also carry a writable binary state but are not smart switches, so their subtrees are
+     * skipped, and so are configuration/diagnostic settings. A water-valve actuator exposes the
+     * same on/off shape; it is a safety shut-off, not a smart switch, so it is excluded by its
+     * definition text.
      */
+    private boolean isSmartSwitch(JsonNode definition) {
+        String text = (definition.path("description").asText("") + " " + definition.path("model").asText(""))
+            .toLowerCase(Locale.ROOT);
+        if (text.contains("valve")) return false;
+        return hasRelay(definition.path("exposes"));
+    }
+
+    private static final Set<String> NON_RELAY_EXPOSE_TYPES = Set.of("light", "lock", "cover", "fan", "climate");
+
     private boolean hasRelay(JsonNode exposes) {
         if (!exposes.isArray()) return false;
         for (JsonNode expose : exposes) {
-            String property = expose.path("property").asText(expose.path("name").asText(""));
-            if ("binary".equals(expose.path("type").asText()) && "state".equals(property)
-                    && (expose.path("access").asInt(1) & 2) != 0) return true;
+            String type = expose.path("type").asText("");
+            if (NON_RELAY_EXPOSE_TYPES.contains(type)) continue;
+            String category = expose.path("category").asText("");
+            if ("binary".equals(type) && !"config".equals(category) && !"diagnostic".equals(category)
+                    && (expose.path("access").asInt(1) & 2) != 0
+                    && (isRelayStateKey(expose.path("name").asText(""))
+                        || isRelayStateKey(expose.path("property").asText("")))) return true;
             if (hasRelay(expose.path("features"))) return true;
         }
         return false;
     }
 
+    private static boolean isRelayStateKey(String key) {
+        return key.equals("state") || key.matches("state_[a-z0-9]+");
+    }
+
+    /**
+     * Infers DeviceCapabilities from definition.exposes[].
+     * Handles generic feature types ('binary', 'numeric', 'enum') and
+     * composite features that have sub-features (e.g. water_leak_buzzer
+     * nested under a composite).
+     *
+     * #248: a writable configuration setting (category "config", e.g. temperature_calibration)
+     * is not a command, and a diagnostic or battery voltage is not power monitoring. Voltage
+     * counts toward POWER_MONITOR only on a device that also reports power, energy or current
+     * (D13 / D15: voltage and current are dual-use and need device context).
+     */
     private Set<DeviceCapability> inferCapabilities(JsonNode definition) {
         Set<DeviceCapability> caps = new HashSet<>();
         if (definition.isMissingNode()) {
@@ -614,8 +646,29 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         for (JsonNode expose : exposes) {
             processExpose(expose, caps);
         }
+        if (caps.contains(DeviceCapability.POWER_MONITOR) && !hasElectricalMetering(exposes)) {
+            caps.remove(DeviceCapability.POWER_MONITOR);
+        }
         if (caps.isEmpty()) caps.add(DeviceCapability.TELEMETRY);
         return caps;
+    }
+
+    /** Power, energy or current reported as a measurement (not a config limit, not diagnostic). */
+    private boolean hasElectricalMetering(JsonNode exposes) {
+        if (!exposes.isArray()) return false;
+        for (JsonNode expose : exposes) {
+            String category = expose.path("category").asText("");
+            String property = expose.path("property").asText(expose.path("name").asText(""));
+            if ("numeric".equals(expose.path("type").asText("")) && !"config".equals(category)
+                    && !"diagnostic".equals(category)
+                    && (property.equals("power") || property.startsWith("power_")
+                        || property.equals("energy") || property.startsWith("energy_")
+                        || property.equals("current") || property.startsWith("current_"))
+                    && !property.contains("limit") && !property.contains("threshold")
+                    && !property.contains("calibration") && !property.contains("outage")) return true;
+            if (hasElectricalMetering(expose.path("features"))) return true;
+        }
+        return false;
     }
 
     private void processExpose(JsonNode expose, Set<DeviceCapability> caps) {
@@ -623,7 +676,9 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         String property = expose.path("property").asText("");
         String name = expose.path("name").asText("");
         int access = expose.path("access").asInt(1);
-        boolean writable = (access & 2) != 0;
+        String category = expose.path("category").asText("");
+        // A configuration setting is writable but is not a command (#248).
+        boolean writable = (access & 2) != 0 && !"config".equals(category);
 
         switch (type) {
             case "binary" -> {
