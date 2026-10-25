@@ -472,12 +472,15 @@ The [platform backlog](../backlog.md) owns all platform scores/statuses. The [As
 | W-104 | Review every proposed profile and source/derivation; disposition eligible/held/rejected by purpose. Confirm full primary sources, versions/licensing, metadata and domain constraints; document unsuitable substitutions. Commission missing local thresholds rather than importing generic limits. | Cowork research + Code method review; Codex proxy-PO product acceptance | Source register and actual quantity/method map |
 | W-96 | Implement typed schema/versioned bundle/bindings, evidence references, unit and interval/category checks, valid-domain coverage, approval state and atomic loader. Migrate only intended ontology records; no wide unreviewed backfill. | Code; Cowork/Codex review | MA-07; W-101; W-104 initial RH disposition |
 | W-97 | Deterministic evaluator + additive response: quantity/context/profile resolution, invalid/stale/incompatible/ambiguous handling, purpose-specific aggregation, non-color explanation and replay lineage. Preserve existing consumers/alert engine. | Code; Codex boundary/compatibility review | W-96, W-102, W-103 |
-| W-98 | Shared attention tokens/card composition and reference dictionary in existing UI surfaces, React/static Family Hub parity where displayed, accessible themes, informational Act/recovery, no override suppression. Include source-backed download/export metadata; preserve raw exports and status unknowns. | Code; Cowork UX; Nate human testing | W-97; approved dictionary content |
+| W-98 | Shared attention tokens/card composition and reference dictionary in existing UI surfaces, React/static Family Hub parity where displayed, accessible themes, informational Act/recovery, no override suppression. Include source-backed download/export metadata; preserve raw exports and status unknowns. | Code; Cowork UX; Nate human testing | W-97; approved dictionary content; W-109, W-110, W-111 (section 15) |
 | W-99 | Incremental additional measurement/jurisdiction and justified empirical datasets. Version/hashes/filtering/coverage/missingness/uncertainty and crosswalk limits; no percentile-to-health claim. No speculative roof draft or fan-airflow sensor inference. | Cowork research; Code integration; Codex review | W-102, W-104; first W-98 pilot feedback |
-| W-105 | Independent acceptance package: golden boundaries, unit invariance, missing/stale/retained/dependency/converter cases, multi-sensor cardinality, auth/demo redaction, dictionary navigation/accessibility and human protocol. Compare test oracle to sources, not implementation output. | Codex independent test design/review; Code executes; Cowork human protocol | Contract fixtures can start with W-96; final after W-97/98 |
+| W-105 | Independent acceptance package: golden boundaries, unit invariance, missing/stale/retained/dependency/converter cases, multi-sensor cardinality, auth/demo redaction, dictionary navigation/accessibility and human protocol, plus the section 15.5 vision cases. Compare test oracle to sources, not implementation output. | Codex independent test design/review; Code executes; Cowork human protocol | Contract fixtures can start with W-96; final after W-97/98 |
 | W-100 | Bundle diagnostics, approval/update/replay/rollback, shipped version provenance, read-only shadow baseline, release flag default off and bounded staged rollout. Approved dictionary knowledge indexing tracked by C7/C2, not a second platform corpus. Verify deployed artifact and live behavior separately. | Code delivery; Codex review; Nate commissioning/release authority | W-105 offline pass; W-98; section 14 bounded-pilot and general-release gates |
 | W-106 | Bounded live pilot and release evidence: capture version/observations before/after, prove exact card/explanation match, exercise recovery without destructive failure injection, collect comprehension results, rollback drill and owner sign-off. | Code + Codex; Nate physical checks; Cowork acceptance review | W-100; no concurrent deploy; full required tests green |
 | W-107 | Work review and final cross-reference audit: reconcile review findings and all source→requirement→UC→W/C→tests→PR→release references; every unresolved item has owner, evidence request and revisit trigger. | Codex proxy-PO; ChatGPT Work independent architecture/UX review; Cowork verifies canonical record | Planning PR then Work critique; not a substitute for domain proof |
+| W-109 | Attention presentation contract: complete the section 15.3 matrix for every state across every theme and surface, resolve the section 15.2 conflicts, mockups reviewed by Nate. No code. | Cowork drafts; Nate decides; Code feasibility | none; start now |
+| W-110 | Vision comfort options per section 15.4: system-follow plus one simple display setting group, both surfaces, kiosk reachable, presentation only. | Code; Nate UX review | W-109 |
+| W-111 | Theme and mode verification per section 15.5: contrast and simulated color-vision guard test over every theme and option state. | Code builds; Codex independent review | W-109 |
 
 Dependency order: W-101 / W-93 identity correction and W-108 support recovery first for the immediate incident. W-102/103 and W-104 can proceed alongside schema fixtures. W-96 → W-97 → W-98 → W-105 final gate → W-100 staging → W-106. W-99 follows validated pilot feedback; W-107 review starts now and closes after findings are dispositioned. Numerical WSJF rank never bypasses dependency, permission or commissioning gates.
 
@@ -562,3 +565,69 @@ Received 2026-10-22 from ChatGPT Work, “Implementation Planning Review”, rev
 - W-107 planning review closes when all findings have recorded dispositions, owners and integration gates. Future test/PR/deployment links stay explicitly pending on #244; planning closure never implies their completion. Cowork verifies source applicability and scores; Code supplies bounded feasibility/contract PRs; Codex independently reviews evidence.
 
 Ready now: read-only census/caller analysis, schema/bundle validation, independent fixtures, migration design/tests, default-off reporting/evaluator development, fixture card/dictionary prototypes and converter runbook preparation. Integration requires the concrete artifacts named above, not this prose alone. Excluded: production operations, migration execution, converter installation, policy activation, live AQI enrollment, unverified CO2/vendor-AQI classification, notifications, research activation, recommendations and device actuation.
+
+## 15. Attention presentation and vision accessibility contract
+
+Status: **proposed 2026-10-24 (Claude session review of #241 to #245); nothing here is ratified.** Origin: Nate, 2026-10-24: card colors include color, border effects and visual cues, plus simple changes for vision-impaired or vision-sensitive users. Use case: UC-22. Work: W-109, W-110, W-111 in the [platform backlog](../backlog.md), which owns scores and statuses.
+
+Review finding: sections 7 and 14.1 fix what each state means and require a non-color explanation, but they do not define the visual vocabulary (borders, icon shapes, motion) or any user option, and no WSJF item owned that. The repository has no `prefers-contrast`, `forced-colors`, `prefers-reduced-motion` or color-vision handling in `ThemeProvider.jsx` or `styles.css` as of `ace3778`.
+
+### 15.1 Already fixed, not reopened here
+
+Attention levels and their meaning (MA-01), Normal/Watch/Alert vocabulary, color never carrying meaning alone, the labeled "Last known Alert; current unavailable" treatment (14.1), unknown shown neutral and outlined, native AQI categories preserved, and the existing critical-alert presentation staying independent.
+
+### 15.2 Conflicts to resolve in W-109
+
+Each is read from the repository, not assumed.
+
+1. **Layer rule.** The [UX Journey Standard](../../UX_JOURNEY_STANDARD.md) says a layer hue may not be the theme's danger color and layers never recolor text. Section 7 tints a card accent or background from a status token. Status needs its own channel, separate from the `--layer-N-*` values.
+2. **Border channel already carries device state.** `.state-alarm` and `.kpi-state-alarm` in `styles.css` use `--danger`, and the critical alert keeps a red bar, label and pulse. Attention borders must be visibly different from the critical alert, or the two will be confused.
+3. **Two themed surfaces.** Themes are defined separately in `ThemeProvider.jsx` and `family-hub.html` and kept in step by tests. Attention tokens must exist in both.
+4. **Structural hues collide with status hues.** Some themes use yellow, aquamarine or pink structurally (80s Neon: status is carried by icon, wording and badge shape, danger is pink-red). A Normal/Watch/Alert hue triplet per theme can collide with layer hues.
+5. **Motion.** The critical alert pulses. New emphasis must honor reduced motion, and reduced motion must never remove the critical bar and label.
+
+### 15.3 Channels per state (starting proposal for W-109 to complete, not decided)
+
+Every state needs a hue token, a border treatment, an icon silhouette, a text label and a motion rule. Hue is never the only difference between two states.
+
+| State | Label | Icon silhouette | Border | Hue | Motion |
+|---|---|---|---|---|---|
+| Normal | Normal | circle with check | thin, solid | theme Normal token | none |
+| Watch | Watch | triangle | medium, solid | theme Watch token | none |
+| Alert | Alert | diamond or octagon with exclamation | thick, solid, plus inset edge | theme Alert token | none; pulse stays reserved for critical alerts |
+| Unclassified | Unavailable | dashed circle | thin, dashed, no tint | neutral | none |
+| Last known Alert | Last known Alert; current unavailable | Alert silhouette outlined, with clock | dashed in the Alert hue, no fill | Alert token, outline only | none |
+| Partial coverage | Partial coverage badge | half-filled | as the assessed state, plus badge | as assessed | none |
+| Latched alarm | per existing alarm | per existing alarm | existing critical treatment | existing | existing |
+
+### 15.4 Vision and sensitivity options (proposed)
+
+Defaults follow the system: `prefers-contrast: more` strengthens borders and contrast; `forced-colors: active` relies on border, icon and text, not tints; `prefers-reduced-motion: reduce` removes animation.
+
+One simple display setting group, stored in the browser like the theme (no server storage, no account data), shared by the Cabin UI and the static Family Hub, reachable on the touch kiosk:
+
+- **Color-safe status colors:** attention hues chosen per theme to stay distinguishable under the common color-vision deficiencies.
+- **Stronger outlines:** heavier borders and larger icons on every state.
+- **Reduce intensity:** no glow or shadow effects and lower saturation on attention tints, for light sensitivity.
+- **Reduce motion:** no animation; the critical alert keeps its red bar and label.
+
+Shape, border and icon cues are always on in every mode. Options change presentation only: never an assessment, never an alert, never a threshold. Where a theme cannot meet the section 15.5 thresholds with its own hues, only the status layer falls back to a compliant palette.
+
+Open decisions for Nate (proxy-PO may rule; unanswered until recorded in Git):
+
+| Ref | Question | Needed for |
+|---|---|---|
+| MA-16 | Final option list: the four above, fewer, or a single "accessible display" switch? | W-110 |
+| MA-17 | Stored per browser, or per signed-in person? Per browser is the simplest and matches themes today; a shared kiosk then has one setting for everyone. | W-110 |
+| MA-18 | May the color-safe palette override a theme's own status hues, or only be offered in themes that can support it? | W-109, W-111 |
+
+### 15.5 Verification
+
+- Text on an attention tint at least 4.5:1. Attention border and icon against the adjacent surface at least 3:1.
+- Pairwise distinguishability of the Normal, Watch and Alert hues under simulated deuteranopia, protanopia and tritanopia in every theme and option state. The method and threshold are fixed in W-109 from a cited standard, not invented in implementation.
+- A guard test fails the build when any theme in either surface lacks attention tokens or misses a threshold. It extends the existing rule that no component rule contains a hex color.
+- W-105 adds cases: a participant with color-vision deficiency if one is available (otherwise NOT_RUN, never inferred), a light-sensitivity case with reduced intensity, reduced motion, stale last-known Alert, and partial coverage. Automated checks do not replace the human gate.
+
+### 15.6 Sequencing
+
+Two lanes converge at W-98. The data lane is unchanged: W-101, then W-102 and W-103, then W-96, then W-97. The presentation lane is W-109, then W-110 and W-111 in parallel, using fixture states and fixed token names; it needs no assessment data, so it starts immediately and removes presentation design from the W-98 critical path. W-98 consumes both lanes. Dependencies, not WSJF order, govern.
