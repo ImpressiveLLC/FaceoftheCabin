@@ -64,6 +64,30 @@ def label_key(target):
     return json.dumps(semantic, sort_keys=True)
 
 
+def canonical(value):
+    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+
+
+def agreed_row_sha(row):
+    """Binds an agreed row's id, text and target. Recomputed downstream, so editing a row after the audit is detected."""
+    return hashlib.sha256(canonical([row["id"], row["text"], row["target"]]).encode()).hexdigest()
+
+
+def cohort_sha(agreed_rows):
+    """The exact set of agent-agreed rows an audit is about (ids, text, targets, track)."""
+    tracks = sorted({r["provenance"]["track"] for r in agreed_rows})
+    return hashlib.sha256(canonical([tracks, sorted(agreed_row_sha(r) for r in agreed_rows)]).encode()).hexdigest()
+
+
+def audit_size(cohort_n):
+    return max(1, round(cohort_n * AUDIT_SHARE)) if cohort_n else 0
+
+
+def select_audit(agreed_rows, seed):
+    ordered = sorted(agreed_rows, key=lambda r: r["id"])
+    return sorted(random.Random(seed).sample(ordered, audit_size(len(ordered))), key=lambda r: r["id"]) if ordered else []
+
+
 def make_packet(sample_path, track, out_dir, size=50):
     rows = read_jsonl(sample_path)
     unique_rows(rows, "sample")
@@ -194,6 +218,7 @@ def import_labels(sample_path, packet_dir, labels_path, reviewer, reviewer_model
                 reviewer_model=reviewer_model, second_reviewer=second_reviewer if second else None,
                 agreement="agreed", track=track, purpose="training-candidate")
             out.pop("suspect_source_label", None)
+            out["provenance"]["agreed_row_sha256"] = agreed_row_sha(out)
             approved.append(out)
         elif state == "needs_second":
             pending.append(rid)
@@ -203,9 +228,11 @@ def import_labels(sample_path, packet_dir, labels_path, reviewer, reviewer_model
                                    review_notes=f"agent labels disagree; first {reviewer}: {label_key(first[rid])}; "
                                                 f"second {second_reviewer}: {label_key(second[rid])}; source: {label_key(row['target'])}")
             queue_nate.append(q)
-    rng = random.Random(seed)
-    audit_n = max(1, round(len(approved) * AUDIT_SHARE)) if approved else 0
-    audit = sorted(rng.sample(approved, audit_n), key=lambda r: r["id"]) if approved else []
+    audit = select_audit(approved, seed)
+    cohort = cohort_sha(approved) if approved else None
+    audit_manifest = {"track": track, "cohort_sha256": cohort, "cohort_n": len(approved), "audit_n": len(audit), "seed": seed,
+                      "audit_ids": [r["id"] for r in audit],
+                      "audit_ids_sha256": hashlib.sha256("\n".join(r["id"] for r in audit).encode()).hexdigest()}
     if sha256_file(sample_path) != original_hash:
         raise RuntimeError("the sample file changed during import")
     report = {"track": track, "reviewer": reviewer, "reviewer_kind": "agent", "second_reviewer": second_reviewer,
@@ -213,12 +240,13 @@ def import_labels(sample_path, packet_dir, labels_path, reviewer, reviewer_model
               "to_nate": len(queue_nate), "audit_sample": len(audit),
               "suspect_rows": sum(1 for r in rows if r.get("suspect_source_label")),
               "suspect_rows_approved_by_source_agreement": 0,
-              "needs_second_ids": pending, "sample_sha256": original_hash}
+              "needs_second_ids": pending, "sample_sha256": original_hash, "cohort_sha256": cohort}
     if out_dir:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         for name, items in (("agreed.jsonl", approved), ("queue-nate.jsonl", queue_nate), ("audit.jsonl", audit)):
             (out_dir / name).write_text("".join(json.dumps(i, sort_keys=True) + "\n" for i in items), encoding="utf-8")
+        (out_dir / "audit.manifest.json").write_text(json.dumps(audit_manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         (out_dir / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report, approved, queue_nate, audit
 
@@ -226,15 +254,37 @@ def import_labels(sample_path, packet_dir, labels_path, reviewer, reviewer_model
 AUDIT_PASS_RATE = 0.9
 
 
-def record_audit(agreed_path, audit_path, decisions_path, audited_by, out_path):
-    """Nate's audit of the agent-agreed rows. At 90 percent or better every agreed row of the track becomes `approved` with the
-    audit result linked; a row Nate marked wrong is withheld. Below 90 percent nothing is promoted and the run is refused."""
+def record_audit(agreed_path, audit_path, decisions_path, audited_by, out_path, manifest_path=None):
+    """Nate's audit of one exact cohort of agent-agreed rows. The audit sample must be the one the importer drew from that
+    cohort (same ids, same size, same cohort hash); decisions must cover exactly it. At 90 percent or better the cohort's rows become
+    `approved` with the audit identities linked; a row marked wrong is withheld; below 90 percent nothing is promoted.
+    `audited_by` is attribution, not authentication: the decisions themselves must come from Nate."""
     agreed = read_jsonl(agreed_path)
     by_id = unique_rows(agreed, "agreed rows")
-    audit_ids = sorted(r["id"] for r in read_jsonl(audit_path))
+    if not agreed:
+        raise ValueError("no agreed rows to audit")
+    manifest_path = Path(manifest_path) if manifest_path else Path(audit_path).with_name("audit.manifest.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for r in agreed:
+        if r["provenance"].get("review_status") != "agent-agreed" or r["provenance"].get("agreed_row_sha256") != agreed_row_sha(r):
+            raise ValueError(f"agreed row changed since import or not agent-agreed: {r['id']}")
+    cohort = cohort_sha(agreed)
+    if manifest["cohort_sha256"] != cohort:
+        raise ValueError("stale or foreign audit: it was drawn from a different cohort of agreed rows")
+    audit_rows = read_jsonl(audit_path)
+    audit_ids = [r["id"] for r in audit_rows]
+    if len(set(audit_ids)) != len(audit_ids):
+        raise ValueError("duplicate ids in the audit sample")
+    if not set(audit_ids) <= set(by_id):
+        raise ValueError("audit sample contains ids that are not in the agreed cohort")
+    if len(audit_ids) != audit_size(len(agreed)) or len(audit_ids) != manifest["audit_n"]:
+        raise ValueError(f"audit sample has {len(audit_ids)} rows; {audit_size(len(agreed))} are required for {len(agreed)} agreed rows")
+    expected = [r["id"] for r in select_audit(agreed, manifest["seed"])]
+    if sorted(audit_ids) != expected or manifest["audit_ids"] != expected:
+        raise ValueError("audit sample is not the sample the importer drew from this cohort")
     decisions = read_jsonl(decisions_path)
     dec = unique_rows(decisions, "audit decisions")
-    if sorted(dec) != audit_ids:
+    if sorted(dec) != sorted(audit_ids):
         raise ValueError("audit decisions must cover exactly the audit sample, no more and no fewer")
     if not audited_by or audited_by.lower().startswith(("codex", "cowork", "claude", "agent")):
         raise ValueError("an audit must be recorded by a person (Nate), not an agent")
@@ -245,8 +295,9 @@ def record_audit(agreed_path, audit_path, decisions_path, audited_by, out_path):
     if rate < AUDIT_PASS_RATE:
         raise ValueError(f"audit agreement {rate:.2f} is below {AUDIT_PASS_RATE}; nothing promoted")
     wrong = {d["id"] for d in decisions if not d["agree"]}
-    result = {"audited_by": audited_by, "audited_at": datetime.now(timezone.utc).isoformat(), "sample_n": len(decisions),
-              "agreed_n": agreed_n, "rate": rate, "audit_ids_sha256": hashlib.sha256("\n".join(audit_ids).encode()).hexdigest()}
+    result = {"audited_by": audited_by, "attribution_only": True, "audited_at": datetime.now(timezone.utc).isoformat(),
+              "sample_n": len(decisions), "agreed_n": agreed_n, "rate": rate, "cohort_sha256": cohort, "cohort_n": len(agreed),
+              "track": manifest["track"], "audit_ids_sha256": manifest["audit_ids_sha256"]}
     promoted = []
     for rid in sorted(by_id):
         if rid in wrong:
@@ -264,6 +315,7 @@ def main():
     au = sub.add_parser("record-audit")
     au.add_argument("--agreed", type=Path, required=True)
     au.add_argument("--audit-sample", type=Path, required=True)
+    au.add_argument("--audit-manifest", type=Path, help="default: audit.manifest.json beside the audit sample")
     au.add_argument("--decisions", type=Path, required=True, help="JSONL {id, agree} for exactly the audit sample")
     au.add_argument("--audited-by", required=True)
     au.add_argument("--out", type=Path, required=True)
@@ -287,7 +339,7 @@ def main():
     if args.cmd == "make-packet":
         print(json.dumps(make_packet(args.sample, args.track, args.out, args.size), indent=1))
     elif args.cmd == "record-audit":
-        print(json.dumps(record_audit(args.agreed, args.audit_sample, args.decisions, args.audited_by, args.out), indent=1))
+        print(json.dumps(record_audit(args.agreed, args.audit_sample, args.decisions, args.audited_by, args.out, args.audit_manifest), indent=1))
     else:
         report = import_labels(args.sample, args.packet, args.labels, args.reviewer, args.reviewer_model, args.track,
                                args.second_labels, args.second_reviewer, args.second_model, args.out)[0]

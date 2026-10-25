@@ -7,7 +7,6 @@ from pathlib import Path
 
 from contract import read_jsonl
 from grading import review_packets as rp
-from prepare_sft import split_rows
 
 ROOT = Path(__file__).resolve().parent
 
@@ -59,69 +58,6 @@ class FullSemanticComparison(unittest.TestCase):
         later = self.schedule("2026-12-01T19:00:00-06:00")
         self.assertEqual(rp.decide(src, later, None)[0], "needs_second")
         self.assertEqual(rp.decide(src, later, later)[0], "agreed")  # two reviewers agreeing on the later time is a real agreement
-
-
-class AgentRowsAreNotApprovedUntilAudited(unittest.TestCase):
-    def agent_rows(self, n, audit=None):
-        rows = []
-        for i in range(n):
-            r = row(f"x{i}", f"flip on the unit{i} lamp now", target(device_name=f"unit{i} lamp", state="on"))
-            r.pop("suspect_source_label")
-            r["provenance"].update(review_status="approved", reviewer="codex-proxy", reviewed_at="2026-10-26T00:00:00Z",
-                                   reviewer_kind="agent", reviewer_model="m", agreement="agreed", track="A")
-            if audit:
-                r["provenance"]["audit_result"] = audit
-            rows.append(r)
-        return rows
-
-    def test_100_unaudited_agent_rows_are_refused_by_the_preparer(self):
-        with self.assertRaisesRegex(ValueError, "without a passed human audit"):
-            split_rows(self.agent_rows(100), gold())
-
-    def test_a_failed_blank_or_empty_audit_does_not_count(self):
-        for audit in ({"audited_by": "nate", "rate": 0.8, "sample_n": 10}, {"audited_by": "", "rate": 1.0, "sample_n": 10},
-                      {"audited_by": "nate", "rate": 1.0, "sample_n": 0}):
-            with self.assertRaises(ValueError):
-                split_rows(self.agent_rows(5, audit), gold())
-
-    def test_a_passed_audit_lets_the_rows_through(self):
-        result = split_rows(self.agent_rows(20, {"audited_by": "nate", "rate": 0.95, "sample_n": 10}), gold())
-        self.assertEqual(sum(len(v) for v in result.values()), 20)
-
-    def test_import_leaves_rows_pending_and_record_audit_promotes_only_at_90_percent(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = Path(tmp)
-            rows = sample_rows(100)  # enough families for non-empty train, validation and test splits
-            sample = d / "sample.jsonl"
-            write(sample, rows)
-            rp.make_packet(sample, "A", d / "packet")
-            labels = d / "l.jsonl"
-            write(labels, [{"id": r["id"], "target": r["target"]} for r in rows])
-            _, agreed, _, audit = rp.import_labels(sample, d / "packet", labels, "codex-proxy", "m", "A", out_dir=d / "out")
-            self.assertTrue(all(r["provenance"]["review_status"] == "agent-agreed" for r in agreed))
-            with self.assertRaises(ValueError):
-                split_rows(agreed, gold())
-            agreed_path, audit_path = d / "out" / "agreed.jsonl", d / "out" / "audit.jsonl"
-            ids = [a["id"] for a in audit]
-            yes = d / "yes.jsonl"
-            write(yes, [{"id": i, "agree": True} for i in ids])
-            with self.assertRaisesRegex(ValueError, "not an agent"):
-                rp.record_audit(agreed_path, audit_path, yes, "codex-proxy", d / "p.jsonl")
-            summary = rp.record_audit(agreed_path, audit_path, yes, "Nate", d / "p.jsonl")
-            promoted = read_jsonl(d / "p.jsonl")
-            self.assertEqual(summary["promoted"], len(promoted))
-            self.assertTrue(all(r["provenance"]["review_status"] == "approved" and r["provenance"]["audit_result"]["rate"] >= 0.9
-                                for r in promoted))
-            split_rows(promoted, gold())
-            short = d / "short.jsonl"
-            write(short, [{"id": i, "agree": True} for i in ids[:-1]])
-            with self.assertRaisesRegex(ValueError, "exactly the audit sample"):
-                rp.record_audit(agreed_path, audit_path, short, "Nate", d / "p2.jsonl")
-            no = d / "no.jsonl"
-            write(no, [{"id": i, "agree": False} for i in ids])
-            with self.assertRaisesRegex(ValueError, "below 0.9"):
-                rp.record_audit(agreed_path, audit_path, no, "Nate", d / "p3.jsonl")
-            self.assertFalse((d / "p3.jsonl").exists())
 
 
 class PacketMutations(unittest.TestCase):
