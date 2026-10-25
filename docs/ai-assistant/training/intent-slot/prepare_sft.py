@@ -23,6 +23,11 @@ def split_rows(rows, gold):
         if (provenance.get("review_status") != "approved" or
                 not all(provenance.get(k) for k in ("reviewer", "reviewed_at", "source", "revision", "sha256", "license"))):
             raise ValueError(f"Missing human approval/provenance: {row['id']}")
+        if provenance.get("reviewer_kind") == "agent":
+            # An agent label counts only after Nate's audit of its track passed at 90 percent or better and is linked here.
+            audit = provenance.get("audit_result") or {}
+            if not (audit.get("audited_by") and audit.get("rate", 0) >= 0.9 and audit.get("sample_n", 0) > 0):
+                raise ValueError(f"Agent label without a passed human audit: {row['id']}")
         text = normalize(row["text"])
         if not text or text in seen or text in forbidden_text or row["group"] in forbidden_group:
             raise ValueError(f"Empty, duplicate or held-out example: {row['id']}")

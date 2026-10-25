@@ -69,7 +69,7 @@ class Packets(unittest.TestCase):
         _, approved, _, _ = self.run_import(self.labels("l.jsonl"))
         p = approved[0]["provenance"]
         self.assertEqual((p["reviewer_kind"], p["reviewer_model"], p["track"], p["agreement"], p["review_status"]),
-                         ("agent", "gpt-x", "A", "agreed", "approved"))
+                         ("agent", "gpt-x", "A", "agreed", "agent-agreed"))
         for key in ("reviewer", "reviewed_at", "source", "revision", "sha256", "license"):
             self.assertTrue(p[key], key)
         self.assertNotIn("suspect_source_label", approved[0])

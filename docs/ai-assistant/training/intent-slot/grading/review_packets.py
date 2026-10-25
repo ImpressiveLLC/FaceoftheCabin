@@ -48,9 +48,20 @@ def check_source_rows(rows):
 
 
 def label_key(target):
-    """What two labels must agree on: intent and slots, case and spacing folded. Wording of a question is not compared."""
-    slots = {k: " ".join(str(v).casefold().split()) for k, v in (target.get("slots") or {}).items()}
-    return json.dumps([target["intent"], sorted(slots.items())])
+    """What two labels must agree on: the whole semantic target. Case and spacing are folded in strings; numbers, dates, triggers,
+    conditions and actions are compared as they are. Only the wording of a clarification question is not compared, just that
+    one is asked."""
+    def fold(value):
+        if isinstance(value, str):
+            return " ".join(value.casefold().split())
+        if isinstance(value, dict):
+            return {k: fold(v) for k, v in sorted(value.items())}
+        if isinstance(value, list):
+            return [fold(v) for v in value]
+        return value
+    semantic = {k: fold(v) for k, v in target.items() if k != "clarification"}
+    semantic["clarification_asked"] = bool(target.get("clarification"))
+    return json.dumps(semantic, sort_keys=True)
 
 
 def make_packet(sample_path, track, out_dir, size=50):
@@ -67,9 +78,36 @@ def make_packet(sample_path, track, out_dir, size=50):
         files.append(name)
     manifest = {"track": track, "sample_sha256": sha256_file(sample_path), "rows": len(packet),
                 "ids_sha256": hashlib.sha256("\n".join(p["id"] for p in packet).encode()).hexdigest(),
-                "files": files, "blind": True, "fields_given_to_reviewer": ["id", "text"]}
+                "files": files, "file_sha256": {f: sha256_file(out_dir / f) for f in files},
+                "blind": True, "fields_given_to_reviewer": ["id", "text"]}
     (out_dir / "packet.manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest
+
+
+def check_packet(packet_dir, manifest, by_id):
+    """The packet on disk must be exactly what make-packet wrote for this sample: same files, same bytes, same id and text."""
+    packet_dir = Path(packet_dir)
+    if sorted(manifest.get("files", [])) != sorted(p.name for p in packet_dir.glob("packet-*.jsonl")):
+        raise ValueError("packet files differ from the manifest (added or missing file)")
+    seen = {}
+    for name in manifest["files"]:
+        path = packet_dir / name
+        if manifest.get("file_sha256", {}).get(name) != sha256_file(path):
+            raise ValueError(f"packet file altered since make-packet: {name}")
+        for item in read_jsonl(path):
+            if sorted(item) != ["id", "text"]:
+                raise ValueError(f"packet row has fields beyond id and text: {item.get('id')}")
+            if item["id"] in seen:
+                raise ValueError(f"duplicate id in packet: {item['id']}")
+            seen[item["id"]] = item["text"]
+    if set(seen) != set(by_id):
+        raise ValueError("packet ids differ from the sample (missing or invented rows)")
+    altered = sorted(i for i, t in seen.items() if t != by_id[i]["text"])
+    if altered:
+        raise ValueError(f"packet text differs from the sample for {len(altered)} rows, e.g. {altered[:5]}")
+    ids_hash = hashlib.sha256("\n".join(sorted(seen)).encode()).hexdigest()
+    if ids_hash != manifest["ids_sha256"]:
+        raise ValueError("packet ids hash does not match the manifest")
 
 
 def load_labels(path, expected_ids, who):
@@ -135,6 +173,7 @@ def import_labels(sample_path, packet_dir, labels_path, reviewer, reviewer_model
     rows = read_jsonl(sample_path)
     by_id = unique_rows(rows, "sample")
     check_source_rows(rows)
+    check_packet(packet_dir, manifest, by_id)
     ids = set(by_id)
     first = load_labels(labels_path, ids, reviewer)
     second = load_labels(second_path, ids, second_reviewer or "second reviewer") if second_path else None
@@ -151,7 +190,7 @@ def import_labels(sample_path, packet_dir, labels_path, reviewer, reviewer_model
             out = json.loads(json.dumps(row))
             out["target"] = label
             out["provenance"].update(
-                review_status="approved", reviewer=reviewer, reviewed_at=now, reviewer_kind="agent",
+                review_status="agent-agreed", reviewer=reviewer, reviewed_at=now, reviewer_kind="agent",
                 reviewer_model=reviewer_model, second_reviewer=second_reviewer if second else None,
                 agreement="agreed", track=track, purpose="training-candidate")
             out.pop("suspect_source_label", None)
@@ -178,15 +217,56 @@ def import_labels(sample_path, packet_dir, labels_path, reviewer, reviewer_model
     if out_dir:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        for name, items in (("approved.jsonl", approved), ("queue-nate.jsonl", queue_nate), ("audit.jsonl", audit)):
+        for name, items in (("agreed.jsonl", approved), ("queue-nate.jsonl", queue_nate), ("audit.jsonl", audit)):
             (out_dir / name).write_text("".join(json.dumps(i, sort_keys=True) + "\n" for i in items), encoding="utf-8")
         (out_dir / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report, approved, queue_nate, audit
 
 
+AUDIT_PASS_RATE = 0.9
+
+
+def record_audit(agreed_path, audit_path, decisions_path, audited_by, out_path):
+    """Nate's audit of the agent-agreed rows. At 90 percent or better every agreed row of the track becomes `approved` with the
+    audit result linked; a row Nate marked wrong is withheld. Below 90 percent nothing is promoted and the run is refused."""
+    agreed = read_jsonl(agreed_path)
+    by_id = unique_rows(agreed, "agreed rows")
+    audit_ids = sorted(r["id"] for r in read_jsonl(audit_path))
+    decisions = read_jsonl(decisions_path)
+    dec = unique_rows(decisions, "audit decisions")
+    if sorted(dec) != audit_ids:
+        raise ValueError("audit decisions must cover exactly the audit sample, no more and no fewer")
+    if not audited_by or audited_by.lower().startswith(("codex", "cowork", "claude", "agent")):
+        raise ValueError("an audit must be recorded by a person (Nate), not an agent")
+    if any(not isinstance(d.get("agree"), bool) for d in decisions):
+        raise ValueError("every audit decision needs agree: true or false")
+    agreed_n = sum(1 for d in decisions if d["agree"])
+    rate = agreed_n / len(decisions)
+    if rate < AUDIT_PASS_RATE:
+        raise ValueError(f"audit agreement {rate:.2f} is below {AUDIT_PASS_RATE}; nothing promoted")
+    wrong = {d["id"] for d in decisions if not d["agree"]}
+    result = {"audited_by": audited_by, "audited_at": datetime.now(timezone.utc).isoformat(), "sample_n": len(decisions),
+              "agreed_n": agreed_n, "rate": rate, "audit_ids_sha256": hashlib.sha256("\n".join(audit_ids).encode()).hexdigest()}
+    promoted = []
+    for rid in sorted(by_id):
+        if rid in wrong:
+            continue
+        row = json.loads(json.dumps(by_id[rid]))
+        row["provenance"].update(review_status="approved", audit_result=result)
+        promoted.append(row)
+    Path(out_path).write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in promoted), encoding="utf-8")
+    return {**result, "promoted": len(promoted), "withheld": sorted(wrong)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
+    au = sub.add_parser("record-audit")
+    au.add_argument("--agreed", type=Path, required=True)
+    au.add_argument("--audit-sample", type=Path, required=True)
+    au.add_argument("--decisions", type=Path, required=True, help="JSONL {id, agree} for exactly the audit sample")
+    au.add_argument("--audited-by", required=True)
+    au.add_argument("--out", type=Path, required=True)
     mk = sub.add_parser("make-packet")
     mk.add_argument("--sample", type=Path, required=True)
     mk.add_argument("--track", choices=["A", "B", "C"], required=True)
@@ -206,6 +286,8 @@ def main():
     args = parser.parse_args()
     if args.cmd == "make-packet":
         print(json.dumps(make_packet(args.sample, args.track, args.out, args.size), indent=1))
+    elif args.cmd == "record-audit":
+        print(json.dumps(record_audit(args.agreed, args.audit_sample, args.decisions, args.audited_by, args.out), indent=1))
     else:
         report = import_labels(args.sample, args.packet, args.labels, args.reviewer, args.reviewer_model, args.track,
                                args.second_labels, args.second_reviewer, args.second_model, args.out)[0]
