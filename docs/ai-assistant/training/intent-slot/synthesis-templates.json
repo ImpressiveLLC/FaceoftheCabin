@@ -964,9 +964,9 @@
   {
     "id": "train-clarify-nounit-1",
     "utterances": [
-      "Set the family room thermostat to 68",
-      "Make the family room 68",
-      "Put the family room thermostat at 68 please"
+      "Set the family room thermostat to 18",
+      "Make the family room 18",
+      "Put the family room thermostat at 18 please"
     ],
     "target": {
       "intent": "clarify",
@@ -979,7 +979,7 @@
   {
     "id": "train-clarify-nounit-pair-1",
     "utterances": [
-      "Set the family room thermostat to 68 degrees Fahrenheit"
+      "Set the family room thermostat to 18 degrees Celsius"
     ],
     "target": {
       "intent": "set_device_attribute",
@@ -987,8 +987,8 @@
         "device_name": "thermostat",
         "location": "family room",
         "attribute_type": "temperature",
-        "attribute_value": "68",
-        "unit": "F"
+        "attribute_value": "18",
+        "unit": "C"
       },
       "requires_confirmation": true,
       "clarification": null,
@@ -998,9 +998,9 @@
   {
     "id": "train-clarify-nounit-2",
     "utterances": [
-      "Set the study thermostat to 72",
-      "Make the study 72",
-      "Get the study to 72"
+      "Set the study thermostat to 21",
+      "Make the study 21",
+      "Get the study to 21"
     ],
     "target": {
       "intent": "clarify",
@@ -1013,7 +1013,7 @@
   {
     "id": "train-clarify-nounit-pair-2",
     "utterances": [
-      "Set the study thermostat to 72 degrees Fahrenheit"
+      "Set the study thermostat to 21 degrees Celsius"
     ],
     "target": {
       "intent": "set_device_attribute",
@@ -1021,8 +1021,8 @@
         "device_name": "thermostat",
         "location": "study",
         "attribute_type": "temperature",
-        "attribute_value": "72",
-        "unit": "F"
+        "attribute_value": "21",
+        "unit": "C"
       },
       "requires_confirmation": true,
       "clarification": null,
@@ -1032,9 +1032,9 @@
   {
     "id": "train-clarify-nounit-3",
     "utterances": [
-      "Set the loft thermostat to 64",
-      "Have the loft at 64",
-      "Loft thermostat, 64"
+      "Set the loft thermostat to 25",
+      "Have the loft at 25",
+      "Loft thermostat, 25"
     ],
     "target": {
       "intent": "clarify",
@@ -1047,7 +1047,7 @@
   {
     "id": "train-clarify-nounit-pair-3",
     "utterances": [
-      "Set the loft thermostat to 64 degrees Fahrenheit"
+      "Set the loft thermostat to 25 degrees Celsius"
     ],
     "target": {
       "intent": "set_device_attribute",
@@ -1055,8 +1055,8 @@
         "device_name": "thermostat",
         "location": "loft",
         "attribute_type": "temperature",
-        "attribute_value": "64",
-        "unit": "F"
+        "attribute_value": "25",
+        "unit": "C"
       },
       "requires_confirmation": true,
       "clarification": null,
@@ -1066,9 +1066,9 @@
   {
     "id": "train-clarify-nounit-4",
     "utterances": [
-      "Set the guest room thermostat to 70",
-      "Make the guest room 70",
-      "Guest room thermostat to 70 please"
+      "Set the guest room thermostat to 30",
+      "Make the guest room 30",
+      "Guest room thermostat to 30 please"
     ],
     "target": {
       "intent": "clarify",
@@ -1081,7 +1081,7 @@
   {
     "id": "train-clarify-nounit-pair-4",
     "utterances": [
-      "Set the guest room thermostat to 70 degrees Fahrenheit"
+      "Set the guest room thermostat to 30 degrees Fahrenheit"
     ],
     "target": {
       "intent": "set_device_attribute",
@@ -1089,7 +1089,7 @@
         "device_name": "thermostat",
         "location": "guest room",
         "attribute_type": "temperature",
-        "attribute_value": "70",
+        "attribute_value": "30",
         "unit": "F"
       },
       "requires_confirmation": true,
@@ -1100,9 +1100,9 @@
   {
     "id": "train-clarify-nounit-5",
     "utterances": [
-      "Set the garage thermostat to 60",
-      "Bring the garage to 60",
-      "Garage at 60"
+      "Set the garage thermostat to 33",
+      "Bring the garage to 33",
+      "Garage at 33"
     ],
     "target": {
       "intent": "clarify",
@@ -1115,7 +1115,7 @@
   {
     "id": "train-clarify-nounit-pair-5",
     "utterances": [
-      "Set the garage thermostat to 60 degrees Fahrenheit"
+      "Set the garage thermostat to 33 degrees Fahrenheit"
     ],
     "target": {
       "intent": "set_device_attribute",
@@ -1123,7 +1123,7 @@
         "device_name": "thermostat",
         "location": "garage",
         "attribute_type": "temperature",
-        "attribute_value": "60",
+        "attribute_value": "33",
         "unit": "F"
       },
       "requires_confirmation": true,
@@ -1134,9 +1134,9 @@
   {
     "id": "train-clarify-nounit-6",
     "utterances": [
-      "Set the attic thermostat to 55",
-      "Keep the attic at 55",
-      "Attic thermostat to 55"
+      "Set the attic thermostat to 36",
+      "Keep the attic at 36",
+      "Attic thermostat to 36"
     ],
     "target": {
       "intent": "clarify",
@@ -1149,7 +1149,7 @@
   {
     "id": "train-clarify-nounit-pair-6",
     "utterances": [
-      "Set the attic thermostat to 55 degrees Fahrenheit"
+      "Set the attic thermostat to 36 degrees Fahrenheit"
     ],
     "target": {
       "intent": "set_device_attribute",
@@ -1157,7 +1157,7 @@
         "device_name": "thermostat",
         "location": "attic",
         "attribute_type": "temperature",
-        "attribute_value": "55",
+        "attribute_value": "36",
         "unit": "F"
       },
       "requires_confirmation": true,
@@ -1336,6 +1336,34 @@
         "state": "off"
       },
       "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-unsupported-subzero-1",
+    "utterances": [
+      "Set the loft thermostat to -5",
+      "Make the loft thermostat -5"
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-unsupported-subzero-2",
+    "utterances": [
+      "Set the attic thermostat to minus ten",
+      "Make the attic thermostat minus ten"
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
       "clarification": null,
       "automation": null
     }
