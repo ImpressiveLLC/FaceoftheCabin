@@ -182,6 +182,16 @@ public class CabinEventService implements DeviceEventLookup {
      * fields, cabin-telemetry.json).
      */
     public List<TelemetryDailyPoint> dailyAggregates(String deviceId, String payloadField, int days) {
+        return dailyAggregates(List.of(deviceId), payloadField, days);
+    }
+
+    /**
+     * The same aggregation over the rows of several device ids at once: a Zigbee device and the Home
+     * Assistant sensor entities linked under it (see {@link ServiceHistory}), so a series does not stop
+     * at the day the link was made.
+     */
+    public List<TelemetryDailyPoint> dailyAggregates(List<String> deviceIds, String payloadField, int days) {
+        if (deviceIds.isEmpty()) return List.of();
         int cappedDays = Math.min(Math.max(days, 1), 366);
         Instant since = Instant.now().minus(java.time.Duration.ofDays(cappedDays));
         String sql = """
@@ -191,12 +201,12 @@ public class CabinEventService implements DeviceEventLookup {
                    MAX((payload->>?)::numeric) AS max_val,
                    COUNT(*) AS sample_count
             FROM cabin_event
-            WHERE device_id = ?
+            WHERE device_id IN (%s)
               AND jsonb_exists(payload, ?)
               AND payload->>? ~ '^-?[0-9]+\\.?[0-9]*$'
               AND time >= ?
             GROUP BY 1 ORDER BY 1
-            """;
+            """.formatted(String.join(",", java.util.Collections.nCopies(deviceIds.size(), "?")));
         // W-21: `since` is a precise instant ("N days ago from right now"),
         // not a day boundary, so the earliest day this query can ever
         // return is almost always partial -- it only has samples from
@@ -213,9 +223,10 @@ public class CabinEventService implements DeviceEventLookup {
             "SELECT date_trunc('day', ?::timestamptz)", java.sql.Timestamp.class,
             java.sql.Timestamp.from(since)).toInstant();
         boolean sinceIsMidExactly = since.equals(sinceDayStart);
-        return jdbc.queryForList(sql,
-                payloadField, payloadField, payloadField, deviceId, payloadField, payloadField,
-                java.sql.Timestamp.from(since))
+        List<Object> args = new java.util.ArrayList<>(List.of(payloadField, payloadField, payloadField));
+        args.addAll(deviceIds);
+        args.addAll(List.of(payloadField, payloadField, java.sql.Timestamp.from(since)));
+        return jdbc.queryForList(sql, args.toArray())
             .stream().map(row -> toDailyPoint(row, sinceDayStart, sinceIsMidExactly)).toList();
     }
 

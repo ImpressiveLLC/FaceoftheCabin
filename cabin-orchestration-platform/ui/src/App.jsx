@@ -1,4 +1,5 @@
 import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget } from "./electricalMonitoring";
+import { collapseDuplicateZigbeeServices } from "./zigbeeServices";
 /**
  * Cabin Orchestration Platform — Shell UI
  *
@@ -6207,9 +6208,11 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }
   const [overIdx, setOverIdx] = useState(null);
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
+  // D13 A1: one card per physical device; an HA entity repeating its Zigbee parent's reading is not a second card.
+  const monitored = collapseDuplicateZigbeeServices(electricalMonitoringDevices(devices));
   const locDevices = activeLocation === "both"
-    ? electricalMonitoringDevices(devices)
-    : electricalMonitoringDevices(devices).filter(d => !d.location || d.location === activeLocation);
+    ? monitored
+    : monitored.filter(d => !d.location || d.location === activeLocation);
 
   const { ordered, pinnedCount, reorder } = useDraggableOrder(
     `order.monitoring.${activeLocation}`, locDevices, isAlarm

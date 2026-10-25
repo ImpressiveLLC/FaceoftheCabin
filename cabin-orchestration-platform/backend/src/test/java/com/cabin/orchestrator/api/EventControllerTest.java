@@ -145,6 +145,35 @@ class EventControllerTest {
         assertTrue(response.clamped());
     }
 
+    // 2026-10-24: a Zigbee parent's history reads the rows logged under its linked HA sensor entity too,
+    // so the series does not stop the day W-88 linked them (outside temperature, 2026-10-20).
+    @Test
+    void aZigbeeParentsTelemetryHistoryIncludesItsLinkedEntitysEarlierRows() {
+        CabinEventService rawEventService = new CabinEventService(
+            new JdbcTemplate(new SimpleDriverDataSource(
+                new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+        registry.registerDescriptor(new DeviceDescriptor("z2m-temp_outside_lowest", "temp_outside_lowest",
+            DeviceType.TEMPERATURE_SENSOR, Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/temp_outside_lowest", true, "cabin"));
+        registry.registerCandidate(new DeviceDescriptor("ha-cabin-sensor-temp-outside-lowest-temperature", "Temp Outside",
+            DeviceType.TEMPERATURE_SENSOR, Set.of(DeviceCapability.TELEMETRY), "ha_rest", "sensor.temp_outside_lowest_temperature", false, "cabin"),
+            Map.of("entityId", "sensor.temp_outside_lowest_temperature"));
+        registry.setDiscoveredParent("ha-cabin-sensor-temp-outside-lowest-temperature", "z2m-temp_outside_lowest");
+        rawEventService.save(new CabinEvent("evt-old-ha", "ha-cabin-sensor-temp-outside-lowest-temperature", "TELEMETRY",
+            "INFO", Instant.now(), Map.of("temperature", 10)));
+        rawEventService.save(new CabinEvent("evt-new-native", "z2m-temp_outside_lowest", "TELEMETRY",
+            "INFO", Instant.now(), Map.of("temperature", 14)));
+
+        var response = controller.telemetryHistory("z2m-temp_outside_lowest", "temperature", 30);
+
+        assertEquals(1, response.points().size());
+        assertEquals(2L, response.points().get(0).sampleCount());
+        assertEquals(12.0, response.points().get(0).avg());
+        // The picker offers one entry, under the parent.
+        var fields = controller.reportedFields();
+        assertTrue(fields.containsKey("z2m-temp_outside_lowest"));
+        assertFalse(fields.containsKey("ha-cabin-sensor-temp-outside-lowest-temperature"));
+    }
+
     // 2026-08-27: /reported-fields -- wiring only, reportedFieldsByDevice()'s
     // own query logic is covered in CabinEventServiceTest.
     @Test
