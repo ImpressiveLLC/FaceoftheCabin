@@ -140,7 +140,7 @@
   {
     "id": "train-unit",
     "utterances": [
-      "Set the thermostat to 70",
+      "Set the thermostat to 28",
       "Make the bedroom 22 degrees"
     ],
     "target": {
@@ -1134,9 +1134,9 @@
   {
     "id": "train-clarify-nounit-6",
     "utterances": [
-      "Set the attic thermostat to 36",
-      "Keep the attic at 36",
-      "Attic thermostat to 36"
+      "Set the attic thermostat to 35",
+      "Keep the attic at 35",
+      "Attic thermostat to 35"
     ],
     "target": {
       "intent": "clarify",
@@ -1149,7 +1149,7 @@
   {
     "id": "train-clarify-nounit-pair-6",
     "utterances": [
-      "Set the attic thermostat to 36 degrees Fahrenheit"
+      "Set the attic thermostat to 35 degrees Fahrenheit"
     ],
     "target": {
       "intent": "set_device_attribute",
@@ -1157,7 +1157,7 @@
         "device_name": "thermostat",
         "location": "attic",
         "attribute_type": "temperature",
-        "attribute_value": "36",
+        "attribute_value": "35",
         "unit": "F"
       },
       "requires_confirmation": true,
