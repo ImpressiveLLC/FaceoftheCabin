@@ -139,6 +139,14 @@ class CommittedRecord(unittest.TestCase):
         held = {owner[i] for ids in self.families.values() for i in ids if i.startswith("ha-")}
         self.assertFalse(held & {owner[i] for i in m["sample_ids"]})
 
+    def test_suspect_ids_are_in_the_sample_and_spanning_families_are_recorded(self):
+        m = self.manifest
+        self.assertEqual(m["sample_count"], 200)
+        self.assertTrue(set(m["suspect_source_label_ids"]) <= set(m["sample_ids"]))
+        self.assertEqual(len(m["suspect_source_label_ids"]), m["sample_with_label_flag"])
+        self.assertEqual(len(m["spanning_family_ids"]), m["families_spanning_held_out_and_pool"])
+        self.assertTrue(set(m["spanning_family_ids"]) <= set(self.families))
+
     def test_only_ids_counts_and_hashes_are_committed(self):
         text = (COMMITTED / "s1-manifest.json").read_text(encoding="utf-8") + (COMMITTED / "families.json").read_text(encoding="utf-8")
         self.assertLess(len(text), 120000)
