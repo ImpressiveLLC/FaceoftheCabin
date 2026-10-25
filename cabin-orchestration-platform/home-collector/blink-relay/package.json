@@ -1,0 +1,14 @@
+{
+  "name": "blink-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runs on the always-on Home Termux phone: relays the Blink app motion notifications to cabin/blink/motion and publishes a retained heartbeat for cabin-backend BlinkRelayPulse.",
+  "main": "relay.js",
+  "scripts": {
+    "start": "node relay.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.0"
+  }
+}
