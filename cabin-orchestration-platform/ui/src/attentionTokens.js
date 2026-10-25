@@ -1,7 +1,8 @@
 // W-111 scaffold: verify the attention status tokens (Normal / Watch / Alert) of every theme.
 //
 // Spec: docs/governance/backlog.md W-111, framework section 15.5, matrix docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md.
-// A theme is `supported` (full triplet, provisional thresholds met), `fail` (supplied tokens miss a threshold), `partial`
+// A theme is `supported` (full triplet, provisional thresholds met), `unsupported` (complete and legible, but a hue pair is too close
+// under colour-vision simulation: ruled a status-layer fallback, NOT a build failure), `fail` (supplied tokens miss a contrast threshold), `partial`
 // (some but not all tokens: always a failure, never covered by an exception) or `no-tokens` (nothing supplied yet: pending
 // W-110; no fallback palette exists in these files). `supported` means "meets the provisional numbers", not human-verified.
 // Rulings (Cowork, W-109 matrix section 5, 2026-10-26): hue distinctness is CIEDE2000, at least 10 per pair under protan, deutan and
@@ -105,8 +106,9 @@ export function evaluateTheme(theme, surface = "cabin") {
   const needed = [...attnNeeded, ...surfaceVars];
   const missing = needed.filter((v) => !vars[v]);
   const suppliedAttn = attnNeeded.filter((v) => vars[v]);
-  if (missing.length && !suppliedAttn.length) return { id: theme.id, surface, status: "no-tokens", missing, failures: [] };
+  if (missing.length && !suppliedAttn.length) return { id: theme.id, surface, status: "no-tokens", missing, failures: [], hueFailures: [] };
   const failures = [];
+  const hueFailures = [];
   if (missing.length) failures.push(`incomplete token set, missing ${missing.join(", ")}`);
   const have = (...names) => names.every((n) => vars[n]);
   for (const state of ATTN_STATES) {
@@ -122,11 +124,12 @@ export function evaluateTheme(theme, surface = "cabin") {
       for (let j = i + 1; j < ATTN_STATES.length; j++) {
         if (!have(attnVar(ATTN_STATES[i]), attnVar(ATTN_STATES[j]))) continue;
         const d = deltaE00(simulate(vars[attnVar(ATTN_STATES[i])], deficiency), simulate(vars[attnVar(ATTN_STATES[j])], deficiency));
-        if (d < THRESHOLDS.hueDeltaE00) failures.push(`${ATTN_STATES[i]} vs ${ATTN_STATES[j]} under ${deficiency}: deltaE00 ${d.toFixed(1)} < ${THRESHOLDS.hueDeltaE00} (provisional)`);
+        if (d < THRESHOLDS.hueDeltaE00) hueFailures.push(`${ATTN_STATES[i]} vs ${ATTN_STATES[j]} under ${deficiency}: deltaE00 ${d.toFixed(1)} < ${THRESHOLDS.hueDeltaE00} (provisional)`);
       }
     }
   }
-  return { id: theme.id, surface, status: missing.length ? "partial" : failures.length ? "fail" : "supported", missing, failures };
+  const status = missing.length ? "partial" : failures.length ? "fail" : hueFailures.length ? "unsupported" : "supported";
+  return { id: theme.id, surface, status, missing, failures, hueFailures };
 }
 
 export const attentionReport = (themes, surface = "cabin") => Object.values(themes).map((t) => evaluateTheme(t, surface));
@@ -148,8 +151,9 @@ export function familyHubThemes(html) {
 }
 
 // Strict gate. A theme with no tokens at all must be named in `allowedPending` (an explicit, reasoned list, not derived from the
-// themes); a theme with any tokens must pass, and a partial or failing set is a problem even when the theme is listed.
-// Returns the problems, empty when the build may pass.
+// themes); a theme with any tokens must have a complete set that meets the contrast thresholds, and a partial or contrast-failing set is
+// a problem even when the theme is listed. A hue-only miss (`unsupported`) is not a build problem: per the W-109 ruling it routes the theme
+// to the fallback status layer, and the always-on non-colour cues carry meaning. Returns the problems, empty when the build may pass.
 export function attentionProblems(report, allowedPending = []) {
   const problems = [];
   for (const r of report) {
@@ -161,7 +165,7 @@ export function attentionProblems(report, allowedPending = []) {
 
 export function formatReport(report) {
   const detail = (r) => (r.status === "no-tokens" ? "pending W-110: no attention tokens, nothing implemented"
-    : r.failures.join("; ") || "meets the provisional thresholds (not human-verified)");
+    : [...r.failures, ...(r.hueFailures || [])].join("; ") || "meets the provisional thresholds (not human-verified)");
   return ["| theme | surface | status | detail |", "|---|---|---|---|", ...report.map((r) => `| ${r.id} | ${r.surface} | ${r.status} | ${detail(r)} |`), "",
     "Covers Normal/Watch/Alert tokens only. NOT_RUN: other W-109 states, dotted and asterisk cues, forced colours, W-105 human gate."].join("\n");
 }

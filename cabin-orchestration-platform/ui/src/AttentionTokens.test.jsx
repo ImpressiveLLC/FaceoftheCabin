@@ -57,8 +57,8 @@ describe("CIEDE2000", () => {
   it("flags the Modern theme's own green, amber and red as indistinguishable under deuteranopia", () => {
     const m = THEMES.modern.vars;
     const r = evaluateTheme(withVars({ "--attn-normal": m["--success"], "--attn-watch": m["--warning"], "--attn-alert": m["--danger"] }));
-    expect(r.status).toBe("fail");
-    expect(r.failures.join(" ")).toMatch(/under deuteranopia: deltaE00/);
+    expect(r.status).toBe("unsupported");
+    expect(r.hueFailures.join(" ")).toMatch(/under deuteranopia: deltaE00/);
   });
 });
 
@@ -86,7 +86,8 @@ describe("evaluateTheme", () => {
     const page = evaluateTheme(withVars({ "--bg": "#f2cc60" }));
     expect(page.failures.join(" ")).toMatch(/watch: edge on surface/);
     const same = evaluateTheme(withVars({ "--attn-watch": "#58a6ff" }));
-    expect(same.failures.join(" ")).toMatch(/normal vs watch under (deuteranopia|protanopia|tritanopia)/);
+    expect(same.status).toBe("unsupported");
+    expect(same.hueFailures.join(" ")).toMatch(/normal vs watch under (deuteranopia|protanopia|tritanopia)/);
   });
 
   it("states the hue threshold is provisional until W-109 fixes it", () => {
@@ -128,6 +129,20 @@ describe("the gate over the real themes", () => {
     expect(attentionProblems(withNew, PENDING_W110)[0]).toMatch(/^brandnew:/);
   });
 
+  it("a hue-only miss marks the theme unsupported and is not a build problem (W-109 ruling), but contrast misses still are", () => {
+    const white = { "--bg": "#000000", "--bg-secondary": "#000000", "--attn-normal": "#ffffff", "--attn-watch": "#ffffff", "--attn-alert": "#ffffff",
+      "--attn-normal-ink": "#000000", "--attn-watch-ink": "#000000", "--attn-alert-ink": "#000000" };
+    const hueOnly = evaluateTheme({ id: "synthetic", vars: white });
+    expect(hueOnly.failures).toEqual([]);
+    expect(hueOnly.hueFailures.length).toBeGreaterThan(0);
+    expect(hueOnly.status).toBe("unsupported");
+    expect(attentionProblems([hueOnly], [])).toEqual([]);
+    const both = evaluateTheme({ id: "synthetic", vars: { ...white, "--attn-alert-ink": "#ffffff" } });
+    expect(both.status).toBe("fail");
+    expect(attentionProblems([both], [])).toHaveLength(1);
+    expect(formatReport([hueOnly])).toMatch(/\| synthetic \| cabin \| unsupported \|/);
+  });
+
   it("fails a themed token set that misses a threshold, even when the theme is on the pending list", () => {
     const broken = [evaluateTheme(withVars({ "--attn-alert-ink": "#ff8f86" }))];
     expect(attentionProblems(broken, ["synthetic"])).toHaveLength(1);
@@ -142,7 +157,7 @@ describe("the gate over the real themes", () => {
   });
 
   it("reports the Family Hub surface separately, per theme, and it is pending too", () => {
-    if (!hubThemes) return; // family-hub.html unreachable in this environment, same as the drift test
+    expect(hubThemes, "family-hub/family-hub.html must be reachable: Family Hub is a required W-111 surface").not.toBeNull();
     const hubReport = attentionReport(hubThemes, "hub");
     expect(hubReport.map((r) => r.id).sort()).toEqual(Object.keys(THEMES).sort());
     expect(hubReport.every((r) => r.surface === "hub")).toBe(true);
@@ -156,7 +171,7 @@ describe("the gate over the real themes", () => {
   });
 
   it("extracts Family Hub variables from its inline theme table", () => {
-    if (!hubThemes) return;
+    expect(hubThemes, "family-hub/family-hub.html must be reachable: Family Hub is a required W-111 surface").not.toBeNull();
     expect(hubThemes.modern.vars["--night"]).toMatch(/^#[0-9a-f]{6}$/i);
     expect(Object.keys(hubThemes)).toHaveLength(10);
   });
