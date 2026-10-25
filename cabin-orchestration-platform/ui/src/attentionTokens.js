@@ -1,9 +1,10 @@
 // W-111 scaffold: verify the attention status tokens (Normal / Watch / Alert) of every theme.
 //
 // Spec: docs/governance/backlog.md W-111, framework section 15.5, matrix docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md.
-// A theme either supplies the status triplet and meets the thresholds below (supported), supplies it and misses a
-// threshold (fail), or supplies nothing yet (no-tokens: its status layer falls back to a compliant palette, W-110).
-// Automated results do not replace the W-105 human gate.
+// A theme is `supported` (full triplet, provisional thresholds met), `fail` (supplied tokens miss a threshold), `partial`
+// (some but not all tokens: always a failure, never covered by an exception) or `no-tokens` (nothing supplied yet: pending
+// W-110; no fallback palette exists in these files). `supported` means "meets the provisional numbers", not human-verified.
+// Not covered here, so NOT_RUN: the other W-109 states, dotted/asterisk cues, forced colours, Family Hub, the W-105 human gate.
 import { contrastRatio } from "./surfaceLayers.js";
 
 export const ATTN_STATES = ["normal", "watch", "alert"];
@@ -61,40 +62,48 @@ export function evaluateTheme(theme) {
   const vars = theme.vars || {};
   const needed = [...ATTN_STATES.flatMap((s) => [attnVar(s), attnInkVar(s)]), SURFACE_VAR];
   const missing = needed.filter((v) => !vars[v]);
-  if (missing.length) return { id: theme.id, status: "no-tokens", missing, failures: [] };
+  const suppliedAttn = needed.filter((v) => v !== SURFACE_VAR && vars[v]);
+  if (missing.length && !suppliedAttn.length) return { id: theme.id, status: "no-tokens", missing, failures: [] };
   const failures = [];
+  if (missing.length) failures.push(`incomplete token set, missing ${missing.join(", ")}`);
+  const have = (...names) => names.every((n) => vars[n]);
   for (const state of ATTN_STATES) {
     const tint = vars[attnVar(state)];
+    if (!have(attnVar(state), attnInkVar(state))) continue;
     const ink = contrastRatio(vars[attnInkVar(state)], tint);
     if (ink < THRESHOLDS.textOnTint) failures.push(`${state}: ink on tint ${ink.toFixed(2)}:1 < ${THRESHOLDS.textOnTint}:1`);
-    const edge = contrastRatio(tint, vars[SURFACE_VAR]);
+    const edge = vars[SURFACE_VAR] ? contrastRatio(tint, vars[SURFACE_VAR]) : Infinity;
     if (edge < THRESHOLDS.edgeOnSurface) failures.push(`${state}: edge on surface ${edge.toFixed(2)}:1 < ${THRESHOLDS.edgeOnSurface}:1`);
   }
   for (const deficiency of DEFICIENCIES) {
     for (let i = 0; i < ATTN_STATES.length; i++) {
       for (let j = i + 1; j < ATTN_STATES.length; j++) {
+        if (!have(attnVar(ATTN_STATES[i]), attnVar(ATTN_STATES[j]))) continue;
         const d = deltaE(simulate(vars[attnVar(ATTN_STATES[i])], deficiency), simulate(vars[attnVar(ATTN_STATES[j])], deficiency));
         if (d < THRESHOLDS.hueDeltaE) failures.push(`${ATTN_STATES[i]} vs ${ATTN_STATES[j]} under ${deficiency}: deltaE ${d.toFixed(1)} < ${THRESHOLDS.hueDeltaE} (provisional)`);
       }
     }
   }
-  return { id: theme.id, status: failures.length ? "fail" : "supported", missing: [], failures };
+  return { id: theme.id, status: missing.length ? "partial" : failures.length ? "fail" : "supported", missing, failures };
 }
 
 export const attentionReport = (themes) => Object.values(themes).map(evaluateTheme);
 
-// Strict gate. A theme without tokens must be named in `allowedFallback` (its status layer uses the compliant fallback);
-// a theme with tokens must pass. Returns the problems, empty when the build may pass.
-export function attentionProblems(report, allowedFallback = []) {
+// Strict gate. A theme with no tokens at all must be named in `allowedPending` (an explicit, reasoned list, not derived from the
+// themes); a theme with any tokens must pass, and a partial or failing set is a problem even when the theme is listed.
+// Returns the problems, empty when the build may pass.
+export function attentionProblems(report, allowedPending = []) {
   const problems = [];
   for (const r of report) {
-    if (r.status === "fail") problems.push(`${r.id}: ${r.failures.join("; ")}`);
-    if (r.status === "no-tokens" && !allowedFallback.includes(r.id)) problems.push(`${r.id}: no attention tokens (${r.missing.join(", ")}) and no listed fallback`);
+    if (r.status === "fail" || r.status === "partial") problems.push(`${r.id}: ${r.failures.join("; ")}`);
+    if (r.status === "no-tokens" && !allowedPending.includes(r.id)) problems.push(`${r.id}: no attention tokens (${r.missing.join(", ")}) and not on the pending list`);
   }
   return problems;
 }
 
 export function formatReport(report) {
-  return ["| theme | status | detail |", "|---|---|---|",
-    ...report.map((r) => `| ${r.id} | ${r.status} | ${r.status === "no-tokens" ? "missing " + r.missing.length + " tokens" : r.failures.join("; ") || "all thresholds met"} |`)].join("\n");
+  const detail = (r) => (r.status === "no-tokens" ? "pending W-110: no attention tokens, nothing implemented"
+    : r.failures.join("; ") || "meets the provisional thresholds (not human-verified)");
+  return ["| theme | status | detail |", "|---|---|---|", ...report.map((r) => `| ${r.id} | ${r.status} | ${detail(r)} |`), "",
+    "Covers Normal/Watch/Alert tokens only. NOT_RUN: other W-109 states, dotted and asterisk cues, forced colours, Family Hub, W-105 human gate."].join("\n");
 }

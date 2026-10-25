@@ -5,9 +5,12 @@ import {
   simulate, deltaE, evaluateTheme, attentionReport, attentionProblems, formatReport,
 } from "./attentionTokens.js";
 
-// Themes whose status layer falls back to the compliant palette until W-110 adds their --attn-* tokens.
-// Shrink this list as tokens land; the build fails if a theme is on neither side (tokens that pass, or listed here).
-const FALLBACK_UNTIL_W110 = Object.keys(THEMES);
+// Themes with no --attn-* tokens yet: pending W-110, nothing implemented (no fallback palette exists in the code).
+// An explicit list, written out on purpose and NOT derived from THEMES, so a theme added later fails the gate until someone
+// either gives it tokens or adds it here with a reason. Remove an id as its tokens land. Expiry: empty when W-110 closes.
+const PENDING_W110 = [
+  "modern", "impressive", "lcars", "monolith", "bluefin", "madscience", "deepspace", "neon80s", "pacman", "asteroidcity",
+];
 
 const good = {
   id: "synthetic",
@@ -73,23 +76,49 @@ describe("the gate over the real themes", () => {
   it("covers all ten themes and a theme with tokens never fails silently", () => {
     expect(report).toHaveLength(10);
     expect(report.map((r) => r.id).sort()).toEqual(Object.keys(THEMES).sort());
-    expect(report.filter((r) => r.status === "fail")).toEqual([]);
+    expect(report.filter((r) => r.status === "fail" || r.status === "partial")).toEqual([]);
   });
 
-  it("passes today only because every untokened theme is listed with a fallback", () => {
-    expect(attentionProblems(report, FALLBACK_UNTIL_W110)).toEqual([]);
+  it("keeps the pending list honest: every entry is a real theme, and the list is independent of THEMES", () => {
+    for (const id of PENDING_W110) expect(Object.keys(THEMES)).toContain(id);
+    expect(new Set(PENDING_W110).size).toBe(PENDING_W110.length);
   });
 
-  it("fails without the tokens: the same themes with no fallback list break the build", () => {
+  it("passes today only because every untokened theme is named on the pending list", () => {
+    expect(attentionProblems(report, PENDING_W110)).toEqual([]);
+  });
+
+  it("fails without the tokens: the same themes with an empty pending list break the build", () => {
     const problems = attentionProblems(report, []);
     const untokened = report.filter((r) => r.status === "no-tokens").length;
     expect(problems).toHaveLength(untokened);
-    if (untokened) expect(problems[0]).toMatch(/no attention tokens .* no listed fallback/);
+    if (untokened) expect(problems[0]).toMatch(/no attention tokens .* not on the pending list/);
   });
 
-  it("fails a themed token set that misses a threshold, even when a fallback list exists", () => {
+  it("a theme added later and not on the pending list fails the gate", () => {
+    const withNew = attentionReport({ ...THEMES, brandnew: { id: "brandnew", vars: { "--bg-secondary": "#101010" } } });
+    expect(attentionProblems(withNew, PENDING_W110)).toHaveLength(1);
+    expect(attentionProblems(withNew, PENDING_W110)[0]).toMatch(/^brandnew:/);
+  });
+
+  it("fails a themed token set that misses a threshold, even when the theme is on the pending list", () => {
     const broken = [evaluateTheme(withVars({ "--attn-alert-ink": "#ff8f86" }))];
     expect(attentionProblems(broken, ["synthetic"])).toHaveLength(1);
+  });
+
+  it("a partial set cannot hide behind the pending list: one token missing and another failing is a problem", () => {
+    const partial = evaluateTheme({ id: "synthetic", vars: { ...good.vars, "--attn-watch-ink": undefined, "--attn-alert-ink": "#ff8f86" } });
+    expect(partial.status).toBe("partial");
+    expect(partial.failures.join(" ")).toMatch(/incomplete token set, missing --attn-watch-ink/);
+    expect(partial.failures.join(" ")).toMatch(/alert: ink on tint/);
+    expect(attentionProblems([partial], ["synthetic"])).toHaveLength(1);
+  });
+
+  it("reports pending themes as unimplemented, not as having a compliant fallback", () => {
+    const text = formatReport(report);
+    expect(text).toMatch(/pending W-110: no attention tokens, nothing implemented/);
+    expect(text).not.toMatch(/fallback/i);
+    expect(text).toMatch(/NOT_RUN/);
   });
 
   it("produces a per-theme report for each run", () => {
