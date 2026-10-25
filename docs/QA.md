@@ -210,3 +210,11 @@ backend restart is a populate delay, not a classification fault: Z2M state messa
 `bridge/devices` are dropped, and a battery sensor does not report again for hours (ONLINE needs a message with
 `linkquality`). Restoring last-known state at startup is a separate change. Children of the valve (switch and
 power-on-behavior entities) stay `HOME_ASSISTANT_ENTITY`, the service-entity class under a parent.
+
+### W-93 apply and rollback (2026-10-24, not yet applied live)
+`POST /api/devices/redetect/preview` (dry run), `POST /api/devices/{id}/redetect/apply` and
+`POST /api/devices/{id}/redetect/rollback`, administrator only, covered by the signed-in write gate. Apply takes
+`{"fields":["type","capabilities"]}`, changes only approved fields through `DeviceRegistry.replaceConfiguration`
+(name, enabled, location and connection are never touched), returns a `rollback` object and publishes a
+`DEVICE_REDETECT_APPLIED` event. Rollback uses this process's last apply or the returned object (survives a restart).
+Nothing calls these on its own. Applying to live rows needs Nate's approval.

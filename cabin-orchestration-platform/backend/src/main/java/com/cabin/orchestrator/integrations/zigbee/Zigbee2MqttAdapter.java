@@ -295,6 +295,16 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         return matches.size() == 1 ? matches.get(0) : slugId;
     }
 
+    /** What the adapter's own inference proposes for a device, from its latest bridge/devices. */
+    public record InferredShape(DeviceType type, Set<DeviceCapability> capabilities) {}
+
+    private final Map<String, InferredShape> inferredShapes = new ConcurrentHashMap<>();
+
+    /** W-93: the proposed type and capabilities for a registered Zigbee device; empty until bridge/devices arrived. */
+    public Optional<InferredShape> inferredShape(String deviceId) {
+        return Optional.ofNullable(inferredShapes.get(deviceId));
+    }
+
     @PostConstruct
     public void connect() {
         try {
@@ -460,6 +470,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 JsonNode definition = device.path("definition");
                 Set<DeviceCapability> caps = inferCapabilities(definition);
                 DeviceType type = inferType(definition, caps, friendlyName);
+                inferredShapes.put(deviceId, new InferredShape(type, Set.copyOf(caps)));
                 List<String> vendorReportedFields = extractVendorReportedFields(definition, type);
 
                 DeviceDescriptor desc = new DeviceDescriptor(
