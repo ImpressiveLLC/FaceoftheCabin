@@ -4,16 +4,16 @@ Step S1 of the [fine-tuning data path](../../../../proposals/sft-data-path.md). 
 
 | File | What it is |
 |---|---|
-| `s1-manifest.json` | the rules, the audit, the strata with their quotas, the 300 sampled candidate ids, and the hashes that tie it to the S0 candidates |
+| `s1-manifest.json` | the rules, the audit, the strata with their quotas, the 200 sampled candidate ids, the suspect-label ids, the 6 family ids shared with the held-out source, and the hashes that tie it to the S0 candidates |
 | `families.json` | every candidate id grouped into a paraphrase family (`fam-<hash>`), replacing the source-file `group` that S0 found |
 
 ## What the audit found
 
 1. **The command pool is small.** The 941 Enfuse rows are only **305 distinct wordings** once word order, politeness and near duplicates are folded together. 211 of the 305 families have a single row; the biggest has 55 (a generic on/off wording). The 1,028-candidate headline overstates what there is to learn from.
 2. **Holding OHF-Voice out costs more than 87 rows.** The OHF-Voice wordings (87 rows, 36 families, all `set_device_state`) are reserved for the frozen test. Six of those families also occur in Enfuse, so **103 Enfuse rows** (the most generic on/off commands) leave the training pool too, or the test would measure wording the model had seen. The pool is 838 rows in 305 families.
-3. **The sample is almost the whole pool.** The plan's "about 300" is 300 of 305 families (one row per family), so the stratification only trims the thinnest cells and does not concentrate review anywhere. If review time matters more than coverage, `--target 200` makes the strata do real work; that is a decision for Nate, not made here.
+3. **The sample is almost the whole pool.** The first run took 300 of 305 families, so the strata selected almost nothing. Per Cowork (HO-2026-10-19, F-S1-3) the sample is regenerated at `--target 200` (2026-10-25), which makes the strata do real work and cuts the Track A audit.
 4. **The pool is lights and the living room.** By text: light 659 rows, climate 160, fan 7, media 2, other 10; living room 506 of 838. Fans, locks, media and other rooms are close to absent, so the 100 authored commands in the plan should lean there.
-5. **Source labels are noisy.** 51 pool rows (35 of the 300 sampled) carry a flag: an attribute command with no value (42), no slots at all (10), or a slot value that is not in the sentence, such as a truncated room (18). Track A's blind relabel will disagree on these, which is the point; the disagreement rate on flagged rows is a measure of the source label quality.
+5. **Source labels are noisy.** 51 pool rows (27 of the 200 sampled) carry a flag: an attribute command with no value (42), no slots at all (10), or a slot value that is not in the sentence, such as a truncated room (18). Those 27 are listed in the manifest as `suspect_source_label_ids` and carry `suspect_source_label: true` in the private sample. Per F-S1-5 they are **excluded from "approved by agreement"** and go to the second-reviewer queue whatever the blind relabel says. The 6 families shared with the held-out OHF source are listed as `spanning_family_ids` so the reservation step can use them (F-S1-2).
 
 ## How the families and sample are built
 
