@@ -634,7 +634,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "family room lamp",
+        "device_name": "lamp",
         "location": "family room",
         "state": "on"
       },
@@ -666,7 +666,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "attic fan",
+        "device_name": "fan",
         "location": "attic",
         "state": "off"
       },
@@ -728,7 +728,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "guest room humidifier",
+        "device_name": "humidifier",
         "location": "guest room",
         "state": "off"
       },
@@ -760,7 +760,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "garage heater",
+        "device_name": "heater",
         "location": "garage",
         "state": "on"
       },
@@ -792,7 +792,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "study lamp",
+        "device_name": "lamp",
         "location": "study",
         "state": "on"
       },
@@ -824,7 +824,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "loft fan",
+        "device_name": "fan",
         "location": "loft",
         "state": "off"
       },
@@ -856,7 +856,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "pantry heater",
+        "device_name": "heater",
         "location": "pantry",
         "state": "on"
       },
@@ -888,7 +888,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "porch light",
+        "device_name": "light",
         "location": "porch",
         "state": "off"
       },
@@ -920,7 +920,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "yard plug",
+        "device_name": "plug",
         "location": "yard",
         "state": "on"
       },
@@ -952,7 +952,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "attic humidifier",
+        "device_name": "humidifier",
         "location": "attic",
         "state": "off"
       },
@@ -1267,7 +1267,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "garage heater",
+        "device_name": "heater",
         "location": "garage",
         "state": "on"
       },
@@ -1299,7 +1299,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "study lamp",
+        "device_name": "lamp",
         "location": "study",
         "state": "on"
       },
@@ -1331,7 +1331,7 @@
     "target": {
       "intent": "set_device_state",
       "slots": {
-        "device_name": "pantry fan",
+        "device_name": "fan",
         "location": "pantry",
         "state": "off"
       },
