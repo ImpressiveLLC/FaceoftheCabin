@@ -109,4 +109,21 @@ class ActiveAlertServiceTest {
         assertTrue(snapshot.alerts().isEmpty());
         assertEquals(0L, snapshot.counts().get("TOTAL"));
     }
+
+    @Test
+    void silentBlinkRelayProducesWarnAlertOnlyOnceItHasBeenSeen() {
+        com.cabin.orchestrator.integrations.cameras.BlinkRelayPulse pulse =
+            new com.cabin.orchestrator.integrations.cameras.BlinkRelayPulse();
+        service.useBlinkRelayPulse(pulse);
+        assertTrue(service.snapshot().alerts().isEmpty());  // never seen: not nagged
+
+        pulse.record("2026-10-24T11:00:00Z", Instant.now());  // long ago
+        List<ActiveAlert> alerts = service.snapshot().alerts();
+        assertEquals(1, alerts.size());
+        assertEquals("blink-relay:stale", alerts.get(0).alertId());
+        assertEquals("WARN", alerts.get(0).severity());
+
+        pulse.record(Instant.now().toString(), Instant.now());  // relay back
+        assertTrue(service.snapshot().alerts().isEmpty());
+    }
 }
