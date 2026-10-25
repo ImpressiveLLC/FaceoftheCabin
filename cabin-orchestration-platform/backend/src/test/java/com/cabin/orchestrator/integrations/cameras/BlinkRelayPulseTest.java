@@ -44,4 +44,12 @@ class BlinkRelayPulseTest {
         p.record("2026-10-24T11:00:00Z", NOW);  // stale retained replay
         assertEquals(Duration.ofMinutes(1), p.age(NOW).orElseThrow());
     }
+
+    @Test
+    void blankPayloadFromClearedRetainedHeartbeatIsIgnored() {
+        BlinkRelayPulse p = new BlinkRelayPulse();
+        p.record("", NOW);
+        p.record("  ", NOW);
+        assertTrue(p.age(NOW).isEmpty());
+    }
 }

@@ -35,6 +35,7 @@ public class BlinkRelayPulse {
 
     /** Record a heartbeat; payload is an ISO-8601 instant or JSON containing "ts". Unparseable input is ignored. */
     public void record(String payload, Instant arrivedAt) {
+        if (payload == null || payload.isBlank()) return;  // a cleared retained heartbeat is not a sign of life
         Instant ts = parse(payload);
         if (ts == null) ts = arrivedAt;
         lastHeartbeat.accumulateAndGet(ts, (a, b) -> a == null || b.isAfter(a) ? b : a);
