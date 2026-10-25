@@ -348,6 +348,22 @@ Ownership (Nate, 2026-10-21): Cowork owns and scores this backlog; Codex supplie
 
 
 
+## Priority directive: corpus answers first (Nate, 2026-10-26)
+
+Nate's goal for Ask is answering **configuration and maintenance questions from the corpus**, with logic that looks through instructions, config and maintenance material. Device commands and slot-level polish are not the goal. The executable order set on 2026-09-07 stands and is now enforced: **C2 (corpus) then C1 (evaluated retrieval) then C3 (one-stop Ask)**. Raw WSJF puts C3 first only because its score assumes C1 and C2 exist.
+
+| Lane | Status from 2026-10-26 | Items |
+|---|---|---|
+| Corpus and retrieval | **Active, first** | C2 corpus coverage for config and maintenance topics (reviewed versus unreviewed), C1 graded retrieval rounds, C3 dependencies |
+| Question-versus-command boundary | **Active, kept in view** | Only the part that sends a config or maintenance question to `answer_question` instead of treating it as a command: gold, fixtures and evaluation for that boundary, plus the false-action rate on question-shaped text |
+| Intent/slot slot-level polish | **Parked** (`held`, not deleted) | S2 batch 2 and later authored batches, applying the S5 naming-class corrections, compound-request policy, unit-family variants, further S5 label work that does not touch the boundary above |
+| In-flight when this was set | Finish, no new batches | #267 (S2 clarify batch 1) and any PR already open and reviewed; nothing new in the parked lane starts |
+| Evaluation integrity | Unchanged | C6 variance floor, the NOT_RUN rule, sealed-set handling, and the training gates in the intent-slot README |
+
+Rules while parked: nothing is deleted or reverted; sealed files, family binding and review artifacts stay as they are; the unit rule (below 36 clarify, 36 and above Fahrenheit) and the naming ruling stay in force for any work that does resume. Training, export and routing remain gated as before. The lane resumes when the corpus lane reports its current C2 and C1 state and Nate says so, or when a boundary failure needs slot work to fix.
+
+Owners: Codex reports the current C1 grade and C2 coverage as one short table with evidence links (requested on #244, 2026-10-26); Code reports which open SFT items touch the question-versus-command boundary; Cowork re-sequences from those two reports; Nate decides.
+
 ## Measurement context research and recommendations C7/C8
 
 Origin: Nate’s 2026-10-22 proxy-PO/SME delegation for #241/#242; use case [UC-21](../governance/use-cases.md). Product/architecture and sources live only in [measurement framework sections 11–13](../governance/proposals/2026-10-22-measurement-attention-framework.md#11-proxy-product-owner-decisions-and-implementation-authorization). Cowork remains this backlog’s owner; these are **proxy-PO proposed scores**, not Cowork ratification. Platform dictionary/evaluator/rollout scores are not duplicated here.

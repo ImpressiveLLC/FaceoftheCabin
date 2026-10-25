@@ -101,6 +101,14 @@ alias of `light`); the route answers a need with its name and no options.
 The admin-only, flag-off `/api/helpdesk/propose` route returns proposals only and
 has no executor. This handoff neither completes POC2 nor enables W-75.
 
+**Priority (Nate, 2026-10-26):** Ask's goal is answering configuration and
+maintenance questions from the corpus, so the order is C2 corpus, then C1
+evaluated retrieval, then C3 one-stop Ask (W-117,
+[directive](docs/ai-assistant/wsjf-backlog.md#priority-directive-corpus-answers-first-nate-2026-10-26)).
+This POC2 and the intent/slot slot-level polish are parked behind it, except
+the question-versus-command boundary (config questions must reach
+`answer_question`, never be treated as commands). Nothing here is deleted.
+
 ### Meaning, slots and output
 
 `express_need` expresses an affirmative human need or comfort state, not a device
