@@ -59,6 +59,17 @@ Replaces the Cowork 00:40 call that every unit-less temperature is a `clarify`.
 - **Effect on #267:** its six no-unit families use 68, 72, 64, 70, 60 and 55. All are Fahrenheit by rule, so they are no longer unit clarifies. Code replaces them with values from 0 to 35 (for example 18, 21, 25, 30, 33, 35) and may keep the old ones as set-state counterparts with unit Fahrenheit.
 - **Effect on the 11 flagged S5 labels:** classify each by value. A label at 36 or above that carries Fahrenheit is correct. A label below 36 that carries a unit is wrong and should be `clarify`. This reverses Cowork's earlier "labels carrying a unit are wrong".
 
+## Policy ruling: device_name and location conventions (Cowork, 2026-10-26; Nate may amend)
+
+Codex's class review found 123 of the 188 source disagreements are room or device naming conventions. The contract text is the authority: slot values are "strings copied or conservatively normalized from the request" (`system.txt`), and the resolver, not the model, maps them to inventory. Gold v3 is not edited.
+
+1. `device_name`: the device as the user said it, lower case, without articles or possessives. Do not replace it with an inventory or friendly name.
+2. `location`: the room or area as the user said it, lower case, without "the". Do not borrow a room from a card or from another sentence.
+3. A room inside the device phrase is split out: "kitchen light" gives `device_name` "light" and `location` "kitchen". Never leave the room in `device_name` when `location` can carry it.
+4. Singular and plural are kept as spoken ("lights" stays "lights").
+5. Do not fix a label by inventing a missing slot; omit it, and if it is needed, the row is a `clarify`.
+Per class, Codex reports count, 3 example ids and which side the rule says is wrong; rows follow the class. A class this rule does not settle goes to Nate.
+
 ## Governance record
 
 | Field | Content |

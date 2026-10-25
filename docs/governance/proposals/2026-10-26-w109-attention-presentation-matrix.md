@@ -30,7 +30,7 @@ Each theme either supplies a status triplet that meets the section 15.5 threshol
 
 | Theme | Hypothesis | Supplement if unsupported |
 |---|---|---|
-| Modern | likely supported | none |
+| Modern | **fails the deuteranopia check (Codex, W-111, 2026-10-26): its own green, amber and red are not distinguishable** | do not reuse its status hues as attention hues; compliant status layer; cues at strongest weight |
 | Impressive | likely supported | none |
 | LCARS | structural orange and violet may collide with Watch | compliant status layer; heavier dotted and asterisk weight |
 | Monolith | mono palette: hue weak by design | rely on pattern, icon, label; add inset edge to Watch |
@@ -56,3 +56,5 @@ Asked by Code on #244 after #266. These set the method; the numbers are proposal
 2. **Edge surface.** A border sits on the card face and against the page behind it. Check non-text contrast (3:1, the WCAG 1.4.11 level) against **both** `--bg` and `--bg-secondary` and use the worse result, per theme. Using `--bg-secondary` alone is not enough.
 3. **Family Hub.** In scope and required, not optional. `family-hub.html` gets the same `--attn-*` tokens and the drift tests extend to it (section 1, rule 6). The W-111 report lists the Family Hub surface separately per theme. It stays on the PENDING list until W-110 adds the tokens.
 4. Automated results never replace the W-105 human gate or Nate's mockup review.
+
+5a. **Lightness rule (Codex finding on Modern, ruled by Cowork 2026-10-26; Nate may amend).** Watch and Alert must differ in lightness as well as hue: at least 20 points of L* between them (and between Normal and Watch), measured after protan, deutan and tritan simulation. A green, amber, red triplet of similar lightness fails this by design. Themes whose own status hues fail either this or the delta-E00 rule in section 5 are unsupported and use the compliant status layer. W-110 must not reuse Modern's own status hues as attention hues. The 20-point value is provisional until W-111 measures real themes.
