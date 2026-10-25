@@ -79,6 +79,11 @@ def cohort_sha(agreed_rows):
     return hashlib.sha256(canonical([tracks, sorted(agreed_row_sha(r) for r in agreed_rows)]).encode()).hexdigest()
 
 
+def audit_content_sha(rows):
+    """What Nate is shown: id, text and target of each audited row, in id order."""
+    return hashlib.sha256(canonical([[r["id"], r["text"], r["target"]] for r in sorted(rows, key=lambda r: r["id"])]).encode()).hexdigest()
+
+
 def audit_size(cohort_n):
     return max(1, round(cohort_n * AUDIT_SHARE)) if cohort_n else 0
 
@@ -231,7 +236,7 @@ def import_labels(sample_path, packet_dir, labels_path, reviewer, reviewer_model
     audit = select_audit(approved, seed)
     cohort = cohort_sha(approved) if approved else None
     audit_manifest = {"track": track, "cohort_sha256": cohort, "cohort_n": len(approved), "audit_n": len(audit), "seed": seed,
-                      "audit_ids": [r["id"] for r in audit],
+                      "audit_ids": [r["id"] for r in audit], "audit_content_sha256": audit_content_sha(audit),
                       "audit_ids_sha256": hashlib.sha256("\n".join(r["id"] for r in audit).encode()).hexdigest()}
     if sha256_file(sample_path) != original_hash:
         raise RuntimeError("the sample file changed during import")
@@ -282,6 +287,14 @@ def record_audit(agreed_path, audit_path, decisions_path, audited_by, out_path, 
     expected = [r["id"] for r in select_audit(agreed, manifest["seed"])]
     if sorted(audit_ids) != expected or manifest["audit_ids"] != expected:
         raise ValueError("audit sample is not the sample the importer drew from this cohort")
+    # The ids are right; now the content Nate was shown must be the content being approved.
+    for shown in audit_rows:
+        if not all(k in shown for k in ("id", "text", "target")):
+            raise ValueError(f"audit row {shown.get('id')} is missing a displayed field (id, text, target)")
+        if agreed_row_sha(shown) != by_id[shown["id"]]["provenance"]["agreed_row_sha256"]:
+            raise ValueError(f"audit row {shown['id']} shows a different text or label than the agreed row it would approve")
+    if audit_content_sha(audit_rows) != manifest.get("audit_content_sha256"):
+        raise ValueError("audit content does not match the audit manifest")
     decisions = read_jsonl(decisions_path)
     dec = unique_rows(decisions, "audit decisions")
     if sorted(dec) != sorted(audit_ids):
@@ -297,7 +310,8 @@ def record_audit(agreed_path, audit_path, decisions_path, audited_by, out_path, 
     wrong = {d["id"] for d in decisions if not d["agree"]}
     result = {"audited_by": audited_by, "attribution_only": True, "audited_at": datetime.now(timezone.utc).isoformat(),
               "sample_n": len(decisions), "agreed_n": agreed_n, "rate": rate, "cohort_sha256": cohort, "cohort_n": len(agreed),
-              "track": manifest["track"], "audit_ids_sha256": manifest["audit_ids_sha256"]}
+              "track": manifest["track"], "audit_ids_sha256": manifest["audit_ids_sha256"],
+              "audit_content_sha256": manifest["audit_content_sha256"]}
     promoted = []
     for rid in sorted(by_id):
         if rid in wrong:

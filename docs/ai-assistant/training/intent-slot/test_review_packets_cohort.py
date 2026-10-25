@@ -158,6 +158,43 @@ class AuditIsBoundToItsCohort(unittest.TestCase):
             rp.record_audit(out_b / "agreed.jsonl", out_b / "audit.jsonl", dec_b, "Nate", self.dir / "x.jsonl", out_a / "audit.manifest.json")
         self.assertFalse((self.dir / "x.jsonl").exists())
 
+    def mutated_audit(self, out, change):
+        rows = read_jsonl(out / "audit.jsonl")
+        for r in rows:
+            change(r)
+        path = self.dir / "mutated-audit.jsonl"
+        write(path, rows)
+        return path
+
+    def test_audit_content_must_match_the_agreed_rows_even_with_unchanged_ids(self):
+        out, decisions = self.cohort("a")
+        other = target(device_name="different lamp", state="off")
+
+        def both(r):
+            r["text"] = "turn off a different synthetic lamp"
+            r["target"] = other
+        for change, message in ((both, "shows a different text or label"),
+                                (lambda r: r.__setitem__("text", r["text"] + " tonight"), "shows a different text or label"),
+                                (lambda r: r.__setitem__("target", other), "shows a different text or label"),
+                                (lambda r: r.pop("text"), "missing a displayed field"),
+                                (lambda r: r.pop("target"), "missing a displayed field")):
+            path = self.mutated_audit(out, change)
+            with self.assertRaisesRegex(ValueError, message):
+                self.promote(out, decisions, audit=path)
+            self.assertFalse((self.dir / "promoted.jsonl").exists())
+
+    def test_the_manifest_pins_the_audit_content(self):
+        out, decisions = self.cohort("a")
+        manifest = json.loads((out / "audit.manifest.json").read_text(encoding="utf-8"))
+        self.assertRegex(manifest["audit_content_sha256"], "^[0-9a-f]{64}$")
+        manifest["audit_content_sha256"] = "0" * 64
+        tampered = self.dir / "tampered.manifest.json"
+        tampered.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "does not match the audit manifest"):
+            self.promote(out, decisions, manifest=tampered)
+        summary = self.promote(out, decisions)
+        self.assertEqual(summary["audit_content_sha256"], json.loads((out / "audit.manifest.json").read_text(encoding="utf-8"))["audit_content_sha256"])
+
     def test_an_agent_cannot_be_the_auditor_and_below_90_percent_promotes_nothing(self):
         out, decisions = self.cohort("a")
         with self.assertRaisesRegex(ValueError, "not an agent"):
