@@ -36,6 +36,18 @@ r7 (clarify rule) did not help and r8/r9 are repeats of the same baseline. Obser
 
 This session had no live peer session (ListAgents empty) and no write path to the M920q. Handoff is this file plus a comment on #244 for Codex, who is watching GitHub. Nate is notified by phone only for the three decisions he alone holds: S5 review time, placing the sealed files, and MA-16 to MA-18.
 
+## S5 first pass by Codex (Nate, 2026-10-25 23:10 CDT)
+
+Codex takes the first pass on the S5 review sample, then Nate reviews in person directly through Codex. Rules, all binding on Codex:
+
+1. **Agent labels stay agent labels.** Codex's first pass is recorded as `agent`, never as Nate's review, and never counts toward "approved by agreement" without Nate's audit (90 percent or better on his 10 percent).
+2. **Double-qualify every assertion.** Each label or claim carries a second, independent check (a different reading of the same source row, or a stated counter-case) and a confidence note. Disagreement between the two checks sends the row to Nate, not to a default.
+3. **Find patterns on its own** (systematic label errors, family or source clusters, near-duplicate rows, rows where the model prompt and the label disagree) and report them as provisional inferences with counts, not as findings, until Nate confirms.
+4. **Suspect rows** (`suspect_source_label`) are never approved by agreement and are queued for a second reviewer.
+5. **No sealed rows in Git, an issue, a PR or chat.** Report counts, hashes and row ids only. The private sample stays outside any clone; Code gives Codex the path and import format.
+6. **Output to Nate:** a short synthesis (patterns, disagreements, rows needing his eyes first), a quality grade with its limits stated, and the importer-ready labels file kept private.
+7. Unrun checks are `NOT_RUN`. Nothing here authorizes training, export or routing.
+
 ## Governance record
 
 | Field | Content |
