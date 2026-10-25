@@ -2318,6 +2318,24 @@ function GuestAccessCard({ auth }) {
     refresh();
   };
 
+  const rows = tokens.map(t => ({ t, status: shareLinkStatus(t) }));
+  const activeTokens = rows.filter(r => r.status.active);
+  const pastTokens = rows.filter(r => !r.status.active);
+  const renderRow = ({ t, status }) => (
+    <div key={t.id} className={`guest-access-row ${status.active ? "" : "guest-access-revoked"}`}>
+      <div>
+        <strong>{t.label}</strong>
+        {t.scope?.includes("demo") && <span className="state-badge demo-badge">Demo</span>}
+        <span className="config-hint">
+          {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
+        </span>
+      </div>
+      {status.active
+        ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
+        : <span className="config-hint">{status.badge}</span>}
+    </div>
+  );
+
   return (
     <>
       <DemoLinkSection doFetch={doFetch} apiBase={apiBase} onCreated={refresh} />
@@ -2354,24 +2372,15 @@ function GuestAccessCard({ auth }) {
 
       <div className="guest-access-list">
         {tokens.length === 0 && <p className="config-hint">No share links yet.</p>}
-        {tokens.map(t => {
-          const status = shareLinkStatus(t);
-          return (
-            <div key={t.id} className={`guest-access-row ${status.active ? "" : "guest-access-revoked"}`}>
-              <div>
-                <strong>{t.label}</strong>
-                {t.scope?.includes("demo") && <span className="state-badge demo-badge">Demo</span>}
-                <span className="config-hint">
-                  {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
-                </span>
-              </div>
-              {status.active
-                ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
-                : <span className="config-hint">{status.badge}</span>}
-            </div>
-          );
-        })}
+        {tokens.length > 0 && activeTokens.length === 0 && <p className="config-hint">No active share links.</p>}
+        {activeTokens.map(renderRow)}
       </div>
+      {pastTokens.length > 0 && (
+        <details className="guest-access-history">
+          <summary>History: {pastTokens.length} revoked or expired</summary>
+          <div className="guest-access-list">{pastTokens.map(renderRow)}</div>
+        </details>
+      )}
     </>
   );
 }

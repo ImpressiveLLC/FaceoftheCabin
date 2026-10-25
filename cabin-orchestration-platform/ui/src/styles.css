@@ -2301,6 +2301,8 @@ select option { background: var(--bg-secondary); color: var(--text); }
   padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-secondary);
 }
 .guest-access-row.guest-access-revoked { opacity: 0.55; }
+.guest-access-history { margin-top: 8px; }
+.guest-access-history > summary { cursor: pointer; font-size: 13px; opacity: 0.8; }
 .managed-users-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* ─── Optimization Opportunities (Sprint 5 WSJF #1) ─────────────────────── */

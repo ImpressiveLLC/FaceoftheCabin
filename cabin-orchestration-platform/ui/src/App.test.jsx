@@ -4863,6 +4863,22 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
     expect(accessTokenCalls(auth)[1][1].method).toBe("DELETE");
   });
 
+  it("keeps revoked links out of the main list, behind a collapsed history disclosure", async () => {
+    const auth = mockAuth([
+      { ok: true, json: async () => [
+        { id: "tok-a", label: "Live Adjuster", scope: ["dashboard"], revokedAt: null },
+        { id: "tok-b", label: "Old Contractor", scope: ["dashboard"], revokedAt: "2026-09-01T00:00:00Z" },
+      ] },
+    ]);
+
+    renderPanel(auth);
+    await screen.findByText("Live Adjuster");
+    const history = screen.getByText(/History: 1 revoked or expired/).closest("details");
+    expect(history.open).toBe(false);
+    expect(history.textContent).toContain("Old Contractor");
+    expect(screen.getByText("Live Adjuster").closest("details")).toBeNull();
+  });
+
   it("degrades to an empty list instead of crashing when the request is unauthenticated", async () => {
     const auth = mockAuth([{ ok: false, status: 401, json: async () => ({ error: "Missing bearer token" }) }]);
 
