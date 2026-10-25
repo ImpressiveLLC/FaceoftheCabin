@@ -57,6 +57,18 @@ not a publicly authenticated website. Keep journals outside Git. Stop/restart th
 after code updates. Dataset/contract/purpose changes require a new journal, never recycled approvals.
 Navigation links use local ports 8766 and 8768; adjust them if using other ports.
 
+## Review packets for the SFT data path (S4/S5)
+
+`grading/review_packets.py` (tests: `test_review_packets.py`). Private files only; nothing here is committed except a counts-only report if wanted.
+
+1. `python grading/review_packets.py make-packet --sample <private>/sample.jsonl --track A --out <private>/packets` writes packet files of `id` and `text` only (blind: no source label) and `packet.manifest.json` (sample hash, ids hash).
+2. A reviewer (agent or person) returns `{"id", "target"}` lines; every target must pass `contract.validate`.
+3. `python grading/review_packets.py import --sample ... --packet <private>/packets --track A --labels l1.jsonl --reviewer <name> --reviewer-model <model> [--second-labels l2.jsonl --second-reviewer <name2> --second-model <model2>] --out <private>/review` writes `approved.jsonl`, `queue-nate.jsonl`, `audit.jsonl` and `report.json`.
+
+Rules enforced: Track A approves when the blind label equals the source label; a `suspect_source_label` row is **never** approved by source agreement and needs a second reviewer who matches the first; a disagreement needs a second reviewer, and anything still unsettled goes to `queue-nate.jsonl`. Tracks B and C (authored rows) need two blind reviewers who agree and ignore the author's label. Approved rows carry `reviewer_kind: agent`, `reviewer_model`, `second_reviewer`, `agreement`, `track`. About 10 percent of approved rows go to `audit.jsonl` for Nate. Duplicate or unknown ids, missing labels, invalid targets, a stale packet (the sample changed) and a reused reviewer name are refused; the sample file is never modified.
+
+Nate reviews `queue-nate.jsonl` and `audit.jsonl` in a candidate session: `python grading/server.py --package . --dataset <private>/review/queue-nate.jsonl --purpose training-candidate --port 8768 --state <private>/queue.journal.json`, and the same for `audit.jsonl`. His decisions go to that journal; the Done button writes `<journal>.approved.jsonl` and never edits gold.
+
 ## Verified preparation, 2026-10-16
 
 Recommended sources recovered from the original PR #159 sources.json:
