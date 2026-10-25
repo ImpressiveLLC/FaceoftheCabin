@@ -1,3 +1,5 @@
+import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget } from "./electricalMonitoring";
+import { collapseDuplicateZigbeeServices } from "./zigbeeServices";
 /**
  * Cabin Orchestration Platform — Shell UI
  *
@@ -31,6 +33,7 @@ import {
   Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download, Power, Car
 } from "lucide-react";
 import "./styles.css";
+import KioskControls from "./KioskControls.jsx";
 
 // ─── Temperature unit ──────────────────────────────────────────────────────
 function useTempUnit() {
@@ -1675,7 +1678,7 @@ function useCheckinDetails(apiBase, authedFetch = fetch) {
 
 function deviceIcon(type) {
   const map = {
-    CAMERA: Camera, WATER_PRESSURE_SENSOR: Droplets, TEMPERATURE_SENSOR: Thermometer,
+    CAMERA: Camera, WATER_PRESSURE_SENSOR: Droplets, WATER_VALVE: Droplets, TEMPERATURE_SENSOR: Thermometer,
     THERMOSTAT: Thermometer, SMOKE_ALARM: ShieldAlert, CO_ALARM: ShieldAlert,
     LOCK: Lock, MOTION_SENSOR: Activity, HOME_ASSISTANT_ENTITY: Wifi,
     DISHWASHER: Cpu, WASHING_MACHINE: Cpu, DRYER: Cpu, POWER_METER: Zap,
@@ -3658,28 +3661,44 @@ function DmAddView({ onDone, auth }) {
 }
 
 // ── Zigbee pairing flow ──
-function ZigbeePairingFlow({ onBack, onDone, auth }) {
+// A refused permit-join used to be ignored: the card counted down 4:14 for a window that was never opened (2026-10-16, a Home Sonoff that could not pair).
+export function pairingRefusedMessage(status) {
+  if (status === 401) return "You are signed out, so the hub did not open the pairing window. Sign in under Config, then try again.";
+  if (status === 403) return "This session is read-only (guest or demo), so the hub did not open the pairing window. Sign in as an administrator, then try again.";
+  return `The hub refused to open the pairing window (HTTP ${status}). Nothing is pairing.`;
+}
+
+export function ZigbeePairingFlow({ onBack, onDone, auth }) { // exported for src/App.test.jsx
   const doFetch = auth?.authedFetch || fetch;
   const PAIR_DURATION = 254; // seconds (~4m14s)
   const [phase, setPhase]         = useState("idle"); // idle | pairing | found | done
   const [secondsLeft, setSeconds] = useState(PAIR_DURATION);
   const [newDevices, setNewDevices] = useState([]);
   const [afterChoice, setAfterChoice] = useState(null); // "another" | "configure" | "seeall"
+  const [startError, setStartError] = useState(null);
   const timerRef = useRef(null);
   const pollRef  = useRef(null);
   const prevIds  = useRef(null);
 
   const startPairing = async () => {
+    setStartError(null);
     // Snapshot current device IDs before opening window
     const snap = await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices`)
       .then(r => r.json()).catch(() => []);
     prevIds.current = new Set(snap.map(d => d.deviceId));
 
-    await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enable: true, duration: PAIR_DURATION })
-    });
+    let opened;
+    try {
+      opened = await doFetch(`${LOCATIONS.cabin.apiBase}/api/devices/permit-join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enable: true, duration: PAIR_DURATION })
+      });
+    } catch {
+      setStartError("The hub could not be reached, so no pairing window was opened. Check the connection, then try again.");
+      return;
+    }
+    if (!opened.ok) { setStartError(pairingRefusedMessage(opened.status)); return; }
     setPhase("pairing");
     setSeconds(PAIR_DURATION);
 
@@ -3724,6 +3743,7 @@ function ZigbeePairingFlow({ onBack, onDone, auth }) {
         <h3>Pair a Zigbee Device</h3>
         <p>Put your device into pairing mode (hold the button until the LED flashes), then open the pairing window.</p>
         <p className="config-hint">This location's Zigbee coordinator will accept new devices for 4 minutes 14 seconds.</p>
+        {startError && <p className="config-hint pairing-error" role="alert">{startError}</p>}
         <button className="btn-primary pairing-start-btn" onClick={startPairing}>
           Open pairing window
         </button>
@@ -3961,7 +3981,7 @@ function ManualAddForm({ onBack, onDone, auth }) {
         <label>Display Name <input value={form.name} placeholder="e.g. Home Garage Lock" onChange={e=>setForm({...form,name:e.target.value})}/></label>
         <label>Type
           <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
-            {["LOCK","THERMOSTAT","SMOKE_ALARM","CAMERA","WATER_PRESSURE_SENSOR","WATER_LEAK_SENSOR",
+            {["LOCK","THERMOSTAT","SMOKE_ALARM","CAMERA","WATER_PRESSURE_SENSOR","WATER_LEAK_SENSOR","WATER_VALVE",
               "MOTION_SENSOR","CONTACT_SENSOR","DISHWASHER","WASHING_MACHINE","DRYER","POWER_METER",
               "HOME_ASSISTANT_ENTITY"].map(t=><option key={t}>{t}</option>)}
           </select>
@@ -5059,11 +5079,26 @@ export function DeviceDiscoveryOverlay({ device, mode, onClose, onApplied, auth 
 // separate from "no data yet" (fps === undefined/null) so an unreachable
 // Prometheus never reads as "camera confirmed down," same reasoning as
 // SecurityBadge's Unknown state.
-export function cameraHealthLabel(fps) {
+//
+// motionGated (2026-10-21, from /api/frigate-metrics): Blink-relayed cameras
+// have no continuous stream -- they only run while Blink's cloud sees motion
+// -- so exactly 0 fps is their normal idle state, not a lost signal. A
+// continuous camera at 0 fps is still "No signal".
+export function cameraHealthLabel(fps, motionGated = false) {
   if (fps == null) return { label: "Unknown", className: "camera-health-unknown" };
-  return fps > 0
-    ? { label: `${fps.toFixed(1)} fps`, className: "camera-health-ok" }
+  if (fps > 0) return { label: `${fps.toFixed(1)} fps`, className: "camera-health-ok" };
+  return motionGated
+    ? { label: "Idle · waits for motion", className: "camera-health-idle" }
     : { label: "No signal", className: "camera-health-down" };
+}
+
+// Camera ids carry their location as a "home_" prefix (the same convention
+// MqttBridgeService.deriveCameraLocation uses); /api/frigate-metrics returns
+// every Frigate camera regardless of site. Only the two known sites filter --
+// any other configured location keeps showing everything.
+export function cameraBelongsToLocation(cameraId, locationId) {
+  if (locationId !== "cabin" && locationId !== "home") return true;
+  return (cameraId.startsWith("home_") ? "home" : "cabin") === locationId;
 }
 
 function useFrigateMetrics(apiBase) {
@@ -5078,9 +5113,9 @@ function useFrigateMetrics(apiBase) {
   return metrics;
 }
 
-function CameraHealthPanel({ locCfg }) {
+export function CameraHealthPanel({ locCfg }) {
   const metrics = useFrigateMetrics(locCfg.apiBase);
-  const cameraIds = Object.keys(metrics);
+  const cameraIds = Object.keys(metrics).filter(id => cameraBelongsToLocation(id, locCfg.id));
   const dashboardUid = GRAFANA_DASHBOARD_UID[locCfg.id];
 
   return (
@@ -5091,7 +5126,7 @@ function CameraHealthPanel({ locCfg }) {
           <p className="config-desc">No camera metrics available yet.</p>
         )}
         {cameraIds.map(id => {
-          const { label, className } = cameraHealthLabel(metrics[id]?.cameraFps);
+          const { label, className } = cameraHealthLabel(metrics[id]?.cameraFps, metrics[id]?.motionGated === true);
           return (
             <div key={id} className={`camera-health-tile ${className}`}>
               <Camera size={16} />
@@ -5182,9 +5217,7 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     // voltage/current are tertiary/collapsed -- available in the device
     // detail view's full attributes list and Sensor History, not this tile.
     case "POWER_METER": {
-      const watts = device.attributes?.power;
-      const kwh = device.attributes?.energy;
-      const val = [watts != null && `${watts} W`, kwh != null && `${kwh} kWh`].filter(Boolean).join(" · ") || "—";
+      const val = electricalValue(device.attributes);
       return { icon: Zap, label: curatedLabel("power") || device.name, deviceId: device.deviceId,
         value: val, state: device.state };
     }
@@ -6203,7 +6236,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
   const kpiEntries = devices
     .map((d, globalIdx) => ({ d, globalIdx }))
     .filter(({ d }) => !d.location || d.location === locCfg.id)
-    .filter(({ d }) => d.attributes?.enabled !== false)
+    .filter(({ d }) => d.attributes?.enabled !== false || d.attributes?.monitoringGroup)
     .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit, reportingRelationships, { signedIn: !!auth?.signedIn }) }))
     .filter(({ tile }) => tile !== null);
 
@@ -6339,9 +6372,11 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }
   const [overIdx, setOverIdx] = useState(null);
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
+  // D13 A1: one card per physical device; an HA entity repeating its Zigbee parent's reading is not a second card.
+  const monitored = collapseDuplicateZigbeeServices(electricalMonitoringDevices(devices));
   const locDevices = activeLocation === "both"
-    ? devices
-    : devices.filter(d => !d.location || d.location === activeLocation);
+    ? monitored
+    : monitored.filter(d => !d.location || d.location === activeLocation);
 
   const { ordered, pinnedCount, reorder } = useDraggableOrder(
     `order.monitoring.${activeLocation}`, locDevices, isAlarm
@@ -6562,7 +6597,13 @@ function severityClass(override) {
 // mode, so normal (non-reorder) rendering is untouched.
 function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPinned, isOver,
     onDragStart, onDragOver, onDrop, onDragEnd }) {
-  const { displayConfigs } = useApp();
+  const { displayConfigs, devices = [], setActivePanel, setPendingDeviceFocus } = useApp();
+  const canOpen = !reorderMode && deviceId && setActivePanel && setPendingDeviceFocus;
+  const openDevice = () => {
+    if (!canOpen) return;
+    setPendingDeviceFocus(monitoringDeviceTarget(deviceId, devices));
+    setActivePanel("DEVICE_MANAGER");
+  };
   const cfg = deviceId ? displayConfigs?.[deviceId] : null;
 
   const effectiveLabel = cfg?.displayName || label;
@@ -6573,6 +6614,13 @@ function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPin
   return (
     <div
       className={`kpi-tile kpi-${stCls} ${reorderMode ? "reorder-card" : ""} ${isOver ? "drag-over-card" : ""}`}
+      role={canOpen ? "button" : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      aria-label={canOpen ? `Open ${effectiveLabel} in Devices` : undefined}
+      onClick={canOpen ? openDevice : undefined}
+      onKeyDown={canOpen ? event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openDevice(); }
+      } : undefined}
       draggable={reorderMode && !isPinned}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -9077,7 +9125,7 @@ function ArmedWhileOccupiedNotice() {
 }
 
 // ─── Navigation Rail ───────────────────────────────────────────────────────
-function NavRail({ active, onSelect, alertLevels }) {
+function NavRail({ active, onSelect, alertLevels, children }) {
   const alerts = alertLevels;
   // Asteroid City loads a second, purpose-recolored crest file (2026-08-19
   // approval) -- an <img> can't be recolored via the host page's CSS, and
@@ -9117,6 +9165,7 @@ function NavRail({ active, onSelect, alertLevels }) {
           </button>
         );
       })}
+      {children}
     </nav>
   );
 }
@@ -9313,6 +9362,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       <div className="app-shell">
         <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />
         <main className="main-area">
+          <KioskControls />
           {isDemo && <DemoBanner />}
           <div className="main-toolbar">
             <span className="platform-name">{locationLabel} — Orchestration Hub</span>

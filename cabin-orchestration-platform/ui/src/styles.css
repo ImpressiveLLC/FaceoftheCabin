@@ -470,6 +470,7 @@ body {
 .camera-health-value { margin-left: auto; padding-left: 12px; }
 .camera-health-ok .camera-health-value { color: var(--success); }
 .camera-health-down .camera-health-value { color: var(--danger); }
+.camera-health-idle .camera-health-value { color: var(--text-dim); }
 .camera-health-unknown .camera-health-value { color: var(--text-dim); font-style: italic; }
 
 /* ─── Rules Panel ───────────────────────────────────────────────────────── */
@@ -1480,6 +1481,7 @@ body {
 .pairing-icon { color: var(--text-muted); }
 .pairing-success { color: var(--success) !important; }
 .pairing-active { border-color: var(--success); }
+.pairing-card .pairing-error { color: var(--danger); }
 .pairing-countdown {
   font-size: 56px; font-weight: 700; font-family: monospace;
   color: var(--success); letter-spacing: 0.05em;
@@ -2570,3 +2572,26 @@ select option { background: var(--bg-secondary); color: var(--text); }
 /* W-65: noisy-alert opportunity detail */
 .noisy-alert-item { margin-top: 6px; font-size: 12px; }
 .noisy-alert-item ul { margin: 4px 0; padding-left: 18px; color: var(--text-muted); }
+
+/* One display toggle floats without reserving a banner or shrinking content. */
+.kiosk-toggle {
+  position: fixed; left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom)); z-index: 100;
+  min-height: 44px; padding: 8px 12px;
+}
+.kiosk-toggle[aria-checked="true"] {
+  color: var(--selected-color, var(--accent));
+  border-color: var(--selected-color, var(--accent));
+  background: color-mix(in srgb, var(--selected-color, var(--accent)) 18%, var(--control-surface, var(--bg)));
+  box-shadow: var(--selected-glow, none);
+}
+.kiosk-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media print { .kiosk-toggle { display: none; } }
+.kiosk-mode .nav-rail, .kiosk-mode .main-toolbar .platform-name, .kiosk-mode .device-count-toggle { display:none; }
+.kiosk-mode .main-toolbar { height:auto; min-height:48px; flex-shrink:0; }
+.kiosk-mode .toolbar-right { flex-wrap:wrap; }
+.kiosk-mode .app-shell { height:100dvh; }
+
+
+.kpi-tile[role="button"] { cursor:pointer; }
+.kpi-tile[role="button"]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }

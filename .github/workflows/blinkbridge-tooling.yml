@@ -1,0 +1,30 @@
+name: blinkbridge tests
+on:
+  pull_request:
+    paths:
+      - 'cabin-orchestration-platform/infra/blinkbridge/**'
+      - '.github/workflows/blinkbridge-tooling.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'cabin-orchestration-platform/infra/blinkbridge/**'
+      - '.github/workflows/blinkbridge-tooling.yml'
+permissions:
+  contents: read
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest   # GitHub-hosted: no production access, no secrets
+    defaults:
+      run:
+        working-directory: cabin-orchestration-platform/infra/blinkbridge
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -r requirements.txt
+      - name: Unit tests (fake blinkpy and ffmpeg)
+        run: python -W error::ResourceWarning -m unittest discover -s . -t . -p 'test_*.py' -v
+      - name: Image builds
+        run: docker build -t blinkbridge:ci .

@@ -11,6 +11,8 @@ This folder is the single home for how platform work is decided, prioritized, ac
 | Find what was decided and why (D1–D21) | [Decisions](decisions/README.md) |
 | Check whether spec and code disagree | [Discrepancy log](discrepancy-log.md) |
 | Trace a feature back to the need it serves | [Use cases](use-cases.md) |
+| Explore measurement attention, sourced ranges, unit crosswalks and the Act dictionary | [Framework + proxy decisions](proposals/2026-10-22-measurement-attention-framework.md) — UC-21 / DOC-7 / W-93 / W-96–W-108; implementation uncompleted |
+| Pick up measurement implementation assignments | [Cowork / Code / Work handoff](handovers/HO-2026-10-22-measurement-attention.md) |
 | See what is prioritized and why | [Backlog](backlog.md) |
 | Know what "done" means before a merge or a release | [Definition of Done](definition-of-done.md) |
 | Know whether something may merge or ship | [Sign-offs](signoffs/) — newest first by filename |
@@ -71,6 +73,7 @@ Rules:
 | `discrepancy-log.md` | Whoever finds the mismatch | Cowork rules each entry |
 | `use-cases.md` | Cowork, from Nate's stated needs | Nate |
 | `backlog.md` | Cowork scores; any agent proposes ad-hoc items with a score | Nate |
+| `docs/ai-assistant/wsjf-backlog.md` (Ask track) | Cowork owns and scores; Codex supplies design and technical evaluation and review, and proposes items with a score | Nate |
 | `definition-of-done.md` | Cowork drafts | Nate |
 | `signoffs/` | Cowork only. Append-only: a later sign-off supersedes, never edits, an earlier one | — |
 | `iterations/` | Cowork drafts; Code confirms feasibility | Nate |

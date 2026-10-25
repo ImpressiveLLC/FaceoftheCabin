@@ -1,0 +1,96 @@
+{
+  "round": "2026-10-19-r5",
+  "model": "cabin-intent-slot-poc2-r5",
+  "prompt_sha256": "f40d814a662e9e2c6b3832be8bb34590635cfcde99ece956fbeeaa516cf3eaf8",
+  "gold_sha256": "463832027bb2f0d03b859a4f6027a6289946f3db0764ac0e47b502629231c59b",
+  "schema_sha256": "1041de3ebdf2e15b557ecd4ac985005a590874a09f57d34d2538e764553b8007",
+  "fixtures": 47,
+  "valid_output_rate": 1.0,
+  "intent_accuracy": 0.8297872340425532,
+  "slot_micro_f1": 0.367816091954023,
+  "critical_fixture_failures": 17,
+  "per_intent": {
+    "answer_question": {
+      "correct": 4,
+      "total": 4
+    },
+    "clarify": {
+      "correct": 3,
+      "total": 9
+    },
+    "express_need": {
+      "correct": 15,
+      "total": 15
+    },
+    "get_device_state": {
+      "correct": 2,
+      "total": 2
+    },
+    "propose_automation": {
+      "correct": 5,
+      "total": 5
+    },
+    "set_device_attribute": {
+      "correct": 2,
+      "total": 3
+    },
+    "set_device_state": {
+      "correct": 4,
+      "total": 5
+    },
+    "unsupported": {
+      "correct": 4,
+      "total": 4
+    }
+  },
+  "confusions": {
+    "clarify->set_device_state": 4,
+    "set_device_attribute->set_device_state": 1,
+    "clarify->set_device_attribute": 1,
+    "clarify->propose_automation": 1,
+    "set_device_state->express_need": 1
+  },
+  "failed": {
+    "gold-13": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-14": {
+      "want": "set_device_attribute",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-15": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-37": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-38": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-40": {
+      "want": "clarify",
+      "got": "set_device_attribute",
+      "critical": true
+    },
+    "gold-47": {
+      "want": "clarify",
+      "got": "propose_automation",
+      "critical": true
+    },
+    "gold-48": {
+      "want": "set_device_state",
+      "got": "express_need",
+      "critical": false
+    }
+  },
+  "released": false
+}

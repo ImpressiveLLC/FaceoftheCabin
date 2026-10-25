@@ -305,3 +305,62 @@ This PR is limited to this file, including the corpus coverage contract, revised
 | HA-UX5 | Responsive/accessibility/comprehension validation | HA-UX1; revalidate later slices | Pending / pending |
 
 Apply the existing CoD/WSJF formula to each slice after mapping and baseline review; no invented numerical scores or changes to C1–C4 ordering. HA-UX0 precedes HA-UX1, and action work does not gate the read-only console. Basic accessibility applies throughout. The proposal contains acceptance criteria, governance boundaries and provenance limitations. The accompanying retro-theme changes are independently reviewable presentation updates, not implementation of HA-UX0–5.
+
+## Ask action proposals and intent/slot r1 — 2026-10-14 (Cowork)
+
+Source: Nate, 2026-10-14; [D27](../governance/decisions/ontology-decisions.md) (ratified for the Phase 1 POC start); PR #159 (intent/slot r1 offline package). Scores are Cowork's, on this file's C-scale. The end-to-end proof is platform item W-75 (vertical POC).
+
+| Item | Safety | Usability | Extensibility | Time | CoD | Size | WSJF | Depends on |
+|---|---|---|---|---|---|---|---|---|
+| POC2 Intent/slot r1 extended for D27 | 7 | 8 | 9 | 6 | 30 | 3 | 10.0 | PR #159 merged (offline tooling) |
+| C5 Ask action proposals, general | 9 | 10 | 9 | 5 | 33 | 8 | 4.125 | POC2, W-75 evidence, W-66 to W-69 |
+| C6 Repeat-run variance floor for intent/slot evaluation | 4 | 3 | 7 | 6 | 20 | 2 | 10.0 | None (existing `evaluate.py` and gold set) |
+
+### [POC2] Intent/slot r1 extended for D27 (Codex)
+
+Current [Doc 27 / POC2 handoff](../governance/handovers/HO-2026-10-16-doc27-poc2.md): prompt/contract improvement first; review and expand gold; shadow deferred. Hardware facts belong in reviewed documents and live inventory. New environmental controls do not expand W-75's heater-only scope.
+
+Offline only. Extend the PR #159 contract and data:
+
+- **Needs.** Add an `express_need` intent and a `concept` slot from the W-66 vocabulary. "I'm cold" becomes `express_need` with `concept: cold`, not a bare `clarify`, so Ask can offer ontology options (D27 R-OC-5, R-OC-6). Unitless temperatures still clarify.
+- **Triggers.** Add `time_once` (ISO datetime), `time_recurring` (RFC 5545 RRULE plus a start time) and `state_changes_to` with an optional `for_seconds`. With these, "when I turn on the LG TV" and "someone at the road for a minute" can be expressed. Presence states are valid trigger targets (D27 Q-OC-4).
+- **Card target.** Add an optional `card_target` request input; the model must not override it.
+- **Gold.** Gold fixtures cover each new intent and trigger. Critical fixtures cover guarded capabilities (valve open; unlock from Ask is unsupported), wrong site, negation, prompt injection and unitless temperature.
+- **Limits.** No training run, no entity ids, no ratification or quality claims. The `evaluate.py` gates stay as written.
+
+### [C5] Ask action proposals, general (Code with Codex)
+
+C5 generalizes W-75 once its evidence is in. It replaces the static concept map with walking the W-68 store, uses the W-67 inventory, and applies W-69 guards and the caller's permissions. Its options use the R-OC-11 single confirm model. Execution outside the W-75 heater scope needs the PR #159 runtime gates (zero invented entities accepted, zero runs without confirmation, zero critical safety failures), the RAG regression suite and Nate's go.
+
+## Evaluation variance ruling and C6 — 2026-10-21 (Cowork)
+
+Ownership (Nate, 2026-10-21): Cowork owns and scores this backlog; Codex supplies design and technical evaluation and review.
+
+**Ruling on PR #224's r8 reading.** Two runs at temperature 0 with pinned inputs show the observed run-to-run spread (about 0.01 slot F1, 2 of 49 rows); they do not establish a noise floor. Until C6 is done, a change under about 0.015 slot F1 or one row of intent accuracy is reported as "within observed variance (2 runs)", never as noise, and no round is accepted or rejected on that basis alone. Earlier readings that called such a change noise are provisional. `proposals/sme-loop.md` is corrected to this wording.
+
+### [C6] Repeat-run variance floor for intent/slot evaluation (Codex design and run; Cowork ratifies)
+
+- Run the current gold set and the current prompt at least **5 times** with identical inputs and settings, on the same host.
+- Report per metric (intent accuracy, slot F1, slot true positives, critical count): every run's value, the range, and the rows that flip between runs.
+- Report the observed range as descriptive evidence. Exceeding it alone does not establish improvement; compare repeated baseline and candidate runs.
+- Record the observed range, the run count and the date in this file; re-measure when the gold set, prompt or model changes.
+- **AC:** five or more run reports committed (ids and hashes, no private data); the observed-range table above; `sme-loop.md`'s r8 note updated with the measured range.
+
+
+
+## Measurement context research and recommendations C7/C8
+
+Origin: Nate’s 2026-10-22 proxy-PO/SME delegation for #241/#242; use case [UC-21](../governance/use-cases.md). Product/architecture and sources live only in [measurement framework sections 11–13](../governance/proposals/2026-10-22-measurement-attention-framework.md#11-proxy-product-owner-decisions-and-implementation-authorization). Cowork remains this backlog’s owner; these are **proxy-PO proposed scores**, not Cowork ratification. Platform dictionary/evaluator/rollout scores are not duplicated here.
+
+| Item | Safety | Usability | Extensibility | Time | CoD | Size | WSJF | Status / depends on |
+|---|---|---|---|---|---|---|---|---|
+| C7 User-initiated measurement research and approved dictionary corpus | 4 | 7 | 7 | 3 | 25 | 3 | 8.333 | proposed; W-98 dictionary, approved source content and existing C2 index contract |
+| C8 Evaluated source-grounded measurement recommendations | 7 | 8 | 7 | 2 | 31 | 8 | 3.875 | held; C7, W-106 evidence, representative gold/held-out evaluation and separate recommendation-policy review |
+
+### C7 acceptance and owner request
+
+Cowork owns source/index eligibility and wording; Code implements; Codex reviews privacy/evaluation. Reuse C2’s approved document indexing rather than create a parallel corpus. Every answer/search context names measurement, provider scheme, units, method/window and policy version. External search is explicitly initiated by the user with a preview of the public terms being sent; household IDs, precise location and raw observations are excluded by default. No network call on simply opening the dictionary. Disabled provider/network failure keeps local definitions and direct citations usable. Tests cover incompatible AQI/VOC/CO2, privacy, permissions, stale index and unsupported-source refusal. Record indexing/version and actual retrieval evidence.
+
+### C8 acceptance and owner request
+
+Cowork/domain reviewer authors sources and recommendation policy; Code implements; Codex evaluates. Specify whether deterministic guidance suffices before selecting a model. Freeze reviewed scenarios, sources, scope and abstention rules; hold out eval families. Test claim-level grounding, misleading unit/scheme conversions, missing/stale data, conflicting guidance, unsupported health/engineering advice and unsafe implied actions. Numeric quality/latency targets require the design/eval protocol before implementation, not an invented pass claim. Recommendations remain informational and source-linked; existing device guards/confirmation never disappear. No automatic actuation, personal health inference or extension to life-safety control is authorized by C8. Exit requires independent domain/eval review and Nate’s release authority. This remains an explicitly held later product slice, not hidden W-98 work.

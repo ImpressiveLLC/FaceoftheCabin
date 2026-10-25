@@ -65,6 +65,14 @@ groups:
         track: pinned
         sources: [cabin-orchestration-platform/home-collector/network-scan-agent/package.json]
         note: Runs on the Home Termux phone, not on the M920q; updated by hand there.
+      - id: app.blink-relay
+        name: Blink notification relay (Home)
+        kind: project
+        keys: [blink-relay]
+        declared: "1.0.0"
+        track: pinned
+        sources: [cabin-orchestration-platform/home-collector/blink-relay/package.json]
+        note: Runs on the Home Termux phone beside the network scan agent; updated by hand there.
 
   - id: runtimes
     label: Languages, runtimes and base images
@@ -125,6 +133,27 @@ groups:
           - cabin-orchestration-platform/discovery-service/test/Dockerfile
           - cabin-orchestration-platform/infra/docker-compose.yml
           - cabin-orchestration-platform/locations/home/docker-compose.yml
+      - id: rt.blinkbridge-rewrite
+        name: Blinkbridge rewrite image (manual cutover only)
+        kind: image
+        keys: ["blinkbridge:rewrite"]
+        declared: rewrite
+        track: floating
+        sources: [cabin-orchestration-platform/infra/blinkbridge/docker-compose.cutover.yml]
+      - id: rt.blinkbridge-python
+        name: Blinkbridge Python image
+        kind: image
+        keys: ["python:3.12-alpine"]
+        declared: 3.12-alpine
+        track: series
+        sources: [cabin-orchestration-platform/infra/blinkbridge/Dockerfile]
+      - id: rt.blinkbridge-ffmpeg
+        name: Blinkbridge ffmpeg
+        kind: build-step
+        keys: ["apk add --no-cache ffmpeg"]
+        declared: latest
+        track: floating
+        sources: [cabin-orchestration-platform/infra/blinkbridge/Dockerfile]
       - id: rt.backend-image-tools
         name: Node.js, npm and the Bitwarden CLI inside the backend image
         kind: build-step
@@ -268,7 +297,7 @@ groups:
         track: series
         sources: [cabin-orchestration-platform/ui/package.json]
       - id: fe.mqtt
-        name: MQTT.js (telemetry backup and network scan agents)
+        name: MQTT.js (telemetry backup, network scan and Blink relay agents)
         kind: npm
         keys: [mqtt]
         declared: "^5.10.0"
@@ -276,7 +305,8 @@ groups:
         sources:
           - cabin-orchestration-platform/infra/telemetry-backup-agent/package.json
           - cabin-orchestration-platform/home-collector/network-scan-agent/package.json
-        note: No lockfile in either place, so each install picks the newest 5.x.
+          - cabin-orchestration-platform/home-collector/blink-relay/package.json
+        note: No lockfile in any of these places, so each install picks the newest 5.x.
       - id: fe.multicast-dns
         name: multicast-dns (network scan agent)
         kind: npm

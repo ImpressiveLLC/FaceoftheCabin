@@ -1,5 +1,14 @@
 # Maintenance & Operations Guide
 
+## Doc 27 incoming environmental equipment
+
+The [canonical build plan](hardware/doc27-environmental-nodes.md#setup-maintenance-and-acceptance)
+owns receipt, calibration, cleaning, drain inspection, freshness and recovery checks;
+the [master inventory](hardware/doc27-device-inventory.json) records planned allocations.
+Record commissioning evidence before changing ordered status to installed/verified.
+Do not treat a retained online state, commanded outlet state or recirculation as proof
+of fresh telemetry, airflow or equal conditions between floors.
+
 *Audience: whoever is operating, deploying, or debugging this platform.
 For product/day-to-day usage, see [`USER_GUIDE.md`](USER_GUIDE.md). For
 standing up an independent instance, see [`REPLICATION.md`](REPLICATION.md).
@@ -894,6 +903,10 @@ about 5 fps with detection running. Two things in its log look alarming but are
 not the cause: `Could not extract events: An app update is required` is
 blinkpy's retired `get_events` call (blinkpy issue #757), and the startup line
 `Unexpected error: days=...; must have magnitude` appears on every start.
+> **Superseded 2026-10-21:** the legacy bridge described in this and the next sections is replaced by the in-repo
+> rewrite (see "blinkbridge rewrite" below and `docs/BLINKBRIDGE_INSTALL_GUIDE.md`). The log-silence diagnosis below
+> applies only while the legacy image is still running.
+
 **Prevention (staged, not installed):** `scripts/host/blinkbridge-watchdog`
 restarts it after 10 minutes of log silence, run every 5 minutes by
 `blinkbridge-watchdog.timer`. Install with sudo:
@@ -1201,6 +1214,9 @@ daylight footage (sunlit trees, visible ground debris) — a stark
 contrast from the stale nighttime IR frame every attempt showed before
 the `blinkpy` patch.
 
+> **Superseded 2026-10-21:** after cutover, rebuild with the compose override in `docs/BLINKBRIDGE_INSTALL_GUIDE.md`,
+> not the hand-built `docker run` below (kept for the legacy image only).
+
 **Rebuild/redeploy procedure** (for the next time `blinkbridge`
 needs a code change):
 ```bash
@@ -1321,6 +1337,30 @@ indicator is a real, scoped follow-up (see this session's plan file,
 Item 3) — not built as of this entry.
 
 ---
+
+### blinkbridge rewrite (built 2026-10-21, not yet deployed)
+
+The third-party bridge hung silently three times (08-03, 08-06, 10-10) and again 2026-10-20 (ffmpeg `Broken pipe`,
+then blinkpy "possibly down or throttled", then 30+ hours with no log line and `RestartCount 0`). It was replaced by an
+in-repo rewrite at `cabin-orchestration-platform/infra/blinkbridge/` (infra convention: next to `production-stack`,
+own Dockerfile and tests, built by hand on the host).
+
+Design: per-camera state machine (idle, starting, live, backoff); every Blink and ffmpeg call has a timeout; ffmpeg is
+terminated, killed and reaped on every exit path; teardown steps are isolated so one error cannot stop the loop;
+exponential backoff with jitter; a throttle signal pauses all Blink calls for 5 to 30 minutes; a status line containing
+"motion poll" is logged at least every 35 s; `GET :8811/healthz` returns 503 when the loop is stale (2 min) or no Blink
+poll succeeded for 30 min; a Docker HEALTHCHECK uses it; a watchdog thread exits the process if the loop dies for 10 min.
+Tests (fake blinkpy and ffmpeg) run in `.github/workflows/blinkbridge-tooling.yml`.
+
+How it self-heals: a failed liveview (Blink ended it, `Broken pipe`, stalled ffmpeg, open timeout) is torn down and
+retried by the camera's own backoff (5 s doubling to 5 min, jittered); a Blink throttle pauses every Blink call for
+5 to 30 min; an expired token triggers a fresh login. Diagnose: `docker ps` shows `(healthy)`/`(unhealthy)`;
+`docker logs -t --tail 20 blinkbridge` should show `motion poll ok` every 30 to 40 s; `docker exec blinkbridge wget -qO-
+http://127.0.0.1:8811/healthz` gives loop age, last good poll age and per-camera state. Install, cutover and rollback:
+[`BLINKBRIDGE_INSTALL_GUIDE.md`](BLINKBRIDGE_INSTALL_GUIDE.md) and
+[`BLINKBRIDGE_CUTOVER_RUNBOOK.md`](BLINKBRIDGE_CUTOVER_RUNBOOK.md). Support steps:
+[`BLINKBRIDGE_SUPPORT_GUIDE.md`](BLINKBRIDGE_SUPPORT_GUIDE.md). `scripts/host/blinkbridge-watchdog` now also restarts on
+Docker `unhealthy`. The legacy source under `/storage/services/blinkbridge-src` stays until a quiet week after cutover.
 
 ## Overnight Camera Alerts (Node-RED)
 
@@ -2078,6 +2118,102 @@ the frontend build args (`VITE_*_API_BASE` etc., fixed at image-build
 time) and the `hub_location` database row (fetched and merged at
 runtime, taking priority). Changing only one is not enough; check both.
 
+### Reviving the Home Zigbee collector (W-82 runbook, Termux interim, 2026-10-16)
+
+Home's Zigbee2MQTT was last seen running in `~/z2m.log` on 2026-09-11 (the log
+ends 17:35 with `Not connected to MQTT server`); the phone left the tailnet on
+2026-09-19, `home_z2m/bridge/state` stayed `offline`, and nothing noticed for
+four weeks (W-57 adds the alarm; W-82 moves the collector to an always-on
+host, after which this section is replaced).
+Every command below was run on 2026-10-16 from `ilikethelights` with the phone
+(G3223, Android 8.0) on USB; nothing here is a guess.
+
+**Preconditions, check in this order** (`SSH="ssh -i $HOME/.ssh/mr5u_termux_ed25519 -p 8022 u0_a220@192.168.1.127"`;
+if SSH is refused run `sshd` in Termux, or `adb` to open Termux):
+
+1. `$SSH 'grep -A3 "^mqtt:" ~/.z2m/configuration.yaml'` must show
+   `base_topic: home_z2m` (any other value overwrites the cabin bridge's
+   retained state) and `server: mqtt://100.77.44.113:1883` (numeric; MagicDNS
+   does not resolve in Termux). `serial:` must be `tcp://192.168.1.142:6638`.
+2. `$SSH '(echo > /dev/tcp/192.168.1.142/6638 && echo OPEN)'` (the SLZB-MR5U).
+3. `$SSH '(timeout 5 bash -c "echo > /dev/tcp/100.77.44.113/1883" && echo OPEN)'`.
+   "No route to host" means Tailscale is not connected on the phone: open the
+   Tailscale app (`tailscale status` on any peer shows `g3223 ... offline`).
+4. Battery optimization: `adb shell dumpsys deviceidle whitelist | grep -E "tailscale|termux"`
+   must list **both** `com.termux` and `com.tailscale.ipn`. On 2026-10-16 only
+   Termux was exempt; Tailscale was not, the likely reason it dropped.
+
+**Start command** (installed copy is `~/z2m-run/node_modules/zigbee2mqtt`,
+v2.14.1; the log is `~/z2m.log`; keep the wake lock or Android will doze it):
+
+```bash
+termux-wake-lock; cd ~/z2m-run/node_modules/zigbee2mqtt && Z2M_ONBOARD_NO_SERVER=true ZIGBEE2MQTT_DATA=$HOME/.z2m setsid nohup node index.js > ~/z2m.log 2>&1 < /dev/null &
+```
+
+**Run it under the supervisor, not bare.** Found the same afternoon: two minutes
+after the first bare start, `MQTT error: read ECONNABORTED` and `Port Error: read
+ECONNABORTED` hit the MQTT and MR5U sockets at the same instant (the phone's
+network blipped), Z2M exited (`restart=false, code=2`) and stayed down, so
+`home_z2m/bridge/state` went `offline` before anyone paired anything. The loop in
+[`home-collector/z2m-supervise.sh`](../cabin-orchestration-platform/home-collector/z2m-supervise.sh)
+holds the wake lock, runs the command above, and restarts Z2M 15 s after any exit
+(its log: `~/z2m-supervisor.log`). Install: `scp -P 8022 -i ~/.ssh/mr5u_termux_ed25519 z2m-supervise.sh u0_a220@192.168.1.127:`
+then `$SSH 'chmod +x ~/z2m-supervise.sh; setsid nohup ~/z2m-supervise.sh > /dev/null 2>&1 < /dev/null &'`.
+
+Success is these lines in `~/z2m.log`: `zigbee-herdsman started (resumed)`,
+`Connected to MQTT server`, `Zigbee2MQTT started!`. Independent check on the
+M920q: `mosquitto_sub -h localhost -p 1883 -t home_z2m/bridge/state -C 1`
+must print `{"state":"online"}`. Not yet in place: `~/.termux/boot` (no
+Termux:Boot installed), so a phone reboot or Android killing Termux still needs
+the supervisor started by hand; W-82 removes that by moving the collector to an
+always-on host.
+
+**Backend must subscribe to Home.** Two variables, both unset in the live
+`.env` on 2026-10-16 (so the compose defaults `zigbee2mqtt` / `cabin` applied
+and Home's bridge was never listened to):
+`CABIN_ZIGBEE_TOPIC_PREFIXES=zigbee2mqtt,home_z2m` and
+`CABIN_ZIGBEE_LOCATIONS=cabin,home`. Read what the running backend uses with
+`docker exec cabin-backend printenv CABIN_ZIGBEE_TOPIC_PREFIXES CABIN_ZIGBEE_LOCATIONS`;
+after a restart the log line `Zigbee2MQTT adapter connected to ... (2 bridge(s)`
+confirms it. The live file is `~/FaceoftheCabin-deploy/.../infra/.env`, a
+symlink to `~/FaceoftheCabin/.../infra/.env`. A restart must keep the running
+image tag (`docker inspect cabin-backend --format '{{.Config.Image}}'`), or
+compose falls back to `cabin-backend:latest`. **Done 2026-10-16 17:00 CDT** (Nate approved): both
+lines appended to the live `.env`, then `IMAGE_TAG=f81147f docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d cabin-backend`
+(the deploy workflow's own form); `/actuator/health` UP in about 10 s and the log
+read `2 bridge(s): [zigbee2mqtt=cabin, home_z2m=home]`. Undo: delete the two
+lines and repeat the `up -d`.
+
+**Pairing payloads, read from Z2M 2.14.1's `dist/extension/bridge.js`**
+(`permitJoin`): it requires `time`, ignores `value`. The adapter's open
+payload `{"value":true,"time":254}` is accepted. Its close payload
+`{"value":false}` has no `time`, so Z2M answers `Invalid payload`; the window
+then closes only by timing out. Raised under W-83 with the fix (`{"time":0}`).
+
+### Adding a Zigbee smart plug or switch that measures power (W-88 use case, 2026-10-21)
+
+**Found with:** the cabin dehumidifier plugged into a new SONOFF S61SZBTPB switch, and the attic
+SONOFF SNZB-02P sensor. Four symptoms, three causes.
+
+| Symptom | Cause | What the platform does now |
+|---|---|---|
+| The switch is listed twice (a `z2m-*` device and `ha-cabin-*` entities), with no link, or linked the wrong way round | HA discovery imported each entity of a Zigbee device as its own unrelated candidate; the attic sensor had been drawn as a *child of its own humidity entity* | Discovery makes the native `z2m-*` device the **parent** and each Home Assistant entity of it a **service** (a child), matched by friendly-name slug at the same location (longest slug wins; a name shared by two devices is never linked). It repairs the reversed link. It never replaces a parent a person chose elsewhere, and a candidate stays a candidate |
+| The attic humidity (and temperature) chart showed two aligned series from one sensor | The native device and its HA humidity/temperature entities each logged `TELEMETRY` under their own device id | A `sensor` entity of a native Zigbee device keeps its live value but writes no second telemetry series; only the Zigbee parent is logged (D13: the device is the lineage, the measurement type is the service). Switches and binary sensors still publish so workflows watching them keep firing. **Old double-logged rows were left alone**; deleting telemetry is a dry-run script the owner runs |
+| Power, voltage, current and energy read "unknown" | Z2M publishes `null` for a property the device has not reported yet; the adapter stored the text `null` | Nulls are skipped, never stored, and never overwrite a real earlier reading. An empty reading now means "nothing reported yet" |
+| No on/off control and no power tile on the card | Z2M puts the on/off under a `switch` expose whose access flag is absent, so no COMMAND capability was inferred; the description said "switch", so the device was typed as a generic entity instead of a power meter | A switch, plug or relay that exposes power is typed `POWER_METER` and a `switch`, `light`, `fan` or `cover` expose now contributes COMMAND. Applies to devices paired after this change |
+
+**Steps for the next smart plug:**
+1. Pair it (Device Manager, Add, pairing window). It appears as a Candidate `z2m-<friendly name>` plus its `ha-cabin-*` entities, already linked under it.
+2. Check the parent card says **Power meter**, has an on/off control and lists the HA entities underneath. Rename the parent; the entities keep their ids.
+3. **Enable it.** "Assigned" is a lifecycle label only: a device that is assigned but not enabled is not on the dashboard and not monitored. Turn on *Enabled* in the card's edit form (a person's decision, never automatic).
+4. Power still empty after a few minutes with a load connected: **first check whether Zigbee2MQTT supports the model.** In the bridge's device list a device with `supported: false` and the description "Automatically generated definition" has no converters; Z2M advertises power, voltage, current and energy for it but publishes `null`, and its reporting setup (`configured_reportings: []`) fails. Reconfigure will not fix that. The fix is a Zigbee2MQTT version that knows the model. **Found 2026-10-21:** the cabin's Zigbee2MQTT (2.12.1, image `koenkk/zigbee2mqtt:latest` built 2026-09-03) did not support the SONOFF S61SZBTPB (firmware 1.0.3, date code 20260701), so the dehumidifier switch gave on/off only and every power service read unknown, while the current Zigbee2MQTT documentation lists the model with power, voltage, current and total energy. For a supported model with nulls, use **Reconfigure** in the Zigbee2MQTT UI, then switch the load on and off once. Do not conclude a plug is faulty from one empty reading.
+5. **Upgrading Zigbee2MQTT is a whole-mesh change, not a device fix.** Take a copy of `/storage/services/zigbee2mqtt` (`configuration.yaml`, `database.db`, `coordinator_backup.json`) first, do it at a quiet hour, and confirm afterwards that the 13 other devices report and `zigbee2mqtt/bridge/state` is online (see the 2026-09-13 mesh outage entry). The production stack workflow overwrites compose and Z2M files from git, so a manual pull is a one-off until the image tag is pinned there. This is an owner action, not an agent session.
+6. Monitoring and the weekly power suggestions read the Zigbee parent's readings, so they begin once real power values arrive; allow the usual window of consistent draw before expecting a suggestion.
+
+**Charts and cards after the link (found 2026-10-24).** Making the Zigbee device the parent stopped the linked Home Assistant sensor entity writing its own readings, so a chart that had been built on that entity (the outside temperature sensor, renamed "Temp Outside | Lower Level Temperature" in the chart) stopped on 2026-10-20 while the readings carried on under the Zigbee device, which showed up as a second, blank card under its raw name. Fixed: a Zigbee parent's history (`/api/events/telemetry-history`) and its picker entry (`/api/events/reported-fields`) now include the rows logged under its linked HA sensor entities, so the series is continuous and offered once; Monitoring shows one card per physical device (an entity that repeats a reading its Zigbee parent reports is not a second card, and a blank parent reading after a backend restart is filled from the entity until the next report). To get the name you want on the chart and card, rename the **Zigbee device** (Device Manager, edit, name); the history follows it. Battery sensors report about hourly, so a Zigbee card can read blank for up to an hour after any backend restart.
+
+**A device registered before this change keeps its old shape** (type and capabilities are sticky once configured, by design). The cabin dehumidifier switch `z2m-0xa4c1381f3884ffff` is one: use *Re-check device info* on its card, or the one-time `discovery/apply` `mode=replace` correction in the `cabin-3rd-party-device-onboarding` skill, Step 4 (confirm with the owner first). Tracked as W-93.
+
 ---
 
 ## Known Issues & Operational Lessons
@@ -2766,3 +2902,7 @@ trusted at face value.
 Check it by hand against the host: `GET http://<m920q>:8090/api/system/storage` should match `df -h /storage /` (the HDD figure comes through the archive mount `/app/archives/cabin_event`, which reports the whole `/storage` filesystem). Change the lines with `STORAGE_WARN_PERCENT`, `STORAGE_CRITICAL_PERCENT`, `STORAGE_RENOTIFY_HOURS` in `infra/.env` (the compose file must pass them through), or switch it off with `STORAGE_MONITOR_ENABLED=false`.
 
 **It never deletes anything.** When it fires, the owner decides: prune old nightly backups with `scripts/prune-storage-backups.sh` (dry run first), review recording retention, check `docker system df`. BI telemetry is never removed without a warning (`docs/STORAGE_ARCHITECTURE.md`).
+
+### Camera Health tile: idle Blink cameras read "Idle", not "No signal" (2026-10-21)
+
+`driveway` and `home_aldrich_front` are motion-gated Blink relays: Frigate reports exactly 0.0 fps for them until Blink's cloud sees motion, so the Monitoring "Camera Health" tile showed "No signal" for a healthy idle camera. `GET /api/frigate-metrics` now adds `motionGated` per camera (true for the keys of `cabin.devices.cameras.blinkCameraMap`, the same set the Frigate-stats heartbeat in `MqttBridgeService` uses), and the tile shows "Idle · waits for motion" for those at 0 fps. A continuous camera (`cabin_outside_reolink`) at 0 fps still reads "No signal". The panel also lists only cameras for its own site (`home_` prefix = Home), so `home_aldrich_front` no longer shows under Cabin. Design: `docs/governance/proposals/2026-10-19-blink-camera-health-design.md`.

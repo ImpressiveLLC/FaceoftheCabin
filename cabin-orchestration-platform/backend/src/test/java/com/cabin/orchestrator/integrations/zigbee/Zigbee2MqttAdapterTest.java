@@ -291,6 +291,52 @@ class Zigbee2MqttAdapterTest {
         assertEquals(List.of("battery", "voltage", "temperature", "humidity"), fields);
     }
 
+    // 2026-10-21 (found on the cabin dehumidifier switch, SONOFF S61SZBTPB): Z2M puts a
+    // controllable device's on/off under a "switch" expose whose own access flag is absent, so no
+    // COMMAND capability was inferred; and because its description says "switch" it was typed as a
+    // generic entity although it reports power, which hid it from the power tile and monitoring.
+    private void registerPowerSwitch(String friendlyName) throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"friendly_name":"%s","type":"Router","definition":{
+              "model":"S61SZBTPB","vendor":"SONOFF","description":"Zigbee smart switch (US version)",
+              "exposes":[
+                {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7,"value_on":"ON","value_off":"OFF"}]},
+                {"type":"numeric","name":"power","property":"power","access":1,"unit":"W"},
+                {"type":"numeric","name":"voltage","property":"voltage","access":1,"unit":"V"},
+                {"type":"numeric","name":"current","property":"current","access":1,"unit":"A"},
+                {"type":"numeric","name":"energy","property":"energy","access":1,"unit":"kWh"},
+                {"type":"numeric","name":"linkquality","property":"linkquality","access":1}
+              ]}}]
+            """.formatted(friendlyName));
+    }
+
+    @Test
+    void aSwitchThatMeasuresPowerIsAPowerMeterWithAnOnOffCommand() throws Exception {
+        registerPowerSwitch("0xa4c1381f3884ffff");
+
+        var descriptor = registry.descriptor("z2m-0xa4c1381f3884ffff").orElseThrow();
+        assertEquals(com.cabin.orchestrator.devices.model.DeviceType.POWER_METER, descriptor.type());
+        assertTrue(descriptor.capabilities().contains(com.cabin.orchestrator.devices.model.DeviceCapability.COMMAND));
+        assertTrue(descriptor.capabilities().contains(com.cabin.orchestrator.devices.model.DeviceCapability.POWER_MONITOR));
+    }
+
+    @Test
+    void anExplicitNullClearsTheCurrentReadingWithoutFabricatingZero() throws Exception {
+        registerPowerSwitch("0xa4c1381f3884ffff");
+
+        deliver("zigbee2mqtt/0xa4c1381f3884ffff", "{\"state\":\"ON\",\"power\":null,\"voltage\":null,\"linkquality\":148}");
+        var first = registry.get("z2m-0xa4c1381f3884ffff").attributes();
+        assertEquals("ON", first.get("state"));
+        assertFalse(first.containsKey("power"), "an unreported power must be absent, not the text null");
+        assertFalse(first.containsKey("voltage"));
+
+        deliver("zigbee2mqtt/0xa4c1381f3884ffff", "{\"power\":412.5,\"voltage\":121.4}");
+        deliver("zigbee2mqtt/0xa4c1381f3884ffff", "{\"power\":null}");
+        var later = registry.get("z2m-0xa4c1381f3884ffff").attributes();
+        assertNull(later.get("power"));
+        assertEquals(121.4, ((Number) later.get("voltage")).doubleValue(), 0.0001);
+    }
+
     // D16 (Reporting Topics IA), Cowork ratification 2026-09-05: before this,
     // motion/contact/leak devices never got a device_reporting_relationship
     // row for their own binary reading at all -- only numeric exposes were
@@ -511,5 +557,279 @@ class Zigbee2MqttAdapterTest {
             return saved.values().stream().filter(r -> r.deviceId().equals(deviceId)).toList();
         }
         @Override public Map<String, List<DeviceReportingRelationship>> loadAll() { return Map.of(); }
+    }
+
+    // 2026-10-16: Z2M 2.14.1 answers {"value":false} (no "time") with "Invalid
+    // payload", so the hub's close request never closed anything on a 2.x
+    // bridge. Open and close must both carry "time", on every configured bridge.
+    private List<String> permitJoinPublishes(boolean enable, int duration) throws Exception {
+        adapter.configureBridgesForTest("zigbee2mqtt,home_z2m", "cabin,home");
+        org.eclipse.paho.client.mqttv3.MqttClient mqtt =
+            org.mockito.Mockito.mock(org.eclipse.paho.client.mqttv3.MqttClient.class);
+        org.mockito.Mockito.when(mqtt.isConnected()).thenReturn(true);
+        org.springframework.test.util.ReflectionTestUtils.setField(adapter, "client", mqtt);
+
+        adapter.permitJoin(enable, duration);
+
+        org.mockito.ArgumentCaptor<String> topics = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<MqttMessage> messages = org.mockito.ArgumentCaptor.forClass(MqttMessage.class);
+        org.mockito.Mockito.verify(mqtt, org.mockito.Mockito.times(2)).publish(topics.capture(), messages.capture());
+        List<String> out = new java.util.ArrayList<>();
+        for (int i = 0; i < topics.getAllValues().size(); i++) {
+            out.add(topics.getAllValues().get(i) + " " + new String(messages.getAllValues().get(i).getPayload()));
+        }
+        return out;
+    }
+
+    @Test
+    void closingThePairingWindowSendsTimeZeroToEveryBridgeSoZ2mTwoAcceptsIt() throws Exception {
+        List<String> sent = permitJoinPublishes(false, 0);
+
+        assertEquals(2, sent.size());
+        assertTrue(sent.contains("zigbee2mqtt/bridge/request/permit_join {\"value\":false,\"time\":0}"), sent.toString());
+        assertTrue(sent.contains("home_z2m/bridge/request/permit_join {\"value\":false,\"time\":0}"), sent.toString());
+    }
+
+    @Test
+    void openingThePairingWindowStillSendsTheRequestedDurationToEveryBridge() throws Exception {
+        List<String> sent = permitJoinPublishes(true, 254);
+
+        assertTrue(sent.contains("zigbee2mqtt/bridge/request/permit_join {\"value\":true,\"time\":254}"), sent.toString());
+        assertTrue(sent.contains("home_z2m/bridge/request/permit_join {\"value\":true,\"time\":254}"), sent.toString());
+    }
+
+    @Test
+    void smartSwitchDiscoveryCarriesSourceIdentityAndNullClearsOldPower() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"arbitrary","ieee_address":"0x1234567890abcdef",
+            "definition":{"model":"3RSP02064Z","description":"Smart plug","exposes":[
+              {"type":"binary","name":"state","access":3},
+              {"type":"numeric","name":"power","property":"power","access":1},
+              {"type":"numeric","name":"energy","property":"energy","access":1},
+              {"type":"numeric","name":"power_limit","category":"config","access":3}]}}]
+          """);
+        var found=registry.get("z2m-arbitrary");
+        assertEquals("zigbee:cabin:0x1234567890abcdef",found.attributes().get("physicalIdentity"));
+        assertEquals(true,found.attributes().get("smartSwitch"));
+        assertEquals(List.of("power","energy"),found.attributes().get("reportsFields"));
+        assertEquals(false,found.attributes().get("enabled"));
+        deliver("zigbee2mqtt/arbitrary", "{\"power\":12}");
+        deliver("zigbee2mqtt/arbitrary", "{\"power\":null}");
+        assertNull(registry.get("z2m-arbitrary").attributes().get("power"));
+    }
+
+    @Test
+    void batteryVoltageAndWritableCalibrationDoNotMakeATemperatureSensorASwitch() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"temp_anywhere","ieee_address":"0x1234567890abcdef",
+            "definition":{"description":"Temperature sensor","exposes":[
+              {"type":"numeric","name":"temperature","property":"temperature","access":1},
+              {"type":"numeric","name":"voltage","property":"voltage","access":1},
+              {"type":"numeric","name":"temperature_calibration","property":"temperature_calibration",
+               "category":"config","access":3}]}}]
+          """);
+        var found=registry.get("z2m-temp_anywhere");
+        assertEquals(false,found.attributes().get("smartSwitch"));
+        assertEquals(DeviceType.TEMPERATURE_SENSOR,found.type());
+    }
+
+    // #248 review (Cowork, 2026-10-24): capability and smart-switch evidence beyond the
+    // temperature case. A config setting is not a command; battery voltage is not metering;
+    // lights, locks and valve actuators carry a writable on/off but are not smart switches;
+    // a multi-gang relay publishes per-endpoint state keys.
+
+    @Test
+    void aTemperatureSensorGetsNeitherCommandNorPowerMonitorFromCalibrationAndBatteryVoltage() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"temp_attic","ieee_address":"0x00124b0000000001",
+            "definition":{"model":"SNZB-02P","description":"Temperature and humidity sensor","exposes":[
+              {"type":"numeric","name":"temperature","property":"temperature","access":1,"unit":"C"},
+              {"type":"numeric","name":"humidity","property":"humidity","access":1,"unit":"%"},
+              {"type":"numeric","name":"battery","property":"battery","access":1,"category":"diagnostic"},
+              {"type":"numeric","name":"voltage","property":"voltage","access":1,"unit":"mV","category":"diagnostic"},
+              {"type":"numeric","name":"temperature_calibration","property":"temperature_calibration",
+               "category":"config","access":3}]}}]
+          """);
+        var caps = registry.descriptor("z2m-temp_attic").orElseThrow().capabilities();
+        assertFalse(caps.contains(DeviceCapability.COMMAND), caps.toString());
+        assertFalse(caps.contains(DeviceCapability.POWER_MONITOR), caps.toString());
+        assertEquals(false, registry.get("z2m-temp_attic").attributes().get("smartSwitch"));
+    }
+
+    @Test
+    void voltageWithoutPowerEnergyOrCurrentIsNotPowerMonitoringEvenWithoutACategory() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"contact_back","definition":{"description":"Door sensor","exposes":[
+              {"type":"binary","name":"contact","property":"contact","access":1},
+              {"type":"numeric","name":"voltage","property":"voltage","access":1}]}}]
+          """);
+        assertFalse(registry.descriptor("z2m-contact_back").orElseThrow().capabilities()
+            .contains(DeviceCapability.POWER_MONITOR));
+    }
+
+    @Test
+    void aPowerLimitSettingAloneDoesNotMakeMetering() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"plain_relay","definition":{"description":"Smart switch","exposes":[
+              {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]},
+              {"type":"numeric","name":"power_outage_count","property":"power_outage_count","access":1,"category":"diagnostic"},
+              {"type":"numeric","name":"power_limit","property":"power_limit","access":3,"category":"config"}]}}]
+          """);
+        var d = registry.descriptor("z2m-plain_relay").orElseThrow();
+        assertFalse(d.capabilities().contains(DeviceCapability.POWER_MONITOR), d.capabilities().toString());
+        assertTrue(d.capabilities().contains(DeviceCapability.COMMAND));
+        assertEquals(true, registry.get("z2m-plain_relay").attributes().get("smartSwitch"),
+            "a non-metering relay is still a smart switch");
+    }
+
+    @Test
+    void aMultiGangRelayWithPerEndpointStateIsASmartSwitch() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"two_gang","definition":{"description":"Smart switch 2 gang","exposes":[
+              {"type":"switch","endpoint":"l1","features":[{"type":"binary","name":"state","property":"state_l1","access":7}]},
+              {"type":"switch","endpoint":"l2","features":[{"type":"binary","name":"state","property":"state_l2","access":7}]}]}}]
+          """);
+        assertEquals(true, registry.get("z2m-two_gang").attributes().get("smartSwitch"));
+    }
+
+    @Test
+    void lightsLocksAndValveActuatorsAreNotSmartSwitches() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"bulb","definition":{"description":"Smart bulb","exposes":[
+              {"type":"light","features":[{"type":"binary","name":"state","property":"state","access":7},
+                {"type":"numeric","name":"brightness","property":"brightness","access":7}]}]}},
+           {"friendly_name":"front_lock","definition":{"description":"Smart lock","exposes":[
+              {"type":"lock","features":[{"type":"binary","name":"state","property":"state","access":7,
+                "value_on":"LOCK","value_off":"UNLOCK"}]}]}},
+           {"friendly_name":"main_valve","definition":{"description":"Smart water valve","exposes":[
+              {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]}]}}]
+          """);
+        assertEquals(false, registry.get("z2m-bulb").attributes().get("smartSwitch"));
+        assertEquals(false, registry.get("z2m-front_lock").attributes().get("smartSwitch"));
+        assertEquals(false, registry.get("z2m-main_valve").attributes().get("smartSwitch"));
+    }
+
+    @Test
+    void aReadOnlyStateIsNotRelayEvidence() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"status_only","definition":{"description":"Status reporter","exposes":[
+              {"type":"binary","name":"state","property":"state","access":1}]}}]
+          """);
+        assertEquals(false, registry.get("z2m-status_only").attributes().get("smartSwitch"));
+    }
+
+    // 2026-10-24 regression after #248: the Sonoff S61 dehumidifier switch. Exposes below are
+    // the real definition.exposes of S61SZBTPB read from the live bridge/devices (state, power,
+    // current, voltage, linkquality; no energy). The 3RSP02064Z reference models the live
+    // reference switches (power, voltage, current, energy).
+    private static final String S61_FRIENDLY = "Smart Switch Zigbee | Dehumidifier";
+    private static final String S61_IEEE = "0xa4c1381f3884ffff";
+    private static final String S61_DEVICE = """
+        {"friendly_name":"Smart Switch Zigbee | Dehumidifier","ieee_address":"0xa4c1381f3884ffff",
+         "definition":{"model":"S61SZBTPB","vendor":"SONOFF",
+          "description":"Smart plug: experimental state and metering adapter","exposes":[
+           {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7,
+             "value_on":"ON","value_off":"OFF"}]},
+           {"type":"numeric","name":"power","property":"power","access":5,"unit":"W"},
+           {"type":"numeric","name":"current","property":"current","access":5,"unit":"A"},
+           {"type":"numeric","name":"voltage","property":"voltage","access":5,"unit":"V"},
+           {"type":"numeric","name":"linkquality","property":"linkquality","access":1,"category":"diagnostic"}]}}
+        """;
+    private static final String THIRD_REALITY_PLUG = """
+        {"friendly_name":"heater_mech_room","ieee_address":"0x1234567890abcde0",
+         "definition":{"model":"3RSP02064Z","vendor":"Third Reality","description":"Zigbee / BLE smart plug with power","exposes":[
+           {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]},
+           {"type":"numeric","name":"power","property":"power","access":5,"unit":"W"},
+           {"type":"numeric","name":"voltage","property":"voltage","access":5,"unit":"V"},
+           {"type":"numeric","name":"current","property":"current","access":5,"unit":"A"},
+           {"type":"numeric","name":"energy","property":"energy","access":5,"unit":"kWh"},
+           {"type":"numeric","name":"power_drop_threshold","property":"power_drop_threshold","access":7,"category":"config"},
+           {"type":"enum","name":"power_on_behavior","property":"power_on_behavior","access":7,"category":"config"}]}}
+        """;
+
+    @Test
+    void theS61GetsTheSameClassAndCapabilitiesAsTheReferenceSwitch() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", "[" + S61_DEVICE + "," + THIRD_REALITY_PLUG + "]");
+        var s61 = registry.descriptor("z2m-Smart_Switch_Zigbee_|_Dehumidifier").orElseThrow();
+        var ref = registry.descriptor("z2m-heater_mech_room").orElseThrow();
+        assertEquals(DeviceType.POWER_METER, ref.type());
+        assertEquals(ref.type(), s61.type());
+        assertEquals(ref.capabilities(), s61.capabilities());
+        assertEquals(Set.of(DeviceCapability.COMMAND, DeviceCapability.POWER_MONITOR, DeviceCapability.TELEMETRY),
+            s61.capabilities());
+    }
+
+    @Test
+    void aRenamedZ2mDeviceKeepsItsAssignedRegistryIdAndReceivesItsReadings() throws Exception {
+        String legacyId = "z2m-" + S61_IEEE;
+        registry.registerConfiguredDevice(new DeviceDescriptor(legacyId, "Smart Switch | Dehumidifier",
+            DeviceType.HOME_ASSISTANT_ENTITY, Set.of(DeviceCapability.POWER_MONITOR, DeviceCapability.TELEMETRY),
+            "mqtt", "zigbee2mqtt/" + S61_IEEE, true, "cabin"));
+
+        deliver("zigbee2mqtt/bridge/devices", "[" + S61_DEVICE + "]");
+        deliver("zigbee2mqtt/" + S61_FRIENDLY, "{\"state\":\"ON\",\"power\":263.26,\"voltage\":122.8,\"current\":2.24,\"linkquality\":120}");
+
+        assertNull(registry.get("z2m-Smart_Switch_Zigbee_|_Dehumidifier"),
+            "a rename must not register a second row for the same physical device");
+        var live = registry.get(legacyId);
+        assertEquals("ON", live.attributes().get("state"));
+        assertEquals(263.26, ((Number) live.attributes().get("power")).doubleValue(), 0.001);
+        assertEquals("ONLINE", live.state());
+        assertEquals("zigbee2mqtt/" + S61_FRIENDLY, registry.descriptor(legacyId).orElseThrow().connectionString());
+    }
+
+    @Test
+    void anOnSwitchAtZeroWattsKeepsItsOnStateAndZeroPower() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", "[" + THIRD_REALITY_PLUG + "]");
+        deliver("zigbee2mqtt/heater_mech_room", "{\"state\":\"ON\",\"power\":0,\"current\":0}");
+        var a = registry.get("z2m-heater_mech_room").attributes();
+        assertEquals("ON", a.get("state"));
+        assertEquals(0, ((Number) a.get("power")).intValue());
+    }
+
+    /** Nate's rule: no Zigbee-reported parent is left generic when its exposes identify a class. */
+    @Test
+    void noZigbeeParentWithKnownExposesEndsAsAGenericEntity() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", "[" + S61_DEVICE + "," + THIRD_REALITY_PLUG + """
+          ,{"friendly_name":"odd_temp","definition":{"description":"Environment probe","exposes":[
+             {"type":"numeric","name":"temperature","property":"temperature","access":1}]}}
+          ,{"friendly_name":"odd_motion","definition":{"description":"Presence thing","exposes":[
+             {"type":"binary","name":"occupancy","property":"occupancy","access":1}]}}
+          ,{"friendly_name":"odd_contact","definition":{"description":"Opening thing","exposes":[
+             {"type":"binary","name":"contact","property":"contact","access":1}]}}
+          ,{"friendly_name":"in_wall","definition":{"description":"Wall unit","exposes":[
+             {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]}]}}
+          ,{"friendly_name":"gang2","definition":{"description":"Wall unit 2","exposes":[
+             {"type":"switch","endpoint":"l1","features":[{"type":"binary","name":"state","property":"state_l1","access":7}]},
+             {"type":"switch","endpoint":"l2","features":[{"type":"binary","name":"state","property":"state_l2","access":7}]}]}}
+          ]""");
+        for (String id : List.of("z2m-Smart_Switch_Zigbee_|_Dehumidifier", "z2m-heater_mech_room", "z2m-odd_temp",
+                "z2m-odd_motion", "z2m-odd_contact", "z2m-in_wall", "z2m-gang2")) {
+            assertNotEquals(DeviceType.HOME_ASSISTANT_ENTITY, registry.descriptor(id).orElseThrow().type(), id);
+        }
+        assertEquals(DeviceType.POWER_METER, registry.descriptor("z2m-in_wall").orElseThrow().type());
+        assertEquals(DeviceType.POWER_METER, registry.descriptor("z2m-gang2").orElseThrow().type());
+        assertTrue(registry.descriptor("z2m-gang2").orElseThrow().capabilities().contains(DeviceCapability.COMMAND));
+    }
+
+    // Real live shapes: the Third Reality 3RWS18BZ leak sensor exposes a siren "state" switch, and
+    // the main water valve is a Tuya TS0001 "1 gang switch" to Z2M. Neither is a smart switch.
+    @Test
+    void aLeakSensorSirenAndANamedValveActuatorAreNotSmartSwitchesOrPowerMeters() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+          [{"friendly_name":"leak_fridge","definition":{"model":"3RWS18BZ","description":"Water sensor","exposes":[
+              {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]},
+              {"type":"binary","name":"water_leak","property":"water_leak","access":1}]}},
+           {"friendly_name":"main_water_valve","definition":{"model":"TS0001","description":"1 gang switch","exposes":[
+              {"type":"switch","features":[{"type":"binary","name":"state","property":"state","access":7}]}]}}]
+          """);
+        for (String id : List.of("z2m-leak_fridge", "z2m-main_water_valve")) {
+            assertEquals(false, registry.get(id).attributes().get("smartSwitch"), id);
+            assertNotEquals(DeviceType.POWER_METER, registry.descriptor(id).orElseThrow().type(), id);
+        }
+        assertEquals(DeviceType.WATER_LEAK_SENSOR, registry.descriptor("z2m-leak_fridge").orElseThrow().type());
+        assertEquals(DeviceType.WATER_VALVE, registry.descriptor("z2m-main_water_valve").orElseThrow().type());
+        assertEquals(Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY),
+            registry.descriptor("z2m-main_water_valve").orElseThrow().capabilities());
     }
 }

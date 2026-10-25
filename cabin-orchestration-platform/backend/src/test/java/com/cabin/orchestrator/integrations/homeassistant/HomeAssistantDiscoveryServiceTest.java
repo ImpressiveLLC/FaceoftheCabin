@@ -1,6 +1,8 @@
 package com.cabin.orchestrator.integrations.homeassistant;
 
 import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.model.DeviceCapability;
+import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.events.CabinEvent;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -42,6 +45,36 @@ class HomeAssistantDiscoveryServiceTest {
     private RecordingEventPublisher eventPublisher;
     private HomeAssistantDiscoveryService service;
 
+    @Test
+    void electricalServicesKeepTheirOwnQuantityAndNormalizeUnitsAtBothLocations() {
+        for (String site : List.of("cabin", "home")) {
+            when(adapter.discover(site)).thenReturn(List.of(
+                new HomeAssistantAdapter.DiscoveredEntity("sensor.arbitrary_plug_power", "0", Map.of("device_class", "power", "unit_of_measurement", "kW")),
+                new HomeAssistantAdapter.DiscoveredEntity("sensor.arbitrary_plug_energy", "48320", Map.of("device_class", "energy", "unit_of_measurement", "Wh")),
+                new HomeAssistantAdapter.DiscoveredEntity("sensor.arbitrary_plug_voltage", "122.3", Map.of("device_class", "voltage", "unit_of_measurement", "V")),
+                new HomeAssistantAdapter.DiscoveredEntity("number.power_threshold", "3200", Map.of("device_class", "power", "unit_of_measurement", "W"))));
+            service.discoverLocation(site);
+            assertThat(registry.get("ha-" + site + "-sensor-arbitrary-plug-power").attributes())
+                .containsEntry("power", 0.0).containsEntry("reportsFields", List.of("power"));
+            assertThat(registry.get("ha-" + site + "-sensor-arbitrary-plug-energy").attributes())
+                .containsEntry("energy", 48.32).containsEntry("reportsFields", List.of("energy"));
+            assertThat(registry.get("ha-" + site + "-sensor-arbitrary-plug-voltage").attributes())
+                .containsEntry("voltage", 122.3).containsEntry("reportsFields", List.of("voltage"));
+            assertThat(registry.get("ha-" + site + "-number-power-threshold").attributes())
+                .doesNotContainKey("power").containsEntry("reportsFields", List.of());
+        }
+    }
+
+    @Test
+    void unavailableElectricalObservationDoesNotRetainLastValueAsCurrent() {
+        when(adapter.discover("cabin")).thenReturn(List.of(new HomeAssistantAdapter.DiscoveredEntity(
+            "sensor.plug_energy", "48.32", Map.of("device_class", "energy", "unit_of_measurement", "kWh"))));
+        service.discoverLocation("cabin");
+        when(adapter.discover("cabin")).thenReturn(List.of(new HomeAssistantAdapter.DiscoveredEntity(
+            "sensor.plug_energy", "unavailable", Map.of("device_class", "energy", "unit_of_measurement", "kWh"))));
+        service.discoverLocation("cabin");
+        assertThat(registry.get("ha-cabin-sensor-plug-energy").attributes()).doesNotContainKey("energy");
+    }
     @BeforeEach
     void setUp() {
         adapter = mock(HomeAssistantAdapter.class);
@@ -431,5 +464,236 @@ class HomeAssistantDiscoveryServiceTest {
 
         Map<String, Object> attrs = registry.byLocation("cabin").get(0).attributes();
         assertThat(attrs).doesNotContainKeys("temperature", "humidity", "co2", "co", "airQualityIndex");
+    }
+
+    // 2026-10-16: Home runs Zigbee2MQTT on a phone collector that publishes HA
+    // discovery to the shared broker, so the one HA instance on the M920q sees
+    // Home devices and every cabin pass imported them as location "cabin"
+    // duplicates of the native z2m-home-* device.
+    private void registerNativeZigbee(String deviceId, String friendlyName, String prefix, String location) {
+        registry.registerCandidate(new DeviceDescriptor(deviceId, friendlyName, DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", prefix + friendlyName, false, location), Map.of());
+    }
+
+    @Test
+    void haEntitiesOfAHomeZigbeeDeviceAreNotImportedAsMislabeledCabinCandidates() {
+        registerNativeZigbee("z2m-home-0x70d07efffee966f4", "0x70d07efffee966f4", "home_z2m/", "home");
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.0x70d07efffee966f4_temperature", "18.2",
+                Map.of("friendly_name", "0x70d07efffee966f4 Temperature", "device_class", "temperature")),
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.0x70d07efffee966f4_battery", "100",
+                Map.of("friendly_name", "0x70d07efffee966f4 Battery", "device_class", "battery"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        assertThat(registry.byLocation("cabin")).extracting(DeviceStatus::deviceId)
+            .noneMatch(id -> id.contains("70d07"));
+        assertThat(registry.byLocation("home")).extracting(DeviceStatus::deviceId)
+            .contains("z2m-home-0x70d07efffee966f4")
+            .noneMatch(id -> id.startsWith("ha-") && id.contains("70d07"));
+    }
+
+    @Test
+    void haEntitiesOfACabinZigbeeDeviceAreStillImportedExactlyAsBefore() {
+        registerNativeZigbee("z2m-temp_kitchen", "temp_kitchen", "zigbee2mqtt/", "cabin");
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.temp_kitchen_temperature", "21.0",
+                Map.of("friendly_name", "temp_kitchen Temperature", "device_class", "temperature"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        assertThat(registry.byLocation("cabin")).extracting(DeviceStatus::deviceId)
+            .contains("ha-cabin-sensor-temp-kitchen-temperature");
+    }
+
+    @Test
+    void theLongestMatchingNativeNameDecidesWhichLocationOwnsAnHaEntity() {
+        registerNativeZigbee("z2m-temp", "temp", "zigbee2mqtt/", "cabin");
+        registerNativeZigbee("z2m-home-temp_kitchen", "temp_kitchen", "home_z2m/", "home");
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.temp_kitchen_humidity", "50",
+                Map.of("friendly_name", "temp_kitchen Humidity", "device_class", "humidity")),
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.temp_outside_humidity", "60",
+                Map.of("friendly_name", "temp_outside Humidity", "device_class", "humidity"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        assertThat(registry.byLocation("cabin")).extracting(DeviceStatus::deviceId)
+            .contains("ha-cabin-sensor-temp-outside-humidity")
+            .doesNotContain("ha-cabin-sensor-temp-kitchen-humidity");
+    }
+
+    @Test
+    void aFriendlyNameSharedByTwoLocationsIsAmbiguousAndNeverSkipsAnHaEntity() {
+        registerNativeZigbee("z2m-hall", "hall", "zigbee2mqtt/", "cabin");
+        registerNativeZigbee("z2m-home-hall", "hall", "home_z2m/", "home");
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.hall_temperature", "20",
+                Map.of("friendly_name", "hall Temperature", "device_class", "temperature"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+
+        service.discoverLocation("cabin");
+
+        assertThat(registry.byLocation("cabin")).extracting(DeviceStatus::deviceId)
+            .contains("ha-cabin-sensor-hall-temperature");
+    }
+
+    // W-88 (2026-10-21, cabin dehumidifier switch + attic sensor): the native Zigbee device is the
+    // parent and its Home Assistant entities are its services. Before this, a person had to draw each
+    // link by hand, and the attic sensor had been linked the wrong way round (the device under its
+    // own humidity entity), so it was charted once per device id.
+    private void registerCabinNative(String friendlyName) {
+        registerCabinNative(friendlyName, List.of("power", "voltage", "current", "energy", "temperature", "humidity", "battery"));
+    }
+
+    private void registerCabinNative(String friendlyName, List<String> reportedFields) {
+        registry.registerCandidate(new DeviceDescriptor("z2m-" + friendlyName, friendlyName, DeviceType.POWER_METER,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/" + friendlyName, false, "cabin"),
+            Map.of("vendorReportedFields", reportedFields));
+    }
+
+    private void discoverSwitchAndPower(String friendly, String switchState, String watts) {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("switch." + friendly, switchState,
+                Map.of("friendly_name", friendly)),
+            new HomeAssistantAdapter.DiscoveredEntity("sensor." + friendly + "_power", watts,
+                Map.of("friendly_name", friendly + " Power", "device_class", "power", "unit_of_measurement", "W"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+    }
+
+    private static String parentOf(DeviceStatus status) {
+        Object parent = status.attributes().get("parentDeviceId");
+        return parent == null ? "" : String.valueOf(parent);
+    }
+
+    @Test
+    void homeAssistantEntitiesOfACabinZigbeeDeviceAreLinkedUnderIt() {
+        registerCabinNative("0xa4c1381f3884ffff");
+        discoverSwitchAndPower("0xa4c1381f3884ffff", "on", "412");
+
+        service.discoverLocation("cabin");
+
+        assertThat(parentOf(registry.get("ha-cabin-switch-0xa4c1381f3884ffff"))).isEqualTo("z2m-0xa4c1381f3884ffff");
+        assertThat(parentOf(registry.get("ha-cabin-sensor-0xa4c1381f3884ffff-power"))).isEqualTo("z2m-0xa4c1381f3884ffff");
+        assertThat(parentOf(registry.get("z2m-0xa4c1381f3884ffff"))).isEmpty();
+        // Linking is not acceptance: the entities stay candidates.
+        assertThat(registry.lifecycleState("ha-cabin-switch-0xa4c1381f3884ffff").name()).isEqualTo("CANDIDATE");
+    }
+
+    @Test
+    void aLinkDrawnTheWrongWayRoundIsRepairedSoTheZigbeeDeviceIsTheParent() {
+        registerCabinNative("0xb0e8e8fffef4e8ae");
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.0xb0e8e8fffef4e8ae_humidity", "53.6",
+                Map.of("friendly_name", "Attic Humidity", "device_class", "humidity")),
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.0xb0e8e8fffef4e8ae_temperature", "14.5",
+                Map.of("friendly_name", "Attic Temperature", "device_class", "temperature"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+        service.discoverLocation("cabin");
+        // Reproduce the live state: the device sits under its own humidity entity, which parents the temperature one.
+        registry.setDiscoveredParent("ha-cabin-sensor-0xb0e8e8fffef4e8ae-humidity", "");
+        registry.setDiscoveredParent("z2m-0xb0e8e8fffef4e8ae", "ha-cabin-sensor-0xb0e8e8fffef4e8ae-humidity");
+        registry.setDiscoveredParent("ha-cabin-sensor-0xb0e8e8fffef4e8ae-temperature", "ha-cabin-sensor-0xb0e8e8fffef4e8ae-humidity");
+
+        service.discoverLocation("cabin");
+
+        assertThat(parentOf(registry.get("z2m-0xb0e8e8fffef4e8ae"))).isEmpty();
+        assertThat(parentOf(registry.get("ha-cabin-sensor-0xb0e8e8fffef4e8ae-humidity"))).isEqualTo("z2m-0xb0e8e8fffef4e8ae");
+        assertThat(parentOf(registry.get("ha-cabin-sensor-0xb0e8e8fffef4e8ae-temperature"))).isEqualTo("z2m-0xb0e8e8fffef4e8ae");
+    }
+
+    @Test
+    void aParentAPersonChoseElsewhereIsLeftAlone() {
+        registerCabinNative("0xa4c1381f3884ffff");
+        registry.registerCandidate(new DeviceDescriptor("ha-cabin-other", "Other", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(DeviceCapability.TELEMETRY), "ha_rest", "switch.other", false, "cabin"), Map.of());
+        discoverSwitchAndPower("0xa4c1381f3884ffff", "on", "412");
+        service.discoverLocation("cabin");
+        registry.setDiscoveredParent("ha-cabin-sensor-0xa4c1381f3884ffff-power", "ha-cabin-other");
+
+        service.discoverLocation("cabin");
+
+        assertThat(parentOf(registry.get("ha-cabin-sensor-0xa4c1381f3884ffff-power"))).isEqualTo("ha-cabin-other");
+    }
+
+    @Test
+    void aSensorEntityOfAZigbeeDeviceDoesNotLogASecondTelemetrySeriesButASwitchStillDoes() {
+        registerCabinNative("0xa4c1381f3884ffff");
+        discoverSwitchAndPower("0xa4c1381f3884ffff", "on", "412");
+        service.discoverLocation("cabin");
+        eventPublisher.published.clear();
+        // The first sight of an entity never publishes, so change both values on the second cycle.
+        discoverSwitchAndPower("0xa4c1381f3884ffff", "off", "418");
+
+        service.discoverLocation("cabin");
+
+        assertThat(eventPublisher.published).extracting(CabinEvent::sourceDeviceId)
+            .contains("ha-cabin-switch-0xa4c1381f3884ffff")
+            .doesNotContain("ha-cabin-sensor-0xa4c1381f3884ffff-power");
+        // The live reading itself is still kept on the entity.
+        assertThat(registry.get("ha-cabin-sensor-0xa4c1381f3884ffff-power").attributes().get("value")).isEqualTo("418");
+    }
+
+    // C-A1-1 (W-94): a duplicate humidity entity is skipped; a derived entity under the same device is not.
+    @Test
+    void aDuplicateHumidityEntityIsSkippedButADerivedDewPointEntityKeepsLogging() {
+        registerCabinNative("0xb0e8e8fffef4e8ae", List.of("battery", "temperature", "humidity"));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+        when(adapter.discover("cabin")).thenReturn(attic("53.6", "9.1"));
+        service.discoverLocation("cabin");
+        eventPublisher.published.clear();
+        when(adapter.discover("cabin")).thenReturn(attic("54.2", "9.4"));
+
+        service.discoverLocation("cabin");
+
+        assertThat(eventPublisher.published).extracting(CabinEvent::sourceDeviceId)
+            .contains("ha-cabin-sensor-0xb0e8e8fffef4e8ae-dew-point")
+            .doesNotContain("ha-cabin-sensor-0xb0e8e8fffef4e8ae-humidity");
+        // Both are linked under the Zigbee device either way.
+        assertThat(parentOf(registry.get("ha-cabin-sensor-0xb0e8e8fffef4e8ae-dew-point"))).isEqualTo("z2m-0xb0e8e8fffef4e8ae");
+    }
+
+    @Test
+    void aSensorOfAMeasurementTheNativeDeviceDoesNotReportKeepsLogging() {
+        registerCabinNative("0xb0e8e8fffef4e8ae", List.of("battery", "temperature"));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+        when(adapter.discover("cabin")).thenReturn(attic("53.6", "9.1"));
+        service.discoverLocation("cabin");
+        eventPublisher.published.clear();
+        when(adapter.discover("cabin")).thenReturn(attic("54.2", "9.4"));
+
+        service.discoverLocation("cabin");
+
+        assertThat(eventPublisher.published).extracting(CabinEvent::sourceDeviceId)
+            .contains("ha-cabin-sensor-0xb0e8e8fffef4e8ae-humidity");
+    }
+
+    private static List<HomeAssistantAdapter.DiscoveredEntity> attic(String humidity, String dewPoint) {
+        return List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.0xb0e8e8fffef4e8ae_humidity", humidity,
+                Map.of("friendly_name", "Attic Humidity", "device_class", "humidity")),
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.0xb0e8e8fffef4e8ae_dew_point", dewPoint,
+                Map.of("friendly_name", "Attic Dew Point", "unit_of_measurement", "C")));
+    }
+
+    @Test
+    void anEntityOfADeviceThatIsNotNativeZigbeeStillPublishesItsOwnTelemetry() {
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.kidde_co", "5",
+                Map.of("friendly_name", "Kidde CO", "device_class", "carbon_monoxide"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+        service.discoverLocation("cabin");
+        eventPublisher.published.clear();
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.kidde_co", "9",
+                Map.of("friendly_name", "Kidde CO", "device_class", "carbon_monoxide"))));
+
+        service.discoverLocation("cabin");
+
+        assertThat(eventPublisher.published).extracting(CabinEvent::sourceDeviceId)
+            .contains("ha-cabin-sensor-kidde-co");
     }
 }

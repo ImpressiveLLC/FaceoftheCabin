@@ -1,0 +1,16 @@
+name: Family Hub PR checks
+on:
+  pull_request:
+    paths: ['family-hub/**', '.github/workflows/kiosk-family-hub.yml']
+permissions:
+  contents: read
+jobs:
+  family-hub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build existing browser test image
+        run: docker build -f family-hub/test/Dockerfile -t family-hub-qa family-hub
+      - name: Run Family Hub browser journeys
+        run: docker run --rm family-hub-qa

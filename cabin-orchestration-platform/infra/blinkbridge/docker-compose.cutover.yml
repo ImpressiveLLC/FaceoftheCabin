@@ -1,0 +1,20 @@
+# Cutover override: run the rewritten bridge in place of the legacy `blinkbridge` service.
+# Not referenced by any workflow; applied by hand per docs/BLINKBRIDGE_CUTOVER_RUNBOOK.md.
+#
+#   docker compose -p "$PROJ" -f production-stack/docker-compose.yml \
+#                  -f blinkbridge/docker-compose.cutover.yml up -d --build --no-deps blinkbridge
+#
+# Rollback = the same command without the second -f, after retagging the legacy image
+# (the runbook keeps `blinkbridge:legacy` for exactly that).
+services:
+  blinkbridge:
+    image: blinkbridge:rewrite
+    build:
+      context: ../blinkbridge   # relative to the first -f file (infra/production-stack)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 4 -O /dev/null http://127.0.0.1:8811/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s

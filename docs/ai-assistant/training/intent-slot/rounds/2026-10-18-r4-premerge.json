@@ -1,0 +1,108 @@
+{
+  "round": "2026-10-18-r4-premerge",
+  "model": "cabin-intent-slot-poc2-r3:latest",
+  "prompt_sha256": "f40d814a662e9e2c6b3832be8bb34590635cfcde99ece956fbeeaa516cf3eaf8",
+  "gold_sha256": "463832027bb2f0d03b859a4f6027a6289946f3db0764ac0e47b502629231c59b",
+  "schema_sha256": "342d4d249db5ab25d71887ea9c5e3dbf7e8c6fccc1051d474363691c62c2b7ba",
+  "fixtures": 47,
+  "valid_output_rate": 0.9148936170212766,
+  "intent_accuracy": 0.7872340425531915,
+  "slot_micro_f1": 0.37662337662337664,
+  "critical_fixture_failures": 17,
+  "per_intent": {
+    "answer_question": {
+      "correct": 4,
+      "total": 4
+    },
+    "clarify": {
+      "correct": 3,
+      "total": 9
+    },
+    "express_need": {
+      "correct": 15,
+      "total": 15
+    },
+    "get_device_state": {
+      "correct": 2,
+      "total": 2
+    },
+    "propose_automation": {
+      "correct": 4,
+      "total": 5
+    },
+    "set_device_attribute": {
+      "correct": 1,
+      "total": 3
+    },
+    "set_device_state": {
+      "correct": 4,
+      "total": 5
+    },
+    "unsupported": {
+      "correct": 4,
+      "total": 4
+    }
+  },
+  "confusions": {
+    "clarify->set_device_state": 4,
+    "clarify->INVALID": 2,
+    "set_device_attribute->INVALID": 1,
+    "set_device_attribute->set_device_state": 1,
+    "propose_automation->INVALID": 1,
+    "set_device_state->express_need": 1
+  },
+  "failed": {
+    "gold-08": {
+      "want": "set_device_attribute",
+      "got": "INVALID",
+      "critical": false
+    },
+    "gold-13": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-14": {
+      "want": "set_device_attribute",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-15": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-32": {
+      "want": "propose_automation",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-37": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-38": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-40": {
+      "want": "clarify",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-47": {
+      "want": "clarify",
+      "got": "INVALID",
+      "critical": true
+    },
+    "gold-48": {
+      "want": "set_device_state",
+      "got": "express_need",
+      "critical": false
+    }
+  },
+  "released": false,
+  "evaluation_kind": "premerge; existing r3 tag, candidate schema; no deployment"
+}

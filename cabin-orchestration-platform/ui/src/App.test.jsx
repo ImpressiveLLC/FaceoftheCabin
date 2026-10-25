@@ -1,12 +1,12 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
 StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
-mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, AlertHistoryLog, alertRulesTarget } from "./App.jsx";
+mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, AlertHistoryLog, alertRulesTarget, ZigbeePairingFlow, pairingRefusedMessage } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
@@ -261,9 +261,9 @@ describe("kpiTileFor", () => {
     expect(kpiTileFor(device, "F", {}).label).toBe("smart_switch @ breaker_box");
   });
 
-  it("shows an em dash when a power meter has no readings yet, not '— W'", () => {
+  it("names unavailable quantities when a power meter has no readings", () => {
     const device = { deviceId: "z2m-new-plug", name: "New Plug", type: "POWER_METER", state: "ONLINE", attributes: {} };
-    expect(kpiTileFor(device, "F").value).toBe("—");
+    expect(kpiTileFor(device, "F").value).toBe("Power unavailable · Energy unavailable");
   });
 });
 
@@ -833,6 +833,45 @@ describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)",
 
     const inn = renderWith({ signedIn: true });
     expect(within(inn.container.querySelector(".kpi-grid")).getByText("Motion")).toBeTruthy();
+  });
+
+  it("renders an enrolled switch through its enabled service without enabling the parent", () => {
+    const parent={deviceId:"legacy-parent",name:"Dehumidifier",type:"HOME_ASSISTANT_ENTITY",
+      location:"cabin",state:"UNKNOWN",attributes:{enabled:false,smartSwitch:true,deviceLifecycle:"ASSIGNED"}};
+    const service={deviceId:"ha-watts",name:"Duplicate watts",type:"POWER_METER",location:"cabin",
+      state:"ONLINE",attributes:{enabled:true,parentDeviceId:"legacy-parent",entityId:"sensor.watts",
+        serviceRole:"measurement",sourceReportedFields:["power"],power:0}};
+    const {container}=render(<AppContext.Provider value={{displayConfigs:{}}}>
+      <MnSeeView devices={[parent,service]} activeLocation="cabin" active={false} reorderMode={false}/>
+    </AppContext.Provider>);
+    const grid=container.querySelector(".kpi-grid");
+    expect(within(grid).getByText("Dehumidifier")).toBeTruthy();
+    expect(within(grid).getByText("0 W · Energy unavailable · State unknown")).toBeTruthy();
+    expect(within(grid).queryByText("Duplicate watts")).toBeNull();
+    expect(within(grid).queryByText(/Reported readings|Electrical details|Enabled services/)).toBeNull();
+    expect(parent.attributes.enabled).toBe(false);
+  });
+
+  it("opens the parent device from a service tile by click and keyboard, but not while reordering", () => {
+    const parent={...tempA,deviceId:"parent"};
+    const service={...tempB,attributes:{temperature:22,parentDeviceId:"parent"}};
+    const focus=vi.fn(), panel=vi.fn();
+    const renderTiles=reorder=>render(<AppContext.Provider value={{displayConfigs:{},
+      devices:[parent,service],setPendingDeviceFocus:focus,setActivePanel:panel}}>
+      <MnSeeView devices={[service]} activeLocation="cabin" active={false} reorderMode={reorder}/>
+    </AppContext.Provider>);
+    const view=renderTiles(false);
+    const tile=screen.getByRole("button",{name:"Open Temp B in Devices"});
+    fireEvent.click(tile);
+    expect(focus).toHaveBeenLastCalledWith("parent");
+    expect(panel).toHaveBeenLastCalledWith("DEVICE_MANAGER");
+    fireEvent.keyDown(tile,{key:"Enter"});
+    fireEvent.keyDown(tile,{key:" "});
+    expect(focus).toHaveBeenCalledTimes(3);
+    view.unmount(); focus.mockClear(); panel.mockClear();
+    const reordered=renderTiles(true);
+    fireEvent.click(reordered.container.querySelector(".kpi-tile"));
+    expect(focus).not.toHaveBeenCalled();
   });
 
   it("renders tiles in the saved order, not the old fixed type-bucket order", () => {
@@ -5715,6 +5754,67 @@ describe("cameraHealthLabel", () => {
   it("reports unknown rather than down when fps data is simply absent", () => {
     expect(cameraHealthLabel(null)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
     expect(cameraHealthLabel(undefined)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
+    expect(cameraHealthLabel(null, true)).toEqual({ label: "Unknown", className: "camera-health-unknown" });
+  });
+
+  // 2026-10-21: idle Blink cameras (driveway, home_aldrich_front) sit at
+  // exactly 0.0 fps until Blink's cloud sees motion; the tile read "No signal".
+  it("reports an idle motion-gated camera at exactly zero fps as idle, not no signal", () => {
+    expect(cameraHealthLabel(0, true)).toEqual({ label: "Idle · waits for motion", className: "camera-health-idle" });
+  });
+
+  it("still reports fps for a motion-gated camera while it is live", () => {
+    expect(cameraHealthLabel(5.1, true)).toEqual({ label: "5.1 fps", className: "camera-health-ok" });
+  });
+
+  it("keeps a continuous camera at zero fps as no signal", () => {
+    expect(cameraHealthLabel(0, false)).toEqual({ label: "No signal", className: "camera-health-down" });
+  });
+});
+
+describe("cameraBelongsToLocation", () => {
+  it("keeps Home cameras out of the Cabin panel and the reverse", () => {
+    expect(cameraBelongsToLocation("home_aldrich_front", "cabin")).toBe(false);
+    expect(cameraBelongsToLocation("driveway", "cabin")).toBe(true);
+    expect(cameraBelongsToLocation("home_aldrich_front", "home")).toBe(true);
+    expect(cameraBelongsToLocation("driveway", "home")).toBe(false);
+  });
+
+  it("does not hide anything for a location it has no naming rule for", () => {
+    expect(cameraBelongsToLocation("driveway", "lake-house")).toBe(true);
+    expect(cameraBelongsToLocation("home_aldrich_front", "lake-house")).toBe(true);
+  });
+});
+
+describe("CameraHealthPanel", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const metrics = {
+    cabin_outside_reolink: { cameraFps: 0, motionGated: false },
+    driveway: { cameraFps: 0, motionGated: true },
+    home_aldrich_front: { cameraFps: 0, motionGated: true },
+  };
+
+  function renderPanel(id) {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ json: () => Promise.resolve(metrics) });
+    return render(<CameraHealthPanel locCfg={{ id, label: id, apiBase: "http://api", grafanaUrl: "" }} />);
+  }
+
+  it("shows the idle Blink camera as idle and the dead continuous camera as no signal in the Cabin panel", async () => {
+    renderPanel("cabin");
+    const driveway = (await screen.findByText("driveway")).closest(".camera-health-tile");
+    expect(within(driveway).getByText("Idle · waits for motion")).toBeTruthy();
+    expect(driveway.className).toContain("camera-health-idle");
+    const reolink = screen.getByText("cabin_outside_reolink").closest(".camera-health-tile");
+    expect(within(reolink).getByText("No signal")).toBeTruthy();
+    expect(screen.queryByText("home_aldrich_front")).toBeNull();
+  });
+
+  it("lists the Home camera in the Home panel only", async () => {
+    renderPanel("home");
+    const aldrich = (await screen.findByText("home_aldrich_front")).closest(".camera-health-tile");
+    expect(within(aldrich).getByText("Idle · waits for motion")).toBeTruthy();
+    expect(screen.queryByText("driveway")).toBeNull();
   });
 });
 
@@ -6843,5 +6943,57 @@ describe("On the Way is reachable from My Places and Monitoring", () => {
     fireEvent.click(btn);
     await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
     expect(JSON.parse(haCalls(authedFetch)[0][1].body).entity_id).toBe("input_boolean.on_the_way_to_cabin");
+  });
+});
+
+describe("ZigbeePairingFlow -- the pairing window must not pretend (2026-10-16)", () => {
+  afterEach(cleanup);
+  function authWithPermitJoin(permitJoin) {
+    return {
+      authedFetch: vi.fn((url) => url.includes("/permit-join")
+        ? permitJoin()
+        : Promise.resolve({ ok: true, status: 200, json: async () => [] })),
+    };
+  }
+  function openWindow(auth) {
+    render(<ZigbeePairingFlow onBack={() => {}} onDone={() => {}} auth={auth} />);
+    fireEvent.click(screen.getByRole("button", { name: /Open pairing window/ }));
+  }
+
+  it("starts the countdown when the hub accepts the request", async () => {
+    openWindow(authWithPermitJoin(() => Promise.resolve({ ok: true, status: 200, json: async () => ({}) })));
+    expect(await screen.findByText(/Pairing window open/)).toBeTruthy();
+  });
+
+  it.each([
+    [401, /signed out/],
+    [403, /read-only/],
+    [500, /HTTP 500/],
+  ])("says why and does NOT show a countdown when the hub answers %s", async (status, pattern) => {
+    openWindow(authWithPermitJoin(() => Promise.resolve({ ok: false, status, json: async () => ({}) })));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(pattern);
+    expect(screen.queryByText(/Pairing window open/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Open pairing window/ })).toBeTruthy();
+  });
+
+  it("says the hub could not be reached when the request itself fails", async () => {
+    openWindow(authWithPermitJoin(() => Promise.reject(new Error("network down"))));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/could not be reached/);
+    expect(screen.queryByText(/Pairing window open/)).toBeNull();
+  });
+
+  it("clears an earlier error when the next attempt succeeds", async () => {
+    let first = true;
+    const auth = authWithPermitJoin(() => {
+      if (first) { first = false; return Promise.resolve({ ok: false, status: 401, json: async () => ({}) }); }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    openWindow(auth);
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: /Open pairing window/ }));
+    expect(await screen.findByText(/Pairing window open/)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

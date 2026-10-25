@@ -4,6 +4,7 @@ import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
 import com.cabin.orchestrator.events.EventStreamBroadcaster;
+import com.cabin.orchestrator.events.ServiceHistory;
 import com.cabin.orchestrator.events.TelemetryHistoryResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -125,8 +126,9 @@ public class EventController {
             @RequestParam(name = "field") String field,
             @RequestParam(name = "days", required = false, defaultValue = "30") int days) {
         int effectiveDays = Math.max(1, Math.min(days, maxHistoryDays));
+        // D13 A1: a Zigbee device's history includes the readings logged under its linked HA entities.
         return new TelemetryHistoryResponse(days, effectiveDays, effectiveDays != days,
-            eventService.dailyAggregates(deviceId, field, effectiveDays));
+            eventService.dailyAggregates(ServiceHistory.idsFor(deviceId, registry), field, effectiveDays));
     }
 
     /**
@@ -137,7 +139,7 @@ public class EventController {
      */
     @GetMapping("/reported-fields")
     public java.util.Map<String, List<String>> reportedFields() {
-        return eventService.reportedFieldsByDevice();
+        return ServiceHistory.mergeReportedFields(eventService.reportedFieldsByDevice(), registry);
     }
 
     /**

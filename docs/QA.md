@@ -1,5 +1,14 @@
 # QA / Testing
 
+## Doc 27 commissioning and Ask acceptance (planned)
+
+Use [hardware acceptance](hardware/doc27-environmental-nodes.md#setup-maintenance-and-acceptance)
+and [Ask acceptance examples](governance/handovers/HO-2026-10-16-doc27-poc2.md#ask-and-training-acceptance-examples-review-before-freezing).
+Required evidence: exact SKU/count; sensor-source/unit fidelity; no unavailable-to-zero;
+parent/service deduplication; wrong-hub denial; manual/restart/load tests; blocked
+uncommissioned controls; exact-plan confirmation; no ordered-to-online answer claims.
+These are pending acceptance criteria, not a recorded automated or live test pass.
+
 Per-feature test coverage for this repo. Add a section per feature as it
 gains test coverage — this is not meant to be exhaustive on day one.
 
@@ -191,3 +200,72 @@ log has no horizontal overflow at 375 px.
 Automated: `AlertRecommendationsTest` (advice per alert kind; safety-class never told to tune, including a safety-category device; retire note only at the silence threshold), `AlertFrequencyAnalyticsServiceTest` (Testcontainers: device conditions and automation alerts counted; below-threshold and out-of-window ignored; unconfirmed-command alerts collapse to one; silencing alone flags; refresh keeps an acknowledged row; resolved is not reopened by old events and a fresh burst opens one counting only new events; no-device events skipped; disabled), `AskContextBuilderTest` (new fixture section resolves, frozen questions still route), and `App.test.jsx` (NOISY_ALERT card shows counts, advice and the device/workflow links).
 
 Known gaps: not run against the live backend, and the scheduler itself is not driven (the scan is called directly).
+
+## Smart-switch Monitoring release slice — 2026-10-23, PR #247
+
+Scope: physical parent cards and source-qualified electrical values across both locations.
+- Native metering parents and enabled HA measurement services use the same W/kWh display. V/A are available under Electrical details.
+- Zero is a real reading; absent/unsupported values say unavailable. SONOFF's experimental W/V/A converter does not supply kWh.
+- Config/diagnostic entities retain their own records and are not silently used as measured watts.
+- IEEE plus location supplies read-only alias grouping. One assigned physical record wins; ambiguous assignments stay unresolved.
+- An enabled service under a disabled assigned parent can appear on that parent's grouped card, explicitly labeled. This does not enable the parent or copy disabled candidate readings into an active card.
+- Every observation ID, history record, label, enrollment and command route remains unchanged. No relay control is added.
+- Values are labeled reported, with acquisition time unverified. Cached HA polls are not fresh-acquisition proof.
+
+Traceability: #244 holds the broader measurement architecture and operator migration/converter work; #246 tracks recovered local work; #247 delivers this bounded UI/backend slice. Persistent identity/alias mutation and an authenticated apply/rollback migration remain separate work under #244, not implied completed by this read-only presentation change.
+
+Regression evidence: source unit conversion and unknown clearing; IEEE rename and assignment ambiguity; location isolation; enabled/disabled enrollment; diagnostics and competing sources; realistic rendered disabled-parent service card. Full suite and deployment results are recorded on #247 at the checked head.
+
+
+### Follow-up acceptance — PR #248
+Live verification found battery temperature sensors classified by voltage/calibration capabilities.
+Classification now requires a writable relay state. Monitoring also preserves a known temperature
+parent's type even when stale metadata says smartSwitch. Tile chrome is reduced to name, primary
+reading and state; source notes and electrical detail text are removed. All ordinary device tiles
+open the known same-location parent in Devices by click, Enter or Space. Reorder mode does not
+navigate; missing links/cycles do not jump to an arbitrary device. Tests cover these paths.
+
+Cowork review addendum (2026-10-24): classification evidence also excludes lights, locks, covers,
+fans, climate controls and water-valve actuators, and detects multi-gang relays (`state_l1`,
+`state_l2`). A writable configuration setting no longer infers COMMAND, and voltage infers
+POWER_MONITOR only alongside reported power, energy or current. Temperature sensors configured
+while the defect was live keep their sticky capabilities until re-detected (W-93). Unresolved
+electrical services are no longer summarized on the tile; they remain reachable from the parent
+in Devices.
+
+### Regression fix — Sonoff S61 rename and card state (2026-10-24, after #248)
+Cause (read live, 2026-10-24): the S61's Z2M friendly name changed to `Smart Switch Zigbee | Dehumidifier`.
+The adapter derives the registry id from the friendly name, so it registered a second CANDIDATE row
+that received every reading (ON, 263 W) while the assigned, canonical `z2m-0xa4c1381f3884ffff` row stayed
+empty (UNKNOWN, no state, no power). The card is built on the canonical row, so power and ON/OFF vanished.
+Fix: the adapter resolves a device by IEEE address (legacy IEEE-named id, or one assigned row recording the
+address) and keeps that id across a rename; state and availability follow the same mapping. The card also
+falls back to a same-identity alias's live values and always shows relay state beside power (`State unknown`
+when none is reported; ON at 0 W stays ON; state is never inferred from watts or ONLINE).
+Classification: any writable-relay device is `POWER_METER` (S61, in-wall and multi-gang switches), excluding
+lights, locks, covers, fans, climate, valves (by definition text or friendly name) and leak/smoke sensors
+whose siren has a `state`. A device with no description match is classified from its exposes
+(occupancy, contact, temperature, humidity) before falling back to a generic entity; a reed contact no
+longer infers ACCESS_CONTROL. Gap: lights, covers, fans and valve actuators have no `DeviceType`, so they
+remain generic until the vocabulary adds one.
+W-93 dry run (offline, read-only; `ZigbeeRedetectDryRunTest`, run with `-Dredetect.bridge=` `-Dredetect.live=`
+`-Dredetect.out=`): proposed changes only for the S61 (generic entity, no COMMAND -> POWER_METER with COMMAND),
+the temperature sensors (COMMAND/POWER_MONITOR removed) and the motion/contact sensors (COMMAND, ACCESS_CONTROL,
+POWER_MONITOR removed). Nothing was applied; applying needs Nate's approval.
+
+Addendum (2026-10-24, Nate): a Zigbee water-shut-off actuator (Tuya TS0001 `main_water_valve`, a plain "1 gang switch"
+to Z2M) now gets its own safety class `WATER_VALVE` (zigbee_main_water_valve in the ontology), recognized by "valve" in
+its definition text or friendly name plus a writable relay, so it is never a smart switch or an electrical card. An
+unclassifiable Zigbee parent is logged at WARN instead of silently staying generic. UNKNOWN state right after a
+backend restart is a populate delay, not a classification fault: Z2M state messages that arrive before
+`bridge/devices` are dropped, and a battery sensor does not report again for hours (ONLINE needs a message with
+`linkquality`). Restoring last-known state at startup is a separate change. Children of the valve (switch and
+power-on-behavior entities) stay `HOME_ASSISTANT_ENTITY`, the service-entity class under a parent.
+
+### W-93 apply and rollback (2026-10-24, not yet applied live)
+`POST /api/devices/redetect/preview` (dry run), `POST /api/devices/{id}/redetect/apply` and
+`POST /api/devices/{id}/redetect/rollback`, administrator only, covered by the signed-in write gate. Apply takes
+`{"fields":["type","capabilities"]}`, changes only approved fields through `DeviceRegistry.replaceConfiguration`
+(name, enabled, location and connection are never touched), returns a `rollback` object and publishes a
+`DEVICE_REDETECT_APPLIED` event. Rollback uses this process's last apply or the returned object (survives a restart).
+Nothing calls these on its own. Applying to live rows needs Nate's approval.

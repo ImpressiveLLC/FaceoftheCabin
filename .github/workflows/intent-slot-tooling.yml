@@ -1,0 +1,25 @@
+name: Intent slot offline tooling
+on:
+  pull_request:
+    paths:
+      - 'docs/ai-assistant/training/intent-slot/**'
+      - '.github/workflows/intent-slot-tooling.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/ai-assistant/training/intent-slot/**'
+      - '.github/workflows/intent-slot-tooling.yml'
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate offline package
+        run: |
+          python3 -m venv /tmp/intent-slot-venv
+          /tmp/intent-slot-venv/bin/python -m pip install -r docs/ai-assistant/training/intent-slot/requirements.txt
+          /tmp/intent-slot-venv/bin/python -m unittest discover -s docs/ai-assistant/training/intent-slot -p 'test_*.py' -v
+      - name: Validate grading schema navigation
+        run: node --test docs/ai-assistant/training/intent-slot/grading/schema.test.cjs

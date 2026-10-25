@@ -342,6 +342,28 @@ Not all sensors emit data continuously. The Kidde CO + Temp + Humidity monitor i
 
 **CO vs CO2 — revised 2026-09-04:** `measurement_type=co` means carbon monoxide; `measurement_type=co2` means carbon dioxide — both are real, valid, distinct entries, and both back real Kidde-unit entities today (co-level and co2-level are separate HA entities on the same physical device). The bug was never that CO2 lacks a place in the vocabulary — it was that the CO-level entity (no device_class, no unit) was falling through discovery's classification logic and landing on the wrong DeviceType, so a CO reading could show up mislabeled under a CO2-titled card. Fixed by giving `HomeAssistantDiscoveryService.inferType()` a friendly_name-based fallback for CO_SENSOR — the classification bug is gone; CO2_SENSOR itself was never the problem and is not being removed.
 
+### D13 Amendment A1 (ratified 2026-10-21): the Zigbee device is the parent of its Home Assistant entities
+
+**Status:** **ratified 2026-10-21 (Cowork)**, with one follow-up condition (C-A1-1) and one clarification (C-A1-2), below. Implemented by Code from Nate's direction 2026-10-21 ([PR #220](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/220), W-88). Nothing below changes the D13 display rule or the Service Entity definition.
+
+**Found live (2026-10-21).** The attic SONOFF SNZB-02P sensor was charted twice from one device, and the cabin dehumidifier's SONOFF S61SZBTPB switch was listed as a native `z2m-*` device and as unlinked `ha-cabin-*` entities. The attic device had been linked the wrong way round (the native device was a child of its own humidity entity).
+
+**Rule.** Where one physical device reaches the platform both natively (Zigbee2MQTT, `z2m-*`) and through Home Assistant discovery (`ha-<location>-*`), the **native device is the parent (the Device) and each Home Assistant entity is one of its services**:
+1. The link is made by the entity id's object-id starting with the native device's friendly-name slug, at the same location. The longest slug wins. A slug shared by two native devices is never linked.
+2. A link drawn the other way round is repaired. A parent a person chose elsewhere is never replaced. Linking is not acceptance: a candidate stays a candidate.
+3. **Only the parent logs the reading.** A `sensor` entity of a native Zigbee device keeps its live value but writes no second `TELEMETRY` series, so a measurement has one lineage (Service → Device) and one chart series. Switches and binary sensors still publish, so workflows watching them keep firing. History already written under the entity ids is left in place; deleting telemetry is an owner-run dry-run script, never an agent session.
+4. A property Z2M reports as `null` means *not yet reported*. It is never stored as a value and never overwrites a real reading.
+5. A switch, plug or relay that exposes power is a `POWER_METER` (the D15 outlet/smart-plug class), and a `switch`/`light`/`fan`/`cover` expose carries the device's COMMAND capability. This applies to devices paired after 2026-10-21; a configured device keeps its type and capabilities until a person re-detects them (W-93).
+
+The D15 measurement types (`power` W, `energy` kWh, `current` A, `voltage` V) and the D15 card rules (power primary, energy secondary, voltage and current tertiary) apply unchanged to the parent. The S61SZBTPB advertises all four; see `zigbee_controlled_outlet` in `docs/ontology.yaml`.
+
+**Cowork ratification (2026-10-21).** Reviewed against `main` @ `82680e0`: `HomeAssistantDiscoveryService` (`nativeZigbeeIdsBySlug`, `nativeParentFor`, `linkUnderNative`, the `sensor`-domain skip), `DeviceRegistry.setDiscoveredParent`, and `Zigbee2MqttAdapter` (null properties dropped; `switch`/`light`/`fan`/`cover` features recursed for COMMAND; power-measuring switch, plug, outlet or relay typed `POWER_METER`), with the tests added in #220. Rules 1 to 5 match the code as written. Ratified because it gives each measurement one lineage (Service, Device, physical asset), which is D13's purpose, and it fixes two live defects (a double-charted sensor, a plug with no command capability) without deleting history.
+
+| ID | Kind | Text |
+|---|---|---|
+| C-A1-1 | Follow-up condition (does not block; tracked as [W-94](../backlog.md)) | Rule 3 skips **every** `sensor` entity linked under a native device. That is right for entities that repeat a reading the native device already logs, but it would also silence a Home Assistant entity the native device does not report: a template, statistics or derived sensor whose object id happens to start with the device's slug (for example a dew-point sensor built from the attic sensor). The skip must apply only when the native device reports that entity's `measurement_type`; an entity with a measurement the native device lacks keeps logging under its own id. Regression test required. Until W-94 merges, name derived HA sensors so they do **not** start with a Zigbee device's friendly-name slug |
+| C-A1-2 | Clarification | `POWER_METER` is the measurement class (D15), not control authority. A power-measuring relay that drives a load (the MINI-ZB1GSP relays in D28's boxes 3 and 4) is typed `POWER_METER` and stays commandable through COMMAND; who may command it is decided by D27's guards and the roles in W-44, as for any capability. The runtime `DeviceType` and D28's Device Type Name (`ZigbeeMiniRelay`, a naming registry) are separate and coexist |
+
 ------------------------------------------------------------------------
 
 ## D14 — Kiosk Auth Model — Public Read Tier + CabinSession
@@ -647,6 +669,286 @@ R-LR-4 and R-LR-5 are implemented in W-23 (PR #122): the renamed script with its
 **What this is not.** Not a general exemption for automation commits, not a way to commit anything else without review, and not a change to who may rotate secrets.
 
 ---
+
+---
+
+## D27 — Ontology-driven context: metadata, human concepts and assignable actions
+
+**Status:** ratified 2026-10-14 for the Phase 1 POC start (Cowork). Nate answered Q-OC-1 to Q-OC-5 the same day, and Cowork voted on Q-OC-5 first as he asked. The relation semantics stay open to further development (Q-OC-6 onward). Proposed earlier the same day by Cowork from Nate's direction. **Use case:** [UC-17](../use-cases.md). **Work:** W-66 to W-74 ([backlog](../backlog.md)); C5 and POC2 ([Ask backlog](../../ai-assistant/wsjf-backlog.md)). **Builds on:** D7, D13, D15, D16 (services, measurement types, topics), D17 (`located_in`), D23 and D24 (locations), W-45 (services declared by class), W-26 (ontology-driven camera classes), PR #159 (intent/slot r1 package). Numbered D27 because the unmerged `claude-code/w64-security-drawer` branch cites a D26.
+
+**Problem.** Home Assistant already lists devices, entities and automations. What the platform should add on top of it is context: a user switches between views of their places by what they care about, and says what they need in their own words. Neither is possible today:
+
+- **No metadata.** There is no runtime relation store. `parentDeviceId` gives one level of "part of", `reports_to` is a computed topic, and `display_label` is the only human text. `relates_to`, `subject_of`, `topic_of` and human definitions exist only in the documentation-only `docs/ontology.yaml`, whose relation enum is unenforced and has drifted.
+- **No context switching.** Views are fixed: location, group-by and lifecycle filters. There are no saved, user-defined views.
+- **Controls aren't driven by the ontology.** Controls are inferred from a Home Assistant domain, and a hardcoded allowlist (`switch`, `input_boolean`; valve and lock denied) decides what may be switched.
+- **Ask is read-only.** Ask can't map "I'm cold" to an action, and the workflow engine has no time-based, recurring or "for N minutes" triggers and no Home Assistant service actions.
+
+**Direction (Nate, 2026-10-14).**
+
+1. **The ontology is the imperative.** It drives and accommodates every capability, view, control and workflow, including defined human interactions and desires.
+2. **Every action translates into a filter or a view.** Phase 1 covers all top-level parent devices, every HA service that appears under Monitoring, and **presence** (Q-OC-4). Phase 2 adds the remaining attributes that round out a service: battery level, stateful reporting and data elements under a parent.
+3. **Everything in scope carries metadata.** That means "relates to", "part of", "subject of", "topic of" and a human definition, so that it can be assigned to a human-language workflow.
+4. **The language chain is concept → ask → action.** A human concept ("I'm cold") becomes a human ask ("turn up the heat"), which becomes one or more suggested actions. The user picks one and runs it once, on a schedule (calendar-style recurrence), or on an event trigger ("when I turn on the LG TV").
+5. **Two entry points:** "use this" on any active card (optional, needs decomposition), or a typed request (required).
+6. **Ask-proposed actions are confirmed every time.** An automation the user saves and confirms then runs unattended.
+7. **Every primary/parent device is designed ready for automation control.** Valves and locks get the same control design, behind a guard: a lid that keeps the control unclickable until it is lifted, or an ontology block.
+8. **Saved schedules and triggers run in this platform's workflow engine**, not as generated Home Assistant automations. This reverses the standing `CLAUDE.md` rule (Q-OC-5).
+
+### Model
+
+| Term | Meaning |
+|---|---|
+| **Subject** | Anything addressable. Phase 1: a **Device** (parent, top level), a **Service** (one HA entity or service shown in Monitoring, the existing `ServiceEntity` / `device_reporting_relationship` row), and a **State** (presence first). Phase 2: other **Attributes** (battery, a state element under a parent). Identity follows D1: `entity_id` is canonical and never renamed. |
+| **State (atomic)** | Nate, 2026-10-14: a state is an atomic element. It can exist with **no** relation to anything ("someone is at the cabin"), or be related to a device 1:0..1 and to a person 1:0..1. A device in a presence relation is device 1:0 ↔ state 1:0: either side can exist without the other. That makes a state usable on its own as a trigger, condition or view filter, which is why presence is Phase 1. D24 still decides whose presence counts. |
+| **Metadata** | On every subject: `human_definition` (one or two sentences, user-editable), `aliases[]` (names people actually say), and typed relations. Each carries provenance (D4: who or what set it, when) and the D-status vocabulary (`proposed` / `ratified`). |
+| **Relations** (runtime vocabulary, reconciling the yaml enum) | `part_of` (structural, one parent; generalizes `parentDeviceId`); `relates_to` (symmetric, many-to-many); `subject_of` (this subject is what a **Concept** or workflow acts on: the heater is `subject_of` "warmth"); `topic_of` (this subject belongs to a user or D16 topic grouping: the heater is `topic_of` "Comfort"). Proposed meanings, see Q-OC-1. |
+| **Concept** | A human state or desire in the ontology's own vocabulary: `cold`, `hot`, `stuffy`, `dark`, `arriving`, `leaving`, `bedtime`, `tv_time`… Each concept lists the **Asks** it implies, for example `cold` → raise temperature, or turn on a heat source. |
+| **Capability** | What a subject can do, declared by class (W-45): `turn_on`, `turn_off`, `set_level`, `set_temperature`, `open`, `close`, `lock`, `unlock`. An Ask is satisfied by capabilities, so concept → ask → capability → subject is a walk over the ontology, not a guess by the model. |
+| **Control guard** | Per capability, from the ontology: `open` (shown and actionable); `lidded` (shown, but disabled until an authorized user lifts the lid, with confirmation and a receipt); `blocked` (the ontology refuses it, in the UI, from Ask and from automations). Replaces the hardcoded allowlist. Defaults: Q-OC-2. |
+| **View** | A saved ontology query over subjects (location, class, topic, relation, concept, status), with a layout. Monitoring and Device Manager render the same view definition. Choosing a view is the context switch. |
+| **Plan** | A proposed action or automation: target subjects, capability and value, plus one of `now`, `once at` time, `recurring` (RFC 5545 RRULE, edited like a calendar event), or `trigger` (a subject's state `changes_to` a value, optionally `for` a duration, with conditions). |
+
+### Requirements
+
+| ID | Requirement |
+|---|---|
+| R-OC-1 | **One metadata store.** Subjects, definitions, aliases and relations live in one runtime store with provenance. `docs/ontology.yaml` is reconciled to it, not the other way round. UI, Ask and the workflow engine read only this store for metadata. |
+| R-OC-2 | **Phase 1 inventory is complete.** Every parent device, and every HA entity or service that Monitoring shows, is a subject. HA domains Monitoring needs but discovery skips (for example `media_player` for the LG TV, and `climate`) are discovered. |
+| R-OC-3 | **Every control comes from the ontology.** A UI control, an Ask suggestion or an automation action exists only when the subject's class declares the capability and its guard is not `blocked`. No domain inference, no hardcoded allowlist. |
+| R-OC-4 | **Guards hold everywhere.** A `lidded` capability cannot be executed by any path (card, Ask, automation) without an authorized lift and a confirmation bound to that exact plan. `blocked` cannot be executed at all. The server enforces this, not the UI. |
+| R-OC-5 | **The model classifies; the ontology decides.** The language model (PR #159 contract) returns intent, slots, and a `concept` where one applies. Options come from walking concept → ask → capability → subject over the store, filtered by the caller's permissions and location. The model never names an entity, service or topic. |
+| R-OC-6 | **Options rather than dead ends.** For a concept with more than one satisfying subject, Ask lists the options (for example "raise the thermostat to …" and "turn on the mech room heater") and asks the user to pick one. Bare clarification is used only when no option exists or a value is missing (a unitless temperature). |
+| R-OC-7 | **Confirm every time.** An Ask- or card-proposed plan runs only after the user confirms that exact resolved plan (principal, targets, values, schedule, plan hash and expiry). A confirmed saved automation then runs unattended, with a receipt per run. |
+| R-OC-8 | **Schedules and triggers run in the workflow engine** (`WorkflowRuleService`), for both locations, with one audit trail. It gains time triggers (once, RRULE), `changes_to` and `for` duration state triggers, and capability actions that go through R-OC-3 and R-OC-4. |
+| R-OC-9 | **Views are data.** A view is a stored ontology query. Every action surface (a card, Ask, the automation composer) can open "show me what this affects" as a view. |
+| R-OC-10 | **States are first-class subjects in Phase 1; other attributes follow in Phase 2.** A presence state is a subject with its own metadata, optional relations to a device and a person, freshness (W-34), and D24 counting rules, and can be a trigger, condition or view filter. Phase 2 does the same for battery and other state elements (for example "when the door sensor battery falls below 20%"). |
+| R-OC-11 | **One interaction model.** A suggestion, a card action and an automation all end on the same confirm step. When exactly one option applies, it is shown as a single card and one tap confirms it. When several apply, the user picks one, and that tap is the confirm. |
+
+### Decided questions (Nate, 2026-10-14)
+
+| ID | Question | Decision |
+|---|---|---|
+| Q-OC-1 | Relation meanings: `subject_of` (what a concept or workflow acts on), `topic_of` (membership in a grouping), `relates_to` (loose association), `part_of` (structural containment), plus `human_definition`. | **Yes, as a starting point; to be developed further.** Start with these four plus `human_definition`. Q-OC-6 governs how the vocabulary grows. |
+| Q-OC-2 | Guard defaults for valves and locks. | **Direction-aware if feasible; if too complex for day 1, allow all.** Cowork: a guard is set per capability, and open/close and lock/unlock are separate capabilities, so direction-aware costs nothing extra. Build it from day 1: valve close `open`; valve open `lidded`; lock `open`; unlock `lidded` on cards and `blocked` for Ask and automations (**Amendment A1, proposed 2026-10-17, would make unlock-from-Ask `lidded` for administrators: see below**). "Allow all" is the recorded fallback only if W-69's design note finds a real obstacle, and it still keeps R-OC-7's confirm on every Ask or card action. |
+| Q-OC-3 | One option: show it as a choice? | **One tap applies when one option applies**, under a uniform interaction model (R-OC-11). |
+| Q-OC-4 | Is presence Phase 1? | **Yes, Phase 1.** A state is atomic: device 1:0 ↔ state 1:0, and a state can be independent of everything else. That flexibility and interoperability make it higher priority (Model: State; R-OC-10). |
+| Q-OC-5 | Engine for saved schedules and triggers, which reverses the `CLAUDE.md` rule. | **Yes, unless there is a firm reason to say no; Cowork votes first.** Cowork votes **yes, with a carve-out**. User-authored plans run in the platform workflow engine at both locations (D23: no HA at Home). The existing cabin safety automations (leak, freeze, siren) stay in Home Assistant, where they run and are tested. Cowork found no firm reason against this. The carve-out exists because those automations must keep working when the backend is down. `CLAUDE.md` is amended in the W-71 PR to say exactly this. |
+
+### Remaining questions (Cowork judgment unless marked for Nate)
+
+| ID | Question | Current answer |
+|---|---|---|
+| Q-OC-6 | How does the relation vocabulary grow (Q-OC-1 "further developed")? | Cowork proposes. A new predicate needs one concrete use case and a definition. It enters as `proposed`, and Cowork ratifies it in a PR. Nate is asked only when a predicate changes behaviour (a guard, a trigger). |
+| Q-OC-7 | Identity of an independent state: what is the canonical id of "someone is at the cabin" when no device backs it? | Cowork leaning: `state.<location>.<kind>[.<person>]`, minted by the platform, never renamed (D1). Settled in W-73's design note. |
+| Q-OC-8 | Who approves concept vocabulary entries (W-66)? | Cowork drafts; Nate reviews the first seed set once; after that Cowork ratifies additions, the same as Q-OC-6. |
+| Q-OC-9 | What can actually actuate at Home today, with no HA there (D23)? | Unknown. Code verifies the Home adapters (MQTT, http_poll) in W-67's design note. Until then, POC actions are cabin-only. |
+| Q-OC-10 | Plan confirmation lifetime and replay rules. | Cowork leaning: a confirmation expires after 5 minutes and is bound to the plan hash. Any inventory or plan change invalidates it. Settled in C5. |
+| Q-OC-11 (Nate) | Concept seed list: are `cold`, `hot`, `stuffy`, `dark`, `arriving`, `leaving`, `bedtime`, `tv_time` the right first eight, and what is missing? | Asked in W-66's PR; the POC uses `cold` only. **Nate, 2026-10-16** (grading gold-01): the list is missing `light` (the want for light; "bright" and any derivation of light or bright are one observational concept with different aliases, confirmed by Nate the same day, so aliases of `light`, not separate concepts), and `nap` and `wake_up` beside `bedtime`. Added as `proposed` in `concepts.json`; the original eight remain unratified. |
+
+### What this is not
+
+- Not a build. Each W item carries its own design note and governance record.
+- Not permission to execute anything from Ask before the C5 gates pass. The one exception is the W-75 vertical POC, which may run only the cabin mech-room heater switch. That is the same authority the W-27 card button already grants, and it runs behind a feature flag, for an admin only, with a confirm every time.
+- Not a change to who may act (W-44 / W.6 roles still decide that).
+
+### Amendment A1 (phase A ratified 2026-10-19; phase B proposed): unlocking a lock from Ask
+
+**Status:** **phase A ratified 2026-10-19 (Cowork)**, under the conditions in "Cowork ratification" at the end of this amendment. Phase B stays proposed (W-86 design note first). Proposed 2026-10-17 by Code from Nate's direction; Nate's answers to A1-Q1, Q2, Q4 and Q5 were recorded the same day, and Cowork answers A1-Q3 below. **Nothing in the gold set, the prompt, the resolver or the executor changes until it is ratified.** Amends Q-OC-2 only; R-OC-3, R-OC-4, R-OC-7 and R-OC-11 are unchanged and are what makes it safe.
+
+**Why.** Q-OC-2 made `unlock` `lidded` on cards and `blocked` for Ask and automations. Nate's intent: an administrator must always be able to unlock a door from wherever they are, once they confirm which door. That is a request the current guard refuses by design.
+
+**The change (phase A, the required case).**
+
+| | Q-OC-2 today | A1 |
+|---|---|---|
+| `lock` | `open` | unchanged |
+| `unlock` on a card | `lidded` | unchanged |
+| `unlock` from Ask, administrator, any location | `blocked` | **`lidded`**: allowed after the lid is lifted |
+| `unlock` from Ask, anyone else | `blocked` | `blocked` (phase B below may widen it) |
+| `unlock` by any automation, saved or Ask-generated | `blocked` | `blocked` (unchanged: nothing unlocks a door unattended) |
+
+**What "lifting the lid" means for Ask.** All of these, enforced by the server (R-OC-4), never by the model or the UI:
+1. The caller is an authenticated ADMINISTRATOR session: an active Google-backed session (A1-Q2: no extra freshness window). If the session is not authenticated, the workflow prompts the admin to sign in and then continues the same request. The role comes from the session, never from the request text. **No location-presence condition applies to an administrator** (Nate 2026-10-17: admins hold the keys to Home and Cabin and may unlock from anywhere); the earlier gold-16 and gold-36 review notes that suggested one are superseded.
+2. The target is resolved by the `EntityResolver` from the request's location and device name to exactly one lock the caller may act on (R-OC-5). Zero or several matches is `NOT_FOUND` or `AMBIGUOUS`, never a guess, and a request that names no location is `clarify`.
+3. The user is shown the exact resolved plan ("Unlock Front Door lock at Cabin") and confirms it. The confirmation is bound to the plan hash, the principal and an expiry (Q-OC-10; for a lock, A1-Q1: the general 5 minutes, chosen by Nate over the 60 seconds Code suggested), and any inventory or plan change voids it.
+4. A receipt records who, which lock, which location, when, and the executor's own result. HTTP acceptance is not success: the receipt shows the lock's reported state, or "no confirmation from the lock".
+5. The existing `lock` capability is untouched; only `unlock` gains this path.
+
+**Why confirm every time.** The admin condition removes the question of who may unlock, not whether this unlock is what they meant. A stolen unlocked session, a mis-resolved name or injected text still ends on a human-confirmed plan (R-OC-7). One tap, as R-OC-11 already provides, is the "automatic" experience.
+
+**Phase B (later, secondary): a user local to the site.** Decided scope (A1-Q5): a kiosk, and any device on the site's LAN or Wi-Fi, for a signed-in D24 `primary` user only. Nate's intent, clarified: an authorized *user* (not a viewer) may unlock from outside the door as well as inside, because authorization, not standing inside, is what grants it; being on the site's network or kiosk is the locality requirement on top. The control is therefore the signed-in authorized-user requirement: guests, contractors and view tokens on the same Wi-Fi are viewers or unauthenticated, never users, and `maintenance` and display sessions are excluded. Open: which household roles count as "users" for an unlock (adults only, or children too; kiosk-display sessions excluded) is not yet decided. Rationale recorded from Nate: a door lock is not a systems-critical device like water or gas detection, and an intruder would need the network, the app URL and credentials, which is a rarer path than breaking a window. Proposed rule, to design and ratify separately: a signed-in user (D24 `primary` at that location, never `maintenance` or guest) acting through a client that is demonstrably local to the lock's site (a kiosk or device on the location's LAN or Wi-Fi) may lift the same lid for that site's locks only. Open design point: "local" cannot be read from a source IP, because requests reach the backend through Cloudflare or Tailscale. It needs a path the server can trust, such as a kiosk-bound token (D14) or a LAN-only listener. Fails closed when the locality signal is missing or stale.
+
+**Resolver and policy test cases** (these are backend tests, not model fixtures; the model never sees the condition):
+
+| Case | Expected |
+|---|---|
+| Admin, remote, "unlock the front door", one lock at the named location | Proposal returned with `requires_confirmation`; executes only after confirm |
+| Admin, remote, no location named and more than one lock exists | `clarify`, no proposal |
+| Admin, location names no lock | `NOT_FOUND` |
+| Non-admin household member, any location | Refused (`UNAUTHORIZED`), no proposal |
+| Guest, demo or kiosk-display token | Refused |
+| Admin session expired or revoked between proposal and confirm | Confirm rejected; nothing executes |
+| Confirm after expiry, or after the lock's inventory entry changed | Rejected |
+| Same confirm replayed | Rejected (single use) |
+| Request text claims "I am the admin" or "ignore the guard" | Role unchanged; prompt-injection stays data |
+| Unlock requested inside a saved or Ask-generated automation | Rejected at validation (`blocked`) |
+| Lock reports no state change after the command | Receipt says "no confirmation from the lock", not success |
+| Home location (no HA there, D23, Q-OC-9) | Refused until a verified Home actuator exists. Nate: the refusal should carry a reason Ask can state ("Home has no verified lock actuator yet"); the resolver's typed refusals already carry reasons, and surfacing them in Ask is wanted, not yet verified |
+| Home, once a verified lock actuator exists | Same rule as Cabin, no extra step (Nate 2026-10-17: "no difference") |
+| Admin with no active session | Not refused: prompted to sign in, then the same request continues |
+
+**Model-side changes, to apply only after ratification** (a gold and prompt change resets the gold hash, so every prior score stops being comparable and the previous prompt is re-baselined on the new gold; see `proposals/sme-loop.md`):
+- `gold-36` ("Unlock the front door") changes from `unsupported` to `set_device_state`, `device_name` front door lock, `state` unlocked, `requires_confirmation` true, critical. Add two or three phrasing variants (for example "let me in the cabin door", with the location stated) and keep a fixture proving a *negated* unlock ("don't unlock the door") stays `unsupported`.
+- `system.txt`: the original line "Unlocking locks from Ask is unsupported" and round 2's rule 1 clause "Unlocking a lock is unsupported" are replaced by "An unlock request is a set_device_state proposal that requires confirmation; whether the caller may unlock is decided outside the model."
+- The model never emits an entity id, role or condition (R-OC-5).
+
+**Decisions and open questions** (Nate, 2026-10-17).
+- A1-Q1 decided: lock confirmation lifetime is the general 5 minutes. It stays bound to the plan hash, principal and a single use.
+- A1-Q2 decided: no 24-hour sign-in rule. An active Google-backed session is sufficient; if there is none, the workflow prompts. Code had recommended a fresh-sign-in window; Nate declined it. Residual risk accepted by Nate: a stolen live session can propose an unlock, so the confirm step, the receipt and the Ask-unlock event (below) are the controls. Requirement kept regardless: any renewal path must not forge a later sign-in time if one is ever recorded.
+- A1-Q3 answered (Cowork, 2026-10-19): **no new predicate; Q-OC-6 is not triggered.** The lock-to-site link is the D6 location attribute already carried by the W-67 inventory entry, with D17 `located_in` where a room exists. What A1 does change is the **guard model**: a guard is no longer one value per capability but a policy keyed by (capability, surface, caller role). Surfaces are card, Ask and automation. Example: `unlock` is `lidded` on a card, `lidded` from Ask for an ADMINISTRATOR, `blocked` from Ask for every other role, and `blocked` in automations. W-69's design note carries this shape. Separate observation, not part of A1: D28's `related_to[]` (functional domains) and D27's `relates_to` (a loose association between subjects) are distinct by definition but one letter apart. W-68's design note must keep both names visibly distinct in the API and the UI so neither is mistaken for the other.
+- A1-Q4 decided: no active push. Every Ask unlock writes a log entry and a receipt visible to the acting admin. Whether anyone else is notified is governed by the admin-autonomy setting below, not hard-coded.
+- A1-Q5 decided: see phase B.
+- Gold-36 stays excluded (rejected) until A1 is ratified, then returns as `set_device_state` to unlocked with confirmation (Nate concurs).
+
+**Cowork ratification (2026-10-19), phase A only.** Ratified because every control R-OC-4 and R-OC-7 already require still holds: the role comes from the session, the target from the resolver, the plan is confirmed every time and expires, and a receipt is mandatory. Nate has accepted the residual risk of a stolen live session in A1-Q2 and A1-Q4. Conditions:
+1. **What ratification unlocks now:** the gold-36 change and its variants (including the negated-unlock fixture), the `system.txt` change, the re-baseline on the new gold hash, and the resolver/policy test table above, built as backend tests.
+2. **What it does not unlock:** execution. An Ask unlock runs only when W-85's guarded executor exists, every row of the test table passes, W-75's shadow report has been accepted and Nate has given the go for live execution. Until then `/api/helpdesk/propose` returns the proposal and nothing more.
+3. **Sign-in prompt wording.** An unauthenticated request cannot be known to come from an admin. So any unauthenticated unlock request is answered with a sign-in prompt, and the role is evaluated only after sign-in. Nothing about the caller's role is disclosed before that.
+4. **The receipt is an audit event.** Every Ask unlock, whether confirmed, rejected or expired, writes a distinct event type (for example `ASK_UNLOCK_*`) that is queryable in the event history. W-87's notification setting reads from that event.
+5. **Home** stays refused with its stated reason until a verified Home lock actuator exists (Q-OC-9). After that, the same rule applies as at the Cabin.
+6. **Phase B is not ratified.** It needs W-86's design note: trusted locality, the household-role list for "users", and failing closed.
+
+**Admin autonomy (new, proposed with A1; build deferred, W-87).** By default every admin is autonomous and equal, and no one oversees them: the system assumes this unless configured otherwise. It is chosen at setup or changed later, and must be stated explicitly in the setup and configuration documentation, then in the maintenance documentation and the Ask user guide. An optional mode adds a *superuser* above the admins: all admins remain equal to each other, every admin action is logged and notified to and from the other admins, and the superuser sees everything while admins do not see the superuser. This is the enterprise-scale shape (Nate: "standard fare"), recorded now so the default is a choice and not an accident. Consequence of the default, stated plainly: with one autonomous admin, an unlock by a stolen session is visible only in logs and the in-app receipt unless the notification setting is turned on.
+
+---
+
+## D28 — Physical unit type-naming convention; Midea Cube and Cloudline S6 HVAC integration
+
+**Status:** ratified 2026-10-16 (naming convention and the `related_to` tag, Nate's direction recorded verbatim below); **amended 2026-10-19 by [A1](#d28-amendment-a1-2026-10-19)**, which reconciles D28 with Doc 27 ([`docs/hardware/doc27-environmental-nodes.md`](../../hardware/doc27-environmental-nodes.md), merged in #165): one naming rule, one hardware allocation, `related_to` stored as D27 `relates_to`, and the Cloudline S6 carrying **both** power monitoring and speed control. **Use cases:** [UC-20](../use-cases.md) (provisioning and naming) and [UC-18](../use-cases.md) (operating the same hardware). **Work:** W-77 to W-80, W-84 and W-95 ([backlog](../backlog.md)); W-81 closed by A1. **Builds on:** D1 (entity_id is canonical, snake_case, never renamed), D7/D13 (Service Entity, `display_label`), D14 (`user_provided_name`/`device_name_from_system`), D15/D16 (`reports_to[]`, Reporting Topics), D27 (Subject/Device/Service model, `part_of`, `relates_to`, `topic_of`, `human_definition`), D8 (no second coordinator; enrichment only on-demand).
+
+**Problem.** Doc 27's sensor/relay build (3 of 4 planned enclosures, cabin claim zone) and a parallel home-location Zigbee sensor rollout are now inbound hardware with no entity_id yet — they haven't been provisioned. Two new HVAC devices (a WiFi dehumidifier and a duct booster-fan speed controller) were ordered as an addendum and have no ontology placement at all. Nate asked for (1) a naming convention where a unit's *type* name is inherited verbatim into both its technical and UI names rather than invented per physical unit, and (2) a `related_to` tag so a device whose action serves several use cases (a booster fan that is simultaneously heating-, cooling- and humidity-relevant) isn't forced into one.
+
+**Direction (Nate, 2026-10-16), recorded verbatim.** Define a unique **unit type-name** (not per physical unit); the *technical* name inherits that exact type name via concatenation; the *UI* name derives from the type name via a location/application-specific add-on — example given verbatim: `SensorCollectionBox_Basement_HVAC` — "or a more logical naming convention if one is already clearly inheritable from the existing ontology." Devices/services should be listed at minimum as a master list of standalone hub-location-based devices, at maximum as full per-type ontological entries, with uniqueness coming only from human-defined function, location or service-purpose attributes. The Midea Cube (MAD50PS1QGR, WiFi, direct via HA) and the Cloudline S6 duct fan speed controller both need hub integration, with final control/connectivity ontology-defined, and a `related_to` tag — example given verbatim: the fan is `heating`, `cooling`, `humidity` and `climate` related, since its job is to normalize air for multiple use cases.
+
+**Resolution: the existing ontology already supplies the inheritable convention — D1's snake_case identity rule plus D13/D14's PascalCase display convention. D28 adds one registry (the type name) and derives both names from it mechanically. No new per-unit invention.**
+
+### Device Type Name registry (L2 Semantic, new controlled vocabulary)
+
+A **Device Type Name** is a PascalCase, singular noun phrase describing what the physical unit *is*, independent of where it sits or what it's wired to. It is set once per hardware class, never per physical unit, and is the inherited root of every name below.
+
+| Device Type Name | What it is | Protocol / adapter |
+|---|---|---|
+| `SensorCollectionBox` | DIY enclosure: SEN66 (particulate/VOC/CO₂*) + SEN6x breakout + SHT45 + QT Py ESP32-S3, sensor-only, no relay | WiFi / ESPHome → HA (new adapter class, W-84) |
+| `RelayControlBox` | DIY enclosure: the same sensor package **plus** one or more Zigbee relay modules, with a manual toggle override where the load has one. Power source does not change the type (Box 3 Mean Well IRM-05-5, Box 4 USB plug-in) | Composite — sensor half WiFi/ESPHome, relay half Zigbee (see "Composite enclosures" below) |
+| `UtilityRelayNode` | Plug-and-play vented enclosure housing a relay module, no sensor package. **Registered type, no current unit (A1):** Box 4 carries a sensor package, so it is a `RelayControlBox` | Zigbee (existing Z2M path, no new adapter) |
+| `ZigbeeTempHumiditySensor` | SONOFF SNZB-02P battery temp/humidity sensor | Zigbee |
+| `ZigbeeMiniRelay` | SONOFF MINI-ZB1GSP (sold as MINI One PM; power metering W, A, V, kWh) or the owned ZBMINIR2. Inside an enclosure it is its own Device, `part_of` that enclosure | Zigbee |
+| `ZigbeeSmartPlug` | SONOFF S61SZBTPB | Zigbee |
+| `ZigbeeCoordinator` | SONOFF ZBDongle-E (cabin, USB) / SMLIGHT SLZB-MR5U (home, network-attached) — named here for naming-scheme consistency only; **entity_id and friendly_name are not renamed** (D1, D8) | USB-serial / network |
+| `SmartDehumidifier` | Midea Cube MAD50PS1QGR, WiFi | WiFi, HA local-LAN integration (W-77) |
+| `DuctFanSpeedController` | AC Infinity CLOUDLINE S6 6 in. inline fan (PWM EC motor) with its supplied 10-speed controller | Power metering and on/off via a `ZigbeeMiniRelay`; speed via the fan's UIS control port (W-78) |
+
+*CO₂ measurement from the SEN66 is informational only; `co2` is not in the platform's `measurement_type` vocabulary (D13) and must never be surfaced as a reportable service entity under that name.
+
+### Naming derivation (mechanical, no per-unit invention; clarified by A1)
+
+```
+entity_id       (D1, snake_case, minted once at install, never renamed)
+  = {device_type_name_snake}_{hub_snake}_{room_snake}[_{application_snake}]
+
+display_label   (D13/D14, PascalCase segments joined by "_", human-facing in UI, Ask and KB)
+  = {DeviceTypeName}_{Hub}_{Room}[_{Application}]
+```
+
+- **Hub is always present** (Cabin or Home, D23), so two locations can never mint the same name. **Room** is the installed room or zone. Each is its own segment; segments are never merged (`Bathroom_ExhaustHeat`, not `BathroomExhaustHeat`).
+- **Application** is added only when hub, room and type do not already tell two units apart, or when the unit's purpose is the thing a person will look for. It is the human-defined function (`ExhaustHeat`, `ClimateControl`, `DuctReference`).
+- Nate's example `SensorCollectionBox_Basement_HVAC` follows the same pattern with the hub added: `SensorCollectionBox_Cabin_Basement_HVAC` / `sensor_collection_box_cabin_basement_hvac`.
+- This is the only naming rule. Doc 27's earlier rendering ("Sensor Collection Box — Cabin / Main level / Air quality") is withdrawn there in favour of this one (A1). Its hardware-identity rules stay: hardware ids, HA unique ids and ESPHome hostnames are separate from these names and never derived from them.
+- Child services inherit the parent label plus the source or channel: `RelayControlBox_Cabin_Bathroom_ExhaustHeat` has `..._SHT45_Humidity`; its relays are `ZigbeeMiniRelay_Cabin_Bathroom_Exhaust` and `ZigbeeMiniRelay_Cabin_Bathroom_Heat`, each `part_of` the box.
+
+Allocation of the ordered hardware (A1: reconciled with the 2026-10-15 purchase record and Nate's later 2026-10-16 clarifications in Doc 27; TBD rooms are named at install, the pattern does not change):
+
+| Unit | Device Type Name | Hub / Room | Application | `display_label` | `entity_id` |
+|---|---|---|---|---|---|
+| Box 2 (SEN66 + SHT45 + QT Py, Mean Well) | SensorCollectionBox | Cabin / Upstairs (main level) | — | `SensorCollectionBox_Cabin_Upstairs` | `sensor_collection_box_cabin_upstairs` |
+| Box 3 (sensor package, Mean Well, 2 toggles) | RelayControlBox | Cabin / Bathroom | ExhaustHeat | `RelayControlBox_Cabin_Bathroom_ExhaustHeat` | `relay_control_box_cabin_bathroom_exhaust_heat` |
+| Box 3 relay 1 (MINI-ZB1GSP) | ZigbeeMiniRelay | Cabin / Bathroom | Exhaust | `ZigbeeMiniRelay_Cabin_Bathroom_Exhaust` | `zigbee_mini_relay_cabin_bathroom_exhaust` |
+| Box 3 relay 2 (MINI-ZB1GSP) | ZigbeeMiniRelay | Cabin / Bathroom | Heat | `ZigbeeMiniRelay_Cabin_Bathroom_Heat` | `zigbee_mini_relay_cabin_bathroom_heat` |
+| Box 4 (sensor package, USB plug-in power) | RelayControlBox | Cabin / MechRoom | ClimateControl | `RelayControlBox_Cabin_MechRoom_ClimateControl` | `relay_control_box_cabin_mech_room_climate_control` |
+| Box 4 relay A (MINI-ZB1GSP) | ZigbeeMiniRelay | Cabin / MechRoom | Circulation (feeds the S6) | `ZigbeeMiniRelay_Cabin_MechRoom_Circulation` | `zigbee_mini_relay_cabin_mech_room_circulation` |
+| Box 4 relay B (MINI-ZB1GSP) | ZigbeeMiniRelay | Cabin / MechRoom | Reserved (load named at install) | `ZigbeeMiniRelay_Cabin_MechRoom_{Load}` | named at install |
+| Box 1 (deferred, not purchased) | SensorCollectionBox | Cabin / LowerLevel | — | `SensorCollectionBox_Cabin_LowerLevel` | not minted |
+| SNZB-02P ×5 | ZigbeeTempHumiditySensor | Home / MechRoom, Laundry, Kitchen (DishwasherSink), Garage, Basement (Storage) | as shown | `ZigbeeTempHumiditySensor_Home_MechRoom`, `..._Home_Laundry`, `..._Home_Kitchen_DishwasherSink`, `..._Home_Garage`, `..._Home_Basement_Storage` | snake_case of each |
+| SNZB-02P #6 (was "spare") | ZigbeeTempHumiditySensor | Cabin / LowerLevel | DuctReference | `ZigbeeTempHumiditySensor_Cabin_LowerLevel_DuctReference` | `zigbee_temp_humidity_sensor_cabin_lower_level_duct_reference` |
+| S61SZBTPB ×2 | ZigbeeSmartPlug | Cabin / room at install | load at install | `ZigbeeSmartPlug_Cabin_{Room}_{Load}` | named at install |
+| Midea Cube MAD50PS1QGR | SmartDehumidifier | Cabin / room at install (drain route decides) | — | `SmartDehumidifier_Cabin_{Room}` | named at install |
+| CLOUDLINE S6 | DuctFanSpeedController | Cabin / mount room at install | InterLevelLoop | `DuctFanSpeedController_Cabin_{Room}_InterLevelLoop` | named at install |
+| Owned ZBMINIR2 ×2 | ZigbeeMiniRelay | unassigned spares | — | named when assigned | not minted |
+| Coordinators | ZigbeeCoordinator | Cabin ZBDongle-E / Home SLZB-MR5U | — | unchanged (D1, D8) | unchanged |
+
+No `entity_id` is minted before the unit is installed in its final room (D1). Where a row says "at install", Nate names the room or load on the day; Code records it and nothing else changes.
+
+**Composite enclosures (`RelayControlBox`).** One physical box can carry two independent protocol stacks: the QT Py sensor package (WiFi/ESPHome) and one-to-several Zigbee relay modules. Rather than inventing a cross-protocol parent device, each stack is provisioned as its own Device under the existing adapter it actually speaks (ESPHome→HA for the sensor service; Z2M for each relay), and the two are tied together with D27's `part_of` relation into a shared non-addressable grouping subject named for the enclosure (`relay_control_box_cabin_bathroom_exhaust_heat` and `relay_control_box_cabin_mech_room_climate_control` as the `part_of` targets, not live devices themselves). This is the first real use of `part_of` for something other than Zigbee's existing `parentDeviceId` — a deliberate, in-scope extension, not a new relation.
+
+### The `related_to` tag (amended by A1: Nate's term, stored as D27 `relates_to`)
+
+Nate's need stands as ratified: a unit whose action serves several functional domains carries all of them, and is never forced into one (the S6 normalizes air for heating, cooling and humidity at once). A1 decides only how it is stored. D27 already defines `relates_to` (symmetric, many-to-many, **no control authority or proof of effect**), and Doc 27 asks that no separate `related_to` property be revived beside it. So:
+
+- **Storage:** D27 `relates_to` edges from the device to **domain subjects**, one per value of a controlled vocabulary: `heating`, `cooling`, `humidity`, `climate` (umbrella covering the first three), `energy`, `security_presence`, `comfort_air`. Each domain subject has a `human_definition`. Growth follows D27 Q-OC-6.
+- **Surface:** the UI, API and Ask present it with Nate's wording, "Related to: heating, cooling, humidity, climate". `GET /api/devices/{id}` returns it as `relatedTo: [...]`, derived from the edges, so there is one store and no third predicate.
+- **Distinct from:** `reports_to[]` (where telemetry feeds, D15/D16) and `topic_of` (membership in a saved view). A device can carry all three.
+- **Never implies capability:** relating the S6 to `heating` does not grant `set_temperature`; relating it to `humidity` does not mean it removes moisture (Doc 27, Relationships).
+
+Assignments, exactly as Nate framed them:
+
+- `DuctFanSpeedController` (CLOUDLINE S6): related to `heating`, `cooling`, `humidity`, `climate`.
+- `SmartDehumidifier` (Midea Cube): related to `humidity`, `climate`, `comfort_air`.
+
+### Midea Cube MAD50PS1QGR — integration
+
+WiFi, local-network device, no Zigbee. Home Assistant has a community integration for Midea-protocol dehumidifiers/AC units (local-LAN control via the device's own key/token, no cloud round-trip once paired) — this is the expected path ("direct via HA," per Nate's framing) rather than Z2M or a cabin-backend-side adapter. Setup friction is typically the one-time device key/token extraction, not ongoing maintenance. **W-77** scopes the actual HA-side setup; this platform then sees it as an ordinary `HOME_ASSISTANT_ENTITY`-class device via the existing `ha_rest` adapter, same as the mech-room heater (W-27/W-28), with its `related_to` domains from this decision. **Location (A1):** Cabin, room set by the drain route at install; Doc 27's Midea integration decision owns the arrival tests (exact-model support, IP reservation, drain and bucket-full behaviour).
+
+### CLOUDLINE S6, Q-DN-1 (re-answered by Nate 2026-10-19: power monitoring **and** speed control)
+
+Nate, 2026-10-19: "cloudline s6 has power monitoring and speed control, these are not mutually exclusive." The 2026-10-17 framing (Option A passive monitor **or** Option B active speed control) is withdrawn. The S6 is one `DuctFanSpeedController` with two capability paths that coexist:
+
+| Capability | Path | Hardware | Status |
+|---|---|---|---|
+| Power and energy telemetry (W, A, V, kWh), on/off | Box 4 relay A, `ZigbeeMiniRelay_Cabin_MechRoom_Circulation`, on the S6 supply | MINI-ZB1GSP, owned (ordered 2026-10-15) | Commission after a motor-load and restart test (Doc 27). One S61SZBTPB plug is the fallback supply path, never in series with the relay |
+| Speed, `set_level` over 10 steps | The S6's UIS control port (PWM-controlled EC motor; the supplied controller keeps the last speed through a power cut) | **Not yet owned.** W-78 designs it (below) | Design note, then build |
+
+**W-78 design direction (Cowork, 2026-10-19), for Code's design note:**
+
+1. **Preferred, fully local:** an ESPHome node driving the fan's speed signal through an **opto-isolated** PWM output, exposed to HA as a speed fan (10 steps) and reached by the platform through `ha_rest` like any other HA entity. Community builds exist for AC Infinity S-series fans (ESP32 with ESPHome, LEDC PWM, optocoupler on the ESP side). **Isolation is mandatory:** a reported failure mode of non-isolated builds is line voltage leaking over a shared ground.
+2. **Fallback, off the shelf:** an AC Infinity UIS WiFi controller with the community HA integration. Less work, but it goes through AC Infinity's cloud, which cuts against local-first. Use only if option 1 fails its bench test.
+3. **First step before ordering anything specific:** photograph and meter the S6's controller connector (pin count, signal voltage with the supplied controller attached), because connector revisions differ and guides written for the older Molex version may not match. Then the design note names exact parts.
+4. **Parts for option 1, ordered 2026-10-19:** a Freenove ESP32-S3 8 MB board (ESPHome board `esp32-s3-devkitc-1`, PWM on GPIO4; avoid GPIO0, 3, 45, 46, 19, 20), a NOYITO PC817 3-5 V isolation module (pack of 2), and an AC Infinity UIS extension cable, female to male, cut to tap the control port. Recorded in Doc 27's parts table and the device inventory JSON.
+
+Rules carried from the 2026-10-17 answer, unchanged: no speed claim in any UI, doc or Ask answer before it is real; automation that drives the fan lives in `WorkflowRuleService` (D27 Q-OC-5); a level change is a state-changing command under the normal confirmation and permission rules; no `entity_id` before install (D1).
+
+### D28 Amendment A1 (2026-10-19)
+
+Recorded by Cowork at Nate's direction ("lets clarify all now"), resolving the conflicts between D28 as merged in #167 and Doc 27 as merged in #165. Logged as [DL-2026-10-19-01](../discrepancy-log.md).
+
+| Conflict | Ruling | Basis |
+|---|---|---|
+| Two naming rules (D28 PascalCase; Doc 27 spaced rendering with hub) | D28's rule, with hub always present and segments never merged | Nate ratified D28's form; Doc 27's hub segment prevents Home/Cabin collisions |
+| Box 4: relay-only `UtilityRelayNode` with the old ZBMINIR2 (D28 inventory) vs sensor plus relays (Doc 27) | Sensor package plus two MINI-ZB1GSP, a `RelayControlBox`, USB plug-in power | Purchase record: SEN66, SHT45 and QT Py cut from 4 to 3 only because Box 1 was deferred, so Boxes 2 to 4 each get one; Box 4 was specified plug-and-play |
+| 4 MINI-ZB1GSP at Home, TBD (D28 inventory), plus 2 "MINI ONE PM" in Box 3 | 4 MINI-ZB1GSP total, all Cabin: Box 3 exhaust and heat, Box 4 circulation and reserved | MINI ONE PM is the MINI-ZB1GSP (same Amazon listing); only 4 were bought, in the Cabin-build order group |
+| 2 S61SZBTPB at Home | Cabin outlets | Cabin-build order group; Doc 27 |
+| 6th SNZB-02P: Home spare | Cabin lower-level duct reference | Nate's later clarification (Doc 27, 2026-10-16) supersedes the 2026-10-15 "1 spare" |
+| Midea Cube: Home basement (TBD) | Cabin, room by drain route | Doc 27 (Nate's later confirmation); D28's location was marked TBD |
+| S6: Cabin or Home, TBD | Cabin inter-level loop | Doc 27: lower-level air up, upper air back down |
+| Mean Well ×2: control nodes 3 and 4 (Doc 27) vs Boxes 2 and 3 (D28 inventory, build instructions) | Boxes 2 and 3; Box 4 plug-in USB | Box 4 specified plug-and-play; confirm at assembly |
+| `Device.related_to[]` as a new property | Nate's term, stored as D27 `relates_to` | Nate stated no preference on storage; one relation model (D27) |
+| S6 passive **or** active | Both, two capability paths | Nate, 2026-10-19 |
+| Second hardware master list (`HARDWARE_INVENTORY_2026-10-16_...`) | Retired; its unreviewed extra facts move to a WSJF review package (W-95) | One fact, one home; Nate, 2026-10-19 |
+
+### What this is not
+
+- Not a rename of any live entity_id. D1 holds; every example above is for hardware not yet provisioned.
+- Not a change to who may actuate anything (W-44/W.6 roles still decide that); `DuctFanSpeedController` and `SmartDehumidifier` get the same control-guard treatment as any other capability-bearing subject (D27 R-OC-3/R-OC-4).
+- Not a claim that the Midea HA integration is already installed — W-77 is the build item.
 
 ---
 

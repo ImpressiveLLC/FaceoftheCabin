@@ -80,8 +80,8 @@ function check(label, actual, expected) {
   const refWidths = await page.evaluate(() =>
     ['chores-card', 'dashboard-fab', 'settings-btn']
       .map(id => document.getElementById(id).getBoundingClientRect().width));
-  const expectedCollapsed = 190;
-  const expectedExpanded = Math.max(Math.max(...refWidths), expectedCollapsed + 200);
+  const expectedCollapsed = Math.round(await page.locator('#chores-card').evaluate(el => el.getBoundingClientRect().width));
+  const expectedExpanded = expectedCollapsed * 2 + 24;
   check('slid-out width == max(largest right-side element, collapsed width + content floor)',
     widths.expanded, `${Math.round(expectedExpanded)}px`);
   check('slid-in width is the fixed, narrow constant (not derived from other elements)',
@@ -114,7 +114,7 @@ function check(label, actual, expected) {
   check('notepad panel never overlaps #chores-card, even tucked in', overlapsChores, false);
 
   // Manual slide-out / slide-in control.
-  await page.locator('#notepad-handle').click();
+  await page.locator('#notepad-handle > button').click();
   await page.waitForTimeout(500);
   check('handle click slides panel out', await page.locator('#notepad-panel').evaluate(el => el.classList.contains('open')), true);
 
@@ -141,7 +141,7 @@ function check(label, actual, expected) {
   await page.locator('#notepad-input').fill('Pick up milk on the way home!');
   await page.locator('.np-send').click();
   await page.waitForTimeout(200);
-  check('sent note appears in the list', await page.locator('#notepad-list .np-row').count() >= 1, true);
+  check('sent note appears in the list', await page.locator('#notepad-context .np-row').count() >= 1, true);
   check('input clears after send', await page.locator('#notepad-input').inputValue(), '');
   check('sent note is attributed to the selected actor, not a hardcoded default',
     await page.evaluate(() => loadNotes()[0].authorId), await page.evaluate(() => currentActorId));
@@ -195,7 +195,7 @@ function check(label, actual, expected) {
     toggleNotepad(true);
   });
   await page.waitForTimeout(400);
-  check('recent list caps at 12 messages', await page.locator('#notepad-list .np-row').count(), 12);
+  check('context list retains all saved messages', await page.locator('#notepad-context .np-row').count(), 50);
   check('storage caps at 50 messages (oldest dropped)', await page.evaluate(() => loadNotes().length), 50);
 
   await page.locator('.np-history-link').click();
@@ -387,8 +387,8 @@ function check(label, actual, expected) {
   // for the click-outside check later in this block.
   await page.evaluate(() => closeDashboard());
   await page.waitForTimeout(100);
-  check('with 2 kids, the landing card has no compact rows (present design preserved)',
-    await page.locator('#today-chores-body .kid-section-compact').count(), 0);
+  check('all assignees start compact even with two kids',
+    await page.locator('#today-chores-body .kid-section-compact').count(), 2);
 
   // Add-child rerender fix (2026-08-15 bug): saving a new profile must
   // immediately update the landing chores card and chore kid selector, not
@@ -489,6 +489,12 @@ function check(label, actual, expected) {
   check('?theme= URL param is applied on load, not just the last-saved localStorage value',
     await themedPage.evaluate(() => activeThemeId), 'asteroidcity');
   check('?theme= param application produces no JS errors', themedJsErrors, []);
+  check('no Retro-CRT theme in registry', await themedPage.evaluate(() => 'retrocrt' in THEMES), false);
+  const crtPage = await browser.newPage();
+  await crtPage.addInitScript(() => localStorage.setItem('cabin-theme', 'retrocrt'));
+  await crtPage.goto(`http://localhost:${PORT}/family-hub.html`, { waitUntil: 'load' });
+  check('saved retrocrt theme falls back to modern', await crtPage.evaluate(() => activeThemeId), 'modern');
+  await crtPage.close();
   const themedControlStyles = await themedPage.evaluate(() => {
     const select = getComputedStyle(document.getElementById('set-interval'));
     const close = getComputedStyle(document.getElementById('dash-close'));
@@ -573,6 +579,70 @@ function check(label, actual, expected) {
 
   await mobile.close();
 
+  // Kiosk is a display preference, including when fullscreen is denied.
+  const kiosk = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await kiosk.addInitScript(() => {
+    document.documentElement.requestFullscreen = () => Promise.reject(new Error('denied'));
+  });
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1');
+  await kiosk.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
+  check('URL enters kiosk', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), true);
+  check('kiosk exit remains visible on mobile', await kiosk.locator('#kiosk-controls [data-kiosk-toggle]').isVisible(), true);
+  const box = await kiosk.locator('#kiosk-controls').boundingBox();
+  check('kiosk controls fit mobile width', box.x >= 0 && box.x + box.width <= 390, true);
+  await kiosk.locator('#kiosk-controls [data-kiosk-fullscreen]').click();
+  check('denied fullscreen keeps kiosk usable', await kiosk.locator('#kiosk-controls [data-kiosk-toggle]').innerText(), 'Kiosk');
+  // Capture the actual same-tab navigation without reaching a live service.
+  await kiosk.route('https://cabin.unicornpingpong.com/**', route => route.fulfill({ body: '<p>Cabin</p>', contentType: 'text/html' }));
+  await kiosk.locator('#kiosk-controls [data-cabin-link]').click();
+  check('cross-app destination', new URL(kiosk.url()).hostname, 'cabin.unicornpingpong.com');
+  check('cross-app kiosk mode', new URL(kiosk.url()).searchParams.get('kiosk'), '1');
+  check('cross-app theme', new URL(kiosk.url()).searchParams.get('theme'), 'modern');
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html');
+  check('saved kiosk survives navigation', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), true);
+  await kiosk.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
+  await kiosk.locator('#kiosk-controls [data-kiosk-toggle]').click();
+  await kiosk.reload();
+  check('exit survives reload', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), false);
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1');
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=0');
+  check('explicit off overrides saved kiosk', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), false);
+  await kiosk.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1');
+  await kiosk.keyboard.press('Escape');
+  check('Escape exits kiosk', await kiosk.locator('html').evaluate(el => el.classList.contains('kiosk-mode')), false);
+  await kiosk.close();
+
+  // Layout priority on a short desktop viewport: kiosk controls must not cost
+  // vertical space, the notepad keeps its protected minimum height, chores
+  // shrink first, and the settings panel edge matches the card layer tokens.
+  const short = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await short.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1');
+  await short.waitForTimeout(400);
+  await short.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
+  await short.evaluate(() => computeNotepadTop());
+  const shortGeo = await short.evaluate(() => {
+    const cs = id => getComputedStyle(document.getElementById(id));
+    const root = getComputedStyle(document.documentElement);
+    const controls = document.getElementById('kiosk-controls').getBoundingClientRect();
+    const settings = cs('settings-panel');
+    return {
+      appPaddingTop: cs('app').paddingTop,
+      controlsAtBottom: controls.top > window.innerHeight / 2,
+      npMax: parseFloat(root.getPropertyValue('--np-max-height')),
+      choresCap: parseFloat(root.getPropertyValue('--chores-max-height')),
+      settingsEdge: settings.borderLeftColor + '|' + settings.borderLeftWidth,
+      layerEdge: root.getPropertyValue('--layer-1-border-width').trim(),
+    };
+  });
+  check('kiosk controls add no top padding to the app', shortGeo.appPaddingTop !== '116px', true);
+  check('kiosk controls float at the bottom, not the top', shortGeo.controlsAtBottom, true);
+  check('notepad retains usable context space beside the taller left composer', shortGeo.npMax >= 180, true);
+  check('chores card is capped so it shrinks before the notepad', shortGeo.choresCap > 0 && shortGeo.choresCap < 720, true);
+  check('settings panel edge width follows the card layer border width',
+    shortGeo.settingsEdge.split('|')[1], shortGeo.layerEdge);
+  await short.close();
+
+  await require('./touch-refinements.js')({ browser, check, base: `http://localhost:${PORT}` });
   await browser.close();
   await new Promise(r => server.close(r));
 

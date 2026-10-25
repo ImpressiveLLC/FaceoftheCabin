@@ -407,6 +407,33 @@ public class DeviceRegistry {
     }
 
     /**
+     * W-88: link a discovered device under its parent without treating the link as a person
+     * accepting or configuring the device. Unlike {@link #saveConfiguration} this leaves the
+     * descriptor, the lifecycle state and the "configuration asserted" flag exactly as they are,
+     * so a candidate stays a candidate and later discovery can still refresh it. The parent is
+     * validated like any other (exists, same location, no self or cycle). Returns whether
+     * anything changed; a blank parent clears the link.
+     */
+    public boolean setDiscoveredParent(String deviceId, String parentDeviceId) {
+        synchronized (lockFor(deviceId)) {
+            DeviceDescriptor existing = descriptors.get(deviceId);
+            if (existing == null) return false;
+            DeviceLifecycleState current = lifecycleState(deviceId);
+            if (current.isPreviouslyExposed()) return false;
+            String next = parentDeviceId == null ? "" : parentDeviceId.trim();
+            DeviceStatus status = statuses.get(deviceId);
+            Object have = status == null ? null : status.attributes().get("parentDeviceId");
+            if (next.equals(have == null ? "" : String.valueOf(have).trim())) return false;
+            validateParentDeviceId(deviceId, existing.location(), next);
+            DeviceLifecycleRecord record = new DeviceLifecycleRecord(
+                existing, current, configurationAsserted.contains(deviceId), Map.of("parentDeviceId", next));
+            lifecycleStore.save(record);
+            applyPersistedRecord(record);
+            return true;
+        }
+    }
+
+    /**
      * Real invariants for the device→services hierarchy's MVP
      * parentDeviceId link (2026-08-25): a blank value clears the parent
      * and is always valid. A non-blank value must name a real, existing
@@ -665,7 +692,19 @@ public class DeviceRegistry {
         if (status == null) return null;
         Map<String, Object> attrs = new LinkedHashMap<>(status.attributes());
         attrs.put("category", status.type().category().name());
-        attrs.put("reportsFields", status.type().telemetryFields().stream().sorted().toList());
+        SmartSwitchMetadata.enrich(status, attrs, statuses.values());
+        DeviceDescriptor sourceDescriptor = descriptors.get(status.deviceId());
+        if (sourceDescriptor != null && "ha_rest".equals(sourceDescriptor.protocolAdapter())
+                && status.type() == DeviceType.POWER_METER && !attrs.containsKey("sourceReportedFields")) {
+            // A saved service absent from current HA discovery has no verified quantity.
+            attrs.putIfAbsent("entityId", sourceDescriptor.connectionString());
+            attrs.put("sourceReportedFields", List.of());
+            attrs.put("serviceRole", "unresolved");
+        }
+        Object sourceFields = attrs.get("sourceReportedFields");
+        if (sourceFields == null && status.deviceId().startsWith("z2m-")) sourceFields = attrs.get("vendorReportedFields");
+        attrs.put("reportsFields", sourceFields instanceof List<?> fields
+            ? fields : status.type().telemetryFields().stream().sorted().toList());
         DeviceDescriptor descriptor = descriptors.get(status.deviceId());
         if (descriptor != null) {
             attrs.put("capabilities", descriptor.capabilities().stream().map(Enum::name).sorted().toList());

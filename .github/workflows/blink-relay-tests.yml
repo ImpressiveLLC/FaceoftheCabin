@@ -1,0 +1,24 @@
+name: blink relay tests
+on:
+  pull_request:
+    paths:
+      - 'cabin-orchestration-platform/home-collector/blink-relay/**'
+      - '.github/workflows/blink-relay-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'cabin-orchestration-platform/home-collector/blink-relay/**'
+      - '.github/workflows/blink-relay-tests.yml'
+permissions:
+  contents: read
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest   # GitHub-hosted: no production access, no secrets
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Relay logic tests (no MQTT, no Termux)
+        working-directory: cabin-orchestration-platform/home-collector/blink-relay
+        run: node --test relay.test.js

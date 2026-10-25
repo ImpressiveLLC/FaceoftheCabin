@@ -5,6 +5,8 @@ import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.model.CheckinStatus;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
+import com.cabin.orchestrator.integrations.cameras.BlinkRelayPulse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -30,9 +32,20 @@ public class ActiveAlertService {
     private final DeviceRegistry registry;
     private final DeviceHealthMonitor healthMonitor;
 
+    private BlinkRelayPulse blinkRelayPulse;
+
     public ActiveAlertService(DeviceRegistry registry, DeviceHealthMonitor healthMonitor) {
         this.registry = registry;
         this.healthMonitor = healthMonitor;
+    }
+
+    @Autowired(required = false)
+    void setBlinkRelayPulse(BlinkRelayPulse blinkRelayPulse) {
+        this.blinkRelayPulse = blinkRelayPulse;
+    }
+
+    void useBlinkRelayPulse(BlinkRelayPulse blinkRelayPulse) {
+        this.blinkRelayPulse = blinkRelayPulse;
     }
 
     public ActiveAlertsSnapshot snapshot() {
@@ -71,6 +84,19 @@ public class ActiveAlertService {
                     "No report arrived during the full grace window. The device is assigned and enabled, so it needs review."
                 ));
             }
+        }
+
+        if (blinkRelayPulse != null && blinkRelayPulse.stale(Instant.now())) {
+            Instant last = blinkRelayPulse.lastSeen().orElse(null);
+            alerts.add(new ActiveAlert(
+                "blink-relay:stale",
+                "blink-relay", "Blink motion relay", "home",
+                "RELAY_SILENT", "WARN", last,
+                "Blink motion relay has gone quiet",
+                "No heartbeat from the phone that relays Blink motion notifications for "
+                    + blinkRelayPulse.staleAfterMinutes() + "+ minutes. Blink cameras will not start live view on motion "
+                    + "until it is back: check the relay phone (power, Tailscale, notification access)."
+            ));
         }
 
         alerts.sort(Comparator

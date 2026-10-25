@@ -7,6 +7,8 @@ import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Service
 public class HomeAssistantDiscoveryService {
+    private static final Logger log = LoggerFactory.getLogger(HomeAssistantDiscoveryService.class);
     // number/select added 2026-08-18: found live that the Liebherr fridge's
     // two setpoint entities (number.*) and its icemaker mode (select.*)
     // were silently skipped by this allowlist every discovery cycle,
@@ -82,12 +85,15 @@ public class HomeAssistantDiscoveryService {
         // card lives client-side (Device Manager) -- this only supplies
         // the raw fact.
         Map<String, String> deviceIds = adapter.deviceIdsByEntity(location);
+        Map<String, String> zigbeeLocations = nativeZigbeeLocationsBySlug();
+        Map<String, List<String>> nativeIdsBySlug = nativeZigbeeIdsBySlug(location);
         for (HomeAssistantAdapter.DiscoveredEntity entity : adapter.discover(location)) {
             String domain = domain(entity.entityId());
             if (isPresence(entity, domain)) {
                 presenceSignals.record(location, entity.entityId(), isPresent(entity.state()));
             }
             if (!DEVICE_DOMAINS.contains(domain)) continue;
+            if (belongsToZigbeeDeviceAtAnotherLocation(entity.entityId(), location, zigbeeLocations)) continue;
 
             String generatedId = "ha-" + location + "-" + entity.entityId().replace('.', '-').replace('_', '-');
             String id = registry.descriptorByConnection("ha_rest", entity.entityId(), location)
@@ -182,19 +188,166 @@ public class HomeAssistantDiscoveryService {
             if (attrs.containsKey("battery_level") && !attrs.containsKey("battery")) {
                 attrs.put("battery", attrs.get("battery_level"));
             }
+            ElectricalMeasurement.normalize(entity.entityId(), entity.state(), attrs);
             registry.registerCandidate(descriptor, attrs);
             DeviceStatus current = registry.get(id);
             if (current == null) continue; // device was removed concurrently
             DeviceDescriptor registered = registry.descriptor(id).orElse(descriptor);
             Map<String, Object> merged = new LinkedHashMap<>(current.attributes());
             merged.putAll(attrs);
+            ElectricalMeasurement.normalize(entity.entityId(), entity.state(), merged);
             boolean safetyAlarm = Set.of(DeviceType.SMOKE_ALARM, DeviceType.CO_ALARM,
                 DeviceType.WATER_LEAK_SENSOR).contains(registered.type()) && isPresent(entity.state());
             String newState = safetyAlarm ? "ALARM" : adapter.normalizedState(entity.state());
             registry.update(new DeviceStatus(id, registered.type(), registered.name(),
                 newState, Instant.now(), merged, registered.location()));
+            // W-88: the Zigbee device is the parent, its Home Assistant entities are its services.
+            String nativeId = nativeParentFor(entity.entityId(), nativeIdsBySlug);
+            if (nativeId != null) linkUnderNative(id, nativeId);
+            // A sensor entity of a Zigbee device repeats readings the native device already logs
+            // (found 2026-10-21: the attic sensor charted twice, once per device id). The entity
+            // keeps its live state above; only the duplicate TELEMETRY row is skipped, and only when
+            // the native device reports that same measurement_type (D13 A1, condition C-A1-1): a
+            // derived, template or statistics sensor under the same device keeps logging under its own
+            // id. Switches and binary sensors still publish so workflows watching them keep firing.
+            if (nativeId != null && "sensor".equals(domain) && nativeReportsSameMeasurement(nativeId, entity)) continue;
             publishIfChanged(id, attrs, newState);
         }
+    }
+
+    /**
+     * W-88: ids of the native Zigbee devices at this location, by friendly-name slug. More than
+     * one id under a slug means the name is ambiguous, so nothing is linked to it.
+     */
+    private Map<String, List<String>> nativeZigbeeIdsBySlug(String location) {
+        Map<String, List<String>> bySlug = new HashMap<>();
+        for (DeviceStatus status : registry.all()) {
+            if (!status.deviceId().startsWith("z2m-")) continue;
+            Optional<DeviceDescriptor> descriptor = registry.descriptor(status.deviceId());
+            if (descriptor.isEmpty() || !location.equals(descriptor.get().location())) continue;
+            String slug = nativeSlug(descriptor.get());
+            if (!slug.isEmpty()) bySlug.computeIfAbsent(slug, k -> new ArrayList<>()).add(status.deviceId());
+        }
+        return bySlug;
+    }
+
+    private static String nativeSlug(DeviceDescriptor descriptor) {
+        String connection = descriptor.connectionString();
+        if (connection == null || connection.indexOf('/') < 0) return "";
+        return slug(connection.substring(connection.indexOf('/') + 1));
+    }
+
+    /** The one native Zigbee device whose longest name slug starts this entity's object id, or null. */
+    private static String nativeParentFor(String entityId, Map<String, List<String>> bySlug) {
+        String objectId = entityId.substring(entityId.indexOf('.') + 1);
+        String bestSlug = null;
+        for (String slug : bySlug.keySet()) {
+            boolean matches = objectId.equals(slug) || objectId.startsWith(slug + "_");
+            if (matches && (bestSlug == null || slug.length() > bestSlug.length())) bestSlug = slug;
+        }
+        if (bestSlug == null) return null;
+        List<String> ids = bySlug.get(bestSlug);
+        return ids.size() == 1 ? ids.get(0) : null;
+    }
+
+    /**
+     * Make the native Zigbee device the parent of one of its Home Assistant entities. It only
+     * ever replaces a link that discovery itself would have drawn the other way round (no parent,
+     * or a sibling entity of the same Zigbee device, which is how the attic sensor ended up as
+     * its own entity's child); a parent a person chose elsewhere is left alone.
+     */
+    private void linkUnderNative(String entityDeviceId, String nativeId) {
+        try {
+            DeviceStatus nativeStatus = registry.get(nativeId);
+            Optional<DeviceDescriptor> nativeDescriptor = registry.descriptor(nativeId);
+            if (nativeStatus == null || nativeDescriptor.isEmpty()) return;
+            String slug = nativeSlug(nativeDescriptor.get());
+            String nativeParent = parentOf(nativeStatus);
+            if (!nativeParent.isEmpty() && isEntityOfNative(nativeParent, slug)) {
+                registry.setDiscoveredParent(nativeId, "");
+            }
+            String current = parentOf(registry.get(entityDeviceId));
+            if (current.isEmpty() || (!current.equals(nativeId) && isEntityOfNative(current, slug))) {
+                registry.setDiscoveredParent(entityDeviceId, nativeId);
+            }
+        } catch (RuntimeException e) {
+            // A parent link is a convenience; never let one bad record stop the discovery cycle.
+            log.debug("Could not link {} under {}: {}", entityDeviceId, nativeId, e.getMessage());
+        }
+    }
+
+    /**
+     * D13 A1 / C-A1-1: does the native Zigbee device itself report the measurement this HA sensor
+     * carries? The sensor's measurement_type comes from its HA device_class through the closed D7
+     * vocabulary; the native device reports it when its vendor-reported fields name it or its own
+     * state already carries a reading under that key. A sensor with no recognised device_class
+     * (dew point, a template or statistics sensor) is never treated as a duplicate.
+     */
+    private boolean nativeReportsSameMeasurement(String nativeId, HomeAssistantAdapter.DiscoveredEntity entity) {
+        Object deviceClass = entity.attributes().get("device_class");
+        if (!(deviceClass instanceof String cls) || cls.isBlank()) return false;
+        Optional<String> measurement = D7MeasurementTypes.toMeasurementType(cls.trim().toLowerCase(Locale.ROOT));
+        if (measurement.isEmpty()) return false;
+        DeviceStatus nativeStatus = registry.get(nativeId);
+        if (nativeStatus == null) return false;
+        Object reported = nativeStatus.attributes().get("vendorReportedFields");
+        if (reported instanceof Collection<?> fields && fields.contains(measurement.get())) return true;
+        return nativeStatus.attributes().get(measurement.get()) instanceof Number;
+    }
+
+    private static String parentOf(DeviceStatus status) {
+        Object parent = status == null ? null : status.attributes().get("parentDeviceId");
+        return parent == null ? "" : String.valueOf(parent).trim();
+    }
+
+    private boolean isEntityOfNative(String deviceId, String nativeSlug) {
+        DeviceStatus status = registry.get(deviceId);
+        Object entityId = status == null ? null : status.attributes().get("entityId");
+        if (!(entityId instanceof String id) || id.indexOf('.') < 0) return false;
+        String objectId = id.substring(id.indexOf('.') + 1);
+        return objectId.equals(nativeSlug) || objectId.startsWith(nativeSlug + "_");
+    }
+
+    /**
+     * Home's Zigbee2MQTT (a phone collector) publishes Home Assistant discovery
+     * to the shared broker, so the single HA instance on the M920q also sees
+     * Home's devices and every discovery pass here would import them as
+     * candidates labeled with that HA instance's location (cabin). The native
+     * z2m device already carries all of its readings at its true location, so
+     * the HA copies are skipped rather than mislabeled. Maps each native
+     * Zigbee device's friendly-name slug to its location ("" when two
+     * locations share a slug: ambiguous, never skipped).
+     */
+    private Map<String, String> nativeZigbeeLocationsBySlug() {
+        Map<String, String> bySlug = new HashMap<>();
+        for (DeviceStatus status : registry.all()) {
+            if (!status.deviceId().startsWith("z2m-")) continue;
+            Optional<DeviceDescriptor> descriptor = registry.descriptor(status.deviceId());
+            if (descriptor.isEmpty() || descriptor.get().location() == null) continue;
+            String connection = descriptor.get().connectionString();
+            if (connection == null || connection.indexOf('/') < 0) continue;
+            String slug = slug(connection.substring(connection.indexOf('/') + 1));
+            if (slug.isEmpty()) continue;
+            bySlug.merge(slug, descriptor.get().location(), (a, b) -> a.equals(b) ? a : "");
+        }
+        return bySlug;
+    }
+
+    private static boolean belongsToZigbeeDeviceAtAnotherLocation(
+            String entityId, String location, Map<String, String> bySlug) {
+        String objectId = entityId.substring(entityId.indexOf('.') + 1);
+        String bestSlug = null;
+        for (String slug : bySlug.keySet()) {
+            boolean matches = objectId.equals(slug) || objectId.startsWith(slug + "_");
+            if (matches && (bestSlug == null || slug.length() > bestSlug.length())) bestSlug = slug;
+        }
+        if (bestSlug == null) return false;
+        String owner = bySlug.get(bestSlug);
+        return !owner.isEmpty() && !owner.equals(location);
+    }
+
+    private static String slug(String friendlyName) {
+        return friendlyName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
     }
 
     /**
@@ -271,7 +424,7 @@ public class HomeAssistantDiscoveryService {
         if (deviceClass.contains("door") || deviceClass.contains("opening")) return DeviceType.CONTACT_SENSOR;
         if (deviceClass.contains("temperature")) return DeviceType.TEMPERATURE_SENSOR;
         if (deviceClass.contains("humidity")) return DeviceType.HUMIDITY_SENSOR;
-        if (deviceClass.contains("power") || deviceClass.contains("energy")) return DeviceType.POWER_METER;
+        if ("sensor".equals(domain) && Set.of("power", "energy", "voltage", "current").contains(deviceClass)) return DeviceType.POWER_METER;
         // Added 2026-08-27 for Kidde's HA-discovered air-quality entities
         // (indoor CO2/TVOC/air-quality-index) -- see
         // docs/ontology.yaml's smart_appliance_co_air_quality_kidde.

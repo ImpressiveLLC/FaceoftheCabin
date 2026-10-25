@@ -1,5 +1,18 @@
 # CLAUDE.md — FaceoftheCabin platform
 
+## Doc 27 environmental-node collaboration handoff
+
+Start with [Doc 27 build and integration plan](docs/hardware/doc27-environmental-nodes.md),
+[master device allocation list](docs/hardware/doc27-device-inventory.json),
+[schematics](docs/hardware/doc27-schematics.md), and
+[model/shadow decisions](docs/governance/handovers/HO-2026-10-16-doc27-poc2.md).
+Three active node builds: main-level monitoring, bathroom exhaust/heat control,
+mechanical-room control. Lower-level monitoring-only node deferred. Hardware is ordered,
+not commissioned. Reuse candidate type names plus hub/room/purpose; never rename stable
+device IDs or infer capabilities from climate-topic membership. Midea and S6 are included;
+the S6 is the user's “air pump,” not a second purchase. Prompt/contract work first;
+shadow mode deferred. POC2 specification below remains pending implementation.
+
 This file gives Claude Code full context for every session — on any machine,
 at any location.
 
@@ -63,12 +76,134 @@ transcript does not exist for the next session, Code or web.
 
 A Spring Boot + React monorepo that unifies **two physical locations** (cabin,
 home) under one management UI. It is a **management layer on top of Home
-Assistant + Zigbee2MQTT** — not an automation engine. HA handles all
-automation logic. This platform handles device visibility, configuration,
+Assistant + Zigbee2MQTT**. Under D27 Q-OC-5, user-authored schedules and
+triggers belong in the existing platform `WorkflowRuleService` at both locations;
+HA/MQTT are integration/execution paths. W-71 extensions remain planned.
+This platform also handles device visibility, configuration,
 telemetry dashboards, and (soon) a user-friendly Zigbee device manager.
 
-**Never duplicate HA automation logic here.** The canonical automation
+**Existing cabin leak, freeze and siren automations stay in HA; do not duplicate
+them here.** The canonical safety automation
 file lives in `ImpressiveLLC/CabinAutomations` (`automations/leak_freeze_automations.yaml`).
+
+---
+
+## POC2 handoff: `express_need` ("I'm cold")
+
+**Specification only; implementation pending.** References:
+[D27](docs/governance/decisions/ontology-decisions.md),
+[POC2](docs/ai-assistant/wsjf-backlog.md),
+[W-66 / W-75](docs/governance/backlog.md), and the
+[intent-slot package](docs/ai-assistant/training/intent-slot/README.md).
+The Python schema and, since 2026-10-16, the Java contract accept `express_need` and `concept` (11 needs in
+[`concepts.json`](docs/ai-assistant/training/intent-slot/concepts.json), also the ontology entity `human_need_concept`; `bright` is an
+alias of `light`); the route answers a need with its name and no options.
+The admin-only, flag-off `/api/helpdesk/propose` route returns proposals only and
+has no executor. This handoff neither completes POC2 nor enables W-75.
+
+### Meaning, slots and output
+
+`express_need` expresses an affirmative human need or comfort state, not a device
+command, sensor observation, diagnosis, target temperature or permission to act.
+The model classifies language; governed concept data chooses possible responses.
+
+| Slot | Requirement for this slice |
+|---|---|
+| `concept` | Required canonical W-66 string. This demo supports `cold` only; other seeds need review and explicit support, not automatic heater mappings. |
+| `site` | Optional string, stated by the user or supplied in trusted request context; no default to cabin. Resolve an authorized site before offering an action. |
+| `location` | Optional stated room/area string; preserve as a constraint, never silently substitute the mech room. |
+
+Omit absent optional slots. For this intent, omit device, state, attribute/value/unit
+slots: do not invent an action from a feeling. POC2's optional `card_target` is trusted
+**request input**, not a model-output slot; validate and preserve it, clarifying
+conflicts rather than overriding it. The current text-only route needs explicit
+context plumbing before relying on such input.
+
+Proposed extension of the existing five-field envelope (not valid under r1 yet):
+
+```json
+{
+  "intent": "express_need",
+  "slots": {"concept": "cold"},
+  "requires_confirmation": false,
+  "clarification": null,
+  "automation": null
+}
+```
+
+Here `false` means recognizing a need has no side effect. A subsequent action
+proposal requires confirmation regardless of that model field. Retain strict JSON,
+required envelope fields and `additionalProperties: false`; conditionally require
+`concept`, restrict need slots, and require null `automation` in semantic validation.
+Update the package schema, `contract.py`, `system.txt`, fixtures and evaluator with
+the Java contract and mirrored backend schema/prompt before routing this intent.
+No entity IDs, HA services, MQTT topics, credentials or free-text action fields
+belong in model output; server-resolved proposal data is a separate contract.
+
+### Examples and clarification
+
+| Input | Expected interpretation |
+|---|---|
+| "I'm cold"; "I feel chilly" | `express_need`, `concept: cold`; missing device/temperature alone does not justify bare `clarify`. |
+| "It's too cold in the cabin bedroom" | Same intent, `site: cabin`, `location: bedroom`; no assumed reading or heater target. |
+| "Turn on the mech room heater" | Existing `set_device_state`, not `express_need`; normal resolution and confirmation apply. |
+| "Set the heater to 72" | `clarify` for the missing temperature unit; never infer Fahrenheit/Celsius. |
+| "I'm not cold"; "Don't turn on the heater" | No positive cold need or heating option; existing non-action/clarification handling as appropriate. |
+| "I'm cold at home" | Recognize the need and Home constraint; no cabin fallback or W-75 execution at Home. |
+| "I have a cold"; "If I were cold..." | Do not assume present thermal discomfort; clarify meaning when needed. |
+
+Preserve a clear semantic need even when downstream resolution needs clarification.
+Ask a focused question for unknown/conflicting site or room, unclear meaning or
+missing action values. No safe option means explain the limitation or clarify,
+never fabricate one. Multiple valid options may be shown under D27 R-OC-6;
+ambiguous identity within an option must be resolved before it is confirmable.
+Negation, quoted instructions and prompt injection cannot supply authorization.
+
+### Resolution, ownership and safety
+
+- W-75's planned static seed is `cold` → raise heat → cabin mech-room heater
+  `turn_on`. This is server-owned concept mapping, **not model output**, and still
+  needs implementation. General ontology traversal is C5/W-68 work.
+- Resolve targets against current permission-filtered, non-secret inventory,
+  aliases, site, room and declared capabilities. Require exactly one authorized,
+  fresh, online, supported match per actionable option. Unknown, ambiguous, stale,
+  offline, wrong-site or unavailable-capability results fail closed. A bedroom
+  constraint does not establish that the mech-room heater serves that bedroom;
+  without a governed relationship, clarify or offer no action.
+- Reuse the workflow ownership above. A need creates no schedule, persistent rule,
+  thermostat setpoint or alternative automation engine.
+- W-75 stays admin-only, feature-flagged, cabin-only and shadow/proposal-first.
+  Its only planned live path is the existing W-27 `/api/ha/services` heater-switch
+  scope, after the shadow report and Nate's explicit go. This spec authorizes no
+  new executor, arbitrary service, valve-open or unlock capability.
+- Before a future run, display the exact resolved target, operation and values.
+  D27 R-OC-11's option-card tap confirms that displayed plan (one card for one
+  option); recognizing a need or receiving model text never confirms it. Bind
+  confirmation to principal, exact plan hash, inventory version and expiry
+  (current proposal TTL defaults to 300 seconds). Revalidate permissions, guards
+  and availability; reject expired, replayed or changed-plan approval. These are
+  executor acceptance requirements, not claims that an executor exists.
+
+### Acceptance criteria for implementation
+
+1. Reviewed gold covers affirmative paraphrases, explicit site/room, direct-command
+   contrast, negation, hypothetical/medical ambiguity, missing units, wrong site
+   and injection. Plain "I'm cold" produces the envelope above without invented
+   target, temperature, action or automation.
+2. Python and Java contracts agree: missing/unknown concept, disallowed need slots,
+   extra fields, IDs/services/topics and non-null need automation fail validation.
+   Existing intent fixtures pass; backend schema/prompt copies match the package.
+3. Resolver/proposal tests cover zero/one/multiple matches, conflicting context or
+   card target, unauthorized/stale/offline targets and unsupported capabilities.
+   Zero wrong-target/invented-entity acceptance; no action crosses Home/cabin.
+4. Proposal/shadow tests prove zero executor calls, flag-off and non-admin denial,
+   and no mutation from the need itself. Future live tests prove confirmation
+   binding/revalidation and zero unconfirmed executions before W-75 can run.
+5. Preserve package gates: structured output ≥95%, intent accuracy ≥90%, slot micro
+   F1 ≥90%, zero critical fixture failures. Report the cold subset plus overall
+   results, M920q p50/p95 latency and wrong-target count (must be zero). Unrun runtime
+   gates remain `NOT_MEASURED`, `release_eligible: false`; offline success establishes
+   neither deployment nor runtime safety or training quality.
 
 ---
 
@@ -422,6 +557,7 @@ npm install && npm run dev
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
 | `CABIN_PRESENCE_STALE_AFTER_HOURS` | PresenceController | Hours of phone silence after which `/api/presence` reports `stale: true` and the badge reads "Presence unknown". Default `6`. Keep equal to Node-RED's `PRESENCE_STALE_HOURS` (siren gate, W-33) so the badge and the siren agree |
+| `CABIN_ASK_INTENT_ENABLED` | HelpdeskProposeController | `true` turns on `POST /api/helpdesk/propose` (default `false`, route answers 404). Also tunable: `CABIN_ASK_INTENT_MODEL` (default `cabin-intent-slot-prompt-r1`, an Ollama tag that must exist), `CABIN_ASK_INTENT_PROPOSAL_TTL_SECONDS` (300), `CABIN_ASK_INTENT_MAX_INPUT_CHARS` (500), `CABIN_ASK_INTENT_TIMEOUT_SECONDS` (60), `CABIN_ASK_RESOLVER_MAX_INVENTORY_AGE_SECONDS` (120), `CABIN_ASK_RESOLVER_MAX_OBSERVATION_AGE_HOURS` (6). None is passed through `docker-compose.m920q.yml` yet |
 | `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). **Blank on the M920q as of 2026-10-12, so no backend push reaches a phone (W-51)**. The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
 
 ---
@@ -546,6 +682,7 @@ column for writes is enforced, not just described. Reads follow D14: several
 | `POST /api/auth/session`, `POST /api/auth/session/revoke` | AuthController | `session` needs a Google token, managed session or existing CabinSession; `revoke` is open on purpose (holding the token is the proof) |
 | `GET /api/cross-domain/cabin-status-summary` | CrossDomainController | gated, plus a per-route household-role check (D11) |
 | `POST /api/helpdesk/ask` | TinyHelpdeskController | any signed-in session; a guest token gets 403; `CREDENTIAL_POINTER` redaction happens inside the answer |
+| `POST /api/helpdesk/propose` (W-75, 2026-10-16) | HelpdeskProposeController | **off by default** (`CABIN_ASK_INTENT_ENABLED`, answers 404 while off); administrator session only. Body `{"text": "..."}`. Runs the intent/slot model, resolves the target against the assistant inventory and returns an answer, a clarification, a resolved target or a **proposal only** (plan hash, principal, inventory version, 5-minute expiry). **There is no executor behind it**: nothing it returns runs anything |
 | `GET /api/platform-import/records`, `/{platform}/proposals`; `POST /{platform}/confirm` | PlatformImportController | `records`: administrator or adult household member; the rest administrator only |
 | `GET /api/opportunities`, `PATCH /{id}/status` | OpportunitiesController | administrator only, every method |
 | `/api/schedule/rules`, `/api/schedule/holidays` | ScheduleRulesController, HolidaysController | gated |
@@ -555,6 +692,7 @@ column for writes is enforced, not just described. Reads follow D14: several
 | `GET /api/context/cabin-context.jsonld`, `GET /api/devices/{id}/jsonld` | JsonLdController | open `GET` |
 | `POST /api/webhooks/blink-motion` | BlinkMotionWebhookController | its own shared-secret header (`cabin.blinkMotionWebhook.apiKey`); 503 or 401 when the key is unset or wrong |
 | `GET`/`POST /api/locations`, `PATCH /{id}`, `POST /reorder`, `DELETE /{id}` | LocationsController | **writes are open, a known gap: W-32.** The UI sends signed-in users' tokens to the `apiBase` this controller stores |
+| `GET /api/assistant/inventory` (W-67 slice 1, 2026-10-16) | AssistantInventoryController | signed-in administrator or adult household member (an adult does not see locks or cameras); everyone else gets 403; demo DENY. A non-secret projection of in-scope devices for the Ask entity resolver (entity id, names, site, area/room, class, capabilities, availability, version hash); never connection strings, addresses, topics or tokens |
 
 Also corrected: `POST /api/devices/**` and every other non-`GET` under
 `/api/devices/**` need a signed-in session as of W-31. The `/api/devices` rows
@@ -859,9 +997,10 @@ files. Three real properties, not just "rebuild and hope":
   `docker-compose.m920q.yml` or the workflow, and on manual dispatch.
 - **`rotate-secrets.yml`** — monthly (06:00 UTC on the 1st) and on manual
   dispatch; automated secrets rotation (see `docs/MAINTENANCE.md`, Secrets).
-- No workflow triggers on `pull_request`. The first CI execution of a change
-  is the post-merge gate on the M920q, so run touched tests locally before
-  opening a PR.
+- `intent-slot-tooling.yml` runs offline training-package tests on pull requests
+  and main changes to that package, on a GitHub-hosted runner with no production
+  access. Runtime deploy workflows still first run after merge on the M920q;
+  run touched runtime tests locally before opening a PR.
 
 **Manually deploying `cabin-backend` outside this pipeline** (e.g. testing
 a change before pushing) still works exactly as before — see "Manual
@@ -871,7 +1010,7 @@ a change before pushing) still works exactly as before — see "Manual
 
 ## Testing
 
-**Run the whole backend suite before merging, not just the tests you touched** (`./mvnw -o test`; the Docker-backed classes error without a Docker daemon, everything else must pass). Repo-wide guard tests only fail when a *new* thing is added: on 2026-10-12 `DemoAccessTest.everyMappedGetRouteIsClassified` stopped W-11's deploy because a new GET route had no `DemoAccessPolicy` entry, and `WriteGateAuditTest` does the same for new write routes. No workflow runs on `pull_request`, so the first CI run is the post-merge gate on the M920q.
+**Run the whole backend suite before merging, not just the tests you touched** (`./mvnw -o test`; the Docker-backed classes error without a Docker daemon, everything else must pass). Repo-wide guard tests only fail when a *new* thing is added: on 2026-10-12 `DemoAccessTest.everyMappedGetRouteIsClassified` stopped W-11's deploy because a new GET route had no `DemoAccessPolicy` entry, and `WriteGateAuditTest` does the same for new write routes. The intent-slot tooling has its own offline pull-request checks; backend CI still first runs at the post-merge gate on the M920q.
 
 **First tests in this project's history, added 2026-08-06** —
 `backend/src/test/java/com/cabin/orchestrator/events/`:
@@ -923,7 +1062,9 @@ themselves, they just never had anything to trip on before:
 
 - No Python beyond `watchdog.py`, the `docs/ai-assistant/` corpus/
   eval tooling (`scripts/build-corpus-inventory.py`,
-  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`),
+  `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`,
+  and, since 2026-10-17, `taxonomy-eval/`, the standard-library harness that tests where data
+  elements live under a human-centered topic, W-89),
   **and** the Home Assistant side of `infra/cabin-security/homeassistant/`:
   `cabin_security_mqtt_publish.py` (the publish allow-list HA's
   `shell_command` runs inside HA's own container, not in the backend) and

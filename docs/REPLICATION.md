@@ -1,5 +1,13 @@
 # Replicating This Template — Independent Instance Guide
 
+## Doc 27 environmental-node setup
+
+For the three-node build, Midea Cube, CLOUDLINE S6 and Home T/RH sensors, follow the
+[build/commissioning plan](hardware/doc27-environmental-nodes.md) and
+[schematics](hardware/doc27-schematics.md). The final mains schedule still needs actual
+load and terminal evidence. No node firmware, HA integration or host change is deployed
+by these documents. Preserve hub-location identities and approved secret provisioning.
+
 > For standing up a **genuinely separate, independently-running** copy —
 > your own accounts, your own domain, your own host, your own GitHub repo.
 > Not a second location sharing this family's config (that's what

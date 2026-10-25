@@ -1,0 +1,799 @@
+{
+  "schema_version": 1,
+  "scope": "Doc 27 project master hardware allocation list; not a complete export of all existing hub devices",
+  "as_of": "2026-10-16",
+  "identity_rule": "allocation_key and technical_alias are planning references, not immutable runtime IDs; preserve actual deviceId on rename.",
+  "source": "User purchase summary 2026-10-15 and user confirmation 2026-10-16; receipt and installed identities unverified.",
+  "devices": [
+    {
+      "allocation_key": "monitor-main",
+      "type_ref": "sensor_collection_box",
+      "hub_location": "cabin",
+      "room": "main_level",
+      "purpose": "air_quality",
+      "technical_alias": "sensor_collection_box_cabin_main_level_air_quality",
+      "ui_name": "Sensor Collection Box â€” Cabin / Main Level / Air Quality",
+      "manufacturer_model": "DIY SEN66 + SHT45 + QT Py",
+      "procurement_status": "parts_ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ],
+      "note": "box 2; not assembled; all control children require independent commissioning"
+    },
+    {
+      "allocation_key": "monitor-main-sen66",
+      "type_ref": "sen66_environmental_sensor",
+      "hub_location": "cabin",
+      "room": "main_level",
+      "purpose": "air_quality",
+      "technical_alias": "sen66_environmental_sensor_cabin_main_level_air_quality",
+      "ui_name": "Environmental Sensor â€” Cabin / Main Level / Air Quality",
+      "manufacturer_model": "SEN66-SIN-T",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "monitor-main",
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "monitor-main-sht45",
+      "type_ref": "sht45_ambient_sensor",
+      "hub_location": "cabin",
+      "room": "main_level",
+      "purpose": "air_quality",
+      "technical_alias": "sht45_ambient_sensor_cabin_main_level_air_quality",
+      "ui_name": "Ambient Temperature Humidity Sensor â€” Cabin / Main Level / Air Quality",
+      "manufacturer_model": "Adafruit 6174",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "monitor-main",
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "monitor-main-mcu",
+      "type_ref": "qt_py_sensor_controller",
+      "hub_location": "cabin",
+      "room": "main_level",
+      "purpose": "air_quality",
+      "technical_alias": "qt_py_sensor_controller_cabin_main_level_air_quality",
+      "ui_name": "Sensor Node Controller â€” Cabin / Main Level / Air Quality",
+      "manufacturer_model": "Adafruit 5426",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "monitor-main",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "monitor-main-adapter",
+      "type_ref": "sen6x_interface_adapter",
+      "hub_location": "cabin",
+      "room": "main_level",
+      "purpose": "air_quality",
+      "technical_alias": "sen6x_interface_adapter_cabin_main_level_air_quality",
+      "ui_name": "Sensor Interface Adapter â€” Cabin / Main Level / Air Quality",
+      "manufacturer_model": "Adafruit 6331",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "monitor-main",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "control-bath",
+      "type_ref": "relay_control_box",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "exhaust_and_heat",
+      "technical_alias": "relay_control_box_cabin_bathroom_exhaust_heat",
+      "ui_name": "Relay Control Box â€” Cabin / Bathroom / Exhaust And Heat",
+      "manufacturer_model": "DIY SEN66 + SHT45 + QT Py",
+      "procurement_status": "parts_ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ],
+      "note": "box 3; not assembled; all control children require independent commissioning"
+    },
+    {
+      "allocation_key": "control-bath-sen66",
+      "type_ref": "sen66_environmental_sensor",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "exhaust_and_heat",
+      "technical_alias": "sen66_environmental_sensor_cabin_bathroom_exhaust_and_heat",
+      "ui_name": "Environmental Sensor â€” Cabin / Bathroom / Exhaust And Heat",
+      "manufacturer_model": "SEN66-SIN-T",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-bath",
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "control-bath-sht45",
+      "type_ref": "sht45_ambient_sensor",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "exhaust_and_heat",
+      "technical_alias": "sht45_ambient_sensor_cabin_bathroom_exhaust_and_heat",
+      "ui_name": "Ambient Temperature Humidity Sensor â€” Cabin / Bathroom / Exhaust And Heat",
+      "manufacturer_model": "Adafruit 6174",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-bath",
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "control-bath-mcu",
+      "type_ref": "qt_py_sensor_controller",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "exhaust_and_heat",
+      "technical_alias": "qt_py_sensor_controller_cabin_bathroom_exhaust_and_heat",
+      "ui_name": "Sensor Node Controller â€” Cabin / Bathroom / Exhaust And Heat",
+      "manufacturer_model": "Adafruit 5426",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-bath",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "control-bath-adapter",
+      "type_ref": "sen6x_interface_adapter",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "exhaust_and_heat",
+      "technical_alias": "sen6x_interface_adapter_cabin_bathroom_exhaust_and_heat",
+      "ui_name": "Sensor Interface Adapter â€” Cabin / Bathroom / Exhaust And Heat",
+      "manufacturer_model": "Adafruit 6331",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-bath",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "control-mech",
+      "type_ref": "relay_control_box",
+      "hub_location": "cabin",
+      "room": "mechanical_room",
+      "purpose": "climate_control",
+      "technical_alias": "relay_control_box_cabin_mech_room_climate_control",
+      "ui_name": "Relay Control Box â€” Cabin / Mechanical Room / Climate Control",
+      "manufacturer_model": "DIY SEN66 + SHT45 + QT Py",
+      "procurement_status": "parts_ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ],
+      "note": "box 4; not assembled; all control children require independent commissioning"
+    },
+    {
+      "allocation_key": "control-mech-sen66",
+      "type_ref": "sen66_environmental_sensor",
+      "hub_location": "cabin",
+      "room": "mechanical_room",
+      "purpose": "climate_control",
+      "technical_alias": "sen66_environmental_sensor_cabin_mechanical_room_climate_control",
+      "ui_name": "Environmental Sensor â€” Cabin / Mechanical Room / Climate Control",
+      "manufacturer_model": "SEN66-SIN-T",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-mech",
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "control-mech-sht45",
+      "type_ref": "sht45_ambient_sensor",
+      "hub_location": "cabin",
+      "room": "mechanical_room",
+      "purpose": "climate_control",
+      "technical_alias": "sht45_ambient_sensor_cabin_mechanical_room_climate_control",
+      "ui_name": "Ambient Temperature Humidity Sensor â€” Cabin / Mechanical Room / Climate Control",
+      "manufacturer_model": "Adafruit 6174",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-mech",
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "control-mech-mcu",
+      "type_ref": "qt_py_sensor_controller",
+      "hub_location": "cabin",
+      "room": "mechanical_room",
+      "purpose": "climate_control",
+      "technical_alias": "qt_py_sensor_controller_cabin_mechanical_room_climate_control",
+      "ui_name": "Sensor Node Controller â€” Cabin / Mechanical Room / Climate Control",
+      "manufacturer_model": "Adafruit 5426",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-mech",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "control-mech-adapter",
+      "type_ref": "sen6x_interface_adapter",
+      "hub_location": "cabin",
+      "room": "mechanical_room",
+      "purpose": "climate_control",
+      "technical_alias": "sen6x_interface_adapter_cabin_mechanical_room_climate_control",
+      "ui_name": "Sensor Interface Adapter â€” Cabin / Mechanical Room / Climate Control",
+      "manufacturer_model": "Adafruit 6331",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-mech",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "monitor-lower-deferred",
+      "type_ref": "sensor_collection_box",
+      "hub_location": "cabin",
+      "room": "lower_level",
+      "purpose": "air_quality",
+      "technical_alias": "sensor_collection_box_cabin_lower_level_air_quality",
+      "ui_name": "Sensor Collection Box â€” Cabin / Lower Level / Air Quality",
+      "manufacturer_model": "same shared sensor profile",
+      "procurement_status": "deferred_not_ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [],
+      "note": "No fourth sensor set; do not enroll as discovered hardware."
+    },
+    {
+      "allocation_key": "relay-1",
+      "type_ref": "metered_zigbee_relay",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "exhaust",
+      "technical_alias": "zigbee_mini_relay_cabin_bathroom_exhaust",
+      "ui_name": "Metered Relay â€” Cabin / Bathroom / Exhaust",
+      "manufacturer_model": "SONOFF MINI-ZB1GSP",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-bath",
+      "service_type_refs": [
+        "guarded_switch_service"
+      ],
+      "note": "Planning allocation; actual load/ratings unresolved. Control blocked."
+    },
+    {
+      "allocation_key": "relay-2",
+      "type_ref": "metered_zigbee_relay",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "heat",
+      "technical_alias": "zigbee_mini_relay_cabin_bathroom_heat",
+      "ui_name": "Metered Relay â€” Cabin / Bathroom / Heat",
+      "manufacturer_model": "SONOFF MINI-ZB1GSP",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-bath",
+      "service_type_refs": [
+        "guarded_switch_service"
+      ],
+      "note": "Planning allocation; actual load/ratings unresolved. Control blocked."
+    },
+    {
+      "allocation_key": "relay-3",
+      "type_ref": "metered_zigbee_relay",
+      "hub_location": "cabin",
+      "room": "mechanical_room",
+      "purpose": "air_circulation",
+      "technical_alias": "zigbee_mini_relay_cabin_mech_room_circulation",
+      "ui_name": "Metered Relay â€” Cabin / Mechanical room / Air circulation",
+      "manufacturer_model": "SONOFF MINI-ZB1GSP",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-mech",
+      "service_type_refs": [
+        "guarded_switch_service"
+      ],
+      "note": "Selected S6 on/off supply path; load rating, installation and restart test required. Not a speed controller."
+    },
+    {
+      "allocation_key": "relay-4",
+      "type_ref": "metered_zigbee_relay",
+      "hub_location": "cabin",
+      "room": "mechanical_room",
+      "purpose": "reserved_channel_b",
+      "technical_alias": "metered_zigbee_relay_cabin_mechanical_room_reserved_channel_b",
+      "ui_name": "Metered Relay â€” Cabin / Mechanical room / Reserved channel B",
+      "manufacturer_model": "SONOFF MINI-ZB1GSP",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-mech",
+      "service_type_refs": [
+        "guarded_switch_service"
+      ],
+      "note": "No connected load; blocked. Preserve existing freeze-heater and water-valve control paths."
+    },
+    {
+      "allocation_key": "control-bath-supply",
+      "type_ref": "isolated_node_power_supply",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "sensor_power",
+      "technical_alias": "isolated_node_power_supply_cabin_bathroom_sensor_power",
+      "ui_name": "Node Power Supply â€” Cabin / Bathroom / Sensor Power",
+      "manufacturer_model": "Mean Well IRM-05-5",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-bath",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "control-mech-supply",
+      "type_ref": "isolated_node_power_supply",
+      "hub_location": "cabin",
+      "room": "mechanical_room",
+      "purpose": "sensor_power",
+      "technical_alias": "isolated_node_power_supply_cabin_mechanical_room_sensor_power",
+      "ui_name": "Node Power Supply â€” Cabin / Mechanical Room / Sensor Power",
+      "manufacturer_model": "Mean Well IRM-05-5",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-mech",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "toggle-exhaust",
+      "type_ref": "local_control_switch",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "exhaust",
+      "technical_alias": "local_control_switch_cabin_bathroom_exhaust",
+      "ui_name": "Local Control Switch â€” Cabin / Bathroom / Exhaust",
+      "manufacturer_model": "Leviton 1451-2W",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-bath",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "toggle-heat",
+      "type_ref": "local_control_switch",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "heat",
+      "technical_alias": "local_control_switch_cabin_bathroom_heat",
+      "ui_name": "Local Control Switch â€” Cabin / Bathroom / Heat",
+      "manufacturer_model": "Leviton 1451-2W",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "control-bath",
+      "service_type_refs": []
+    },
+    {
+      "allocation_key": "outlet-circulation",
+      "type_ref": "zigbee_controlled_outlet",
+      "hub_location": "cabin",
+      "room": "pending_location",
+      "purpose": "circulation_alternative",
+      "technical_alias": "zigbee_controlled_outlet_cabin_pending_location_circulation_alternative",
+      "ui_name": "Controlled Outlet — Cabin / Pending Location / Circulation Alternative",
+      "manufacturer_model": "SONOFF S61SZBTPB",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "guarded_switch_service"
+      ],
+      "note": "Unassigned; fallback alternative to relay-3 after motor-load review. Never both in series."
+    },
+    {
+      "allocation_key": "outlet-unassigned",
+      "type_ref": "zigbee_controlled_outlet",
+      "hub_location": "cabin",
+      "room": "pending_location",
+      "purpose": "unassigned",
+      "technical_alias": "zigbee_controlled_outlet_cabin_pending_location_unassigned",
+      "ui_name": "Controlled Outlet â€” Cabin / Pending Location / Unassigned",
+      "manufacturer_model": "SONOFF S61SZBTPB",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "guarded_switch_service"
+      ],
+      "note": "No load assigned; control blocked."
+    },
+    {
+      "allocation_key": "home-th-mechanical_room",
+      "type_ref": "zigbee_temperature_humidity_sensor",
+      "hub_location": "home",
+      "room": "mechanical_room",
+      "purpose": "equipment_monitoring",
+      "technical_alias": "zigbee_temperature_humidity_sensor_home_mechanical_room_equipment_monitoring",
+      "ui_name": "Temperature Humidity Sensor â€” Home / Mechanical Room / Equipment Monitoring",
+      "manufacturer_model": "SONOFF SNZB-02P",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "home-th-laundry_room",
+      "type_ref": "zigbee_temperature_humidity_sensor",
+      "hub_location": "home",
+      "room": "laundry_room",
+      "purpose": "equipment_monitoring",
+      "technical_alias": "zigbee_temperature_humidity_sensor_home_laundry_room_equipment_monitoring",
+      "ui_name": "Temperature Humidity Sensor â€” Home / Laundry Room / Equipment Monitoring",
+      "manufacturer_model": "SONOFF SNZB-02P",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "home-th-dishwasher_sink_area",
+      "type_ref": "zigbee_temperature_humidity_sensor",
+      "hub_location": "home",
+      "room": "dishwasher_sink_area",
+      "purpose": "equipment_monitoring",
+      "technical_alias": "zigbee_temperature_humidity_sensor_home_dishwasher_sink_area_equipment_monitoring",
+      "ui_name": "Temperature Humidity Sensor â€” Home / Dishwasher Sink Area / Equipment Monitoring",
+      "manufacturer_model": "SONOFF SNZB-02P",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "home-th-garage",
+      "type_ref": "zigbee_temperature_humidity_sensor",
+      "hub_location": "home",
+      "room": "garage",
+      "purpose": "ambient_monitoring",
+      "technical_alias": "zigbee_temperature_humidity_sensor_home_garage_ambient_monitoring",
+      "ui_name": "Temperature Humidity Sensor â€” Home / Garage / Ambient Monitoring",
+      "manufacturer_model": "SONOFF SNZB-02P",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "home-th-basement_storage",
+      "type_ref": "zigbee_temperature_humidity_sensor",
+      "hub_location": "home",
+      "room": "basement_storage",
+      "purpose": "ambient_monitoring",
+      "technical_alias": "zigbee_temperature_humidity_sensor_home_basement_storage_ambient_monitoring",
+      "ui_name": "Temperature Humidity Sensor â€” Home / Basement Storage / Ambient Monitoring",
+      "manufacturer_model": "SONOFF SNZB-02P",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ]
+    },
+    {
+      "allocation_key": "cabin-th-lower-duct",
+      "type_ref": "zigbee_temperature_humidity_sensor",
+      "hub_location": "cabin",
+      "room": "basement_central_duct",
+      "purpose": "lower_temperature_reference",
+      "technical_alias": "zigbee_temperature_humidity_sensor_cabin_basement_central_duct_lower_temperature_reference",
+      "ui_name": "Temperature Humidity Sensor â€” Cabin / Basement central duct / Lower temperature reference",
+      "manufacturer_model": "SONOFF SNZB-02P",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service"
+      ],
+      "note": "Reallocated from planned Home spare under Nate's use-judgment direction; 72 inches above basement floor; not a fourth full AQ node."
+    },
+    {
+      "allocation_key": "dehumidifier",
+      "type_ref": "connected_dehumidifier",
+      "hub_location": "cabin",
+      "room": "pending_location",
+      "purpose": "humidity_control",
+      "technical_alias": "connected_dehumidifier_cabin_pending_location_humidity_control",
+      "ui_name": "Connected Dehumidifier â€” Cabin / Pending Location / Humidity Control",
+      "manufacturer_model": "Midea MAD50PS1QGR",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "environmental_measurement_service",
+        "dehumidification_service"
+      ],
+      "note": "Quantity one from user report; exact room and HA support pending."
+    },
+    {
+      "allocation_key": "circulator",
+      "type_ref": "inline_air_circulator",
+      "hub_location": "cabin",
+      "room": "pending_location",
+      "purpose": "inter_level_air_mixing",
+      "technical_alias": "inline_air_circulator_cabin_pending_location_inter_level_air_mixing",
+      "ui_name": "Inline Air Circulator â€” Cabin / Pending Location / Inter Level Air Mixing",
+      "manufacturer_model": "AC Infinity CLOUDLINE S6",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "service_type_refs": [
+        "air_circulation_service"
+      ],
+      "note": "Air pump is this device. Included speed controller is manual; no smart UIS controller ordered.",
+      "control_allocation_key": "relay-3"
+    },
+    {
+      "allocation_key": "bathroom-exhaust-load",
+      "type_ref": "exhaust_fan",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "exhaust",
+      "technical_alias": "exhaust_fan_cabin_bathroom_exhaust",
+      "ui_name": "Exhaust Fan â€” Cabin / Bathroom / Exhaust",
+      "manufacturer_model": "Air King E130S",
+      "procurement_status": "existing_load_reported",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "control_allocation_key": "relay-1",
+      "service_type_refs": [],
+      "note": "User-confirmed model. Manufacturer published 115/120 V 60 Hz, 37 W max, 0.3 A; verify installed nameplate and motor switching requirements."
+    },
+    {
+      "allocation_key": "bathroom-heat-load",
+      "type_ref": "space_heater",
+      "hub_location": "cabin",
+      "room": "bathroom",
+      "purpose": "heat",
+      "technical_alias": "space_heater_cabin_bathroom_heat",
+      "ui_name": "Space Heater â€” Cabin / Bathroom / Heat",
+      "manufacturer_model": null,
+      "procurement_status": "existing_load_reported",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": null,
+      "control_allocation_key": "relay-2",
+      "service_type_refs": [],
+      "note": "Doc 27 heat-channel purpose retained. User describes generic in-wall fan/unit at nominal 110 V, no more than a toaster; exact heat/motor function, model and rating not established."
+    },
+    {
+      "allocation_key": "circulator-manual-controller",
+      "type_ref": "manual_fan_speed_controller",
+      "hub_location": "cabin",
+      "room": "pending_location",
+      "purpose": "inter_level_air_mixing",
+      "technical_alias": "manual_fan_speed_controller_cabin_pending_location_inter_level_air_mixing",
+      "ui_name": "Manual Fan Speed Controller â€” Cabin / Pending Location / Inter Level Air Mixing",
+      "manufacturer_model": "Included CLOUDLINE S6 controller",
+      "procurement_status": "ordered_in_bundle",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "circulator",
+      "control_allocation_key": null,
+      "service_type_refs": [],
+      "note": "Planning record, not an additional separate purchase. Confirm exact model, rating and wiring before enabling any control."
+    },
+    {
+      "allocation_key": "circulator-speed-node",
+      "type_ref": "esp32_controller",
+      "hub_location": "cabin",
+      "room": "pending_location",
+      "purpose": "inter_level_air_mixing_speed",
+      "technical_alias": null,
+      "ui_name": null,
+      "manufacturer_model": "Freenove ESP32-S3 development board, 8 MB flash (Amazon B0DHJYR4D4)",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "circulator",
+      "service_type_refs": [],
+      "note": "W-78 speed path (D28 A1): ESPHome LEDC PWM on GPIO4 through the PC817 isolator to the S6 UIS control port. Ordered 2026-10-19, $14.95. Name minted at install per D28."
+    },
+    {
+      "allocation_key": "circulator-speed-isolator",
+      "type_ref": "signal_isolator",
+      "hub_location": "cabin",
+      "room": "pending_location",
+      "purpose": "inter_level_air_mixing_speed",
+      "technical_alias": null,
+      "ui_name": null,
+      "manufacturer_model": "NOYITO 1-channel PC817 optocoupler isolation module, 3-5 V input, pack of 2 (Amazon B0B5373L4P)",
+      "procurement_status": "ordered",
+      "commissioning_status": "not_verified",
+      "runtime_device_id": null,
+      "parent_allocation_key": "circulator-speed-node",
+      "service_type_refs": [],
+      "note": "One used, one spare. Isolation between the ESP and the fan port is mandatory (no shared ground). Ordered 2026-10-19, $6.99 for 2."
+    }
+  ],
+  "passive_materials": [
+    {
+      "type_ref": "fan_control_interconnect",
+      "model": "AC Infinity UIS extension cable, 10 ft, female to male (Amazon B09V1TG17Z); cut to tap the S6 control port for W-78",
+      "quantity": 1
+    },
+    {
+      "type_ref": "sensor_bus_interconnect",
+      "model": "SEN5X JST GH cable set",
+      "quantity": 3
+    },
+    {
+      "type_ref": "sensor_bus_interconnect",
+      "model": "Adafruit 4210 STEMMA QT cable",
+      "quantity": 9
+    },
+    {
+      "type_ref": "node_status_light_pipe",
+      "model": "Acrylic rod 5mm x 12in",
+      "quantity": 20
+    },
+    {
+      "type_ref": "node_power_inlet",
+      "model": "IEC C14 fused switch inlet",
+      "quantity": 3
+    },
+    {
+      "type_ref": "node_enclosure",
+      "model": "Otdorpatio IP65 ABS",
+      "quantity": 1
+    }
+  ],
+  "existing_materials": "Carlon boxes, covers, cords and mesh: on hand, quantities unverified. Existing coordinator/leak alarms not new purchases.",
+  "service_binding_contract": {
+    "status": "design_only_no_runtime_ids",
+    "required_on_enrollment": [
+      "parent_device_id",
+      "hub_location_id",
+      "observed_source_entity",
+      "quantity_type",
+      "unit",
+      "observed_at",
+      "availability",
+      "provenance"
+    ],
+    "control_required_before_enable": [
+      "actual_load_identity",
+      "supported_operation",
+      "guard",
+      "commissioning_evidence",
+      "authorized_actor",
+      "confirmation_policy"
+    ],
+    "measurement_type_refs": [
+      "temperature_celsius",
+      "humidity_percent",
+      "carbon_dioxide_concentration",
+      "pm1_mass_concentration",
+      "pm2_5_mass_concentration",
+      "pm4_mass_concentration",
+      "pm10_mass_concentration",
+      "volatile_organic_compound_index",
+      "nitrogen_oxide_index"
+    ],
+    "association_rule": "related climate topics do not imply executable capabilities; quantity and unit do not imply a calibrated or fresh reading",
+    "duplicate_rule": "physical parent plus child services; correlate exact hardware identity, not a mutable name"
+  },
+  "unresolved_load_assignments": [
+    {
+      "control_allocation_key": "relay-4",
+      "load_identity": null,
+      "status": "reserved_no_connection"
+    }
+  ],
+  "temperature_reference_points": [
+    {
+      "point": "upper",
+      "allocation_key": "monitor-main-sht45",
+      "placement": "top of upstairs zone"
+    },
+    {
+      "point": "lower",
+      "allocation_key": "cabin-th-lower-duct",
+      "placement": "central basement duct, 72 inches above floor"
+    }
+  ],
+  "non_system_extras": [
+    {
+      "model": "Adafruit PCB Coaster with Gold Logo",
+      "product_id": 5719,
+      "quantity": 1,
+      "cost_usd": 0
+    }
+  ],
+  "order_totals_usd": {
+    "adafruit": 119.86,
+    "digikey": 341.88,
+    "amazon_order_a": 98.19,
+    "amazon_order_b": 147.44,
+    "home_depot": 1.7,
+    "total_excluding_midea_and_s6": 709.07,
+    "amazon_order_c_2026_10_19_s6_speed_parts_before_tax": 33.93
+  },
+  "delivery_estimates": [
+    {
+      "products": [
+        "circulator-speed-node",
+        "circulator-speed-isolator",
+        "UIS extension cable"
+      ],
+      "date": "2026-10-20",
+      "status": "user_reported_estimate_not_received"
+    },
+    {
+      "products": [
+        "relay-1",
+        "relay-2",
+        "relay-3",
+        "relay-4",
+        "acrylic rods"
+      ],
+      "date": "2026-10-18",
+      "status": "user_reported_estimate_not_received"
+    },
+    {
+      "products": [
+        "C14 inlet pack",
+        "six SNZB-02P",
+        "two S61 plugs",
+        "ABS enclosure"
+      ],
+      "date": "2026-10-16",
+      "window": "10:00â€“15:00 America/Chicago",
+      "status": "user_reported_estimate_not_received"
+    }
+  ]
+}

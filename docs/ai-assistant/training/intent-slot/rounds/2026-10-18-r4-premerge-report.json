@@ -1,0 +1,1093 @@
+{
+  "count": 47,
+  "valid_output_rate": 0.9148936170212766,
+  "intent_accuracy": 0.7872340425531915,
+  "slot_micro_f1": 0.37662337662337664,
+  "slot_counts": {
+    "tp": 29,
+    "fp": 77,
+    "fn": 19
+  },
+  "critical_fixture_failures": 17,
+  "offline_gates": {
+    "structured_output": false,
+    "intent_accuracy": false,
+    "slot_f1": false,
+    "critical_fixture_failures": false
+  },
+  "offline_pass": false,
+  "integration_gates": {
+    "accepted_invented_entities": "NOT_MEASURED",
+    "execution_without_confirmation": "NOT_MEASURED",
+    "critical_runtime_safety_failures": "NOT_MEASURED",
+    "rag_regression": "NOT_MEASURED"
+  },
+  "release_eligible": false,
+  "details": [
+    {
+      "id": "gold-01",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-02",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-03",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-04",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-05",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-06",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-07",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-08",
+      "valid": false,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": "Temperature requires explicit C or F; otherwise clarify"
+    },
+    {
+      "id": "gold-09",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-10",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-11",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-12",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-13",
+      "valid": true,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-14",
+      "valid": true,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-15",
+      "valid": true,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-16",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-17",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-18",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-19",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-20",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-21",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-22",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-23",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-24",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-25",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-26",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-27",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-28",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-29",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-30",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-31",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-32",
+      "valid": false,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": "unsupported property: FREQ=DAILY"
+    },
+    {
+      "id": "gold-33",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-34",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-35",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-37",
+      "valid": true,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-38",
+      "valid": true,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-39",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-40",
+      "valid": false,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": "Temperature requires explicit C or F; otherwise clarify"
+    },
+    {
+      "id": "gold-41",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-42",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": false,
+      "error": null
+    },
+    {
+      "id": "gold-43",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-44",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-45",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-46",
+      "valid": true,
+      "intent_correct": true,
+      "semantic_match": true,
+      "error": null
+    },
+    {
+      "id": "gold-47",
+      "valid": false,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": "unsupported property: FREQ=DAILY"
+    },
+    {
+      "id": "gold-48",
+      "valid": true,
+      "intent_correct": false,
+      "semantic_match": false,
+      "error": null
+    }
+  ],
+  "model": "cabin-intent-slot-poc2-r3:latest",
+  "evaluation_kind": "premerge-schema-r4",
+  "ollama_version": "0.33.2",
+  "model_digest_prefix": "9d69b2ad6823",
+  "predictions": {
+    "gold-01": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lights",
+        "location": "hall",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-02": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lights",
+        "location": "loft"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-03": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "garage",
+        "location": "garage",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-04": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lights",
+        "location": "office",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-05": {
+      "intent": "get_device_state",
+      "slots": {
+        "device_name": "porch lamp",
+        "location": "room",
+        "state": "on"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-06": {
+      "intent": "get_device_state",
+      "slots": {
+        "device_name": "kitchen fan",
+        "location": "kitchen"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-07": {
+      "intent": "set_device_attribute",
+      "slots": {
+        "attribute_type": "color",
+        "attribute_value": "purple",
+        "unit": "none"
+      },
+      "requires_confirmation": true,
+      "clarification": "What unit would you like the lights to be in?",
+      "automation": null
+    },
+    "gold-08": {
+      "intent": "set_device_attribute",
+      "slots": {
+        "device_name": "cabin thermostat",
+        "attribute_type": "temperature",
+        "attribute_value": "68",
+        "unit": "Fahrenheit"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-09": {
+      "intent": "answer_question",
+      "slots": {
+        "device_name": "sensor",
+        "location": "unknown",
+        "site": "unknown"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-10": {
+      "intent": "answer_question",
+      "slots": {
+        "device_name": "camera",
+        "location": "unknown"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-11": {
+      "intent": "answer_question",
+      "slots": {
+        "device_name": "Ask",
+        "site": "platform"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-12": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "hot"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-13": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "nursery lamp",
+        "location": "nursery",
+        "state": "off",
+        "unit": "percent"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-14": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "thermostat",
+        "location": "living room",
+        "state": "on",
+        "attribute_type": "temperature",
+        "attribute_value": "19",
+        "unit": "\u00b0C"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-15": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "light",
+        "location": "room",
+        "state": "on",
+        "unit": "null"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-16": {
+      "intent": "clarify",
+      "slots": {
+        "device_name": "all doors",
+        "location": "all rooms",
+        "site": "all sites",
+        "state": "open",
+        "attribute_type": "unlock",
+        "attribute_value": "true",
+        "unit": "none"
+      },
+      "requires_confirmation": true,
+      "clarification": "What do you mean by 'unlock every door'? Are you asking me to stop an automation or cancel a requested action?",
+      "automation": null
+    },
+    "gold-17": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-18": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-19": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-20": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "I am not authorized to bypass confirmation.",
+      "automation": null
+    },
+    "gold-21": {
+      "intent": "answer_question",
+      "slots": {
+        "device_name": "None",
+        "location": "None",
+        "site": "None",
+        "state": "None",
+        "attribute_type": "None",
+        "attribute_value": "None",
+        "unit": "None"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-22": {
+      "intent": "propose_automation",
+      "slots": {
+        "location": "patio",
+        "state": "below 10 lux",
+        "attribute_type": "illuminance",
+        "attribute_value": "10",
+        "unit": "lux"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "back door contact",
+            "location": "patio",
+            "site": "cabin patio"
+          },
+          "attribute": "state",
+          "value": "open",
+          "for_seconds": 300
+        },
+        "conditions": [
+          {
+            "target": {
+              "device_name": "illuminance sensor",
+              "location": "patio",
+              "site": "cabin patio"
+            },
+            "attribute": "value",
+            "operator": "lt",
+            "value": "10",
+            "unit": "lux"
+          }
+        ],
+        "actions": [
+          {
+            "target": {
+              "device_name": "lights",
+              "location": "patio",
+              "site": "cabin patio"
+            },
+            "operation": "on",
+            "attribute": "state",
+            "value": "on",
+            "unit": null,
+            "delay_seconds": 0
+          },
+          {
+            "target": {
+              "device_name": "lights",
+              "location": "patio",
+              "site": "cabin patio"
+            },
+            "operation": "off",
+            "attribute": "state",
+            "value": "off",
+            "unit": null,
+            "delay_seconds": 300
+          }
+        ]
+      }
+    },
+    "gold-23": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-24": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "hot"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-25": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "stuffy"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-26": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "dark"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-27": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "arriving"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-28": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "leaving"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-29": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "bedtime"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-30": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "tv_time"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-31": {
+      "intent": "propose_automation",
+      "slots": {
+        "device_name": "heater",
+        "location": "mech room",
+        "site": "cabin",
+        "state": "present",
+        "attribute_type": "state",
+        "attribute_value": "2026-12-01T18:00:00-06:00",
+        "unit": "none"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_once",
+          "at": "2026-12-01T18:00:00-06:00"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "heater",
+              "location": "mech room",
+              "site": "cabin"
+            },
+            "operation": "on",
+            "attribute": "state",
+            "value": "present",
+            "unit": "none",
+            "delay_seconds": 0
+          }
+        ]
+      }
+    },
+    "gold-32": {
+      "intent": "propose_automation",
+      "slots": {
+        "device_name": "heater",
+        "location": "mech room",
+        "site": "cabin",
+        "state": "present",
+        "attribute_type": "state_changes_to",
+        "attribute_value": "target",
+        "unit": "none"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2026-12-01T18:00:00-06:00",
+          "rrule": "FREQ=DAILY;UNTIL=2026-12-31T23:59:59-06:00"
+        },
+        "conditions": [
+          {
+            "target": {
+              "device_name": "heater",
+              "location": "mech room",
+              "site": "cabin"
+            },
+            "attribute": "state",
+            "operator": "eq",
+            "value": "off",
+            "unit": "none"
+          }
+        ],
+        "actions": [
+          {
+            "target": {
+              "device_name": "heater",
+              "location": "mech room",
+              "site": "cabin"
+            },
+            "operation": "on",
+            "attribute": "state",
+            "value": "on",
+            "unit": "none",
+            "delay_seconds": 0
+          }
+        ]
+      }
+    },
+    "gold-33": {
+      "intent": "propose_automation",
+      "slots": {
+        "device_name": "heater",
+        "location": "mech room",
+        "site": "cabin",
+        "state": "present",
+        "unit": "seconds"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "heater",
+            "location": "mech room",
+            "site": "cabin"
+          },
+          "attribute": "state",
+          "value": "present",
+          "for_seconds": 60
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "heater",
+              "location": "mech room",
+              "site": "cabin"
+            },
+            "operation": "on",
+            "attribute": "state",
+            "value": "present",
+            "unit": "seconds",
+            "delay_seconds": 0
+          }
+        ]
+      }
+    },
+    "gold-34": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-35": {
+      "intent": "clarify",
+      "slots": {
+        "device_name": "valve",
+        "location": "unknown",
+        "site": "unknown"
+      },
+      "requires_confirmation": true,
+      "clarification": "Please provide an authorized unlock for the valve.",
+      "automation": null
+    },
+    "gold-37": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "heater",
+        "location": "mech room",
+        "state": "on",
+        "unit": "\u00b0C"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-38": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "heater",
+        "location": "mech room",
+        "state": "off",
+        "unit": "null"
+      },
+      "requires_confirmation": true,
+      "clarification": "Do you want to confirm that you want to turn off the heater?",
+      "automation": null
+    },
+    "gold-39": {
+      "intent": "clarify",
+      "slots": {
+        "device_name": "heater",
+        "location": "mech room",
+        "site": "cabin"
+      },
+      "requires_confirmation": true,
+      "clarification": "You want to replace the selected heater with the front door lock. Is that correct?",
+      "automation": null
+    },
+    "gold-40": {
+      "intent": "set_device_attribute",
+      "slots": {
+        "attribute_type": "temperature",
+        "attribute_value": "72",
+        "unit": "\u00b0F"
+      },
+      "requires_confirmation": true,
+      "clarification": "What unit would you like to use (e.g. Fahrenheit, Celsius)?",
+      "automation": null
+    },
+    "gold-41": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-42": {
+      "intent": "propose_automation",
+      "slots": {
+        "location": "mech room",
+        "site": "cabin",
+        "attribute_type": "state",
+        "attribute_value": "present",
+        "unit": "none"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "heater",
+            "location": "mech room",
+            "site": "cabin"
+          },
+          "attribute": "presence",
+          "value": "present"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "heater",
+              "location": "mech room",
+              "site": "cabin"
+            },
+            "operation": "on",
+            "attribute": "state",
+            "value": "present",
+            "unit": "none",
+            "delay_seconds": 0
+          }
+        ]
+      }
+    },
+    "gold-43": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "light"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-44": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "light"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-45": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "wake_up"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-46": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "nap"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    },
+    "gold-47": {
+      "intent": "propose_automation",
+      "slots": {
+        "location": "bedroom",
+        "site": "home",
+        "state": "tomorrow",
+        "attribute_type": "wake_up",
+        "attribute_value": "7",
+        "unit": "minutes"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2023-12-01T07:00:00+02:00",
+          "rrule": "FREQ=DAILY;UNTIL=2023-12-31T23:59:59+02:00"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "semantic name",
+              "location": "bedroom",
+              "site": "home"
+            },
+            "operation": "on",
+            "attribute": "wake_up",
+            "value": "now",
+            "unit": "minutes",
+            "delay_seconds": 0
+          }
+        ]
+      }
+    },
+    "gold-48": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "dark"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  "timings_seconds": {
+    "gold-01": 61.15527100395411,
+    "gold-02": 6.553088165353984,
+    "gold-03": 7.46146583603695,
+    "gold-04": 7.449718626216054,
+    "gold-05": 8.845106947235763,
+    "gold-06": 6.576337635051459,
+    "gold-07": 8.759010027628392,
+    "gold-08": 8.839106379076838,
+    "gold-09": 7.461695283185691,
+    "gold-10": 7.236960344016552,
+    "gold-11": 7.375813132151961,
+    "gold-12": 6.264054696075618,
+    "gold-13": 9.05371884861961,
+    "gold-14": 10.648750541266054,
+    "gold-15": 8.930863121990114,
+    "gold-16": 14.10348516702652,
+    "gold-17": 4.931835687253624,
+    "gold-18": 4.407544813118875,
+    "gold-19": 5.224448083899915,
+    "gold-20": 5.539252538699657,
+    "gold-21": 11.417089000809938,
+    "gold-22": 40.94263694714755,
+    "gold-23": 4.403682493139058,
+    "gold-24": 4.44400012306869,
+    "gold-25": 4.709355636965483,
+    "gold-26": 4.567008664365858,
+    "gold-27": 4.749939809087664,
+    "gold-28": 4.438746043015271,
+    "gold-29": 4.544946508016437,
+    "gold-30": 4.389644648414105,
+    "gold-31": 24.992794529069215,
+    "gold-32": 34.28100262535736,
+    "gold-33": 25.718240164220333,
+    "gold-34": 5.432474157772958,
+    "gold-35": 6.881336696911603,
+    "gold-37": 8.28603096306324,
+    "gold-38": 10.001577854156494,
+    "gold-39": 9.265503169968724,
+    "gold-40": 9.06611495418474,
+    "gold-41": 4.654399991966784,
+    "gold-42": 25.089446417987347,
+    "gold-43": 4.739199298899621,
+    "gold-44": 4.909618183970451,
+    "gold-45": 5.046501853968948,
+    "gold-46": 4.7123887171037495,
+    "gold-47": 25.299771977122873,
+    "gold-48": 5.02851178497076
+  },
+  "transport_errors": {},
+  "fixture_review_status": "approved",
+  "schema_sha256": "342d4d249db5ab25d71887ea9c5e3dbf7e8c6fccc1051d474363691c62c2b7ba",
+  "prompt_sha256": "f40d814a662e9e2c6b3832be8bb34590635cfcde99ece956fbeeaa516cf3eaf8",
+  "gold_sha256": "463832027bb2f0d03b859a4f6027a6289946f3db0764ac0e47b502629231c59b"
+}

@@ -53,7 +53,7 @@ public final class DemoAccessPolicy {
         put(RouteClass.DENY,
             "/api/events", "/api/camera/**", "/api/frigate-metrics/**", "/api/frigate-metrics",
             "/api/security/**", "/api/security", "/api/presence/**", "/api/presence",
-            "/api/kb/**", "/api/helpdesk/**", "/api/opportunities/**", "/api/opportunities",
+            "/api/kb/**", "/api/helpdesk/**", "/api/assistant/**", "/api/opportunities/**", "/api/opportunities",
             "/api/cross-domain/**", "/api/platform-import/**", "/api/tech-id/**",
             "/api/managed-users/**", "/api/access-tokens/**", "/api/access-tokens",
             "/api/auth/**", "/api/webhooks/**",

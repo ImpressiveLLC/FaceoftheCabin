@@ -1,5 +1,10 @@
 # Family Hub & FaceOfTheCabin — User Guide
 
+## Environmental monitoring project
+
+See [environmental nodes and climate equipment](ai-assistant/user-guide/environmental-nodes.md)
+for what is ordered, what it can measure, and which controls remain unavailable.
+
 *Audience: family members and guests using the platform day to day —
 on the wall-mounted kiosk, a phone, or a laptop. For technical
 operation, see [`MAINTENANCE.md`](MAINTENANCE.md). For standing up your
@@ -204,8 +209,8 @@ finer-grained permission tier for video versus the rest of the app.
 
 ## Themes
 
-Family Hub ships with 8 visual themes (Settings → Theme): Modern, LCARS,
-Monolith, Retro-CRT, Mad Science, 80s Neon, Pac-Man, and Deep Space.
+Family Hub ships with 7 visual themes (Settings → Theme): Modern, LCARS,
+Monolith, Mad Science, 80s Neon, Pac-Man, and Deep Space.
 Purely cosmetic — pick whatever the household likes best; every feature
 works identically regardless of theme. `cabin-ui` has its own, separate
 7-theme set, since it's a different application with its own visual
@@ -263,3 +268,12 @@ rotating a password, changing who has admin access, standing up a new
 instance for another family — that's covered in
 [`MAINTENANCE.md`](MAINTENANCE.md) and [`REPLICATION.md`](REPLICATION.md),
 not this guide.
+
+### Smart switches in Monitoring
+Each enrolled physical switch has one electrical card. Watts and kWh share the same layout;
+click or keyboard-activate the tile to open its parent in Devices for volts, amps and other details. Unavailable is different from zero.
+The card can represent enabled services even when the parent itself is disabled; enrollment remains visible in Devices.
+This display does not turn the load on, enable devices, or alter history. Ambiguous source
+matches stay separate until reviewed. The SONOFF experimental converter currently has no kWh channel.
+
+Smart-switch tiles retain the reported ON/OFF relay state alongside watts and energy. ON with 0 W means the relay is closed but the load is drawing nothing (for example the appliance's own switch is off, it is idle, or it is faulty); zero consumption never implies OFF. Relay state is shown only when the source reports an unambiguous state.
