@@ -20,8 +20,13 @@ import java.util.Set;
  * too, or the series appears to stop the day the link was made (found 2026-10-24 on the cabin's outside
  * temperature sensor: "Temp Outside | Lower Level Temperature" lost every reading after 2026-10-20).
  *
- * Only {@code z2m-*} parents and {@code ha-*} {@code sensor.*} children at the same location are folded
- * together; nothing else changes meaning.
+ * Found again 2026-10-26: the Mech Room and Kidde humidity columns went blank because their parents are
+ * {@code ha-*} entities (a Home Assistant device whose sensor entities link to one entity as parent), and the
+ * fold only started from a {@code z2m-*} parent. The readings were never lost: they sit under the linked
+ * children. Any parent with linked sensor entities now folds them, not only a native Zigbee one.
+ *
+ * Only {@code ha-*} {@code sensor.*} children at the same location as their parent are folded in; nothing
+ * else changes meaning.
  */
 public final class ServiceHistory {
 
@@ -32,7 +37,7 @@ public final class ServiceHistory {
         List<String> ids = new ArrayList<>();
         ids.add(deviceId);
         DeviceStatus parent = registry.get(deviceId);
-        if (parent == null || !isNativeZigbee(deviceId)) return ids;
+        if (parent == null) return ids;
         for (DeviceStatus child : registry.all()) {
             if (isSensorServiceOf(child, deviceId, parent.location())) ids.add(child.deviceId());
         }
@@ -60,10 +65,6 @@ public final class ServiceHistory {
         Map<String, List<String>> result = new LinkedHashMap<>();
         merged.forEach((id, fields) -> result.put(id, new ArrayList<>(fields)));
         return result;
-    }
-
-    private static boolean isNativeZigbee(String deviceId) {
-        return deviceId.startsWith("z2m-");
     }
 
     private static boolean isSensorServiceOf(DeviceStatus child, String parentId, String parentLocation) {
