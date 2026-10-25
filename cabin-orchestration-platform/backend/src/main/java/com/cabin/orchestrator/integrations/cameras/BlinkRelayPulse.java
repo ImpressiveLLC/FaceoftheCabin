@@ -20,6 +20,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * cabin/blink/relay/heartbeat; this class turns "heartbeat too old" into an
  * active alert.
  *
+ * Two sources feed it: the Termux relay's own heartbeat, and (2026-10-25, the
+ * default setup) the S23 Companion-app heartbeat cabin/presence/nate/last_seen
+ * (HA publishes the phone's last report time every 5 minutes), which proves the
+ * phone is awake, on the network and reporting to HA. The Companion interval is
+ * about 15 minutes, hence the 45-minute default.
+ *
  * Silent until a heartbeat has been seen at least once, so an instance that
  * never installed the relay is not nagged.
  */
@@ -28,8 +34,8 @@ public class BlinkRelayPulse {
 
     public static final String TOPIC = "cabin/blink/relay/heartbeat";
 
-    @Value("${cabin.blink.relay.staleAfterMinutes:10}")
-    private long staleAfterMinutes = 10;
+    @Value("${cabin.blink.relay.staleAfterMinutes:45}")
+    private long staleAfterMinutes = 45;
 
     private final AtomicReference<Instant> lastHeartbeat = new AtomicReference<>();
 

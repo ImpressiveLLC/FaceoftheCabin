@@ -1,5 +1,13 @@
 # Blink motion relay: phone setup and pulse alert
 
+> **Current setup (2026-10-25): the S23 stays the relay.** The Home Termux phone (Sony G3223, Android 8) cannot run the
+> Blink app, so it cannot relay. The alert instead watches the S23 Companion-app heartbeat
+> `cabin/presence/nate/last_seen` (HA publishes the phone last report time every 5 minutes; W-34), i.e. "the S23 is awake,
+> reporting to HA, and on the network". It fires after 45 minutes of silence (`cabin.blink.relay.staleAfterMinutes`;
+> the Companion reports about every 15 minutes). `cabin.blink.relay.presencePerson` (default `nate`) picks the person.
+> It does not prove the Blink app is posting notifications; check that in Android settings if motion alerts stop with a healthy heartbeat.
+> The Termux relay below remains supported for any Android 10+ device and uses the same alert.
+
 Why: Blink own motion API never fires on this account. The Blink app push notification is the only motion signal, and it
 used to depend on Nate S23 (travels, sleeps, loses Tailscale). The always-on Home Termux phone now relays it, and the
 backend alerts when the relay goes quiet.

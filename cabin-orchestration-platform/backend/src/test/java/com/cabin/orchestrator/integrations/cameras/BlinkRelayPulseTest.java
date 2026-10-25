@@ -24,7 +24,7 @@ class BlinkRelayPulseTest {
         p.record("{\"device\":\"xperia\",\"ts\":\"2026-10-24T11:55:00Z\"}", NOW);
         assertEquals(Duration.ofMinutes(5), p.age(NOW).orElseThrow());
         assertFalse(p.stale(NOW));
-        assertTrue(p.stale(NOW.plus(Duration.ofMinutes(6))));
+        assertTrue(p.stale(NOW.plus(Duration.ofMinutes(41))));
     }
 
     @Test
