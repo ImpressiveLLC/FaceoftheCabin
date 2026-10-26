@@ -625,7 +625,7 @@ Open decisions for Nate (proxy-PO may rule; unanswered until recorded in Git):
 
 - **MA-17: ruled by Nate.** Stored per browser, like the theme.
 - **MA-18: ruled by Nate.** The color-safe palette overrides a theme's status hues only where that theme supports it. A theme that cannot support it must be updated or supplemented with its own distinct, striking visual cue, so that a state needing attention beyond normal interaction is obvious without relying on hue. W-109 defines the cue per theme; W-111 fails a theme that has neither a compliant palette nor the cue.
-- **MA-16: proxy-PO default, not ruled by Nate.** One "accessible display" switch with the four options (color-safe status colors, stronger outlines, reduced intensity, reduce motion) as sub-settings. Nate may amend; W-110 builds to this until he does.
+- **MA-16: ruled by Nate 2026-10-25 22:33 CDT.** No user toggles in the default design. The default presentation itself must have no pulsing and must give every color-blind-relevant state a non-color cue as well as its hue (an asterisk at the corners or a dotted border, specified per state in W-109). Toggles do not change the core implementation. A "Color safe" toggle and a separate "No motion" toggle are backlogged as W-116, not a current requirement. "No glow" and "calm" are not needed now: cross that bridge later.
 
 ### 15.5 Verification
 
