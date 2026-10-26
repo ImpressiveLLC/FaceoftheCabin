@@ -1,0 +1,173 @@
+{
+  "reviewer": "Codex re-review",
+  "reviewer_kind": "agent",
+  "date": "2026-10-26",
+  "status": "AGENT_RECHECK; NOT NATHAN HUMAN RATIFICATION",
+  "items": [
+    {
+      "run": "after",
+      "id": "Q01",
+      "repeat": 1,
+      "codex_call": "CONFIRM_DRAFT_PASS",
+      "reason": "Correctly separates family attribution from verified authentication/role, supported by supplied operations users section.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q01",
+      "repeat": 2,
+      "codex_call": "CONFIRM_DRAFT_PASS",
+      "reason": "Correctly separates family attribution from verified authentication/role, supported by supplied operations users section.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q01",
+      "repeat": 3,
+      "codex_call": "CONFIRM_DRAFT_PASS",
+      "reason": "Correctly separates family attribution from verified authentication/role, supported by supplied operations users section.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q12",
+      "repeat": 1,
+      "codex_call": "CONFIRM_DRAFT_PASS_WITH_DEFECT",
+      "reason": "Substantive cause and supported rebuild/redeploy/browser-verification guidance are correct. Opening uncertainty does not erase those correct assertions.",
+      "confidence": "medium",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": "Contradictory I-do-not-know opening; log as presentation/epistemic consistency defect. Unlike Q07/3 it does not misframe the scenario or deny applicability of its own explanation.",
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q12",
+      "repeat": 3,
+      "codex_call": "CONFIRM_DRAFT_PASS",
+      "reason": "Correct compiled JavaScript versus running environment distinction, rebuild/deploy path and browser verification.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q17",
+      "repeat": 1,
+      "codex_call": "CONFIRM_DRAFT_PASS",
+      "reason": "Corrects manual-only documentation with configured main-push path filter and manual dispatch; no latest-run success inferred.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q17",
+      "repeat": 2,
+      "codex_call": "CONFIRM_DRAFT_PASS",
+      "reason": "Corrects manual-only documentation with configured main-push path filter and manual dispatch; no latest-run success inferred.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q17",
+      "repeat": 3,
+      "codex_call": "CONFIRM_DRAFT_PASS",
+      "reason": "Corrects manual-only documentation with configured main-push path filter and manual dispatch; no latest-run success inferred.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q21",
+      "repeat": 1,
+      "codex_call": "CONFIRM_DRAFT_PASS",
+      "reason": "Explicit reviewed-map eligibility; denies Markdown merge alone gives knowledge and invents no general ingester.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 1,
+      "codex_call": "DISPUTED_SOURCE_ORACLE",
+      "reason": "Memory-only claim matches stale supplied guide/oracle but conflicts with PlatformImportController at the recorded deployed revision, which invokes persistent candidate registration. Inline controller attribution is also mismatched.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    },
+    {
+      "run": "after",
+      "id": "Q07",
+      "repeat": 1,
+      "codex_call": "DISPUTED_SOURCE_ORACLE",
+      "reason": "Explicit platform-import memory-only explanation conflicts with persisted candidates in evaluated source. Past-tense telemetry/health-checked assertion is also not established by the question or supplied source procedure.",
+      "confidence": "high",
+      "counter_case": "Exact model-rendered context is not fully archived; inspect the supplied source record and frozen source before human ratification.",
+      "defect_note": null,
+      "reviewer_kind": "agent",
+      "human_ratified": false
+    }
+  ],
+  "counts": {
+    "checked": 11,
+    "supported_draft_passes": 9,
+    "disputed_source_oracle": 2
+  },
+  "combined_proposed_pass_set": {
+    "supported_by_agent_reviews": 11,
+    "disputed": 2,
+    "original_draft_passes": 13,
+    "human_ratified": 0
+  },
+  "authoritative_pass_rate": null,
+  "denominator": 72,
+  "frozen_denominator_preserved": true,
+  "original_draft_files_unchanged": true,
+  "cowork_file_sha256": "5756b27938e6f53f85ee2e8ddba280809e7461bbfffc9749993ce66aa8f4c61c",
+  "code_evidence": [
+    "https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/PlatformImportController.java#L201",
+    "https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceRegistry.java#L277",
+    "https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/docs/ai-assistant/user-guide/operations.md#L42"
+  ],
+  "persistence_fix_commit": "da5cb2b2b10732b470dae057a47e43e2f9c72b48",
+  "source_findings": {
+    "fix_is_ancestor_of_deployed_revision": true,
+    "fix_date": "2026-09-08",
+    "mechanism": "confirm calls registerPersistentCandidate; registry writes lifecycleStore.save for CANDIDATE.",
+    "counter_case": "Passive discovery candidates may be memory-only, and historical runtime bytecode was not re-attested. That does not resolve a guide that claims all confirmed platform-import candidates are memory-only."
+  },
+  "required_next_step": "Nathan/Cowork rule on code-versus-guide oracle conflict; preserve original 72-trial denominator. Any updated oracle/rubric is separately versioned and applied symmetrically; do not exclude inconvenient trials or silently rewrite drafts.",
+  "risk_flags": "Existing two flagged FAILs remain pending final human ratification; no new risk flag is asserted by this recheck.",
+  "C1_accepted": false,
+  "C1b_authorized": false,
+  "release_authorized": false
+}

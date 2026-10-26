@@ -2,6 +2,8 @@
 
 **Unratified agent draft.** Codex prepared 144 trial judgments under one frozen rubric. Nathan/Cowork have not ratified the scores. This package is for reviewing the proposed scoring and selecting spot-checks; it does not establish C1 completion, a validated accuracy rate, model improvement, or C1b authority.
 
+**Review update 2026-10-26:** [Codex's separate pass recheck](review-2026-10-26.json) retains nine of its eleven assigned draft passes, including Q12/1 with a contradictory-opening defect note. Q05/1 and Q07/1 are disputed: the supplied guide/expected answer says platform-import candidates are memory-only, while code at the evaluated revision calls `registerPersistentCandidate` and persists them. Combined with Cowork's Q08/1 and Q16/3 calls, eleven of the original thirteen proposed passes are supported by agent reviews and two require a source/oracle ruling. **Do not treat the original thirteen as ratified.** Keep both trials in the frozen denominator; original drafts below remain unchanged. Neither agent review substitutes for Nathan's human ratification.
+
 ## Read these files
 
 | File | Review use |
@@ -9,6 +11,7 @@
 | [summary.json](summary.json) | Draft counts, question-repeat results, comparison, hashes and explicit null authoritative pass rate |
 | [trial-scores.json](trial-scores.json) | All 144 dimension scores, sanitized reasons, confidence, counter-cases, risk flags and raw-answer hashes |
 | [spotchecks.json](spotchecks.json) | Forty proposed review cases: all draft passes, risks/borderlines and twelve seeded other failures |
+| [review-2026-10-26.json](review-2026-10-26.json) | Separate eleven-trial recheck, Q12/1 defect note, and two code-versus-guide disputes with historical source links |
 
 Raw answers, questions, household source records, exact context, credentials and session/runtime details are **not included**. The question definitions already exist in the [frozen r2 suite](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/docs/ai-assistant/rag/cli-questions-r2.json). Use the [same r2 rubric](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/docs/ai-assistant/rag/grading-r2.md) for both runs.
 
