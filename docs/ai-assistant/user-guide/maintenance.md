@@ -34,7 +34,7 @@ Camera configuration changes go through a pull request, and the camera password 
 
 ## "Running" versus healthy, per service (K11/K12)
 
-Audience: operator. Source-reviewed at `main` from the Compose files; no check below was run against the live host (`NOT_RUN`). A container status of "running" proves only that the main process has not exited. `docker ps` shows "healthy" only for a service that defines a `healthcheck`. A service without one can never show it.
+Audience: operator. Source-reviewed at `main` from the Compose files, the Blink bridge Dockerfile and the guides named below; no check below was run against the live host (`NOT_RUN`). A container status of "running" proves only that the main process has not exited. `docker ps` shows "healthy" only for a service that defines a `healthcheck`. A service without one can never show it.
 
 | Service (Compose file) | Defined healthcheck | What a pass shows | What it does not show | Check the feature itself |
 |---|---|---|---|---|
@@ -45,7 +45,25 @@ Audience: operator. Source-reviewed at `main` from the Compose files; no check b
 | `kafka` (base Compose) | `kafka-broker-api-versions` against `localhost:9092` | The broker answers | That the `cabin.events.raw` topic exists or the consumer persists events | A new event appearing in `GET /api/events` |
 | `mosquitto` (production stack) | Subscribe to `$SYS/broker/uptime` | The broker is up | That any device or topic is publishing | A recent message on the expected topic, or a device's `lastSeen` |
 | `zigbee2mqtt` (production stack) | `wget` of its web page on port 8080 | The Zigbee2MQTT process serves its UI | That the coordinator dongle is connected or devices report | A paired device's recent state, or `zigbee2mqtt/bridge/state` |
-| `cabin-ui`, `family-hub`, `cabin-grafana`, `open-webui`, `vaultwarden`, `telemetry-backup-agent` (overlay); `homeassistant`, `frigate`, `mediamtx`, `nodered`, `blinkbridge`, `uptime-kuma`, `homepage` (production stack) | None defined | Only that the process is running | Anything else | Load the page or run the service's own feature, for example a Frigate camera frame or a Home Assistant entity state |
+| `blinkbridge` (rewrite, `infra/blinkbridge/`) | A `HEALTHCHECK` in its own Dockerfile (30s interval, 90s start period) calling `GET :8811/healthz`; it is not in Compose | The loop ran within 2 minutes and a Blink poll succeeded within 30 minutes | That every camera is streaming | `docker logs -t --tail 5 blinkbridge` shows `motion poll ok`; Frigate `camera_fps` above 0. The rewrite is recorded as built 2026-10-21 and not yet deployed in the Maintenance guide; confirm which image is live before relying on this row |
+| `cabin-ui`, `family-hub`, `cabin-grafana`, `open-webui`, `vaultwarden`, `telemetry-backup-agent` (overlay); `homeassistant`, `frigate`, `mediamtx`, `nodered`, `uptime-kuma`, `homepage` (production stack) | None defined in Compose or known image | Only that the process is running | Anything else | Load the page or run the service's own feature, for example a Frigate camera frame or a Home Assistant entity state |
+
+### What detects and what recovers
+
+Detection and recovery are separate. Several layers exist; only some of them restart anything.
+
+| Layer | Detects | Recovers by itself? | Where recorded |
+|---|---|---|---|
+| Docker `restart: unless-stopped` (9 production-stack services, 9 overlay services) | A container that exited | Yes, restarts it. It does **not** act on an `unhealthy` container, and it does not catch a process that is alive but idle | The two Compose files |
+| Docker healthchecks (table above) | One container's minimum useful operation | No. They set the status other layers read | [Replication guide, section 10](../../REPLICATION.md#10-monitoring--cross-container-health) |
+| Uptime Kuma monitors | Cross-service paths: MQTT broker, Zigbee2MQTT, backend health, discovery, the camera availability topic, camera frames | No. It pages through the instance's notification route. The reusable monitor set is documented; creating it in production is still approval-pending, so confirm a monitor exists before relying on it | [Replication guide, Uptime Kuma monitor set](../../REPLICATION.md#uptime-kuma-monitor-set) |
+| `DeviceHealthMonitor` in `cabin-backend` | Per device, every 60 seconds: stale and missed check-ins; a Home Assistant device is actively polled before it is called missed. Event-driven sensors are exempt from time-based staleness | Marks the device OFFLINE and keeps a per-device reconnect attempt count. It does not restart a container. The result is read at `GET /api/system/health` | `DeviceHealthMonitor.java` |
+| Blink motion dead-man alert | The Blink relay going quiet | No. It raises an active alert | `ActiveAlertService`, `BlinkRelayPulse`, #254 |
+| Blink bridge rewrite | A failed liveview, throttling, expired token, or a dead loop | Yes, inside the process: per-camera backoff and retry, throttle pause, fresh login, and a watchdog thread that exits the process after 10 minutes of a dead loop so Docker restarts it | Maintenance guide, "blinkbridge rewrite" |
+| `blinkbridge-watchdog` host timer | Docker reporting the bridge `unhealthy` (checked every 5 minutes) | Yes, restarts the container. The Maintenance guide called it "staged, not installed"; whether the timer is enabled on the M920q is not established here (`systemctl list-timers blinkbridge-watchdog.timer`) | Maintenance guide, `scripts/host/blinkbridge-watchdog` |
+| `infra/watchdog/watchdog.py` | TCP port checks of seven services, publishing `cabin/system/health` | Restarts dead containers, but the M920q overlay sets it `profiles: [disabled]`, so it is not running there | `docker-compose.m920q.yml` |
+
+There is no `autoheal` container. A general "unhealthy then restart" loop exists only for the Blink bridge, and only if its host timer is installed. For every other service, an unhealthy container stays unhealthy until a person or a Kuma page acts.
 
 Three limits to keep in mind:
 
