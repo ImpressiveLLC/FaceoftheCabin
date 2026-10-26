@@ -631,3 +631,11 @@ Open decisions for Nate (proxy-PO may rule; unanswered until recorded in Git):
 ### 15.6 Sequencing
 
 Two lanes converge at W-98. The data lane is unchanged: W-101, then W-102 and W-103, then W-96, then W-97. The presentation lane is W-109, then W-110 and W-111 in parallel, using fixture states and fixed token names; it needs no assessment data, so it starts immediately and removes presentation design from the W-98 critical path. W-98 consumes both lanes. Dependencies, not WSJF order, govern.
+
+## 16. Codex follow-through after #251/#252
+
+Proxy-PO accepts W-98's presentation dependencies and W-105's section 15.5 cases, subject to section 15.6 sequencing; no attention presentation changes before the W-109 matrix. MA-16–18 remain with Nate. W-107 planning review was completed by #245, independently of implementation or release completion.
+
+The [independent verification/oracle package](../verification/measurement-attention/README.md) records #252 authorization/field-preservation/restart evidence limits, the exact successful hosted run, and the gated operator plan. It supplies 44 expected-outcome fixtures and six explicitly NOT_RUN human/interactive cases. Catalog/comparator checks are not evaluator conformance. W-96 schema and the production adapter for these fixtures remain integration deliverables; do not call the catalog an implemented assessment engine. The original 37 local errors remain individually unverified without their original head-linked log/XML, despite the stronger zero-error post-merge CI evidence. No live re-detect performed; Nate's approval follows an actual previewed diff.
+
+Runtime progress: #247/#248/#249 smart-switch cards/relay inference, #250 water-valve classification, #252 re-detect API, and #253 parent-linked history have merged. Exact deployed/live acceptance is separate. #244 remains the scope/closure tracker; no threshold, source catalog, human gate, converter recovery or general release is completed by those merges alone.

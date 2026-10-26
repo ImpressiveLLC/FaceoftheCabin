@@ -101,6 +101,11 @@ public class MqttBridgeService implements MqttCallback {
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
     private com.cabin.orchestrator.integrations.cameras.BlinkRelayPulse blinkRelayPulse;
 
+    // The phone whose Companion-app heartbeat (cabin/presence/{person}/last_seen, W-34) doubles as the
+    // Blink motion path's liveness: its Blink push reaches HA only while that phone reports.
+    @Value("${cabin.blink.relay.presencePerson:nate}")
+    private String blinkRelayPresencePerson = "nate";
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setBlinkRelayPulse(com.cabin.orchestrator.integrations.cameras.BlinkRelayPulse pulse) {
         this.blinkRelayPulse = pulse;
@@ -213,6 +218,9 @@ public class MqttBridgeService implements MqttCallback {
                 // never reach handlePresenceTopic (which would read it as
                 // not-"home" and mark the person absent).
                 handlePresenceLastSeen(parts[2], payload);
+                if (blinkRelayPulse != null && "cabin".equals(parts[0]) && parts[2].equals(blinkRelayPresencePerson)) {
+                    blinkRelayPulse.record(payload, java.time.Instant.now());
+                }
                 return;
             }
 
