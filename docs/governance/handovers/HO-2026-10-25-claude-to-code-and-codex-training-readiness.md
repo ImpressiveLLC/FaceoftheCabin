@@ -4,6 +4,10 @@ Authority: Nate, 2026-10-25 (away, delegated proxy-PO and SME rights to this ses
 
 Governs [`sft-data-path.md`](../../ai-assistant/proposals/sft-data-path.md) and [HO-2026-10-19-cowork-to-code-sft-data-path](HO-2026-10-19-cowork-to-code-sft-data-path.md). Host rules: the `fotc-git-and-host-routing` skill (training and eval on the M920q, all other git work elsewhere, never stack both).
 
+## Priority change (Nate, 2026-10-26)
+
+Ask's goal is answering configuration and maintenance questions from the corpus. Slot-level polish for the intent/slot model is **parked** behind C2, C1 and C3; only the question-versus-command boundary stays active. Read every "next action" below with that in mind: the S2 batch 2, naming-class application and similar items wait. See [`ai-assistant/wsjf-backlog.md`](../../ai-assistant/wsjf-backlog.md#priority-directive-corpus-answers-first-nate-2026-10-26) and W-117.
+
 ## Verdict: no training run is possible today
 
 Training prep is done as far as an agent can take it. A run is blocked by data and access, not by tooling. Nothing was trained, exported, quantized, deployed or routed.
