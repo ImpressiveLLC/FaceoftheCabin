@@ -1,0 +1,86 @@
+{
+  "schema": "c2-rerun-spec-r1",
+  "status": "PREPARED_NOT_RUN",
+  "source_commit": "204a6d5c5f0d7d990a92379652d1959efdf08c03",
+  "inputs": {
+    "questions": {
+      "path": "docs/ai-assistant/rag/cli-questions-r2.json",
+      "sha256": "04586558d5e3233bd29c9020517030f1ec9592cf8736335d16cfb9bc911ea300"
+    },
+    "oracle": {
+      "path": "docs/ai-assistant/rag/eval-results/c1-draft-review-2026-10-25/scoring-oracle-r3.json",
+      "sha256": "f584f7da1b07f7d609ae589b961a6ab8dc44f85286852f2cd0d1bf806240a52d"
+    },
+    "rubric": {
+      "path": "docs/ai-assistant/rag/grading-r2.md",
+      "sha256": "663b49b8a4c5a8386da83207be98626a5c6eacf3c88ab87db200204272089ce9"
+    },
+    "harness": {
+      "path": "scripts/ask_eval.py",
+      "sha256": "356b20e21af2f48b5553a8eacbda865d89d465100c95250b03fd87ea4f97bc0d"
+    },
+    "grader": {
+      "path": "scripts/grade_ask.py",
+      "sha256": "7839254ccfbb3efb827ddf5c0fc81024bae987612f7cc925f79009a1d355dd24"
+    }
+  },
+  "suite": "ask-cli-admin-questions-r2",
+  "question_ids": [
+    "Q01",
+    "Q02",
+    "Q03",
+    "Q04",
+    "Q05",
+    "Q06",
+    "Q07",
+    "Q08",
+    "Q09",
+    "Q10",
+    "Q11",
+    "Q12",
+    "Q13",
+    "Q14",
+    "Q15",
+    "Q16",
+    "Q17",
+    "Q18",
+    "Q19",
+    "Q21",
+    "Q22",
+    "Q23",
+    "Q24",
+    "Q25"
+  ],
+  "repeats": 3,
+  "planned_per_run": 72,
+  "historical_pair_trials": 144,
+  "new_trials_per_domain": 72,
+  "role": "server-derived administrator; explicit operator opt-in",
+  "endpoint": "http://127.0.0.1:8090/api/helpdesk/ask",
+  "client_context_probe": false,
+  "scoring_oracle": "ask-c1-scoring-oracle-r3",
+  "rubric": "ask-rubric-r2",
+  "authority": {
+    "model_call_performed": false,
+    "deployment_authorized": false,
+    "c1b_authorized": false,
+    "human_ratification_claimed": false
+  },
+  "comparison_reference": {
+    "after_pass": 11,
+    "after_planned": 72,
+    "before_pass": 0,
+    "before_planned": 72,
+    "source": "c1-draft-review-2026-10-25/oracle-r3-trial-scores.json",
+    "historical_runs_immutable": true
+  },
+  "runtime_attestation_required": [
+    "deployed checkout and backend image identity",
+    "actual model tag and digest",
+    "mounted docs revision and hashes of selected sections/context map",
+    "role and endpoint",
+    "run start/end and raw-output hash",
+    "question/rubric/oracle/harness hashes",
+    "domain PR and corpus changes since reference"
+  ]
+}
