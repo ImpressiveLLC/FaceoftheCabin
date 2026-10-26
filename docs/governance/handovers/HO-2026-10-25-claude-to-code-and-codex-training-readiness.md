@@ -15,7 +15,7 @@ Training prep is done as far as an agent can take it. A run is blocked by data a
 | Gold is below every threshold | r8/r9 on gold hash `1d33f622`: valid output 1.00, intent 0.837, slot micro F1 0.569 (a) / 0.581 (b); gates are intent 0.90, slot F1 0.90 | Code (prompt/contract), Cowork (gold) | A fair baseline to beat |
 | No agent path from the cloud to the M920q | Tailscale unreachable from the container; device bridge has no connected folder | Code on ilikethelights or the M920q | Any run |
 
-r7 (clarify rule) did not help and r8/r9 are repeats of the same baseline, so the observed run-to-run variance is about 0.01 slot F1. Do not read any smaller difference as a result.
+r7 (clarify rule) did not help and r8/r9 are repeats of the same baseline. Observed: the r8/r9 pair differs by about 0.01 slot F1 (0.569 vs 0.581) on gold hash `1d33f622`. **Provisional inference only:** that one pair suggests small differences may be noise, but a single pair is not a justified detection threshold. A threshold needs controlled repeated runs with identical data, prompt and model settings and a stated comparison method. Equal gold hashes do not show identical prompt or model conditions. Until such runs exist, treat any small difference as unresolved, neither a result nor proven noise. Observed metrics and hashes above are unchanged (Codex review, #259, 2026-10-25).
 
 ## Do not repeat
 
@@ -30,7 +30,7 @@ r7 (clarify rule) did not help and r8/r9 are repeats of the same baseline, so th
 2. **Nate:** S5 reviews (about 2.5 hours total, measured after the first 20 items) and place the sealed files on the freeze machine. The order matters less than starting; the packet tool is the gate.
 3. **Code (M920q, idle only):** S6 leakage checks and freeze entry (test 200, safety 80, disjoint, each with its own hash), then the `prepare_sft.py` dry run to produce splits and a data card. Nothing exported.
 4. **Training readiness check (M920q), all must hold before a run:** `ollama ps` empty and no eval running; record RAM, disk and service load; the private exporter copy and candidate tag exist; the untuned base goes through the same quantized export path as the candidate; memory budget cannot starve Frigate, Home Assistant or the backend (otherwise train off the M920q). Proposal section 9 is the authoritative list.
-5. **Codex:** review the exporter copy and the memory budget before the run, and keep the W-105-style rule that unrun evidence is `NOT_RUN`, not inferred.
+5. **Codex:** review the exporter copy and the memory budget before the run, and keep the W-105-style rule that unrun evidence is `NOT_RUN`, not inferred. Status 2026-10-25: Codex exporter and memory review is `NOT_RUN`, pending prerequisites. Main has only the POC1 `export_to_ollama.sh` (`cabin-assistant-poc1/data` paths); do not run it for this lane. **Code supplies before sign-off:** a private exporter copy for a `cabin-intent-slot-*` candidate, the candidate tag, equivalent baseline export and quantization evidence, and a measured host memory and service-load budget. Nothing was trained, exported or routed.
 
 ## Notification path used
 
