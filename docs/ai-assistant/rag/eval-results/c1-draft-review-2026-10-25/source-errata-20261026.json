@@ -1,0 +1,15 @@
+{
+  "id": "c1-source-errata-20261026",
+  "applied_to_both_runs": true,
+  "question_ids": [
+    "Q05",
+    "Q07"
+  ],
+  "policy": "Retain frozen questions, rubric dimensions and 72-trial denominator. When the supplied guide/oracle conflicts with executable source at the recorded deployed revision, score end-to-end factual correctness against that versioned source; document corpus/oracle drift rather than attributing it automatically to model reasoning.",
+  "before_source_ref": "4bcbd4d",
+  "after_source_ref": "e0c8713",
+  "persistence_fix": "da5cb2b2b10732b470dae057a47e43e2f9c72b48",
+  "verified_in_both_sources": "PlatformImportController.confirm calls registerPersistentCandidate; DeviceRegistry persists CANDIDATE through lifecycleStore.save.",
+  "distinction": "Persistent CANDIDATE still is not acceptance/assignment or verified operating hardware. Passive-discovery candidate behavior must not be generalized to confirmed platform imports.",
+  "historical_runtime_limit": "No re-attestation of historical executable bytecode; source refs and recorded image provenance govern this source review."
+}
