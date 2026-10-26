@@ -7096,7 +7096,8 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
     if (keepN != null || !view?.targets?.length) return;
     const configured = view.targets[0].keep || 3;
     const max = Math.max(...view.targets.map(t => t.count));
-    setKeepN(Math.min(Math.max(1, configured), max));
+    // Functional update: a value the user already chose in the same tick as the first load must not be overwritten by the default.
+    setKeepN((current) => current ?? Math.min(Math.max(1, configured), max));
   }, [view, keepN]);
 
   // After Go, wait for the host to report this request's result.

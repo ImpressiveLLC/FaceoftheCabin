@@ -1,9 +1,16 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { THEMES } from "./ThemeProvider.jsx";
 import {
-  ATTN_STATES, attnVar, attnInkVar, SURFACE_VAR, THRESHOLDS, DEFICIENCIES,
-  simulate, deltaE, evaluateTheme, attentionReport, attentionProblems, formatReport,
+  ATTN_STATES, attnVar, attnInkVar, SURFACES, THRESHOLDS, DEFICIENCIES,
+  simulate, deltaE, deltaE00FromLab, evaluateTheme, attentionReport, attentionProblems, formatReport, familyHubThemes,
 } from "./attentionTokens.js";
+
+const hubHtmlPath = [path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../family-hub/family-hub.html"), "/family-hub/family-hub.html"]
+  .find(existsSync);
+const hubThemes = hubHtmlPath ? familyHubThemes(readFileSync(hubHtmlPath, "utf8")) : null;
 
 // Themes with no --attn-* tokens yet: pending W-110, nothing implemented (no fallback palette exists in the code).
 // An explicit list, written out on purpose and NOT derived from THEMES, so a theme added later fails the gate until someone
@@ -15,7 +22,7 @@ const PENDING_W110 = [
 const good = {
   id: "synthetic",
   vars: {
-    [SURFACE_VAR]: "#161b22",
+    "--bg": "#0d1117", "--bg-secondary": "#161b22",
     "--attn-normal": "#58a6ff", "--attn-normal-ink": "#0b0f14",
     "--attn-watch": "#f2cc60", "--attn-watch-ink": "#0b0f14",
     "--attn-alert": "#ff7b72", "--attn-alert-ink": "#0b0f14",
@@ -39,6 +46,22 @@ describe("colour maths", () => {
   });
 });
 
+describe("CIEDE2000", () => {
+  // Reference pairs from Sharma, Wu and Dalal (2005), Table 1.
+  it("matches the published reference values", () => {
+    expect(deltaE00FromLab([50, 2.6772, -79.7751], [50, 0, -82.7485])).toBeCloseTo(2.0425, 4);
+    expect(deltaE00FromLab([50, 3.1571, -77.2803], [50, 0, -82.7485])).toBeCloseTo(2.8615, 4);
+    expect(deltaE00FromLab([50, 2.5, 0], [73, 25, -18])).toBeCloseTo(27.1492, 4);
+    expect(deltaE00FromLab([50, 2.5, 0], [50, 3.2972, 0])).toBeCloseTo(1.0, 4);
+  });
+  it("flags the Modern theme's own green, amber and red as indistinguishable under deuteranopia", () => {
+    const m = THEMES.modern.vars;
+    const r = evaluateTheme(withVars({ "--attn-normal": m["--success"], "--attn-watch": m["--warning"], "--attn-alert": m["--danger"] }));
+    expect(r.status).toBe("unsupported");
+    expect(r.hueFailures.join(" ")).toMatch(/under deuteranopia: deltaE00/);
+  });
+});
+
 describe("evaluateTheme", () => {
   it("supports a theme whose tokens meet every threshold", () => {
     const r = evaluateTheme(good);
@@ -47,7 +70,7 @@ describe("evaluateTheme", () => {
   });
 
   it("reports no-tokens, naming each missing token, when a theme has none", () => {
-    const r = evaluateTheme({ id: "bare", vars: { [SURFACE_VAR]: "#161b22" } });
+    const r = evaluateTheme({ id: "bare", vars: { "--bg": "#0d1117", "--bg-secondary": "#161b22" } });
     expect(r.status).toBe("no-tokens");
     expect(r.missing).toContain("--attn-alert");
     expect(r.missing).toContain("--attn-watch-ink");
@@ -57,14 +80,19 @@ describe("evaluateTheme", () => {
     const ink = evaluateTheme(withVars({ "--attn-watch-ink": "#e3c060" }));
     expect(ink.status).toBe("fail");
     expect(ink.failures.join(" ")).toMatch(/watch: ink on tint/);
-    const edge = evaluateTheme(withVars({ [SURFACE_VAR]: "#e3b341" }));
+    const edge = evaluateTheme(withVars({ "--bg-secondary": "#e3b341" }));
     expect(edge.failures.join(" ")).toMatch(/watch: edge on surface/);
+    // the worse of the two surfaces counts: a fine card face does not rescue a page background the edge disappears into
+    const page = evaluateTheme(withVars({ "--bg": "#f2cc60" }));
+    expect(page.failures.join(" ")).toMatch(/watch: edge on surface/);
     const same = evaluateTheme(withVars({ "--attn-watch": "#58a6ff" }));
-    expect(same.failures.join(" ")).toMatch(/normal vs watch under (deuteranopia|protanopia|tritanopia)/);
+    expect(same.status).toBe("unsupported");
+    expect(same.hueFailures.join(" ")).toMatch(/normal vs watch under (deuteranopia|protanopia|tritanopia)/);
   });
 
   it("states the hue threshold is provisional until W-109 fixes it", () => {
-    expect(THRESHOLDS.provisional).toContain("hueDeltaE");
+    expect(THRESHOLDS.provisional).toContain("hueDeltaE00");
+    expect(THRESHOLDS.hueDeltaE00).toBe(10);
     expect(THRESHOLDS.textOnTint).toBe(4.5);
     expect(THRESHOLDS.edgeOnSurface).toBe(3);
   });
@@ -101,6 +129,20 @@ describe("the gate over the real themes", () => {
     expect(attentionProblems(withNew, PENDING_W110)[0]).toMatch(/^brandnew:/);
   });
 
+  it("a hue-only miss marks the theme unsupported and is not a build problem (W-109 ruling), but contrast misses still are", () => {
+    const white = { "--bg": "#000000", "--bg-secondary": "#000000", "--attn-normal": "#ffffff", "--attn-watch": "#ffffff", "--attn-alert": "#ffffff",
+      "--attn-normal-ink": "#000000", "--attn-watch-ink": "#000000", "--attn-alert-ink": "#000000" };
+    const hueOnly = evaluateTheme({ id: "synthetic", vars: white });
+    expect(hueOnly.failures).toEqual([]);
+    expect(hueOnly.hueFailures.length).toBeGreaterThan(0);
+    expect(hueOnly.status).toBe("unsupported");
+    expect(attentionProblems([hueOnly], [])).toEqual([]);
+    const both = evaluateTheme({ id: "synthetic", vars: { ...white, "--attn-alert-ink": "#ffffff" } });
+    expect(both.status).toBe("fail");
+    expect(attentionProblems([both], [])).toHaveLength(1);
+    expect(formatReport([hueOnly])).toMatch(/\| synthetic \| cabin \| unsupported \|/);
+  });
+
   it("fails a themed token set that misses a threshold, even when the theme is on the pending list", () => {
     const broken = [evaluateTheme(withVars({ "--attn-alert-ink": "#ff8f86" }))];
     expect(attentionProblems(broken, ["synthetic"])).toHaveLength(1);
@@ -112,6 +154,26 @@ describe("the gate over the real themes", () => {
     expect(partial.failures.join(" ")).toMatch(/incomplete token set, missing --attn-watch-ink/);
     expect(partial.failures.join(" ")).toMatch(/alert: ink on tint/);
     expect(attentionProblems([partial], ["synthetic"])).toHaveLength(1);
+  });
+
+  it("reports the Family Hub surface separately, per theme, and it is pending too", () => {
+    expect(hubThemes, "family-hub/family-hub.html must be reachable: Family Hub is a required W-111 surface").not.toBeNull();
+    const hubReport = attentionReport(hubThemes, "hub");
+    expect(hubReport.map((r) => r.id).sort()).toEqual(Object.keys(THEMES).sort());
+    expect(hubReport.every((r) => r.surface === "hub")).toBe(true);
+    expect(hubReport.filter((r) => r.status !== "no-tokens")).toEqual([]);
+    expect(attentionProblems(hubReport, PENDING_W110)).toEqual([]);
+    expect(attentionProblems(hubReport, [])).toHaveLength(10);
+    expect(SURFACES.hub).toEqual(["--night"]);
+    const text = formatReport([...report, ...hubReport]);
+    expect(text).toMatch(/\| modern \| cabin \|/);
+    expect(text).toMatch(/\| modern \| hub \|/);
+  });
+
+  it("extracts Family Hub variables from its inline theme table", () => {
+    expect(hubThemes, "family-hub/family-hub.html must be reachable: Family Hub is a required W-111 surface").not.toBeNull();
+    expect(hubThemes.modern.vars["--night"]).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(Object.keys(hubThemes)).toHaveLength(10);
   });
 
   it("reports pending themes as unimplemented, not as having a compliant fallback", () => {
