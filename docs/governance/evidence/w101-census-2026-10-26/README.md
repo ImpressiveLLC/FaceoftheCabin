@@ -4,7 +4,9 @@ Owner Code, verifier Codex, semantic review Cowork. Evidence only: no secrets, n
 
 ## What this is
 
-`census.csv` has one row for each of the 75 records in [measurement attention framework section 10](../../proposals/2026-10-22-measurement-attention-framework.md) (39 allocation, 13 concrete ontology Zigbee, 7 other ontology appliance/camera/network, 14 disabled code seeds, 2 historical recognitions). The rows come from Git sources. The runtime half (which of them exist today, under what device id, with which reporting fields and first/last observations) needs a read-only export from the cabin database; [`scripts/host/w101-census`](../../../../scripts/host/w101-census) produces it (identity columns and field names only, inside read-only transactions). It had not been run when this PR was opened: Tailscale SSH to the M920q was waiting for an approval. Rows depending on it are `unresolved` with `runtime_present = unknown`.
+`census.csv` has one row for each of the 75 records in [measurement attention framework section 10](../../proposals/2026-10-22-measurement-attention-framework.md) (39 allocation, 13 concrete ontology Zigbee, 7 other ontology appliance/camera/network, 14 disabled code seeds, 2 historical recognitions). The rows come from Git sources. The runtime half (which of them exist today, under what device id, with which reporting fields and first/last observations) needs a read-only export from the cabin database; [`scripts/host/w101-census`](../../../../scripts/host/w101-census) produces it (identity columns and field names only, inside read-only transactions). It had not been run when this PR was opened: Tailscale SSH to the M920q was waiting for an approval. Rows depending on it are `unresolved` and `enrollment = unknown`; `unreviewed_candidate` is a real lifecycle state and appears only once read from the lifecycle record.
+
+Run the script off-peak (each query is capped at 60 seconds) and keep its raw output in a private file; only counts and ids go in a PR.
 
 ## Counts (denominator 75)
 
@@ -14,9 +16,10 @@ Owner Code, verifier Codex, semantic review Cowork. Evidence only: no secrets, n
 | Resolved | 14 |
 | Unresolved | 61 |
 | `runtime_present = seed_only` (code descriptor, hardware not installed) | 14 |
-| `runtime_present = unknown` (needs the host export) | 61 |
+| `runtime_present = documented_live` (13 Zigbee, expected from CLAUDE.md 2026-07-25, not verified) | 13 |
+| `runtime_present = unknown` (needs the host export) | 48 |
 | Enrollment `disabled` | 14 |
-| Enrollment `unreviewed_candidate` | 61 |
+| Enrollment `unknown` (until the lifecycle record is read) | 61 |
 | Site cabin / home | 56 / 19 |
 | Original 75 reconciled to a runtime device | 0 of 75 (14 settled as seed-only, 61 await the export) |
 | Unmatched originals | 61 (not yet checked against runtime) |
@@ -28,7 +31,7 @@ The 14 resolved rows are the disabled seeds in [`DeviceRegistry.java`](../../../
 ## Column notes
 
 - `record_id`: the section 10.6 binding reference. `canonical_id`: the manifest, ontology or code id after the em dash in that row.
-- `runtime_present`: `seed_only` (descriptor in code, nothing installed), `unknown` (not yet checked against the database), later `yes` or `no`.
+- `runtime_present`: `seed_only` (descriptor in code, nothing installed), `documented_live` (documented as paired, not verified), `unknown` (not yet checked against the database), later `yes` or `no`.
 - `parent_or_service`: for allocation rows, the enclosing box derived from the id suffix (`-sen66`, `-sht45`, `-mcu`, `-adapter`).
 - `measurements`: fields the document declares, not fields a device is proven to report. `supported_vs_declared` says so per row.
 - `same_device_as`: left empty. The document keeps the dehumidifier outlet and attic sensor association with ordered allocations unresolved; the export decides it.

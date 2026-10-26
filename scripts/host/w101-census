@@ -6,6 +6,8 @@
 # allowlisted keys below, no telemetry values or payload content. Every query runs inside a
 # READ ONLY transaction, so a mistake here cannot write. Run on the M920q (or over ssh):
 #   ssh nate@100.77.44.113 bash -s < scripts/host/w101-census > census.tsv
+# Run off-peak. Each query is capped at 60 seconds. Keep the raw output in a private file, never in Git:
+# only counts and ids belong in the PR.
 set -euo pipefail
 
 # Config keys whose values are safe to print. A new key is added here on purpose, never by pattern.
@@ -17,7 +19,7 @@ psql_ro() {
 
 run() {
   echo "## $1"
-  { echo "BEGIN READ ONLY;"; cat; echo "COMMIT;"; } | psql_ro | grep -v -e '^BEGIN$' -e '^COMMIT$' || true
+  { echo "BEGIN READ ONLY;"; echo "SET LOCAL statement_timeout = '60s';"; cat; echo "COMMIT;"; } | psql_ro | grep -v -e '^BEGIN$' -e '^COMMIT$' -e '^SET$' || true
 }
 
 run "config_keys (key, devices)" <<SQL
