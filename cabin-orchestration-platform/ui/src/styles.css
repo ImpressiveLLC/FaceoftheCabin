@@ -228,6 +228,9 @@ body {
 .kpi-state-warn  { border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); }
 .kpi-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .kpi-value { font-size: 22px; font-weight: 700; color: var(--text); }
+/* Wording inside a value (unavailable, unknown) is no larger than the card's smallest text: the label and badge are 11px. */
+.kpi-value-mixed { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 2px; }
+.kpi-value-note { font-size: 11px; font-weight: 600; color: var(--text-muted); }
 
 /* ─── Device Grid ──────────────────────────────────────────────────────── */
 .device-grid {

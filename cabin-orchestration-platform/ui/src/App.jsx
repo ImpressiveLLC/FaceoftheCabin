@@ -1,4 +1,4 @@
-import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget } from "./electricalMonitoring";
+import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget, valueSegments } from "./electricalMonitoring";
 import { collapseDuplicateZigbeeServices } from "./zigbeeServices";
 /**
  * Cabin Orchestration Platform — Shell UI
@@ -6440,6 +6440,21 @@ function severityClass(override) {
 // MnSeeView already built for the old separate list view, just wired
 // onto the actual tile instead. All undefined/false outside reorder
 // mode, so normal (non-reorder) rendering is untouched.
+// Readings stay at the large size; wording such as "unavailable" or "State unknown" uses the card's smallest text size.
+function KpiValue({ value }) {
+  const segments = valueSegments(value);
+  if (!segments.some(s => s.note)) {
+    return <div className="kpi-value">{value}</div>;
+  }
+  return (
+    <div className="kpi-value kpi-value-mixed">
+      {segments.map((s, i) => (
+        <span key={i} className={s.note ? "kpi-value-note" : undefined}>{s.text}{i < segments.length - 1 ? " · " : ""}</span>
+      ))}
+    </div>
+  );
+}
+
 function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPinned, isOver,
     onDragStart, onDragOver, onDrop, onDragEnd }) {
   const { displayConfigs, devices = [], setActivePanel, setPendingDeviceFocus } = useApp();
@@ -6477,7 +6492,7 @@ function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPin
         : <GripVertical size={13} className="drag-handle"/>)}
       <Icon size={22} />
       <div className="kpi-label">{effectiveLabel}</div>
-      <div className="kpi-value">{effectiveValue}</div>
+      <KpiValue value={effectiveValue} />
       <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>
   );

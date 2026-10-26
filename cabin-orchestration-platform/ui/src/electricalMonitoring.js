@@ -81,6 +81,18 @@ export function electricalValue(attributes = {}) {
   return metrics.join(' · ') || 'Measurement unavailable';
 }
 
+// A card value like "55.8°F · 49.8%" or "Power unavailable · Energy unavailable · State unknown" is shown in two sizes:
+// readings (anything with a digit) stay large, and the wording around them (unavailable, unknown, ON, OFF) drops to the
+// card's smallest text size, so a sentence never outweighs a number. A single bare word (ONLINE, UNKNOWN, Dry) and any value with no wording part stay one plain, large string.
+export function valueSegments(value) {
+  const parts = typeof value === 'string' ? value.split(' · ') : [value];
+  const compound = parts.length > 1;
+  return parts.map(part => {
+    const text = String(part);
+    return { text, note: (/\s/.test(text.trim()) && /unavailable|unknown/i.test(text)) || (compound && !/\d/.test(text)) };
+  });
+}
+
 // Follow only known same-location parent links. Cycles never send the user to an arbitrary device.
 export function monitoringDeviceTarget(deviceId, devices = []) {
   const byId = new Map(devices.map(d => [d.deviceId, d]));
