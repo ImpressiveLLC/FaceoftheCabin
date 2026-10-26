@@ -47,3 +47,12 @@ Each theme either supplies a status triplet that meets the section 15.5 threshol
 - Exact `--attn-*` values per theme and measured contrast, produced with W-111 (failing-without-tokens proof).
 - Asterisk glyph size and corner inset, one value per surface so Cabin UI and Family Hub match.
 - Confirm no attention state reuses the critical alert's red bar.
+
+## 5. Cowork rulings for the W-111 checks (2026-10-26)
+
+Asked by Code on #244 after #266. These set the method; the numbers are proposals Nate may amend. None blocks a release by itself: the always-on non-color cues in section 2 carry meaning, so a failed hue check marks a theme **unsupported** (section 3 fallback), it does not fail the theme.
+
+1. **Hue distinguishability.** Use CIEDE2000, not CIE76 (CIE76 over-weights saturated hues and is not perceptually even). Rule: each pair of Normal, Watch and Alert must reach delta-E00 of at least 10 under simulated protan, deutan and tritan vision (Vienot or Machado simulation, severity 1.0). The provisional CIE76 value of 15 stays in `THRESHOLDS` only until CIEDE2000 lands in W-110, and the report labels it provisional until then. A pair below threshold marks that theme unsupported.
+2. **Edge surface.** A border sits on the card face and against the page behind it. Check non-text contrast (3:1, the WCAG 1.4.11 level) against **both** `--bg` and `--bg-secondary` and use the worse result, per theme. Using `--bg-secondary` alone is not enough.
+3. **Family Hub.** In scope and required, not optional. `family-hub.html` gets the same `--attn-*` tokens and the drift tests extend to it (section 1, rule 6). The W-111 report lists the Family Hub surface separately per theme. It stays on the PENDING list until W-110 adds the tokens.
+4. Automated results never replace the W-105 human gate or Nate's mockup review.
