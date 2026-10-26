@@ -33,7 +33,7 @@ Authority: Nate, 2026-10-24: find all related work, reconcile WSJF, orchestrate 
 
 Merge order: this docs PR, then implementation PRs in the dependency order of framework 11.2. No UI PR that changes attention colors, borders or icons merges before the W-109 matrix is merged.
 
-## Decisions waiting on Nate
+## Decisions on Nate's list (MA-17, MA-18 ruled and MA-16 defaulted 2026-10-25; see framework section 15.4)
 
 - MA-16: final option list (four options, fewer, or one "accessible display" switch).
 - MA-17: setting stored per browser or per signed-in person.
