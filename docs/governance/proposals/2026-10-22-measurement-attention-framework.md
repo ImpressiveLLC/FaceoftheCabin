@@ -621,6 +621,12 @@ Open decisions for Nate (proxy-PO may rule; unanswered until recorded in Git):
 | MA-17 | Stored per browser, or per signed-in person? Per browser is the simplest and matches themes today; a shared kiosk then has one setting for everyone. | W-110 |
 | MA-18 | May the color-safe palette override a theme's own status hues, or only be offered in themes that can support it? | W-109, W-111 |
 
+**Recorded 2026-10-25 22:19 CDT (Nate, relayed to Cowork in session; Cowork records in Git):**
+
+- **MA-17: ruled by Nate.** Stored per browser, like the theme.
+- **MA-18: ruled by Nate.** The color-safe palette overrides a theme's status hues only where that theme supports it. A theme that cannot support it must be updated or supplemented with its own distinct, striking visual cue, so that a state needing attention beyond normal interaction is obvious without relying on hue. W-109 defines the cue per theme; W-111 fails a theme that has neither a compliant palette nor the cue.
+- **MA-16: proxy-PO default, not ruled by Nate.** One "accessible display" switch with the four options (color-safe status colors, stronger outlines, reduced intensity, reduce motion) as sub-settings. Nate may amend; W-110 builds to this until he does.
+
 ### 15.5 Verification
 
 - Text on an attention tint at least 4.5:1. Attention border and icon against the adjacent surface at least 3:1.
