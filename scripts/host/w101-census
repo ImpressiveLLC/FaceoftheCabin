@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# W-101 runtime census: read-only export of device identity, reporting fields and first/last
+# observation times from the cabin-postgres container. Prints tab-separated sections to stdout.
+#
+# Identity columns and field NAMES only: no connection strings, no config values beyond the
+# allowlisted keys below, no telemetry values or payload content. Every query runs inside a
+# READ ONLY transaction, so a mistake here cannot write. Run on the M920q (or over ssh):
+#   ssh nate@100.77.44.113 bash -s < scripts/host/w101-census > census.tsv
+set -euo pipefail
+
+# Config keys whose values are safe to print. A new key is added here on purpose, never by pattern.
+ALLOW_KEYS="'lifecycleState','enabled','location','parentDeviceId','parent','parentId','importedFrom','friendlyName','alias','aliases','canonicalId'"
+
+psql_ro() {
+  docker exec -i cabin-postgres sh -c 'psql -U ${POSTGRES_USER:-cabin} -d ${POSTGRES_DB:-cabin} -v ON_ERROR_STOP=1 -At -F "	"'
+}
+
+run() {
+  echo "## $1"
+  { echo "BEGIN READ ONLY;"; cat; echo "COMMIT;"; } | psql_ro | grep -v -e '^BEGIN$' -e '^COMMIT$' || true
+}
+
+run "config_keys (key, devices)" <<SQL
+SELECT k, count(*) FROM device, jsonb_object_keys(config) k GROUP BY k ORDER BY 2 DESC, 1;
+SQL
+
+run "devices (device_id, name, type, protocol, capabilities, allowlisted config keys as key=value)" <<SQL
+SELECT d.device_id, d.name, d.type, coalesce(d.protocol,''), coalesce(array_to_string(d.capabilities, ','),''),
+       coalesce((SELECT string_agg(e.key || '=' || e.value #>> '{}', ';' ORDER BY e.key)
+                 FROM jsonb_each(d.config) e
+                 WHERE e.key IN ($ALLOW_KEYS) AND jsonb_typeof(e.value) IN ('string','boolean','number')), '')
+FROM device d ORDER BY d.device_id;
+SQL
+
+run "reporting_relationships (device_id, semantic_field, measurement_type, confirmation_source, confirmed_at)" <<SQL
+SELECT device_id, semantic_field, measurement_type, confirmation_source, confirmed_at
+FROM device_reporting_relationship ORDER BY device_id, semantic_field;
+SQL
+
+run "observations (device_id, event_type, rows, first_time, last_time)" <<SQL
+SELECT coalesce(device_id,''), event_type, count(*), min("time"), max("time")
+FROM cabin_event GROUP BY 1, 2 ORDER BY 1, 2;
+SQL
+
+run "observed_fields (device_id, payload field names seen in TELEMETRY rows)" <<SQL
+SELECT device_id, string_agg(DISTINCT f, ',' ORDER BY f)
+FROM cabin_event, jsonb_object_keys(CASE WHEN jsonb_typeof(payload)='object' THEN payload ELSE '{}'::jsonb END) f
+WHERE event_type = 'TELEMETRY' AND device_id IS NOT NULL
+GROUP BY device_id ORDER BY device_id;
+SQL
