@@ -1,5 +1,7 @@
 # C1 paired-run review package
 
+**Oracle correction and re-scoring complete:** [scoring-oracle-r3.json](scoring-oracle-r3.json) writes the corrected Q05/Q07 expected answers, required assertions, failure conditions and versioned implementation references. The question texts and original evaluation-input manifest remain frozen. [oracle-r3-rescore-20261026.json](oracle-r3-rescore-20261026.json) records fresh judgments of all **12 affected trials** (two questions × three repeats × two runs); all twelve are FAIL. The other 132 scores are carried forward unchanged in [oracle-r3-trial-scores.json](oracle-r3-trial-scores.json). Both runs are bound to the same corrected-oracle hash. **The corrected-oracle count remains 0/72 before and 11/72 after (15.3%).** This closes the outstanding oracle-writing/re-score step; it does not accept the pair or authorize C1b.
+
 **Final Codex review, 2026-10-26, under Nathan's direct instruction to finalize the review data:** before **0/72 PASS**, after **11/72 PASS (15.3%)**, with **61/72 after-run FAIL**. All 144 retained trials are scored; the denominator is unchanged. Q12/1 remains PASS with a contradictory-opening defect note. Q05/1 and Q07/1 are now FAIL because their memory-only platform-import explanation conflicts with executable source in both evaluated revisions. The source correction is applied symmetrically, with no frozen question removed or rewritten.
 
 This is **Codex's finalized agent review**, not a claim that Nathan performed human review. It does not accept the pair, establish C1 completion/current production performance, call the pair improved, or authorize C1b. Both existing risk flags remain. The comparison tool's final label is **regression** under its risk gate, despite increased pass count.
@@ -10,6 +12,9 @@ The original draft (13/72 after) and [intermediate two-dispute recheck](review-2
 
 | File | Review use |
 |---|---|
+| [scoring-oracle-r3.json](scoring-oracle-r3.json) | Complete versioned scoring manifest; only Q05/Q07 expectations corrected, original question texts retained |
+| [oracle-r3-rescore-20261026.json](oracle-r3-rescore-20261026.json) | All twelve affected re-score judgments, raw-answer hashes, shared oracle hash and paired totals |
+| [oracle-r3-trial-scores.json](oracle-r3-trial-scores.json) | All 144 sanitized scores under corrected oracle r3; 132 unaffected records carried forward |
 | [final-review-20261026.json](final-review-20261026.json) | Final Codex counts, comparison, changed dimensions and authority/acceptance limits |
 | [final-trial-scores.json](final-trial-scores.json) | All 144 final agent-review trial scores and sanitized reasons |
 | [source-errata-20261026.json](source-errata-20261026.json) | Versioned source precedence and persistence correction applied to both runs |
@@ -18,7 +23,7 @@ The original draft (13/72 after) and [intermediate two-dispute recheck](review-2
 | [spotchecks.json](spotchecks.json) | Forty proposed review cases: all draft passes, risks/borderlines and twelve seeded other failures |
 | [review-2026-10-26.json](review-2026-10-26.json) | Separate eleven-trial recheck, Q12/1 defect note, and two code-versus-guide disputes with historical source links |
 
-Raw answers, questions, household source records, exact context, credentials and session/runtime details are **not included**. The question definitions already exist in the [frozen r2 suite](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/docs/ai-assistant/rag/cli-questions-r2.json). Use the [same r2 rubric](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/docs/ai-assistant/rag/grading-r2.md) for both runs.
+Raw answers, household source records, exact context, credentials and session/runtime details are **not included**. The corrected oracle includes the already-public question texts from the [frozen r2 suite](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/docs/ai-assistant/rag/cli-questions-r2.json), unchanged, with only Q05/Q07 scoring expectations corrected. Use the [same r2 rubric](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/docs/ai-assistant/rag/grading-r2.md) for both runs.
 
 ## Original draft result, preserved for history
 
