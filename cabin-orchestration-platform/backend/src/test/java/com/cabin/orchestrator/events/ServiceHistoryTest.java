@@ -52,6 +52,20 @@ class ServiceHistoryTest {
     }
 
     @Test
+    void aHomeAssistantParentWithLinkedSensorEntitiesFoldsThemToo() {
+        // 2026-10-26: Mech Room and Kidde humidity columns blank. Their parents are ha-* entities; the humidity is logged under a linked child.
+        registry.registerDescriptor(new DeviceDescriptor("ha-cabin-sensor-mech-room-temp-and-humidity-temperature", "Mech Room Temp and Humidity Temperature",
+            DeviceType.TEMPERATURE_SENSOR, Set.of(DeviceCapability.TELEMETRY), "ha_rest", "sensor.mech_room_temp_and_humidity_temperature", true, "cabin"));
+        child("ha-cabin-sensor-mech-room-temp-and-humidity-humidity", "sensor.mech_room_temp_and_humidity_humidity", "cabin",
+            "ha-cabin-sensor-mech-room-temp-and-humidity-temperature");
+        child("ha-cabin-number-mech-room-temp-and-humidity-humidity-calibration", "number.mech_room_humidity_calibration", "cabin",
+            "ha-cabin-sensor-mech-room-temp-and-humidity-temperature");
+
+        assertEquals(List.of("ha-cabin-sensor-mech-room-temp-and-humidity-temperature", "ha-cabin-sensor-mech-room-temp-and-humidity-humidity"),
+            ServiceHistory.idsFor("ha-cabin-sensor-mech-room-temp-and-humidity-temperature", registry));
+    }
+
+    @Test
     void aDeviceThatIsNotANativeZigbeeParentIsJustItself() {
         assertEquals(List.of("ha-cabin-sensor-temp-outside-lowest-temperature"),
             ServiceHistory.idsFor("ha-cabin-sensor-temp-outside-lowest-temperature", registry));
