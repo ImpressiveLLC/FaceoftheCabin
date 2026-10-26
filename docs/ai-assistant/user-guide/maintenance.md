@@ -32,6 +32,29 @@ Audience: operator. Source-reviewed against the live host on 2026-10-03. The ful
 
 Camera configuration changes go through a pull request, and the camera password never goes into the file or the repository.
 
+## "Running" versus healthy, per service (K11/K12)
+
+Audience: operator. Source-reviewed at `main` from the Compose files; no check below was run against the live host (`NOT_RUN`). A container status of "running" proves only that the main process has not exited. `docker ps` shows "healthy" only for a service that defines a `healthcheck`. A service without one can never show it.
+
+| Service (Compose file) | Defined healthcheck | What a pass shows | What it does not show | Check the feature itself |
+|---|---|---|---|---|
+| `cabin-backend` (M920q overlay) | `wget` of `/actuator/health`, greps for `"status":"UP"`; 30s start period, 3 retries | The API answers and no indicator reports DOWN. A blank `HA_TOKEN` makes the aggregate DOWN; Home's Home Assistant being out of service does not (UP ranks above OUT_OF_SERVICE on purpose) | A valid Home Assistant token, working MQTT or Kafka consumers, fresh device data. `show-details: never` hides which indicator failed | A signed-in request to a read route such as `/api/devices`, and the age of a recent event |
+| `cabin-discovery` (overlay) | Python fetch of `/health` on port 8000, expects 200 | The lookup service answers | Internet reachability for its web lookup, or that the backend can reach it | A device-discovery run from the UI |
+| `ollama` (overlay) | `ollama list` | The Ollama server answers | That a given model is installed or loads, or its speed. Ask can still fall back to raw facts | `answeredByModel` on an Ask reply |
+| `postgres` (base Compose) | `pg_isready -U cabin -d cabin` | The server accepts connections for that database | That tables, data or the backend's credentials are right | A backend read that returns stored rows |
+| `kafka` (base Compose) | `kafka-broker-api-versions` against `localhost:9092` | The broker answers | That the `cabin.events.raw` topic exists or the consumer persists events | A new event appearing in `GET /api/events` |
+| `mosquitto` (production stack) | Subscribe to `$SYS/broker/uptime` | The broker is up | That any device or topic is publishing | A recent message on the expected topic, or a device's `lastSeen` |
+| `zigbee2mqtt` (production stack) | `wget` of its web page on port 8080 | The Zigbee2MQTT process serves its UI | That the coordinator dongle is connected or devices report | A paired device's recent state, or `zigbee2mqtt/bridge/state` |
+| `cabin-ui`, `family-hub`, `cabin-grafana`, `open-webui`, `vaultwarden`, `telemetry-backup-agent` (overlay); `homeassistant`, `frigate`, `mediamtx`, `nodered`, `blinkbridge`, `uptime-kuma`, `homepage` (production stack) | None defined | Only that the process is running | Anything else | Load the page or run the service's own feature, for example a Frigate camera frame or a Home Assistant entity state |
+
+Three limits to keep in mind:
+
+- `depends_on` in the overlay lists `postgres` and `kafka` without a `condition`, so it orders startup only. It does not wait for either to be healthy.
+- A passing Compose healthcheck is not an Uptime Kuma monitor. The Kuma monitor list is the separate record of what is watched (see the Kuma record under persistence above).
+- "Every service says running" therefore leaves most of the stack unverified. Pick the services on the path of the feature in question and run its feature check, not all of them.
+
+Sources: [overlay](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml), [base Compose](../../../cabin-orchestration-platform/infra/docker-compose.yml), [production stack](../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml), [application.yml health settings](../../../cabin-orchestration-platform/backend/src/main/resources/application.yml).
+
 ## Deployment source correction
 
 The old Maintenance Deployment section describes backend deployment as manual-only. The current [deploy-cabin-backend workflow](../../../.github/workflows/deploy-cabin-backend.yml) instead has a main-push path filter and manual dispatch. Its implementation tests, builds/tags a candidate, checks health and has rollback handling. The workflow is the source for current configured behavior; none of this proves its latest run succeeded.
