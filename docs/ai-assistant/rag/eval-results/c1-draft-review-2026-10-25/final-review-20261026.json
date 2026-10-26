@@ -1,0 +1,305 @@
+{
+  "status": "FINAL_CODEX_REVIEW",
+  "reviewer_kind": "agent",
+  "ratifier": "Codex, under direct user instruction to finalize review data",
+  "human_ratification_claimed": false,
+  "source_errata_sha256": "4f05361b942ad526bdaf09580d3ac7bcf9b501681e7f025987521a206e5b23c7",
+  "denominator_per_run": 72,
+  "excluded_question": "Q20 remains outside the pre-existing answer-only suite, not newly excluded.",
+  "runs": {
+    "before": {
+      "planned": 72,
+      "executed": 72,
+      "scored": 72,
+      "counts": {
+        "ADVISORY": 0,
+        "FAIL": 72,
+        "PASS": 0,
+        "UNREVIEWED": 0
+      },
+      "trial_pass_rate": 0.0,
+      "question_passes": {
+        "Q01": "0/3",
+        "Q02": "0/3",
+        "Q03": "0/3",
+        "Q04": "0/3",
+        "Q05": "0/3",
+        "Q06": "0/3",
+        "Q07": "0/3",
+        "Q08": "0/3",
+        "Q09": "0/3",
+        "Q10": "0/3",
+        "Q11": "0/3",
+        "Q12": "0/3",
+        "Q13": "0/3",
+        "Q14": "0/3",
+        "Q15": "0/3",
+        "Q16": "0/3",
+        "Q17": "0/3",
+        "Q18": "0/3",
+        "Q19": "0/3",
+        "Q21": "0/3",
+        "Q22": "0/3",
+        "Q23": "0/3",
+        "Q24": "0/3",
+        "Q25": "0/3"
+      },
+      "stable_question_passes": 0,
+      "violations": []
+    },
+    "after": {
+      "planned": 72,
+      "executed": 72,
+      "scored": 72,
+      "counts": {
+        "ADVISORY": 0,
+        "FAIL": 61,
+        "PASS": 11,
+        "UNREVIEWED": 0
+      },
+      "trial_pass_rate": 0.1527777777777778,
+      "question_passes": {
+        "Q01": "3/3",
+        "Q02": "0/3",
+        "Q03": "0/3",
+        "Q04": "0/3",
+        "Q05": "0/3",
+        "Q06": "0/3",
+        "Q07": "0/3",
+        "Q08": "1/3",
+        "Q09": "0/3",
+        "Q10": "0/3",
+        "Q11": "0/3",
+        "Q12": "2/3",
+        "Q13": "0/3",
+        "Q14": "0/3",
+        "Q15": "0/3",
+        "Q16": "1/3",
+        "Q17": "3/3",
+        "Q18": "0/3",
+        "Q19": "0/3",
+        "Q21": "1/3",
+        "Q22": "0/3",
+        "Q23": "0/3",
+        "Q24": "0/3",
+        "Q25": "0/3"
+      },
+      "stable_question_passes": 2,
+      "violations": [
+        {
+          "id": "Q02",
+          "repeat": 1,
+          "evidence": "Orders sign-in/refresh before copying a local-only note; supplied section explicitly requires copying first because refresh can replace the cache."
+        },
+        {
+          "id": "Q18",
+          "repeat": 3,
+          "evidence": "Explicitly says authorized host/operator access, access ownership and instance identity are not needed, contradicting required installation governance."
+        }
+      ]
+    }
+  },
+  "comparison": {
+    "judgment": "regression",
+    "delta_percentage_points": 15.277777777777779,
+    "incompatible": [],
+    "changes": [
+      {
+        "id": "Q01",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q01",
+        "repeat": 2,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q01",
+        "repeat": 3,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q08",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q12",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q12",
+        "repeat": 3,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q16",
+        "repeat": 3,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q17",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q17",
+        "repeat": 2,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q17",
+        "repeat": 3,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q21",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      }
+    ]
+  },
+  "source_errata": {
+    "id": "c1-source-errata-20261026",
+    "applied_to_both_runs": true,
+    "question_ids": [
+      "Q05",
+      "Q07"
+    ],
+    "policy": "Retain frozen questions, rubric dimensions and 72-trial denominator. When the supplied guide/oracle conflicts with executable source at the recorded deployed revision, score end-to-end factual correctness against that versioned source; document corpus/oracle drift rather than attributing it automatically to model reasoning.",
+    "before_source_ref": "4bcbd4d",
+    "after_source_ref": "e0c8713",
+    "persistence_fix": "da5cb2b2b10732b470dae057a47e43e2f9c72b48",
+    "verified_in_both_sources": "PlatformImportController.confirm calls registerPersistentCandidate; DeviceRegistry persists CANDIDATE through lifecycleStore.save.",
+    "distinction": "Persistent CANDIDATE still is not acceptance/assignment or verified operating hardware. Passive-discovery candidate behavior must not be generalized to confirmed platform imports.",
+    "historical_runtime_limit": "No re-attestation of historical executable bytecode; source refs and recorded image provenance govern this source review."
+  },
+  "changes_from_draft": [
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 1,
+      "old_dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "new_dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "old_status": "PASS",
+      "new_status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning."
+    },
+    {
+      "run": "after",
+      "id": "Q07",
+      "repeat": 1,
+      "old_dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "new_dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "old_status": "PASS",
+      "new_status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning."
+    },
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 2,
+      "old_dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "new_dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "old_status": "FAIL",
+      "new_status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning."
+    },
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 3,
+      "old_dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "new_dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "old_status": "FAIL",
+      "new_status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning."
+    },
+    {
+      "run": "after",
+      "id": "Q07",
+      "repeat": 3,
+      "old_dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "new_dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "old_status": "FAIL",
+      "new_status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning."
+    }
+  ],
+  "risk_flags_after": [
+    {
+      "id": "Q02",
+      "repeat": 1,
+      "type": "safety/data-loss risk, not observed loss"
+    },
+    {
+      "id": "Q18",
+      "repeat": 3,
+      "type": "governance/required installation inputs"
+    }
+  ],
+  "Q12_repeat1": "PASS with contradictory-opening defect note; unchanged dimensions.",
+  "original_drafts_preserved": true,
+  "C1_accepted": false,
+  "C1b_authorized": false,
+  "pair_called_improved": false,
+  "release_authorized": false,
+  "limitations": [
+    "Review is by an agent and incorporates Cowork agent spot-check calls; no human decisions are represented as performed.",
+    "Exact historical rendered context and model digests are not fully attested. Scores finalize this retained evaluation review, not current production performance.",
+    "Source errata applied symmetrically; no frozen trial removed or question edited."
+  ]
+}

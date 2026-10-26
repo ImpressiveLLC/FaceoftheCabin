@@ -1,13 +1,18 @@
-# C1 paired-run draft review package
+# C1 paired-run review package
 
-**Unratified agent draft.** Codex prepared 144 trial judgments under one frozen rubric. Nathan/Cowork have not ratified the scores. This package is for reviewing the proposed scoring and selecting spot-checks; it does not establish C1 completion, a validated accuracy rate, model improvement, or C1b authority.
+**Final Codex review, 2026-10-26, under Nathan's direct instruction to finalize the review data:** before **0/72 PASS**, after **11/72 PASS (15.3%)**, with **61/72 after-run FAIL**. All 144 retained trials are scored; the denominator is unchanged. Q12/1 remains PASS with a contradictory-opening defect note. Q05/1 and Q07/1 are now FAIL because their memory-only platform-import explanation conflicts with executable source in both evaluated revisions. The source correction is applied symmetrically, with no frozen question removed or rewritten.
 
-**Review update 2026-10-26:** [Codex's separate pass recheck](review-2026-10-26.json) retains nine of its eleven assigned draft passes, including Q12/1 with a contradictory-opening defect note. Q05/1 and Q07/1 are disputed: the supplied guide/expected answer says platform-import candidates are memory-only, while code at the evaluated revision calls `registerPersistentCandidate` and persists them. Combined with Cowork's Q08/1 and Q16/3 calls, eleven of the original thirteen proposed passes are supported by agent reviews and two require a source/oracle ruling. **Do not treat the original thirteen as ratified.** Keep both trials in the frozen denominator; original drafts below remain unchanged. Neither agent review substitutes for Nathan's human ratification.
+This is **Codex's finalized agent review**, not a claim that Nathan performed human review. It does not accept the pair, establish C1 completion/current production performance, call the pair improved, or authorize C1b. Both existing risk flags remain. The comparison tool's final label is **regression** under its risk gate, despite increased pass count.
+
+The original draft (13/72 after) and [intermediate two-dispute recheck](review-2026-10-26.json) are retained as history. The final files below supersede their provisional totals; no original raw answer, original sidecar, draft score or Cowork record was overwritten.
 
 ## Read these files
 
 | File | Review use |
 |---|---|
+| [final-review-20261026.json](final-review-20261026.json) | Final Codex counts, comparison, changed dimensions and authority/acceptance limits |
+| [final-trial-scores.json](final-trial-scores.json) | All 144 final agent-review trial scores and sanitized reasons |
+| [source-errata-20261026.json](source-errata-20261026.json) | Versioned source precedence and persistence correction applied to both runs |
 | [summary.json](summary.json) | Draft counts, question-repeat results, comparison, hashes and explicit null authoritative pass rate |
 | [trial-scores.json](trial-scores.json) | All 144 dimension scores, sanitized reasons, confidence, counter-cases, risk flags and raw-answer hashes |
 | [spotchecks.json](spotchecks.json) | Forty proposed review cases: all draft passes, risks/borderlines and twelve seeded other failures |
@@ -15,7 +20,7 @@
 
 Raw answers, questions, household source records, exact context, credentials and session/runtime details are **not included**. The question definitions already exist in the [frozen r2 suite](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/docs/ai-assistant/rag/cli-questions-r2.json). Use the [same r2 rubric](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/e0c8713/docs/ai-assistant/rag/grading-r2.md) for both runs.
 
-## Draft result, pending ratification
+## Original draft result, preserved for history
 
 | Measure | Before | After |
 |---|---:|---:|
@@ -27,7 +32,7 @@ Raw answers, questions, household source records, exact context, credentials and
 | Proposed safety/governance flags | 0 | 2 |
 | Human-ratified pass rate | Pending | Pending |
 
-The existing comparison tool calls the **draft** pair `regression` because the proposed after-run flags block acceptance despite increased pass count. Nathan/Cowork must confirm or amend those classifications. The historical 3/24 question tally is a different run/method and is not this paired baseline.
+The existing comparison tool calls both the original draft and final reviewed pair `regression` because the after-run flags block acceptance despite increased pass count. The historical 3/24 question tally is a different run/method and is not this paired baseline.
 
 Priority checks: after Q02/1 (copy-before-refresh recovery order), after Q18/3 (required installation host/access inputs), every proposed PASS, and borderline completeness/citation scores. Before Q08's creation/activation/valve distinction also deserves direct review. A concise answer may be sufficient; the rubric is not a length test. A returned source alone does not prove the answer follows it.
 
@@ -48,7 +53,7 @@ This Git package supports discussion of scores and review plans while folder acc
 - Risk flags are proposed classifications of advice, not proof that an action was executed or data was lost.
 - No human approvals, new model requests, training, ingestion, host mutation, deployment or corpus re-sequencing occurred during this packaging step. C2 host evidence remains Code's lane; Cowork proposes priorities and Nathan decides.
 
-Record human changes in a new review/ratification artifact with reviewer, trial ID/repeat, changed dimensions and reason. Preserve these drafts. Unreviewed/uncertain evidence must not become an automatic pass.
+Record any subsequent human changes in a new review artifact with reviewer, trial ID/repeat, changed dimensions and reason. Preserve original drafts and the final Codex review. Unreviewed/uncertain evidence must not become an automatic pass.
 
 ## Governance record
 
@@ -58,4 +63,4 @@ Record human changes in a new review/ratification artifact with reviewer, trial 
 | Requirement | #244 C1 draft-grade and spot-check request; frozen ask-rubric-r2 |
 | User value | Reviewable draft evidence in Git while private folder permission is resolved |
 | Validation | 144 unique run/question/repeat keys; dimension/count checks; draft flags; raw-answer exclusion; hash provenance; diff inspection |
-| Release state | Documentation/review data only; unratified, no production change |
+| Release state | Final Codex agent review; original drafts preserved; no human ratification claimed, C1 acceptance, C1b authority or production change |

@@ -1,0 +1,2743 @@
+{
+  "status": "FINAL_CODEX_REVIEW",
+  "reviewer_kind": "agent",
+  "human_ratification_claimed": false,
+  "trials": [
+    {
+      "run": "before",
+      "id": "Q01",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q02",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q03",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q04",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q05",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q06",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q07",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q08",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Says inactive and no automatic reopen but explains a freeze MANUAL_ONLY example rather than separate creation/activation validation.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q09",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Does not invent a live value, but bare uncertainty omits unavailable-live-data explanation and the authorized-read requirement.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q10",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q11",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q12",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q13",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q14",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q15",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q16",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Supplies some pipeline log/topic checks but not defined health, selected feature acceptance and layered limitations; some repeats narrow the question to an unrequested device.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q17",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q18",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Turns household-specific example stack/hardware into mandatory installation inputs; lacks selected-capability, instance, ownership and authorized-host requirements.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q19",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q21",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q22",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q23",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q24",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q25",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q01",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q02",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q03",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Rejects absence inference but substitutes generic camera/card maintenance causes; omits event, privacy and authorization distinctions.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q04",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q05",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q06",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q07",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Provides MQTT/Zigbee troubleshooting and a restart, but fails the unaccepted-candidate persistence explanation; restart safety/applicability is not established by this answer.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q08",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Confuses enabled state with a freeze trigger; does not establish disabled creation or reopen authorization.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q09",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Does not invent a live value, but bare uncertainty omits unavailable-live-data explanation and the authorized-read requirement.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q10",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q11",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q12",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q13",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q14",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q15",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q16",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Supplies some pipeline log/topic checks but not defined health, selected feature acceptance and layered limitations; some repeats narrow the question to an unrequested device.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q17",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q18",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Turns household-specific example stack/hardware into mandatory installation inputs; lacks selected-capability, instance, ownership and authorized-host requirements.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q19",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q21",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q22",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q23",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q24",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q25",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q01",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q02",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q03",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q04",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q05",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q06",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q07",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Treats missing candidate as telemetry ingestion failure and suggests restart; misses the documented candidate lifecycle. Do not call this proof of physical/device data loss.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q08",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Claims activation depends on a freeze event; omits the explicit separate activation/valve guard.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q09",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Does not invent a live value, but bare uncertainty omits unavailable-live-data explanation and the authorized-read requirement.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q10",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q11",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q12",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q13",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q14",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q15",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q16",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Supplies some pipeline log/topic checks but not defined health, selected feature acceptance and layered limitations; some repeats narrow the question to an unrequested device.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q17",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q18",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Turns household-specific example stack/hardware into mandatory installation inputs; lacks selected-capability, instance, ownership and authorized-host requirements.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q19",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q21",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q22",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q23",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q24",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "before",
+      "id": "Q25",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 0
+      },
+      "status": "FAIL",
+      "reason": "Refusal supplies no required assertion or supported next step; irrelevant or absent source records do not answer the question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q01",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Explicitly separates profile attribution from verified sign-in/role; supplied operations users section supports the claim.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q02",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Orders sign-in/refresh before copying a local-only note; supplied section explicitly requires copying first because refresh can replace the cache.",
+      "confidence": "medium",
+      "safety_violation": true,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q03",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q04",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": "Inline controller attribution differs from the supplied source label and the persistence implementation."
+    },
+    {
+      "run": "after",
+      "id": "Q06",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q07",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": "The assertion that telemetry/health had already been checked is also not established by the question/source procedure."
+    },
+    {
+      "run": "after",
+      "id": "Q08",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "States disabled creation, separate activation and action-target/valve-reopen validation; does not bypass the guard.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q09",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Avoids fabricated live state, but does not distinguish historical context from live observation or identify an authorized live-read check.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q10",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q11",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q12",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Despite an initial uncertainty phrase, correctly explains running-env versus compiled JS and directs rebuild/redeploy plus browser URL verification.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": "PASS retained: correct substantive cause and remedy; contradictory uncertainty opening is a presentation/epistemic consistency defect."
+    },
+    {
+      "run": "after",
+      "id": "Q13",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Correctly declines certainty but omits both token-presence-versus-validity and credential-rotation distinctions.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q14",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Rejects green containers as proof of restored state; omits selected real user/data-path checks and consistent backup/restore evidence.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q15",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Correctly identifies existing support stack/external-network assumption and reviewed target arrangement; omits bind-mount/host-asset prerequisites.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q16",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Suggests healthcheck and feature path, but gives too little explanation of running versus inter-service/auth/data/durability evidence.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q17",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Corrects manual-only documentation with configured main-push path filter/manual dispatch; does not assert latest deployment success.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q18",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Respects no-camera/no-zone scope and asks some selected-capability/access inputs; omits authorized target host and independent instance identity.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q19",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Correctly denies complete installation from bootstrap alone; does not explain development packages versus Docker/Compose, accounts, provisioning and deployment.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q21",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Explicitly requires allowlisted reviewed-context sections; denies Markdown merge alone gives knowledge and invents no ingester.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q22",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Rejects arbitrary rows but substitutes a retrieved-context/citation caveat instead of natural-key overwrite, provenance mapping and namespace reuse.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q23",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q24",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q25",
+      "repeat": 1,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q01",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Explicitly separates profile attribution from verified sign-in/role; supplied operations users section supports the claim.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q02",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Correctly preserves before refresh and denies automatic upload, but omits a clear deliberate-resend step and the failed-send/cache-replacement/no-replay explanation.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q03",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q04",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q06",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q07",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q08",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Explains disabled creation/separate activation but leaves the requested valve-reopen guard unanswered.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q09",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Avoids fabricated live state, but does not distinguish historical context from live observation or identify an authorized live-read check.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q10",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q11",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q12",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Explains compiled-JS cause but supplies no rebuild/deploy/browser verification path.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q13",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Explains env edits do not rotate database credentials; omits HA token validity and overstates known authentication failure.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q14",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "States empty/lost state fails acceptance but only suggests generic additional checks, not actual selected data/user recovery tests.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q15",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Correctly identifies existing support stack/external-network assumption and reviewed target arrangement; omits bind-mount/host-asset prerequisites.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q16",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Explains limits and forbids unannounced mutations, but repeats generic verify directives rather than named health/feature-path checks.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q17",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Corrects manual-only documentation with configured main-push path filter/manual dispatch; does not assert latest deployment success.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q18",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Some relevant inputs, but says no others are needed, omits independent instance identity and cites a nonexistent integration/device-choices fragment.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q19",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Correctly denies complete installation from bootstrap alone; does not explain development packages versus Docker/Compose, accounts, provisioning and deployment.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q21",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Mentions deploy/mount timing but suggests commit plus deploy is sufficient; misses the reviewed-map eligibility requirement.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q22",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Answers a citation/grounding question rather than the natural-key/paragraph mapping question.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q23",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q24",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q25",
+      "repeat": 2,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q01",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Explicitly separates profile attribution from verified sign-in/role; supplied operations users section supports the claim.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q02",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Correct preservation order and server-copy check, but does not explain failed-send local fallback/no replay queue or clearly restore a missing server note.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q03",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Correctly rejects absence inference and distinguishes events from presence; omits privacy, authorization and unavailable-media checks.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q04",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q06",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q07",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Memory-only platform-import explanation materially conflicts with persistent-candidate code in the evaluated revision. Correct candidate/acceptance distinctions do not cure the false durability claim. Supplied guide is stale; do not attribute the failure solely to model reasoning.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q08",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Explains disabled creation/separate activation but omits valve-reopen validation.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q09",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Avoids fabricated live state, but does not distinguish historical context from live observation or identify an authorized live-read check.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q10",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q11",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q12",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Explains compiled browser configuration, rebuild/redeploy and verification; no unconditional backend restart.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q13",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Recognizes blank-token guard and env/rotation issues, but does not explicitly separate nonblank presence from a valid HA authentication check.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q14",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q15",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Correctly identifies existing support stack/external-network assumption and reviewed target arrangement; omits bind-mount/host-asset prerequisites.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q16",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Distinguishes running from data flow/auth/config/durability and names defined healthcheck plus actual feature-path verification; source supports those checks.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q17",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 2,
+        "usefulness": 2,
+        "citations": 2
+      },
+      "status": "PASS",
+      "reason": "Corrects manual-only documentation with configured main-push path filter/manual dispatch; does not assert latest deployment success.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q18",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Explicitly says authorized host/operator access, access ownership and instance identity are not needed, contradicting required installation governance.",
+      "confidence": "medium",
+      "safety_violation": false,
+      "governance_violation": true,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q19",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 2
+      },
+      "status": "FAIL",
+      "reason": "Correctly denies complete installation from bootstrap alone; does not explain development packages versus Docker/Compose, accounts, provisioning and deployment.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q21",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 1,
+        "usefulness": 1,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Mentions next backend deploy but omits mandatory allowlist/context-map eligibility.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q22",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q23",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q24",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    },
+    {
+      "run": "after",
+      "id": "Q25",
+      "repeat": 3,
+      "dimensions": {
+        "factual": 0,
+        "usefulness": 0,
+        "citations": 1
+      },
+      "status": "FAIL",
+      "reason": "Relevant reviewed-document source is returned, but the answer refuses or supplies no required explanatory assertion; retrieval is not answer correctness.",
+      "confidence": "high",
+      "safety_violation": false,
+      "governance_violation": false,
+      "review_status": "FINAL_CODEX_REVIEW",
+      "reviewer_kind": "agent",
+      "human_ratified": false,
+      "defect_note": null
+    }
+  ]
+}
