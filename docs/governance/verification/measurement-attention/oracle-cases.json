@@ -1,0 +1,676 @@
+{
+  "version": 1,
+  "status": "contract fixtures; production evaluator conformance NOT_RUN",
+  "cases": [
+    {
+      "id": "rh-zero",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": 0,
+        "unit": "%",
+        "fresh": true,
+        "purpose": "indoor_rh",
+        "profile": "indoor-rh"
+      },
+      "expected": {
+        "attention": "Watch",
+        "current": true
+      },
+      "contract": "framework MA-03 / section 14; EPA-derived local attention policy"
+    },
+    {
+      "id": "rh-below30",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": 29.999,
+        "unit": "%",
+        "fresh": true,
+        "purpose": "indoor_rh",
+        "profile": "indoor-rh"
+      },
+      "expected": {
+        "attention": "Watch",
+        "current": true
+      },
+      "contract": "framework MA-03 / section 14; EPA-derived local attention policy"
+    },
+    {
+      "id": "rh-at30",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": 30,
+        "unit": "%",
+        "fresh": true,
+        "purpose": "indoor_rh",
+        "profile": "indoor-rh"
+      },
+      "expected": {
+        "attention": "Normal",
+        "current": true
+      },
+      "contract": "framework MA-03 / section 14; EPA-derived local attention policy"
+    },
+    {
+      "id": "rh-at50",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": 50,
+        "unit": "%",
+        "fresh": true,
+        "purpose": "indoor_rh",
+        "profile": "indoor-rh"
+      },
+      "expected": {
+        "attention": "Normal",
+        "current": true
+      },
+      "contract": "framework MA-03 / section 14; EPA-derived local attention policy"
+    },
+    {
+      "id": "rh-above50",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": 50.001,
+        "unit": "%",
+        "fresh": true,
+        "purpose": "indoor_rh",
+        "profile": "indoor-rh"
+      },
+      "expected": {
+        "attention": "Watch",
+        "current": true
+      },
+      "contract": "framework MA-03 / section 14; EPA-derived local attention policy"
+    },
+    {
+      "id": "rh-below60",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": 59.999,
+        "unit": "%",
+        "fresh": true,
+        "purpose": "indoor_rh",
+        "profile": "indoor-rh"
+      },
+      "expected": {
+        "attention": "Watch",
+        "current": true
+      },
+      "contract": "framework MA-03 / section 14; EPA-derived local attention policy"
+    },
+    {
+      "id": "rh-at60",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": 60,
+        "unit": "%",
+        "fresh": true,
+        "purpose": "indoor_rh",
+        "profile": "indoor-rh"
+      },
+      "expected": {
+        "attention": "Alert",
+        "current": true
+      },
+      "contract": "framework MA-03 / section 14; EPA-derived local attention policy"
+    },
+    {
+      "id": "rh-at100",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": 100,
+        "unit": "%",
+        "fresh": true,
+        "purpose": "indoor_rh",
+        "profile": "indoor-rh"
+      },
+      "expected": {
+        "attention": "Alert",
+        "current": true
+      },
+      "contract": "framework MA-03 / section 14; EPA-derived local attention policy"
+    },
+    {
+      "id": "rh-invalid-negative",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": -0.001,
+        "unit": "%"
+      },
+      "expected": {
+        "attention": "Unclassified",
+        "eligible": false
+      },
+      "contract": "framework 14 B6; invalid/missing never zero"
+    },
+    {
+      "id": "rh-invalid-above-domain",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": 100.001,
+        "unit": "%"
+      },
+      "expected": {
+        "attention": "Unclassified",
+        "eligible": false
+      },
+      "contract": "framework 14 B6; invalid/missing never zero"
+    },
+    {
+      "id": "rh-invalid-missing",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": null,
+        "unit": "%"
+      },
+      "expected": {
+        "attention": "Unclassified",
+        "eligible": false
+      },
+      "contract": "framework 14 B6; invalid/missing never zero"
+    },
+    {
+      "id": "rh-invalid-not-numeric",
+      "group": "assessment",
+      "input": {
+        "measurement": "relative_humidity",
+        "value": "unknown",
+        "unit": "%"
+      },
+      "expected": {
+        "attention": "Unclassified",
+        "eligible": false
+      },
+      "contract": "framework 14 B6; invalid/missing never zero"
+    },
+    {
+      "id": "unit-watts",
+      "group": "normalization",
+      "input": {
+        "value": 250,
+        "unit": "W",
+        "deviceClass": "power"
+      },
+      "expected": {
+        "field": "power",
+        "value": 250,
+        "unit": "W"
+      },
+      "contract": "W-102 source-qualified electrical quantities; SI prefix conversion"
+    },
+    {
+      "id": "unit-kw",
+      "group": "normalization",
+      "input": {
+        "value": 0.25,
+        "unit": "kW",
+        "deviceClass": "power"
+      },
+      "expected": {
+        "field": "power",
+        "value": 250,
+        "unit": "W"
+      },
+      "contract": "W-102 source-qualified electrical quantities; SI prefix conversion"
+    },
+    {
+      "id": "unit-wh",
+      "group": "normalization",
+      "input": {
+        "value": 1250,
+        "unit": "Wh",
+        "deviceClass": "energy"
+      },
+      "expected": {
+        "field": "energy",
+        "value": 1.25,
+        "unit": "kWh"
+      },
+      "contract": "W-102 source-qualified electrical quantities; SI prefix conversion"
+    },
+    {
+      "id": "unit-kwh",
+      "group": "normalization",
+      "input": {
+        "value": 1.25,
+        "unit": "kWh",
+        "deviceClass": "energy"
+      },
+      "expected": {
+        "field": "energy",
+        "value": 1.25,
+        "unit": "kWh"
+      },
+      "contract": "W-102 source-qualified electrical quantities; SI prefix conversion"
+    },
+    {
+      "id": "unit-zero-watts",
+      "group": "normalization",
+      "input": {
+        "value": 0,
+        "unit": "W",
+        "deviceClass": "power"
+      },
+      "expected": {
+        "field": "power",
+        "value": 0,
+        "unit": "W"
+      },
+      "contract": "W-102 source-qualified electrical quantities; SI prefix conversion"
+    },
+    {
+      "id": "unit-battery-mv",
+      "group": "normalization",
+      "input": {
+        "value": 3000,
+        "unit": "mV",
+        "deviceClass": "voltage",
+        "parentRole": "battery_sensor"
+      },
+      "expected": {
+        "mainsVoltageEligible": false
+      },
+      "contract": "#248 relay evidence; framework W-102"
+    },
+    {
+      "id": "config-watt-threshold",
+      "group": "normalization",
+      "input": {
+        "domain": "number",
+        "value": 10,
+        "unit": "W",
+        "role": "configuration"
+      },
+      "expected": {
+        "measurementEligible": false
+      },
+      "contract": "all-switch contract #244; configuration is not an observation"
+    },
+    {
+      "id": "energy-unknown",
+      "group": "normalization",
+      "input": {
+        "value": "unknown",
+        "unit": "kWh",
+        "deviceClass": "energy"
+      },
+      "expected": {
+        "eligible": false,
+        "fabricatedZero": false
+      },
+      "contract": "framework 14 B6/B10"
+    },
+    {
+      "id": "reporting-retained",
+      "group": "reporting",
+      "input": {
+        "retained": true,
+        "observedAt": "2026-10-20T00:00:00Z",
+        "receivedAt": "2026-10-24T00:00:00Z"
+      },
+      "expected": {
+        "fresh": false,
+        "offlineProven": false
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "reporting-cached-ha",
+      "group": "reporting",
+      "input": {
+        "cache": true,
+        "sameAcquisitionEvidence": true,
+        "pollSucceeded": true
+      },
+      "expected": {
+        "renewsAcquisitionTime": false
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "reporting-probe-timeout",
+      "group": "reporting",
+      "input": {
+        "probe": "timeout"
+      },
+      "expected": {
+        "wording": "No response to probe",
+        "offlineProven": false
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "reporting-expired-offline",
+      "group": "reporting",
+      "input": {
+        "protocolOfflineAssertion": "expired"
+      },
+      "expected": {
+        "currentOfflineProven": false
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "reporting-disabled-unsupported",
+      "group": "reporting",
+      "input": {
+        "enabled": false,
+        "capability": "unsupported"
+      },
+      "expected": {
+        "primaryReason": "disabled configuration",
+        "secondaryReasons": [
+          "unsupported capability"
+        ]
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "reporting-never-reported",
+      "group": "reporting",
+      "input": {
+        "observationCount": 0,
+        "freshnessConfigured": true
+      },
+      "expected": {
+        "reason": "never reported",
+        "offlineProven": false
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "reporting-unconfigured",
+      "group": "reporting",
+      "input": {
+        "observationCount": 1,
+        "freshnessConfigured": false
+      },
+      "expected": {
+        "reason": "freshness unconfigured",
+        "offlineProven": false
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "reporting-unknown-acquisition",
+      "group": "reporting",
+      "input": {
+        "receivedAt": "2026-10-24T00:00:00Z",
+        "observedAt": null
+      },
+      "expected": {
+        "reason": "acquisition time unknown",
+        "fresh": false
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "reporting-future-time",
+      "group": "reporting",
+      "input": {
+        "observedAt": "2026-10-25T00:00:00Z",
+        "receivedAt": "2026-10-24T00:00:00Z",
+        "skewToleranceSeconds": 60
+      },
+      "expected": {
+        "eligible": false
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "reporting-quiet-alarm",
+      "group": "reporting",
+      "input": {
+        "eventDriven": true,
+        "recentAlarmEvent": false,
+        "parentHealthEvidence": null
+      },
+      "expected": {
+        "healthyProven": false,
+        "offlineProven": false
+      },
+      "contract": "framework 14 B2\u2013B4; independent evidence facts"
+    },
+    {
+      "id": "composition-normal",
+      "group": "composition",
+      "input": {
+        "primary": [
+          "Normal"
+        ],
+        "fresh": true
+      },
+      "expected": {
+        "assessment": "Normal",
+        "coverage": "complete"
+      },
+      "contract": "framework 14 B7/B8; source-scheme holds"
+    },
+    {
+      "id": "composition-alert-partial",
+      "group": "composition",
+      "input": {
+        "primary": [
+          "Alert",
+          null
+        ]
+      },
+      "expected": {
+        "assessment": "Alert",
+        "coverage": "partial"
+      },
+      "contract": "framework 14 B7/B8; source-scheme holds"
+    },
+    {
+      "id": "composition-watch-partial",
+      "group": "composition",
+      "input": {
+        "primary": [
+          "Watch",
+          null
+        ]
+      },
+      "expected": {
+        "assessment": "Watch",
+        "coverage": "partial",
+        "wholeDeviceNormal": false
+      },
+      "contract": "framework 14 B7/B8; source-scheme holds"
+    },
+    {
+      "id": "composition-diagnostic-only",
+      "group": "composition",
+      "input": {
+        "primary": [
+          null
+        ],
+        "diagnostic": [
+          "Normal"
+        ]
+      },
+      "expected": {
+        "assessment": "Unclassified",
+        "wholeDeviceNormal": false
+      },
+      "contract": "framework 14 B7/B8; source-scheme holds"
+    },
+    {
+      "id": "composition-historical-alert",
+      "group": "composition",
+      "input": {
+        "primary": [
+          null
+        ],
+        "previous": "Alert"
+      },
+      "expected": {
+        "assessment": "Unclassified",
+        "historicalLabel": "Last known Alert; current unavailable"
+      },
+      "contract": "framework 14 B7/B8; source-scheme holds"
+    },
+    {
+      "id": "composition-latched",
+      "group": "composition",
+      "input": {
+        "primary": [
+          null
+        ],
+        "explicitLatch": true
+      },
+      "expected": {
+        "assessment": "Unclassified",
+        "latchedAlarm": true
+      },
+      "contract": "framework 14 B7/B8; source-scheme holds"
+    },
+    {
+      "id": "composition-vendor-aqi",
+      "group": "composition",
+      "input": {
+        "scheme": "vendor-unknown",
+        "value": 20
+      },
+      "expected": {
+        "usAqiEligible": false
+      },
+      "contract": "framework 14 B7/B8; source-scheme holds"
+    },
+    {
+      "id": "composition-co2-snapshot",
+      "group": "composition",
+      "input": {
+        "profile": "co2-ventilation",
+        "window": "latest_valid_observation"
+      },
+      "expected": {
+        "eligible": false
+      },
+      "contract": "framework 14 B7/B8; source-scheme holds"
+    },
+    {
+      "id": "safety-same-model-rename",
+      "group": "safety",
+      "input": {
+        "sameIeee": true,
+        "differentFriendlyNames": true
+      },
+      "expected": {
+        "physicalParentCount": 1,
+        "historyRewritten": false
+      },
+      "contract": "framework 14 B5/B10 and W-98 no-actuation gate"
+    },
+    {
+      "id": "safety-two-locations",
+      "group": "safety",
+      "input": {
+        "sameFriendlyName": true,
+        "differentLocation": true,
+        "differentIeee": true
+      },
+      "expected": {
+        "physicalParentCount": 2
+      },
+      "contract": "framework 14 B5/B10 and W-98 no-actuation gate"
+    },
+    {
+      "id": "safety-identity-collision",
+      "group": "safety",
+      "input": {
+        "identityAmbiguous": true
+      },
+      "expected": {
+        "migrationAllowed": false,
+        "commandsSent": 0
+      },
+      "contract": "framework 14 B5/B10 and W-98 no-actuation gate"
+    },
+    {
+      "id": "safety-repeat-migration",
+      "group": "safety",
+      "input": {
+        "migrationAlreadyApplied": true
+      },
+      "expected": {
+        "additionalChanges": 0,
+        "commandsSent": 0
+      },
+      "contract": "framework 14 B5/B10 and W-98 no-actuation gate"
+    },
+    {
+      "id": "safety-admin-gate",
+      "group": "safety",
+      "input": {
+        "role": "CHILD",
+        "route": "redetect/apply"
+      },
+      "expected": {
+        "httpStatus": 403,
+        "changes": 0
+      },
+      "contract": "framework 14 B5/B10 and W-98 no-actuation gate"
+    },
+    {
+      "id": "safety-act-open",
+      "group": "safety",
+      "input": {
+        "navigation": "Act/open/back"
+      },
+      "expected": {
+        "commandRequests": 0,
+        "automaticResearchRequests": 0
+      },
+      "contract": "framework 14 B5/B10 and W-98 no-actuation gate"
+    }
+  ],
+  "humanCases": [
+    {
+      "id": "color-vision-participant",
+      "status": "NOT_RUN",
+      "reason": "No participant recruited or observed; simulation cannot substitute.",
+      "contract": "framework 15.5 / MA-11"
+    },
+    {
+      "id": "light-sensitivity-reduced-intensity",
+      "status": "NOT_RUN",
+      "reason": "No participant session or completed presentation implementation.",
+      "contract": "framework 15.5 / MA-11"
+    },
+    {
+      "id": "reduced-motion",
+      "status": "NOT_RUN",
+      "reason": "No completed W-109/W-110 implementation and browser exercise.",
+      "contract": "framework 15.5 / MA-11"
+    },
+    {
+      "id": "stale-alert-comprehension",
+      "status": "NOT_RUN",
+      "reason": "No observed participant trials.",
+      "contract": "framework 15.5 / MA-11"
+    },
+    {
+      "id": "partial-coverage-comprehension",
+      "status": "NOT_RUN",
+      "reason": "No observed participant trials.",
+      "contract": "framework 15.5 / MA-11"
+    },
+    {
+      "id": "informational-act-vs-controls",
+      "status": "NOT_RUN",
+      "reason": "No observed participant trials.",
+      "contract": "framework 15.5 / MA-11"
+    }
+  ]
+}

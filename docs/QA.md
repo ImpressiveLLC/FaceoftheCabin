@@ -218,3 +218,7 @@ power-on-behavior entities) stay `HOME_ASSISTANT_ENTITY`, the service-entity cla
 (name, enabled, location and connection are never touched), returns a `rollback` object and publishes a
 `DEVICE_REDETECT_APPLIED` event. Rollback uses this process's last apply or the returned object (survives a restart).
 Nothing calls these on its own. Applying to live rows needs Nate's approval.
+
+### W-105 independent measurement oracle
+
+[Catalog, checker, review and operator gates](governance/verification/measurement-attention/README.md). Run the documented Python unit checks for fixture/comparator integrity. Runtime outputs require a production adapter; absent results deliberately exit 2 and remain NOT_RUN. Human vision/comfort/comprehension cases remain NOT_RUN until observed; no automated simulation substitutes for participants. No attention-style change or live W-93 apply is authorized by these checks.
