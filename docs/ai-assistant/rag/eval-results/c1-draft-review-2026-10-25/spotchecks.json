@@ -1,0 +1,247 @@
+{
+  "status": "PROPOSED_REVIEW_ASSIGNMENT",
+  "items": [
+    {
+      "run": "before",
+      "id": "Q07",
+      "repeat": 2,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "before",
+      "id": "Q07",
+      "repeat": 3,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q01",
+      "repeat": 1,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q02",
+      "repeat": 1,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 1,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q07",
+      "repeat": 1,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q08",
+      "repeat": 1,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q12",
+      "repeat": 1,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q15",
+      "repeat": 1,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q16",
+      "repeat": 1,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q17",
+      "repeat": 1,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q21",
+      "repeat": 1,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q01",
+      "repeat": 2,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q02",
+      "repeat": 2,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 2,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q15",
+      "repeat": 2,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q16",
+      "repeat": 2,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q17",
+      "repeat": 2,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q18",
+      "repeat": 2,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q01",
+      "repeat": 3,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q02",
+      "repeat": 3,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q05",
+      "repeat": 3,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q07",
+      "repeat": 3,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q12",
+      "repeat": 3,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q15",
+      "repeat": 3,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "after",
+      "id": "Q16",
+      "repeat": 3,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q17",
+      "repeat": 3,
+      "reason": "proposed pass"
+    },
+    {
+      "run": "after",
+      "id": "Q18",
+      "repeat": 3,
+      "reason": "risk/borderline classification"
+    },
+    {
+      "run": "before",
+      "id": "Q05",
+      "repeat": 1,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "before",
+      "id": "Q12",
+      "repeat": 2,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "before",
+      "id": "Q18",
+      "repeat": 3,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "before",
+      "id": "Q25",
+      "repeat": 3,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "before",
+      "id": "Q13",
+      "repeat": 2,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "before",
+      "id": "Q22",
+      "repeat": 1,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "after",
+      "id": "Q10",
+      "repeat": 2,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "after",
+      "id": "Q22",
+      "repeat": 2,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "before",
+      "id": "Q19",
+      "repeat": 3,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "before",
+      "id": "Q16",
+      "repeat": 2,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "before",
+      "id": "Q01",
+      "repeat": 2,
+      "reason": "seeded failure-stratum spot-check"
+    },
+    {
+      "run": "before",
+      "id": "Q17",
+      "repeat": 1,
+      "reason": "seeded failure-stratum spot-check"
+    }
+  ],
+  "suggested_split": "Nathan: all proposed passes and flagged risks. Cowork: borderline judgments and seeded failure stratum. Each may challenge any score.",
+  "completed": false
+}

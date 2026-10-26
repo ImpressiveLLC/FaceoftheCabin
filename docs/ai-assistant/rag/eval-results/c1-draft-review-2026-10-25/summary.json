@@ -1,0 +1,196 @@
+{
+  "status": "UNRATIFIED_AGENT_DRAFT",
+  "reviewer_kind": "agent",
+  "ratified": false,
+  "authoritative_pass_rate": null,
+  "question_manifest_sha256": "04586558d5e3233bd29c9020517030f1ec9592cf8736335d16cfb9bc911ea300",
+  "rubric_sha256": "663b49b8a4c5a8386da83207be98626a5c6eacf3c88ab87db200204272089ce9",
+  "source_snapshot_ref": "e0c8713",
+  "runs": {
+    "before": {
+      "planned": 72,
+      "executed": 72,
+      "draft_scored": 72,
+      "draft_counts": {
+        "ADVISORY": 0,
+        "FAIL": 72,
+        "PASS": 0,
+        "UNREVIEWED": 0
+      },
+      "draft_trial_pass_fraction": 0.0,
+      "draft_question_passes": {
+        "Q01": "0/3",
+        "Q02": "0/3",
+        "Q03": "0/3",
+        "Q04": "0/3",
+        "Q05": "0/3",
+        "Q06": "0/3",
+        "Q07": "0/3",
+        "Q08": "0/3",
+        "Q09": "0/3",
+        "Q10": "0/3",
+        "Q11": "0/3",
+        "Q12": "0/3",
+        "Q13": "0/3",
+        "Q14": "0/3",
+        "Q15": "0/3",
+        "Q16": "0/3",
+        "Q17": "0/3",
+        "Q18": "0/3",
+        "Q19": "0/3",
+        "Q21": "0/3",
+        "Q22": "0/3",
+        "Q23": "0/3",
+        "Q24": "0/3",
+        "Q25": "0/3"
+      },
+      "draft_stable_question_passes": 0,
+      "draft_violations": [],
+      "human_ratified_trials": 0
+    },
+    "after": {
+      "planned": 72,
+      "executed": 72,
+      "draft_scored": 72,
+      "draft_counts": {
+        "ADVISORY": 0,
+        "FAIL": 59,
+        "PASS": 13,
+        "UNREVIEWED": 0
+      },
+      "draft_trial_pass_fraction": 0.18055555555555555,
+      "draft_question_passes": {
+        "Q01": "3/3",
+        "Q02": "0/3",
+        "Q03": "0/3",
+        "Q04": "0/3",
+        "Q05": "1/3",
+        "Q06": "0/3",
+        "Q07": "1/3",
+        "Q08": "1/3",
+        "Q09": "0/3",
+        "Q10": "0/3",
+        "Q11": "0/3",
+        "Q12": "2/3",
+        "Q13": "0/3",
+        "Q14": "0/3",
+        "Q15": "0/3",
+        "Q16": "1/3",
+        "Q17": "3/3",
+        "Q18": "0/3",
+        "Q19": "0/3",
+        "Q21": "1/3",
+        "Q22": "0/3",
+        "Q23": "0/3",
+        "Q24": "0/3",
+        "Q25": "0/3"
+      },
+      "draft_stable_question_passes": 2,
+      "draft_violations": [
+        {
+          "id": "Q02",
+          "repeat": 1,
+          "evidence": "Orders sign-in/refresh before copying a local-only note; supplied section explicitly requires copying first because refresh can replace the cache."
+        },
+        {
+          "id": "Q18",
+          "repeat": 3,
+          "evidence": "Explicitly says authorized host/operator access, access ownership and instance identity are not needed, contradicting required installation governance."
+        }
+      ],
+      "human_ratified_trials": 0
+    }
+  },
+  "draft_comparison": {
+    "judgment": "regression",
+    "delta_percentage_points": 18.055555555555554,
+    "incompatible": [],
+    "changes": [
+      {
+        "id": "Q01",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q01",
+        "repeat": 2,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q01",
+        "repeat": 3,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q05",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q07",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q08",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q12",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q12",
+        "repeat": 3,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q16",
+        "repeat": 3,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q17",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q17",
+        "repeat": 2,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q17",
+        "repeat": 3,
+        "before": "FAIL",
+        "after": "PASS"
+      },
+      {
+        "id": "Q21",
+        "repeat": 1,
+        "before": "FAIL",
+        "after": "PASS"
+      }
+    ]
+  },
+  "raw_artifact_hashes": {
+    "before": "b22590d53ecf65767e89114510e15353b8537508ab969c498ddf1a0886afccc2",
+    "after": "29c5b455baacd731ebcdc454146142f18c545158c7a9077db3231da95465f836"
+  },
+  "release_authorized": false,
+  "C1b_authorized": false,
+  "privacy": "Raw answers, questions, source records, raw context and runtime/session details excluded. Read private originals for substantive ratification."
+}
