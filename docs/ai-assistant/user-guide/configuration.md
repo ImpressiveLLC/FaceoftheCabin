@@ -18,6 +18,30 @@ For each selected feature, trace: declaration → template/Compose/build argumen
 | `CABIN_ASK_INTENT_ENABLED`, `CABIN_ASK_INTENT_MODEL` (`cabin.ask.intent.*`) | [HelpdeskProposeController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/HelpdeskProposeController.java) and [IntentProposalService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/assistant/IntentProposalService.java) bind them; Compose and `.env.m920q.example` pass them through. | Defaults: enabled `false`, model `cabin-intent-slot-prompt-r1`. While disabled, `POST /api/helpdesk/propose` answers 404 as if absent. When enabled it is administrator only, returns a proposal and never executes anything, and `/api/helpdesk/ask` is unchanged. Enabling it is a deployment decision, not a documentation step. |
 | `VAULTWARDEN_*` | Backend bindings in [M920q Compose](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml); [Vaultwarden setup](../../MAINTENANCE.md). | Vault service admin access and backend CLI login/decryption are separate setup concerns. Only credential-pointer names may enter assistant knowledge. |
 
+## Per-name reference: Ask, Home Assistant and database settings (K09, first slice)
+
+Audience: installer/operator. Source-reviewed at `main`; the active runtime values are unverified and never shown here. Compose = [M920q Compose](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml); App = [application.yml](../../../cabin-orchestration-platform/backend/src/main/resources/application.yml).
+
+| Name | Required? | Code default | Binding path | Visibility |
+|---|---|---|---|---|
+| `HA_TOKEN` | Needed for any Home Assistant read or command; health reports DOWN while blank | blank | Compose passes `${HA_TOKEN:-}`; App `token: ${HA_TOKEN:}` | Secret. Check presence only |
+| `HOME_HA_TOKEN` | No. Blank on purpose: no Home Assistant exists at Home (D23) | blank | Compose `${HOME_HA_TOKEN:-}`; App line 68 | Secret. Leave blank |
+| `POSTGRES_PASSWORD` | Yes, but Compose and App both fall back to `cabin_dev_password` when unset, so a missing value does not fail at startup | `cabin_dev_password` | Compose `${POSTGRES_PASSWORD:-cabin_dev_password}` (two services); App `password: ${POSTGRES_PASSWORD:cabin_dev_password}` | Secret. An unset value running on the dev default is a deployment defect, not a working configuration |
+| `CABIN_ASK_INTENT_ENABLED` | No | `false` | Compose `${CABIN_ASK_INTENT_ENABLED:-false}`; `cabin.ask.intent.enabled` | Not secret. Off means `POST /api/helpdesk/propose` answers 404 |
+| `CABIN_ASK_INTENT_MODEL` | Only when enabled | `cabin-intent-slot-prompt-r1` | Compose passes it; `cabin.ask.intent.model` | Not secret. Must name an Ollama tag that exists on the host |
+| `CABIN_ASK_INTENT_PROPOSAL_TTL_SECONDS` | No | `300` | `cabin.ask.intent.proposal-ttl-seconds`. **Compose does not pass it** | Not secret |
+| `CABIN_ASK_INTENT_MAX_INPUT_CHARS` | No | `500` | `cabin.ask.intent.max-input-chars`. **Compose does not pass it** | Not secret |
+| `CABIN_ASK_INTENT_TIMEOUT_SECONDS` | No | `60` | `cabin.ask.intent.timeout-seconds`. **Compose does not pass it** | Not secret |
+| `CABIN_ASK_RESOLVER_MAX_INVENTORY_AGE_SECONDS` | No | `120` | `cabin.ask.resolver.max-inventory-age-seconds`. **Compose does not pass it** | Not secret |
+| `CABIN_ASK_RESOLVER_MAX_OBSERVATION_AGE_HOURS` | No | `6` | `cabin.ask.resolver.max-observation-age-hours`. **Compose does not pass it** | Not secret |
+
+Reading the table:
+
+- A name Compose does not pass reaches the container only if someone adds it to the service's `environment:`; putting it in `infra/.env` alone changes nothing. Until then the code default applies.
+- A change to any of these is applied by recreating `cabin-backend`, not by editing the running container. Changing `POSTGRES_PASSWORD` in `.env` does not change the password the database already holds (see the rotation row above), so a backend started with a new value against an unchanged database fails to connect.
+- A nonblank `HA_TOKEN` shows only that a value is present. It does not show the token is valid, unexpired or authorized for the entities in use.
+- Not covered here: the other names in the inventory. This is a first slice of G01, not a complete registry.
+
 ## Credentials and access
 
 Use the current [Ansible secret provisioning/rotation guide](../../../ansible/README.md) and [Vaultwarden runbook](../../MAINTENANCE.md). The repository describes Ansible Vault as deployment-secret provisioning and Vaultwarden as the application credential vault. A pointer to an entry is not a replacement for provisioning the service securely; do not collapse these two mechanisms into an invented single implementation.
