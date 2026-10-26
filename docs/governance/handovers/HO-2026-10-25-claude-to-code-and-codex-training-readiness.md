@@ -48,15 +48,16 @@ Codex takes the first pass on the S5 review sample, then Nate reviews in person 
 6. **Output to Nate:** a short synthesis (patterns, disagreements, rows needing his eyes first), a quality grade with its limits stated, and the importer-ready labels file kept private.
 7. Unrun checks are `NOT_RUN`. Nothing here authorizes training, export or routing.
 
-## Policy ruling: temperature value without a unit (Nate, 2026-10-26 00:38 CDT)
+## Policy ruling: temperature value without a unit (Nate, 2026-10-26 00:38 and 00:43 CDT)
 
 Replaces the Cowork 00:40 call that every unit-less temperature is a `clarify`.
 
-- **Ruled by Nate:** a temperature request with no unit whose value is **0 to 36 inclusive** is a `clarify`. That range is where the unit is genuinely ambiguous (Celsius, or a low Fahrenheit reading for a freeze-protection heater), and it also covers the rare fridge or freezer setpoint, which should be clarified anyway because it is almost never changed.
-- **Ruled by Nate:** no scenario sets HVAC below that range. A value below 0 is outside what is supported (not a clarify target and never a heater setpoint); how it is worded back to the user is for Code to propose.
-- **Cowork reading, Nate to confirm:** a value **above 36** is outside the ambiguous range and implies Fahrenheit, so it is not a unit clarify. This reverses the CLAUDE.md POC2 example "Set the heater to 72: `clarify` for the missing temperature unit; never infer Fahrenheit/Celsius". Until Nate confirms, nothing above 36 is relabeled, and the example is not edited.
-- **Consequence to check:** the six no-unit families in #267 use 68, 72, 64, 70, 60 and 55. All are above 36, so if the reading holds they stop being unit clarifies and need replacing with values in 0 to 36 (for example 18, 21, 25, 30, 33, 36). #267 does not merge until this is settled.
-- Applies to the 11 source labels flagged by the S5 first pass: classify each by value, not as a group.
+- **Rule:** a temperature request with no stated unit and a value **below 36** (0 up to, but not including, 36) is a `clarify`. That range is where the unit is genuinely ambiguous (Celsius, or a low Fahrenheit reading for a freeze-protection heater). It also covers the rare fridge or freezer setpoint, which should be clarified anyway because it is almost never changed.
+- **36 and above is Fahrenheit by rule** (Nate, 00:43: "36 is defined as F by rule"). So 36 itself is Fahrenheit and a value above it is not a unit `clarify`. Boundary note: Nate's 00:38 wording said "0 and 36" for the clarify range; the 00:43 statement is later and is applied, which makes 36 the first Fahrenheit value. Nate may flip the single boundary value.
+- **Below 0:** no scenario sets HVAC below the supported range. Not a `clarify` target and never a heater setpoint; the wording back to the user is for Code to propose.
+- **Spec change:** this supersedes the CLAUDE.md POC2 example "Set the heater to 72: `clarify` for the missing temperature unit". CLAUDE.md is updated in the same PR.
+- **Effect on #267:** its six no-unit families use 68, 72, 64, 70, 60 and 55. All are Fahrenheit by rule, so they are no longer unit clarifies. Code replaces them with values from 0 to 35 (for example 18, 21, 25, 30, 33, 35) and may keep the old ones as set-state counterparts with unit Fahrenheit.
+- **Effect on the 11 flagged S5 labels:** classify each by value. A label at 36 or above that carries Fahrenheit is correct. A label below 36 that carries a unit is wrong and should be `clarify`. This reverses Cowork's earlier "labels carrying a unit are wrong".
 
 ## Governance record
 

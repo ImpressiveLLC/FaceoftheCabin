@@ -147,7 +147,8 @@ belong in model output; server-resolved proposal data is a separate contract.
 | "I'm cold"; "I feel chilly" | `express_need`, `concept: cold`; missing device/temperature alone does not justify bare `clarify`. |
 | "It's too cold in the cabin bedroom" | Same intent, `site: cabin`, `location: bedroom`; no assumed reading or heater target. |
 | "Turn on the mech room heater" | Existing `set_device_state`, not `express_need`; normal resolution and confirmation apply. |
-| "Set the heater to 72" | `clarify` for the missing temperature unit; never infer Fahrenheit/Celsius. |
+| "Set the heater to 72" | Value 36 or above with no unit is Fahrenheit by rule (Nate, 2026-10-26): normal `set_device_attribute` handling with unit `F`. |
+| "Set the heater to 30" | `clarify` for the missing unit: a value below 36 with no unit is ambiguous (0 to 35); never infer. Below 0 is not supported. |
 | "I'm not cold"; "Don't turn on the heater" | No positive cold need or heating option; existing non-action/clarification handling as appropriate. |
 | "I'm cold at home" | Recognize the need and Home constraint; no cabin fallback or W-75 execution at Home. |
 | "I have a cold"; "If I were cold..." | Do not assume present thermal discomfort; clarify meaning when needed. |
