@@ -112,6 +112,7 @@ class ContextMapWiringTest {
         expected.put("What num_ctx does Ollama use for Ask?", "ask_runtime_limits");
         expected.put("Every service says running. What should I verify?", "health_verification");
         expected.put("The page cannot load. What do I check first?", "health_triage");
+        expected.put("Which triggers can a workflow use, and can it lock a door?", "rules_workflows");
         expected.put("Who counts as present: a primary user or a maintenance user?", "presence_roles_and_gaps");
         expected.put("All containers restarted successfully on the replacement host. Is recovery complete?", "persistence_recovery");
         expected.forEach((question, category) ->
