@@ -75,6 +75,7 @@
     "historical_runs_immutable": true
   },
   "runtime_attestation_required": [
+    "context-map wiring PR #288 merged and deployed before the first domain rerun, with the map revision hash (sha256 of the deployed classpath rag/context-fixtures-r2.json, equal to docs/ai-assistant/rag/context-fixtures-r2.json) and the per-category character table from docs/governance/evidence/c2-context-map-wiring-2026-10-27/README.md recorded",
     "deployed checkout and backend image identity",
     "actual model tag and digest",
     "mounted docs revision and hashes of selected sections/context map",
