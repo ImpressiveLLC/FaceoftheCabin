@@ -8,7 +8,7 @@ Files: [plan.csv](plan.csv) (one line per step: before, after, rollback, test, a
 
 | Ruling | Steps | Change |
 |---|---|---|
-| 4 (Starlink first, then Liebherr, sun, Zigbee2MQTT bridge, HA backup, router) | S01-S06 | Create the six missing parent rows. The 43 child rows already name them, so no child is edited. Starlink alone covers 21 rows. |
+| 4 (Starlink first, then Liebherr, sun, Zigbee2MQTT bridge, HA backup, router) | S01-S06 | Create the six missing parent rows (the router parent disabled and CANDIDATE, see D1). The 43 child rows already name them, so no child is edited. Starlink alone covers 21 rows. |
 | 1 mechanical-room temperature | 7 steps | Set the Home Assistant temperature entity's parent to `z2m-temp_mech_room`, and flatten its six sibling entities onto the same parent. |
 | 1 bathroom leak alarm | 5 steps | Point the five rows whose parent has no row at `z2m-leak_alarm_bathroom` instead of creating the missing switch row. |
 | 2 Kidde | 2 steps | Link the group-B temperature row to group A's CO alarm; the group-B CO row is already linked (verify only). |
@@ -24,12 +24,14 @@ The mechanism is the existing `parentDeviceId` attribute and the `ServiceHistory
 
 Also noted, no action planned: the Kidde group-B humidity id and the `-2` duplicate bridge ids have readings and no device row; a link cannot fold what has no row.  The Home television duplicates stay held (ruling 3).
 
-## Decisions for Nate or Cowork before any apply
+## Rulings applied (Cowork, posted on this PR; Codex live-checked the links)
 
-- **D1.** Starlink, Liebherr, sun, bridge, backup, router: create the parent row (this plan), or re-parent the children onto an existing row. The plan defaults to creating, with `ASSIGNED` and `enabled` copied from the groups' own ASSIGNED children. Nate approves each row.
-- **D2.** Flatten the mechanical-room siblings (this plan), or keep two levels and extend the fold.
-- **D3.** Name and shape of the former-id attribute for ruling 5.
-- Typing of the created rows stays `HOME_ASSISTANT_ENTITY`; better typing goes through the W-93 redetect preview, not here.
+- **D1.** Create the missing parent rows, in ruling-4 order, Starlink first; no re-parenting alternative. A created parent copies `ASSIGNED` and `enabled` only where its group has an ASSIGNED and enabled child (Starlink 6, Liebherr 1, sun 2, bridge 1, backup 1). **Amendment: the router parent (S06) is created disabled and CANDIDATE**, because all three of its children are disabled and CANDIDATE and no enrollment is inferred from discovery. Nate approves each row at apply.
+- **D2.** Flatten the six mechanical-room siblings onto `z2m-temp_mech_room`; no two-level tree, no fold extension.
+- **D3.** Former ids go in a `formerDeviceIds` list on the current parent, read by `ServiceHistory`; history only, never a parent id, never a routing alias, no data movement. Code is in [#291](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/291).
+- **Rollback.** Created rows and dangling parents are restored by a host-run statement with a dry-run and row counts before and after (see the rollback column and finding 3), not by the API: `DELETE /api/devices/{id}` only sets the lifecycle to IGNORED and keeps the row, and `PATCH` cannot restore a parent that has no row.
+
+Verified by Codex against live read-only data: all 43 children match their recorded parent, type, lifecycle and enabled state; the 14 before-links match; the six created parents are absent. The Kidde and mechanical-room identity calls are Cowork's rulings (hypotheses until applied), not row facts.
 
 ## Tests to write before an apply (named in plan.csv)
 
