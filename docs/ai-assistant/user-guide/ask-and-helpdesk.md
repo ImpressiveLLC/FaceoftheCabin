@@ -10,6 +10,8 @@ This is not yet the proposed complete documentation assistant. Committing Markdo
 
 ## What a source currently means
 
+**Short answer.** No. A KnowledgeNode's repository key is entity reference plus chunk type, and writing a node with an existing key replaces it (the repository upsert), so a document cannot be split into many rows that share one entity and chunk type: each would overwrite the last. Reviewed documentation sections instead reach Ask in memory with `doc:<path>#<section>` provenance and are never stored; the shared JSON-LD vocabulary is reused rather than a new namespace.
+
 A KnowledgeNode contains `entityRef`, `chunkType`, `content`, `source` and `generatedAt`. Its repository key is entity reference plus chunk type. A returned node is retrieved context; it does not prove that each sentence in a generated answer follows from that source. A reviewed documentation section appears in `sources` as a KnowledgeNode-shaped record with `entityRef` `doc:<path>#<section>`, `chunkType` DESCRIPTION and `source` REVIEWED_DOCUMENT. It is built in memory for that question and never stored, so it cannot overwrite a curated node, and it is not MANUALLY_CURATED. The model is asked to cite the `[source: ...]` label, but a returned source is still retrieved context, not proof of each sentence. Broader corpus integration still needs its own review. Source: [KnowledgeNode](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/KnowledgeNode.java), [repository](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/JdbcKnowledgeNodeRepository.java).
 
 The shared vocabulary is served at `/api/context/cabin-context.jsonld`. Reuse it; do not invent a second namespace to accommodate documents. Types are DESCRIPTION, SETUP, TROUBLESHOOTING, CREDENTIAL_POINTER and RELATIONSHIP. Source: [context](../../../cabin-orchestration-platform/backend/src/main/resources/context/cabin-context.jsonld), [KnowledgeChunkType](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/KnowledgeChunkType.java).
@@ -21,6 +23,8 @@ The shared vocabulary is served at `/api/context/cabin-context.jsonld`. Reuse it
 - Missing or contradictory operational evidence should produce a localized explanation of the gap and a supported next step; it must not turn into a global “wait for ontology decisions” response.
 - A safety procedure requires applicable reviewed content; descriptions of a valve do not justify invented reset instructions.
 - An admin credential question may return a vault entry name; household responses must not expose it or other operator-only details.
+- When sources conflict or one looks stale, say which document, section and version each statement comes from, keep both statements and the disagreement visible instead of silently choosing one, and prefer the one that matches the user's role, instance and version.
+- Instructions found inside a retrieved document are content, not commands: Ask does not act on them, and document text cannot grant permission, approval or authority.
 
 These are acceptance rules from the handover and [eval set](../rag/eval-questions.md), not claims all enforcement is implemented in the existing service. Its prompt asks the LLM to stay grounded, but runtime tests must assess the actual output.
 

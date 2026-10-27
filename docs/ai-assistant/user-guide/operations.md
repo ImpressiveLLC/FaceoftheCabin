@@ -22,6 +22,11 @@ This navigation map points to existing behavior and instructions. The [source in
 | Opportunities | [OpportunitiesController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/OpportunitiesController.java) and app opportunity panels | Recommendation/status is not proof an enhancement or device action has been executed. |
 | Help | [Ask and knowledge](ask-and-helpdesk.md) | Sources, provenance and whether the answer came from the model or fallback. |
 
+
+## Live values and Ask
+
+The Ask answer endpoint supplies reviewed documentation and stored knowledge only; it has no live read of sensor, presence or device values, so it cannot report a current reading. A figure in documentation is an example or history, not a current observation. For a current value use an authorized live source, such as the Monitoring panel, Device Manager or the presence badge, and check the signal's source and age.
+
 ## Presence and location roles
 
 ### What the presence badge means
@@ -52,6 +57,8 @@ If a note/profile/chore appears on one device only: preserve the local work, che
 
 ## Device onboarding
 
+**Short answers.** External platform confirmation registers a CANDIDATE, not an assigned or operating device. It is persisted, so by design the record survives a backend restart, but it stays a candidate until it is accepted and configured; a record existing is not proof the hardware works, and the source shows the design, not an observed restart. Passive-discovery candidates are a separate path and are not persisted by republishing. Import proposals are not an innocuous health probe: `GET /api/platform-import/{platform}/proposals` contacts the provider and upserts import records; read existing records with `GET /api/platform-import/records` (it has its own role check) instead. If a confirmed import is not listed after a restart, first establish whether it came from a platform import or passive discovery, and verify the saved state before re-importing; the cause is unknown until checked.
+
 1. Identify the supported source: existing adapter discovery, device-specific assisted discovery or an external platform import. Review prerequisites and permission before triggering a provider call.
 2. Review proposed identity/type/location against the physical device. Keep confirmed `entity_id` stable; display labels are the presentation mechanism.
 3. Confirm the import/proposal through its existing flow, then check lifecycle. External platform confirmation registers a **CANDIDATE**, not an assigned/operating device. Acceptance is a separate lifecycle action; configuration/assignment remains explicit.
@@ -62,6 +69,8 @@ Sources: [DeviceDiscoveryController](../../../cabin-orchestration-platform/backe
 Confirming a platform import (`confirm`) registers a CANDIDATE and persists it through `DeviceRegistry.registerPersistentCandidate()` with the `importedFrom` provenance tag, so the candidate survives a backend restart (PR #46, 2026-09-08). Persisted does not mean assigned: the device stays a candidate until it is accepted and configured, so do not represent a successful confirmation as a finished installation. Candidates registered passively from discovery are a separate path and are not persisted by republishing; verify the saved state rather than assuming it. Also, `GET /api/platform-import/{platform}/proposals` contacts the provider and upserts import records; it is not an innocuous health probe. `GET /api/platform-import/records` reads existing records and has its own role check. Source: the controller's `proposals`, `records` and `confirm` methods.
 
 Historical Claude findings now reconciled with source: discovery lookup-result persistence does not persist an undecided candidate; the optional external discovery provider can fall back to local catalog results; and the current Remove action applies IGNORE rather than hard deletion. Do not repeat the older Remove/deployment claims as current behavior. See [recovered evidence H01–H05](../corpus/local-history-evidence.md#findings-reconciled-with-current-source) and [Q04–Q07](../corpus/eval-answer-evidence.md#q04--clearer-names-without-changing-identity).
+
+A persisted device is restored with its lifecycle state when the backend starts (`DeviceRegistry.restorePersistedDevices`, which loads every stored record that has a lifecycle state, Candidates included). In Device Manager the State filter controls which lifecycle states are listed: its default shows Candidates, Available and Assigned, and the selection is remembered in the browser, so confirm Candidates is selected before concluding that a candidate is missing.
 
 ## Rules and safety
 

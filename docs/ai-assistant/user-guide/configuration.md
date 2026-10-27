@@ -77,6 +77,8 @@ Two consequences. The documented storage thresholds (60% and 75%) and presence s
 
 ## Credentials and access
 
+**Short answer.** For an administrator, Ask can return the name of the vault entry, not the secret itself; other roles are directed to an administrator. Credentials live in Vaultwarden, the application credential vault; Ansible Vault is the separate mechanism for deployment secrets. Do not paste a secret into Ask or treat it as a place to enter or rotate one. This describes the current redactor, not verified enforcement for every role.
+
 Use the current [Ansible secret provisioning/rotation guide](../../../ansible/README.md) and [Vaultwarden runbook](../../MAINTENANCE.md). The repository describes Ansible Vault as deployment-secret provisioning and Vaultwarden as the application credential vault. A pointer to an entry is not a replacement for provisioning the service securely; do not collapse these two mechanisms into an invented single implementation.
 
 The current credential redactor permits an administrator to receive a vault entry name and directs other roles to an administrator. It runs before Helpdesk prompting/fallback/source return and on KB listing responses. It is not a general topology/privacy classifier for every other chunk type. Source: [CredentialPointerRedactor](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/CredentialPointerRedactor.java), [TinyHelpdeskService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/helpdesk/TinyHelpdeskService.java), [KnowledgeNodeController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/KnowledgeNodeController.java).
