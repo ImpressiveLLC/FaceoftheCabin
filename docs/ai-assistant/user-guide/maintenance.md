@@ -32,6 +32,47 @@ Audience: operator. Source-reviewed against the live host on 2026-10-03. The ful
 
 Camera configuration changes go through a pull request, and the camera password never goes into the file or the repository.
 
+## "Running" versus healthy, per service (K11/K12)
+
+Audience: operator. Source-reviewed at `main` from the Compose files, the Blink bridge Dockerfile and the guides named below; no check below was run against the live host (`NOT_RUN`). A container status of "running" proves only that the main process has not exited. `docker ps` shows "healthy" only for a service that defines a `healthcheck`. A service without one can never show it.
+
+| Service (Compose file) | Defined healthcheck | What a pass shows | What it does not show | Check the feature itself |
+|---|---|---|---|---|
+| `cabin-backend` (M920q overlay) | `wget` of `/actuator/health`, greps for `"status":"UP"`; 30s start period, 3 retries | The API answers and no indicator reports DOWN. A blank `HA_TOKEN` makes the aggregate DOWN; Home's Home Assistant being out of service does not (UP ranks above OUT_OF_SERVICE on purpose) | A valid Home Assistant token, working MQTT or Kafka consumers, fresh device data. `show-details: never` hides which indicator failed | A signed-in request to a read route such as `/api/devices`, and the age of a recent event |
+| `cabin-discovery` (overlay) | Python fetch of `/health` on port 8000, expects 200 | The lookup service answers | Internet reachability for its web lookup, or that the backend can reach it | Read the service's own health and any existing discovery results first. A discovery run is not a passive check: it dismisses a suggestion, saves a pending record and calls the external lookup, so it needs a separate operator decision and is never run automatically during diagnosis |
+| `ollama` (overlay) | `ollama list` | The Ollama server answers | That a given model is installed or loads, or its speed. Ask can still fall back to raw facts | `answeredByModel` on an Ask reply |
+| `postgres` (base Compose) | `pg_isready -U cabin -d cabin` | The server accepts connections for that database | That tables, data or the backend's credentials are right | A backend read that returns stored rows |
+| `kafka` (base Compose) | `kafka-broker-api-versions` against `localhost:9092` | The broker answers | That the `cabin.events.raw` topic exists or the consumer persists events | A new event appearing in `GET /api/events` |
+| `mosquitto` (production stack) | Subscribe to `$SYS/broker/uptime` | The broker is up | That any device or topic is publishing | A recent message on the expected topic, or a device's `lastSeen` |
+| `zigbee2mqtt` (production stack) | `wget` of its web page on port 8080 | The Zigbee2MQTT process serves its UI | That the coordinator dongle is connected or devices report | A paired device's recent state, or `zigbee2mqtt/bridge/state` |
+| `blinkbridge` (rewrite, `infra/blinkbridge/`) | A `HEALTHCHECK` in its own Dockerfile (30s interval, 90s start period) calling `GET :8811/healthz`; it is not in Compose | The loop ran within 2 minutes and a Blink poll succeeded within 30 minutes | That every camera is streaming | `docker logs -t --tail 5 blinkbridge` shows `motion poll ok`, or the bridge's `/healthz` shows a recent loop and good poll. Blink cameras are motion-gated: 0 fps is healthy while idle (the Monitoring tile reads "Idle · waits for motion", from `motionGated` in `GET /api/frigate-metrics`). Positive fps is required only during an already-authorized active stream or motion window. Never start a liveview as a routine health check. The rewrite is recorded as built 2026-10-21 and not yet deployed in the Maintenance guide; confirm which image is live before relying on this row |
+| `cabin-ui`, `family-hub`, `cabin-grafana`, `prometheus` (base Compose, joined to `cabin_default` by the overlay), `open-webui`, `vaultwarden`, `telemetry-backup-agent` (overlay); `homeassistant`, `frigate`, `mediamtx`, `nodered`, `uptime-kuma`, `homepage` (production stack) | None defined in Compose or known image (13 services; the 7 Compose healthchecks plus `blinkbridge`'s image check cover the other 8 of the 21 active services in this table) | Only that the process is running | Anything else | Load the page or run the service's own feature, for example a Frigate camera frame or a Home Assistant entity state |
+
+### What detects and what recovers
+
+Detection and recovery are separate. Several layers exist; only some of them restart anything.
+
+| Layer | Detects | Recovers by itself? | Where recorded |
+|---|---|---|---|
+| Docker `restart: unless-stopped` (9 production-stack services, 9 overlay services) | A container that exited | Yes, restarts it. It does **not** act on an `unhealthy` container, and it does not catch a process that is alive but idle | The two Compose files |
+| Docker healthchecks (table above) | One container's minimum useful operation | No. They set the status other layers read | [Replication guide, section 10](../../REPLICATION.md#10-monitoring--cross-container-health) |
+| Uptime Kuma monitors | Cross-service paths: MQTT broker, Zigbee2MQTT, backend health, discovery, the camera availability topic, camera frames | No. It pages through the instance's notification route. The reusable monitor set is documented; creating it in production is still approval-pending, so confirm a monitor exists before relying on it | [Replication guide, Uptime Kuma monitor set](../../REPLICATION.md#uptime-kuma-monitor-set) |
+| `DeviceHealthMonitor` in `cabin-backend` | Per device, every 60 seconds: stale and missed check-ins; a Home Assistant device is actively polled before it is called missed. Event-driven sensors are exempt from time-based staleness | Marks the device OFFLINE and keeps a per-device reconnect attempt count. It does not restart a container. The result is read at `GET /api/system/health` | `DeviceHealthMonitor.java` |
+| Blink motion dead-man alert | The Blink relay going quiet | No. It raises an active alert | `ActiveAlertService`, `BlinkRelayPulse`, #254 |
+| Blink bridge rewrite | A failed liveview, throttling, expired token, or a dead loop | Yes, inside the process: per-camera backoff and retry, throttle pause, fresh login, and a watchdog thread that exits the process after 10 minutes of a dead loop so Docker restarts it | Maintenance guide, "blinkbridge rewrite" |
+| `blinkbridge-watchdog` host timer | Docker reporting the bridge `unhealthy` (checked every 5 minutes) | Yes, restarts the container. The Maintenance guide called it "staged, not installed"; whether the timer is enabled on the M920q is not established here (`systemctl list-timers blinkbridge-watchdog.timer`) | Maintenance guide, `scripts/host/blinkbridge-watchdog` |
+| `infra/watchdog/watchdog.py` | TCP port checks of seven services, publishing `cabin/system/health` | Restarts dead containers, but the M920q overlay sets it `profiles: [disabled]`, so it is not running there | `docker-compose.m920q.yml` |
+
+There is no `autoheal` container. A general "unhealthy then restart" loop exists only for the Blink bridge, and only if its host timer is installed. For every other service, an unhealthy container stays unhealthy until a person or a Kuma page acts.
+
+Three limits to keep in mind:
+
+- `depends_on` in the overlay lists `postgres` and `kafka` without a `condition`, so it orders startup only. It does not wait for either to be healthy.
+- A passing Compose healthcheck is not an Uptime Kuma monitor. The Kuma monitor list is the separate record of what is watched (see the Kuma record under persistence above).
+- "Every service says running" therefore leaves most of the stack unverified. Pick the services on the path of the feature in question and run its feature check, not all of them.
+
+Sources: [overlay](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml), [base Compose](../../../cabin-orchestration-platform/infra/docker-compose.yml), [production stack](../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml), [application.yml health settings](../../../cabin-orchestration-platform/backend/src/main/resources/application.yml).
+
 ## Deployment source correction
 
 The old Maintenance Deployment section describes backend deployment as manual-only. The current [deploy-cabin-backend workflow](../../../.github/workflows/deploy-cabin-backend.yml) instead has a main-push path filter and manual dispatch. Its implementation tests, builds/tags a candidate, checks health and has rollback handling. The workflow is the source for current configured behavior; none of this proves its latest run succeeded.
