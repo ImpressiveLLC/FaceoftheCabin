@@ -13,13 +13,18 @@ set -euo pipefail
 # Config keys whose values are safe to print. A new key is added here on purpose, never by pattern.
 ALLOW_KEYS="'lifecycleState','enabled','location','parentDeviceId','parent','parentId','importedFrom','friendlyName','alias','aliases','canonicalId'"
 
+DOCKER=${DOCKER:-docker}
+
 psql_ro() {
-  docker exec -i cabin-postgres sh -c 'psql -U ${POSTGRES_USER:-cabin} -d ${POSTGRES_DB:-cabin} -v ON_ERROR_STOP=1 -At -F "	"'
+  "$DOCKER" exec -i cabin-postgres sh -c 'psql -U ${POSTGRES_USER:-cabin} -d ${POSTGRES_DB:-cabin} -v ON_ERROR_STOP=1 -At -F "	"'
 }
 
+# A failed docker, psql or timeout makes the whole script exit nonzero (pipefail), so a failed
+# query can never read as "no rows". A query that succeeds with zero rows exits 0: sed, unlike
+# grep, does not fail on empty output.
 run() {
   echo "## $1"
-  { echo "BEGIN READ ONLY;"; echo "SET LOCAL statement_timeout = '60s';"; cat; echo "COMMIT;"; } | psql_ro | grep -v -e '^BEGIN$' -e '^COMMIT$' -e '^SET$' || true
+  { echo "BEGIN READ ONLY;"; echo "SET LOCAL statement_timeout = '60s';"; cat; echo "COMMIT;"; } | psql_ro | sed -e '/^BEGIN$/d' -e '/^COMMIT$/d' -e '/^SET$/d'
 }
 
 run "config_keys (key, devices)" <<SQL

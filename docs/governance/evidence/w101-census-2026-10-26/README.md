@@ -37,7 +37,7 @@ Status: 66 resolved, 9 unresolved. The nine unresolved rows are `allocation-home
 
 ## Findings the other lanes need
 
-1. **Duplicate parents: four physical devices have more than one parent group.**
+1. **Suspected duplicate parents: four physical devices appear to have more than one parent group.** None is established: no registry record links the groups, so each is a suspicion from names, ids and overlapping telemetry. Established facts are the group sizes and telemetry dates in `runtime-roots.csv`.
    - Mechanical-room temperature: `z2m-temp_mech_room` (1 row) and a Home Assistant group `ha-cabin-sensor-mech-room-temp-and-humidity-temperature` (7 rows). Both record telemetry, so the sensor is logged twice. Probably the same hardware: the Home Assistant entity was renamed, so its name prefix no longer matches the Zigbee name.
    - Bathroom leak alarm: `z2m-leak_alarm_bathroom` (1 row) and five service rows whose parent id `ha-cabin-switch-bathroom-leak-detect-alarm` has no persisted row.
    - Kidde: group A (`...living-room-kidde...`, 20 rows) and group B (`...kidde-air-quality-alarm...`, 1 parent plus a child). Two Home Assistant naming generations of one alarm.
@@ -53,13 +53,14 @@ Status: 66 resolved, 9 unresolved. The nine unresolved rows are `allocation-home
 | Item | Value |
 |---|---|
 | Original 75 reconciled to a runtime device | 19 matched, 3 partial, 1 events-only, 52 not present at runtime (39 `not_commissioned`, 13 `seed_only`) |
-| Duplicate parents | 4 physical devices (3 inside the 75: mechanical-room temperature, bathroom leak alarm, Kidde; 1 outside it: the Home television) |
+| Suspected duplicate parents | 4 physical devices (3 inside the 75: mechanical-room temperature, bathroom leak alarm, Kidde; 1 outside it: the Home television), all suspected, none established |
 | Rows needing alias or history repair | 9 of the 75 (the `yes` rows in `census.csv`) |
 | Dangling parent ids | 7 (48 service rows) |
 
 ## Column notes
 
 - `enrollment` is one of `enabled`, `disabled`, `candidate`, `none` (19 / 13 / 0 / 43). For a group it is the parent's state; `none` means no parent lifecycle row exists (not commissioned, events only, or a missing parent). `enrollment_detail` keeps the free text: lifecycle state, enabled-row counts in the group, and any second parent.
+- `measurements` lists every observed payload field name that is a reported quantity, state or device setting (for example `temperature`, `power`, `state`, `led_brightness`). `payload_metadata` lists the observed names that are not measurements: link quality, update state, and registry attributes carried in the payload (`ieeeAddress`, `capabilities`, `source` and similar). Neither cell is truncated: for each of the 13 Zigbee rows, `measurements` plus `payload_metadata` equals the full observed name list. Counts for the three rows Codex named: heater 39 observed = 15 measurements + 24 metadata; breaker-box switch 36 = 15 + 21; mechanical-room temperature 29 = 7 + 22.
 - `runtime_present`: `yes`, `yes_persisted`, `partial`, `events_only`, `seed_only`, `not_commissioned`.
 
 ## Limits
