@@ -16,10 +16,5 @@ jobs:
           java-version: '21'
           cache: maven
           cache-dependency-path: cabin-orchestration-platform/backend/pom.xml
-      # TEMP diagnostic (PR #296): keep the log, surface failures as annotations. Remove once green.
-      - run: set -o pipefail; mvn -B test 2>&1 | tee /tmp/mvn.log
+      - run: mvn -B test
         working-directory: cabin-orchestration-platform/backend
-      - if: failure()
-        run: |
-          msg=$(grep -E "^\[ERROR\]|Tests run:.*(Failures: [1-9]|Errors: [1-9])" /tmp/mvn.log | head -40 | head -c 3500 | sed ':a;N;$!ba;s/\n/%0A/g')
-          echo "::error title=mvn-test-failures::${msg}"

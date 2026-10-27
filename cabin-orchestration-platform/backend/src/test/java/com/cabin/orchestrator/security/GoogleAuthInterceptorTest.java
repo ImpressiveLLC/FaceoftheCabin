@@ -219,7 +219,9 @@ class GoogleAuthInterceptorTest {
 
     @Test
     void aRoofSpecLinkDoesNotGrantTheOtherReadScopes() throws Exception {
-        assertFalse(guestCall(List.of("roof_spec"), "GET", "/api/devices"));
+        // /api/devices GET is open to everyone by design (D14), so use gated reads.
+        assertFalse(guestCall(List.of("roof_spec"), "GET", "/api/events"));
+        assertFalse(guestCall(List.of("roof_spec"), "GET", "/api/camera/list"));
     }
 
     @Test
