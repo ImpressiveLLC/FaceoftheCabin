@@ -335,6 +335,10 @@ public class DeviceController {
                 Object parentDeviceId = patch.get("parentDeviceId");
                 extraAttributes.put("parentDeviceId", parentDeviceId == null ? "" : String.valueOf(parentDeviceId).trim());
             }
+            if (patch.containsKey("formerDeviceIds")) {
+                // History only (W-101b D3); null or an empty list clears it. Validated in DeviceRegistry.
+                extraAttributes.put("formerDeviceIds", patch.get("formerDeviceIds"));
+            }
             DeviceRegistry.ConfigurationSaveResult result;
             try {
                 result = registry.saveConfiguration(deviceId, name, enabled, extraAttributes);
