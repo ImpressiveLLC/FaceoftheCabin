@@ -32,6 +32,15 @@ Audience: operator. Source-reviewed against the live host on 2026-10-03. The ful
 
 Camera configuration changes go through a pull request, and the camera password never goes into the file or the repository.
 
+## Service health at a glance
+
+A digest of the sections "First determine what is failing", "Running versus healthy, per service" and "What detects and what recovers". Each line points to the section holding the full detail.
+
+- **Four meanings of healthy, in order.** (1) Container running: the main process has not exited, nothing more. (2) Named healthcheck: only a service that defines one can show `(healthy)`. (3) Inter-service path: Uptime Kuma monitors or a cross-container smoke test. (4) The feature itself: a signed-in request or a recent reading. Passing one level does not prove the next.
+- **Healthchecks.** Seven Compose healthchecks (`cabin-backend`, `cabin-discovery`, `ollama`, `postgres`, `kafka`, `mosquitto`, `zigbee2mqtt`) plus the Blink bridge's own image check. Thirteen other active services define none and can never show healthy. `depends_on` orders start only; it does not wait for health.
+- **Recovery.** Docker `restart: unless-stopped` restarts an exited container, not an unhealthy one. The Blink bridge recovers inside its own loop, and by a host timer only if that is installed. No autoheal container exists, so otherwise an unhealthy container stays unhealthy until a person or a Kuma page acts.
+- **First triage.** Page will not load: check the URL and the serving or tunnel service; that does not show the backend is down. Page loads but a feature is empty: inspect the signed-in request status and freshness. Container is running: check its healthcheck and the feature path. Ask gives raw facts: check `answeredByModel` first. Device offline: check timestamps, lifecycle and expected reporting. Presence reads away or unknown: check the age of its source; stale means unknown, not away.
+
 ## "Running" versus healthy, per service (K11/K12)
 
 Audience: operator. Source-reviewed at `main` from the Compose files, the Blink bridge Dockerfile and the guides named below; no check below was run against the live host (`NOT_RUN`). A container status of "running" proves only that the main process has not exited. `docker ps` shows "healthy" only for a service that defines a `healthcheck`. A service without one can never show it.
@@ -48,7 +57,7 @@ Audience: operator. Source-reviewed at `main` from the Compose files, the Blink 
 | `blinkbridge` (rewrite, `infra/blinkbridge/`) | A `HEALTHCHECK` in its own Dockerfile (30s interval, 90s start period) calling `GET :8811/healthz`; it is not in Compose | The loop ran within 2 minutes and a Blink poll succeeded within 30 minutes | That every camera is streaming | `docker logs -t --tail 5 blinkbridge` shows `motion poll ok`, or the bridge's `/healthz` shows a recent loop and good poll. Blink cameras are motion-gated: 0 fps is healthy while idle (the Monitoring tile reads "Idle · waits for motion", from `motionGated` in `GET /api/frigate-metrics`). Positive fps is required only during an already-authorized active stream or motion window. Never start a liveview as a routine health check. The rewrite is recorded as built 2026-10-21 and not yet deployed in the Maintenance guide; confirm which image is live before relying on this row |
 | `cabin-ui`, `family-hub`, `cabin-grafana`, `prometheus` (base Compose, joined to `cabin_default` by the overlay), `open-webui`, `vaultwarden`, `telemetry-backup-agent` (overlay); `homeassistant`, `frigate`, `mediamtx`, `nodered`, `uptime-kuma`, `homepage` (production stack) | None defined in Compose or known image (13 services; the 7 Compose healthchecks plus `blinkbridge`'s image check cover the other 8 of the 21 active services in this table) | Only that the process is running | Anything else | Load the page or run the service's own feature, for example a Frigate camera frame or a Home Assistant entity state |
 
-### What detects and what recovers
+## What detects and what recovers
 
 Detection and recovery are separate. Several layers exist; only some of them restart anything.
 
@@ -121,7 +130,9 @@ The [base Compose](../../../cabin-orchestration-platform/infra/docker-compose.ym
 
 This is a **recovery scope**, not a verified backup procedure. Do not copy a live database volume or stop production based on this table. Service-specific consistent backup/restore commands, encrypted off-host custody, recovery objectives and an isolated restore rehearsal remain open in [G04](../corpus/coverage.md#gap-register). A recreated stack with empty/lost required state fails recovery acceptance even if every container is green.
 
-### Backup and restore recipes per store (K10, verified from source only)
+Existing component guidance is available now: [REPLICATION section 10](../../REPLICATION.md#kuma-config-as-code-decision--poc-passed-production-approval-pending) records the Kuma 2.5.0 disposable reconciliation POC and distinguishes a monitor specification from a complete `/app/data` backup. It leaves production reconciliation separately pending and provides a manual monitor target list. Use that current record instead of the older Claude plan's proposed JSON-import wording. For camera/MQTT diagnosis, the same section explains the configured availability topic, frame checks and notification routing; a green service on the wrong broker/topic does not prove the intended path. See [recovered history H06](../corpus/local-history-evidence.md#findings-reconciled-with-current-source).
+
+## Backup and restore recipes per store (K10, verified from source only)
 
 Audience: operator. Every row is read from source or a guide; no backup was taken, no restore was rehearsed and nothing was checked on the host. Each restore step is `NOT_RUN`. A copy that has never been restored is an unproven backup.
 
@@ -139,8 +150,6 @@ Audience: operator. Every row is read from source or a guide; no backup was take
 Order of trust, from the sources above: telemetry has two independent copies once `telemetry-backup-agent` is confirmed running; configuration has a nightly file copy; the application database and the vault have no documented consistent backup. Before asking for a restore, ask what the backup was taken from and whether it was ever restored once. Old nightly folders are disposable and are trimmed by the owner's dry-run-first scripts and the host trim agent; see STORAGE_ARCHITECTURE for the rules.
 
 Sources: [backup-modular](../../../scripts/host/backup-modular), [storage architecture](../../STORAGE_ARCHITECTURE.md), [Maintenance guide, D19](../../MAINTENANCE.md), [overlay Compose](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml).
-
-Existing component guidance is available now: [REPLICATION section 10](../../REPLICATION.md#kuma-config-as-code-decision--poc-passed-production-approval-pending) records the Kuma 2.5.0 disposable reconciliation POC and distinguishes a monitor specification from a complete `/app/data` backup. It leaves production reconciliation separately pending and provides a manual monitor target list. Use that current record instead of the older Claude plan's proposed JSON-import wording. For camera/MQTT diagnosis, the same section explains the configured availability topic, frame checks and notification routing; a green service on the wrong broker/topic does not prove the intended path. See [recovered history H06](../corpus/local-history-evidence.md#findings-reconciled-with-current-source).
 
 ## New hardware pending install (2026-10-16)
 
