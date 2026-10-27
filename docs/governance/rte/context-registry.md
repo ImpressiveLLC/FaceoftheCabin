@@ -8,7 +8,7 @@ Rules that apply to every row:
 
 1. **One fact, one home.** Git (`ImpressiveLLC/FaceoftheCabin`, branch `main`) is canonical. A fact that lives elsewhere must also be in git, or it does not exist for the next session.
 2. **Mirrors flow one way** (git to mirror). The only reverse flow is a decision made where an agent cannot commit, which is handed back as text for `docs/DEFINITION_OF_DONE.md` "Next Session, Open Items".
-3. **Never stored or mirrored anywhere in this registry's scope:** secrets, tokens, the Ansible Vault password, `.env` values, MAC addresses, IP addresses, sealed rows, private labels, raw model answers. Counts, hashes and ids only. Private evidence folders are named below by location, never by content.
+3. **Never stored or mirrored anywhere in this registry's scope:** secrets, tokens, the Ansible Vault password, `.env` values, MAC addresses, IP addresses, sealed rows, private labels, raw model answers. Counts, hashes and ids only. Private evidence folders are described below by location class only: exact paths stay out of this public repository, and content never appears.
 4. **Ephemeral places are not storage.** The Cowork container, `/tmp`, scratchpads and any chat transcript are reclaimed. Anything worth keeping is pushed to git before the session ends.
 
 ## 1. Communication patterns
@@ -26,7 +26,7 @@ All agent sessions post to GitHub as the one shared account `nhsmrekar`, so the 
 | Pasted handoff prompt | Nate to Code (M920q or Windows) | Start a Code session on the right machine | One self-contained prompt per `fotc-git-and-host-routing` "Handoff prompt pattern" | The prompt is a copy; the handoff itself lives on #244 |
 | External reviews pasted by Nate | Reviewer to Cowork | Independent review (for example the ChatGPT Work review, received 2026-10-22) | Nate pastes; Cowork dispositions each finding on #244 with the received date | #244 and the governance decision it changed |
 | Alerts to Nate's phone | Systems to Nate | Leak, freeze, disk, outage | ntfy and Home Assistant push. The backend ntfy topic is blank as of 2026-10-12 (W-51), so backend push does not reach a phone | `docs/NOTIFICATION_PATH.md`, `docs/CABIN_REACHABILITY.md` |
-| Claim correspondence | Nate and the insurer, contractors | Foremost claim, Collins Roofing | Gmail and the claim documents; never GitHub | Claude Project docs `claim/*`, memory area `cabin-insurance-claim`, Gmail |
+| Claim correspondence | Nate and the insurer, contractors | the insurance claim (insurer, claim number and contractor names stay out of git) | Gmail and the claim documents; never GitHub | Claude Project docs `claim/*`, the memory claim area, Gmail |
 
 **There is no direct channel from Cowork to a Code or Codex session.** `ListAgents` shows none and `SendMessage` cannot reach another product. A nudge is a GitHub comment that names the item, or Nate. Silence is `unknown`, never `clear`.
 
@@ -69,7 +69,7 @@ All agent sessions post to GitHub as the one shared account `nhsmrekar`, so the 
 
 | What | Where | Check |
 |---|---|---|
-| Memory | Project subtree `/projects/<project id>/` (`overview.md`, `preferences.md`, `learnings-and-gotchas.md`, `areas/cabin-insurance-claim.md`) plus account files (`/profile.md`, `/preferences.md`, `/topics/*`, `/areas/*`). Written by the background memory pass; explicit "remember" requests are written by the session | V |
+| Memory | Project subtree `/projects/<project id>/` (`overview.md`, `preferences.md`, `learnings-and-gotchas.md`, and files under `areas/`) plus account files (`/profile.md`, `/preferences.md`, `/topics/*`, `/areas/*`). Written by the background memory pass; explicit "remember" requests are written by the session | V |
 | Project docs ("Face of the Cabin") | 23 docs on 2026-10-27, mostly claim documents and older handovers. Policy: handovers live in git; Project docs are a mirror or claim material | V |
 | Chat history | Searchable with `conversation_search`; summaries only for old chats | V |
 | Account skills | `anthropic-skills:*` (caveman-mode, karpathy-principles, fotc-git-and-host-routing, my-shopping-values, skill-creator, built-in-browser, chrome-browser, deep-research and others) | V |
@@ -86,7 +86,7 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 | Deploy worktree (what Ask mounts read-only at `/app/docs`) | `/home/nate/FaceoftheCabin-deploy` | R (#244, 2026-10-27) |
 | Working clone for eval, training, helpdesk | `~/FaceoftheCabin` | R (`fotc-git-and-host-routing`) |
 | Older checkout, **not** what Ask reads | `~/repos/FaceoftheCabin` (was at `e8b2c9c`) | R |
-| Private evidence, C2 run 1 | `/home/nate/c2-run-1-20261027-private` (ids, counts and hashes are posted; contents stay there) | R |
+| Private evidence, C2 run 1 | Code's host, a private folder (exact path held by Code and Nate, not in git; ids, counts and hashes are posted, contents stay there) | R |
 | Cold tier | `/storage` (HDD): backups, `archives/cabin_event/`, `cameras/frigate/`, `services/` (Home Assistant, Zigbee2MQTT, Frigate, Node-RED, mosquitto, uptime-kuma, blinkbridge), `.trim/` spool | R (`docs/STORAGE_ARCHITECTURE.md`) |
 | Hot tier | `/` NVMe: Docker, Postgres volume `infra_cabin_pgdata`, OS, `/home` | R |
 | Live secrets | The uncommitted `.env` beside the compose files in the deploy worktree (its template is `infra/.env.m920q.example`); the Ansible Vault password file in the host user's home | R, never read or copied |
@@ -99,7 +99,7 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 | What | Where | Check |
 |---|---|---|
 | Short-path worktrees for repair and review | `C:\Users\nhsmr\wtNNN` | R (`cabin-peer-agent-collaboration`) |
-| Private grading folder, C1 | `C:\Users\nhsmr\Documents\Resume and work\work\c1-private-grading-20261025` (named only) | R |
+| Private grading folder, C1 | Nate's Windows PC, under his Documents (exact path held by Nate, not in git) | R |
 | Patch handoffs | `Downloads` (files for `git am`) | R |
 | Older dev checkout path in `CLAUDE.md` | `H:\My Drive\cabin-orchestration-platform-expanded\...`, which is inside Google Drive sync. A git working tree inside a cloud-sync folder can corrupt `.git`; confirm it is no longer in use. `docs/EXECUTION_PLAN_2026-07-30.md` calls `C:\dev\FaceoftheCabin` "your other local clone". Ask: Nate, is the `H:` path still a live checkout (yes or no)? | U |
 | Claude Code state | `%USERPROFILE%\.claude` (transcripts, user skills), the documented default; not inspected from here | R |

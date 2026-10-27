@@ -28,7 +28,7 @@ Wingman drives; other skills own mechanics. Load the owner before doing its work
 | `skill-creator` | writing, validating and packaging skills | changing this skill or making a new one |
 | `docs`, `docx`, `pdf`, `xlsx`, `pptx` | deliverable formats | the deliverable is that format |
 | `deep-research` | multi-source research reports | a researched report, not a quick lookup |
-| `cabin-insurance-claim`, `claims-strategy`, `cabin-claim-contents-delta` | Foremost claim 5034929666-1 | claim work. Separate lane from platform delivery; never mix claim correspondence into GitHub |
+| `cabin-insurance-claim`, `claims-strategy`, `cabin-claim-contents-delta` | the insurance claim (number, insurer and contractor names stay out of git) | claim work. Separate lane from platform delivery; never mix claim correspondence into GitHub |
 | `cabin-camera-troubleshooting` | Frigate and RTSP faults | camera streams, 401 or 404, Reolink quirks |
 | `google-workspace` | Google Docs, Sheets, Slides edits | the task changes a Google file |
 
