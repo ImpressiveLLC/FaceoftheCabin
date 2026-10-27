@@ -225,4 +225,38 @@ class W101bIdentityRepairTest {
 
         assertEquals(List.of("z2m-a"), ServiceHistory.idsFor("z2m-a", registry));
     }
+
+    @Test
+    void t7_aFormerOnlyFieldFoldsOntoTheOwnerEvenWhenTheOwnerLoggedNothing() {
+        zigbee("z2m-a", "a", DeviceType.TEMPERATURE_SENSOR);
+        registry.saveConfiguration("z2m-a", null, true, Map.of("formerDeviceIds", List.of("old-1")));
+
+        Map<String, List<String>> merged = ServiceHistory.mergeReportedFields(Map.of("old-1", List.of("energy")), registry);
+
+        assertEquals(Map.of("z2m-a", List.of("energy")), merged);
+    }
+
+    @Test
+    void t7_aDisabledOwnerLeavesTheFormerPickerEntryWhereItIs() {
+        zigbee("z2m-a", "a", DeviceType.TEMPERATURE_SENSOR);
+        registry.saveConfiguration("z2m-a", null, true, Map.of("formerDeviceIds", List.of("old-1")));
+        registry.saveConfiguration("z2m-a", null, false, Map.of());
+        Map<String, List<String>> raw = new LinkedHashMap<>();
+        raw.put("z2m-a", List.of("power"));
+        raw.put("old-1", List.of("energy"));
+
+        Map<String, List<String>> merged = ServiceHistory.mergeReportedFields(raw, registry);
+
+        assertEquals(List.of("power"), merged.get("z2m-a"));
+        assertEquals(List.of("energy"), merged.get("old-1"));
+    }
+
+    @Test
+    void t7_aNonStringFormerIdIsRejected() {
+        zigbee("z2m-a", "a", DeviceType.TEMPERATURE_SENSOR);
+        assertThrows(IllegalArgumentException.class,
+            () -> registry.saveConfiguration("z2m-a", null, true, Map.of("formerDeviceIds", List.of(123))));
+        assertThrows(IllegalArgumentException.class,
+            () -> registry.saveConfiguration("z2m-a", null, true, Map.of("formerDeviceIds", List.of(true))));
+    }
 }

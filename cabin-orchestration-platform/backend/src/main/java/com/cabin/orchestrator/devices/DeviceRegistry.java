@@ -78,7 +78,11 @@ public class DeviceRegistry {
         // Future: add cabin thermostat, smoke alarm, cameras when installed
         // Future: add home hub devices when home-hub is deployed
 
-        // ── Home devices — disabled until home-hub deployed ──────────────────
+        // ── Home devices — first-boot seeds only (disabled) ──────────────────
+        // Corrected 2026-10-27: there is no home-hub (D23); Home is a collector reporting to this head. These
+        // rows are disabled seeds for a first boot. A persisted record overrides a seed, so a seed's enabled
+        // flag says nothing about the live row: home-cam-driveway is persisted ASSIGNED and enabled and a camera
+        // exists at Home behind it (Nate, 2026-10-27). The other four cameras are not confirmed.
 
         // Reolink RLC-810A PoE cameras (5× — Frigate, home LAN 192.168.1.20–24)
         registerDescriptor(new DeviceDescriptor(
@@ -459,7 +463,8 @@ public class DeviceRegistry {
         if (!(raw instanceof List<?> list)) throw new IllegalArgumentException("formerDeviceIds must be a list of ids");
         List<String> out = new ArrayList<>();
         for (Object o : list) {
-            String id = o == null ? "" : String.valueOf(o).trim();
+            if (!(o instanceof String text)) throw new IllegalArgumentException("formerDeviceIds must hold strings only");
+            String id = text.trim();
             if (id.isEmpty()) throw new IllegalArgumentException("formerDeviceIds cannot hold a blank id");
             if (id.equals(deviceId)) throw new IllegalArgumentException("A device cannot list its own id as a former id");
             if (descriptors.containsKey(id)) throw new IllegalArgumentException("Former id is a live device: " + id);

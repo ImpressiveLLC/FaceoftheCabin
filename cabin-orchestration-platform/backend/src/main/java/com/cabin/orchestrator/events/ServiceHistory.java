@@ -87,12 +87,14 @@ public final class ServiceHistory {
             if (parentDescriptor.isEmpty() || !parentDescriptor.get().enabled()) continue;
             merged.computeIfAbsent(parentId, k -> new LinkedHashSet<>()).addAll(merged.remove(id));
         }
-        for (String id : new ArrayList<>(raw.keySet())) {
-            DeviceStatus current = registry.get(id);
-            if (current == null) continue;
-            for (String former : formerIds(current, registry)) {
+        // Former ids (D3). The owner need not have logged anything itself, and a disabled owner leaves the
+        // former entry in the picker, as for the entity fold above.
+        for (DeviceStatus owner : registry.all()) {
+            Optional<DeviceDescriptor> descriptor = registry.descriptor(owner.deviceId());
+            if (descriptor.isEmpty() || !descriptor.get().enabled()) continue;
+            for (String former : formerIds(owner, registry)) {
                 Set<String> fields = merged.remove(former);
-                if (fields != null) merged.computeIfAbsent(id, k -> new LinkedHashSet<>()).addAll(fields);
+                if (fields != null) merged.computeIfAbsent(owner.deviceId(), k -> new LinkedHashSet<>()).addAll(fields);
             }
         }
         Map<String, List<String>> result = new LinkedHashMap<>();
