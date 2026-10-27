@@ -49,7 +49,7 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `persistence_recovery` | 3246 | 0 | persistence-and-replacement-host-r 3246 | none |
 | `installation` | 5686 | 0 | minimum-inputs 1488, verified-clean-host-limitations 1847, presence-for-each-location 2351 | none |
 | `health_verification` | 5874 | 0 | service-health-at-a-glance 1723, running-versus-healthy-per-service 4151 | none |
-| `deployment_source` | 5794 | 0 | deployment-source-correction 5794 | none |
+| `deployment_source` | 5922 | 0 | deployment-source-correction 5922 | none |
 | `ask_helpdesk_behavior` | 4570 | 4570 | current-behavior 2033, what-a-source-currently-means 1568, questions-and-useful-limits 969 | none |
 | `governance_contribution` | 2493 | 2493 | small-auditable-changes 1445, contribution-record 1048 | none |
 | `opportunity_status` | 3100 | 3100 | capability-map 3100 | none |
@@ -62,7 +62,7 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `health_triage` | 3330 | 0 | first-determine-what-is-failing 3330 | none |
 | `presence_roles_and_gaps` | 2922 | 2922 | who-counts-location-roles-ratified 1273, what-is-not-settled 1649 | none |
 
-No category is truncated. `configuration_binding` (5,913), `deployment_source` (5,794) and `health_verification` (5,874) are within about 200 characters of the cap, so a short addition to any of them would start cutting; the wiring test fails when that happens.
+No category is truncated. `deployment_source` (now 5,922 after the #283 rollback-wording fix), `configuration_binding` (5,913) and `health_verification` (5,874) are within about 130 characters of the cap, so a short addition to any of them would start cutting; the wiring test fails when that happens.
 
 ## Ollama context window: NOT_MEASURED
 
@@ -92,4 +92,5 @@ The backend sends no `num_ctx`; the model's declared maximum is 131072 tokens; t
 - This edits the r2 map in place (a new entry in `r2Changes`), as Cowork ruled; no r3. A rerun records the map hash and the deployed commit.
 - The compiled map changes, so a merge touching `backend/**` starts the backend deploy workflow (tests gate it; a health check and rollback follow) and changes live Ask context.
 - The wiring depends on the headings and text of #281, #282, #283, #284 and #287. Merge those first; this branch has them merged in so the tests run against the real sections.
+- Docs-only does not mean no live effect: the guides are mounted read-only into the backend, so once this map is live, a merged edit to a mapped section changes Ask context when the host checkout updates, with no backend deploy. The section sizes above are therefore a standing constraint on guide edits, not a one-time check.
 - A renamed or removed heading breaks its mapping silently at runtime (the loader logs a warning and Ask runs without it); `ContextMapWiringTest` catches that in CI.
