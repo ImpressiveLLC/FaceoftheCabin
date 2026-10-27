@@ -1,0 +1,78 @@
+# Documentation federation
+
+Federation = the same fact available on every machine and surface without two copies drifting. Read when touching instruction files, skills, mirrors, Project docs, or switching machines. The definitive list of locations is `docs/governance/rte/context-registry.md`; this file is the method.
+
+## 1. Principles
+
+1. **Git `main` is canonical.** `ImpressiveLLC/FaceoftheCabin`. A fact that lives elsewhere must also be in git, or it does not exist for the next session.
+2. **One fact, one home.** Other documents link to the owner; they never copy its content (`docs/governance/README.md`). A mirror is a deliberate, derived exception.
+3. **Mirrors flow one way**, git to mirror. Nobody edits a mirror. The only reverse flow is a decision made where an agent cannot commit, handed back as text (section 6).
+4. **A mirror is a byte copy, generated, checked.** Never find-and-replace. (The `.agents/skills` mirror was made by replacing the agent name in the text, which rewrote the real skills path into a nonexistent directory named after the agent and broke the instructions it carried; W-119 lists the places. The skill text is agent-neutral and the paths exist for every agent, so a byte copy is correct. This file never spells the broken path out, because `fed-check.sh` scans the mirror for it and would flag the documentation.)
+5. **Every mirror has a drift check** that fails loudly. If a mirror has no check, it is not federated, it is hope.
+6. **Never federate secrets, sealed rows, private labels, raw model answers, MAC or IP addresses.** Counts, hashes, ids. Private evidence stays in its private folder; git carries only its hash.
+7. **Docs and curated knowledge live in git only.** Ask repopulates from a fresh clone; anything written on the host is lost.
+
+## 2. The federation map
+
+| Source of truth | Mirror | Why it exists | Verify | State 2026-10-27 |
+|---|---|---|---|---|
+| `main` | M920q deploy worktree `/home/nate/FaceoftheCabin-deploy` | Ask mounts its docs read-only at `/app/docs`; deploy workflows build from it | `git -C <worktree> rev-parse HEAD` equals `origin/main`, tree clean | A docs-only or scripts-only merge does **not** refresh it (STORAGE_ARCHITECTURE.md, HO-2026-10-18); the host needs `git pull --ff-only origin main`. Deploy workflows pull it when they run |
+| `docs/ai-assistant/rag/context-fixtures-r2.json` | backend classpath copy `cabin-orchestration-platform/backend/src/main/resources/rag/context-fixtures-r2.json` | live Ask context map | `fed-check.sh` (identical), `ContextMapWiringTest`, attestation (deployed HEAD, map hash, image id) | identical, `4a55e975` |
+| `CLAUDE.md` | `AGENTS.md` | Codex reads `AGENTS.md` | `fed-check.sh` | drifted (W-119) |
+| `.claude/skills/` | `.agents/skills/` | Codex reads `.agents/skills` | `fed-check.sh` | two skills drifted (W-119); `wingman` is byte-identical by rule |
+| `docs/governance/rte/context-registry.md` | packaged skill snapshot, optional Project doc | account-level skill for Cowork; claude.ai Project | snapshot is stamped with the source commit | new |
+| `main` and private evidence hashes | claude.ai Project docs `claim/*` (claim material), memory | claim work and account memory | memory is about the user, git is about the project: do not duplicate | by design |
+| `main` | Windows clone and worktrees, Cowork container clone | each session works from a fresh clone | `ctx-audit.sh` | per session |
+| `main`, M920q `/storage` backups, private evidence | Home Vault node (planned, W-120): encrypted append-only restic repository; offline rotating NVMe copy | survive cabin loss (flood and freeze already hit the cabin) | restic `check`, weekly one-file restore test | planned |
+
+## 3. Commands
+
+```bash
+bash .claude/skills/wingman/scripts/fed-check.sh              # drift: AGENTS vs CLAUDE, skill mirrors, context-map pair, corrupted .Codex paths
+bash .claude/skills/wingman/scripts/fed-check.sh --manifest   # sha256 (8 chars) of every federated file; run on two machines and diff
+bash .claude/skills/wingman/scripts/fed-check.sh --registry   # registry age, repo paths it names, unknown rows
+```
+
+Cross-machine check: run `--manifest` on the M920q deploy worktree and in the Cowork clone; `diff` the two outputs. Identical hashes for the same `head` = federated. Different head = one side is stale, make it fresh first.
+
+Regenerate the skill mirror (the fix, once W-119 lands):
+
+```bash
+cp -r .claude/skills/. .agents/skills/        # byte copy of every skill; then fed-check.sh must print no FAIL and no skill WARN
+```
+
+`AGENTS.md` is derived from `CLAUDE.md` with only the title line and the "gives Claude Code full context" sentence changed. Regenerate, never hand-edit, and add the header line saying so (W-119 does it).
+
+## 4. Moving between machines
+
+Before leaving a machine: `git push origin <branch>` (or `main` via a PR), leave no uncommitted work and no unpushed commits. On arrival: `fotc-git-and-host-routing` freshness procedure (clean tree, `main` equals `origin/main`, branch from it). If prior work cannot be found, it was not pushed: check `git log --oneline` on the originating machine before concluding it is lost. Never clean up another session's dirty clone to make it usable; use a clean clone.
+
+The cloud container cannot push to the org repo from some sessions (the git proxy refuses it). Then: prepare the commit as `git format-patch` and hand it to a Code session, which applies it with `git am` on a clean clone (do not open the patch in an editor first).
+
+## 5. Where each kind of fact lives
+
+| Fact | Home |
+|---|---|
+| Decision, why | `docs/governance/decisions/` |
+| What is prioritized | `docs/governance/backlog.md` (Ask track: `docs/ai-assistant/wsjf-backlog.md`) |
+| What "done" means, what a PR must carry | `docs/governance/definition-of-done.md` |
+| Who acts now, critical path | issue #244 board; committed rules `docs/governance/rte/schedule.md` |
+| Where context lives, how agents talk | `docs/governance/rte/context-registry.md` |
+| How to do a repeatable procedure | a skill (`.claude/skills/`) |
+| Operations on the hosts | `docs/MAINTENANCE.md`, `docs/STORAGE_ARCHITECTURE.md`, `docs/CABIN_REACHABILITY.md` |
+| Facts about Nate (preferences, profile) | claude.ai memory, never in the repo |
+| Claim correspondence | claude.ai Project docs `claim/*`, Gmail; never GitHub |
+| Secrets | Ansible Vault ciphertext in git, password only on the host and in Nate's custody; see `vault-and-keys.md` |
+| Temporary pass-over between lanes | `docs/governance/handovers/HO-*.md`, deleted when the last task closes |
+
+## 6. Hand-back from sessions that cannot commit
+
+Claude web at the cabin, a phone chat, any surface with no git. A real decision, plan or agreement made there is lost unless recorded (the `blinkbridge` architecture decision, found 2026-08-06). Before that session ends, give Nate exactly the text to paste under "Next Session, Open Items" in `docs/DEFINITION_OF_DONE.md`, or commit it from a session that can. Context goes the other way by pasting the CLAUDE.md URL at the start of a cabin web session.
+
+## 7. Adding a new mirror (checklist)
+
+1. Name the source of truth and the reason a second copy must exist. No reason, no mirror.
+2. Generate it by a script or one `cp`; byte-identical; never edited by hand.
+3. Add a check to `fed-check.sh` that fails on drift.
+4. Add the row to the federation map above and to registry section 3.
+5. Say what happens when the check fails and who repairs it.
