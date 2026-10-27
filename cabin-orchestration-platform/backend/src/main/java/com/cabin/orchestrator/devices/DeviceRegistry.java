@@ -389,6 +389,11 @@ public class DeviceRegistry {
             if (extraAttributes.containsKey("parentDeviceId")) {
                 validateParentDeviceId(deviceId, existing.location(), extraAttributes.get("parentDeviceId"));
             }
+            if (extraAttributes.containsKey("formerDeviceIds")) {
+                extraAttributes = new java.util.LinkedHashMap<>(extraAttributes);
+                extraAttributes.put("formerDeviceIds",
+                    validateFormerDeviceIds(deviceId, extraAttributes.get("formerDeviceIds")));
+            }
             boolean changed = !Objects.equals(existing.name(), nextName) || existing.enabled() != enabled
                 || !extraAttributes.isEmpty();
             if (!changed) return new ConfigurationSaveResult(false, current, existing);
@@ -444,6 +449,32 @@ public class DeviceRegistry {
      * dangling or cyclic parent reference is a real data-integrity bug,
      * not a cosmetic one.
      */
+    /**
+     * W-101b D3: {@code formerDeviceIds} is history only. Each entry is a non-blank id that is not this device,
+     * not any live row's id (a former id that is still a device would fold that device's history in), not
+     * repeated, and not already claimed by another device. A null or empty list clears it. Returns the cleaned list.
+     */
+    private List<String> validateFormerDeviceIds(String deviceId, Object raw) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) throw new IllegalArgumentException("formerDeviceIds must be a list of ids");
+        List<String> out = new ArrayList<>();
+        for (Object o : list) {
+            String id = o == null ? "" : String.valueOf(o).trim();
+            if (id.isEmpty()) throw new IllegalArgumentException("formerDeviceIds cannot hold a blank id");
+            if (id.equals(deviceId)) throw new IllegalArgumentException("A device cannot list its own id as a former id");
+            if (descriptors.containsKey(id)) throw new IllegalArgumentException("Former id is a live device: " + id);
+            if (out.contains(id)) throw new IllegalArgumentException("Duplicate former id: " + id);
+            out.add(id);
+        }
+        for (Map.Entry<String, DeviceStatus> e : statuses.entrySet()) {
+            if (e.getKey().equals(deviceId) || !(e.getValue().attributes().get("formerDeviceIds") instanceof List<?> other)) continue;
+            for (String id : out) {
+                if (other.contains(id)) throw new IllegalArgumentException("Former id " + id + " already belongs to " + e.getKey());
+            }
+        }
+        return out;
+    }
+
     private void validateParentDeviceId(String deviceId, String location, Object parentDeviceIdRaw) {
         String parentDeviceId = parentDeviceIdRaw == null ? "" : String.valueOf(parentDeviceIdRaw).trim();
         if (parentDeviceId.isEmpty()) return;
