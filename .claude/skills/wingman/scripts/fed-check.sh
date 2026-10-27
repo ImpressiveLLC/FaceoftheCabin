@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Wingman fed-check: read-only documentation-federation drift check.
-#   fed-check.sh             drift: AGENTS.md vs CLAUDE.md, .agents/skills vs .claude/skills,
+#   fed-check.sh             drift: AGENTS.md must equal what fed-regen.sh writes, .agents/skills must be
+#                            a byte copy of .claude/skills,
 #                            the context-map pair, skills paths rewritten with an agent name
 #   fed-check.sh --manifest  sha256 (8 chars) of every federated file; run on two machines
 #                            and `diff` the outputs. Hashes only, never contents.
@@ -18,7 +19,7 @@ MAP_CP="cabin-orchestration-platform/backend/src/main/resources/rag/context-fixt
 REGISTRY="docs/governance/rte/context-registry.md"
 
 h8() { sha256sum "$1" 2>/dev/null | cut -c1-8; }
-# norm: the agent-name and path substitutions a mirror may legitimately differ by.
+# norm: classifies a skill mirror that differs only by the old agent-name substitution (a byte copy fixes it).
 norm() {
   sed -E 's/CLAUDE\.md|AGENTS\.md/INSTR.md/g; s#\.(claude|agents|Codex|codex)/skills#.X/skills#g;
           s/Claude Code|Claude|Codex|CLAUDE/AGENT/g; s#(claude-code|codex)/tmp-#AGENT/tmp-#g' "$1"
@@ -61,15 +62,13 @@ fi
 
 echo "== instruction mirror: AGENTS.md vs CLAUDE.md"
 if [ ! -f AGENTS.md ]; then
-  say WARN "AGENTS.md missing"
+  say WARN "AGENTS.md missing: run fed-regen.sh"
+elif w_gen_agents | cmp -s - AGENTS.md; then
+  say OK "AGENTS.md is CLAUDE.md regenerated"
 else
-  n=$(diff <(norm CLAUDE.md) <(norm AGENTS.md) | grep -c '^[<>]')
-  if [ "$n" -eq 0 ]; then
-    say OK "equal after agent-name normalization"
-  else
-    say WARN "$n line(s) differ after normalization (stale or hand-edited mirror). First hunks:"
-    diff <(norm CLAUDE.md) <(norm AGENTS.md) | grep -E '^[0-9]' | head -6
-  fi
+  n=$(diff <(w_gen_agents) AGENTS.md | grep -c '^[<>]')
+  say WARN "$n line(s) differ from CLAUDE.md regenerated (stale or hand-edited mirror): run fed-regen.sh and commit both. First hunks:"
+  diff <(w_gen_agents) AGENTS.md | grep -E '^[0-9]' | head -6
 fi
 # The string hunted is the skills directory as the agent-name substitution once wrote it
 # (a dot, the agent's capitalised name, a slash). It is assembled from two pieces so that no

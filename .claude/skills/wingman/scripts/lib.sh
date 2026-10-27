@@ -58,3 +58,14 @@ w_is_deploy_path() {
     *) return 1 ;;
   esac
 }
+
+# w_gen_agents: print AGENTS.md as it must be, from ./CLAUDE.md: three changes only. The title
+# line, the "gives Claude Code full context" sentence (Codex reads AGENTS.md), and a generated-file
+# header under the title. Used by fed-regen.sh (writes it) and fed-check.sh (compares to it).
+W_AGENTS_HDR='<!-- GENERATED from CLAUDE.md by .claude/skills/wingman/scripts/fed-regen.sh. Do not edit by hand: change CLAUDE.md, run the script, commit both. Drift check: fed-check.sh. -->'
+w_gen_agents() {
+  awk -v hdr="$W_AGENTS_HDR" '
+    NR == 1 { sub(/^# CLAUDE\.md/, "# AGENTS.md"); print; print hdr; next }
+    { sub(/^This file gives Claude Code full context/, "This file gives Codex full context"); print }
+  ' CLAUDE.md
+}
