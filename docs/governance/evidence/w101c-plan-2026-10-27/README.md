@@ -2,7 +2,9 @@
 
 Owner Code; verify Codex; semantics Cowork. **Plan only. Nothing was changed on the platform.** Every step needs Nate's approval before it runs. Source: the W-101 census of 2026-10-26 (raw output private) and `DeviceRegistry.java` seed defaults.
 
-## Step 1: disable `home-cam-driveway` (Cowork ruling 6)
+## Step 1: disable `home-cam-driveway` (Cowork ruling 6): WITHDRAWN, do not run
+
+**Nate answered 2026-10-27: a camera does exist at Home behind this row. Do not disable it.** The plan below stays as the record of what would have run and is not to be applied. The open follow-up is the opposite repair: the code seed says disabled while the persisted row is enabled, and D23 says there is no Home hub, so how the camera is reached and whether the seed comment is stale go to Cowork (a documentation or seed correction, not a live change).
 
 | Item | Value |
 |---|---|
@@ -14,7 +16,7 @@ Owner Code; verify Codex; semantics Cowork. **Plan only. Nothing was changed on 
 | Check before | `GET /api/devices/home-cam-driveway` shows `enabled=true`; the device list count at Home; no Frigate or Reolink camera is configured for it (D23: there is no Home hub) |
 | Check after | the same GET shows `enabled=false`, lifecycle ASSIGNED; Home device count unchanged; the health monitor stops listing it as offline; no other Home row changed |
 | Test | `DeviceRegistryTest`: saving `enabled=false` on an ASSIGNED device keeps it ASSIGNED and leaves every other attribute and every other device unchanged; saving `enabled=true` restores it |
-| Still unknown | whether a camera exists at Home and who enabled the row. Nate answers that before the step; if hardware exists, do not disable, ask |
+| Answered | a camera exists at Home (Nate, 2026-10-27), so this step is withdrawn |
 | Approval | Nate, this row |
 
 Why the seed does not already make it disabled: the persisted record overrides the code seed at startup, so the seed's `false` is never read for this row.
@@ -29,4 +31,4 @@ Why the seed does not already make it disabled: the persisted record overrides t
 
 ## Decision for Nate
 
-Does a camera exist at Home behind `home-cam-driveway`, and may Step 1 run? Nothing else is waiting on you.
+None open. Step 1 is withdrawn on Nate's answer.
