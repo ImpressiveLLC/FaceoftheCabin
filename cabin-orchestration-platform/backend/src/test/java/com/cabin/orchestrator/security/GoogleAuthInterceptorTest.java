@@ -190,6 +190,45 @@ class GoogleAuthInterceptorTest {
         assertEquals(403, response.getStatus());
     }
 
+    // Roof Monitoring page: the one write a guest link has.
+    private boolean guestCall(List<String> scope, String method, String path) throws Exception {
+        CabinAccessToken token = accessTokens.create("Aaron, Collins", scope, null, "nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest(method, path);
+        request.setParameter("t", token.token());
+        return interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
+    }
+
+    @Test
+    void aRoofSpecLinkCanReadAndPostComments() throws Exception {
+        assertTrue(guestCall(List.of("roof_spec"), "GET", "/api/roof-spec/entries"));
+        assertTrue(guestCall(List.of("roof_spec"), "POST", "/api/roof-spec/entries"));
+    }
+
+    @Test
+    void aRoofSpecLinkCannotDeleteOrPostAnywhereElse() throws Exception {
+        for (String[] c : new String[][] {
+            {"DELETE", "/api/roof-spec/entries/abc"},
+            {"POST", "/api/roof-spec/entries/abc"},
+            {"PATCH", "/api/roof-spec/entries"},
+            {"POST", "/api/devices/x/command"},
+            {"POST", "/api/alerts/acknowledgments"},
+            {"POST", "/api/access-tokens"} }) {
+            assertFalse(guestCall(List.of("roof_spec"), c[0], c[1]), c[0] + " " + c[1]);
+        }
+    }
+
+    @Test
+    void aRoofSpecLinkDoesNotGrantTheOtherReadScopes() throws Exception {
+        // /api/devices GET is open to everyone by design (D14), so use gated reads.
+        assertFalse(guestCall(List.of("roof_spec"), "GET", "/api/events"));
+        assertFalse(guestCall(List.of("roof_spec"), "GET", "/api/camera/list"));
+    }
+
+    @Test
+    void otherScopesCannotPostComments() throws Exception {
+        assertFalse(guestCall(List.of("dashboard", "device_states", "alerts_read", "observations_read"), "POST", "/api/roof-spec/entries"));
+    }
+
     @Test
     void anUnknownGuestTokenIsRejected() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dashboard/config");
