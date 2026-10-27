@@ -4,7 +4,7 @@ Owner Code; verify Codex; semantics Cowork. **Plan only. Nothing was changed on 
 
 ## Step 1: disable `home-cam-driveway` (Cowork ruling 6): WITHDRAWN, do not run
 
-**Nate answered 2026-10-27: a camera does exist at Home behind this row. Do not disable it.** The plan below stays as the record of what would have run and is not to be applied. The open follow-up is the opposite repair: the code seed says disabled while the persisted row is enabled, and D23 says there is no Home hub, so how the camera is reached and whether the seed comment is stale go to Cowork (a documentation or seed correction, not a live change).
+**Nate answered 2026-10-27: a camera does exist at Home behind this row. Do not disable it.** The plan below stays as the record of what would have run and is not to be applied. Ruling issued: the stale "disabled until home-hub" seed comment is corrected in [#291](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/291), a backend PR already touching `DeviceRegistry` (comment only, no standalone backend deployment). No seed is removed: the other four seeded Home cameras cannot be removed until Nate identifies each camera, and no Home-hub inference proves a camera absent.
 
 | Item | Value |
 |---|---|
@@ -23,7 +23,7 @@ Why the seed does not already make it disabled: the persisted record overrides t
 
 ## Step 2: Home television duplicates, hold (Cowork ruling 3)
 
-`netscan-lg_webos_tv_oled42c5pua` and `netscan-oled42c5pua` are discovery candidates for one model with zero telemetry. No merge and no change now. Review them with the Home inventory when the Home collector is reviewed. Not a W-101 blocker.
+`netscan-lg_webos_tv_oled42c5pua` and `netscan-oled42c5pua` are discovery-origin rows for one model with zero telemetry; the W-101 runtime evidence records both as persisted `enabled` and `ASSIGNED`, so they are not lifecycle CANDIDATEs. No merge and no change now. Review them with the Home inventory when the Home collector is reviewed. Not a W-101 blocker.
 
 ## Step 3: typing fixes, no bulk change (Cowork ruling 7)
 
