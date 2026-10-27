@@ -52,7 +52,7 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `deployment_source` | 5922 | 0 | deployment-source-correction 5922 | none |
 | `ask_helpdesk_behavior` | 4570 | 4570 | current-behavior 2033, what-a-source-currently-means 1568, questions-and-useful-limits 969 | none |
 | `governance_contribution` | 2493 | 2493 | small-auditable-changes 1445, contribution-record 1048 | none |
-| `opportunity_status` | 3100 | 3100 | capability-map 3100 | none |
+| `opportunity_status` | 5928 | 3100 | opportunities-and-the-tech-id-service-k19 2828, capability-map 3100 | none |
 | `home_collector_termux` | 0 | 0 | none | none |
 | `environmental_nodes` | 4881 | 3784 | ordered-equipment-and-current-scop 1115, what-the-devices-can-and-cannot-es 1257, year-round-circulation-and-tempera 833, setup-and-maintenance 579, ask-behavior-and-execution-boundar 1097 | none |
 | `self_healing_recovery` | 3790 | 0 | what-detects-and-what-recovers 3790 | none |
@@ -67,6 +67,8 @@ No category is truncated. `deployment_source` (now 5,922 after the #283 rollback
 ## Ollama context window: NOT_MEASURED
 
 The backend sends no `num_ctx`; the model's declared maximum is 131072 tokens; the window Ollama applies to an Ask request was not measured, and no prompt-length log line was present when the backend log was read. The 6000-character budget (about 1,500 tokens) is a margin, not a measured fit. The first rerun must report truncation or errors separately. A measurement needs a model call and is outside this change.
+
+K19 (2026-10-27) added the Opportunities and Tech ID Service section to `opportunity_status` ahead of the capability map (administrator only; a household role still receives the capability map alone).
 
 ## Sections still not reachable
 

@@ -705,7 +705,14 @@
         "listed",
         "enhancement",
         "implemented",
-        "suggested"
+        "suggested",
+        "tech id",
+        "finding",
+        "findings",
+        "power draw",
+        "power_draw_anomaly",
+        "optimization",
+        "acknowledged"
       ],
       "questions": [
         "Q25"
@@ -721,6 +728,11 @@
       ],
       "safetyNote": "Q25 had a governance failure at baseline",
       "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations.md",
+          "section": "opportunities-and-the-tech-id-service-k19",
+          "audience": "administrator"
+        },
         {
           "path": "ai-assistant/user-guide/operations.md",
           "section": "capability-map",
@@ -989,6 +1001,7 @@
     "credential_redaction boost 2: credential questions must reach the role-gated credential guidance even when another category also matches",
     "2026-10-04 (D24, W-23): presence and location-role sections added to live_sensors (operations.md#presence-and-location-roles) and installation (independent-installation.md#presence-for-each-location)",
     "2026-10-16 (Doc 27, HO-2026-10-16-doc27-poc2 'Code / Ask'): environmental_nodes category added, wiring ai-assistant/user-guide/environmental-nodes.md. Factual sections are household audience; the Ask behavior and execution boundary section is administrator only (fail-closed default, reviewable). No frozen question declares it (questions is empty), nothing is ingested or trained.",
-    "2026-10-27 wiring: guide sections for K09-K13 and K15 added to the map, and every category kept at or under the 6000-character document budget with no truncation. configuration_binding supplies the per-name, HA-token and rotation sections (Q13); the build-time trace table moves to config_build_time_binding (Q12); health_verification supplies a digest and the per-service table (Q16) while the triage table moves to health_triage; live_sensors keeps the capability map, badge and arming paragraphs while the roles and open items move to presence_roles_and_gaps; new categories self_healing_recovery, backup_restore_recipes, config_passthrough, ask_runtime_limits."
+    "2026-10-27 wiring: guide sections for K09-K13 and K15 added to the map, and every category kept at or under the 6000-character document budget with no truncation. configuration_binding supplies the per-name, HA-token and rotation sections (Q13); the build-time trace table moves to config_build_time_binding (Q12); health_verification supplies a digest and the per-service table (Q16) while the triage table moves to health_triage; live_sensors keeps the capability map, badge and arming paragraphs while the roles and open items move to presence_roles_and_gaps; new categories self_healing_recovery, backup_restore_recipes, config_passthrough, ask_runtime_limits.",
+    "2026-10-27 K19: opportunity_status now supplies the Opportunities and Tech ID Service section (administrator) ahead of the capability map; new keywords tech id, finding(s), power draw, power_draw_anomaly, optimization, acknowledged."
   ]
 }
