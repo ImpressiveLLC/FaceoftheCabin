@@ -22,7 +22,6 @@ This navigation map points to existing behavior and instructions. The [source in
 | Opportunities | [OpportunitiesController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/OpportunitiesController.java) and app opportunity panels | Recommendation/status is not proof an enhancement or device action has been executed. |
 | Help | [Ask and knowledge](ask-and-helpdesk.md) | Sources, provenance and whether the answer came from the model or fallback. |
 
-
 ## Live values and Ask
 
 The Ask answer endpoint supplies reviewed documentation and stored knowledge only; it has no live read of sensor, presence or device values, so it cannot report a current reading. A figure in documentation is an example or history, not a current observation. For a current value use an authorized live source, such as the Monitoring panel, Device Manager or the presence badge, and check the signal's source and age.

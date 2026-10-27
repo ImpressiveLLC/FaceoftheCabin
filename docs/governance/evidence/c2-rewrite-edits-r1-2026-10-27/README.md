@@ -24,7 +24,7 @@ Both copies of the map (`docs/ai-assistant/rag/context-fixtures-r2.json` and the
 
 | Category | Before | After | Slack |
 |---|---:|---:|---:|
-| installation | 5683 | 4574 | 1426 |
+| installation | 5683 | 4560 | 1440 |
 | installation_presence (new) | n/a | 2350 | 3650 |
 | device_import_lifecycle | 2791 | 4161 | 1839 |
 | device_identity (shares the section) | 2791 | 4161 | 1839 |

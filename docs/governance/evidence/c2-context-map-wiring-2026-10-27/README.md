@@ -47,7 +47,7 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `configuration_binding` | 5913 | 0 | per-name-reference-ask-home-assist 3126, ha-token-validity-k09-slice-2 1290, database-password-rotation-k09-sli 1497 | none |
 | `config_build_time_binding` | 3810 | 0 | trace-a-setting-to-its-consumer 3810 | none |
 | `persistence_recovery` | 3246 | 0 | persistence-and-replacement-host-r 3246 | none |
-| `installation` | 4576 | 0 | minimum-inputs 2145, verified-clean-host-limitations 2431 | none |
+| `installation` | 4562 | 0 | minimum-inputs 2131, verified-clean-host-limitations 2431 | none |
 | `installation_presence` | 2351 | 0 | presence-for-each-location 2351 | none |
 | `health_verification` | 5874 | 0 | service-health-at-a-glance 1723, running-versus-healthy-per-service 4151 | none |
 | `deployment_source` | 5922 | 0 | deployment-source-correction 5922 | none |
