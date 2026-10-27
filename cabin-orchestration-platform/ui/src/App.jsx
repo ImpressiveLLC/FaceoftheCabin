@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import KioskControls from "./KioskControls.jsx";
+import { RoofSpecPage } from "./RoofSpecPage.jsx";
 
 // ─── Temperature unit ──────────────────────────────────────────────────────
 function useTempUnit() {
@@ -2099,6 +2100,9 @@ export function FamilyConfigPanel({ auth }) {
         {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2}>
           <GuestAccessCard auth={auth} />
         </ConfigCard>}
+        {!auth?.demo && <ConfigCard title="Roof Monitoring page" icon={Link2} wide>
+          <RoofSpecOwnerCard auth={auth} />
+        </ConfigCard>}
         {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus}>
           <ManagedUsersCard auth={auth} />
         </ConfigCard>}
@@ -2264,6 +2268,55 @@ const GUEST_SCOPE_OPTIONS = [
   ["alerts_read", "Alerts"],
   ["observations_read", "Historical readings"],
 ];
+
+// Owner side of the Roof Monitoring page: make a comment-only link for the
+// roofer (scope "roof_spec" -- it can read the thread and post a comment, and
+// nothing else), and read/reply to the thread in place.
+export function RoofSpecOwnerCard({ auth }) { // exported for src/RoofSpecPage.test.jsx
+  const doFetch = auth?.authedFetch || fetch;
+  const apiBase = LOCATIONS.cabin.apiBase;
+  const [label, setLabel] = useState("");
+  const [days, setDays] = useState("60");
+  const [link, setLink] = useState(null);
+  const [error, setError] = useState(null);
+  const [open, setOpen] = useState(false); // mount (and fetch) the thread only once opened
+  const create = async () => {
+    setError(null); setLink(null);
+    try {
+      const r = await doFetch(`${apiBase}/api/access-tokens`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label.trim(), scope: ["roof_spec"], expiresInDays: days.trim() ? Number(days) : null }),
+      });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(b.message || b.error || `HTTP ${r.status}`);
+      setLink(`${window.location.origin}/roof/${b.token}`);
+      setLabel("");
+    } catch (err) { setError(err.message); }
+  };
+  return (
+    <>
+      <p className="config-desc">Roof sensor plan for the Collins roof. A link made here can read the page and post comments or answers, and nothing else in the app.</p>
+      <div className="guest-access-form">
+        <input value={label} placeholder="Name shown on their comments, e.g. Aaron Ogdahl, Collins" onChange={e => setLabel(e.target.value)} />
+        <label className="guest-access-expiry">Expires in <input type="number" min="1" value={days} onChange={e => setDays(e.target.value)} /> days (blank = never)</label>
+        <button className="btn-primary" onClick={create} disabled={!label.trim()}>Create roof page link</button>
+        {error && <p className="action-result action-error">Not created: {error}</p>}
+      </div>
+      {link && (
+        <div className="guest-access-new-link">
+          <strong>Link created. Copy it now, it won't be shown again:</strong>
+          <code>{link}</code>
+          <button className="btn-ghost" onClick={() => navigator.clipboard?.writeText(link)}>Copy</button>
+        </div>
+      )}
+      <p className="config-hint">Revoke it from the Guest Access list above.</p>
+      <details onToggle={e => setOpen(e.currentTarget.open)}>
+        <summary>Open the page and its comments</summary>
+        {open && <RoofSpecPage owner authedFetch={doFetch} apiBase={apiBase} />}
+      </details>
+    </>
+  );
+}
 
 function GuestAccessCard({ auth }) {
   const [tokens, setTokens] = useState([]);
@@ -9528,11 +9581,13 @@ if (rootEl) {
   const demoMatch = window.location.pathname.match(/^\/demo\/([^/]+)/);
   if (demoMatch) installDemoFetch(decodeURIComponent(demoMatch[1]));
   const magicMatch = window.location.pathname.match(/^\/auth\/magic\/([^/]+)/);
+  const roofMatch = window.location.pathname.match(/^\/roof\/([^/]+)/);
   createRoot(rootEl).render(
     <ThemeProvider>
       {guestMatch ? <GuestDashboard token={guestMatch[1]} />
         : demoMatch ? <App demoToken={decodeURIComponent(demoMatch[1])} />
         : magicMatch ? <MagicLinkLanding token={magicMatch[1]} />
+        : roofMatch ? <div className="guest-view roof-shell"><RoofSpecPage token={roofMatch[1]} apiBase={LOCATIONS.cabin.apiBase} /></div>
         : <App />}
     </ThemeProvider>
   );

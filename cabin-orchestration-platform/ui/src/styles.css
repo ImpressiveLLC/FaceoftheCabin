@@ -2583,3 +2583,39 @@ select option { background: var(--bg-secondary); color: var(--text); }
 
 .kpi-tile[role="button"] { cursor:pointer; }
 .kpi-tile[role="button"]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+
+/* ─── Roof Monitoring page (/roof/{token} and Config) ───────────────────── */
+.roof-spec {
+  --acc: var(--accent); --warn: #d98324; --part: var(--bg-tertiary); --line: var(--border); --card: var(--bg-card);
+  max-width: 900px; margin: 0 auto; padding: 16px 16px 48px; color: var(--text); font-size: 15px; line-height: 1.5;
+}
+.roof-spec h1 { font-size: 24px; margin: 8px 0; }
+.roof-spec h2 { font-size: 19px; margin: 32px 0 8px; border-top: 1px solid var(--line); padding-top: 14px; }
+.roof-spec h3 { font-size: 15px; margin: 0 0 4px; }
+.roof-spec p { margin: 6px 0; }
+.roof-spec .roof-mut { color: var(--text-muted); }
+.roof-spec .roof-note { background: var(--part); border-left: 4px solid var(--acc); padding: 10px 14px; border-radius: 4px; margin: 12px 0; }
+.roof-spec .roof-warn { background: var(--part); border-left: 4px solid var(--warn); padding: 10px 14px; border-radius: 4px; margin: 12px 0; }
+.roof-spec figure { margin: 12px 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.roof-spec figure svg { display: block; width: 100%; height: auto; }
+.roof-spec figcaption { font-size: 13px; color: var(--text-muted); padding: 6px 4px 2px; }
+.roof-spec svg text { fill: currentColor; font-family: inherit; }
+.roof-spec .p { fill: var(--part); stroke: currentColor; stroke-width: 1.5; }
+.roof-spec .roof-tw { overflow-x: auto; }
+.roof-spec table { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--card); }
+.roof-spec th, .roof-spec td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+.roof-spec th { background: var(--part); }
+.roof-spec .roof-id { font-weight: 700; white-space: nowrap; color: var(--acc); }
+.roof-spec .roof-tag { display: inline-block; background: var(--part); border: 1px solid var(--line); border-radius: 10px; padding: 0 8px; font-size: 12px; }
+.roof-spec .roof-item { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 12px 0; }
+.roof-spec .roof-thread { list-style: none; padding: 0; margin: 8px 0; }
+.roof-spec .roof-entry { border-left: 3px solid var(--line); padding: 4px 10px; margin: 6px 0; }
+.roof-spec .roof-entry-owner { border-left-color: var(--acc); }
+.roof-spec .roof-entry-meta { font-size: 12px; color: var(--text-muted); }
+.roof-spec .roof-entry-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.roof-spec .roof-entry-delete { margin-left: 8px; padding: 0 6px; font-size: 12px; }
+.roof-spec .roof-entry-box { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-top: 8px; }
+.roof-spec .roof-entry-box textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.guest-view.roof-shell { max-width: 940px; }
+.roof-spec .lv { stroke: var(--acc); stroke-width: 2.5; fill: none; }
+.roof-spec .roof-entry-box textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; }
