@@ -79,6 +79,29 @@ The old Maintenance Deployment section describes backend deployment as manual-on
 
 For a release, record separately: repository/commit, tests, built image, target host/stack, deployed image/commit, health result and real feature verification. Obtain authorization for the actual deployment; do not merge, dispatch, rebuild or restart merely because a PR exists. The [family-hub](../../../.github/workflows/deploy-family-hub.yml), [discovery](../../../.github/workflows/deploy-cabin-discovery.yml) and [production stack](../../../.github/workflows/deploy-production-stack.yml) have separate scopes/triggers. Read the relevant workflow rather than applying one generic deployment recipe.
 
+### Workflow table at `main` (K13)
+
+Audience: operator. Read from the files in `.github/workflows/` at `main`; no run was triggered or inspected here (`NOT_RUN`), and a workflow file does not show that its latest run succeeded. Deploys run on the self-hosted `cabin-m920q` runner; pull-request checks run on GitHub-hosted runners with no host access.
+
+| Workflow | Starts on | Gate before change | Change applied | Health check and rollback |
+|---|---|---|---|---|
+| `deploy-cabin-backend` | Push to `main` touching `backend/**`, the base Compose file, the overlay Compose file or itself; manual dispatch. A built-in guard skips the deploy when only another service's block in the overlay changed. A manual run always deploys | `mvn test` must pass, else nothing is built | Image built and tagged by git short SHA, started through Compose | Polls `/actuator/health` for 60 seconds. On failure it redeploys the previous tag through Compose and the job still ends red. It does not re-check the rolled-back container. With no previous image there is no automatic rollback: the workflow only logs an error and fails, so the candidate may stay running and unhealthy and an operator has to intervene |
+| `deploy-family-hub` | Push to `main` touching `family-hub/**`, **anything** under `cabin-orchestration-platform/**`, or itself; manual dispatch | Family Hub browser journeys (desktop and mobile) and the cabin-ui unit tests | Rebuilds and restarts `family-hub` and `cabin-ui` only (`--no-deps`, so the backend is not recreated) | None. A failed gate stops the run before the rebuild. After the rebuild there is no health check or rollback |
+| `deploy-cabin-discovery` | Push touching `discovery-service/**`, the overlay Compose file (any change, unguarded) or itself; manual dispatch | `pytest` in a test image | Rebuilds and restarts `cabin-discovery` | None beyond the container's own healthcheck; no automatic rollback |
+| `deploy-production-stack` | Push touching `infra/production-stack/**`, the overlay Compose file or itself; manual dispatch. One run at a time | Compose validation | Third-party stack images (Mosquitto, Frigate, Zigbee2MQTT, Home Assistant, Node-RED and others). An overlay-only change is validation and smoke only | Waits for every container running and every defined healthcheck healthy, then two MQTT smoke tests. On failure it restores the last-known-good Compose file, Frigate config and exact image IDs; a missing snapshot or an unhealthy restore is reported as manual intervention. The Frigate config is overwritten from git on this path, and Frigate is not restarted by it |
+| `rotate-secrets` | 06:00 UTC on the 1st of each month; manual dispatch | Ansible and the vault password file must already exist on the runner | Rotates the `cabin-postgres` password with the playbook | See the rotation runbook. Changing `.env` alone does not rotate the database credential |
+| `intent-slot-tooling`, `taxonomy-eval-tooling`, `blinkbridge-tooling`, `blink-relay-tests` | Pull request or push to `main` touching their own directory | Their own offline tests, GitHub-hosted | Nothing is deployed | Not applicable |
+| `family-notes-backend`, `kiosk-cabin-ui`, `kiosk-family-hub` | Pull request only, touching `backend/**`, `ui/**` or `family-hub/**` respectively | Backend, UI and browser tests, GitHub-hosted | Nothing is deployed | Not applicable |
+
+Where a document and a workflow disagree, the workflow is the source:
+
+- Older text says the backend deploys by hand only, or that no workflow runs on a pull request. Both are out of date: the backend deploys from a push to `main`, and the tooling and kiosk workflows above run on pull requests.
+- A backend-only change under `cabin-orchestration-platform/` also starts `deploy-family-hub`, which rebuilds the UI. A UI-only change does not start the backend deploy.
+- Only the backend and the production stack have a post-deploy health check and rollback. The Family Hub, cabin-ui and discovery deploys do not; if one is wrong, redeploy the previous commit.
+- Rollback to an earlier backend image exists only while an earlier SHA-tagged image is still on the host. The image prune after a deploy removes untagged images only.
+
+Sources: [deploy-cabin-backend](../../../.github/workflows/deploy-cabin-backend.yml), [deploy-family-hub](../../../.github/workflows/deploy-family-hub.yml), [deploy-cabin-discovery](../../../.github/workflows/deploy-cabin-discovery.yml), [deploy-production-stack](../../../.github/workflows/deploy-production-stack.yml), [rotate-secrets](../../../.github/workflows/rotate-secrets.yml).
+
 Do not print full resolved Compose configuration to prove equality: it can contain secret values. Compare relevant nonsecret metadata, presence or carefully selected status fields. The existing maintenance guide records why raw-value comparisons are prohibited.
 
 ## Persistence and replacement-host recovery
