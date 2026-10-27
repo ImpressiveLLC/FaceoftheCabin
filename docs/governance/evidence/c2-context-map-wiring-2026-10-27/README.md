@@ -41,7 +41,7 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `camera_capability` | 3100 | 3100 | capability-map 3100 | none |
 | `device_identity` | 2792 | 0 | device-onboarding 2792 | none |
 | `device_import_lifecycle` | 2792 | 0 | device-onboarding 2792 | none |
-| `rules_workflows` | 1070 | 0 | rules-and-safety 1070 | none |
+| `rules_workflows` | 4879 | 0 | rules-and-safety 1070, rules-and-alerts-trigger-and-action-catalog-k05 3809 | none |
 | `live_sensors` | 4792 | 4792 | capability-map 3100, what-the-presence-badge-means 961, arming 731 | none |
 | `credential_redaction` | 1487 | 0 | credentials-and-access 1487 | none |
 | `configuration_binding` | 5913 | 0 | per-name-reference-ask-home-assist 3126, ha-token-validity-k09-slice-2 1290, database-password-rotation-k09-sli 1497 | none |
