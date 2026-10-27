@@ -28,7 +28,7 @@ SQL
 
 run "devices (device_id, name, type, protocol, capabilities, allowlisted config keys as key=value)" <<SQL
 SELECT d.device_id, d.name, d.type, coalesce(d.protocol,''), coalesce(array_to_string(d.capabilities, ','),''),
-       coalesce((SELECT string_agg(e.key || '=' || e.value #>> '{}', ';' ORDER BY e.key)
+       coalesce((SELECT string_agg(e.key || '=' || (e.value #>> '{}'), ';' ORDER BY e.key)
                  FROM jsonb_each(d.config) e
                  WHERE e.key IN ($ALLOW_KEYS) AND jsonb_typeof(e.value) IN ('string','boolean','number')), '')
 FROM device d ORDER BY d.device_id;
