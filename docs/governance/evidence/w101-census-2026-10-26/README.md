@@ -29,7 +29,7 @@ The raw export is private and is not committed (it holds hardware ids and names)
 | Present at runtime and matched to a runtime device (`yes`, `yes_persisted`) | 19: the 13 Zigbee records, Kidde, Blink Outdoor 4, the attic sensor, the dehumidifier outlet, the Home laundry sensor, and the `home-cam-driveway` seed |
 | Partly present: service rows exist, parent row missing (`partial`) | 3: Liebherr, the router, Starlink |
 | Events exist but no device row (`events_only`) | 1: the Reolink camera |
-| Confirmed absent from both the device table and the observations (`no`) | 39: 38 allocation records and the Bosch dishwasher |
+| Ordered or documented but not commissioned: no device row and no observation (`not_commissioned`) | 39: 38 allocation records (planning_not_live) and the Bosch dishwasher. This is "not yet installed or integrated", not "missing" |
 | Disabled code seed, not persisted (`seed_only`) | 13 |
 | Total | 75 |
 
@@ -52,10 +52,15 @@ Status: 66 resolved, 9 unresolved. The nine unresolved rows are `allocation-home
 
 | Item | Value |
 |---|---|
-| Original 75 reconciled to a runtime device | 19 matched, 3 partial, 1 events-only, 52 confirmed not present (39 `no`, 13 `seed_only`) |
+| Original 75 reconciled to a runtime device | 19 matched, 3 partial, 1 events-only, 52 not present at runtime (39 `not_commissioned`, 13 `seed_only`) |
 | Duplicate parents | 4 physical devices (3 inside the 75: mechanical-room temperature, bathroom leak alarm, Kidde; 1 outside it: the Home television) |
 | Rows needing alias or history repair | 9 of the 75 (the `yes` rows in `census.csv`) |
 | Dangling parent ids | 7 (48 service rows) |
+
+## Column notes
+
+- `enrollment` is one of `enabled`, `disabled`, `candidate`, `none` (19 / 13 / 0 / 43). For a group it is the parent's state; `none` means no parent lifecycle row exists (not commissioned, events only, or a missing parent). `enrollment_detail` keeps the free text: lifecycle state, enabled-row counts in the group, and any second parent.
+- `runtime_present`: `yes`, `yes_persisted`, `partial`, `events_only`, `seed_only`, `not_commissioned`.
 
 ## Limits
 
