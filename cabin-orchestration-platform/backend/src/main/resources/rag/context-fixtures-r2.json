@@ -341,7 +341,12 @@
         "postgres_password",
         "configuration",
         "vite",
-        "rebuild"
+        "rebuild",
+        "rotation",
+        "rotate",
+        "home_ha_token",
+        "cabin_ask_intent_enabled",
+        "cabin_ask_intent_model"
       ],
       "questions": [
         "Q12",
@@ -359,7 +364,54 @@
       ],
       "oracleRefs": [
         "K09",
-        "K17"
+        "K17",
+        "K09"
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "per-name-reference-ask-home-assistant-and-database-settings-k09-first-slice",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "ha-token-validity-k09-slice-2",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "database-password-rotation-k09-slice-2",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "config_build_time_binding",
+      "description": "Build-time UI and Family Hub settings: changing a running container does not rebuild the compiled JavaScript or host-config.js",
+      "boost": 2,
+      "keywordPatterns": [
+        "api url",
+        "vite",
+        "rebuild",
+        "build argument",
+        "host-config",
+        "running container"
+      ],
+      "questions": [
+        "Q12"
+      ],
+      "contextNodes": [
+        {
+          "entityRef": "platform.configuration",
+          "chunkType": "DESCRIPTION"
+        },
+        {
+          "entityRef": "platform.configuration",
+          "chunkType": "SETUP"
+        }
+      ],
+      "oracleRefs": [
+        "K09"
       ],
       "contextDocuments": [
         {
@@ -492,6 +544,11 @@
         "K12"
       ],
       "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/maintenance.md",
+          "section": "running-versus-healthy-per-service-k11k12",
+          "audience": "administrator"
+        },
         {
           "path": "ai-assistant/user-guide/maintenance.md",
           "section": "first-determine-what-is-failing",
@@ -749,6 +806,116 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "self_healing_recovery",
+      "description": "What detects a failure versus what restarts anything: restart policy, healthchecks, Kuma, DeviceHealthMonitor, Blink bridge and host timer, the disabled watchdog",
+      "keywordPatterns": [
+        "self-heal",
+        "self healing",
+        "autoheal",
+        "heartbeat",
+        "watchdog",
+        "restart policy",
+        "restart automatically",
+        "recover automatically",
+        "dead-man",
+        "unhealthy",
+        "restart on its own"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [
+        "K11",
+        "K12"
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/maintenance.md",
+          "section": "what-detects-and-what-recovers",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "backup_restore_recipes",
+      "description": "Backup and restore per store: what copies it, the restore recipe in the repo, limits, evidence status (all restores NOT_RUN)",
+      "keywordPatterns": [
+        "back up",
+        "backed up",
+        "pg_dump",
+        "backup recipe",
+        "restore recipe",
+        "database backup",
+        "telemetry backup",
+        "restore the database",
+        "backup-modular"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [
+        "K10"
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/maintenance.md",
+          "section": "backup-and-restore-recipes-per-store-k10-verified-from-source-only",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "config_passthrough",
+      "description": "Backend settings that the M920q overlay does not pass into the container, so an .env value for them is ignored",
+      "keywordPatterns": [
+        "pass-through",
+        "passthrough",
+        "pass through",
+        "passed through",
+        "not passed",
+        "never reach",
+        "ignored setting",
+        "storage threshold",
+        "presence stale"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [
+        "K09"
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "settings-that-never-reach-cabin-backend-k09-slice-2",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "ask_runtime_limits",
+      "description": "How the backend calls Ollama, the host-reported model, prompt size and the context map that decides which guide sections reach Ask",
+      "keywordPatterns": [
+        "ollama",
+        "num_ctx",
+        "context window",
+        "open webui",
+        "prompt size",
+        "context map",
+        "reach ask",
+        "which sections"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [
+        "K15"
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/ask-and-helpdesk.md",
+          "section": "model-runtime-prompt-size-and-which-guide-sections-reach-ask-k15",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -757,6 +924,7 @@
     "contextDocuments added: the DB holds none of the platform./system./family_hub. nodes r1 designates (2026-09-20 read-only check), so r1 context was empty for 16 of 17 categories",
     "credential_redaction boost 2: credential questions must reach the role-gated credential guidance even when another category also matches",
     "2026-10-04 (D24, W-23): presence and location-role sections added to live_sensors (operations.md#presence-and-location-roles) and installation (independent-installation.md#presence-for-each-location)",
-    "2026-10-16 (Doc 27, HO-2026-10-16-doc27-poc2 'Code / Ask'): environmental_nodes category added, wiring ai-assistant/user-guide/environmental-nodes.md. Factual sections are household audience; the Ask behavior and execution boundary section is administrator only (fail-closed default, reviewable). No frozen question declares it (questions is empty), nothing is ingested or trained."
+    "2026-10-16 (Doc 27, HO-2026-10-16-doc27-poc2 'Code / Ask'): environmental_nodes category added, wiring ai-assistant/user-guide/environmental-nodes.md. Factual sections are household audience; the Ask behavior and execution boundary section is administrator only (fail-closed default, reviewable). No frozen question declares it (questions is empty), nothing is ingested or trained.",
+    "2026-10-27 wiring: guide sections for K09-K13 and K15 added to the map. configuration_binding now supplies the per-name, HA-token and rotation sections (Q13); the build-time trace table moves to config_build_time_binding (Q12); health_verification is extended; new categories self_healing_recovery, backup_restore_recipes, config_passthrough, ask_runtime_limits. Each category keeps its reviewed-document total at or near the 6000-character budget."
   ]
 }
