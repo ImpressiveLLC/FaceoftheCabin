@@ -1,24 +1,34 @@
 # C2 context-map wiring, 2026-10-27
 
-Owner Code; review Cowork and Codex; no merge before both. Source: `docs/ai-assistant/rag/context-fixtures-r2.json` and its compiled copy `cabin-orchestration-platform/backend/src/main/resources/rag/context-fixtures-r2.json` (identical; a test compares them). No model call was made. Nothing was deployed, ingested or trained.
+Owner Code; review Cowork and Codex; no merge before both, and Cowork merges only with a Codex CLEAN on the final head and Nate's go. Source: `docs/ai-assistant/rag/context-fixtures-r2.json` and its compiled copy `cabin-orchestration-platform/backend/src/main/resources/rag/context-fixtures-r2.json` (identical; a test compares them). No model call was made. Nothing was deployed, ingested or trained.
 
 ## Why
 
-A guide section reaches Ask only through the context map. Sections written for C2 (K09 configuration, K10 backups, K11/K12 service health, K13 workflows, K15 Ask runtime) were not listed, so a C1 rerun would not have measured them. This change makes them reachable and keeps each category inside the per-question document budget (`ask.context.max-document-chars`, 6000 characters).
+A guide section reaches Ask only through the context map. The sections written for C2 (K09 configuration, K10 backups, K11/K12 service health, K13 workflows, K15 Ask runtime) were not listed, so a C1 rerun would not have measured them. Nate's direction on 2026-10-27 added a second requirement: everything must fit the per-question document budget (`ask.context.max-document-chars`, 6000 characters) without cutting guide text, and must stay extractable in full. The first draft left three categories over the budget; this version has none.
 
-## What changed
+## How everything fits without losing text
 
-| Change | Detail |
+No sentence of any guide was deleted or reworded. Four techniques, in order of use:
+
+1. **Split by intent (gaps in other streams).** Content that overflowed one category moves to a sibling category that carries the other half of the question space, with its own keywords. The health triage table moved from `health_verification` to `health_triage`; the presence roles and open items moved from `live_sensors` to `presence_roles_and_gaps`; the build-time table moved from `configuration_binding` to `config_build_time_binding`.
+2. **Promote implied structure to headings.** The four bold paragraph labels of the presence section in `operations.md` became level-three headings, so each can be mapped on its own. The detect-versus-recover subsection, the backup recipes and the three parts of the K09 slice-2 section became level-two sections for the same reason. Headings only; the text is unchanged.
+3. **Reference-style links.** In three sections of `independent-installation.md`, inline links with long repository paths became reference links (`[text][inst-3]`) whose targets sit in a final `Link targets` section of the same file. The wording is unchanged and every target is still in the file; the sections shrank by 431 and 233 characters, which brought `installation` under the budget.
+4. **A codified digest.** `Service health at a glance` (1,723 characters) restates, as four labelled lines, what the triage table and the per-service table say about the meanings of healthy, the healthchecks, recovery and first triage. It adds no claim; each line points to the section that holds the full detail. It is delivered first with the per-service table, so Q16 gets the triage rows that matter and the full table, and the full triage table is delivered whole to the questions that ask about it.
+
+## What changed in the map
+
+| Category | Change |
 |---|---|
-| `configuration_binding` (Q13) | Now supplies the per-name table, the HA-token validity section and the database-password rotation section (5,913 characters). Keywords added: `rotation`, `rotate`, `home_ha_token`, `cabin_ask_intent_enabled`, `cabin_ask_intent_model`. |
-| `config_build_time_binding` (new, Q12) | The build-time trace table moved here (3,810 characters, boost 2, keywords `api url`, `vite`, `rebuild`, `build argument`, `host-config`, `running container`). Q12 keeps its knowledge nodes. This keeps the existing test that pins Q13 to `configuration_binding`. |
-| `health_verification` (Q16) | The per-service table (4,151) is now first; the existing triage table (3,330) follows and is cut to about 1,849 characters by the budget. |
-| `self_healing_recovery` (new) | The detect-versus-recover section (3,790). |
-| `backup_restore_recipes` (new) | The K10 section (4,871). `backup` and `restore` stay with `persistence_recovery`; the new category uses multi-word phrases (`back up`, `pg_dump`, `database backup`, ...). |
-| `config_passthrough` (new) | The pass-through section (2,089). |
-| `ask_runtime_limits` (new) | The K15 section (4,328). |
-| Guide headings | The detect-versus-recover subsection and the K10 recipe table were promoted from level three to level two, and the database-rotation and pass-through parts of the K09 slice-2 section were split into their own level-two sections, so each fits the budget alone. The Kuma/persistence paragraph that followed the K10 table was moved back under the persistence section. |
-| `ContextMapWiringTest` | New. Fails when a mapped section no longer exists, when a category's first section exceeds the budget, when a category exceeds the budget without being a named exception (`health_verification`, `installation`, `live_sensors`), and checks the routing of eight probe questions and the audience gate. |
+| `configuration_binding` (Q13) | Supplies the per-name table, HA-token validity and rotation sections. Keywords added: `rotation`, `rotate`, `home_ha_token`, `cabin_ask_intent_enabled`, `cabin_ask_intent_model`. |
+| `config_build_time_binding` (new, Q12) | The build-time trace table (boost 2). Keeps the existing test that pins Q13 to `configuration_binding`. |
+| `health_verification` (Q16) | Digest plus the per-service table, both whole. |
+| `health_triage` (new) | The triage table, whole. |
+| `live_sensors` | Capability map, presence badge and arming paragraphs, whole. Q10 keeps its route. |
+| `presence_roles_and_gaps` (new) | Location roles and what is not settled, whole. |
+| `self_healing_recovery`, `backup_restore_recipes`, `config_passthrough`, `ask_runtime_limits` (new) | One section each. |
+| `ContextMapWiringTest` (new) | Fails when a mapped section no longer exists, when a first section exceeds the budget, or when any category exceeds the budget; the list of allowed exceptions is empty. Checks twelve probe questions and the audience gate. |
+
+Eval questions by half of the former `health_verification` section: Q16 depends on the per-service table and the digest (which carries the triage rows about a running container); no frozen question routes to `health_triage`, so none depends on the triage table alone.
 
 ## Prompt characters per category
 
@@ -32,13 +42,13 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `device_identity` | 2792 | 0 | device-onboarding 2792 | none |
 | `device_import_lifecycle` | 2792 | 0 | device-onboarding 2792 | none |
 | `rules_workflows` | 1070 | 0 | rules-and-safety 1070 | none |
-| `live_sensors` | 6000 | 6000 | capability-map 3100, presence-and-location-roles 4645 | presence-and-location-ro cut to ~2900 |
+| `live_sensors` | 4792 | 4792 | capability-map 3100, what-the-presence-badge-means 961, arming 731 | none |
 | `credential_redaction` | 1487 | 0 | credentials-and-access 1487 | none |
 | `configuration_binding` | 5913 | 0 | per-name-reference-ask-home-assist 3126, ha-token-validity-k09-slice-2 1290, database-password-rotation-k09-sli 1497 | none |
 | `config_build_time_binding` | 3810 | 0 | trace-a-setting-to-its-consumer 3810 | none |
 | `persistence_recovery` | 3246 | 0 | persistence-and-replacement-host-r 3246 | none |
-| `installation` | 6000 | 0 | minimum-inputs 1488, verified-clean-host-limitations 2080, presence-for-each-location 2782 | presence-for-each-locati cut to ~2432 |
-| `health_verification` | 6000 | 0 | running-versus-healthy-per-service 4151, first-determine-what-is-failing 3330 | first-determine-what-is- cut to ~1849 |
+| `installation` | 5686 | 0 | minimum-inputs 1488, verified-clean-host-limitations 1847, presence-for-each-location 2351 | none |
+| `health_verification` | 5874 | 0 | service-health-at-a-glance 1723, running-versus-healthy-per-service 4151 | none |
 | `deployment_source` | 5794 | 0 | deployment-source-correction 5794 | none |
 | `ask_helpdesk_behavior` | 4570 | 4570 | current-behavior 2033, what-a-source-currently-means 1568, questions-and-useful-limits 969 | none |
 | `governance_contribution` | 2493 | 2493 | small-auditable-changes 1445, contribution-record 1048 | none |
@@ -49,16 +59,18 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `backup_restore_recipes` | 4871 | 0 | backup-and-restore-recipes-per-sto 4871 | none |
 | `config_passthrough` | 2089 | 0 | settings-that-never-reach-cabin-ba 2089 | none |
 | `ask_runtime_limits` | 4328 | 0 | model-runtime-prompt-size-and-whic 4328 | none |
+| `health_triage` | 3330 | 0 | first-determine-what-is-failing 3330 | none |
+| `presence_roles_and_gaps` | 2922 | 2922 | who-counts-location-roles-ratified 1273, what-is-not-settled 1649 | none |
 
-Three categories exceed the budget today and truncate a later section: `live_sensors`, `installation` and `health_verification`. `deployment_source` is 5,794 and `configuration_binding` is 5,913, so a few lines added to either would start cutting them.
+No category is truncated. `configuration_binding` (5,913), `deployment_source` (5,794) and `health_verification` (5,874) are within about 200 characters of the cap, so a short addition to any of them would start cutting; the wiring test fails when that happens.
 
 ## Ollama context window: NOT_MEASURED
 
-The backend sends no `num_ctx`; the model's declared maximum is 131072 tokens; the window Ollama applies to an Ask request was not measured, and no prompt-length log line was present when the backend log was read. The 6000-character budget (about 1,500 tokens) is a margin, not a measured fit. A measurement needs a model call and is outside this change.
+The backend sends no `num_ctx`; the model's declared maximum is 131072 tokens; the window Ollama applies to an Ask request was not measured, and no prompt-length log line was present when the backend log was read. The 6000-character budget (about 1,500 tokens) is a margin, not a measured fit. The first rerun must report truncation or errors separately. A measurement needs a model call and is outside this change.
 
-## Sections still not mapped
+## Sections still not reachable
 
-These 14 sections are not reachable by Ask and were left alone because they are not in this change's scope. The K13 workflow table is a level-three part of the mapped deployment section, so it is reachable.
+14 of the 52 second- and third-level sections of the user guides and the contribution guide are not reachable by Ask. They were left alone because they are outside this change's scope.
 
 - `ask-and-helpdesk.md` `#d28-naming-and-the-related-to-tag--not-yet-in-the-knowledge-base` (804 characters)
 - `ask-and-helpdesk.md` `#add-or-correct-knowledge` (1035 characters)
@@ -77,7 +89,7 @@ These 14 sections are not reachable by Ask and were left alone because they are 
 
 ## Risks and order
 
-- This edits the r2 map in place (a new entry in `r2Changes`) rather than creating r3. The deployed r2 behaviour of the earlier runs stays in Git history; a rerun must record the deployed commit. Cowork can ask for an r3 copy instead.
-- The compiled map changes, so a merge touching `backend/**` starts the backend deploy workflow (tests gate it, health check and rollback follow).
-- The wiring depends on the headings and section text of #281, #282, #283, #284 and #287. Merge those first. On this branch they are merged in so the tests run against the real sections; after they land, this PR's diff reduces to the map, the test, the heading changes, the backlog row and the evidence.
-- A rotated-or-renamed heading breaks the mapping silently at runtime (the loader logs a warning and Ask runs without it); `ContextMapWiringTest` catches that in CI.
+- This edits the r2 map in place (a new entry in `r2Changes`), as Cowork ruled; no r3. A rerun records the map hash and the deployed commit.
+- The compiled map changes, so a merge touching `backend/**` starts the backend deploy workflow (tests gate it; a health check and rollback follow) and changes live Ask context.
+- The wiring depends on the headings and text of #281, #282, #283, #284 and #287. Merge those first; this branch has them merged in so the tests run against the real sections.
+- A renamed or removed heading breaks its mapping silently at runtime (the loader logs a warning and Ask runs without it); `ContextMapWiringTest` catches that in CI.

@@ -32,6 +32,15 @@ Audience: operator. Source-reviewed against the live host on 2026-10-03. The ful
 
 Camera configuration changes go through a pull request, and the camera password never goes into the file or the repository.
 
+## Service health at a glance
+
+A digest of the sections "First determine what is failing", "Running versus healthy, per service" and "What detects and what recovers". Each line points to the section holding the full detail.
+
+- **Four meanings of healthy, in order.** (1) Container running: the main process has not exited, nothing more. (2) Named healthcheck: only a service that defines one can show `(healthy)`. (3) Inter-service path: Uptime Kuma monitors or a cross-container smoke test. (4) The feature itself: a signed-in request or a recent reading. Passing one level does not prove the next.
+- **Healthchecks.** Seven Compose healthchecks (`cabin-backend`, `cabin-discovery`, `ollama`, `postgres`, `kafka`, `mosquitto`, `zigbee2mqtt`) plus the Blink bridge's own image check. Thirteen other active services define none and can never show healthy. `depends_on` orders start only; it does not wait for health.
+- **Recovery.** Docker `restart: unless-stopped` restarts an exited container, not an unhealthy one. The Blink bridge recovers inside its own loop, and by a host timer only if that is installed. No autoheal container exists, so otherwise an unhealthy container stays unhealthy until a person or a Kuma page acts.
+- **First triage.** Page will not load: check the URL and the serving or tunnel service; that does not show the backend is down. Page loads but a feature is empty: inspect the signed-in request status and freshness. Container is running: check its healthcheck and the feature path. Ask gives raw facts: check `answeredByModel` first. Device offline: check timestamps, lifecycle and expected reporting. Presence reads away or unknown: check the age of its source; stale means unknown, not away.
+
 ## "Running" versus healthy, per service (K11/K12)
 
 Audience: operator. Source-reviewed at `main` from the Compose files, the Blink bridge Dockerfile and the guides named below; no check below was run against the live host (`NOT_RUN`). A container status of "running" proves only that the main process has not exited. `docker ps` shows "healthy" only for a service that defines a `healthcheck`. A service without one can never show it.

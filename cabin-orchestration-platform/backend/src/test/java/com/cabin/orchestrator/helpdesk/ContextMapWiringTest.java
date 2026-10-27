@@ -32,8 +32,11 @@ class ContextMapWiringTest {
     private static final Path REPO_DOCS = Path.of("../../docs").toAbsolutePath().normalize();
     private static final Path FIXTURE_COPY = REPO_DOCS.resolve("ai-assistant/rag/context-fixtures-r2.json");
     private static final int BUDGET = 6000;
-    /** Categories whose later sections are truncated by the budget today. A new entry needs a review. */
-    private static final Set<String> KNOWN_OVER_BUDGET = Set.of("health_verification", "installation", "live_sensors");
+    /**
+     * Categories allowed to exceed the budget, which cuts a later section. Empty on purpose: every category fits
+     * whole. An entry here needs a review because it silently drops guide text from the answer.
+     */
+    private static final Set<String> KNOWN_OVER_BUDGET = Set.of();
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -98,17 +101,19 @@ class ContextMapWiringTest {
 
     @Test
     void theNewC2QuestionsRouteToTheirCategories() {
-        Map<String, String> expected = Map.of(
-            "HA_TOKEN is nonempty and I changed POSTGRES_PASSWORD in .env; is authentication now fixed?", "configuration_binding",
-            "Is my HA_TOKEN valid when the health check says UP?", "configuration_binding",
-            "How is the POSTGRES_PASSWORD rotation done?", "configuration_binding",
-            "I changed the UI API URL in the running container. Why is the browser still using the old URL?", "config_build_time_binding",
-            "Does the platform have autoheal, or restart an unhealthy container on its own?", "self_healing_recovery",
-            "How do I back up the database? Is there a pg_dump job?", "backup_restore_recipes",
-            "Why is STORAGE_WARN_PERCENT in .env ignored? Is it passed through to the container?", "config_passthrough",
-            "What num_ctx does Ollama use for Ask?", "ask_runtime_limits",
-            "Every service says running. What should I verify?", "health_verification",
-            "All containers restarted successfully on the replacement host. Is recovery complete?", "persistence_recovery");
+        Map<String, String> expected = new java.util.LinkedHashMap<>();
+        expected.put("HA_TOKEN is nonempty and I changed POSTGRES_PASSWORD in .env; is authentication now fixed?", "configuration_binding");
+        expected.put("Is my HA_TOKEN valid when the health check says UP?", "configuration_binding");
+        expected.put("How is the POSTGRES_PASSWORD rotation done?", "configuration_binding");
+        expected.put("I changed the UI API URL in the running container. Why is the browser still using the old URL?", "config_build_time_binding");
+        expected.put("Does the platform have autoheal, or restart an unhealthy container on its own?", "self_healing_recovery");
+        expected.put("How do I back up the database? Is there a pg_dump job?", "backup_restore_recipes");
+        expected.put("Why is STORAGE_WARN_PERCENT in .env ignored? Is it passed through to the container?", "config_passthrough");
+        expected.put("What num_ctx does Ollama use for Ask?", "ask_runtime_limits");
+        expected.put("Every service says running. What should I verify?", "health_verification");
+        expected.put("The page cannot load. What do I check first?", "health_triage");
+        expected.put("Who counts as present: a primary user or a maintenance user?", "presence_roles_and_gaps");
+        expected.put("All containers restarted successfully on the replacement host. Is recovery complete?", "persistence_recovery");
         expected.forEach((question, category) ->
             assertThat(builder.categoryIdFor(question)).as(question).isEqualTo(category));
     }
@@ -119,9 +124,10 @@ class ContextMapWiringTest {
             HouseholdRole.ADMINISTRATOR);
 
         assertThat(context).isNotEmpty();
-        assertThat(context.get(0).entityRef())
-            .isEqualTo("doc:ai-assistant/user-guide/maintenance.md#running-versus-healthy-per-service-k11k12");
-        assertThat(context.get(0).content()).doesNotContain("[section truncated");
+        assertThat(context).extracting(KnowledgeNode::entityRef).containsExactly(
+            "doc:ai-assistant/user-guide/maintenance.md#service-health-at-a-glance",
+            "doc:ai-assistant/user-guide/maintenance.md#running-versus-healthy-per-service-k11k12");
+        assertThat(context).allSatisfy(n -> assertThat(n.content()).doesNotContain("[section truncated"));
         assertThat(context.stream().mapToInt(n -> n.content().length()).sum()).isLessThanOrEqualTo(BUDGET + 200);
     }
 
