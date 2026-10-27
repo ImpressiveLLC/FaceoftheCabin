@@ -118,6 +118,7 @@ export function RoofSpecPage({ token, authedFetch, owner = false, apiBase = "" }
   return (
     <div className="roof-spec">
       <svg width="0" height="0" style={{position: "absolute"}} aria-hidden="true"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs></svg>
+      <p className="roof-mut roof-brand">AcmeOptix by ImpressiveLLC</p>
       <h1>Roof Performance Monitoring</h1>
       <p className="roof-mut">Cumberland, WI cabin. Collins Roofing and Sheet Metal estimate 1100076160 (138T 24 ga, 2 in R-10 vented deck). A personal project of Nate's, shared for feedback.</p>
 

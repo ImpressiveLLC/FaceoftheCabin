@@ -2100,7 +2100,7 @@ export function FamilyConfigPanel({ auth }) {
         {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2}>
           <GuestAccessCard auth={auth} />
         </ConfigCard>}
-        {!auth?.demo && <ConfigCard title="Roof Monitoring page" icon={Link2} wide>
+        {!auth?.demo && <ConfigCard title="AcmeOptix by ImpressiveLLC" icon={Link2} wide>
           <RoofSpecOwnerCard auth={auth} />
         </ConfigCard>}
         {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus}>
@@ -2295,7 +2295,7 @@ export function RoofSpecOwnerCard({ auth }) { // exported for src/RoofSpecPage.t
   };
   return (
     <>
-      <p className="config-desc">Roof sensor plan for the Collins roof. A link made here can read the page and post comments or answers, and nothing else in the app.</p>
+      <p className="config-desc">Roof Monitoring page for the Collins roof. A link made here can read the page and post comments or answers, and nothing else in the app.</p>
       <div className="guest-access-form">
         <input value={label} placeholder="Name shown on their comments, e.g. Aaron Ogdahl, Collins" onChange={e => setLabel(e.target.value)} />
         <label className="guest-access-expiry">Expires in <input type="number" min="1" value={days} onChange={e => setDays(e.target.value)} /> days (blank = never)</label>
