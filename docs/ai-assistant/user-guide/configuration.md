@@ -42,11 +42,13 @@ Reading the table:
 - A nonblank `HA_TOKEN` shows only that a value is present. It does not show the token is valid, unexpired or authorized for the entities in use.
 - Not covered here: the other names in the inventory. This is a first slice of G01, not a complete registry.
 
-## HA token validity, database password rotation and Compose pass-through (K09, slice 2)
+## HA token validity (K09, slice 2)
 
 Audience: installer/operator. Source-reviewed at `main`; nothing was run on the host (`NOT_RUN`). Values are never shown.
 
 **Is `HA_TOKEN` valid?** The backend's health check only tests for blank. [`HaTokenCabinHealthIndicator`](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/health/HaTokenCabinHealthIndicator.java) returns DOWN when the value is blank or missing and UP otherwise, so `/actuator/health` can read UP with an expired, revoked or wrong token. When such a token is used, [`HomeAssistantAdapter`](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/homeassistant/HomeAssistantAdapter.java) does not fail loudly: it logs a warning (for example `HA fetch failed for <device>` or `HA discovery for '<location>' returned <status>`) and the affected Home Assistant devices stop updating. `DeviceHealthMonitor` then moves a polled device to OFFLINE only after an active poll also fails. So the evidence of a bad token is in the backend log warnings and in stale `lastSeen` values on Home Assistant devices, not in the health endpoint. A blank token logs `HA token not configured for location` and skips discovery. Home's token (`HOME_HA_TOKEN`) is blank on purpose.
+
+## Database password rotation (K09, slice 2)
 
 **What the automated rotation covers.** [`rotate-secrets.yml`](../../../.github/workflows/rotate-secrets.yml) runs the [Ansible playbook](../../../ansible/playbooks/rotate-secrets.yml) at 06:00 UTC on the 1st of each month, and on manual dispatch. It rotates the `cabin-postgres` password only. In order:
 
@@ -55,6 +57,10 @@ Audience: installer/operator. Source-reviewed at `main`; nothing was run on the 
 3. If any step fails, it restores the old password in the live database, the committed vault file and `.env`, recreates the dependents, and fails the run.
 
 `GRAFANA_PASSWORD` and `HA_TOKEN` are not rotated by this playbook. Each is a manual vault edit plus a matching change in the other system (Grafana's admin account, a new long-lived Home Assistant token). A rotation or token change that blanks `vault_ha_token` turns backend health DOWN on the next recreate, which the backend deploy treats as a failure. The 2026-10-01 half-finished rotation and its recovery are in the Maintenance guide.
+
+## Settings that never reach cabin-backend (K09, slice 2)
+
+Audience: installer/operator. Source-reviewed at `main`; nothing was run on the host (`NOT_RUN`).
 
 **Which application settings never reach `cabin-backend`.** The M920q overlay's `cabin-backend` `environment:` block lists the names it sets. Of the 52 environment names `application.yml` reads, 28 do not appear in that block, so a value placed in `infra/.env` for any of them is ignored and the code default applies:
 
