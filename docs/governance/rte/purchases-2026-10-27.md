@@ -1,6 +1,6 @@
 # Purchase record 2026-10-27: Home Vault parts and security keys
 
-Carts built by Cowork on 2026-10-27 at Nate's request. **Nothing was purchased; checkout is Nate's.** The Micro Center cart was built twice: in the built-in browser at 17:00 CDT, where all six lines and prices below were read, and again in Nate's own Chrome between 17:15 and 17:20 CDT, because the built-in browser cannot finish a checkout. Nate built his own Yubico cart and plans to remove the Nano from it (section 2). Anything marked `U` was not read live for this record. A later session re-verifies prices (see `.claude/skills/wingman/references/carts-and-purchases.md`, section 3) before reusing any figure here.
+Carts built by Cowork on 2026-10-27 at Nate's request. **Nothing was purchased; checkout is Nate's.** The Micro Center cart was built twice: in the built-in browser at 17:00 CDT, where all six lines and prices below were read, and again in Nate's own Chrome between 17:15 and 17:20 CDT, because the built-in browser cannot finish a checkout. A read-only look at that Chrome cart between 18:35 and 18:38 CDT found the cable present at quantity 2 (section 1). Nate built his own Yubico cart and plans to remove the Nano from it (section 2). Anything marked `U` was not read live for this record. A later session re-verifies prices (see `.claude/skills/wingman/references/carts-and-purchases.md`, section 3) before reusing any figure here.
 
 No order numbers, addresses, account details, payment data or cart links appear in this file, and none were entered anywhere.
 
@@ -15,11 +15,15 @@ Serves [W-120](../backlog.md) (Home Vault, parts for the vault node, UPS and off
 | Seagate IronWolf 8TB 7200 RPM SATA III CMR NAS drive (SKU 066878) | 1 | $329.99 | $329.99 | 3 in stock | Mirror member two, a different vendor from the first (A5: two vendors or two batches). CMR, NAS-rated |
 | UPS, 600 VA, 120 V, 7 outlets, model BE600M1 (SKU 375451) | 1 | $79.99 | $79.99 | 3 in stock | 3-year warranty on the listing and the manufacturer page. The Micro Center listing says 360 W; the manufacturer page and manual say 330 W, so plan on 330 W. The manual describes a USB data port for PowerChute in addition to the one USB charging port, so NUT has a port to read (A5). Whether the box holds a USB cable, and its type, is `U`: check at pickup. Listing runtime: 11.8 minutes at half load, 3.2 minutes at full load. Prove a working `upsc` reading at install. Replacement battery model APCRBC154 |
 | PCIe M.2 NVMe SSD to USB-A and USB-C dual-connector enclosure (SKU 640441) | 1 | $29.99 | $29.99 | 10+ in stock | Offline copy medium for the NVMe Nate already owns. Bridge chip RTL9210B (read from the product page earlier on 2026-10-27, read time `U`): use `smartctl -d sntrealtek` and a recent smartmontools, and prove SMART passthrough before relying on it (A8) |
-| 10 ft Cat 6 thin Ethernet cable (SKU 638866) | 1 | $9.99 | $9.99 | 8 in stock | Wired link from the node to a router LAN port (A7). Not in Nate's own Chrome cart: he interrupted at this line and has not said to add it. Add it if wanted; any 10 ft Cat 6 cable works |
+| 10 ft Cat 6 thin Ethernet cable (SKU 638866) | 1 (cart shows 2) | $9.99 | $9.99 | 8 in stock | Wired link from the node to a router LAN port (A7). Not in Nate's Chrome cart at 17:20 CDT: he interrupted at this line. Present at quantity 2 in the 18:35 to 18:38 CDT read; Cowork did not add it and who did is not known. One is enough for the node; any 10 ft Cat 6 cable works. Check the quantity at checkout |
 
 Built-in browser cart total (six lines): **$1,194.94** before tax and fees; the six line totals sum to that figure.
 
-Second build, Nate's own Chrome, store St. Louis Park: five lines (everything except the cable), every price matched the table. The five lines sum to $1,184.95, computed from the line prices; the page total was not read after the fifth line. Pickup only: orders are held 3 days and payment is collected at pickup. Protection plans are declined on every line. The cart page also advertises a store credit-card discount; it was not applied and no card application was started.
+Second build, Nate's own Chrome, store St. Louis Park: five lines (everything except the cable), every price matched the table. The five lines sum to $1,184.95, computed from the line prices; the page total was not read after the fifth line.
+
+Later read of the same Chrome cart (page reloaded, quantities and plan choices read from the page, nothing clicked or changed, 18:35 to 18:38 CDT): six lines, every price unchanged; the five parts at quantity 1 with no protection plan and pickup selected; the cable at quantity 2. The page header reads 7 items, $1,204.93 before tax and fees, which is the five parts ($1,184.95) plus two cables ($19.98). With one cable the total is $1,194.94.
+
+Pickup only: orders are held 3 days and payment is collected at pickup. Protection plans are declined on every line. The cart page also advertises a store credit-card discount; it was not applied and no card application was started.
 
 Headroom, not need: the irreplaceable set is tens of gigabytes (A4), so a mirrored pair of 8 TB drives is headroom Nate chose to buy ("overkill is fine if it is sustainable and future proof"). The parts that carry real value are the mirror, the UPS signalling, the append-only repository and the offline copy.
 
@@ -69,13 +73,13 @@ Carrying (Nate asked at 17:31 CDT; no keyring): per Yubico's product page the 5C
 ## 5. What Nate does
 
 1. Yubico: in your own cart remove the Nano, check which ports `ilikethelights` has, enter the shipping address, read the import-fee line, pay (or buy from a verified US dealer instead).
-2. Micro Center: add the cable if you want it, then check out for pickup at St. Louis Park and pay at pickup within 3 days, declining protection plans. At pickup check each line and quantity.
+2. Micro Center: your Chrome cart holds the cable at quantity 2 (one is enough; remove one or both if you want none), then check out for pickup at St. Louis Park and pay at pickup within 3 days, declining protection plans. At pickup check each line and quantity.
 3. On arrival: keys are registered following Part B; vault hardware goes to Nate's install with Code's staged files (Part A).
 4. After checkout, add only the date to this record.
 
 ## 6. What agents did not do
 
-No checkout, no sign-in, no account creation, no promo codes, no payment, address or account entry, and no protection plans. Cowork did not touch Nate's own Yubico cart, and stopped acting in Nate's Chrome when he interrupted at 17:20 CDT.
+No checkout, no sign-in, no account creation, no promo codes, no payment, address or account entry, and no protection plans. Cowork did not touch Nate's own Yubico cart, and stopped acting in Nate's Chrome when he interrupted at 17:20 CDT. The 18:35 to 18:38 CDT look reloaded the cart page and read it; nothing was clicked or changed.
 
 ## 7. Sources read on 2026-10-27
 
