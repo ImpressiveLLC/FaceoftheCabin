@@ -32,14 +32,42 @@ w_age_min() {
   echo $(( ( $(date -u +%s) - t ) / 60 ))
 }
 
-# w_verdict <pr> <full-head-sha>: print "<CLEAN|HOLD|none> <hex|-> <match|older|->".
+# w_pages <rest-path> [<jq filter for one item>]: read every page of a REST list and print the filter's
+# output for each item, in the API's order (oldest first for comments). All or nothing: when a page
+# fails, comes back malformed (not a list) or the list runs past W_PAGES_MAX pages (default 30, which
+# is also GitHub's cap of 3000 files on a PR), it prints nothing and returns 1, so a caller can treat
+# the read as incomplete and a gate can hold. Use this, never `gh api --paginate`: that follows the
+# response's Link header, which names a repositories/{id}/... URL, and the cloud agent proxy refuses
+# those (403), so there it silently returns page 1 only (seen 2026-10-28: the lane line of ctx-audit.sh
+# read the first 100 of #244's 211 comments). An explicit ?page=N on the repos/{owner}/{repo}/...
+# path works everywhere, as watch.sh already did. The filter runs once per item; the count of items on
+# the page comes back as the first line of each answer and decides whether another page exists.
+w_pages() {
+  local path="$1" item="${2:-.}" page=1 sep='?' raw cnt acc=""
+  case "$path" in *\?*) sep='&' ;; esac
+  while :; do
+    raw=$(w_gh api "${path}${sep}per_page=100&page=${page}" --jq \
+      "if type != \"array\" then error(\"not a list\") else (\"COUNT \\(length)\", (.[] | ($item))) end" 2>/dev/null) || return 1
+    cnt=${raw%%$'\n'*}
+    case "$cnt" in 'COUNT '[0-9]*) cnt=${cnt#COUNT } ;; *) return 1 ;; esac
+    case "$cnt" in *[!0-9]*) return 1 ;; esac
+    if [[ "$raw" == *$'\n'* ]]; then acc+="${raw#*$'\n'}"$'\n'; fi
+    if [ "$cnt" -lt 100 ]; then printf '%s' "$acc"; return 0; fi
+    page=$((page + 1))
+    [ "$page" -le "${W_PAGES_MAX:-30}" ] || return 1
+  done
+}
+
+# w_verdict <pr> <full-head-sha>: print "<CLEAN|HOLD|none|error> <hex|-> <match|older|->".
 # A verdict is the newest PR comment that starts with CLEAN or HOLD (optionally after a
-# "CODEX ..:" header). It binds only if a hex token in it is a prefix of the head sha.
+# "CODEX ..:" header). It binds only if a hex token in it is a prefix of the head sha. "error" means a
+# page of the comments could not be read, so the verdict is unknown (not absent): callers hold.
 w_verdict() {
-  local pr="$1" head="$2" line v tok found=""
-  line=$(gh api "repos/$W_REPO/issues/$pr/comments?per_page=100" --paginate --jq \
-    '[.[]|select(.body|test("^(CODEX[^\\n]{0,40}: *)?(CLEAN|HOLD)"))]
-     |if length==0 then empty else (last|.body[0:400]|gsub("\n";" ")) end' 2>/dev/null | grep . | tail -1)
+  local pr="$1" head="$2" raw line v tok found=""
+  raw=$(w_pages "repos/$W_REPO/issues/$pr/comments" \
+    'select(.body|test("^(CODEX[^\\n]{0,40}: *)?(CLEAN|HOLD)")) | (.body[0:400]|gsub("\n";" "))') \
+    || { echo "error - -"; return 0; }
+  line=$(printf '%s\n' "$raw" | grep . | tail -1)
   if [ -z "$line" ]; then echo "none - -"; return 0; fi
   v=$(printf '%s' "$line" | grep -oE 'CLEAN|HOLD' | head -1)
   for tok in $(printf '%s' "$line" | grep -oE '[0-9a-f]{7,40}'); do

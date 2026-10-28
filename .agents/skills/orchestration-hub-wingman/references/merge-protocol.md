@@ -28,6 +28,8 @@ bash .claude/skills/orchestration-hub-wingman/scripts/merge-gate.sh <pr>        
 
 `merge-gate.sh` is read-only and does, in this order: PR state, draft, base, `mergeable_state` (`unknown` = still computing, not a pass), checks (absence is not a pass), Codex verdict bound to the exact head, named-condition wording, position in the board queue, deploy exposure and running deploys, `git merge-tree` against main, and a simulated merge tested against every other open PR.
 
+Every list the gate and `ctx-audit.sh` read (the PR's comments, its changed files, the lane comments on #244) goes through `w_pages` in `lib.sh`, which asks for `?per_page=100&page=N` itself and fails closed: a page that cannot be read is a HOLD (a verdict, a named condition or a deploy-watched file may sit on it), never "no verdict" or "docs only, no deploy". Never use `gh api --paginate` in these scripts: it follows the response's `Link` header, the cloud agent proxy refuses the `repositories/{id}/...` URL in it (403), and it silently returns page 1 only (found 2026-10-28, #244 has 211 comments). `bash .claude/skills/orchestration-hub-wingman/scripts/gate.test.sh` tests this against a fake `gh` that behaves like the proxy (needs `jq`; it prints SKIP without it), including a guard that no skill script uses `--paginate`.
+
 Live sessions you cannot see (a local branch only its session knows) are `unknown`, not `clear`. There is no direct channel to Code or Codex from Cowork: ask on #244.
 
 ## 3. Overlap classes
