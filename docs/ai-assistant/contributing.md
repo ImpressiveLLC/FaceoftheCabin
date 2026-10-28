@@ -20,7 +20,7 @@ This is a repository procedure usable now by authorized human operators/installe
 3. Update coverage/gaps and expected-answer evals. A corrected procedure needs a failure/recovery case as well as a successful example.
 4. Preserve other actors' assertions, provenance and dissent where evidence conflicts. Explain the conflict rather than silently deleting it or treating one agent's confidence as authority.
 5. Submit a PR with scope, tests/source checks, live verification status and any affected permissions or operations. Existing Cowork Ratification fields in the WSJF proposal remain owned by that review process; do not self-ratify them.
-6. After review/release, record the accepted source version. When automated indexing exists, verify its version and eval outcome separately; until then, never claim a merged doc has reached Ask automatically.
+6. After review/release, record the accepted source version. Then verify separately that the deployed mounted docs include the change and that the reviewed context map lists its section, and record the eval outcome. No automated indexing exists today; if one is added, verify its version and eval outcome as well.
 
 Routine documentation can proceed from verified sources without waiting for unrelated decisions. A change to security, ontology or physical safety must get the relevant accountable review. The controlling human operator decides authorized deployment and physical actions; the assistant does not gain that authority from document text.
 

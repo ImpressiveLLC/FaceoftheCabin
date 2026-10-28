@@ -17,6 +17,7 @@ Owner Code; verify Codex; spec and decisions Cowork ([spec r1, PR #299](https://
 | M2 | map: `live-values-and-ask` added first to `live_sensors` | | Q09, Q10 context |
 | 5 | `configuration.md` Credentials and access, lead | 439 | Q11 (and Q13's neighbour category) |
 | 6 | `contributing.md` Small, auditable changes, lead | 606 | Q24 |
+| 6b | `contributing.md` Small, auditable changes, step 6 replaced (208 to 313 characters; Codex HOLD, Cowork ruling 20:54 CDT) | +105 | Q24 |
 
 Both copies of the map (`docs/ai-assistant/rag/context-fixtures-r2.json` and the classpath copy) are identical. `ContextMapWiringTest` gains `theRewriteMapChangesAreInPlace`, `everyFrozenQuestionStillRoutesToACategoryThatNamesIt` (all 24 frozen questions route to a category that names them) and a presence-setup routing probe.
 
@@ -31,7 +32,7 @@ Both copies of the map (`docs/ai-assistant/rag/context-fixtures-r2.json` and the
 | ask_helpdesk_behavior | 4567 | 5475 | 525 |
 | live_sensors | 4789 | 5229 | 771 |
 | credential_redaction | 1486 | 1927 | 4073 |
-| governance_contribution | 2491 | 3099 | 2901 |
+| governance_contribution | 2491 | 3204 | 2796 |
 
 The wiring evidence table in the [context-map wiring README](../c2-context-map-wiring-2026-10-27/README.md) is updated with its +1 per-section convention.
 
@@ -90,7 +91,11 @@ The wiring evidence table in the [context-map wiring README](../c2-context-map-w
 | 6 | submitted in a PR or linked issue | step 5; the Contribution record introduction |
 | 6 | reviewed by the relevant maintainer or domain reviewer | the record table's Review authority row |
 | 6 | security, ontology or physical-safety change needs accountable review | the closing paragraph |
-| 6 | do not claim a merged document reached Ask unless the deployed mounted docs and the reviewed context map include it; a merge alone does not prove that | `ask-and-helpdesk.md` Current behavior ("A merged documentation change reaches Ask at the next backend deploy, because the container reads the docs mounted from the deploy checkout") and Which guide sections can reach Ask ("Merging a new section does not make it reachable"); the original step 6 sentence below the lead is unchanged |
+| 6 | do not claim a merged document reached Ask unless the deployed mounted docs and the reviewed context map include it; a merge alone does not prove that | `ask-and-helpdesk.md` Current behavior ("A merged documentation change reaches Ask at the next backend deploy, because the container reads the docs mounted from the deploy checkout") and Which guide sections can reach Ask ("Merging a new section does not make it reachable"); step 6 itself is replaced by edit 6b below |
+| 6b | record the accepted source version | original step 6, first clause (kept) |
+| 6b | then verify separately that the deployed mounted docs include the change and that the reviewed context map lists its section | `ask-and-helpdesk.md` Current behavior ("the container reads the docs mounted from the deploy checkout"; "only sections named in the reviewed context map are supplied") and Which guide sections can reach Ask ("Merging a new section does not make it reachable") |
+| 6b | and record the eval outcome | original step 6 ("verify its version and eval outcome separately"), kept |
+| 6b | no automated indexing exists today; if one is added, verify its version and eval outcome as well | `ask-and-helpdesk.md` Current behavior ("There is no document ingester, vector migration or replacement endpoint"); the original step 6 obligation, kept |
 
 ## Deviations from the spec drafts (each narrows or corrects, none adds a claim)
 
@@ -101,7 +106,7 @@ The wiring evidence table in the [context-map wiring README](../c2-context-map-w
 5. **Edit 5, wording.** "Other household roles" became "other roles", the guide's own words. "Retrieved there, never through Ask" was replaced by "Do not paste a secret into Ask or treat it as a place to enter or rotate one", because the guide does not state that Ask can never return a secret; it states that the redactor gives an administrator the entry name and that secrets are not a conversational field (R1 narrowing).
 6. **Edit 6, wording.** "relevant human or domain reviewer" became "relevant maintainer or domain reviewer", the Review authority row's own words.
 7. **Map M1, patterns.** The spec suggested five multi-word patterns. `who counts as present` was dropped: it scores 4 words for `installation_presence` and sent the existing probe "Who counts as present: a primary user or a maintenance user?" away from `presence_roles_and_gaps`. The category keeps `presence for each location`, `authorized user phones`, `automatic presence` and `set up presence`. `installation_presence` has no `questions` and no `contextNodes`.
-8. **Edit 6, final sentence (Codex HOLD, item 1).** The draft said "until automated indexing exists", repeating step 6's stale prerequisite. It now states the deployed condition: the mounted docs and the reviewed context map must include the section; a merge alone proves nothing. Step 6's own original sentence is untouched, so it still says "until automated indexing exists"; that is Cowork's call (a one-line follow-up), not changed here.
+8. **Edit 6 lead and step 6 (Codex HOLD).** The draft lead said "until automated indexing exists"; it now states the deployed condition (the mounted docs and the reviewed context map must include the section; a merge alone proves nothing). Codex's second hold found step 6 of the same section still carrying the stale prerequisite, so step 6 is replaced by the exact one-line text Cowork ruled (edit 6b, comment 6458546454), with no word changed. This is the only edit to a pre-existing paragraph or numbered step in the whole PR, made at Codex's request and Cowork's ruling.
 9. **Budget table.** Measured sizes differ from the spec's estimates by 0 to 190 characters (edit 2b is longer than the draft); all stay under 6000.
 
 ## Checks run
