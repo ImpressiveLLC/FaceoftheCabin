@@ -74,7 +74,7 @@ else
 fi
 # The string hunted is the skills directory as the agent-name substitution once wrote it
 # (a dot, the agent's capitalised name, a slash). It is assembled from two pieces so that no
-# file in the wingman mirror contains it: this script is copied into .agents and would flag itself.
+# file in the orchestration-hub-wingman mirror contains it: this script is copied into .agents and would flag itself.
 bad_dir=".Cod"; bad_dir="${bad_dir}ex/"
 bad=$(grep -rInF -- "$bad_dir" AGENTS.md .agents 2>/dev/null | head -50)
 if [ -n "$bad" ]; then
@@ -105,8 +105,8 @@ done
 for d in .agents/skills/*/; do
   [ -d ".claude/skills/$(basename "$d")" ] || say WARN "mirror without a source skill: $(basename "$d")"
 done
-if [ -d .claude/skills/wingman ] && [ -d .agents/skills/wingman ] && ! diff -rq --strip-trailing-cr .claude/skills/wingman .agents/skills/wingman >/dev/null; then
-  say FAIL "wingman mirror must be byte-identical: cp -r .claude/skills/wingman/. .agents/skills/wingman/"
+if [ -d .claude/skills/orchestration-hub-wingman ] && [ -d .agents/skills/orchestration-hub-wingman ] && ! diff -rq --strip-trailing-cr .claude/skills/orchestration-hub-wingman .agents/skills/orchestration-hub-wingman >/dev/null; then
+  say FAIL "orchestration-hub-wingman mirror must be byte-identical: cp -r .claude/skills/orchestration-hub-wingman/. .agents/skills/orchestration-hub-wingman/"
 fi
 
 echo "== context map pair (docs copy vs backend classpath copy)"

@@ -1,4 +1,4 @@
-// Run: node --test .claude/skills/wingman/scripts/pmo-build.test.mjs
+// Run: node --test .claude/skills/orchestration-hub-wingman/scripts/pmo-build.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { splitRow, categorize, titleOf, parseBacklog, build } from './pmo-build.mjs';

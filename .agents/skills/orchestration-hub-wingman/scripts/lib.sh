@@ -63,7 +63,7 @@ w_is_deploy_path() {
 # line, the "gives Claude Code full context" sentence (Codex reads AGENTS.md), and a generated-file
 # header under the title. Used by fed-regen.sh (writes it) and fed-check.sh (compares to it).
 # Output is LF only whatever the line endings of CLAUDE.md (see "Line endings and modes" below).
-W_AGENTS_HDR='<!-- GENERATED from CLAUDE.md by .claude/skills/wingman/scripts/fed-regen.sh. Do not edit by hand: change CLAUDE.md, run the script, commit both. Drift check: fed-check.sh. -->'
+W_AGENTS_HDR='<!-- GENERATED from CLAUDE.md by .claude/skills/orchestration-hub-wingman/scripts/fed-regen.sh. Do not edit by hand: change CLAUDE.md, run the script, commit both. Drift check: fed-check.sh. -->'
 w_gen_agents() {
   tr -d '\r' < CLAUDE.md | awk -v hdr="$W_AGENTS_HDR" '
     NR == 1 { sub(/^# CLAUDE\.md/, "# AGENTS.md"); print; print hdr; next }

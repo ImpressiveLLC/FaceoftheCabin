@@ -1,10 +1,10 @@
 # Purchase record 2026-10-27: Home Vault parts and security keys
 
-Carts built by Cowork on 2026-10-27 at Nate's request. **Nothing was purchased; checkout is Nate's.** The Micro Center cart was built twice: in the built-in browser at 17:00 CDT, where all six lines and prices below were read, and again in Nate's own Chrome between 17:15 and 17:20 CDT, because the built-in browser cannot finish a checkout. A read-only look at that Chrome cart between 18:35 and 18:38 CDT found the cable present at quantity 2 (section 1). Nate built his own Yubico cart and plans to remove the Nano from it (section 2). Anything marked `U` was not read live for this record. A later session re-verifies prices (see `.claude/skills/wingman/references/carts-and-purchases.md`, section 3) before reusing any figure here.
+Carts built by Cowork on 2026-10-27 at Nate's request. **Nothing was purchased; checkout is Nate's.** The Micro Center cart was built twice: in the built-in browser at 17:00 CDT, where all six lines and prices below were read, and again in Nate's own Chrome between 17:15 and 17:20 CDT, because the built-in browser cannot finish a checkout. A read-only look at that Chrome cart between 18:35 and 18:38 CDT found the cable present at quantity 2 (section 1). Nate built his own Yubico cart and plans to remove the Nano from it (section 2). Anything marked `U` was not read live for this record. A later session re-verifies prices (see `.claude/skills/orchestration-hub-wingman/references/carts-and-purchases.md`, section 3) before reusing any figure here.
 
 No order numbers, addresses, account details, payment data or cart links appear in this file, and none were entered anywhere.
 
-Serves [W-120](../backlog.md) (Home Vault, parts for the vault node, UPS and offline copy) and the security-key set described in `.claude/skills/wingman/references/vault-and-keys.md` Part B.
+Serves [W-120](../backlog.md) (Home Vault, parts for the vault node, UPS and offline copy) and the security-key set described in `.claude/skills/orchestration-hub-wingman/references/vault-and-keys.md` Part B.
 
 ## 1. Home Vault parts: Micro Center, pickup (St. Louis Park, MN)
 

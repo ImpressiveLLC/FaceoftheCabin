@@ -1,6 +1,6 @@
 # Carts and purchases
 
-Wingman researches and builds carts for Nate. **Nate checks out.** This file is the protocol; the parts that were chosen on a given day, with their live prices, live in a dated purchase record, not here.
+The hub wingman researches and builds carts for Nate for purchases that serve the hub (Home Vault, cabin hardware, security keys). **Nate checks out.** This file is the protocol; the parts that were chosen on a given day, with their live prices, live in a dated purchase record, not here. A purchase not tied to the hub is the account skill `wingman`, which carries a condensed copy of the section 1 limits; where the two differ, the stricter wins.
 
 ## 1. Authority and hard limits
 
@@ -58,7 +58,7 @@ Write it when the cart is built, in `docs/governance/rte/purchases-<YYYY-MM-DD>.
 
 ## 7. After the cart
 
-- Nate checks out. Wingman does not.
+- Nate checks out. The agent does not.
 - When parts arrive: security keys are registered following `vault-and-keys.md` Part B, firmware read and recorded (version only); vault hardware goes to Nate's install with Code's staged files (`vault-and-keys.md` Part A).
 - Put the next check on the board: the return window, a price that may drop, a part still out of stock.
 - If Nate does not check out, the record stays with its date; a later session re-verifies prices from section 3 before reusing it.

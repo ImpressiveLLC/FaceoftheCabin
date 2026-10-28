@@ -1,5 +1,5 @@
 # AGENTS.md — FaceoftheCabin platform
-<!-- GENERATED from CLAUDE.md by .claude/skills/wingman/scripts/fed-regen.sh. Do not edit by hand: change CLAUDE.md, run the script, commit both. Drift check: fed-check.sh. -->
+<!-- GENERATED from CLAUDE.md by .claude/skills/orchestration-hub-wingman/scripts/fed-regen.sh. Do not edit by hand: change CLAUDE.md, run the script, commit both. Drift check: fed-check.sh. -->
 
 ## Doc 27 environmental-node collaboration handoff
 
