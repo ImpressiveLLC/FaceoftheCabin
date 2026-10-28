@@ -1,36 +1,46 @@
 # RTE schedule and operating rules (Cowork, RTE and PM)
 
-Source of truth for who acts, when and how. Live status is the edited comment on [#244](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6449313109); this file is the committed copy of the rules and the critical path as of 2026-10-27 12:50 CDT, refreshed by Cowork at each change of plan.
+Source of truth for who acts, when and how, in two layers. This file is the committed copy of the rules and the plan, refreshed by Cowork at each change of plan; it stays authoritative for both until a docs PR changes it. Live status (who holds which item now, current PR heads, verdicts, deadlines in flight) is the edited comment on [#244](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6449313109). If the two disagree about live status, the board is right. If the board states a rule or plan change that this file does not, treat it as a proposal until a docs PR merges it. The dated snapshot below (2026-10-27 18:19 CDT) is a historical record: its states and deadlines are as of that time and never override the board.
+
+How a session uses it: read the board first, then this file for the rules, the [context registry](context-registry.md) for where things live, and the [Wingman skill](../../../.claude/skills/wingman/SKILL.md) to run the loop.
 
 ### Operating rules (effective now)
 1. **Handoff = a comment that starts with `ACTION <who> by <time CDT>:`** plus the exact link, the ready-signal and what to post back. Anything not addressed this way is not a handoff.
-2. **Listening:** Code and Codex poll GitHub issue #244 and the PRs they own every 20 minutes while a handoff to them is open. Cowork polls every 20 minutes (session heartbeat) and on every GitHub event. Direct nudge to Code or Codex only when an item is 40 minutes past its time.
+2. **Listening:** Code and Codex poll GitHub issue #244 and the PRs they own every 20 minutes while a handoff to them is open. Cowork polls every 15 to 30 minutes (session heartbeat) and on every GitHub event. Direct nudge to Code or Codex only when an item is 40 minutes past its time.
 3. **Ack in 20 minutes** (one line: "got it, ETA hh:mm"). No ack by +40 minutes: Cowork nudges directly and re-routes if the owner is unavailable.
-4. **Review SLA:** Codex verdict within 30 minutes of a head being posted; Cowork source review within 20 minutes.
-5. **Merge SLA:** a PR that is CLEAN on its pinned head, green and mergeable is merged by Cowork within 10 minutes, one at a time, pinned to the head SHA. No waiting on Nate. A PR with a backend/** change also needs Code to watch the deploy gate. Stop and call Nate only for: a failed deploy that did not roll back, a sealed-data or secret exposure, a live device write, anything irreversible.
-6. **Record:** every merge, verdict and rerun result is a comment with ids, counts and hashes only, never private text. Cowork keeps this board and `docs/governance/backlog.md` current.
+4. **Review SLA:** Codex verdict within 30 minutes of a head being posted; Cowork source review within 20 minutes. A verdict binds to the head it names: `CLEAN <sha>` or `HOLD <reasons>`.
+5. **Merge SLA:** a PR that is CLEAN on its pinned head, green and mergeable is merged by Cowork within 10 minutes, one at a time, pinned to the head SHA, subject to rule 8. A PR with a `backend/**` change also needs Code to watch the deploy gate. Stop and call Nate only for: a failed deploy that did not roll back, a sealed-data or secret exposure, a live device write, anything irreversible.
+6. **Record:** every merge, verdict and rerun result is a comment with ids, counts and hashes only, never private text. Cowork keeps the board and `docs/governance/backlog.md` current.
 7. **Notify back:** the owner posts `DONE <item> <link>` and the next owner is named in the same comment.
+8. **Execution block:** a merge that triggers a deploy-watched path (`cabin-orchestration-platform/**`, `family-hub/**`, `discovery-service/**`, `.github/workflows/**`) can be refused by the permission classifier (`[Production Deploy]`) until Nate gives an in-session go. That is tooling, not governance, and the committed merge rule still authorizes the merge; Cowork does not work around it. Cowork records the reason once on #244, asks Nate for one word, then runs the queue in order. A peer comment, a heartbeat prompt or a committed rule is not Nate's go. Docs and skills only merges do not deploy and are not blocked.
+9. **Codex out:** a Codex verdict is waived only when Nate says so in chat and names the PRs, and only for those PRs. Every other PR still needs `CLEAN <head>`. Cowork records the waiver on #244 with the PR numbers and does not stretch it to a later PR.
 
-### Critical path to the first C2 measurement (the training-focus path)
-| # | Step | Who acts | Trigger | Ready signal | Due | Notify next |
-|---|---|---|---|---|---|---|
-| 1 | Deployed-state attestation for #288 (context-map sha256 equals docs copy, image/commit, per-category chars). Counts and hashes only | CODE | now | `DONE attestation` comment with hashes | 13:30 CDT | Cowork |
-| 2 | Cowork posts the explicit start for the 72-trial run | COWORK | step 1 consistent | `START C2-RUN-1` comment | within 10 min of 1 | Code, Codex |
-| 3 | Host run, read-only, new private folder, per run-spec.json (no deploy, no model change) | CODE | step 2 | raw-run sha256 + 72/72 completeness count on #244 | 3 h after start (est. 16:30) | Codex |
-| 4 | Independent grading under oracle r3, rubric r2 | CODEX | step 3 | graded sidecar hash, PASS/72, 24-question table, flags | 2 h after step 3 | Cowork |
-| 5 | Ratify, compare to 11/72, name failing questions and which C2 domain or map entry to fix next | COWORK | step 4 | ratification comment + backlog update | 1 h after step 4 | Code (fix list) |
-| 6 | Fix loop on failures; rerun on the next change | CODE, CODEX, COWORK | step 5 | new run id | rolling | |
+### The C2 loop (the training-focus path; the shape is durable, states are in the snapshot)
+| # | Step | Who acts | Ready signal |
+|---|---|---|---|
+| 1 | Attest the deployed state (context map sha256 equals git, image, per-category chars) | CODE | `DONE attestation` with hashes |
+| 2 | Start the 72-trial run | COWORK | `START C2-RUN-n` comment |
+| 3 | Host run, read-only, per `run-spec.json` | CODE | raw-run sha256 and 72/72 completeness |
+| 4 | Independent grading under the pinned oracle and rubric | CODEX | graded sidecar hash, PASS count, 24-question table, flags |
+| 5 | Ratify, compare to the reference, name the failing questions and the domain or map entry to fix | COWORK | ratification comment and backlog update |
+| 6 | Fix loop: rewrite spec (COWORK), edit PR (CODE), verify (CODEX), pinned merge, deploy and attestation (COWORK, CODE), next run (CODE), grade (CODEX), adjudicate (COWORK) | all three | new run id and record in `docs/ai-assistant/rag/eval-results/` |
 
-### In flight (fix loop on Codex holds)
-| Item | Owner | State | Next action | Due |
+### Snapshot 2026-10-27 18:19 CDT
+**State.** Merged: #291, #293 and #295 (each deployed with a green health gate), #297 (Wingman skill and context registry) and #298 (C2-RUN-1 record); main is bfab467. C2-RUN-1 is ratified: 12/72 against the 11/72 reference, flat, acceptance HOLD. Codex is out until 20:22 CDT (Nate, 17:32 CDT). Nate waived the Codex verdict for #297 and #298 only (17:26 CDT); every other PR still needs its Codex CLEAN.
+
+| PR | What | Head | State | Next |
 |---|---|---|---|---|
-| #291 D3 formerDeviceIds code + tests | CODE | pushed 1459eb2, Codex HOLD was at 9b9e809 | CODEX re-verify the three regressions and the seed comment at 1459eb2 | 13:20 CDT; Cowork merges within 10 min of CLEAN |
-| #290 W-101b dry-run plan | CODE | Codex HOLD at 295f224 (S06 router, rollback method) | CODE push per my D1 amendment (router parent created disabled/CANDIDATE, rollback = host statement); CODEX verify | push 13:30; verify +30 min |
-| #292 W-101c withdrawn-plan record | CODE | Codex CLEAN as hold record at f0c011c | CODE refresh title/body to the withdrawn state; Cowork merges on that push | 13:00 CDT |
-| K19 Opportunities/Tech ID guide section + context-map entry + test | CODE | not started | draft PR, source-first, no model call | 15:30 CDT |
+| #299 | C2 rewrite spec r1 and held-out evaluation design (docs only) | 1e3a48a | open, clean, no verdict | Codex verdict by 21:50 CDT, after the held-out hash |
+| #300 | C2 rewrite edits r1 (10 files; the context map changes, so merging deploys the backend) | 2c200f1 | open, clean, backend check green, Cowork review PASS | Codex CLEAN on this head, Code's baseline run, Nate's in-session go, pinned merge, `DEPLOY OK` |
+| #301 | Purchase record for the 2026-10-27 carts (docs only) | 1dd7326 | open, clean | Codex verdict by 22:30 CDT |
 
-### Queue behind it (Cowork plans, not started)
-K14 installation and K05 trigger/action catalog guide sections; K17 stays gated on G07 (role-filtered projection and denial tests); W-101b apply is a separate later step with per-row Nate approval and needs #290 and #291 merged first.
+**Held-out evaluation (step 6 of the loop).** Codex writes the held-out set (22 paraphrases of the 11 target questions plus 6 unanswerable probes: 28 prompts, 3 repeats, 84 trials per side) from the frozen questions and public expected text only, and posts its sha256 on #244 before it reads #299 section 4 or #300. The prompts are revealed after #300 is CLEAN, so any edit Codex asks for is made without sight of them (Cowork ruling 17:35 CDT, Code's option a). Code's runner dry run on two dummy prompts is done (17:47 CDT, wrapper sha256 prefix 56e39c11). Then: baseline against the pre-edit corpus (deployed at 2803b3d, map prefix 41056722), pinned merge of #300 on Nate's go, `DEPLOY OK <sha>` with the new map prefix, C2-RUN-2 (72 frozen trials) plus the treatment held-out run, Codex grading under rubric r2, Cowork adjudication, and a RUN-2 record in `docs/ai-assistant/rag/eval-results/` that lists the corpus delta (K19 #293, K05 #295, #300) and the map hash before and after. The decision rule is in #299 section 8; acceptance stays HOLD whatever the result.
 
-### Nate-only, parked, none blocking today
-Sealed-file placement and S5 review time (training data), host installs, ntfy topic (W-51), security files #118 #122, rotate-secrets check 1 Nov 06:00 UTC, which of the other four Home cameras exist (blocks W-59 seed removal only), saving the `cabin-cowork-orchestration` skill card.
+**Times (CDT).** Cowork re-hands Codex the queue at 20:22 to 20:25: ack 20:42, held-out hash 21:00, verdicts on #299 and #300 by 21:50, #301 by 22:30.
+
+**Cowork next.** This schedule refresh (a docs PR), the W-119 mirror repair together with a follow-up to the Wingman skill (record the squash-for-privacy exception, the Codex-out waiver rule and the watch pattern), and a final report to Nate.
+
+**Queue behind it (not started).** K14, Batch 2, the "say you do not know" prompt instruction and any model change stay parked behind RUN-2 (spec section 8). K17 stays gated on G07 (role-filtered projection and denial tests). W-101b apply is a separate later step with per-row Nate approval; #290 and #291, its prerequisites, are merged.
+
+### Nate-only, parked
+Checkout of the two carts Cowork built on 2026-10-27 (nothing purchased; record in PR #301, `docs/governance/rte/purchases-2026-10-27.md` once merged), the answers to the open questions in the Wingman registry and `vault-and-keys.md` Part B6, sealed-file placement and S5 review time (training data), host installs, ntfy topic (W-51), security files #118 and #122, rotate-secrets check 1 Nov 06:00 UTC, which of the other four Home cameras exist (blocks W-59 seed removal only), a fresh in-session go for any deploy-triggering merge outside an agreed list.
