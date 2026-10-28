@@ -55,14 +55,18 @@ case "$1:$3" in
   CLEAN:older) say HOLD "Codex CLEAN was for an older head ($2); head moved: ask for a re-verdict" ;;
   HOLD:*) say HOLD "latest verdict is HOLD ($2): read it, owner fixes, Codex re-verifies" ;;
   none:*) say HOLD "no Codex verdict yet (agent-authored PRs need CLEAN on the head)" ;;
+  error:*) say HOLD "could not read every comment on #$PR, so the Codex verdict is unknown: re-run (a failed page is never read as 'no verdict')" ;;
   *) say HOLD "verdict present but not bound to a head sha: ask Codex to restate it with the sha" ;;
 esac
 
 echo "== named conditions and order"
-conds=$( { gh api "repos/$W_REPO/pulls/$PR" --jq '.body // ""' 2>/dev/null
-           gh api "repos/$W_REPO/issues/$PR/comments?per_page=100" --paginate --jq '.[].body' 2>/dev/null; } \
+pbody=$(gh api "repos/$W_REPO/pulls/$PR" --jq '.body // ""' 2>/dev/null)
+if cbodies=$(w_pages "repos/$W_REPO/issues/$PR/comments" '.body'); then cread=1
+else cread=0; say HOLD "could not read every comment on #$PR: the named-condition scan is incomplete, re-run"; fi
+conds=$( { printf '%s\n' "$pbody"; printf '%s\n' "$cbodies"; } \
          | grep -inE 'do not merge|nate-only|needs nate|named condition|hold until' | head -3 | cut -c1-140)
-if [ -n "$conds" ]; then say WARN "possible named condition (read before merging):"; echo "$conds"; else say OK "no 'do not merge' or named-condition wording found"; fi
+if [ -n "$conds" ]; then say WARN "possible named condition (read before merging):"; echo "$conds"
+elif [ "$cread" = 1 ]; then say OK "no 'do not merge' or named-condition wording found"; fi
 boardbody=$(gh api "repos/$W_REPO/issues/comments/$BOARD" --jq .body 2>/dev/null)
 queue=$(printf '%s\n' "$boardbody" | awk -F'|' \
   '/^\| *[0-9]+ *\| *#[0-9]+/{o=$2+0; if (match($3,/#[0-9]+/)) print o, substr($3,RSTART+1,RLENGTH-1)}')
@@ -86,7 +90,8 @@ else
 fi
 
 echo "== deploy exposure"
-files=$(gh api "repos/$W_REPO/pulls/$PR/files?per_page=100" --paginate --jq '.[].filename' 2>/dev/null)
+if files=$(w_pages "repos/$W_REPO/pulls/$PR/files" '.filename'); then fread=1
+else fread=0; say HOLD "could not read the whole file list of #$PR: deploy exposure is unknown, re-run"; fi
 dep=0; total=0
 while IFS= read -r f; do
   [ -z "$f" ] && continue
@@ -99,7 +104,7 @@ runs=$(gh api "repos/$W_REPO/actions/runs?per_page=30" --jq '[.workflow_runs[]|s
 if [ "$dep" -gt 0 ]; then
   say NOTE "$dep of $total files are deploy-watched: merge triggers a deploy. The permission classifier asks for Nate's explicit in-session go ([Production Deploy]); Code watches the health gate"
   [ "${runs:-0}" -gt 0 ] && say HOLD "$runs deploy run(s) still in progress on main: wait for the previous deploy to finish"
-else
+elif [ "$fread" = 1 ]; then
   say OK "docs or skills only ($total files): no deploy"
 fi
 

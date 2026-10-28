@@ -68,19 +68,24 @@ if [ -n "$bts" ]; then
     say WARN "board older than 40 min while PRs are open: refresh it"
   fi
   echo "-- #$ISSUE comments after the board edit (newest last)"
-  gh api "repos/$W_REPO/issues/$ISSUE/comments?since=$bts&per_page=100" --jq \
-    "map(select(.id!=$BOARD))|.[]|\"  \\(.id) \\(.created_at[11:16])Z \\(.body[0:110]|gsub(\"\\n\";\" \"))\"" 2>/dev/null | tail -8
+  if newer=$(w_pages "repos/$W_REPO/issues/$ISSUE/comments?since=$bts" \
+      "select(.id!=$BOARD)|\"  \\(.id) \\(.created_at[11:16])Z \\(.body[0:110]|gsub(\"\\n\";\" \"))\""); then
+    printf '%s\n' "$newer" | grep . | tail -8
+  else say WARN "could not read every comment on #$ISSUE after the board edit: the list above is missing"; fi
   # Lane silence: newest #244 comment per lane in the last 24 h (lane read from the speaker header; heuristic).
   since24=$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
-  lanes=$(gh api "repos/$W_REPO/issues/$ISSUE/comments?since=$since24&per_page=100" --paginate --jq \
-    '.[]|[.created_at,(.body[0:60]|if test("^COWORK") then "COWORK" elif test("^CODEX|^Codex|Got it, Codex|^CLEAN|^HOLD|^DONE review") then "CODEX" elif test("^CODE( |:|$)") then "CODE" else "OTHER" end)]|@tsv' 2>/dev/null \
-    | sort | awk -F'\t' '$2!="OTHER"{last[$2]=$1} END{for(l in last) print l, last[l]}')
-  line=""
-  for l in COWORK CODE CODEX; do
-    t=$(printf '%s\n' "$lanes" | awk -v l="$l" '$1==l{print $2}')
-    if [ -n "$t" ]; then line="$line$l $(w_cdt "$t") CDT ($(w_age_min "$t")m ago) | "; else line="$line$l none in 24h | "; fi
-  done
-  echo "lanes, newest #$ISSUE comment: ${line% | }"
+  if lraw=$(w_pages "repos/$W_REPO/issues/$ISSUE/comments?since=$since24" \
+      '[.created_at,(.body[0:60]|if test("^COWORK") then "COWORK" elif test("^CODEX|^Codex|Got it, Codex|^CLEAN|^HOLD|^DONE (#[0-9]+ )?review|^Got it, ETA.{0,50}review") then "CODEX" elif test("^CODE( |:|$)") then "CODE" else "OTHER" end)]|@tsv'); then
+    lanes=$(printf '%s\n' "$lraw" | sort | awk -F'\t' '$2!="OTHER"{last[$2]=$1} END{for(l in last) print l, last[l]}')
+    line=""
+    for l in COWORK CODE CODEX; do
+      t=$(printf '%s\n' "$lanes" | awk -v l="$l" '$1==l{print $2}')
+      if [ -n "$t" ]; then line="$line$l $(w_cdt "$t") CDT ($(w_age_min "$t")m ago) | "; else line="$line$l none in 24h | "; fi
+    done
+    echo "lanes, newest #$ISSUE comment: ${line% | }"
+  else
+    say WARN "could not read every comment on #$ISSUE in the last 24 h: lane times are unknown (not silent), re-run"
+  fi
 else
   say WARN "could not read the board comment (id, auth or network)"
 fi
