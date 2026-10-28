@@ -27,6 +27,9 @@ mk() {
   printf 'notes\n' > .claude/skills/demo/notes.md
 }
 tocrlf() { sed -i 's/$/\r/' "$@"; }
+# has_cr <file>: true if the file holds a carriage return. Not grep: Git Bash's grep reads in text mode and strips CR,
+# so grep -q $'\r' never matches there (and a negated one passes without checking anything).
+has_cr() { [ "$(tr -cd '\r' < "$1" | wc -c)" -gt 0 ]; }
 
 # ---- Part 1: regeneration and drift ----------------------------------------------------------
 mk "$t/r1"
@@ -72,7 +75,7 @@ $R >/dev/null 2>&1; cmp -s .claude/skills/demo/bin.dat .agents/skills/demo/bin.d
 # ---- Part 2: a Windows-style checkout (core.autocrlf=true: CRLF in markdown and similar) -----
 tocrlf AGENTS.md
 $R --check >/dev/null 2>&1; ok $? "a CRLF AGENTS.md is not drift"
-$R >/dev/null 2>&1; grep -q $'\r' AGENTS.md; ok $? "regeneration leaves a CRLF AGENTS.md alone"
+$R >/dev/null 2>&1; has_cr AGENTS.md; ok $? "regeneration leaves a CRLF AGENTS.md alone"
 tocrlf CLAUDE.md .claude/skills/demo/notes.md .agents/skills/demo/notes.md
 $R --check >/dev/null 2>&1; ok $? "CRLF sources and CRLF mirrors are not drift"
 sed -i 's/\r$//' .agents/skills/demo/notes.md
@@ -80,7 +83,7 @@ $R --check >/dev/null 2>&1; ok $? "a CRLF source with an LF mirror is not drift"
 printf 'tail line\r\n' >> CLAUDE.md
 $R --check >/dev/null 2>&1; [ $? -eq 1 ]; ok $? "a real change to a CRLF CLAUDE.md is still drift"
 $R >/dev/null 2>&1; $R --check >/dev/null 2>&1; ok $? "regeneration repairs it"
-! grep -q $'\r' AGENTS.md; ok $? "a regenerated AGENTS.md is LF only"
+! has_cr AGENTS.md; ok $? "a regenerated AGENTS.md is LF only"
 
 # the manifest of one commit must not depend on line endings: same content, LF versus CRLF
 mk "$t/m1"; $R >/dev/null 2>&1; $C --manifest 2>/dev/null | grep -v '^#' > "$t/m1.out"
