@@ -104,6 +104,7 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 | Older dev checkout path in `CLAUDE.md` | `H:\My Drive\cabin-orchestration-platform-expanded\...`, which is inside Google Drive sync. A git working tree inside a cloud-sync folder can corrupt `.git`; confirm it is no longer in use. `docs/EXECUTION_PLAN_2026-07-30.md` calls `C:\dev\FaceoftheCabin` "your other local clone". Ask: Nate, is the `H:` path still a live checkout (yes or no)? | U |
 | Claude Code state | `%USERPROFILE%\.claude` (transcripts, user skills), the documented default; not inspected from here | R |
 | Claude Desktop state (Cowork workspace, built-in browser profile with its sign-ins and carts, locally stored scheduled tasks) | The app's own data folder; not inspected from here. Ask: Nate, only if a session ever needs to read it | U |
+| Shell and test tooling for the skill scripts | Git Bash. Its `grep` strips the carriage return, so tests count carriage returns with `tr` (F6). `jq` was unavailable on the Windows runs of 2026-10-28, so `watch.test.sh` has not run on Windows; installing `jq` is a download that needs Nate's word | R (Code, #244 comment 6462813561) |
 
 ### 2.6 Phones and Home
 
@@ -136,7 +137,7 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 | `main` (git bundle), M920q configs, Postgres dumps, BI telemetry archives, Ansible Vault ciphertext | Home Vault node (client-side-encrypted restic repository, append-only), offline NVMe copy (W-120). Private evidence folders only if Nate rules them in scope | the host pushes to the vault; the vault cannot be reached for deletion from the cabin | restic `check` and a one-file restore test, weekly | planned |
 | Decisions made in claude.ai web at the cabin | git (`DEFINITION_OF_DONE.md` Next Session list) | hand-back by text | Nate pastes, or Cowork commits | rule only |
 
-## 4. Findings recorded 2026-10-27 (F1 and F2 merged in #303, the rest open)
+## 4. Findings (F1 to F5 recorded 2026-10-27, F6 recorded 2026-10-28; F1 and F2 merged in #303, F6 in #306, the rest open)
 
 | # | Finding | Evidence | Proposed repair |
 |---|---|---|---|
@@ -145,6 +146,7 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 | F3 | Two heartbeat tasks were armed for the same minute | `list_triggers` 2026-10-27 15:11 CDT | Keep exactly one; delete extras at each re-arm |
 | F4 | The Windows dev path in `CLAUDE.md` sits under Google Drive sync | `CLAUDE.md` "Dev setup" | Confirm and remove from the doc, or move the clone (owner: Nate) |
 | F5 | `docs/ai-assistant/` hand-built panels in the PMO dashboard were stale | artifact dated 2026-10-26 | `pmo-build.mjs` regenerates from `backlog.md`, `schedule.md` and the open PR list |
+| F6 | Two carriage-return checks in `fed-regen.test.sh` gave wrong answers under Git Bash on Windows. Git Bash's `grep` reads in text mode and strips the carriage return, so the positive check ("regeneration leaves a CRLF `AGENTS.md` alone") never matched and failed (34 passed, 1 failed, 1 skipped), and the negated check ("a regenerated `AGENTS.md` is LF only") passed vacuously: it could not have caught a carriage return. The regenerator itself was correct | Codex's Windows run of #303 at `64e55b0` (#244 comment 6462406295, 2026-10-28 01:33 CDT); cause and fix by Code (comment 6462813561, 01:59 CDT) | The test counts carriage-return bytes with `tr` (a `has_cr` helper) in both checks. **Merged 2026-10-28** (#306, `ba47585`, on Codex's CLEAN bound to head `aa8ab9a`, PR comment 6463033188). Code's Windows run after the fix: 35 passed, 0 failed, 1 skipped (the executable bit, which NTFS cannot hold); Codex independently verified the helper on Windows (CRLF, LF and empty fixtures) and did not re-run the full suite. Open, blocking nothing: the watcher tests (`watch.test.sh`) have not run on Windows because `jq` was unavailable on those runs, and installing it is a download that needs Nate's word |
 
 ## 5. Session checklists
 
@@ -158,3 +160,4 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 | 2026-10-27 16:26 CDT | Added the vault-and-keys and carts-and-purchases references (custody classes, Home Vault design, security-key plan, cart protocol) and rows for security keys and purchase records. Project docs count 22 to 23. OS release U to R (repo says 24.04, Nate's notes say 26.04, one-line ask recorded). One-line asks added to the remaining U rows. Packaged-skill mirror unchanged |
 | 2026-10-27 22:31 CDT | Refreshed after #300 and #303: the map row is now `05d8dc3a` at HEAD `af214e2` (Code's `DEPLOY OK`, #244 comment 6459878936); F1 and F2 marked merged (#303, `b74169c`), with the Codex read and a real Windows run still open. The last-verified stamp is unchanged: only these rows were refreshed |
 | 2026-10-27 22:44 CDT | Split the Wingman skill (Nate request, 22:34 CDT): the hub skill is renamed `orchestration-hub-wingman` and stays in the repo only; the account skill `wingman` becomes the thin day-to-day skill (choosing and buying, personal devices, email lookups, bookkeeping, research) and does not load the hub. Skill paths in scripts, references and docs rewritten; `skill-map.md` gains a "Two wingmen" section. No location or channel changed, so "Last verified" is not moved |
+| 2026-10-28 09:45 CDT | Recorded finding F6 (the Windows carriage-return test defect, fixed in #306) and a Windows shell and test tooling row in 2.5, from Codex's Windows run (#244 comment 6462406295) and Code's fix (comment 6462813561). Only those rows changed, so "Last verified" is not moved. The `docs/governance/backlog.md` W-119 row and the hub skill's `merge-protocol.md` and `docs-federation.md` carry the matching text |
