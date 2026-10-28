@@ -11,12 +11,12 @@ Owner Code; verify Codex; spec and decisions Cowork ([spec r1, PR #299](https://
 | M1 | map: `presence-for-each-location` moves from `installation` to new `installation_presence` (declared right after it) | | Q15, Q18, Q19 context |
 | 2a | `operations.md` Device onboarding, lead | 900 | Q05, Q06, Q07 |
 | 2b | `operations.md` Device onboarding, closing paragraph (type B) | 466 | Q07 |
-| 3a | `ask-and-helpdesk.md` What a source currently means, lead | 472 | Q22 |
+| 3a | `ask-and-helpdesk.md` What a source currently means, lead | 472 | Q22 (shared category: Q21 guard) |
 | 3b | `ask-and-helpdesk.md` Questions and useful limits, two bullets (type B, security-relevant) | 265 + 167 | Q23 |
 | 4a | `operations.md` new section Live values and Ask (type B) | 416 | Q09 |
 | M2 | map: `live-values-and-ask` added first to `live_sensors` | | Q09, Q10 context |
 | 5 | `configuration.md` Credentials and access, lead | 439 | Q11 (and Q13's neighbour category) |
-| 6 | `contributing.md` Small, auditable changes, lead | 535 | Q24 |
+| 6 | `contributing.md` Small, auditable changes, lead | 606 | Q24 |
 
 Both copies of the map (`docs/ai-assistant/rag/context-fixtures-r2.json` and the classpath copy) are identical. `ContextMapWiringTest` gains `theRewriteMapChangesAreInPlace`, `everyFrozenQuestionStillRoutesToACategoryThatNamesIt` (all 24 frozen questions route to a category that names them) and a presence-setup routing probe.
 
@@ -31,7 +31,7 @@ Both copies of the map (`docs/ai-assistant/rag/context-fixtures-r2.json` and the
 | ask_helpdesk_behavior | 4567 | 5475 | 525 |
 | live_sensors | 4789 | 5229 | 771 |
 | credential_redaction | 1486 | 1927 | 4073 |
-| governance_contribution | 2491 | 3028 | 2972 |
+| governance_contribution | 2491 | 3099 | 2901 |
 
 The wiring evidence table in the [context-map wiring README](../c2-context-map-wiring-2026-10-27/README.md) is updated with its +1 per-section convention.
 
@@ -41,7 +41,7 @@ The wiring evidence table in the [context-map wiring README](../c2-context-map-w
 - `operations.md#capability-map` is not edited. `operations.md#live-values-and-ask` is a new section, used only by `live_sensors` (Q09, Q10).
 - `independent-installation.md#minimum-inputs` and `#verified-clean-host-limitations` feed only `installation` (Q15, Q18, Q19). `#presence-for-each-location` now feeds only `installation_presence`, which no frozen question routes to.
 - `configuration.md#credentials-and-access` feeds `credential_redaction`, whose question list is Q11 and Q13. The frozen Q13 text routes to `configuration_binding` today (24 of 24 routing is asserted), so Q11 is the question this edit reaches; re-measure Q13 anyway, as R6 asks.
-- `ask-and-helpdesk.md` `#what-a-source-currently-means` and `#questions-and-useful-limits` feed `ask_helpdesk_behavior` (Q22, Q23).
+- `ask-and-helpdesk.md` `#what-a-source-currently-means` and `#questions-and-useful-limits` feed `ask_helpdesk_behavior`, whose question list is **Q21, Q22 and Q23**. Q22 and Q23 are the targets. **Q21 shares the category and is a stable-question guard** (3 of 3 in RUN-1): the added lead and bullets change its context by 908 characters, so it must be re-measured and must stay 3 of 3 under the spec's decision rule 3.
 - `contributing.md#small-auditable-changes` feeds `governance_contribution` (Q24).
 
 ## Source checks the spec required (R1, R8)
@@ -90,7 +90,7 @@ The wiring evidence table in the [context-map wiring README](../c2-context-map-w
 | 6 | submitted in a PR or linked issue | step 5; the Contribution record introduction |
 | 6 | reviewed by the relevant maintainer or domain reviewer | the record table's Review authority row |
 | 6 | security, ontology or physical-safety change needs accountable review | the closing paragraph |
-| 6 | do not claim a merged document reached Ask until automated indexing exists | step 6 |
+| 6 | do not claim a merged document reached Ask unless the deployed mounted docs and the reviewed context map include it; a merge alone does not prove that | `ask-and-helpdesk.md` Current behavior ("A merged documentation change reaches Ask at the next backend deploy, because the container reads the docs mounted from the deploy checkout") and Which guide sections can reach Ask ("Merging a new section does not make it reachable"); the original step 6 sentence below the lead is unchanged |
 
 ## Deviations from the spec drafts (each narrows or corrects, none adds a claim)
 
@@ -101,7 +101,8 @@ The wiring evidence table in the [context-map wiring README](../c2-context-map-w
 5. **Edit 5, wording.** "Other household roles" became "other roles", the guide's own words. "Retrieved there, never through Ask" was replaced by "Do not paste a secret into Ask or treat it as a place to enter or rotate one", because the guide does not state that Ask can never return a secret; it states that the redactor gives an administrator the entry name and that secrets are not a conversational field (R1 narrowing).
 6. **Edit 6, wording.** "relevant human or domain reviewer" became "relevant maintainer or domain reviewer", the Review authority row's own words.
 7. **Map M1, patterns.** The spec suggested five multi-word patterns. `who counts as present` was dropped: it scores 4 words for `installation_presence` and sent the existing probe "Who counts as present: a primary user or a maintenance user?" away from `presence_roles_and_gaps`. The category keeps `presence for each location`, `authorized user phones`, `automatic presence` and `set up presence`. `installation_presence` has no `questions` and no `contextNodes`.
-8. **Budget table.** Measured sizes differ from the spec's estimates by 0 to 190 characters (edit 2b is longer than the draft); all stay under 6000.
+8. **Edit 6, final sentence (Codex HOLD, item 1).** The draft said "until automated indexing exists", repeating step 6's stale prerequisite. It now states the deployed condition: the mounted docs and the reviewed context map must include the section; a merge alone proves nothing. Step 6's own original sentence is untouched, so it still says "until automated indexing exists"; that is Cowork's call (a one-line follow-up), not changed here.
+9. **Budget table.** Measured sizes differ from the spec's estimates by 0 to 190 characters (edit 2b is longer than the draft); all stay under 6000.
 
 ## Checks run
 

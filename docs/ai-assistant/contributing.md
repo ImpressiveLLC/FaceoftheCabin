@@ -13,7 +13,7 @@ This is a repository procedure usable now by authorized human operators/installe
 
 ## Small, auditable changes
 
-**Short answer.** An agent's proposal does not settle a disputed correction, and one agent's confidence is not authority. The correction is a shared, evidence-bearing change submitted in a PR or linked issue that keeps each actor's assertions, sources and dissent visible and explains the conflict. It is reviewed by the relevant maintainer or domain reviewer, and a security, ontology or physical-safety change needs the accountable review. Do not claim a merged document has reached Ask automatically until automated indexing exists.
+**Short answer.** An agent's proposal does not settle a disputed correction, and one agent's confidence is not authority. The correction is a shared, evidence-bearing change submitted in a PR or linked issue that keeps each actor's assertions, sources and dissent visible and explains the conflict. It is reviewed by the relevant maintainer or domain reviewer, and a security, ontology or physical-safety change needs the accountable review. Do not claim a merged document has reached Ask unless the deployed mounted docs and the reviewed context map actually include it; a merge alone does not prove that.
 
 1. Identify the user task, affected capability and existing document/section. Read source evidence before rewriting its behavior.
 2. Supply a minimal change with supporting source paths/sections and commit. Distinguish current implementation, approved policy, planned work, runtime observation and inference.

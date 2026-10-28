@@ -52,7 +52,7 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `health_verification` | 5874 | 0 | service-health-at-a-glance 1723, running-versus-healthy-per-service 4151 | none |
 | `deployment_source` | 5922 | 0 | deployment-source-correction 5922 | none |
 | `ask_helpdesk_behavior` | 5478 | 5478 | current-behavior 2033, what-a-source-currently-means 2042, questions-and-useful-limits 1403 | none |
-| `governance_contribution` | 3030 | 3030 | small-auditable-changes 1982, contribution-record 1048 | none |
+| `governance_contribution` | 3101 | 3101 | small-auditable-changes 2053, contribution-record 1048 | none |
 | `opportunity_status` | 5973 | 3100 | opportunities-and-the-tech-id-service-k19 2873, capability-map 3100 | none |
 | `home_collector_termux` | 0 | 0 | none | none |
 | `environmental_nodes` | 4881 | 3784 | ordered-equipment-and-current-scop 1115, what-the-devices-can-and-cannot-es 1257, year-round-circulation-and-tempera 833, setup-and-maintenance 579, ask-behavior-and-execution-boundar 1097 | none |
