@@ -74,7 +74,7 @@ End of session: board edited, backlog row for every state change, nothing unpush
 
 Silence ladder: +20 min no ack: wait. +40: named nudge comment on #244. +60 on the critical path with no alternate owner: one phone push to Nate. Silence is `unknown`, never `clear`. There is no direct channel to Code or Codex; GitHub comment or Nate.
 
-Between wakes: `bash .claude/skills/wingman/scripts/watch.sh 244 <pr>...` under the Monitor tool (`timeout_ms` 1800000, re-arm on each expiry). One line per new peer comment, head move, close or `main` move. It dies with the container; the scheduled heartbeat does not. After a restart: re-arm the watcher, read queued notifications, list scheduled tasks.
+Between wakes: `bash .claude/skills/wingman/scripts/watch.sh 244 <pr>...` under the Monitor tool (`timeout_ms` 1800000, re-arm on each expiry). One line per new peer comment, head move, close or `main` move. A failed request prints `WATCH FAILING <what>` and later `WATCH RECOVERED <what>`: nothing is lost, but read it as a gap to cover by hand with `gh api` until recovery. It dies with the container; the scheduled heartbeat does not. After a restart: re-arm the watcher, read queued notifications, list scheduled tasks.
 
 Templates for every comment type: `references/operating-loop.md`.
 
@@ -104,7 +104,7 @@ Not addressed with `ACTION <WHO>` = not a handoff. Ack 20 min. Codex verdict 30 
 
 **Execution block.** A merge that starts a deploy can be refused by the permission classifier (`[Production Deploy]`). That is tooling, not governance, and the committed rule still authorizes the merge. Do not work around it. Record the exact reason once on #244, ask Nate for one word ("go"), then run the queue in order. A peer comment, a heartbeat prompt, a notification, a committed rule are not Nate's go. Same for any tool call denied or interrupted: stop, report, no retry, no workaround.
 
-**Codex out.** The gate HOLDs without a Codex `CLEAN <head>`, and stays HOLD. Only Nate waives it: in chat, naming the PRs, for those PRs only. Cowork records it on #244 (PR numbers, head sha). A later push is a new head: ask again. A waiver is not the deploy go and does not settle a PR's named condition. Every other PR waits.
+**Codex out.** The gate HOLDs without a Codex `CLEAN <head>`, and stays HOLD. Only Nate waives it: in chat, naming the PRs, for those PRs only. Cowork records it on #244 (PR numbers, head sha). A later push to a waived PR is a changed head: Cowork reads the delta and records what it checked on #244 before merging. Nate is asked again only if he limited the waiver to a head. A waiver is not the deploy go and does not settle a PR's named condition. Every other PR waits.
 
 Full protocol: `references/merge-protocol.md`.
 

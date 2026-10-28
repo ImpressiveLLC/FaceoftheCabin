@@ -29,7 +29,7 @@ Federation = the same fact available on every machine and surface without two co
 
 ```bash
 bash .claude/skills/wingman/scripts/fed-check.sh              # drift: AGENTS vs CLAUDE, skill mirrors, context-map pair, corrupted .Codex paths
-bash .claude/skills/wingman/scripts/fed-check.sh --manifest   # sha256 (8 chars) of every federated file; run on two machines and diff
+bash .claude/skills/wingman/scripts/fed-check.sh --manifest   # sha256 (8 chars) of every federated file, text without carriage returns; run on two machines and diff
 bash .claude/skills/wingman/scripts/fed-check.sh --registry   # registry age, repo paths it names, unknown rows
 ```
 
@@ -40,10 +40,17 @@ Regenerate both mirrors from their sources (W-119):
 ```bash
 bash .claude/skills/wingman/scripts/fed-regen.sh           # write AGENTS.md and .agents/skills/ from CLAUDE.md and .claude/skills/
 bash .claude/skills/wingman/scripts/fed-regen.sh --check   # change nothing; exit 1 if a mirror is not what regeneration writes
-bash .claude/skills/wingman/scripts/fed-regen.test.sh      # offline test of the regenerator
+bash .claude/skills/wingman/scripts/fed-regen.test.sh      # offline test of the regenerator and the drift check, including CRLF and core.fileMode=false
 ```
 
 `AGENTS.md` is `CLAUDE.md` with three changes: the title line, the "gives Claude Code full context" sentence, and a generated-file header under the title (`w_gen_agents` in `lib.sh`). `.agents/skills/` is a byte copy of `.claude/skills/`, file modes included. A file that exists only in the mirror is reported, never deleted. Edit the source, run the script, commit both in one PR. A merge conflict in a mirror is never hand-merged: resolve the source, regenerate. `fed-check.sh` WARNs on a stale `AGENTS.md` and FAILs on a skill mirror that is not a byte copy. Running it in CI is not done: `.github/workflows/**` is deploy-watched, so that is a separate decision.
+
+**Platforms.** Linux and macOS get the full check; Windows runs the same scripts under Git Bash. Two things differ on Windows, and both are handled so that one commit gives one answer on every machine.
+
+- **Line endings.** `core.autocrlf` can turn markdown, JSON and similar files into CRLF in the working tree. `fed-check.sh` and `fed-regen.sh` compare text files with carriage returns removed (binary files byte for byte), never rewrite a file that differs only by line endings, and always write `AGENTS.md` with LF. `--manifest` hashes text the same way, so a Windows checkout and a Linux checkout of one commit print identical hashes. `.gitattributes` already pins `*.sh` to LF.
+- **File modes.** Git for Windows sets `core.fileMode=false`, so the working tree cannot show the executable bit and the mode that counts is the one in the git index (`git ls-files -s`). A mirror whose source is executable must be executable in the index too. When it is not, `fed-regen.sh` prints a NOTE with the exact command (`git update-index --add --chmod=+x -- <mirror path>`) and `--check` FAILs once the mirror is tracked at the wrong mode; a mirror not yet in the index is a NOTE only. `fed-regen.test.sh` skips, and says so, the one check that needs a filesystem with an executable bit.
+
+Windows behavior is covered in `fed-regen.test.sh` by simulation (CRLF working trees, `core.fileMode=false`), which is not the same as a run on a Windows checkout. After changing these scripts, run `fed-regen.test.sh` and `fed-check.sh` on the Windows machine and report the result on the PR.
 
 ## 4. Moving between machines
 

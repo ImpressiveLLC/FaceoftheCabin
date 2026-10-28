@@ -4,9 +4,12 @@
 #                            a byte copy of .claude/skills,
 #                            the context-map pair, skills paths rewritten with an agent name
 #   fed-check.sh --manifest  sha256 (8 chars) of every federated file; run on two machines
-#                            and `diff` the outputs. Hashes only, never contents.
+#                            and `diff` the outputs. Hashes only, never contents. Text files are hashed
+#                            without carriage returns, so a Windows (CRLF) and a Linux checkout of one
+#                            commit print the same values.
 #   fed-check.sh --registry  context registry: age, repo paths it names, rows still unknown
 # Exit 0 when nothing FAILed, 1 otherwise, 2 when not in a clone.
+# Text is compared without carriage returns (core.autocrlf on Windows is not drift); see lib.sh.
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
@@ -18,19 +21,18 @@ MAP_DOCS="docs/ai-assistant/rag/context-fixtures-r2.json"
 MAP_CP="cabin-orchestration-platform/backend/src/main/resources/rag/context-fixtures-r2.json"
 REGISTRY="docs/governance/rte/context-registry.md"
 
-h8() { sha256sum "$1" 2>/dev/null | cut -c1-8; }
 # norm: classifies a skill mirror that differs only by the old agent-name substitution (a byte copy fixes it).
 norm() {
-  sed -E 's/CLAUDE\.md|AGENTS\.md/INSTR.md/g; s#\.(claude|agents|Codex|codex)/skills#.X/skills#g;
-          s/Claude Code|Claude|Codex|CLAUDE/AGENT/g; s#(claude-code|codex)/tmp-#AGENT/tmp-#g' "$1"
+  tr -d '\r' < "$1" | sed -E 's/CLAUDE\.md|AGENTS\.md/INSTR.md/g; s#\.(claude|agents|Codex|codex)/skills#.X/skills#g;
+          s/Claude Code|Claude|Codex|CLAUDE/AGENT/g; s#(claude-code|codex)/tmp-#AGENT/tmp-#g'
 }
 
 if [ "${1:-}" = "--manifest" ]; then
   echo "# head $(git rev-parse --short HEAD) branch $(git rev-parse --abbrev-ref HEAD) dirty $(git status --porcelain | wc -l | tr -d ' ')"
   { for f in CLAUDE.md AGENTS.md "$MAP_DOCS" "$MAP_CP" docs/governance/backlog.md docs/governance/rte/*.md; do
-      [ -f "$f" ] && echo "$(h8 "$f")  $f"
+      [ -f "$f" ] && echo "$(w_h8 "$f")  $f"
     done
-    find .claude/skills .agents/skills -type f 2>/dev/null | sort | while read -r f; do echo "$(h8 "$f")  $f"; done
+    find .claude/skills .agents/skills -type f 2>/dev/null | sort | while read -r f; do echo "$(w_h8 "$f")  $f"; done
   }
   exit 0
 fi
@@ -63,12 +65,12 @@ fi
 echo "== instruction mirror: AGENTS.md vs CLAUDE.md"
 if [ ! -f AGENTS.md ]; then
   say WARN "AGENTS.md missing: run fed-regen.sh"
-elif w_gen_agents | cmp -s - AGENTS.md; then
+elif cmp -s <(w_gen_agents) <(tr -d '\r' < AGENTS.md); then
   say OK "AGENTS.md is CLAUDE.md regenerated"
 else
-  n=$(diff <(w_gen_agents) AGENTS.md | grep -c '^[<>]')
+  n=$(diff <(w_gen_agents) <(tr -d '\r' < AGENTS.md) | grep -c '^[<>]')
   say WARN "$n line(s) differ from CLAUDE.md regenerated (stale or hand-edited mirror): run fed-regen.sh and commit both. First hunks:"
-  diff <(w_gen_agents) AGENTS.md | grep -E '^[0-9]' | head -6
+  diff <(w_gen_agents) <(tr -d '\r' < AGENTS.md) | grep -E '^[0-9]' | head -6
 fi
 # The string hunted is the skills directory as the agent-name substitution once wrote it
 # (a dot, the agent's capitalised name, a slash). It is assembled from two pieces so that no
@@ -90,7 +92,7 @@ for d in .claude/skills/*/; do
   while IFS= read -r f; do
     rel=${f#.claude/skills/$n/}; m=".agents/skills/$n/$rel"
     if [ ! -f "$m" ]; then state="missing-file:$rel"; break; fi
-    if ! cmp -s "$f" "$m"; then
+    if ! w_same "$f" "$m"; then
       if cmp -s <(norm "$f") <(norm "$m"); then state="subst-only"; else state="drift:$rel"; break; fi
     fi
   done < <(find "$d" -type f | sort)
@@ -103,13 +105,13 @@ done
 for d in .agents/skills/*/; do
   [ -d ".claude/skills/$(basename "$d")" ] || say WARN "mirror without a source skill: $(basename "$d")"
 done
-if [ -d .claude/skills/wingman ] && [ -d .agents/skills/wingman ] && ! diff -rq .claude/skills/wingman .agents/skills/wingman >/dev/null; then
+if [ -d .claude/skills/wingman ] && [ -d .agents/skills/wingman ] && ! diff -rq --strip-trailing-cr .claude/skills/wingman .agents/skills/wingman >/dev/null; then
   say FAIL "wingman mirror must be byte-identical: cp -r .claude/skills/wingman/. .agents/skills/wingman/"
 fi
 
 echo "== context map pair (docs copy vs backend classpath copy)"
 if [ -f "$MAP_DOCS" ] && [ -f "$MAP_CP" ]; then
-  if cmp -s "$MAP_DOCS" "$MAP_CP"; then say OK "identical ($(h8 "$MAP_DOCS"))"; else say FAIL "docs $(h8 "$MAP_DOCS") != classpath $(h8 "$MAP_CP")"; fi
+  if w_same "$MAP_DOCS" "$MAP_CP"; then say OK "identical ($(w_h8 "$MAP_DOCS"))"; else say FAIL "docs $(w_h8 "$MAP_DOCS") != classpath $(w_h8 "$MAP_CP")"; fi
 else
   say FAIL "context map file missing"
 fi
