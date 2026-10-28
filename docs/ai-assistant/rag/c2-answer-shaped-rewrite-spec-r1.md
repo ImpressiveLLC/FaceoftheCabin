@@ -1,6 +1,6 @@
 # C2 answer-shaped rewrite specification, r1
 
-Status: proposal for Code (edits) and Codex (verification). Written 2026-10-27 by Cowork from the [C2-RUN-1 record](eval-results/2026-10-27-c2-run-1.md). This file changes no guide text, map entry, prompt, model or frozen input. Nothing here reaches Ask until the edit PR it describes is merged and deployed.
+Status: proposal for Code (edits) and Codex (verification). Written 2026-10-27 by Cowork from the [C2-RUN-1 record](eval-results/2026-10-27-c2-run-1.md). This file changes no guide text, map entry, prompt, model or frozen input. Nothing here reaches Ask until the edit PR it describes is merged and deployed. Revised 2026-10-27 20:58 CDT after Codex's review of 1e3a48a (comment 6458352874) so that it matches the edit PR #300 (reviewed head de12c08, plus Edit 6b, which Code applies next); the changes are listed under Amendments after review, at the end of section 4.
 
 Backlog link: W-117 (Nate's corpus-first directive, 2026-10-26), C2 section of [wsjf-backlog.md](../wsjf-backlog.md).
 
@@ -70,17 +70,17 @@ Draft text is meant to be pasted as written, then narrowed under R1 if a check f
 
 Trace: overlay and network from table row 3; bind mounts and Blink bridge from row 4 (attributed to the production stack, as the row does); the arrangement from row 3; bootstrap from row 1; provisioning and external account steps from row 2.
 
-**Edit 1b.** In `independent-installation.md#minimum-inputs`, insert directly under the heading (655 characters):
+**Edit 1b.** In `independent-installation.md#minimum-inputs`, insert directly under the heading (641 characters):
 
-> **Short answer.** Ask only for what the selected capabilities need. A minimal system needs: the capabilities and household needs, an authorized target host and operator access, the household's own repository and instance identity, its access model, domain and account ownership, and only the integrations or devices it enables. Camera, GPS or other site details are asked for only when that feature is selected, for example zone-based presence. Never collect SSH keys, tokens, OAuth secrets or vault passwords in chat (use secure setup and vault pointers), and never copy the existing cabin instance's credentials, seed data or deployed paths as defaults.
+> **Short answer.** Ask only for what the selected capabilities need. It needs: the capabilities and household needs, an authorized target host and operator access, the household's own repository and instance identity, its access model, domain and account ownership, and only the integrations or devices it enables. Camera, GPS or other site details are asked for only when that feature is selected, for example zone-based presence. Never collect SSH keys, tokens, OAuth secrets or vault passwords in chat (use secure setup and vault pointers), and never copy the existing cabin instance's credentials, seed data or deployed paths as defaults.
 
 Trace: first sentence from the section's opening line; the list from table rows 1 to 5; camera and site details from rows 5 and 6 (if REPLICATION sections 1 to 4 name camera inputs, cite them); the no-secrets and no-defaults clauses from the third column.
 
-**Map change M1.** Move `independent-installation.md#presence-for-each-location` out of `installation` into a new category `installation_presence`, declared after `installation` (ties go to declaration order). Keep the entry's audience `administrator`. Suggested patterns, all multi-word and none present in any frozen question: `presence for each location`, `who counts as present`, `authorized user phones`, `automatic presence`, `set up presence`. Do not reuse `primary user`, `maintenance user` or `location role`, which `presence_roles_and_gaps` already owns, and add no single-word pattern (Q18 contains "presence" and currently reaches `installation` with 2 matched words against `live_sensors` with 1). Reason: no target question needs that 2350-character section, it holds the very inputs Q18 says to leave out (GPS, phone MAC, LAN), and removing it makes room without trimming human-facing text. Both copies of the map change together.
+**Map change M1.** Move `independent-installation.md#presence-for-each-location` out of `installation` into a new category `installation_presence`, declared after `installation` (ties go to declaration order). Keep the entry's audience `administrator`. Suggested patterns, all multi-word and none present in any frozen question: `presence for each location`, `authorized user phones`, `automatic presence`, `set up presence`. A fifth suggestion, `who counts as present`, was dropped at implementation: it scores 4 words for the new category and moved the existing probe "Who counts as present: a primary user or a maintenance user?" away from `presence_roles_and_gaps` (#300 deviation 7). Do not reuse `primary user`, `maintenance user` or `location role`, which `presence_roles_and_gaps` already owns, and add no single-word pattern (Q18 contains "presence" and currently reaches `installation` with 2 matched words against `live_sensors` with 1). Reason: no target question needs that 2350-character section, it holds the very inputs Q18 says to leave out (GPS, phone MAC, LAN), and removing it makes room without trimming human-facing text. Both copies of the map change together.
 
 | Category | Today | After | Cap | Slack after |
 |---|---:|---:|---:|---:|
-| installation | 5683 | 4574 | 6000 | 1426 |
+| installation | 5683 | 4560 | 6000 | 1440 |
 | installation_presence (new) | n/a | 2350 | 6000 | 3650 |
 
 ### RW-2 device_import_lifecycle (Q05, Q06, Q07)
@@ -91,18 +91,18 @@ Trace: first sentence from the section's opening line; the list from table rows 
 
 Trace: paragraph 2 of the section for the CANDIDATE, persistence, passive path, proposals and records statements; step 4 for "not proof the hardware works"; "the source shows the design, not an observed restart" is an evidence-type caution, and Codex confirms the guide claims no observed restart; "verify the saved state" from paragraph 2.
 
-**Edit 2b (type B, optional until verified).** Append to the same section (283 characters):
+**Edit 2b (type B, verified by Code).** Append to the same section, after its last paragraph (466 characters):
 
-> A persisted device is restored with its lifecycle state when the backend starts (`DeviceRegistry.restorePersistedDevices`). In Device Manager the State filter controls which lifecycle states are listed, so confirm Candidates is included before concluding that a candidate is missing.
+> A persisted device is restored with its lifecycle state when the backend starts (`DeviceRegistry.restorePersistedDevices`, which loads every stored record that has a lifecycle state, Candidates included). In Device Manager the State filter controls which lifecycle states are listed: its default shows Candidates, Available and Assigned, and the selection is remembered in the browser, so confirm Candidates is selected before concluding that a candidate is missing.
 
-Code verifies before keeping it: that restore includes CANDIDATE records (read `DeviceRegistry`, constructor and `restorePersistedDevices`, cite the lines), and the State filter's real default and labels in `App.jsx` (`LIFECYCLE_FILTER_OPTIONS`). If the default already lists Candidates or the control differs, change the second sentence or drop it. Without 2b, Q07 stays partly unanswerable from its context and is expected to remain below PASS.
+Code verified both points before keeping it (#300 source checks 1 and 2): `DeviceRegistry.restorePersistedDevices` puts back every stored record that has a lifecycle state, Candidates included, and the State filter's default (`DEFAULT_LIFECYCLE_FILTER` in `App.jsx`) already lists Candidates and is remembered per browser, so the second sentence was rewritten as below instead of telling the reader to add Candidates. Without 2b, Q07 stays partly unanswerable from its context and is expected to remain below PASS.
 
 | Category | Today | After | Cap | Slack after |
 |---|---:|---:|---:|---:|
-| device_import_lifecycle | 2791 | 3978 | 6000 | 2022 |
-| device_identity (shares the section, Q04) | 2791 | 3978 | 6000 | 2022 |
+| device_import_lifecycle | 2791 | 4161 | 6000 | 1839 |
+| device_identity (shares the section, Q04) | 2791 | 4161 | 6000 | 1839 |
 
-### RW-3 ask_helpdesk_behavior (Q22, Q23)
+### RW-3 ask_helpdesk_behavior (Q22, Q23; shared guard Q21)
 
 **Edit 3a.** In `ask-and-helpdesk.md#what-a-source-currently-means`, insert directly under the heading (472 characters):
 
@@ -121,6 +121,8 @@ Trace: bullet 1 of the existing list (cite the section, match role, instance and
 |---|---:|---:|---:|---:|
 | ask_helpdesk_behavior | 4567 | 5475 | 6000 | 525 |
 
+R6: Q21 shares this category and is a stable-question guard (decision rule 3). The added lead and bullets grow its context by 908 characters, so it is re-measured and must stay 3 of 3 (Codex HOLD on #300, item 2).
+
 ### RW-4 live_sensors (Q09)
 
 **Edit 4a (type B).** Add a new section to `operations.md`, after the capability map, with the heading and body below (440 characters):
@@ -131,35 +133,59 @@ Trace: bullet 1 of the existing list (cite the section, match role, instance and
 
 Trace: the endpoint's inputs from `ask-and-helpdesk.md#current-behavior`; no live read from the helpdesk package (Cowork searched `helpdesk/` on 2026-10-27 for telemetry, device-registry and status reads and found none; Code re-checks); "example or history" from `questions-and-useful-limits` bullet 2 and the capability map's "Static descriptions are not live readings"; the live sources and "source and age" from the capability map and the presence-badge section. The separate propose route is off by default and out of scope; do not describe it here.
 
-**Map change M2.** Add `operations.md#live-values-and-ask` to `live_sensors` as its first document, audience `administrator` like its neighbours. The capability map is not edited, because `opportunity_status` is at 5972 of 6000.
+**Map change M2.** Add `operations.md#live-values-and-ask` to `live_sensors` as its first document, audience `household`, like its neighbours (`capability-map`, `what-the-presence-badge-means`, `arming`); the text has no operator-only detail (#300 deviation 4). The capability map is not edited, because `opportunity_status` is at 5972 of 6000.
 
 | Category | Today | After | Cap | Slack after |
 |---|---:|---:|---:|---:|
-| live_sensors | 4789 | 5231 | 6000 | 769 |
+| live_sensors | 4789 | 5229 | 6000 | 771 |
 
 ### RW-5 credential_redaction (Q11)
 
-**Edit 5.** In `configuration.md#credentials-and-access`, insert directly under the heading (433 characters):
+**Edit 5.** In `configuration.md#credentials-and-access`, insert directly under the heading (439 characters):
 
-> **Short answer.** For an administrator, Ask can return the name of the vault entry, not the secret itself; other household roles are directed to an administrator. Credentials live in Vaultwarden, the application credential vault, and are retrieved there, never through Ask or pasted into it; Ansible Vault is the separate mechanism for deployment secrets. This describes the current redactor, not verified enforcement for every role.
+> **Short answer.** For an administrator, Ask can return the name of the vault entry, not the secret itself; other roles are directed to an administrator. Credentials live in Vaultwarden, the application credential vault; Ansible Vault is the separate mechanism for deployment secrets. Do not paste a secret into Ask or treat it as a place to enter or rotate one. This describes the current redactor, not verified enforcement for every role.
 
 Trace: paragraph 2 (entry name, other roles directed to an administrator); paragraph 1 (Vaultwarden and Ansible Vault roles); paragraph 3 (do not paste secrets, entry is not a conversational field); the last sentence mirrors the guide's own limits statements. Also re-measure Q13, which shares this category.
 
 | Category | Today | After | Cap | Slack after |
 |---|---:|---:|---:|---:|
-| credential_redaction | 1486 | 1921 | 6000 | 4079 |
+| credential_redaction | 1486 | 1927 | 6000 | 4073 |
 
 ### RW-6 governance_contribution (Q24)
 
-**Edit 6.** In `contributing.md#small-auditable-changes`, insert directly under the heading (530 characters):
+**Edit 6.** In `contributing.md#small-auditable-changes`, insert directly under the heading (606 characters):
 
-> **Short answer.** An agent's proposal does not settle a disputed correction, and one agent's confidence is not authority. The correction is a shared, evidence-bearing change submitted in a PR or linked issue that keeps each actor's assertions, sources and dissent visible and explains the conflict. It is reviewed by the relevant human or domain reviewer, and a security, ontology or physical-safety change needs the accountable review. Do not claim a merged document has reached Ask automatically until automated indexing exists.
+> **Short answer.** An agent's proposal does not settle a disputed correction, and one agent's confidence is not authority. The correction is a shared, evidence-bearing change submitted in a PR or linked issue that keeps each actor's assertions, sources and dissent visible and explains the conflict. It is reviewed by the relevant maintainer or domain reviewer, and a security, ontology or physical-safety change needs the accountable review. Do not claim a merged document has reached Ask unless the deployed mounted docs and the reviewed context map actually include it; a merge alone does not prove that.
 
-Trace: step 4 (one agent's confidence as authority, preserve assertions and dissent, explain the conflict); step 5 and the contribution-record introduction (PR or linked issue); the record table's review-authority row and the closing paragraph (accountable review); step 6 (automated indexing).
+Trace: step 4 (one agent's confidence as authority, preserve assertions and dissent, explain the conflict); step 5 and the contribution-record introduction (PR or linked issue); the record table's Review authority row (relevant maintainer or domain reviewer) and the closing paragraph (accountable review); the last sentence from `ask-and-helpdesk.md` Current behavior ("A merged documentation change reaches Ask at the next backend deploy, because the container reads the docs mounted from the deploy checkout"; "only sections named in the reviewed context map are supplied") and Which guide sections can reach Ask ("Merging a new section does not make it reachable").
+
+**Edit 6b.** In `contributing.md#small-auditable-changes`, replace step 6 (208 characters) with this line (313 characters). Added after Codex's re-review of #300 at de12c08 (comment 6458525691): step 6 still stated the stale automated-indexing prerequisite in the same retrieved section, so Ask would receive both statements.
+
+> 6. After review/release, record the accepted source version. Then verify separately that the deployed mounted docs include the change and that the reviewed context map lists its section, and record the eval outcome. No automated indexing exists today; if one is added, verify its version and eval outcome as well.
+
+Trace: the same `ask-and-helpdesk.md` sources as Edit 6 (deployed mounted docs, the reviewed map, no document ingester); "record the eval outcome" and "if one is added, verify its version" keep the original step's own obligations.
 
 | Category | Today | After | Cap | Slack after |
 |---|---:|---:|---:|---:|
-| governance_contribution | 2491 | 3023 | 6000 | 2977 |
+| governance_contribution | 2491 | 3204 | 6000 | 2796 |
+
+The row counts Edit 6 (3099) plus Edit 6b (+105).
+
+### Amendments after review
+
+Reconciled against #300 at de12c08 and Codex's comments 6458352874 (#299) and 6458525691 (#300). Wording, counts and sizes in section 4 equal what #300 implements, except Edit 6b, which Code applies next (ACTION CODE, comment 6458546454); the `governance_contribution` row after Edit 6b is computed here and Code's measured value replaces it. The other budget rows are the measured values in #300's evidence record, which also carries the trace table and the deviation list.
+
+| Item | In r1 at 1e3a48a | Now | Why |
+|---|---|---|---|
+| 1b | "A minimal system needs:", 655 characters | "It needs:", 641 | R4 allows 650 (#300 deviation 1) |
+| 2b | 283 characters; "confirm Candidates is included" | 466; restore loads every stored record with a lifecycle state; the State filter default already shows Candidates and is remembered per browser | the source checks this draft required (#300 deviations 2 and 3) |
+| M1 | five suggested patterns | four; `who counts as present` moved an existing probe | #300 deviation 7 |
+| M2, 4a | audience `administrator` | `household`, like the neighbouring sections | #300 deviation 4 |
+| 5 | "other household roles"; "retrieved there, never through Ask" | "other roles"; "Do not paste a secret into Ask or treat it as a place to enter or rotate one" | R1: the guide says "other roles" and does not say Ask can never return a secret (#300 deviation 5) |
+| 6 | "relevant human or domain reviewer"; ends "until automated indexing exists" | "relevant maintainer or domain reviewer"; the deployed-docs and context-map condition | the Review authority row's own words; Codex HOLD on #299 and #300 (#300 deviations 6 and 8) |
+| 6b | not in r1 | step 6 replaced | Codex re-HOLD on #300: Ask receives the whole section, so step 6 must not contradict the lead |
+| RW-3 | Q22, Q23 | also names Q21 as a stable-question guard | Codex HOLD on #300, item 2 |
+| Budgets | estimates | measured with `ReviewedDocumentSource`, the +2 per section convention | #300 deviation 9; 6b adds 105 to `governance_contribution` |
 
 ## 5. Checks before the edit PR opens (Code)
 
