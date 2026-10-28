@@ -33,7 +33,7 @@ Turn each result into the next ask: ratify, name what failed, name the domain or
 - `docs/governance/backlog.md` is the portfolio. One row per work item, 11 columns: ID, Work, UC, Traces to, Origin, Owner, CoD, Size, WSJF, Status, Blocked by. Status words: proposed, ready, in progress, in review, merged, released, held, gated, dropped.
 - The Ask track keeps `docs/ai-assistant/wsjf-backlog.md` (Cowork owns and scores; Codex supplies technical evaluation).
 - Status of every item changes in the same PR that changes the work: `in review` when opened, `merged` after merge, `released` after live verification.
-- Dashboard from the backlog: `node .claude/skills/wingman/scripts/pmo-build.mjs --check` then `--out`. Publish to the PMO artifact. Daily and at each plan change.
+- Dashboard from the backlog: `node .claude/skills/orchestration-hub-wingman/scripts/pmo-build.mjs --check` then `--out`. Publish to the PMO artifact. Daily and at each plan change.
 - Append-table edits (backlog, discrepancy log, decision index): resolver `node .claude/skills/cabin-peer-agent-collaboration/scripts/resolve-append-tables.mjs --check` before pushing.
 
 ## 5. WSJF

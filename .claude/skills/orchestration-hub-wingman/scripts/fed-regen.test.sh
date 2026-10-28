@@ -10,8 +10,8 @@ t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 pass=0; fail=0; skip=0
 ok() { if [ "$1" -eq 0 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: $2"; fi; }
 skipped() { skip=$((skip + 1)); echo "SKIP: $1"; }
-R="bash .claude/skills/wingman/scripts/fed-regen.sh"
-C="bash .claude/skills/wingman/scripts/fed-check.sh"
+R="bash .claude/skills/orchestration-hub-wingman/scripts/fed-regen.sh"
+C="bash .claude/skills/orchestration-hub-wingman/scripts/fed-check.sh"
 
 # Does this filesystem keep an executable bit? (Git Bash on NTFS does not.)
 : > "$t/probe"; chmod 755 "$t/probe"
@@ -20,8 +20,8 @@ if [ "$(stat -c %a "$t/probe")" = "755" ]; then can_x=1; else can_x=0; fi
 # mk <dir>: a throwaway clone with a CLAUDE.md, two demo skill files and the wingman scripts. Leaves cwd there.
 mk() {
   mkdir -p "$1" && cd "$1" && git init -q . || exit 2
-  mkdir -p .claude/skills/wingman/scripts .claude/skills/demo
-  cp "$here/lib.sh" "$here/fed-regen.sh" "$here/fed-check.sh" .claude/skills/wingman/scripts/
+  mkdir -p .claude/skills/orchestration-hub-wingman/scripts .claude/skills/demo
+  cp "$here/lib.sh" "$here/fed-regen.sh" "$here/fed-check.sh" .claude/skills/orchestration-hub-wingman/scripts/
   printf '# CLAUDE.md - Test\n\nThis file gives Claude Code full context for every session.\nSeveral Claude sessions work here.\n' > CLAUDE.md
   printf 'echo demo\n' > .claude/skills/demo/run.sh; chmod 755 .claude/skills/demo/run.sh
   printf 'notes\n' > .claude/skills/demo/notes.md

@@ -1,6 +1,6 @@
 # Karpathy canon and caveman voice
 
-Nate's canon. "Karpathy" is Nate's naming; attribution to an external author is not independently verified. Two source skills, one voice skill. Wingman keeps them as written and adds one column: what each rule means when the work is delivery management rather than code.
+Nate's canon. "Karpathy" is Nate's naming; attribution to an external author is not independently verified. Two source skills, one voice skill. The hub wingman keeps them as written and adds one column: what each rule means when the work is delivery management rather than code. The account skill `wingman` carries a condensed copy for day-to-day work.
 
 Sources:
 - `karpathy-principles` (account skill, four principles, any coding task)

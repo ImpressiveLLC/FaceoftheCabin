@@ -28,9 +28,9 @@ Federation = the same fact available on every machine and surface without two co
 ## 3. Commands
 
 ```bash
-bash .claude/skills/wingman/scripts/fed-check.sh              # drift: AGENTS vs CLAUDE, skill mirrors, context-map pair, corrupted .Codex paths
-bash .claude/skills/wingman/scripts/fed-check.sh --manifest   # sha256 (8 chars) of every federated file, text without carriage returns; run on two machines and diff
-bash .claude/skills/wingman/scripts/fed-check.sh --registry   # registry age, repo paths it names, unknown rows
+bash .claude/skills/orchestration-hub-wingman/scripts/fed-check.sh              # drift: AGENTS vs CLAUDE, skill mirrors, context-map pair, corrupted .Codex paths
+bash .claude/skills/orchestration-hub-wingman/scripts/fed-check.sh --manifest   # sha256 (8 chars) of every federated file, text without carriage returns; run on two machines and diff
+bash .claude/skills/orchestration-hub-wingman/scripts/fed-check.sh --registry   # registry age, repo paths it names, unknown rows
 ```
 
 Cross-machine check: run `--manifest` on the M920q deploy worktree and in the Cowork clone; `diff` the two outputs. Identical hashes for the same `head` = federated. Different head = one side is stale, make it fresh first.
@@ -38,9 +38,9 @@ Cross-machine check: run `--manifest` on the M920q deploy worktree and in the Co
 Regenerate both mirrors from their sources (W-119):
 
 ```bash
-bash .claude/skills/wingman/scripts/fed-regen.sh           # write AGENTS.md and .agents/skills/ from CLAUDE.md and .claude/skills/
-bash .claude/skills/wingman/scripts/fed-regen.sh --check   # change nothing; exit 1 if a mirror is not what regeneration writes
-bash .claude/skills/wingman/scripts/fed-regen.test.sh      # offline test of the regenerator and the drift check, including CRLF and core.fileMode=false
+bash .claude/skills/orchestration-hub-wingman/scripts/fed-regen.sh           # write AGENTS.md and .agents/skills/ from CLAUDE.md and .claude/skills/
+bash .claude/skills/orchestration-hub-wingman/scripts/fed-regen.sh --check   # change nothing; exit 1 if a mirror is not what regeneration writes
+bash .claude/skills/orchestration-hub-wingman/scripts/fed-regen.test.sh      # offline test of the regenerator and the drift check, including CRLF and core.fileMode=false
 ```
 
 `AGENTS.md` is `CLAUDE.md` with three changes: the title line, the "gives Claude Code full context" sentence, and a generated-file header under the title (`w_gen_agents` in `lib.sh`). `.agents/skills/` is a byte copy of `.claude/skills/`, file modes included. A file that exists only in the mirror is reported, never deleted. Edit the source, run the script, commit both in one PR. A merge conflict in a mirror is never hand-merged: resolve the source, regenerate. `fed-check.sh` WARNs on a stale `AGENTS.md` and FAILs on a skill mirror that is not a byte copy. Running it in CI is not done: `.github/workflows/**` is deploy-watched, so that is a separate decision.

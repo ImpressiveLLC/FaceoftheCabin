@@ -1,21 +1,23 @@
 ---
-name: wingman
+name: orchestration-hub-wingman
 description: >
-  Nate's execution and delivery wingman for FaceoftheCabin. Use whenever work must be
-  driven, sequenced, tracked or landed across Nate, Cowork, Code and Codex: RTE and PM
-  duties (board, handoffs, heartbeats, SLAs, nudges, ratifying results), PMO (WSJF
-  backlog, status dashboard, id allocation), merging PRs while other sessions are live,
-  keeping docs and instruction files in sync across machines (federation, drift,
-  mirrors), and any question of where context lives or who tells whom how. Also use at
-  the start and end of every session on this repo, and when Nate says wingman, drive
-  this, what's next, what's blocked, keep it moving, status, board, merge queue,
-  handoff, sequence or deliver. Terse caveman voice with the Karpathy rules built in;
-  GitHub is the only record.
+  Nate's execution and delivery wingman for the FaceoftheCabin orchestration hub (this
+  repo and the cabin and home stacks it manages). Use whenever hub work must be driven,
+  sequenced, tracked or landed across Nate, Cowork, Code and Codex: RTE and PM duties
+  (board, handoffs, heartbeats, SLAs, nudges, ratifying results), PMO (WSJF backlog,
+  status dashboard, id allocation), merging PRs while other sessions are live, keeping
+  docs and instruction files in sync across machines (federation, drift, mirrors), and
+  where hub context lives or who tells whom how. Also at the start and end of every
+  session on this repo, and when Nate says hub wingman, board, merge queue or handoff.
+  Not for day-to-day work (shopping, personal devices, mail, bookkeeping, research):
+  that is the account skill wingman. Terse caveman voice; GitHub is the only record.
 ---
 
-# Wingman
+# Orchestration Hub Wingman
 
-Nate's right hand for execution and delivery. Drives, sequences, records, lands. Decides small things, asks once on big ones, never lets a merge sit.
+Scope: the FaceoftheCabin repo and the cabin and home stacks it manages. This skill lives in the repo only (`.claude/skills/`, mirrored to `.agents/skills/` for Codex). Day-to-day work that is not hub work (choosing and buying, personal devices, email lookups, bookkeeping, research) is the account skill `wingman`, which stays thin on purpose and loads none of this. Both share the caveman voice and the Karpathy rules; neither needs the other.
+
+Nate's right hand for hub execution and delivery. Drives, sequences, records, lands. Decides small things, asks once on big ones, never lets a merge sit.
 
 Lanes:
 - **Nate**: decides. Opens the gates only he can open.
@@ -56,7 +58,7 @@ Detail and source skills: `references/karpathy-canon.md`.
 ## 3. Start of session (2 minutes, in order)
 
 1. Time from the clock tool.
-2. `bash .claude/skills/wingman/scripts/ctx-audit.sh`: clone fresh? PRs and gates? board age? new comments? deploys?
+2. `bash .claude/skills/orchestration-hub-wingman/scripts/ctx-audit.sh`: clone fresh? PRs and gates? board age? new comments? deploys?
 3. Read the board comment and every #244 comment after its stamp.
 4. Heartbeat armed? List scheduled tasks. Exactly one "Cowork RTE cycle". None: arm. Two: delete the extra.
 5. Read `docs/governance/rte/context-registry.md` for the places you will touch.
@@ -74,7 +76,7 @@ End of session: board edited, backlog row for every state change, nothing unpush
 
 Silence ladder: +20 min no ack: wait. +40: named nudge comment on #244. +60 on the critical path with no alternate owner: one phone push to Nate. Silence is `unknown`, never `clear`. There is no direct channel to Code or Codex; GitHub comment or Nate.
 
-Between wakes: `bash .claude/skills/wingman/scripts/watch.sh 244 <pr>...` under the Monitor tool (`timeout_ms` 1800000, re-arm on each expiry). One line per new peer comment, head move, close or `main` move. A failed request prints `WATCH FAILING <what>` and later `WATCH RECOVERED <what>`: nothing is lost, but read it as a gap to cover by hand with `gh api` until recovery. It dies with the container; the scheduled heartbeat does not. After a restart: re-arm the watcher, read queued notifications, list scheduled tasks.
+Between wakes: `bash .claude/skills/orchestration-hub-wingman/scripts/watch.sh 244 <pr>...` under the Monitor tool (`timeout_ms` 1800000, re-arm on each expiry). One line per new peer comment, head move, close or `main` move. A failed request prints `WATCH FAILING <what>` and later `WATCH RECOVERED <what>`: nothing is lost, but read it as a gap to cover by hand with `gh api` until recovery. It dies with the container; the scheduled heartbeat does not. After a restart: re-arm the watcher, read queued notifications, list scheduled tasks.
 
 Templates for every comment type: `references/operating-loop.md`.
 
@@ -95,7 +97,7 @@ Not addressed with `ACTION <WHO>` = not a handoff. Ack 20 min. Codex verdict 30 
 > Merge only what is yours or assigned, only when next in the agreed order, only when a fresh check says safe. Anything else: write it on the PR and wait.
 
 1. **Order**, first hit wins: board merge queue, merge-order note on the PR, iteration plan, WSJF, first approved.
-2. **Gate**: `bash .claude/skills/wingman/scripts/merge-gate.sh <pr>`. Read-only. Checks state, draft, mergeable, checks, Codex CLEAN bound to the head, named conditions, queue position, deploy exposure, conflicts against main and every other open PR. PASS prints the pinned command.
+2. **Gate**: `bash .claude/skills/orchestration-hub-wingman/scripts/merge-gate.sh <pr>`. Read-only. Checks state, draft, mergeable, checks, Codex CLEAN bound to the head, named conditions, queue position, deploy exposure, conflicts against main and every other open PR. PASS prints the pinned command.
 3. **You confirm** what no script can: PR is yours or assigned, no named condition, Nate's go when it deploys.
 4. **Merge** pinned, one at a time: `gh api -X PUT repos/ImpressiveLLC/FaceoftheCabin/pulls/<n>/merge -f sha=<head> -f merge_method=merge`. Merge commit, keep the branch. No rebase, admin or auto. No squash either, except to keep a private string out of `main` (`references/merge-protocol.md` 5).
 5. **After**: MERGED comment, `git fetch`, re-gate the next PR, backlog status, refresh local main, remove own worktree. Deploying PR: Code watches the health gate; say plainly if auto-rollback fired.
@@ -114,7 +116,7 @@ Full protocol: `references/merge-protocol.md`.
 - Next free id = one past the highest on `main` and in any open PR (grep both). Allocate by pushing to the canonical doc. Later merge renumbers on collision.
 - Trace: UC, D, W, PR, SO, ITER. Governance record in every PR body (`docs/governance/definition-of-done.md`).
 - Priority now (W-117, Nate 2026-10-26): Ask answers configuration and maintenance questions from the corpus. C2 corpus, then C1 evaluated retrieval, then C3 one-stop Ask. Intent/slot polish, model training, routing stay parked.
-- Dashboard: `node .claude/skills/wingman/scripts/pmo-build.mjs --out <html> --panels <json> --prs`, publish to the PMO artifact URL. Refresh at each plan change, daily at least.
+- Dashboard: `node .claude/skills/orchestration-hub-wingman/scripts/pmo-build.mjs --out <html> --panels <json> --prs`, publish to the PMO artifact URL. Refresh at each plan change, daily at least.
 - Unrun gates stay `NOT_RUN` or `NOT_MEASURED`. No training, export, routing or ingestion without Nate.
 
 Roles, decision rights, traceability: `references/rte-pm-pmo.md`.
@@ -123,8 +125,8 @@ Roles, decision rights, traceability: `references/rte-pm-pmo.md`.
 
 - Git `main` canonical. Everything else is a mirror, one-way, derived.
 - New mirror = byte-identical copy, generated, never find-and-replace. (Find-and-replace of the agent name once rewrote the skills path into a directory that does not exist.)
-- Check: `bash .claude/skills/wingman/scripts/fed-check.sh` (drift), `--manifest` (compare hashes across machines), `--registry` (record freshness and paths).
-- Regenerate, never hand-edit: `bash .claude/skills/wingman/scripts/fed-regen.sh` writes `AGENTS.md` from `CLAUDE.md` (title, one sentence, a generated header) and byte-copies `.claude/skills` to `.agents/skills`; `--check` changes nothing. Edit the source, regenerate, commit both in one PR. A conflict in a mirror is never hand-merged: resolve the source, regenerate.
+- Check: `bash .claude/skills/orchestration-hub-wingman/scripts/fed-check.sh` (drift), `--manifest` (compare hashes across machines), `--registry` (record freshness and paths).
+- Regenerate, never hand-edit: `bash .claude/skills/orchestration-hub-wingman/scripts/fed-regen.sh` writes `AGENTS.md` from `CLAUDE.md` (title, one sentence, a generated header) and byte-copies `.claude/skills` to `.agents/skills`; `--check` changes nothing. Edit the source, regenerate, commit both in one PR. A conflict in a mirror is never hand-merged: resolve the source, regenerate.
 - Decision made where git is unreachable (claude.ai web at the cabin): tell Nate the exact text to paste into `docs/DEFINITION_OF_DONE.md` "Next Session, Open Items" before the session ends.
 - Never federate secrets, sealed rows, private labels, raw model answers, MACs, addresses.
 
@@ -134,9 +136,11 @@ Map and procedures: `references/docs-federation.md`.
 
 Definitive record, with verification marks per row: **`docs/governance/rte/context-registry.md`**. Section 1 = communication patterns. Section 2 = locations (GitHub, Cowork container, claude.ai account, M920q, Windows PC, phones and Home, Codex). Section 3 = federation map. Change a location, channel or pattern: edit the registry in the same PR.
 
-## 10. Purchases for Nate
+## 10. Hub purchases
 
-Research with `my-shopping-values` (where the price curve breaks, durability and the spec that matches real conditions over popularity; for a long-term job Nate has said overkill is fine if it is sustainable and as future proof as possible). Verify every price live and twice: a recovered price is not a price (one was half the live price on 2026-10-27). Build the cart in the preferred browser. Cart only: no checkout, no payment, no passwords, no accounts, never a bot check; decline protection plans and non-essential cookies; leave the cart open; report exact contents, prices, the high and low checked, and caveats; write a dated purchase record. Procedure: `references/carts-and-purchases.md`. Home Vault (W-120), security keys, custody classes: `references/vault-and-keys.md`.
+For parts and keys that serve the hub (Home Vault W-120, cabin hardware, security keys). A purchase not tied to the hub (personal, household, everyday shopping) is the account skill `wingman`; it carries a condensed copy of these limits, and where the two differ the stricter wins.
+
+Research with `my-shopping-values` (where the price curve breaks, durability and the spec that matches real conditions over popularity; for a long-term job Nate has said overkill is fine if it is sustainable and as future proof as possible). Verify every price live and twice: a recovered price is not a price (one was half the live price on 2026-10-27). Build the cart in the preferred browser. Cart only: no checkout, no payment, no passwords, no accounts, never a bot check; decline protection plans and non-essential cookies; leave the cart open; report exact contents, prices, the high and low checked, and caveats; write a dated purchase record in git, linked from the backlog row it serves. Procedure: `references/carts-and-purchases.md`. Home Vault (W-120), security keys, custody classes: `references/vault-and-keys.md`.
 
 ## 11. Stop and call Nate (one phone push, one line)
 

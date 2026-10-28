@@ -1,6 +1,6 @@
 # Context and communications registry
 
-The definitive record of two things: **how the agents and Nate talk to each other**, and **where context is stored**, on every machine, in every Claude and Codex surface, and in GitHub. Owned by Cowork (Wingman skill, `.claude/skills/wingman/`). Canonical copy is this file in git. Any other copy (the packaged skill, a claude.ai Project doc, the Home Vault) is a mirror: regenerate it, never hand-edit it.
+The definitive record of two things: **how the agents and Nate talk to each other**, and **where context is stored**, on every machine, in every Claude and Codex surface, and in GitHub. Owned by Cowork (the Orchestration Hub Wingman skill, `.claude/skills/orchestration-hub-wingman/`). Canonical copy is this file in git. Any other copy (the packaged skill, a claude.ai Project doc, the Home Vault) is a mirror: regenerate it, never hand-edit it.
 
 Last verified: 2026-10-27 16:26 CDT by Cowork. Legend for the **Check** column: `V` verified in a session on the stated date from the repo or the container, `R` reported by a repo doc or by Nate and not re-checked, `U` unknown, needs a look before anyone relies on it.
 
@@ -52,7 +52,7 @@ All agent sessions post to GitHub as the one shared account `nhsmrekar`, so the 
 | Host scripts | `scripts/host/` (storage prune and trim agent, backup-modular, w101-census) | V |
 | Issue threads still in use | #244 (board), #246 (stranded local work audit), #207 (earlier cross-agent coordination) | V |
 | Encrypted secrets | `ansible/group_vars/cabin/vault.yml` (Ansible Vault ciphertext in git; the password is never in git) | R |
-| Dated purchase records (carts built for Nate, public product facts only, no order, address or account data) | `docs/governance/rte/purchases-<YYYY-MM-DD>.md`, linked from the backlog row it serves; procedure in `.claude/skills/wingman/references/carts-and-purchases.md` | planned |
+| Dated purchase records (carts built for Nate, public product facts only, no order, address or account data) | `docs/governance/rte/purchases-<YYYY-MM-DD>.md`, linked from the backlog row it serves; procedure in `.claude/skills/orchestration-hub-wingman/references/carts-and-purchases.md` | planned |
 
 ### 2.2 Cowork container (cloud, this session type)
 
@@ -72,8 +72,8 @@ All agent sessions post to GitHub as the one shared account `nhsmrekar`, so the 
 | Memory | Project subtree `/projects/<project id>/` (`overview.md`, `preferences.md`, `learnings-and-gotchas.md`, and files under `areas/`) plus account files (`/profile.md`, `/preferences.md`, `/topics/*`, `/areas/*`). Written by the background memory pass; explicit "remember" requests are written by the session | V |
 | Project docs ("Face of the Cabin") | 23 docs on 2026-10-27, mostly claim documents and older handovers. Policy: handovers live in git; Project docs are a mirror or claim material | V |
 | Chat history | Searchable with `conversation_search`; summaries only for old chats | V |
-| Account skills | `anthropic-skills:*` (caveman-mode, karpathy-principles, fotc-git-and-host-routing, my-shopping-values, skill-creator, built-in-browser, chrome-browser, deep-research and others) | V |
-| Artifacts | PMO dashboard `https://claude.ai/artifact/FTSVRRJqxDn7jEKEmZNFoc` (rebuilt from `backlog.md`, see the Wingman skill) | V |
+| Account skills | `anthropic-skills:*` (`wingman`, the thin day-to-day skill that is not hub work; caveman-mode, karpathy-principles, fotc-git-and-host-routing, my-shopping-values, skill-creator, built-in-browser, chrome-browser, deep-research and others) | V |
+| Artifacts | PMO dashboard `https://claude.ai/artifact/FTSVRRJqxDn7jEKEmZNFoc` (rebuilt from `backlog.md`, see the hub wingman skill) | V |
 | Scheduled tasks | "Cowork RTE cycle" one-shots bound to the persistent Cowork session | V |
 | Connectors | Gmail, Google Calendar, Google Drive, Figma, memory | V |
 
@@ -113,8 +113,8 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 | Termux phone (Xperia, collector role) | `~/.z2m/configuration.yaml` (Zigbee2MQTT), network-scan agent, Blink relay agent; offline from 2026-09-19 to 2026-10-16, revived under W-82 | R |
 | Home Zigbee coordinator | SMLIGHT SLZB-MR5U, network attached | R |
 | `bluefin` | A Linux machine on the tailnet, offline since 2026-09-22; Nate has not said what it is (`docs/CABIN_REACHABILITY.md`). The training Dockerfile guesses it may have a GPU, unconfirmed. Ask: Nate, what is it and should it stay on the tailnet? | U |
-| Home Vault node | Planned encrypted, append-only backup node on the Home Linksys network (W-120; see section 3). Design, sizing, checks and rejected options: `.claude/skills/wingman/references/vault-and-keys.md` Part A | planned |
-| Security keys and recovery material | Custody classes K0 to K4, roles (primary on the keychain, secondary at the home desk, backup away from both and never at the cabin) and the per-service plan are in `.claude/skills/wingman/references/vault-and-keys.md`. The keys, PINs, recovery codes and password values are never in git, chat or any agent-visible place | rule |
+| Home Vault node | Planned encrypted, append-only backup node on the Home Linksys network (W-120; see section 3). Design, sizing, checks and rejected options: `.claude/skills/orchestration-hub-wingman/references/vault-and-keys.md` Part A | planned |
+| Security keys and recovery material | Custody classes K0 to K4, roles (primary on the keychain, secondary at the home desk, backup away from both and never at the cabin) and the per-service plan are in `.claude/skills/orchestration-hub-wingman/references/vault-and-keys.md`. The keys, PINs, recovery codes and password values are never in git, chat or any agent-visible place | rule |
 
 ### 2.7 Codex side
 
@@ -130,9 +130,9 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 |---|---|---|---|---|
 | `main` | M920q deploy worktree | git to host, by deploy workflows and by Nate | `git -C /home/nate/FaceoftheCabin-deploy rev-parse HEAD` equals `origin/main`, and the worktree is clean. **A docs-only or scripts-only merge does not update the worktree** (`docs/STORAGE_ARCHITECTURE.md`, `HO-2026-10-18`): the host needs `git pull --ff-only origin main` there. Ask reads its corpus from that worktree, so a merged corpus change does not reach Ask until the pull | R |
 | `docs/ai-assistant/rag/context-fixtures-r2.json` | Backend classpath copy and the live Ask context | git to image | sha256 of both files equal; `ContextMapWiringTest`; attestation (deployed HEAD, map hash, image id) | Equal at attestation 2026-10-27 (map `4a55e975`, HEAD `639b7dd`) |
-| `CLAUDE.md` | `AGENTS.md` | derived, regenerate with `fed-regen.sh` | `.claude/skills/wingman/scripts/fed-check.sh` | Generated, three changes from the source (W-119); the check WARNs on a stale copy |
+| `CLAUDE.md` | `AGENTS.md` | derived, regenerate with `fed-regen.sh` | `.claude/skills/orchestration-hub-wingman/scripts/fed-check.sh` | Generated, three changes from the source (W-119); the check WARNs on a stale copy |
 | `.claude/skills/` | `.agents/skills/` | derived, regenerate with `fed-regen.sh` | same script | Byte copy, modes included (W-119); the check FAILs on drift |
-| `docs/governance/rte/context-registry.md` | Packaged Wingman skill (`references/05-context-registry.md`), optional Project doc | git to mirror, stamped with source commit | `fed-check.sh --registry` | new |
+| `docs/governance/rte/context-registry.md` | Packaged hub wingman skill (`references/05-context-registry.md`), optional Project doc | git to mirror, stamped with source commit | `fed-check.sh --registry` | new |
 | `main` (git bundle), M920q configs, Postgres dumps, BI telemetry archives, Ansible Vault ciphertext | Home Vault node (client-side-encrypted restic repository, append-only), offline NVMe copy (W-120). Private evidence folders only if Nate rules them in scope | the host pushes to the vault; the vault cannot be reached for deletion from the cabin | restic `check` and a one-file restore test, weekly | planned |
 | Decisions made in claude.ai web at the cabin | git (`DEFINITION_OF_DONE.md` Next Session list) | hand-back by text | Nate pastes, or Cowork commits | rule only |
 
@@ -156,3 +156,4 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 |---|---|
 | 2026-10-27 | First version (Cowork, Wingman skill). Findings F1 to F5 |
 | 2026-10-27 16:26 CDT | Added the vault-and-keys and carts-and-purchases references (custody classes, Home Vault design, security-key plan, cart protocol) and rows for security keys and purchase records. Project docs count 22 to 23. OS release U to R (repo says 24.04, Nate's notes say 26.04, one-line ask recorded). One-line asks added to the remaining U rows. Packaged-skill mirror unchanged |
+| 2026-10-27 22:44 CDT | Split the Wingman skill (Nate request, 22:34 CDT): the hub skill is renamed `orchestration-hub-wingman` and stays in the repo only; the account skill `wingman` becomes the thin day-to-day skill (choosing and buying, personal devices, email lookups, bookkeeping, research) and does not load the hub. Skill paths in scripts, references and docs rewritten; `skill-map.md` gains a "Two wingmen" section. No location or channel changed, so "Last verified" is not moved |

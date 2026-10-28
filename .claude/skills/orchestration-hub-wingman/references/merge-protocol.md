@@ -22,8 +22,8 @@ An approved PR waiting keeps its place. A newer PR never jumps it because it is 
 ## 2. Look before touching anything
 
 ```bash
-bash .claude/skills/wingman/scripts/ctx-audit.sh                 # PRs, gates, board, deploys
-bash .claude/skills/wingman/scripts/merge-gate.sh <pr>           # the gate for the one PR you are about to merge
+bash .claude/skills/orchestration-hub-wingman/scripts/ctx-audit.sh                 # PRs, gates, board, deploys
+bash .claude/skills/orchestration-hub-wingman/scripts/merge-gate.sh <pr>           # the gate for the one PR you are about to merge
 ```
 
 `merge-gate.sh` is read-only and does, in this order: PR state, draft, base, `mergeable_state` (`unknown` = still computing, not a pass), checks (absence is not a pass), Codex verdict bound to the exact head, named-condition wording, position in the board queue, deploy exposure and running deploys, `git merge-tree` against main, and a simulated merge tested against every other open PR.
