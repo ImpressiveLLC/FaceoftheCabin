@@ -1,6 +1,6 @@
 # RTE schedule and operating rules (Cowork, RTE and PM)
 
-Source of truth for who acts, when and how. Live status is the edited comment on [#244](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6449313109). This file is the committed copy of the rules plus a dated snapshot of the plan, refreshed by Cowork at each change of plan. Snapshot: 2026-10-27 18:19 CDT. If this file and the board disagree, the board is right and this file is stale; fix the file in the next docs PR.
+Source of truth for who acts, when and how, in two layers. This file is the committed copy of the rules and the plan, refreshed by Cowork at each change of plan; it stays authoritative for both until a docs PR changes it. Live status (who holds which item now, current PR heads, verdicts, deadlines in flight) is the edited comment on [#244](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6449313109). If the two disagree about live status, the board is right. If the board states a rule or plan change that this file does not, treat it as a proposal until a docs PR merges it. The dated snapshot below (2026-10-27 18:19 CDT) is a historical record: its states and deadlines are as of that time and never override the board.
 
 How a session uses it: read the board first, then this file for the rules, the [context registry](context-registry.md) for where things live, and the [Wingman skill](../../../.claude/skills/wingman/SKILL.md) to run the loop.
 
