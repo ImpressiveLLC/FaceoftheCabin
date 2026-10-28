@@ -114,6 +114,7 @@ class ContextMapWiringTest {
         expected.put("The page cannot load. What do I check first?", "health_triage");
         expected.put("Which triggers can a workflow use, and can it lock a door?", "rules_workflows");
         expected.put("Who counts as present: a primary user or a maintenance user?", "presence_roles_and_gaps");
+        expected.put("How do I set up automatic presence at a second location?", "installation_presence");
         expected.put("An opportunity is listed. Has the suggested enhancement been implemented?", "opportunity_status");
         expected.put("All containers restarted successfully on the replacement host. Is recovery complete?", "persistence_recovery");
         expected.forEach((question, category) ->
@@ -142,6 +143,49 @@ class ContextMapWiringTest {
             assertThat(builder.buildContext(question, HouseholdRole.CHILD)).as(question).isEmpty();
             assertThat(builder.buildContext(question, null)).as(question).isEmpty();
         }
+    }
+
+    @Test
+    void theRewriteMapChangesAreInPlace() throws IOException {
+        JsonNode installation = category("installation");
+        JsonNode presence = category("installation_presence");
+        JsonNode live = category("live_sensors");
+        assertThat(sections(installation)).containsExactly("minimum-inputs", "verified-clean-host-limitations");
+        assertThat(sections(presence)).containsExactly("presence-for-each-location");
+        assertThat(sections(live).get(0)).isEqualTo("live-values-and-ask");
+        // ties go to declaration order, so the presence category must come after installation
+        List<String> order = new ArrayList<>();
+        categories().forEach(c -> order.add(c.get("id").asText()));
+        assertThat(order.indexOf("installation_presence")).isEqualTo(order.indexOf("installation") + 1);
+    }
+
+    @Test
+    void everyFrozenQuestionStillRoutesToACategoryThatNamesIt() throws IOException {
+        JsonNode questions = JSON.readTree(REPO_DOCS.resolve("ai-assistant/rag/cli-questions-r2.json").toFile()).get("questions");
+        List<String> misrouted = new ArrayList<>();
+        for (JsonNode q : questions) {
+            String id = q.get("id").asText();
+            String routed = builder.categoryIdFor(q.get("question").asText());
+            boolean named = false;
+            for (JsonNode c : categories()) {
+                if (c.get("id").asText().equals(routed)) {
+                    for (JsonNode named_id : c.path("questions")) named |= named_id.asText().equals(id);
+                }
+            }
+            if (!named) misrouted.add(id + " -> " + routed);
+        }
+        assertThat(misrouted).as("frozen questions that no longer route to a category naming them").isEmpty();
+    }
+
+    private static JsonNode category(String id) throws IOException {
+        for (JsonNode c : categories()) if (c.get("id").asText().equals(id)) return c;
+        throw new AssertionError("no category " + id);
+    }
+
+    private static List<String> sections(JsonNode category) {
+        List<String> out = new ArrayList<>();
+        category.path("contextDocuments").forEach(d -> out.add(d.get("section").asText()));
+        return out;
     }
 
     private static final class FakeKnowledgeNodeRepository implements KnowledgeNodeRepository {
