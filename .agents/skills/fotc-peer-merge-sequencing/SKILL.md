@@ -1,7 +1,7 @@
 ---
 name: fotc-peer-merge-sequencing
 description: >
-  How Codex sessions (and Cowork, Codex) merge into FaceoftheCabin
+  How Claude Code sessions (and Cowork, Codex) merge into FaceoftheCabin
   without trampling each other: find the agreed merge order, check the other
   live sessions and every open PR for overlap, settle overlaps in GitHub (a
   merge-order note on the PR), then merge strictly in sequence with fresh
@@ -98,7 +98,7 @@ Classify what you find:
 | Result | Meaning | Action |
 |---|---|---|
 | No conflicts anywhere | Independent | Fine to proceed in order |
-| Conflicts only where both sides **append** (`AGENTS.md`, `PRODUCT_NOTES.md`, `App.test.jsx`, `backlog.md`) | Mechanical | Whoever merges second merges `main` in, keeps both sides, re-runs tests |
+| Conflicts only where both sides **append** (`CLAUDE.md`, `PRODUCT_NOTES.md`, `App.test.jsx`, `backlog.md`) | Mechanical | Whoever merges second merges `main` in, keeps both sides, re-runs tests |
 | Conflicts in the same function/region of code | Real overlap | Do not merge. Go to section 4 |
 | Same ID claimed twice | Collision | Later merge renumbers (README rule 3); log a discrepancy entry if the loser was cited |
 

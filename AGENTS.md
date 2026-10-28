@@ -1,4 +1,5 @@
 # AGENTS.md — FaceoftheCabin platform
+<!-- GENERATED from CLAUDE.md by .claude/skills/wingman/scripts/fed-regen.sh. Do not edit by hand: change CLAUDE.md, run the script, commit both. Drift check: fed-check.sh. -->
 
 ## Doc 27 environmental-node collaboration handoff
 
@@ -36,8 +37,8 @@ This platform is designed to be worked on across multiple machines. The rule is 
 2. On the new machine: `git pull origin main`
 3. Never commit directly on the M920q unless doing cabin-specific infra work — push from there immediately
 
-**Several Codex sessions work this repo at once.** Before merging any PR or
-pushing to a shared file, load `.Codex/skills/fotc-peer-merge-sequencing/`:
+**Several Claude sessions work this repo at once.** Before merging any PR or
+pushing to a shared file, load `.claude/skills/fotc-peer-merge-sequencing/`:
 find the agreed merge order, check the other live sessions and every open PR
 with `git merge-tree`, settle overlaps with a merge-order note on the PR, and
 merge strictly one at a time. Work in your own worktree, never another
@@ -45,9 +46,9 @@ session's checkout.
 
 **Single source of truth:** GitHub `ImpressiveLLC/FaceoftheCabin`. If something isn't there, it doesn't exist on other machines.
 
-**If Codex can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
+**If Claude can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
 
-**Several agent sessions (Codex, Codex, Cowork) push to this repo at once.**
+**Several agent sessions (Claude Code, Codex, Cowork) push to this repo at once.**
 Load the project skill `cabin-peer-agent-collaboration` when a PR conflicts, an
 Autofix event arrives, or you are about to merge: it covers re-reading a branch
 before touching it, repairing conflicts by merging `origin/main` in (never
@@ -55,13 +56,13 @@ rebase or force-push), the resolver for the append-only tables every PR edits,
 merging only a clean PR pinned to the commit you checked, and which PRs wait
 for Nate.
 
-**Decisions made where Codex can't commit (Codex web at the cabin — no
-Codex on the M920q) need an explicit hand-back, not just a good
+**Decisions made where Claude can't commit (Claude web at the cabin — no
+Claude Code on the M920q) need an explicit hand-back, not just a good
 conversation.** Found 2026-08-06: a real, discussed, agreed decision about
-`blinkbridge`'s architecture was made in a cabin Codex-web session and
+`blinkbridge`'s architecture was made in a cabin Claude-web session and
 then genuinely lost — nothing in the repo recorded it, and the next
-Codex session had to reconstruct it from the user's memory alone.
-The context-loading side of this was already solved (paste AGENTS.md's
+Claude Code session had to reconstruct it from the user's memory alone.
+The context-loading side of this was already solved (paste CLAUDE.md's
 URL at the start of a cabin web session — see the cabin-context guidance
 this file is meant to satisfy), but nothing closed the loop on the way
 back out. **If you reach a real decision, plan, or agreement in a session
@@ -100,6 +101,14 @@ The Python schema and, since 2026-10-16, the Java contract accept `express_need`
 alias of `light`); the route answers a need with its name and no options.
 The admin-only, flag-off `/api/helpdesk/propose` route returns proposals only and
 has no executor. This handoff neither completes POC2 nor enables W-75.
+
+**Priority (Nate, 2026-10-26):** Ask's goal is answering configuration and
+maintenance questions from the corpus, so the order is C2 corpus, then C1
+evaluated retrieval, then C3 one-stop Ask (W-117,
+[directive](docs/ai-assistant/wsjf-backlog.md#priority-directive-corpus-answers-first-nate-2026-10-26)).
+This POC2 and the intent/slot slot-level polish are parked behind it, except
+the question-versus-command boundary (config questions must reach
+`answer_question`, never be treated as commands). Nothing here is deleted.
 
 ### Meaning, slots and output
 
@@ -147,7 +156,8 @@ belong in model output; server-resolved proposal data is a separate contract.
 | "I'm cold"; "I feel chilly" | `express_need`, `concept: cold`; missing device/temperature alone does not justify bare `clarify`. |
 | "It's too cold in the cabin bedroom" | Same intent, `site: cabin`, `location: bedroom`; no assumed reading or heater target. |
 | "Turn on the mech room heater" | Existing `set_device_state`, not `express_need`; normal resolution and confirmation apply. |
-| "Set the heater to 72" | `clarify` for the missing temperature unit; never infer Fahrenheit/Celsius. |
+| "Set the heater to 72" | Value 36 or above with no unit is Fahrenheit by rule (Nate, 2026-10-26): normal `set_device_attribute` handling with unit `F`. |
+| "Set the heater to 30" | `clarify` for the missing unit: a value below 36 with no unit is ambiguous (0 to 35); never infer. Below 0 is not supported. |
 | "I'm not cold"; "Don't turn on the heater" | No positive cold need or heating option; existing non-action/clarification handling as appropriate. |
 | "I'm cold at home" | Recognize the need and Home constraint; no cabin fallback or W-75 execution at Home. |
 | "I have a cold"; "If I were cold..." | Do not assume present thermal discomfort; clarify meaning when needed. |

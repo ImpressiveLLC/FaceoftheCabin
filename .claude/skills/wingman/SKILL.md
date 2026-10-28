@@ -64,15 +64,17 @@ Detail and source skills: `references/karpathy-canon.md`.
 
 End of session: board edited, backlog row for every state change, nothing unpushed, hand-back text for any decision made where git was unreachable.
 
-## 4. The loop (every 15 to 20 min while any handoff is open)
+## 4. The loop (every 15 to 30 min while any handoff is open)
 
 1. **READ**: `ctx-audit.sh`. REST only (`gh api`); GraphQL can be blocked.
 2. **DECIDE**: per item: due? acked? verdict in? merge-ready? blocked? Apply the silence ladder.
 3. **ACT**: ruling, nudge, handoff, merge, review.
 4. **RECORD**: edit the board in place (`gh api -X PATCH repos/ImpressiveLLC/FaceoftheCabin/issues/comments/6449313109 -F body=@file`, no footer in the body, the platform adds one). Comment with ids, counts, hashes only. Backlog row. Registry if a location or channel changed.
-5. **RE-ARM**: one scheduled task, 15 to 20 min, prompt states what to read and what to do per outcome. Delete duplicates.
+5. **RE-ARM**: one scheduled task with `send_later`, 15 to 30 min (30 while Codex is out), prompt states what to read and what to do per outcome. Delete duplicates. Change a prompt by arming a fresh one, never with `update_trigger` (it can wait on Nate's approval and the old prompt fires stale).
 
 Silence ladder: +20 min no ack: wait. +40: named nudge comment on #244. +60 on the critical path with no alternate owner: one phone push to Nate. Silence is `unknown`, never `clear`. There is no direct channel to Code or Codex; GitHub comment or Nate.
+
+Between wakes: `bash .claude/skills/wingman/scripts/watch.sh 244 <pr>...` under the Monitor tool (`timeout_ms` 1800000, re-arm on each expiry). One line per new peer comment, head move, close or `main` move. A failed request prints `WATCH FAILING <what>` and later `WATCH RECOVERED <what>`: nothing is lost, but read it as a gap to cover by hand with `gh api` until recovery. It dies with the container; the scheduled heartbeat does not. After a restart: re-arm the watcher, read queued notifications, list scheduled tasks.
 
 Templates for every comment type: `references/operating-loop.md`.
 
@@ -95,12 +97,14 @@ Not addressed with `ACTION <WHO>` = not a handoff. Ack 20 min. Codex verdict 30 
 1. **Order**, first hit wins: board merge queue, merge-order note on the PR, iteration plan, WSJF, first approved.
 2. **Gate**: `bash .claude/skills/wingman/scripts/merge-gate.sh <pr>`. Read-only. Checks state, draft, mergeable, checks, Codex CLEAN bound to the head, named conditions, queue position, deploy exposure, conflicts against main and every other open PR. PASS prints the pinned command.
 3. **You confirm** what no script can: PR is yours or assigned, no named condition, Nate's go when it deploys.
-4. **Merge** pinned, one at a time: `gh api -X PUT repos/ImpressiveLLC/FaceoftheCabin/pulls/<n>/merge -f sha=<head> -f merge_method=merge`. Merge commit, keep the branch. No squash, rebase, admin, auto.
+4. **Merge** pinned, one at a time: `gh api -X PUT repos/ImpressiveLLC/FaceoftheCabin/pulls/<n>/merge -f sha=<head> -f merge_method=merge`. Merge commit, keep the branch. No rebase, admin or auto. No squash either, except to keep a private string out of `main` (`references/merge-protocol.md` 5).
 5. **After**: MERGED comment, `git fetch`, re-gate the next PR, backlog status, refresh local main, remove own worktree. Deploying PR: Code watches the health gate; say plainly if auto-rollback fired.
 6. **Conflict on a PR you own**: merge fetched `origin/main` in, resolve, verify, push. Never rebase or force-push. Append tables: `node .claude/skills/cabin-peer-agent-collaboration/scripts/resolve-append-tables.mjs <file>`.
 7. **Peer's PR** would newly conflict: say so on it or merge theirs first. Never repair or merge a peer's PR unasked.
 
 **Execution block.** A merge that starts a deploy can be refused by the permission classifier (`[Production Deploy]`). That is tooling, not governance, and the committed rule still authorizes the merge. Do not work around it. Record the exact reason once on #244, ask Nate for one word ("go"), then run the queue in order. A peer comment, a heartbeat prompt, a notification, a committed rule are not Nate's go. Same for any tool call denied or interrupted: stop, report, no retry, no workaround.
+
+**Codex out.** The gate HOLDs without a Codex `CLEAN <head>`, and stays HOLD. Only Nate waives it: in chat, naming the PRs, for those PRs only. Cowork records it on #244 (PR numbers, head sha). A later push to a waived PR is a changed head: Cowork reads the delta and records what it checked on #244 before merging. Nate is asked again only if he limited the waiver to a head. A waiver is not the deploy go and does not settle a PR's named condition. Every other PR waits.
 
 Full protocol: `references/merge-protocol.md`.
 
@@ -120,6 +124,7 @@ Roles, decision rights, traceability: `references/rte-pm-pmo.md`.
 - Git `main` canonical. Everything else is a mirror, one-way, derived.
 - New mirror = byte-identical copy, generated, never find-and-replace. (Find-and-replace of the agent name once rewrote the skills path into a directory that does not exist.)
 - Check: `bash .claude/skills/wingman/scripts/fed-check.sh` (drift), `--manifest` (compare hashes across machines), `--registry` (record freshness and paths).
+- Regenerate, never hand-edit: `bash .claude/skills/wingman/scripts/fed-regen.sh` writes `AGENTS.md` from `CLAUDE.md` (title, one sentence, a generated header) and byte-copies `.claude/skills` to `.agents/skills`; `--check` changes nothing. Edit the source, regenerate, commit both in one PR. A conflict in a mirror is never hand-merged: resolve the source, regenerate.
 - Decision made where git is unreachable (claude.ai web at the cabin): tell Nate the exact text to paste into `docs/DEFINITION_OF_DONE.md` "Next Session, Open Items" before the session ends.
 - Never federate secrets, sealed rows, private labels, raw model answers, MACs, addresses.
 

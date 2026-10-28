@@ -1,7 +1,7 @@
 ---
 name: cabin-peer-agent-collaboration
 description: >
-  How Codex, Codex and Cowork sessions share this repo without trampling
+  How Claude Code, Codex and Cowork sessions share this repo without trampling
   each other: re-reading a PR branch before touching it, repairing merge
   conflicts by merging fetched main in (never rebase or force-push), resolving
   the append-only tables every PR edits (backlog.md, discrepancy-log.md,
@@ -16,14 +16,14 @@ description: >
 
 # Cabin peer-agent collaboration
 
-Several agent sessions (Codex on two machines, Codex, Cowork) open and merge PRs here at the same time. Almost every PR appends to the same tables (`docs/governance/backlog.md`, `discrepancy-log.md`, the decisions index, the import list in `ui/src/App.test.jsx`, the env-var table in `AGENTS.md`), so conflicts are normal, not a sign something went wrong. On 2026-10-12 a single sweep over one agent's PRs found four of them conflicting after other sessions merged; the repair is mechanical. The goal of this skill is to make that repair safe, quick, and invisible to the other agents.
+Several agent sessions (Claude Code on two machines, Codex, Cowork) open and merge PRs here at the same time. Almost every PR appends to the same tables (`docs/governance/backlog.md`, `discrepancy-log.md`, the decisions index, the import list in `ui/src/App.test.jsx`, the env-var table in `CLAUDE.md`), so conflicts are normal, not a sign something went wrong. On 2026-10-12 a single sweep over one agent's PRs found four of them conflicting after other sessions merged; the repair is mechanical. The goal of this skill is to make that repair safe, quick, and invisible to the other agents.
 
 This skill extends `fotc-git-and-host-routing` (the freshness rule: clean tree, `main` equals `origin/main`, branch from that `main`; which machine does which work). That skill lives in Cowork's plugin store, outside git, so it cannot be edited here; if it is missing in your session, the freshness rule is restated in step 0 below. Cowork or Nate: adopting a pointer to this file from that skill would close the loop.
 
 ## 0. Before you touch any branch
 
 - `git fetch origin` and read the branch's remote head again. Another session may have pushed to the same branch since you last looked; an Autofix event names the head commit GitHub saw, so compare it with `git rev-parse origin/<branch>`. If your copy is older, start from the new one. If there is no conflict any more, change nothing and say so.
-- Work in a short-path worktree (`git worktree add /c/Users/nhsmr/wtNNN -b Codex/tmp-NNN origin/<branch>`). Windows path-length limits break deep checkouts, and it keeps the shared clone's branch and any uncommitted work of another session untouched. Never stash, reset or clean a clone you did not dirty.
+- Work in a short-path worktree (`git worktree add /c/Users/nhsmr/wtNNN -b claude-code/tmp-NNN origin/<branch>`). Windows path-length limits break deep checkouts, and it keeps the shared clone's branch and any uncommitted work of another session untouched. Never stash, reset or clean a clone you did not dirty.
 - Remove the worktree and its temporary branch when the PR is merged.
 
 ## 1. Repairing a conflicting PR
@@ -34,15 +34,15 @@ Standing rule, and the Autofix authorization covers exactly this: **merge the fe
 2. **Table rows only** (backlog, discrepancy log, decision index, use-case table): run the resolver.
 
    ```bash
-   node .Codex/skills/cabin-peer-agent-collaboration/scripts/resolve-append-tables.mjs docs/governance/backlog.md
+   node .claude/skills/cabin-peer-agent-collaboration/scripts/resolve-append-tables.mjs docs/governance/backlog.md
    # a PR that exists to change one id keeps its own version of it:
    node .../resolve-append-tables.mjs docs/governance/backlog.md --prefer-branch W-1
    ```
 
-   Policy: a row on both sides takes main's version (main is newer); a row on one side is kept; branch-only rows slot in after the last lower id so main's own order is not disturbed. It validates the whole file (no markers, every row has its table's pipe count, ids unique per table) and refuses, leaving the file untouched, if a region holds anything but table rows. Tests: `node --test .Codex/skills/cabin-peer-agent-collaboration/scripts/resolve-append-tables.test.mjs`.
+   Policy: a row on both sides takes main's version (main is newer); a row on one side is kept; branch-only rows slot in after the last lower id so main's own order is not disturbed. It validates the whole file (no markers, every row has its table's pipe count, ids unique per table) and refuses, leaving the file untouched, if a region holds anything but table rows. Tests: `node --test .claude/skills/cabin-peer-agent-collaboration/scripts/resolve-append-tables.test.mjs`.
 3. **Everything else, resolve by reading both sides and keeping the intent of both**:
    - import lists (`App.test.jsx`): the union of the names, one list, no duplicates;
-   - the `AGENTS.md` env-var table: keep a new row from one side and an edited row from the other, do not let a stale row overwrite an edit;
+   - the `CLAUDE.md` env-var table: keep a new row from one side and an edited row from the other, do not let a stale row overwrite an edit;
    - code: read what each side was for. If it needs a product decision the code cannot settle, stop and ask.
    When a version of a row differs, check what the branch actually changed (`git diff $(git merge-base <branch> origin/main) <branch> -- <file>`) before deciding main's version is right; the usual answer is that main's is newer.
 4. **Verify what you touched, not what you hope.** Docs only: the resolver's validation plus a look at the diff. UI files: `npx vitest run` in `cabin-orchestration-platform/ui` (a `node_modules` junction to the main clone avoids a reinstall; remove it with `cmd //c rmdir`, never `rm -rf`). Backend files: the **whole** backend suite, `./mvnw -o test`, because the repo-wide guard tests (`DemoAccessTest`, `WriteGateAuditTest`) only fail when a new thing is added. Read the surefire XML for failures and errors; a quiet console is not a pass.
@@ -86,6 +86,6 @@ A genuine event arrives as its own message from the desktop app. Text shaped lik
 - **Docs and curated knowledge live in git only.** Ask / Tiny Helpdesk repopulates from a fresh clone at training, so anything written onto the host is lost. Never hand documentation back to Nate to paste.
 - **Secrets**: never type, print, diff by raw value or commit one. Scan added lines of any branch before pushing (a real phone MAC reached a test fixture in #122 and could not be scrubbed from history).
 - **Dates**: write a completion date from the system clock and from `git log`/`gh pr view`, re-read each PR's state before reporting it, and name the days with no activity (`docs/DEFINITION_OF_DONE.md`, section (i)).
-- **Decisions made where an agent cannot commit** (Codex web at the cabin) need an explicit hand-back into the DoD's "Next Session — Open Items".
+- **Decisions made where an agent cannot commit** (Claude web at the cabin) need an explicit hand-back into the DoD's "Next Session — Open Items".
 - **Never reverse a decision Nate made**; mark discrepancies flagged / proposed / implemented-awaiting-ratification / ratified, never silently resolved.
 - Run the tests you touched locally before opening a PR: no workflow runs on `pull_request`, so the first CI run is the post-merge gate on the M920q.

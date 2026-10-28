@@ -46,7 +46,7 @@ When any overlap is real or a relevant session has not answered: post a dated me
 
 ## 5. Merge
 
-All must hold: next in order; `MERGEABLE` and `CLEAN` on the head you checked; checks green or absent with a Codex verdict on the exact head; the governance record is in the PR body (`rte-pm-pmo.md` section 7); every named condition on the PR is satisfied; Nate's authorization covers this PR; for deploy-watched paths no earlier deploy still running (`gh run list`), docs-only PRs need not wait.
+All must hold: next in order; `MERGEABLE` and `CLEAN` on the head you checked; checks green or absent with a Codex verdict on the exact head (or Nate's waiver, below); the governance record is in the PR body (`rte-pm-pmo.md` section 7); every named condition on the PR is satisfied; Nate's authorization covers this PR; for deploy-watched paths no earlier deploy still running (`gh run list`), docs-only PRs need not wait.
 
 ```bash
 # REST works everywhere, including where GraphQL is blocked
@@ -54,7 +54,11 @@ gh api -X PUT repos/ImpressiveLLC/FaceoftheCabin/pulls/<n>/merge -f sha=<head yo
 # where GraphQL works the equivalent is: gh pr merge <n> --merge --match-head-commit <sha>
 ```
 
-Merge commit, keep the branch. No squash, no rebase of shared history, no `--admin`, no auto-merge unless Nate asked. Pinning the head makes GitHub refuse if anyone pushed after the check, which is the point. One at a time; after each merge `git fetch`, then re-gate the next PR, because every merge can turn the next one from clean to conflicting. If it conflicted or `main` moved, its owner merges `main` in and re-runs the full suite first.
+Merge commit, keep the branch. No rebase of shared history, no `--admin`, no auto-merge unless Nate asked, and no squash except the one case below. Pinning the head makes GitHub refuse if anyone pushed after the check, which is the point. One at a time; after each merge `git fetch`, then re-gate the next PR, because every merge can turn the next one from clean to conflicting. If it conflicted or `main` moved, its owner merges `main` in and re-runs the full suite first.
+
+**Squash for privacy (the one exception).** When the branch history carries something that must stay out of `main` (a private string committed before it was redacted, a path, an id), squash instead: `-f merge_method=squash`, with `-F commit_message=@file` for a clean message. Only merge the redacted head, tell Nate in the same message, and say so in the MERGED comment. The squash keeps the old commit out of `main`; it stays reachable by its SHA on the public PR, so it does not remove the exposure. Removing it (a GitHub support request) is Nate's call. First used 2026-10-27 on #297.
+
+**Codex unavailable (waiver).** The gate prints `HOLD` without a verdict and keeps doing so; do not edit the gate. Only Nate waives, in chat, naming the PRs, for those PRs only; he may limit a waiver to a head. Cowork writes the waiver on #244 with the PR numbers and head sha, then merges by hand with the pinned command the gate would print. A later push to a waived PR is a changed head: Cowork reads the delta, records what it checked on #244, then merges pinned to the new head. Nate is asked again only if he limited the waiver to a head, because that limit ends when the head moves. A waiver is not the deploy go (section 8) and does not settle a PR's named condition (section 0). First used 2026-10-27 on #297 and #298.
 
 ## 6. After the merge
 
@@ -69,7 +73,7 @@ Standing rule, and the Autofix authorization covers exactly this: merge fetched 
 
 1. `git fetch origin main && git merge --no-edit origin/main` in a short-path worktree. Note the conflicting files.
 2. Table rows only: `node .claude/skills/cabin-peer-agent-collaboration/scripts/resolve-append-tables.mjs <file>` (main's version wins on a row both sides have; branch-only rows slot in after the last lower id; `--prefer-branch W-1` when the PR exists to change that id).
-3. Everything else: read both sides, keep both intents (import lists: union; the CLAUDE.md env table: keep a new row from one side and an edited row from the other).
+3. Everything else: read both sides, keep both intents (import lists: union; the CLAUDE.md env table: keep a new row from one side and an edited row from the other). A mirror (`AGENTS.md`, `.agents/skills/**`) is never hand-merged: resolve its source, run `fed-regen.sh`, commit both.
 4. Verify what you touched: docs, the resolver's validation and a diff look; UI, `npx vitest run`; backend, the whole suite `./mvnw -o test` (repo-wide guard tests fail only when a new thing is added; read the surefire XML, a quiet console is not a pass).
 5. Commit saying what conflicted, how it resolved, what was verified. `git push origin HEAD:<branch>`. Then `git merge-tree --write-tree --name-only origin/<branch> origin/main` prints only a tree id.
 
