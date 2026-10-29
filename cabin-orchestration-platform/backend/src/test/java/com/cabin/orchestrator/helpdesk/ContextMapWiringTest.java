@@ -152,7 +152,8 @@ class ContextMapWiringTest {
         JsonNode live = category("live_sensors");
         assertThat(sections(installation)).containsExactly("minimum-inputs", "verified-clean-host-limitations");
         assertThat(sections(presence)).containsExactly("presence-for-each-location");
-        assertThat(sections(live).get(0)).isEqualTo("live-values-and-ask");
+        // RW-4 (live-values-and-ask first in live_sensors) was reverted after RUN-2: the RUN-1 context is back
+        assertThat(sections(live)).containsExactly("capability-map", "what-the-presence-badge-means", "arming");
         // ties go to declaration order, so the presence category must come after installation
         List<String> order = new ArrayList<>();
         categories().forEach(c -> order.add(c.get("id").asText()));
