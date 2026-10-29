@@ -1924,11 +1924,11 @@
     /* Attention presentation (W-109 matrix, W-110). Status has its own channel: only --attn-* hues, never --layer-N-* or --danger,
        and never a bar (the critical alert keeps its red bar, label and pulse, untouched). No animation, pulse or glow anywhere in
        this block. Cues are always on: border pattern, corner asterisks, icon and label carry the state, hue is the extra channel.
-       The Attention and Signal themes apply the same cues to status tiles and badges automatically. Otherwise opt in with data-attn="normal|watch|alert|unavailable|last-known-alert" on a card, and data-attn-chip on its label chip.
+       The Signal theme applies the same cues to status tiles and badges automatically. Otherwise opt in with data-attn="normal|watch|alert|unavailable|last-known-alert" on a card, and data-attn-chip on its label chip.
        Embedded line-for-line in family-hub.html and styles.css; AttentionCuesDrift.test.jsx fails the build if the copies differ. */
     :root { --attn-cue-scale: 1; --attn-contrast-scale: 1; }
     [data-attn],
-    :is([data-theme="attention"], [data-theme="signal"]) :is(.kpi-tile.kpi-state-ok, .kpi-tile.kpi-state-warn, .cabin-activity-warning, .kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical) {
+    [data-theme="signal"] :is(.kpi-tile.kpi-state-ok, .kpi-tile.kpi-state-warn, .cabin-activity-warning, .kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical) {
       --attn-hue: var(--attn-normal);
       --attn-u: calc(1px * var(--attn-cue-scale, 1) * var(--attn-contrast-scale, 1));
       position: relative;
@@ -1936,9 +1936,9 @@
       border: var(--attn-u) solid var(--attn-hue);
     }
     [data-attn="watch"],
-    :is([data-theme="attention"], [data-theme="signal"]) :is(.kpi-tile.kpi-state-warn, .cabin-activity-warning) { --attn-hue: var(--attn-watch); border: calc(3 * var(--attn-u)) dotted var(--attn-hue); }
+    [data-theme="signal"] :is(.kpi-tile.kpi-state-warn, .cabin-activity-warning) { --attn-hue: var(--attn-watch); border: calc(3 * var(--attn-u)) dotted var(--attn-hue); }
     [data-attn="alert"],
-    :is([data-theme="attention"], [data-theme="signal"]) :is(.kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical) {
+    [data-theme="signal"] :is(.kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical) {
       --attn-hue: var(--attn-alert);
       border: calc(4 * var(--attn-u)) solid var(--attn-hue);
       outline: calc(2 * var(--attn-u)) solid var(--attn-hue);
@@ -1946,7 +1946,7 @@
     }
     [data-attn="unavailable"] { --attn-hue: currentColor; border: var(--attn-u) dashed currentColor; }
     [data-attn="last-known-alert"] { --attn-hue: var(--attn-alert); border: calc(2 * var(--attn-u)) dashed var(--attn-hue); }
-    [data-attn="alert"]::after, :is([data-theme="attention"], [data-theme="signal"]) :is(.kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical)::after, [data-attn="last-known-alert"]::after {
+    [data-attn="alert"]::after, [data-theme="signal"] :is(.kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical)::after, [data-attn="last-known-alert"]::after {
       --attn-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8l-8.4 8.4' stroke='black' stroke-width='2' stroke-linecap='square' fill='none'/%3E%3C/svg%3E");
       content: "";
       position: absolute;
@@ -1968,7 +1968,7 @@
     }
     /* Label chip: the state word is always shown, with its own icon silhouette. */
     [data-attn-chip],
-    :is([data-theme="attention"], [data-theme="signal"]) :is(.state-badge.state-ok, .state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm, .state-badge.state-offline, .state-badge.state-not-configured) {
+    [data-theme="signal"] :is(.state-badge.state-ok, .state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm, .state-badge.state-offline, .state-badge.state-not-configured) {
       --attn-chip-hue: var(--attn-normal);
       --attn-chip-ink: var(--attn-normal-ink);
       --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6.5'/%3E%3Cpath d='M5 8.2l2 2 4-4.4'/%3E%3C/svg%3E");
@@ -1983,7 +1983,7 @@
       border-radius: var(--radius-sm, 4px);
     }
     [data-attn-chip]::before,
-    :is([data-theme="attention"], [data-theme="signal"]) :is(.state-badge.state-ok, .state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm, .state-badge.state-offline, .state-badge.state-not-configured)::before {
+    [data-theme="signal"] :is(.state-badge.state-ok, .state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm, .state-badge.state-offline, .state-badge.state-not-configured)::before {
       content: "";
       flex: none;
       width: 1.1em;
@@ -1993,17 +1993,17 @@
       mask: var(--attn-icon) center / contain no-repeat;
     }
     [data-attn-chip="watch"],
-    :is([data-theme="attention"], [data-theme="signal"]) :is(.state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown) {
+    [data-theme="signal"] :is(.state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown) {
       --attn-chip-hue: var(--attn-watch); --attn-chip-ink: var(--attn-watch-ink);
       --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2L14.5 13.5H1.5Z'/%3E%3C/svg%3E");
     }
     [data-attn-chip="alert"],
-    :is([data-theme="attention"], [data-theme="signal"]) :is(.state-badge.state-alarm) {
+    [data-theme="signal"] :is(.state-badge.state-alarm) {
       --attn-chip-hue: var(--attn-alert); --attn-chip-ink: var(--attn-alert-ink);
       --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.2 1.5h5.6l3.7 3.7v5.6l-3.7 3.7H5.2L1.5 10.8V5.2z'/%3E%3Cpath d='M8 4.8v4M8 11v.01'/%3E%3C/svg%3E");
     }
     [data-attn-chip="unavailable"],
-    :is([data-theme="attention"], [data-theme="signal"]) :is(.state-badge.state-offline, .state-badge.state-not-configured) {
+    [data-theme="signal"] :is(.state-badge.state-offline, .state-badge.state-not-configured) {
       --attn-chip-hue: transparent; --attn-chip-ink: currentColor;
       --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-dasharray='2.4 2.4'%3E%3Ccircle cx='8' cy='8' r='6.5'/%3E%3C/svg%3E");
       outline: 1px dashed currentColor;
@@ -2017,55 +2017,55 @@
     }
     @media (prefers-contrast: more) { :root { --attn-contrast-scale: 1.5; } }
     @media (forced-colors: active) {
-      [data-attn], :is([data-theme="attention"], [data-theme="signal"]) :is(.kpi-tile.kpi-state-ok, .kpi-tile.kpi-state-warn, .cabin-activity-warning, .kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical) { forced-color-adjust: none; border-color: CanvasText; outline-color: CanvasText; }
-      [data-attn]::after, :is([data-theme="attention"], [data-theme="signal"]) :is(.kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical)::after { background: CanvasText; }
-      [data-attn-chip], :is([data-theme="attention"], [data-theme="signal"]) :is(.state-badge.state-ok, .state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm, .state-badge.state-offline, .state-badge.state-not-configured) { forced-color-adjust: none; background: Canvas; color: CanvasText; outline: 1px solid CanvasText; outline-offset: -1px; }
+      [data-attn], [data-theme="signal"] :is(.kpi-tile.kpi-state-ok, .kpi-tile.kpi-state-warn, .cabin-activity-warning, .kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical) { forced-color-adjust: none; border-color: CanvasText; outline-color: CanvasText; }
+      [data-attn]::after, [data-theme="signal"] :is(.kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical)::after { background: CanvasText; }
+      [data-attn-chip], [data-theme="signal"] :is(.state-badge.state-ok, .state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm, .state-badge.state-offline, .state-badge.state-not-configured) { forced-color-adjust: none; background: Canvas; color: CanvasText; outline: 1px solid CanvasText; outline-offset: -1px; }
     }
 /* </attention-cues> */
     /* ═══════════════════════════════════════════════════════════════════════════
-       SIGNAL THEME ([data-theme="signal"]) -- 2026-10-29, from Nate's reference dashboards (the "Signal Room" Home Assistant
-       wall panel and the Gauss printer card). Flat near-black panels with hairline edges, one teal-green accent, Plex Mono
-       for the clock and every reading, Outfit for labels in small tracked capitals, Syne for titles. Fonts are bundled in
-       ./fonts. Placed after the attention cues on purpose; no animation, pulse or glow (the references glow, MA-16 rules
-       glow out for attention states). cabin-ui's styles.css has the matching block.
-       ═══════════════════════════════════════════════════════════════════════════ */
+       SIGNAL THEME ([data-theme="signal"]) -- 2026-10-29, rebuilt from Nate's reference dashboards (the "Signal Room" Home
+       Assistant wall panel): blue-black ground, square corners and white-at-7% hairlines, neon-green accent, Outfit for titles and
+       tracked 9px labels, a light Outfit clock, Plex Mono for readings. Fonts are bundled in ./fonts. Placed after the attention
+       cues on purpose; no animation, pulse or glow (MA-16). cabin-ui's styles.css has the matching block.
+       ══════════════════════════════════════════════════════════════════ */
     [data-theme="signal"] #starfield-slide { background: var(--night); }
     [data-theme="signal"] #clock {
-      font-family: var(--font-mono); font-weight: 300; letter-spacing: -0.05em; text-shadow: none;
+      font-family: var(--font-ui); font-weight: 200; letter-spacing: -0.03em; text-shadow: none; font-style: normal;
     }
-    [data-theme="signal"] #clock .ampm { font-family: var(--font-mono); letter-spacing: 0.08em; opacity: 0.5; }
-    [data-theme="signal"] #date-line { font-family: var(--font-ui); font-weight: 500; letter-spacing: 0.22em; }
+    [data-theme="signal"] #clock .ampm { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0.08em; opacity: 0.5; }
+    [data-theme="signal"] #date-line { font-family: var(--font-ui); font-weight: 600; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream-dim); }
     [data-theme="signal"] :is(.glass-card, #notepad-panel, #settings-panel, .dash-card, .location-link) {
-      background: var(--glass); border-width: 1px; border-radius: var(--radius); box-shadow: none;
+      background: var(--glass); border: 1px solid var(--glass-border); border-radius: 0; box-shadow: none;
       backdrop-filter: none; -webkit-backdrop-filter: none;
     }
     [data-theme="signal"] .card-label {
-      font-family: var(--font-ui); font-weight: 500; font-size: 10px; letter-spacing: 0.18em; color: var(--cream-dim);
+      font-family: var(--font-ui); font-weight: 600; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream-dim);
     }
-    [data-theme="signal"] :is(#brand-name, .brand-name, #greeting, .title-text, h1, h2) { font-family: var(--font-display); }
+    [data-theme="signal"] :is(#brand-name, .brand-name, #greeting, .title-text, h1, h2) { font-family: var(--font-display); font-style: normal; font-weight: 700; }
+    [data-theme="signal"] #greeting { font-weight: 300; letter-spacing: 0; }
     [data-theme="signal"] :is(.bday-item, .sched-day, .reward-card, .profile-card) {
-      border-radius: var(--radius); background: transparent;
+      border-radius: 0; background: transparent;
     }
     [data-theme="signal"] :is(.bday-days, .chore-count, .kid-count, .ev-time, .sched-num) {
-      font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.04em; font-variant-numeric: tabular-nums;
+      font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--gold);
     }
-    /* Controls: hairline outline, transparent fill, 4px corners (the older layer gave every control a 2px accent frame). */
+    /* Controls: hairline outline, transparent fill, 2px corners (the older layer gave every control a 2px accent frame). */
     [data-theme="signal"] :is(#dash-close, #note-history-close, .settings-close, .np-close, .np-expand, .btn-ghost, .kid-sel-btn,
       .profile-card-actions button, .theme-pill, .np-author-pill, #next-photo-btn, .br-fab, #dashboard-fab, #settings-btn,
       .display-controls button, #notepad-handle) {
-      border-width: 1px; border-color: var(--glass-border); background: transparent; box-shadow: none; border-radius: 4px;
+      border-width: 1px; border-color: var(--glass-border); background: transparent; box-shadow: none; border-radius: 2px;
     }
     [data-theme="signal"] :is(#dash-close, .settings-close, .np-close, .np-expand, .btn-ghost, .kid-sel-btn, #next-photo-btn,
       #dashboard-fab, #settings-btn, .display-controls button):hover {
-      background: rgba(255,255,255,0.04); border-color: color-mix(in srgb, var(--gold) 45%, var(--glass-border)); color: var(--cream);
+      background: rgba(255,255,255,0.04); border-color: color-mix(in srgb, var(--gold) 50%, var(--glass-border)); color: var(--cream);
     }
     [data-theme="signal"] :is(.btn-gold, .np-send) {
-      background: color-mix(in srgb, var(--gold) 12%, transparent); color: var(--gold);
-      border: 1px solid color-mix(in srgb, var(--gold) 60%, transparent); border-radius: 4px;
+      background: transparent; color: var(--gold); font-weight: 600; letter-spacing: 0.06em;
+      border: 1px solid color-mix(in srgb, var(--gold) 70%, transparent); border-radius: 2px;
     }
     [data-theme="signal"] :is(.kid-sel-btn.active, .theme-pill.active, .np-author-pill.active) {
-      background: color-mix(in srgb, var(--gold) 9%, transparent); color: var(--gold);
-      border-color: color-mix(in srgb, var(--gold) 60%, transparent);
+      background: color-mix(in srgb, var(--gold) 8%, transparent); color: var(--gold);
+      border-color: color-mix(in srgb, var(--gold) 65%, transparent);
     }
 
     /* Tab buttons: one color in every state; the active tab is marked by its
@@ -6209,48 +6209,29 @@ const THEMES = {
     layers: { hues: ['#388bfd', '#e6edf3', '#3fb950'] },
     fonts: [],
   },
-  // Attention: Modern's surfaces with the W-110 status palette; see cabin-ui ThemeProvider.jsx.
-  attention: {
-    label: 'Attention', id: 'attention',
-    vars: {
-      '--night':'#0d1117', '--glass':'rgba(22,27,34,0.72)', '--glass-light':'rgba(255,255,255,0.04)',
-      '--glass-border':'rgba(33,38,45,0.85)', '--shadow':'0 10px 60px rgba(0,0,0,.8)',
-      '--gold':'#1f6feb', '--gold-glow':'rgba(31,111,235,0.24)', '--gold-faint':'rgba(31,111,235,0.10)',
-      '--teal':'#2093e8', '--teal-glow':'rgba(32,147,232,0.18)',
-      '--rose':'#f75c3e', '--rose-glow':'rgba(247,92,62,0.18)',
-      '--cream':'#e6edf3', '--cream-dim':'rgba(230,237,243,0.62)', '--cream-ghost':'rgba(230,237,243,0.28)',
-      '--radius':'10px', '--font-display':"'Inter',system-ui,sans-serif", '--font-ui':"'Inter',system-ui,sans-serif",
-      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
-      '--attn-normal':'#2093e8', '--attn-normal-ink':'#0b0f14',
-      '--attn-watch':'#fbe729', '--attn-watch-ink':'#0b0f14',
-      '--attn-alert':'#f75c3e', '--attn-alert-ink':'#0b0f14',
-      '--attn-cue-scale':'1',
-    },
-    layers: { hues: ['#388bfd', '#e6edf3', '#2093e8'] },
-    fonts: [],
-  },
-  // Signal: near-black flat panels, one teal-green accent that also means live/online, Plex Mono readings, Syne titles,
-  // Outfit labels (bundled in ./fonts, never fetched). Mirrors cabin-ui's ThemeProvider.jsx "signal" entry value for
+  // Signal (rebuilt 2026-10-29 from the "Signal Room" reference dashboards): blue-black ground, flat square hairline
+  // cells, one neon-green accent that also means live/online, readings coloured by meaning, Outfit titles and labels,
+  // Plex Mono readings (bundled in ./fonts, never fetched). Mirrors cabin-ui's ThemeProvider.jsx "signal" entry value for
   // value; ThemeCatalogDrift.test.jsx and AttentionTokens.test.jsx fail the build if the two diverge.
   signal: {
     label: 'Signal', id: 'signal',
     vars: {
-      '--night':'#0b0d11', '--glass':'rgba(19,22,27,0.96)', '--glass-light':'rgba(255,255,255,0.03)',
-      '--glass-border':'rgba(255,255,255,0.09)', '--shadow':'0 0 0 0 transparent',
-      '--gold':'#00e5a0', '--gold-glow':'rgba(0,229,160,0.22)', '--gold-faint':'rgba(0,229,160,0.08)',
-      '--teal':'#00e5a0', '--teal-glow':'rgba(0,229,160,0.18)',
-      '--rose':'#ff4d3d', '--rose-glow':'rgba(255,77,61,0.18)',
-      '--cream':'#e8ebef', '--cream-dim':'rgba(232,235,239,0.62)', '--cream-ghost':'rgba(232,235,239,0.28)',
-      '--radius':'6px', '--font-display':"'Syne','Outfit',system-ui,sans-serif", '--font-ui':"'Outfit',system-ui,sans-serif",
+      '--night':'#04070f', '--glass':'rgba(10,14,23,0.96)', '--glass-light':'rgba(255,255,255,0.03)',
+      '--glass-border':'rgba(255,255,255,0.08)', '--shadow':'0 0 0 0 transparent',
+      '--gold':'#39ff14', '--gold-glow':'rgba(57,255,20,0.22)', '--gold-faint':'rgba(57,255,20,0.08)',
+      '--teal':'#39ff14', '--teal-glow':'rgba(57,255,20,0.18)',
+      '--rose':'#ff2a36', '--rose-glow':'rgba(255,42,54,0.18)',
+      '--cream':'#eef4fb', '--cream-dim':'rgba(238,244,251,0.62)', '--cream-ghost':'rgba(238,244,251,0.28)',
+      '--radius':'0px', '--font-display':"'Outfit',system-ui,sans-serif", '--font-ui':"'Outfit',system-ui,sans-serif",
       '--font-mono':"'IBM Plex Mono','JetBrains Mono',monospace",
-      '--signal-heat':'#ff6b2c', '--signal-cool':'#2fb8ff', '--signal-warn':'#ffa21f',
+      '--signal-heat':'#ff5b30', '--signal-cool':'#15ddff', '--signal-warn':'#ffb90c', '--signal-amber':'#ffc222', '--signal-power':'#f86800',
       /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
-      '--attn-normal':'#19a578', '--attn-normal-ink':'#0b0f14',
-      '--attn-watch':'#fdd94d', '--attn-watch-ink':'#0b0f14',
-      '--attn-alert':'#ea4a49', '--attn-alert-ink':'#0b0f14',
+      '--attn-normal':'#84a21b', '--attn-normal-ink':'#04070f',
+      '--attn-watch':'#fed51b', '--attn-watch-ink':'#04070f',
+      '--attn-alert':'#cf1a05', '--attn-alert-ink':'#ffffff',
       '--attn-cue-scale':'1',
     },
-    layers: { hues: ['#8b939e', '#e8ebef', '#00e5a0'], shadow: 'none', edgeHue: 0.22, tints: [0.04, 0.05, 0.06] },
+    layers: { hues: ['#7a8497', '#eef4fb', '#39ff14'], shadow: 'none', edgeHue: 0.22, tints: [0.04, 0.05, 0.06] },
     fonts: [],
   },
   // Matches impressive.llc's actual live palette (2026-08-21, sampled

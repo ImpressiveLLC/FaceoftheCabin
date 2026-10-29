@@ -67,25 +67,25 @@ describe("attention cue CSS", () => {
   });
 });
 
-describe("Attention theme (a whole selectable theme, not an opt-in attribute)", () => {
-  it("exists in the Cabin UI catalog with the Modern surfaces and the attention hues driving status", () => {
-    const t = THEMES.attention;
-    expect(t.label).toBe("Attention");
-    expect(t.vars["--success"]).toBe(t.vars["--attn-normal"]);
-    expect(t.vars["--warning"]).toBe(t.vars["--attn-watch"]);
-    expect(t.vars["--danger"]).toBe(t.vars["--attn-alert"]);
-    expect(t.vars["--bg"]).toBe(THEMES.modern.vars["--bg"]);
+describe("Signal theme draws the cues (a whole selectable theme, not an opt-in attribute)", () => {
+  it("has the attention hues driving status and no separate Attention theme", () => {
+    expect(THEMES.attention).toBeUndefined();
+    const t = THEMES.signal;
+    // Display colours are the neon palette; the gate-tested --attn-* hues drive the border pattern and cues.
+    for (const k of ["--attn-normal", "--attn-watch", "--attn-alert"]) expect(t.vars[k], k).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(t.vars["--success"]).toBe(t.vars["--accent"]);
   });
 
-  it("draws the cues on the existing status tiles, badges and alert rows only under data-theme=attention", () => {
+  it("draws the cues on the existing status tiles, badges and alert rows only under data-theme=signal", () => {
     for (const sel of [".kpi-tile.kpi-state-alarm", ".kpi-tile.kpi-state-warn", ".kpi-tile.kpi-state-ok",
       ".state-badge.state-alarm", ".state-badge.state-warn", ".state-badge.state-ok", ".state-badge.state-offline",
       ".active-condition-critical", ".automation-alert-critical"]) {
-      expect(cabinCss, sel).toContain(`:is([data-theme="attention"], [data-theme="signal"]) :is(`);
+      expect(cabinCss, sel).toContain(`[data-theme="signal"] :is(`);
       expect(cabinCss, sel).toContain(sel);
     }
     // every mapped selector is scoped: no bare status class appears outside a data-attn or data-theme selector
-    const heads = cabinCss.split("{").map((h) => h.split("}").pop().trim()).filter((h) => h.includes(".state-badge") || h.includes(".kpi-tile"));
-    for (const h of heads) expect(h, h).toContain('[data-theme="attention"]');
+    const cues = cabinCss.slice(cabinCss.indexOf("/* <attention-cues> */"), cabinCss.indexOf("/* </attention-cues> */"));
+    const heads = cues.split("{").map((h) => h.split("}").pop().trim()).filter((h) => h.includes(".state-badge") || h.includes(".kpi-tile"));
+    for (const h of heads) expect(h, h).toMatch(/\[data-theme="signal"\]|\[data-attn/);
   });
 });

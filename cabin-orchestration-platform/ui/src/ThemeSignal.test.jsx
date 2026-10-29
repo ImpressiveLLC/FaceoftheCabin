@@ -15,7 +15,7 @@ const read = (rel) => readFileSync(resolve(here, rel), "utf8");
 const cabinCss = read("styles.css");
 const hubHtml = read("../../../family-hub/family-hub.html");
 const hub = familyHubThemes(hubHtml);
-const FONT_DIRS = ["ibm-plex-mono", "syne", "outfit"];
+const FONT_DIRS = ["ibm-plex-mono", "syne", "outfit"]; // Syne stays bundled (Gauss-style card titles); Outfit now carries titles
 
 afterEach(() => {
   cleanup();
@@ -35,10 +35,10 @@ describe("Signal palette and type", () => {
     expect(hubHtml).toMatch(/label: 'Signal', id: 'signal'/);
   });
 
-  it("is a near-black ground with one teal-green accent that is also the ok colour", () => {
-    expect(v["--bg"]).toBe("#0b0d11");
-    expect(v["--bg-secondary"]).toBe("#13161b");
-    expect(v["--accent"]).toBe("#00e5a0");
+  it("is a blue-black ground with one neon-green accent that is also the ok colour", () => {
+    expect(v["--bg"]).toBe("#04070f");
+    expect(v["--bg-secondary"]).toBe("#0a0e17");
+    expect(v["--accent"]).toBe("#39ff14");
     expect(v["--success"]).toBe(v["--accent"]);
     expect(v["--warning"]).not.toBe(v["--accent"]);
     expect(v["--danger"]).not.toBe(v["--accent"]);
@@ -55,14 +55,14 @@ describe("Signal palette and type", () => {
     expect(h["--signal-cool"]).toBe(v["--signal-cool"]);
   });
 
-  it("uses Plex Mono for readings, Syne for titles and Outfit for labels", () => {
+  it("uses Plex Mono for readings and Outfit for titles and labels", () => {
     expect(v["--font-mono"]).toMatch(/^'IBM Plex Mono'/);
-    expect(v["--font-display"]).toMatch(/^'Syne'/);
+    expect(v["--font-display"]).toMatch(/^'Outfit'/);
     expect(v["--font-ui"]).toMatch(/^'Outfit'/);
     // The hub's table quotes font stacks with double quotes, which familyHubThemes() does not read, so match its own text.
     const chunk = hubHtml.slice(hubHtml.indexOf("label: 'Signal', id: 'signal'"), hubHtml.indexOf("fonts: [],", hubHtml.indexOf("label: 'Signal', id: 'signal'")));
     expect(chunk).toMatch(/'--font-mono':"'IBM Plex Mono'/);
-    expect(chunk).toMatch(/'--font-display':"'Syne'/);
+    expect(chunk).toMatch(/'--font-display':"'Outfit'/);
     expect(chunk).toMatch(/'--font-ui':"'Outfit'/);
   });
 
@@ -70,7 +70,7 @@ describe("Signal palette and type", () => {
     localStorage.setItem("cabin-theme", "signal");
     render(<ThemeProvider><span /></ThemeProvider>);
     expect(document.documentElement.getAttribute("data-theme")).toBe("signal");
-    expect(document.documentElement.style.getPropertyValue("--accent")).toBe("#00e5a0");
+    expect(document.documentElement.style.getPropertyValue("--accent")).toBe("#39ff14");
     expect(document.head.querySelectorAll("link[id^='cabin-font-']")).toHaveLength(0);
     expect(hub.signal.fonts ?? []).toHaveLength(0);
   });
@@ -92,7 +92,7 @@ describe("Signal fonts are bundled in both apps", () => {
     const cabinCssFonts = read(`${cabinFonts}/retro-fonts.css`);
     expect(read(`${hubFonts}/retro-fonts.css`)).toBe(cabinCssFonts);
     const urls = [...cabinCssFonts.matchAll(/url\('\.\/((?:ibm-plex-mono|syne|outfit)\/[^']+\.woff2)'\)/g)].map((m) => m[1]);
-    expect(urls.length).toBe(8); // Plex Mono 400/500/600, Syne 600/700, Outfit 400/500/600
+    expect(urls.length).toBe(11); // Plex Mono 400/500/600, Syne 600/700, Outfit 200/300/400/500/600/700
     for (const root of [cabinFonts, hubFonts]) {
       for (const f of urls) expect(existsSync(resolve(here, root, f)), `${root}/${f}`).toBe(true);
     }

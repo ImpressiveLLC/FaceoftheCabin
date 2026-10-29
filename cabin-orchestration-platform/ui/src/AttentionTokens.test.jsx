@@ -101,8 +101,8 @@ describe("evaluateTheme", () => {
 describe("the gate over the real themes", () => {
   const report = attentionReport(THEMES);
 
-  it("covers all twelve themes and a theme with tokens never fails silently", () => {
-    expect(report).toHaveLength(12);
+  it("covers all eleven themes and a theme with tokens never fails silently", () => {
+    expect(report).toHaveLength(11);
     expect(report.map((r) => r.id).sort()).toEqual(Object.keys(THEMES).sort());
     expect(report.filter((r) => r.status === "fail" || r.status === "partial")).toEqual([]);
   });
@@ -128,11 +128,11 @@ describe("the gate over the real themes", () => {
     for (const id of Object.keys(THEMES).filter((t) => t !== "asteroidcity")) expect(THEMES[id].vars["--attn-cue-scale"], id).toBe("1");
   });
 
-  it("fails without the tokens: stripping every --attn-* from the same themes breaks the build for all twelve", () => {
+  it("fails without the tokens: stripping every --attn-* from the same themes breaks the build for all eleven", () => {
     const stripped = Object.fromEntries(Object.entries(THEMES).map(([id, t]) => [id,
       { ...t, vars: Object.fromEntries(Object.entries(t.vars).filter(([k]) => !k.startsWith("--attn-"))) }]));
     const problems = attentionProblems(attentionReport(stripped), []);
-    expect(problems).toHaveLength(12);
+    expect(problems).toHaveLength(11);
     expect(problems[0]).toMatch(/no attention tokens .* not on the pending list/);
   });
 
@@ -192,7 +192,7 @@ describe("the gate over the real themes", () => {
   it("extracts Family Hub variables from its inline theme table", () => {
     expect(hubThemes, "family-hub/family-hub.html must be reachable: Family Hub is a required W-111 surface").not.toBeNull();
     expect(hubThemes.modern.vars["--night"]).toMatch(/^#[0-9a-f]{6}$/i);
-    expect(Object.keys(hubThemes)).toHaveLength(12);
+    expect(Object.keys(hubThemes)).toHaveLength(11);
   });
 
   it("reports no pending themes, never claims a fallback palette, and still lists what was not run", () => {

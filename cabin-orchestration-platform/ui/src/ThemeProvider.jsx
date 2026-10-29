@@ -56,80 +56,48 @@ export const THEMES = {
     layers: { hues: ['--accent-hover', '--text', '--success'] },
   },
 
-  // Attention: Modern's surfaces with the W-110 attention palette driving every status colour, and the
-  // W-109 cues (patterned borders, corner marks, icon chips) drawn automatically on status tiles and
-  // badges (styles.css, <attention-cues>). Status here is carried by pattern, icon and word first, hue
-  // second, and the three hues were chosen to stay apart under colour-vision simulation.
-  attention: {
-    id: "attention",
-    label: "Attention",
-    vars: {
-      "--bg":           "#0d1117",
-      "--bg-secondary": "#161b22",
-      "--bg-tertiary":  "#21262d",
-      "--surface":      "#161b22",
-      "--border":       "#21262d",
-      "--border-focus": "#1f6feb",
-      "--text":         "#e6edf3",
-      "--text-muted":   "#8b949e",
-      "--text-dim":     "#6e7681",
-      "--accent":       "#1f6feb",
-      "--accent-hover": "#388bfd",
-      "--success":      "#2093e8",
-      "--warning":      "#fbe729",
-      "--danger":       "#f75c3e",
-      "--font-display": "'Inter', system-ui, sans-serif",
-      "--font-mono":    "'JetBrains Mono', 'Fira Code', monospace",
-      "--radius":       "10px",
-      "--radius-sm":    "6px",
-      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
-      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
-      "--attn-normal": "#2093e8", "--attn-normal-ink": "#0b0f14",
-      "--attn-watch": "#fbe729", "--attn-watch-ink": "#0b0f14",
-      "--attn-alert": "#f75c3e", "--attn-alert-ink": "#0b0f14",
-      "--attn-cue-scale": "1",
-    },
-    layers: { hues: ['--accent-hover', '--text', '--success'] },
-  },
-
-  // Signal (2026-10-29, Nate's reference dashboards: the "Signal Room" Home Assistant wall panel and the Gauss
-  // printer card). Near-black flat panels with hairline edges, ONE teal-green accent that doubles as "live/online",
-  // IBM Plex Mono for every reading, Syne for titles, Outfit for labels, thin state-coloured underlines under
-  // metrics, and amber/red kept for heat and trouble. Fonts are bundled (public/fonts, OFL), never fetched.
-  // The W-109 attention cues apply automatically (styles.css, <attention-cues>). The three --attn-* hues came from
-  // the W-111 search over this theme's own surfaces (#0b0d11 and #13161b); Alert and Watch differ in lightness
-  // as well as hue. Same values and same id in family-hub.html (ThemeCatalogDrift.test.jsx).
+  // Signal (2026-10-29, rebuilt the same day from Nate's reference dashboards: the "Signal Room" Home Assistant wall
+  // panel). Blue-black ground, flat square cells with white-at-7% hairlines, ONE neon-green accent that doubles as
+  // "live/online", and readings coloured by meaning (orange heat, cyan water, amber power, red trouble). Outfit carries
+  // titles and the tracked 9px labels (a light weight for the big numerals), IBM Plex Mono carries readings. Fonts are
+  // bundled (public/fonts, OFL), never fetched. No glow: the attention cues forbid it (MA-16). The W-109 cues apply to
+  // this theme only (styles.css, <attention-cues>); the three --attn-* hues came from the W-111 search over this
+  // theme's own surfaces, and the neon display colours are separate from them. Same values and id in family-hub.html
+  // (ThemeCatalogDrift.test.jsx).
   signal: {
     id: "signal",
     label: "Signal",
     vars: {
-      "--bg":           "#0b0d11",
-      "--bg-secondary": "#13161b",
-      "--bg-tertiary":  "#1b1f26",
-      "--surface":      "#13161b",
-      "--border":       "#252a33",
-      "--border-focus": "#00e5a0",
-      "--text":         "#e8ebef",
-      "--text-muted":   "#8b939e",
-      "--text-dim":     "#5f6772",
-      "--accent":       "#00e5a0",
-      "--accent-hover": "#3dffbd",
-      "--success":      "#00e5a0",
-      "--warning":      "#ffa21f",
-      "--danger":       "#ff4d3d",
-      "--font-display": "'Syne', 'Outfit', system-ui, sans-serif",
+      "--bg":           "#04070f",
+      "--bg-secondary": "#0a0e17",
+      "--bg-tertiary":  "#0f121b",
+      "--surface":      "#0a0e17",
+      "--border":       "#161b26",
+      "--border-focus": "#39ff14",
+      "--text":         "#eef4fb",
+      "--text-muted":   "#7a8497",
+      "--text-dim":     "#6b7487",
+      "--accent":       "#39ff14",
+      "--accent-hover": "#7dff5e",
+      "--success":      "#39ff14",
+      "--warning":      "#ffb90c",
+      "--danger":       "#ff2a36",
+      "--font-display": "'Outfit', system-ui, sans-serif",
       "--font-ui":      "'Outfit', system-ui, sans-serif",
       "--font-mono":    "'IBM Plex Mono', 'JetBrains Mono', monospace",
-      "--radius":       "6px",
-      "--radius-sm":    "4px",
-      // Metric hues from the references: heat orange, cool blue (used by the underline bars on readings).
-      "--signal-heat":  "#ff6b2c",
-      "--signal-cool":  "#2fb8ff",
+      "--radius":       "0px",
+      "--radius-sm":    "2px",
+      // Data hues sampled from the reference dashboard (neon green is --accent): heat orange, bed amber (--warning),
+      // chamber cyan, trouble red (--danger). Used for readings and their underline bars.
+      "--signal-heat":  "#ff5b30",
+      "--signal-cool":  "#15ddff",
+      "--signal-amber": "#ffc222",
+      "--signal-power": "#f86800",
       // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
       // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
-      "--attn-normal": "#19a578", "--attn-normal-ink": "#0b0f14",
-      "--attn-watch": "#fdd94d", "--attn-watch-ink": "#0b0f14",
-      "--attn-alert": "#ea4a49", "--attn-alert-ink": "#0b0f14",
+      "--attn-normal": "#84a21b", "--attn-normal-ink": "#04070f",
+      "--attn-watch": "#fed51b", "--attn-watch-ink": "#04070f",
+      "--attn-alert": "#cf1a05", "--attn-alert-ink": "#ffffff",
       "--attn-cue-scale": "1",
     },
     // Hairline, almost-neutral edges and flat fills: no shadow, one-pixel widths, little hue in the edge.
