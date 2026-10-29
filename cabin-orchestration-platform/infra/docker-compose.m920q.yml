@@ -313,6 +313,8 @@ services:
       # this container/image and stays inspectable/backupable the same
       # way as everything else under /storage.
       - /storage/archives/cabin_event:/app/archives/cabin_event
+      # Read-write -- OutdoorWeatherService's raw and monthly outdoor-weather CSV log (cold tier).
+      - /storage/archives/weather:/app/archives/weather
     networks:
       - default         # project network: reaches cabin-postgres, cabin-kafka
       - cabin_default   # existing network: reaches mosquitto, nodered, z2m

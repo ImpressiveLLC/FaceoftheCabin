@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, outdoorBaselineSeries, OUTDOOR_BASELINE_FIELDS, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
 StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
@@ -6759,5 +6759,99 @@ describe("ZigbeePairingFlow -- the pairing window must not pretend (2026-10-16)"
     fireEvent.click(screen.getByRole("button", { name: /Open pairing window/ }));
     expect(await screen.findByText(/Pairing window open/)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+
+describe("SensorHistoryPanel outdoor baseline", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const devs = [
+    { deviceId: "z2m-humid_mech", name: "Mech Room", type: "TEMPERATURE_SENSOR", state: "ONLINE", location: "cabin",
+      attributes: { enabled: true, reportsFields: ["humidity", "temperature"] } },
+  ];
+  const indoor = [
+    { day: "2026-10-25T00:00:00Z", avg: 65, min: 60, max: 70, sampleCount: 50 },
+    { day: "2026-10-26T00:00:00Z", avg: 66, min: 60, max: 70, sampleCount: 50 },
+    { day: "2026-10-27T00:00:00Z", avg: 63, min: 60, max: 70, sampleCount: 50 },
+  ];
+  const outdoorOk = {
+    location: "cabin", stations: ["UBE", "RPD"], requestedDays: 30, effectiveDays: 30, clamped: false,
+    points: [
+      { day: "2026-10-25T00:00:00Z", station: "UBE", tempC: 9, dewpointC: 2, rhPct: 62, sampleCount: 69, partial: false },
+      // 10-26 intentionally missing: the line must break, not bridge
+      { day: "2026-10-27T00:00:00Z", station: "UBE", tempC: 5, dewpointC: 2, rhPct: 77, sampleCount: 71, partial: false },
+      { day: "2026-10-28T00:00:00Z", station: "RPD", tempC: 14, dewpointC: 12, rhPct: 86, sampleCount: 72, partial: false },
+    ],
+  };
+
+  function mockFetch(outdoorBody, calls = []) {
+    return vi.fn((url) => {
+      calls.push(url);
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => ({ "z2m-humid_mech": ["humidity", "temperature"] }) });
+      if (url.includes("/telemetry-history")) return Promise.resolve({ ok: true, json: async () => ({ requestedDays: 30, effectiveDays: 30, clamped: false, points: indoor }) });
+      if (url.includes("/api/weather/outdoor-history")) return Promise.resolve({ ok: true, json: async () => outdoorBody });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+  }
+
+  it("outdoorBaselineSeries picks RH for humidity and temperature plus dew point for temperature", () => {
+    expect(OUTDOOR_BASELINE_FIELDS.has("humidity")).toBe(true);
+    expect(OUTDOOR_BASELINE_FIELDS.has("power")).toBe(false);
+    const h = outdoorBaselineSeries("humidity", outdoorOk);
+    expect(h.map(x => x.key)).toEqual(["rhPct"]);
+    expect(h[0].label).toBe("Outdoor humidity (UBE/RPD)");
+    expect(h[0].byDay["2026-10-27"].value).toBe(77);
+    expect(h[0].byDay["2026-10-26"]).toBeUndefined();
+    const t = outdoorBaselineSeries("temperature", outdoorOk);
+    expect(t.map(x => x.key)).toEqual(["tempC", "dewpointC"]);
+    expect(outdoorBaselineSeries("power", outdoorOk)).toEqual([]);
+    expect(outdoorBaselineSeries("humidity", null)).toEqual([]);
+    expect(outdoorBaselineSeries("humidity", { points: [] })).toEqual([]);
+  });
+
+  it("draws the dashed outdoor line, labels it, and asks the weather route for this location", async () => {
+    const calls = [];
+    vi.stubGlobal("fetch", mockFetch(outdoorOk, calls));
+    render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
+    expect(await screen.findByTestId("outdoor-line-rhPct")).toBeTruthy();
+    expect(calls.some(u => u.includes("/api/weather/outdoor-history?location=cabin&days=30"))).toBe(true);
+    expect(screen.getAllByText(/Outdoor humidity \(UBE\/RPD\)/).length).toBeGreaterThan(0);
+    // the missing 10-26 day breaks the line into two separate points, never a bridge
+    const d = screen.getByTestId("outdoor-line-rhPct").getAttribute("d");
+    expect((d.match(/M/g) || []).length).toBe(2);
+    expect((d.match(/L/g) || []).length).toBe(0);
+  });
+
+  it("turning the checkbox off removes the line", async () => {
+    vi.stubGlobal("fetch", mockFetch(outdoorOk));
+    render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
+    await screen.findByTestId("outdoor-line-rhPct");
+    fireEvent.click(screen.getByLabelText(/Outdoor baseline/));
+    await waitFor(() => expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull());
+  });
+
+  it("says so when the location has no outdoor station, and draws no line", async () => {
+    vi.stubGlobal("fetch", mockFetch({ location: "cabin", stations: [], requestedDays: 30, effectiveDays: 30, clamped: false, points: [] }));
+    render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
+    expect(await screen.findByText(/No outdoor weather station is set up/)).toBeTruthy();
+    expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull();
+  });
+
+  it("does not ask for outdoor data without a location, and survives a failed weather call", async () => {
+    const calls = [];
+    vi.stubGlobal("fetch", mockFetch(outdoorOk, calls));
+    const { unmount } = render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" tempUnit="F" />);
+    await screen.findByRole("button", { name: "Mech Room" });
+    expect(calls.some(u => u.includes("/api/weather"))).toBe(false);
+    unmount();
+    vi.stubGlobal("fetch", vi.fn((url) => {
+      if (url.includes("/api/weather")) return Promise.reject(new Error("down"));
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => ({ "z2m-humid_mech": ["humidity"] }) });
+      return Promise.resolve({ ok: true, json: async () => ({ requestedDays: 30, effectiveDays: 30, clamped: false, points: indoor }) });
+    }));
+    render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
+    await screen.findByRole("button", { name: "Mech Room" });
+    expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull();
   });
 });

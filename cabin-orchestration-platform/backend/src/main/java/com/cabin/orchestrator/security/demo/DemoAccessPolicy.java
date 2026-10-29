@@ -40,6 +40,8 @@ public final class DemoAccessPolicy {
             "/api/dashboard/config", "/api/locations", "/api/system/health", "/api/system/platform-info",
             "/api/ontology/entities", "/api/context/cabin-context.jsonld",
             "/api/devices/meta/types", "/api/devices/meta/lifecycle", "/api/devices/display-config",
+            // Public airport weather for the chart's outdoor baseline: no device or household detail.
+            "/api/weather/outdoor-history",
             "/api/rules/vocabulary/triggers", "/api/rules/vocabulary/actions");
 
         put(RouteClass.ALLOW_REDACT,
