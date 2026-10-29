@@ -72,7 +72,7 @@ npm test
 - [ ] Sign-in flow still renders correctly with the notepad panel present
       (the panel sits above the auth overlay by design — same pattern as the
       existing Dashboard/Settings FABs)
-- [ ] Visual check across all 7 theme presets (Settings → Theme) — the panel
+- [ ] Visual check across every theme preset, 11 on 2026-10-29 (Settings → Theme) — the panel
       uses theme CSS variables (`--glass`, `--gold`, `--teal`, etc.) so it
       should re-skin automatically, but confirm no contrast issues
 - [ ] Narrow/kiosk-portrait viewport: panel repositions to bottom-anchored

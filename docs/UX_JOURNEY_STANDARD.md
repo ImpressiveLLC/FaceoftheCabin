@@ -137,6 +137,10 @@ theme's `layers.hues`), don't restyle a class. Current picks and measured result
 | pacman | `#ffff00` | `#00ffde` | `#ffaa00` | 8.7 | 6.2 | 4.3 | 16.4 |
 | asteroidcity | `#e34e24` | `#608c4a` | `#ffffff` | 3.9 | 3.9 | 3.9 | 5.2 |
 
+Signal (added 2026-10-29) has no row yet. Its `layers.hues` are `--text-muted`,
+`--text` and `--accent`; add its measured row once the open Signal colour-role
+work (#325) has landed and its look has settled.
+
 80s Neon is pink (main) → pale blue (frames and rows) → yellow (chips and tabs),
 with a limited glow per layer; Asteroid City uses hard postcard shadows and
 charcoal edges instead. The derived fill, edge, shadow and border width for each
