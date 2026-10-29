@@ -66,3 +66,26 @@ describe("attention cue CSS", () => {
     for (const theme of Object.values(THEMES)) for (const name of supplied) expect(theme.vars[name], `${theme.id} ${name}`).toBeTruthy();
   });
 });
+
+describe("Attention theme (a whole selectable theme, not an opt-in attribute)", () => {
+  it("exists in the Cabin UI catalog with the Modern surfaces and the attention hues driving status", () => {
+    const t = THEMES.attention;
+    expect(t.label).toBe("Attention");
+    expect(t.vars["--success"]).toBe(t.vars["--attn-normal"]);
+    expect(t.vars["--warning"]).toBe(t.vars["--attn-watch"]);
+    expect(t.vars["--danger"]).toBe(t.vars["--attn-alert"]);
+    expect(t.vars["--bg"]).toBe(THEMES.modern.vars["--bg"]);
+  });
+
+  it("draws the cues on the existing status tiles, badges and alert rows only under data-theme=attention", () => {
+    for (const sel of [".kpi-tile.kpi-state-alarm", ".kpi-tile.kpi-state-warn", ".kpi-tile.kpi-state-ok",
+      ".state-badge.state-alarm", ".state-badge.state-warn", ".state-badge.state-ok", ".state-badge.state-offline",
+      ".active-condition-critical", ".automation-alert-critical"]) {
+      expect(cabinCss, sel).toContain(`[data-theme="attention"] :is(`);
+      expect(cabinCss, sel).toContain(sel);
+    }
+    // every mapped selector is scoped: no bare status class appears outside a data-attn or data-theme selector
+    const heads = cabinCss.split("{").map((h) => h.split("}").pop().trim()).filter((h) => h.includes(".state-badge") || h.includes(".kpi-tile"));
+    for (const h of heads) expect(h, h).toContain('[data-theme="attention"]');
+  });
+});

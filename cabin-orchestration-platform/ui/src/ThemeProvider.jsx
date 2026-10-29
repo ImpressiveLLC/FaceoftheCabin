@@ -1,10 +1,10 @@
 /**
  * ThemeProvider — independently-selectable palette + font presets.
  *
- * Presets: Modern (default), Impressive (matches impressive.llc's live
+ * Presets: Modern (default), Attention (W-110 status palette and cues), Impressive (matches impressive.llc's live
  * palette, added 2026-08-21 for cross-site continuity), LCARS, Monolith,
  * Bluefin-mono, Mad Science, Deep Space, 80s Neon, Pac-Man,
- * Asteroid City -- same 10-preset catalog as
+ * Asteroid City -- same 11-preset catalog as
  * family-hub.html's own THEMES object (kept in sync manually as of
  * 2026-08-07; see docs/ontology.yaml's theme_preference entry for the
  * cross-app drift this file and family-hub.html are both prone to --
@@ -53,6 +53,42 @@ export const THEMES = {
       "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
+    layers: { hues: ['--accent-hover', '--text', '--success'] },
+  },
+
+  // Attention: Modern's surfaces with the W-110 attention palette driving every status colour, and the
+  // W-109 cues (patterned borders, corner marks, icon chips) drawn automatically on status tiles and
+  // badges (styles.css, <attention-cues>). Status here is carried by pattern, icon and word first, hue
+  // second, and the three hues were chosen to stay apart under colour-vision simulation.
+  attention: {
+    id: "attention",
+    label: "Attention",
+    vars: {
+      "--bg":           "#0d1117",
+      "--bg-secondary": "#161b22",
+      "--bg-tertiary":  "#21262d",
+      "--surface":      "#161b22",
+      "--border":       "#21262d",
+      "--border-focus": "#1f6feb",
+      "--text":         "#e6edf3",
+      "--text-muted":   "#8b949e",
+      "--text-dim":     "#6e7681",
+      "--accent":       "#1f6feb",
+      "--accent-hover": "#388bfd",
+      "--success":      "#2093e8",
+      "--warning":      "#fbe729",
+      "--danger":       "#f75c3e",
+      "--font-display": "'Inter', system-ui, sans-serif",
+      "--font-mono":    "'JetBrains Mono', 'Fira Code', monospace",
+      "--radius":       "10px",
+      "--radius-sm":    "6px",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#2093e8", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#fbe729", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#f75c3e", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
+    },
     layers: { hues: ['--accent-hover', '--text', '--success'] },
   },
 

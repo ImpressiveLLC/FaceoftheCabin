@@ -2630,18 +2630,21 @@ select option { background: var(--bg-secondary); color: var(--text); }
 /* Attention presentation (W-109 matrix, W-110). Status has its own channel: only --attn-* hues, never --layer-N-* or --danger,
    and never a bar (the critical alert keeps its red bar, label and pulse, untouched). No animation, pulse or glow anywhere in
    this block. Cues are always on: border pattern, corner asterisks, icon and label carry the state, hue is the extra channel.
-   Opt in with data-attn="normal|watch|alert|unavailable|last-known-alert" on a card, and data-attn-chip on its label chip.
+   The Attention theme ([data-theme="attention"]) applies the same cues to status tiles and badges automatically. Otherwise opt in with data-attn="normal|watch|alert|unavailable|last-known-alert" on a card, and data-attn-chip on its label chip.
    Embedded line-for-line in family-hub.html and styles.css; AttentionCuesDrift.test.jsx fails the build if the copies differ. */
 :root { --attn-cue-scale: 1; --attn-contrast-scale: 1; }
-[data-attn] {
+[data-attn],
+[data-theme="attention"] :is(.kpi-tile.kpi-state-ok, .kpi-tile.kpi-state-warn, .cabin-activity-warning, .kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical) {
   --attn-hue: var(--attn-normal);
   --attn-u: calc(1px * var(--attn-cue-scale, 1) * var(--attn-contrast-scale, 1));
   position: relative;
   box-sizing: border-box;
   border: var(--attn-u) solid var(--attn-hue);
 }
-[data-attn="watch"] { --attn-hue: var(--attn-watch); border: calc(3 * var(--attn-u)) dotted var(--attn-hue); }
-[data-attn="alert"] {
+[data-attn="watch"],
+[data-theme="attention"] :is(.kpi-tile.kpi-state-warn, .cabin-activity-warning) { --attn-hue: var(--attn-watch); border: calc(3 * var(--attn-u)) dotted var(--attn-hue); }
+[data-attn="alert"],
+[data-theme="attention"] :is(.kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical) {
   --attn-hue: var(--attn-alert);
   border: calc(4 * var(--attn-u)) solid var(--attn-hue);
   outline: calc(2 * var(--attn-u)) solid var(--attn-hue);
@@ -2649,7 +2652,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 [data-attn="unavailable"] { --attn-hue: currentColor; border: var(--attn-u) dashed currentColor; }
 [data-attn="last-known-alert"] { --attn-hue: var(--attn-alert); border: calc(2 * var(--attn-u)) dashed var(--attn-hue); }
-[data-attn="alert"]::after, [data-attn="last-known-alert"]::after {
+[data-attn="alert"]::after, [data-theme="attention"] :is(.kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical)::after, [data-attn="last-known-alert"]::after {
   --attn-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8l-8.4 8.4' stroke='black' stroke-width='2' stroke-linecap='square' fill='none'/%3E%3C/svg%3E");
   content: "";
   position: absolute;
@@ -2670,7 +2673,8 @@ select option { background: var(--bg-secondary); color: var(--text); }
   --attn-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8l-8.4 8.4' stroke='black' stroke-width='0.9' stroke-linecap='square' fill='none'/%3E%3C/svg%3E");
 }
 /* Label chip: the state word is always shown, with its own icon silhouette. */
-[data-attn-chip] {
+[data-attn-chip],
+[data-theme="attention"] :is(.state-badge.state-ok, .state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm, .state-badge.state-offline, .state-badge.state-not-configured) {
   --attn-chip-hue: var(--attn-normal);
   --attn-chip-ink: var(--attn-normal-ink);
   --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6.5'/%3E%3Cpath d='M5 8.2l2 2 4-4.4'/%3E%3C/svg%3E");
@@ -2684,7 +2688,8 @@ select option { background: var(--bg-secondary); color: var(--text); }
   color: var(--attn-chip-ink);
   border-radius: var(--radius-sm, 4px);
 }
-[data-attn-chip]::before {
+[data-attn-chip]::before,
+[data-theme="attention"] :is(.state-badge.state-ok, .state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm, .state-badge.state-offline, .state-badge.state-not-configured)::before {
   content: "";
   flex: none;
   width: 1.1em;
@@ -2693,15 +2698,18 @@ select option { background: var(--bg-secondary); color: var(--text); }
   -webkit-mask: var(--attn-icon) center / contain no-repeat;
   mask: var(--attn-icon) center / contain no-repeat;
 }
-[data-attn-chip="watch"] {
+[data-attn-chip="watch"],
+[data-theme="attention"] :is(.state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown) {
   --attn-chip-hue: var(--attn-watch); --attn-chip-ink: var(--attn-watch-ink);
   --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2L14.5 13.5H1.5Z'/%3E%3C/svg%3E");
 }
-[data-attn-chip="alert"] {
+[data-attn-chip="alert"],
+[data-theme="attention"] :is(.state-badge.state-alarm) {
   --attn-chip-hue: var(--attn-alert); --attn-chip-ink: var(--attn-alert-ink);
   --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.2 1.5h5.6l3.7 3.7v5.6l-3.7 3.7H5.2L1.5 10.8V5.2z'/%3E%3Cpath d='M8 4.8v4M8 11v.01'/%3E%3C/svg%3E");
 }
-[data-attn-chip="unavailable"] {
+[data-attn-chip="unavailable"],
+[data-theme="attention"] :is(.state-badge.state-offline, .state-badge.state-not-configured) {
   --attn-chip-hue: transparent; --attn-chip-ink: currentColor;
   --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-dasharray='2.4 2.4'%3E%3Ccircle cx='8' cy='8' r='6.5'/%3E%3C/svg%3E");
   outline: 1px dashed currentColor;
@@ -2715,8 +2723,8 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 @media (prefers-contrast: more) { :root { --attn-contrast-scale: 1.5; } }
 @media (forced-colors: active) {
-  [data-attn] { forced-color-adjust: none; border-color: CanvasText; outline-color: CanvasText; }
-  [data-attn]::after { background: CanvasText; }
-  [data-attn-chip] { forced-color-adjust: none; background: Canvas; color: CanvasText; outline: 1px solid CanvasText; outline-offset: -1px; }
+  [data-attn], [data-theme="attention"] :is(.kpi-tile.kpi-state-ok, .kpi-tile.kpi-state-warn, .cabin-activity-warning, .kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical) { forced-color-adjust: none; border-color: CanvasText; outline-color: CanvasText; }
+  [data-attn]::after, [data-theme="attention"] :is(.kpi-tile.kpi-state-alarm, .active-condition-critical, .automation-alert-critical)::after { background: CanvasText; }
+  [data-attn-chip], [data-theme="attention"] :is(.state-badge.state-ok, .state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm, .state-badge.state-offline, .state-badge.state-not-configured) { forced-color-adjust: none; background: Canvas; color: CanvasText; outline: 1px solid CanvasText; outline-offset: -1px; }
 }
 /* </attention-cues> */
