@@ -5896,18 +5896,23 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   // only meaningful next to what the air outside was doing. A location with no configured station
   // simply gets an empty answer and no overlay.
   const [showOutdoor, setShowOutdoor] = useState(true);
-  const [outdoor, setOutdoor] = useState(null);
+  // The response is stored with the query it answered, and used only while that is still the query on
+  // screen: switching from Cabin to Home (or another range) must not keep drawing the previous
+  // location's line and station label while the next response loads.
+  const [outdoorState, setOutdoorState] = useState({ key: null, data: null });
   const outdoorEligible = topic === "comfort_air" && OUTDOOR_BASELINE_FIELDS.has(field) && !!location;
   const outdoorWanted = outdoorEligible && showOutdoor;
+  const outdoorKey = outdoorWanted ? `${apiBase}|${location}|${days}` : null;
+  const outdoor = outdoorKey !== null && outdoorState.key === outdoorKey ? outdoorState.data : null;
   useEffect(() => {
-    if (!outdoorWanted) { setOutdoor(null); return; }
+    if (outdoorKey === null) { setOutdoorState({ key: null, data: null }); return; }
     let cancelled = false;
     authedFetch(`${apiBase}/api/weather/outdoor-history?location=${encodeURIComponent(location)}&days=${days}`)
       .then(r => r.json())
-      .then(data => { if (!cancelled) setOutdoor(data && Array.isArray(data.points) ? data : null); })
-      .catch(() => { if (!cancelled) setOutdoor(null); });
+      .then(data => { if (!cancelled) setOutdoorState({ key: outdoorKey, data: data && Array.isArray(data.points) ? data : null }); })
+      .catch(() => { if (!cancelled) setOutdoorState({ key: outdoorKey, data: null }); });
     return () => { cancelled = true; };
-  }, [outdoorWanted, apiBase, location, days, authedFetch]);
+  }, [outdoorKey, apiBase, location, days, authedFetch]);
 
   // Alert History (D16): "a view over the alert event log (all types)" --
   // Cowork-ratified 2026-09-05 as a pure computed view, not a per-service

@@ -6823,6 +6823,31 @@ describe("SensorHistoryPanel outdoor baseline", () => {
     expect((d.match(/L/g) || []).length).toBe(0);
   });
 
+  it("does not keep the previous location's line and station label while the next location loads", async () => {
+    let releaseHome;
+    const homeBody = { location: "home", stations: ["HOME1"], requestedDays: 30, effectiveDays: 30, clamped: false,
+      points: [{ day: "2026-10-25T00:00:00Z", station: "HOME1", tempC: 10, dewpointC: 3, rhPct: 55, sampleCount: 70, partial: false }] };
+    vi.stubGlobal("fetch", vi.fn((url) => {
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => ({ "z2m-humid_mech": ["humidity", "temperature"] }) });
+      if (url.includes("/telemetry-history")) return Promise.resolve({ ok: true, json: async () => ({ requestedDays: 30, effectiveDays: 30, clamped: false, points: indoor }) });
+      if (url.includes("outdoor-history?location=home")) return new Promise(res => { releaseHome = () => res({ ok: true, json: async () => homeBody }); });
+      if (url.includes("/api/weather/outdoor-history")) return Promise.resolve({ ok: true, json: async () => outdoorOk });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    }));
+    const { rerender } = render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
+    expect(await screen.findByTestId("outdoor-line-rhPct")).toBeTruthy();
+    expect(screen.getAllByText(/\(UBE\/RPD\)/).length).toBeGreaterThan(0);
+
+    rerender(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="home" tempUnit="F" />);
+    // Home's answer has not arrived: Cabin's line and station label must already be gone
+    await waitFor(() => expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull());
+    expect(screen.queryAllByText(/UBE/).length).toBe(0);
+
+    releaseHome();
+    expect(await screen.findByTestId("outdoor-line-rhPct")).toBeTruthy();
+    expect(screen.getAllByText(/\(HOME1\)/).length).toBeGreaterThan(0);
+  });
+
   it("turning the checkbox off removes the line", async () => {
     vi.stubGlobal("fetch", mockFetch(outdoorOk));
     render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
