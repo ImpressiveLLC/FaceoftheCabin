@@ -2866,23 +2866,36 @@ select option { background: var(--bg-secondary); color: var(--text); }
 /* <signal-surfaces> */
 /* Surfaces (2026-10-29, Nate: panel fills were grey against the pure-black page, and the thin grey outlines did not fit).
    Big frames float: no fill and no hairline, as the Monitoring tile frame already does, so the page stays one black and the
-   cards are told apart by their hue bars and spacing. Mid and small boxes keep a frame, in an affirming colour (cyan, or the
-   card's own hue) at a strength that stays 3:1 against black, never grey. The tiles' own status borders are not touched. */
-[data-theme="signal"] :is(.active-conditions, .sidebar-card, .config-card, .dm-device-group, .dm-detail, .sensor-history-panel,
-  .pairing-card, .family-hub-card, .event-log, .demo-hidden-panel) {
+   cards are told apart by their hue bars and spacing. Mid and small boxes keep a frame in an affirming colour (cyan, or the
+   card's own hue), never grey. Two limits, both from review: the state-bearing rows (Alert and Watch borders, W-109/W-110)
+   keep their own edge colour, and Monitoring only takes the two frames Nate asked for (Sensor History and the live event
+   log) plus the Sensor History chips and tabs when they are not selected; its tiles, banners and selection cues are untouched. */
+[data-theme="signal"] :is(.sensor-history-panel, .event-log) { background: transparent; border-color: transparent; }
+[data-theme="signal"] .sensor-history-panel :is(.sensor-history-device-chip:not(.selected), .sensor-history-topic-tab:not(.active)) {
+  border-color: color-mix(in srgb, var(--signal-cool) 55%, transparent);
+}
+[data-theme="signal"] .sensor-history-panel .sensor-history-table th { background: transparent; }
+[data-theme="signal"] :is(.active-conditions, .sidebar-card, .config-card, .dm-device-group, .dm-detail, .pairing-card, .family-hub-card,
+  .demo-hidden-panel):not([data-panel="monitoring"] *) {
   background: transparent; border-color: transparent;
 }
-[data-theme="signal"] :is(.opportunity-card, .device-card, .dm-device-row, .dm-why-card, .dm-candidate-card, .rule-row, .active-condition,
-  .automation-alert-card, .camera-event-row, .camera-motion-row, .guest-access-row, .guest-alert-row, .guest-device-row, .add-place-form,
-  .dm-add-option, .presence-sensor, .alert-ctrl-unconfigured, .helpdesk-assistant .helpdesk-bubble) {
-  background: transparent; border-color: color-mix(in srgb, var(--hue, var(--signal-cool)) 55%, transparent);
+[data-theme="signal"] :is(.opportunity-card, .device-card, .dm-device-row, .dm-why-card, .dm-candidate-card, .rule-row,
+  .camera-event-row, .camera-motion-row, .guest-access-row, .guest-alert-row, .guest-device-row, .add-place-form,
+  .dm-add-option, .presence-sensor, .helpdesk-assistant .helpdesk-bubble):not([data-panel="monitoring"] *) {
+  background: transparent; border-color: color-mix(in srgb, var(--hue, var(--signal-cool)) 65%, transparent);
+}
+/* Alert and Watch rows: no fill, but the state edge (left, or the whole 4px Alert border) stays the cue block's. */
+[data-theme="signal"] :is(.active-condition, .automation-alert-card):not([data-panel="monitoring"] *) { background: transparent; }
+[data-theme="signal"] .active-condition:not(.active-condition-critical):not([data-panel="monitoring"] *),
+[data-theme="signal"] .automation-alert-card:not(.automation-alert-critical):not([data-panel="monitoring"] *) {
+  border-top-color: color-mix(in srgb, var(--hue, var(--signal-cool)) 65%, transparent);
+  border-right-color: color-mix(in srgb, var(--hue, var(--signal-cool)) 65%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--hue, var(--signal-cool)) 65%, transparent);
 }
 [data-theme="signal"] :is(.camera-health-tile, .opportunity-detail, .workflow-execution-history, .opportunity-lineage-chip, .section-count-badge,
-  .code-block, .capability-chip, .meta-chip, .camera-clip-expanded, .camera-event-thumb, .presence-stats > div,
-  .sensor-history-device-chip, .sensor-history-topic-tab) {
-  border-color: color-mix(in srgb, var(--signal-cool) 50%, transparent);
+  .code-block, .capability-chip, .meta-chip, .camera-clip-expanded, .camera-event-thumb, .presence-stats > div):not([data-panel="monitoring"] *) {
+  border-color: color-mix(in srgb, var(--signal-cool) 55%, transparent);
 }
-[data-theme="signal"] .sensor-history-table th { background: transparent; }
 /* </signal-surfaces> */
 
 /* <signal-roles> */
@@ -2971,7 +2984,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 [data-theme="signal"] :is([data-panel="rules"] .sidebar-card strong, [data-panel="places"] .family-hub-card-header) { color: var(--hue, var(--text)); }
 
 /* Device Manager. Mode tabs carry their own hue even when idle (See cyan, Change orange, Add lime, Remove red); the active one fills. */
-[data-theme="signal"] [data-panel="devices"] .dm-l1-btn { --mode: var(--role-select); border-radius: 0; border-color: color-mix(in srgb, var(--mode) 55%, transparent); }
+[data-theme="signal"] [data-panel="devices"] .dm-l1-btn { --mode: var(--role-select); border-radius: 0; border-color: color-mix(in srgb, var(--mode) 70%, transparent); }
 [data-theme="signal"] [data-panel="devices"] .dm-l1-btn svg { color: var(--mode); }
 [data-theme="signal"] [data-panel="devices"] .dm-l1-btn:nth-child(2) { --mode: var(--role-edit); }
 [data-theme="signal"] [data-panel="devices"] .dm-l1-btn:nth-child(3) { --mode: var(--role-on); }
@@ -2992,7 +3005,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 
 /* Rows: flat cells. Hover tints cyan; the selected row gets a cyan border, a thick cyan left edge, a cyan tint and a cyan name. */
 [data-theme="signal"] [data-panel="devices"] .dm-device-row {
-  border-radius: 0; background: transparent; border-color: color-mix(in srgb, var(--hue, var(--role-select)) 55%, transparent); box-shadow: none;
+  border-radius: 0; background: transparent; border-color: color-mix(in srgb, var(--hue, var(--role-select)) 65%, transparent); box-shadow: none;
 }
 [data-theme="signal"] [data-panel="devices"] .dm-device-row:hover {
   border-color: color-mix(in srgb, var(--role-select) 60%, var(--border)); background: color-mix(in srgb, var(--role-select) 5%, transparent);
@@ -3013,7 +3026,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 
 /* Detail panel: tied to the selected row by the same cyan; a mode's own hue frames the panel in Remove. */
 [data-theme="signal"] [data-panel="devices"] .dm-detail {
-  border-radius: 0; background: transparent; border: 1px solid var(--border); border-top: 3px solid var(--role-select);
+  border-radius: 0; background: transparent; border: 1px solid transparent; border-top: 3px solid var(--role-select);
 }
 [data-theme="signal"] [data-panel="devices"] .dm-detail-name { color: var(--role-select); }
 [data-theme="signal"] [data-panel="devices"] .dm-detail-section { color: var(--role-edit); }
@@ -3037,7 +3050,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 /* In forced colours the system palette decides: icons that carry an author hue follow the text colour instead. */
 @media (forced-colors: active) {
-  [data-theme="signal"] :is([data-panel="config"] .config-card-header svg, [data-panel="devices"] .dm-l1-btn svg, [data-panel="devices"] .dm-row-icon) { color: inherit; }
+  [data-theme="signal"] :is([data-panel="config"] .config-card-header svg, [data-panel="devices"] .dm-l1-btn svg, [data-panel="devices"] .dm-row-icon) { color: inherit !important; }
 }
 /* </signal-roles> */
 

@@ -252,12 +252,38 @@ describe("Signal surfaces: pure black fills, no grey hairlines (Nate 2026-10-29)
 
   it("cabin: big frames float (no fill, no border colour), mid and small boxes get a coloured edge", () => {
     expect(cabin.length, "surfaces section present").toBeGreaterThan(0);
-    expect(cabin).toMatch(/\.sensor-history-panel[\s\S]*?\{\s*background: transparent; border-color: transparent;/);
-    expect(cabin).toMatch(/\.dm-device-row[\s\S]*?\{\s*background: transparent; border-color: color-mix\(in srgb, var\(--hue, var\(--signal-cool\)\) 55%, transparent\)/);
+    expect(cabin).toMatch(/\.sensor-history-panel, \.event-log\) \{ background: transparent; border-color: transparent; \}/);
+    expect(cabin).toMatch(/\.dm-device-row[\s\S]*?\{\s*background: transparent; border-color: color-mix\(in srgb, var\(--hue, var\(--signal-cool\)\) 65%, transparent\)/);
     expect(cabin).not.toMatch(/var\(--border\)|var\(--bg-secondary\)|var\(--surface\)|var\(--layer-/);
     expect(cabin).not.toMatch(/#[0-9a-fA-F]{3,8}\b|animation|box-shadow|@keyframes/);
     // The tiles' own status borders are left to the cue block.
     expect(cabin).not.toMatch(/\.kpi-tile|\.state-badge/);
+  });
+
+  it("cabin: state-bearing rows keep their Alert and Watch edge colours (W-109/W-110)", () => {
+    const body = cabin.replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...body.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({ sel: m[1].trim(), decl: m[2] }));
+    expect(rules.length).toBeGreaterThan(5);
+    for (const { sel, decl } of rules) {
+      // Nothing that sets a whole border colour may name a cue-bearing class unless it excludes the critical state.
+      if (/(^|[\s,(])border-color\s*:/.test(decl) || /border-color/.test(decl.replace(/border-(top|right|bottom)-color/g, ""))) {
+        expect(sel, "border-color on a cue class").not.toMatch(/\.active-condition(?!s|-critical)|\.automation-alert-card|\.cabin-activity-warning|data-attn/);
+      }
+    }
+    // The only rule that colours those rows' edges leaves the left edge alone and excludes the critical class.
+    expect(cabin).toMatch(/\.active-condition:not\(\.active-condition-critical\)/);
+    expect(cabin).toMatch(/\.automation-alert-card:not\(\.automation-alert-critical\)/);
+    expect(cabin).not.toMatch(/border-left-color|\.active-condition-critical \{|\.automation-alert-critical \{/);
+  });
+
+  it("cabin: Monitoring only takes the Sensor History and live-log frames and the unselected chips and tabs", () => {
+    const body = cabin.replace(/\/\*[\s\S]*?\*\//g, "");
+    const selectors = [...body.matchAll(/([^{}]+)\{/g)].map((m) => m[1].trim()).filter(Boolean);
+    const open = selectors.filter((sel) => !/:not\(\[data-panel="monitoring"\] \*\)/.test(sel));
+    expect(open.every((sel) => /\.sensor-history-panel|\.event-log/.test(sel)), `unscoped: ${open.join(" | ")}`).toBe(true);
+    expect(cabin).toMatch(/\.sensor-history-device-chip:not\(\.selected\)/);
+    expect(cabin).toMatch(/\.sensor-history-topic-tab:not\(\.active\)/);
+    expect(cabin).not.toMatch(/alert-ctrl/);
   });
 
   it("hub: cards are the page black with no hairline, and small boxes have no grey fill", () => {
