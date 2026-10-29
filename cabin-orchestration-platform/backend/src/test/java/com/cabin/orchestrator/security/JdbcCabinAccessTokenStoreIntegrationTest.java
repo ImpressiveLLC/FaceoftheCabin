@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.security;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
@@ -20,10 +21,22 @@ class JdbcCabinAccessTokenStoreIntegrationTest {
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
-    private JdbcCabinAccessTokenStore newStore() {
-        JdbcTemplate jdbc = new JdbcTemplate(new SimpleDriverDataSource(
+    private JdbcTemplate newJdbc() {
+        return new JdbcTemplate(new SimpleDriverDataSource(
             new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
-        return new JdbcCabinAccessTokenStore(jdbc);
+    }
+
+    private JdbcCabinAccessTokenStore newStore() {
+        return new JdbcCabinAccessTokenStore(newJdbc());
+    }
+
+    /** The container is shared by every test in this class, and some tests count rows, so each starts from empty tables. */
+    @BeforeEach
+    void emptyTables() {
+        newStore(); // creates the tables on a first run
+        JdbcTemplate jdbc = newJdbc();
+        jdbc.execute("DELETE FROM cabin_access_events");
+        jdbc.execute("DELETE FROM cabin_access_tokens");
     }
 
     @Test
