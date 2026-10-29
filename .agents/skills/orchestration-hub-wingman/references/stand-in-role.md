@@ -82,11 +82,11 @@ DONE #<n> <url> - next owner <who>: <action>; Codex on return: confirm or overru
 ```
 `HOLD <40-char sha>` replaces CLEAN and numbers every blocking reason, each fixable.
 
-Pointer (on #244, separate from the PR comment, ids and counts only; this follows Codex's own form, used 10 times in the period, with the label and the additions listed below the block):
+Pointer (on #244, separate from the PR comment, ids and counts only; this follows Codex's own form, used 10 times in the period, with the label and the differences listed below the block):
 ```
 CODEX-PROXY hh:mm CDT: DONE #<n> review <url>#issuecomment-<id> - <CLEAN|HOLD> <sha8>. <findings in one line>. <Independent fresh-context review: what it ran>. Cowork spot-checked <list>: all match. NOT_RUN: <...>. Next owner <who>: <action>; Codex on return: confirm or overrule.
 ```
-Codex posted this pointer with no header and in a shorter form (`DONE #n review <url> - CLEAN|HOLD <sha8>. <one or two lines>. Next owner <who>: <action>`). The stand-in's differs by the `CODEX-PROXY hh:mm CDT:` label and by four additions: the independence line, the spot-check clause, the `NOT_RUN` list and the return clause (`Codex on return: confirm or overrule`). It restates the verdict that is on the PR and binds nothing, because the merge gate reads PR comments only.
+Codex posted this pointer with no header and in a shorter form (`DONE #n review <url> - CLEAN|HOLD <sha8>. <one or two lines>. Next owner <who>: <action>`). The stand-in's differs by the `CODEX-PROXY hh:mm CDT:` label, the spot-check clause and the return clause (`Codex on return: confirm or overrule`), and by making the independence line and the `NOT_RUN` list mandatory (6 of Codex's 10 pointers already stated independence, and one carried a `NOT_RUN` line). It restates the verdict that is on the PR and binds nothing, because the merge gate reads PR comments only.
 
 Grading DONE (on #244; ids, counts, codes and hashes only; no answer text, expected text, prompts or private paths):
 ```
