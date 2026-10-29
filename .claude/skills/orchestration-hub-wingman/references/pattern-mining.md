@@ -82,7 +82,7 @@ Notes from the first run:
 - All agents post as one account. Identity is the header, so classify by the opening word with variants (COWORK, Cowork, CODE, CODEX, CODEX-PROXY, any case), then separate those that name a lane elsewhere in the first line from those that name none, and sample the rest.
 - Exclude the stand-in's own comments from the population you profile the peer from. The 29 Oct first draft counted the proxy's `[P1]/[P2]` tags as Codex's habit; counting only Codex's 52 verdict-like comments showed Codex used a severity tag once.
 - Pull-request review comments (`pulls/comments`) are a separate endpoint; on 29 Oct there were none.
-- Write the census to a scratch file: id, created_at, issue number, first 120 characters. Compute counts in code, not by reading. Keep the file out of git (first lines can hold private strings); commit counts and ids only.
+- Write the census to a scratch file: id, created_at, issue number and the whole first line (the 29 Oct file kept only 80 characters, which moved 55 of the 160 comments that name a lane after the opening into "none", so a recount from REST disagreed with it). Compute counts in code, not by reading. Keep the file out of git (first lines can hold private strings); commit counts and ids only.
 - Cost on 29 Oct: 540 comments, a 62 KB census file, 55 verdict bodies (77 KB, read in part), one 42-item blind calibration. A T2 for a gate-bearing lane.
 
 ## 6. Statistics: what the numbers can and cannot say

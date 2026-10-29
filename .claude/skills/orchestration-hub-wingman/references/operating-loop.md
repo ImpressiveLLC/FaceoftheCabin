@@ -89,7 +89,7 @@ A verdict binds to the head it names. A new push voids it.
 CODEX-PROXY 15:20 CDT: CLEAN <40-char sha> for <scope>. Read <files>. Independently ran <checks, counts> on this head. NOT_RUN here: <list>.
 DONE #<n> <url> - next owner <who>: <action>; Codex on return: confirm or overrule.
 ```
-Same grammar as the Codex verdict under its own header. The merge gate reads it as a Codex verdict, so the label is the guard. Full forms, the reviewer brief and the spot-check list: `stand-in-role.md` section 5.
+Same grammar as the Codex verdict under its own header. Only an independent agent's verdict goes under this header. The merge gate reads it as a Codex verdict, so the label is the guard. Full forms, the reviewer brief and the spot-check list: `stand-in-role.md` section 5.
 
 **Merge record**
 ```
