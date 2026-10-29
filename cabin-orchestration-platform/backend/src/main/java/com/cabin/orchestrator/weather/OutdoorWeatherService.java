@@ -2,6 +2,7 @@ package com.cabin.orchestrator.weather;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -58,6 +59,9 @@ public class OutdoorWeatherService {
     private final Path archiveDir;
     private final Map<String, List<String>> stationsByLocation;
 
+    // Two constructors: Spring needs the marker to know which one the container uses. Without it startup
+    // fails with "No default constructor found" (this class's first deploy, 2026-10-29, rolled back on it).
+    @Autowired
     public OutdoorWeatherService(OutdoorWeatherStore store, WeatherFetcher fetcher,
                                  @Value("${cabin.weather.enabled:true}") boolean enabled,
                                  @Value("${cabin.weather.stations:cabin=UBE,RPD}") String stations,
