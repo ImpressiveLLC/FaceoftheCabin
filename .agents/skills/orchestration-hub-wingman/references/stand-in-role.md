@@ -16,7 +16,7 @@ A stand-in is a synthesized role: the peer's written rules and observed habits (
 | Option | Independent of the author? | Cost | Use when |
 |---|---|---|---|
 | a. A fresh-context subagent per review or grading, given the code, the PR's claims and the peer's rules, never your conclusions (default) | yes | tokens only | any verdict or grade |
-| b. A new Code session briefed for the lane | yes, but it is the author's lane peer | costs Nate a paste, and a session | long cover; work needing the M920q |
+| b. A new Code session briefed for the lane | yes, but it is the author's lane peer | costs Nate a paste, and a session | long cover; work needing the M920q; Cowork posts its report after the spot-check (rule 10), as with (a) |
 | c. You review it yourself | no: you wrote or sequenced the work | cheapest | tiny docs PRs where a second look still helps; post it under the `COWORK` header as a self-review, never as `CODEX-PROXY`; it is advisory and never counts as the Codex check |
 | d. Wait for the peer | n/a | time | nothing is on the critical path |
 
@@ -30,20 +30,20 @@ Independence rules for (a):
 
 ## 3. The profile: what to learn before you stand in
 
-Mine the rules (the peer's instruction file and skills) and the record (its comments in the period). Write the result as one table with counts and ids, not a transcript. The Codex profile used on 29 Oct 2026 comes from all 540 repository comments created from 3 to 29 Oct (method and recipe in `pattern-mining.md` section 5), of which 52 are Codex verdict-like comments (23 CLEAN, 18 HOLD, 11 follow-ups and reconfirmations):
+Mine the rules (the peer's instruction file and skills) and the record (its comments in the period). Write the result as one table with counts and ids, not a transcript. The Codex profile used on 29 Oct 2026 comes from every repository comment created from 3 Oct to 2026-10-29T22:00:00Z (555, one account; the recipe and the definitions are in `pattern-mining.md` section 5). A Codex verdict is a comment whose first line, after an optional Codex header, starts with CLEAN or HOLD: 54 of them (36 CLEAN, 18 HOLD), 30 with a Codex header and 24 with no header at all (attributed to Codex by content and by the board's record). 51 more comments carry a Codex header and are not in that form: follow-ups, watch reviews, idle and batched notes, grading. The counts below are over the 54 unless a row says otherwise:
 
 | Field | Observed standard |
 |---|---|
-| Header | The peer's name opens the comment, but the form drifted: `Codex <review kind>: CLEAN at <sha>` with no time on 25 to 27 Oct; `Codex checked HH:MM CDT:` idle notes from 27 Oct; `CODEX checked HH:MM CDT:` and `CODEX hh:mm CDT:` on 28 Oct; `CODEX review: CLEAN <sha> for <scope>` and `CODEX post-merge review:` on 29 Oct. Of all 540 comments, 287 (53%) open with a lane name (COWORK, CODE, CODEX or CODEX-PROXY, any case, as the first word of the first line), 160 more name a lane elsewhere in the first line and 93 name none (whole first line, word-boundary match), so classify by header with variants and read what falls outside |
-| Cadence | polls #244 and the PRs it owns every 20 minutes while a handoff to it is open (schedule rule 2); ack within 20 minutes (rule 3); verdict within 30 minutes of a head (rule 4); while a handoff was awaited and it was blocked, a one-line `checked HH:MM CDT: no new handoff` note about every 40 minutes (:12, :32 and :52 on 28 Oct, with the reason it was waiting); after a verdict, a closing `DONE #n <url> - next owner ...` line at the end of the verdict comment on the PR (8 of 52, none of them on #244), and on #244 only batched "verdicts posted on each PR" notes (3 in the period) |
-| Verdict form | one first line that carries the verdict, the 40-character head and the scope (40 of 52), then a short body: for a CLEAN a median of 4 non-empty lines and about 1,000 characters; for a HOLD 4 lines and about 1,500. A HOLD lists its reasons as a numbered or bulleted list in 8 of 18, with file:line in 6 of 18, each with a repair direction ("add it, or exclude it with a reason"). Severity tags `[P1]` to `[P3]` appear once in the Codex record; the proxy uses them on purpose to separate blocking from non-blocking findings |
-| Evidence | says what it ran itself, with counts ("independently ran ... 30 tests pass"; the word "independent" appears in 34 of 52), names hosted CI results (11), compares a re-review with the previous head; "read all N changed files" once |
-| Limits | a literal `NOT_RUN` line naming everything it did not run (14 of 52); "this is review CLEAN, not a claim of fully green tests or deployment"; a confidence or counter-case line (6) |
+| Header | Two forms. With a header, the peer's name opens the comment, but the form drifted: `Codex <review kind>: CLEAN at <sha>` with no time on 25 to 27 Oct; `Codex checked HH:MM CDT:` idle notes from 27 Oct; `CODEX checked HH:MM CDT:` and `CODEX hh:mm CDT:` on 28 Oct; `CODEX review: CLEAN <sha> for <scope>` and `CODEX post-merge review:` on 29 Oct (30 of the 54 verdicts). With no header, `CLEAN <sha> - <scope>` or `HOLD <sha> - <scope>` straight on the PR (24 of the 54, 26 to 29 Oct, 20 of them dated 27 or 28 Oct in UTC), which the merge gate reads and the board credits to Codex ("merged ... on its Codex CLEAN"). Of all 555 comments, 300 (54%) open with a lane name (COWORK, CODE, CODEX or CODEX-PROXY, any case, as the first word of the first line), 162 more name a lane elsewhere in the first line and 93 name none (whole first line, word-boundary match), so classify by header with variants, treat a first line that starts with CLEAN or HOLD as a Codex verdict, and read what falls outside |
+| Cadence | polls #244 and the PRs it owns every 20 minutes while a handoff to it is open (schedule rule 2); ack within 20 minutes (rule 3); verdict within 30 minutes of a head (rule 4); while a handoff was awaited and it was blocked, a one-line `checked HH:MM CDT: no new handoff` note about every 40 minutes (:12, :32 and :52 on 28 Oct, with the reason it was waiting); after a verdict, a closing `DONE #n ... Next owner ...` line at the end of the verdict comment on the PR (16 of the 54) and, in a separate comment on #244 with no header, `DONE #n review <url> - CLEAN|HOLD <sha8>. <one or two lines>. Next owner <who>: <action>` (10 pointers, 27 to 29 Oct; three other headerless `DONE #n` comments on #244 in the period are Code's own handoffs), plus four batched "verdicts posted on each PR" notes |
+| Verdict form | one first line that carries the verdict word, the 40-character head (54 of 54) and the scope, then a short body: for a CLEAN a median of 3 non-empty lines and about 830 characters (the headed form 3.5 lines and 960, the headerless form 2.5 and 690); for a HOLD 5 lines and about 1,200 (headed 6 and 2,100; headerless 2.5 and 790). A HOLD lists its reasons as a numbered or bulleted list in 11 of 18, with file:line in 7 of 18, each with a repair direction ("add it, or exclude it with a reason"). Severity tags `[P1]` to `[P3]` appear in one of the 54; the proxy uses them on purpose to separate blocking from non-blocking findings |
+| Evidence | says what it ran itself, with counts ("independently ran ... 30 tests pass"; the string "independent" in any case, so "independently" counts, appears in 39 of 54), names CI or check-run results (8), compares a re-review with the previous head; "read all N changed files" in 2 |
+| Limits | a literal `NOT_RUN` line naming everything it did not run (11 of 54: 10 of the 30 headed, 1 of the 24 headerless); "this is review CLEAN, not a claim of fully green tests or deployment"; a confidence or counter-case line (4) |
 | Scope | binds to the head it names; a new push voids it and a re-review names the new head; never merges, never edits the PR |
 | Grading | ids, counts, hashes only; per-question PASS table; flags; a private artifact hash list; adjudication requests |
 | Never | quote private text; approve a deploy; reverse a decision of Nate's; treat silence as agreement |
 
-The proxy's own verdicts are longer than the peer's (a CLEAN median of 14 non-empty lines against 4). That is deliberate for deploy paths and HOLDs, where a missed gate costs a failed deploy; for a routine docs or skills PR use the short form in section 5.
+The proxy's own verdicts are longer than the peer's (a CLEAN median of 14 non-empty lines against 3). That is deliberate for deploy paths and HOLDs, where a missed gate costs a failed deploy; for a routine docs or skills PR use the short form in section 5.
 
 Learned strictness matters as much as grammar. The calibration (section 6) showed the blind stand-in stricter than Codex on one question (Q17: all five disagreements in RUN-1 and RUN-2) and more lenient on another (Q21 in RUN-2), and weakest on the usefulness dimension (agreement 32 of 42, against 37 on factual and 39 on citations). That is what the precedent-anchored grader fixes.
 
@@ -82,11 +82,11 @@ DONE #<n> <url> - next owner <who>: <action>; Codex on return: confirm or overru
 ```
 `HOLD <40-char sha>` replaces CLEAN and numbers every blocking reason, each fixable.
 
-Pointer (on #244, separate from the PR comment, ids and counts only):
+Pointer (on #244, separate from the PR comment, ids and counts only; this is Codex's own form, used 10 times in the period, with the label added):
 ```
-CODEX-PROXY hh:mm CDT: DONE #<n> <url> - <CLEAN|HOLD> on <sha8> (PR comment <id>): <findings in one line>. <Independent fresh-context review: what it ran>. Cowork spot-checked <list>: all match. NOT_RUN: <...>. Next owner <who>: <...>; Codex on return: confirm or overrule.
+CODEX-PROXY hh:mm CDT: DONE #<n> review <url>#issuecomment-<id> - <CLEAN|HOLD> <sha8>. <findings in one line>. <Independent fresh-context review: what it ran>. Cowork spot-checked <list>: all match. NOT_RUN: <...>. Next owner <who>: <action>; Codex on return: confirm or overrule.
 ```
-Codex ended its PR verdict with the DONE line and posted only batched notes on #244 (3 in the period), so this separate pointer is a stand-in addition for the board, not Codex's form. It carries no verdict, and the merge gate reads PR comments only.
+Codex posted this pointer with no header; the stand-in's carries the `CODEX-PROXY` label, which is the only difference. It restates the verdict that is on the PR and binds nothing, because the merge gate reads PR comments only.
 
 Grading DONE (on #244; ids, counts, codes and hashes only; no answer text, expected text, prompts or private paths):
 ```
@@ -132,8 +132,8 @@ For a measured result (a run of N trials against a rubric):
 1. Re-read from REST, not from the report: the head sha equals the one it pinned; the changed files and counts; the check runs; the deploy run if merged.
 2. Re-run one or two decisive claims (the repro, or the base-versus-head contrast), or re-read the cited lines.
 3. Disagree with a finding: ask the reviewer or start a second independent one; do not edit its verdict. Post it verbatim with your spot-check list in the DONE pointer.
-4. Post as `CODEX-PROXY` on the PR, then the pointer on #244 (a stand-in addition, section 5). Your own evidence goes in one separate `COWORK` comment.
-5. A P1 or P2 that the reviewer has already appended to its output file is posted at once if the PR is still open, without waiting for the final report.
+4. Post as `CODEX-PROXY` on the PR, then the pointer on #244 (section 5). Your own evidence goes in one separate `COWORK` comment.
+5. A P1 or P2 that the reviewer has already appended to its output file is posted at once if the PR is still open, without waiting for the final report: re-read the cited lines, then post `CODEX-PROXY hh:mm CDT: INCREMENTAL on #n head <sha>: ...`. That comment is advisory, because the gate does not read it as a HOLD; if a merge could happen before the final verdict, post `CODEX-PROXY hh:mm CDT: HOLD <sha> (incremental, review running)` instead so that the gate sees it.
 6. Ids, counts, hashes only. Private evidence stays where it is; git carries its hash.
 
 ## 9. Return audit and stand-down
@@ -148,7 +148,7 @@ When the peer returns:
 
 | PR type | Run on the exact head | Also check |
 |---|---|---|
-| UI (`cabin-orchestration-platform/ui/**`, `family-hub/**`) | `npm ci`, the full vitest suite, `vite build`, base-versus-head contrast for the new tests | emulate the QA image layout: `ui/test/Dockerfile` copies only part of the repo, and a file a test reads that the Dockerfile does not copy fails the post-merge deploy gate while PR CI (a full checkout) stays green (#321, repaired by #322); the same rule in both `ui/src/styles.css` and `family-hub/family-hub.html`; forced-colors and more-contrast handling; theme and preset counts in `CLAUDE.md` and `AGENTS.md` (stale on #321 and #324) |
+| UI (`cabin-orchestration-platform/ui/**`, `family-hub/**`) | `npm ci`, the full vitest suite, `vite build`, base-versus-head contrast for the new tests | emulate the QA image layout: `cabin-orchestration-platform/ui/test/Dockerfile` copies only part of the repo, and a file a test reads that the Dockerfile does not copy fails the post-merge deploy gate while PR CI (a full checkout) stays green (#321, repaired by #322); the same rule in both `cabin-orchestration-platform/ui/src/styles.css` and `family-hub/family-hub.html`; forced-colors and more-contrast handling; theme and preset counts in `CLAUDE.md` and `AGENTS.md` (stale on #321 and #324) |
 | Backend | the whole suite `./mvnw -o test` (read the surefire XML); the guard tests that fail only when a new thing is added (`WriteGateAuditTest`, `DemoAccessTest`, `BeanConstructorGuardTest`, `RestControllerCorsGuardTest`) | a Spring bean with several constructors, none marked `@Autowired`, and no no-argument constructor stops the app at startup and the deploy rolls back (2026-10-16 and 2026-10-29); a `@RestController` without a class-level `@CrossOrigin` works in curl and breaks in the browser; write-route gating; demo-route classification |
 | Docs | links and ids resolve; grep for private strings; mirrors regenerated (`fed-regen.sh --check`) | one fact one home; no claim-lane content |
 | Skills and instruction files | `fed-check.sh`, `fed-regen.sh --check`, the scripts' own tests | description length, citations of renumbered sections, mirror byte-identity |

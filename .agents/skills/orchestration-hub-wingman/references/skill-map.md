@@ -7,7 +7,7 @@ Orchestration Hub Wingman drives hub work; other skills own mechanics. Load the 
 - `orchestration-hub-wingman` (this repo only): hub work. Board, PRs, merges, federation, registry, hub purchases, Home Vault and keys.
 - `wingman` (Nate's account): everything else he delegates. Choosing and buying, personal devices, email lookups, bookkeeping, research-driven solutions. It stays thin and does not load the hub skill, the board or the registry unless the task touches the hub; then it hands over to `orchestration-hub-wingman`.
 - A task that mixes both (a purchase for the Home Vault, say) is hub work: use the hub skill and its dated purchase record. Where the two skills differ, the stricter rule wins.
-- Both carry the stand-in and pattern-mining capability. The hub skill holds it in full (`stand-in-role.md`, `pattern-mining.md`); the account skill keeps a short section for day-to-day work and hands hub work to the hub skill.
+- The hub skill carries the stand-in and pattern-mining capability in full (`stand-in-role.md`, `pattern-mining.md`). The account skill gets a short section for day-to-day work, and hands hub work to the hub skill, once Nate saves the `propose_skills` card (shown 29 Oct 2026, 16:49 CDT; until he does, it is a proposal).
 
 ## In the repo (`.claude/skills/`, mirrored to `.agents/skills/`)
 
