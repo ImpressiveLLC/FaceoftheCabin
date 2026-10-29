@@ -35,7 +35,7 @@ Mine the rules (the peer's instruction file and skills) and the record (its comm
 | Field | Observed standard |
 |---|---|
 | Header | The peer's name opens the comment, but the form drifted: `Codex <review kind>: CLEAN at <sha>` with no time on 25 to 27 Oct; `Codex checked HH:MM CDT:` idle notes from 27 Oct; `CODEX checked HH:MM CDT:` and `CODEX hh:mm CDT:` on 28 Oct; `CODEX review: CLEAN <sha> for <scope>` and `CODEX post-merge review:` on 29 Oct. Of all 540 comments, 287 (53%) open with a lane name (COWORK, CODE, CODEX or CODEX-PROXY, any case, as the first word of the first line), 160 more name a lane elsewhere in the first line and 93 name none (whole first line, word-boundary match), so classify by header with variants and read what falls outside |
-| Cadence | polls #244 and the PRs it owns every 20 minutes while a handoff to it is open (schedule rule 2); ack within 20 minutes (rule 3); verdict within 30 minutes of a head (rule 4); while a handoff was awaited and it was blocked, a one-line `checked HH:MM CDT: no new handoff` note about every 40 minutes (:12, :32 and :52 on 28 Oct, with the reason it was waiting); after a verdict, a `DONE #n <url> - next owner ...` pointer on #244 (8 of 52) or one batched "verdicts posted on each PR" |
+| Cadence | polls #244 and the PRs it owns every 20 minutes while a handoff to it is open (schedule rule 2); ack within 20 minutes (rule 3); verdict within 30 minutes of a head (rule 4); while a handoff was awaited and it was blocked, a one-line `checked HH:MM CDT: no new handoff` note about every 40 minutes (:12, :32 and :52 on 28 Oct, with the reason it was waiting); after a verdict, a closing `DONE #n <url> - next owner ...` line at the end of the verdict comment on the PR (8 of 52, none of them on #244), and on #244 only batched "verdicts posted on each PR" notes (3 in the period) |
 | Verdict form | one first line that carries the verdict, the 40-character head and the scope (40 of 52), then a short body: for a CLEAN a median of 4 non-empty lines and about 1,000 characters; for a HOLD 4 lines and about 1,500. A HOLD lists its reasons as a numbered or bulleted list in 8 of 18, with file:line in 6 of 18, each with a repair direction ("add it, or exclude it with a reason"). Severity tags `[P1]` to `[P3]` appear once in the Codex record; the proxy uses them on purpose to separate blocking from non-blocking findings |
 | Evidence | says what it ran itself, with counts ("independently ran ... 30 tests pass"; the word "independent" appears in 34 of 52), names hosted CI results (11), compares a re-review with the previous head; "read all N changed files" once |
 | Limits | a literal `NOT_RUN` line naming everything it did not run (14 of 52); "this is review CLEAN, not a claim of fully green tests or deployment"; a confidence or counter-case line (6) |
@@ -86,6 +86,7 @@ Pointer (on #244, separate from the PR comment, ids and counts only):
 ```
 CODEX-PROXY hh:mm CDT: DONE #<n> <url> - <CLEAN|HOLD> on <sha8> (PR comment <id>): <findings in one line>. <Independent fresh-context review: what it ran>. Cowork spot-checked <list>: all match. NOT_RUN: <...>. Next owner <who>: <...>; Codex on return: confirm or overrule.
 ```
+Codex ended its PR verdict with the DONE line and posted only batched notes on #244 (3 in the period), so this separate pointer is a stand-in addition for the board, not Codex's form. It carries no verdict, and the merge gate reads PR comments only.
 
 Grading DONE (on #244; ids, counts, codes and hashes only; no answer text, expected text, prompts or private paths):
 ```
@@ -131,7 +132,7 @@ For a measured result (a run of N trials against a rubric):
 1. Re-read from REST, not from the report: the head sha equals the one it pinned; the changed files and counts; the check runs; the deploy run if merged.
 2. Re-run one or two decisive claims (the repro, or the base-versus-head contrast), or re-read the cited lines.
 3. Disagree with a finding: ask the reviewer or start a second independent one; do not edit its verdict. Post it verbatim with your spot-check list in the DONE pointer.
-4. Post as `CODEX-PROXY` on the PR, then the pointer on #244. Your own evidence goes in one separate `COWORK` comment.
+4. Post as `CODEX-PROXY` on the PR, then the pointer on #244 (a stand-in addition, section 5). Your own evidence goes in one separate `COWORK` comment.
 5. A P1 or P2 that the reviewer has already appended to its output file is posted at once if the PR is still open, without waiting for the final report.
 6. Ids, counts, hashes only. Private evidence stays where it is; git carries its hash.
 
