@@ -2318,7 +2318,67 @@ export function RoofSpecOwnerCard({ auth }) { // exported for src/RoofSpecPage.t
   );
 }
 
-function GuestAccessCard({ auth }) {
+// Access link usage tracking (HO-2026-10-29): which panel a recorded request belongs to.
+const ACCESS_PANELS = [
+  ["/api/events/telemetry-history", "Sensor History"],
+  ["/api/events/reported-fields", "Sensor History"],
+  ["/api/alerts", "Alerts"],
+  ["/api/rules", "Rules"],
+  ["/api/devices", "Devices"],
+  ["/api/dashboard", "Dashboard"],
+  ["/api/roof-spec", "Roof Monitoring"],
+  ["/api/presence", "Presence"],
+  ["/api/security", "Presence"],
+];
+
+export function accessRoutePanel(route) { // exported for src/DemoAccess.test.jsx
+  if (route === "page_open") return "Opened the link";
+  const hit = ACCESS_PANELS.find(([prefix]) => route === prefix || route.startsWith(prefix + "/"));
+  return hit ? hit[1] : "Other";
+}
+
+export function describeLinkUsage(token) { // exported for src/DemoAccess.test.jsx
+  if (!token.lastUsedAt) return "Never opened";
+  const opens = Number(token.useCount) || 0;
+  return `Last opened ${formatStopTime(token.lastUsedAt)} · ${opens} ${opens === 1 ? "open" : "opens"}`;
+}
+
+export function AccessActivity({ id, doFetch, apiBase }) { // exported for src/DemoAccess.test.jsx
+  const [events, setEvents] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const load = () => {
+    if (events || failed) return;
+    doFetch(`${apiBase}/api/access-tokens/${id}/activity?days=30`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(body => setEvents(Array.isArray(body) ? body : []))
+      .catch(() => setFailed(true));
+  };
+  return (
+    <details className="guest-access-activity" onToggle={e => { if (e.target.open) load(); }}>
+      <summary>View activity</summary>
+      {failed && <p className="config-hint">Could not load activity.</p>}
+      {!failed && events === null && <p className="config-hint">Loading…</p>}
+      {events && events.length === 0 && <p className="config-hint">No activity recorded in the last 30 days.</p>}
+      {events && events.length > 0 && (
+        <table className="guest-access-activity-table">
+          <thead><tr><th>Time</th><th>Panel</th><th>Status</th><th>Times</th></tr></thead>
+          <tbody>
+            {events.map(ev => (
+              <tr key={ev.id}>
+                <td>{formatStopTime(ev.occurredAt)}</td>
+                <td>{accessRoutePanel(ev.route)}</td>
+                <td>{ev.status}</td>
+                <td>{ev.hits}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </details>
+  );
+}
+
+export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.jsx
   const [tokens, setTokens] = useState([]);
   const [label, setLabel] = useState("");
   const [scope, setScope] = useState({ dashboard: true, device_states: true, alerts_read: true, observations_read: true });
@@ -2382,6 +2442,8 @@ function GuestAccessCard({ auth }) {
         <span className="config-hint">
           {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
         </span>
+        <span className="config-hint guest-access-usage">{describeLinkUsage(t)}</span>
+        <AccessActivity id={t.id} doFetch={doFetch} apiBase={apiBase} />
       </div>
       {status.active
         ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
@@ -9129,6 +9191,14 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   const demoAuth = useDemoAuth(demoToken);
   const cameraAuth = demoToken ? demoAuth : googleAuth;
   const isDemo = !!demoToken;
+  // Usage tracking: the demo page is a SPA route that never reaches the backend, so one cheap
+  // authenticated GET on mount (tagged) records that the link was opened.
+  const demoAuthedFetch = demoAuth.authedFetch;
+  useEffect(() => {
+    if (!demoToken) return;
+    demoAuthedFetch(`${LOCATIONS.cabin.apiBase}/api/dashboard/config`, { headers: { "X-Demo-Page-Open": "1" } })
+      .catch(() => {});
+  }, [demoToken, demoAuthedFetch]);
   const {
     alerts: activeAlerts,
     locations: activeAlertLocations,
