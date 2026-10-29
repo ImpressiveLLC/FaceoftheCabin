@@ -1,6 +1,7 @@
 package com.cabin.orchestrator.weather;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -13,6 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
  * sensor chart works for the same viewers. Capped at the shared history ceiling
  * (cabin.history.max-days) like every other history route.
  */
+// @CrossOrigin like every other controller: the UI (cabin.) calls the API on another origin (api.), and
+// without it the browser drops this response, so the chart silently shows no outdoor line.
+@CrossOrigin
 @RestController
 @RequestMapping("/api/weather")
 public class WeatherController {
