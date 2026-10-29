@@ -2069,13 +2069,68 @@
       border-color: color-mix(in srgb, var(--gold) 65%, transparent);
     }
 
+    /* <signal-roles> */
+    /* Colour roles, matching cabin-ui (2026-10-29): lime = on / confirm, cyan = selected, focused, a field to fill, orange = change,
+       amber = heads-up / next step, red = danger. Hue is never the only cue; selected pills also keep their thick outline. */
+    [data-theme="signal"] {
+      --role-on: var(--gold); --role-select: var(--signal-cool); --role-edit: var(--signal-heat);
+      --role-pending: var(--signal-amber); --role-danger: var(--rose);
+      accent-color: var(--role-select);
+    }
+    /* Not in forced colours: there the system colours apply (cyan on a light Canvas is 1.64:1). */
+    @media (not (forced-colors: active)) {
+      [data-theme="signal"] :is(a, button, summary, [role="button"], [tabindex]):focus-visible { outline: 2px solid var(--role-select); outline-offset: 2px; }
+    }
+    [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea) {
+      background: color-mix(in srgb, var(--role-select) 5%, transparent);
+      border: 1px solid color-mix(in srgb, var(--role-select) 45%, var(--glass-border)); border-radius: 0; color: var(--cream);
+    }
+    [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):hover {
+      border-color: color-mix(in srgb, var(--role-select) 75%, var(--glass-border));
+    }
+    [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):focus {
+      outline: 0; border-color: var(--role-select); border-bottom-width: 2px; background: color-mix(in srgb, var(--role-select) 9%, transparent);
+    }
+    @media (forced-colors: active) {
+      [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+    }
+    [data-theme="signal"] :is(input, textarea)::placeholder { color: var(--cream-dim); }
+    /* Surfaces (Nate 2026-10-29: fills were grey against the black page). Big cards are pure page black with no hairline, told
+       apart by their hue bar; the small boxes inside keep a frame in an affirming colour, not grey. */
+    [data-theme="signal"] :is(.glass-card, #notepad-panel, #settings-panel) { background: var(--night); border-color: transparent; }
+    /* Cards: a 3px top bar in the card's hue, its label in the same hue. */
+    [data-theme="signal"] #cal-card { --hue: var(--role-select); }
+    [data-theme="signal"] #chores-card { --hue: var(--role-on); }
+    [data-theme="signal"] #custody-card { --hue: var(--role-pending); }
+    [data-theme="signal"] #presence-badge { --hue: var(--role-select); }
+    [data-theme="signal"] #notepad-panel { --hue: var(--role-pending); }
+    [data-theme="signal"] #settings-panel { --hue: var(--role-edit); }
+    [data-theme="signal"] :is(.glass-card, #notepad-panel, #settings-panel) { border-top: 3px solid var(--hue, var(--role-select)); }
+    [data-theme="signal"] :is(.glass-card, #notepad-panel, #settings-panel) .card-label { color: var(--hue, var(--cream-dim)); }
+    [data-theme="signal"] :is(.bday-item, .reward-strip, .cabin-activity-row, .chore-day-block, .kid-reward-row, .reward-tile) {
+      background: transparent; border-color: color-mix(in srgb, var(--hue, var(--role-select)) 55%, transparent);
+    }
+    /* Selected = cyan (an active pill or choice); confirm = lime (save and send). */
+    [data-theme="signal"] :is(.kid-sel-btn.active, .theme-pill.active, .np-author-pill.active) {
+      background: color-mix(in srgb, var(--role-select) 12%, transparent); color: var(--role-select);
+      border-color: var(--role-select); border-width: 2px;
+    }
+    [data-theme="signal"] :is(#dash-close, #note-history-close, .settings-close, .np-close, .np-expand, .btn-ghost, .kid-sel-btn, #next-photo-btn,
+      .display-controls button):hover { border-color: color-mix(in srgb, var(--role-select) 60%, var(--glass-border)); }
+    /* The two doors out of the hub: Dashboard is a place to look (cyan), Settings changes things (orange). */
+    [data-theme="signal"] #dashboard-fab { border-color: color-mix(in srgb, var(--role-select) 60%, transparent); }
+    [data-theme="signal"] #settings-btn { border-color: color-mix(in srgb, var(--role-edit) 60%, transparent); color: var(--role-edit); }
+    [data-theme="signal"] a[data-cabin-link] { color: var(--role-select); }
+    /* </signal-roles> */
+
     /* <signal-glow> */
     /* Neon glow, static only (no animation or pulse, MA-16); dropped for prefers-contrast: more and forced-colors (W-110). */
     @media (not (prefers-contrast: more)) and (not (forced-colors: active)) {
       [data-theme="signal"] #clock { text-shadow: 0 0 28px color-mix(in srgb, var(--cream) 22%, transparent); }
       [data-theme="signal"] :is(.bday-days, .chore-count, .kid-count, .ev-time, .sched-num) { text-shadow: 0 0 10px var(--gold-glow); }
       [data-theme="signal"] :is(.btn-gold, .np-send) { box-shadow: 0 0 12px var(--gold-glow); }
-      [data-theme="signal"] :is(.kid-sel-btn.active, .theme-pill.active, .np-author-pill.active) { box-shadow: 0 0 10px var(--gold-glow) !important; }
+      [data-theme="signal"] :is(.kid-sel-btn.active, .theme-pill.active, .np-author-pill.active) { box-shadow: 0 0 10px color-mix(in srgb, var(--role-select) 30%, transparent) !important; }
+      [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):focus { box-shadow: 0 0 10px color-mix(in srgb, var(--role-select) 35%, transparent); }
     }
     /* </signal-glow> */
 

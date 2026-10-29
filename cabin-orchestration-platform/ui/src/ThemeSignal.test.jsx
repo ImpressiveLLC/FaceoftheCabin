@@ -168,3 +168,127 @@ describe("Signal styling lives after the shared attention cues and stays inside 
     expect(signalCss).not.toMatch(/kpi-state-alarm[^{]*\{[^}]*border/);
   });
 });
+
+describe("Signal colour roles reach every tab except Monitoring (Nate 2026-10-29)", () => {
+  const rolesOf = (css) => {
+    const a = css.indexOf("/* <signal-roles> */"), b = css.indexOf("/* </signal-roles> */");
+    return a >= 0 && b > a ? css.slice(a, b) : "";
+  };
+  const appJsx = read("App.jsx");
+  const cabinRoles = rolesOf(cabinCss);
+  const hubRoles = rolesOf(hubHtml);
+
+  it("defines the five roles once, from the existing palette tokens, in both apps", () => {
+    for (const css of [cabinRoles, hubRoles]) {
+      expect(css.length, "roles section present").toBeGreaterThan(0);
+      for (const r of ["--role-on", "--role-select", "--role-edit", "--role-pending", "--role-danger"]) expect(css, r).toContain(r + ":");
+      expect(css).toMatch(/--role-select:\s*var\(--signal-cool\)/);
+      expect(css).toMatch(/--role-edit:\s*var\(--signal-heat\)/);
+      expect(css).toMatch(/--role-pending:\s*var\(--signal-amber\)/);
+    }
+  });
+
+  it("uses tokens only, no animation, and shadows only inside the glow section", () => {
+    for (const css of [cabinRoles, hubRoles]) {
+      expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+      expect(css).not.toMatch(/@keyframes|animation\s*:|transition\s*:/);
+      expect(css).not.toMatch(/box-shadow\s*:\s*(?!\s*none)|text-shadow\s*:\s*(?!\s*none)/);
+    }
+  });
+
+  it("colours Device Manager modes by job: See cyan, Change orange, Add lime, Remove red", () => {
+    expect(cabinRoles).toMatch(/\[data-panel="devices"\] \.dm-l1-btn \{ --mode: var\(--role-select\)/);
+    expect(cabinRoles).toMatch(/\.dm-l1-btn:nth-child\(2\) \{ --mode: var\(--role-edit\)/);
+    expect(cabinRoles).toMatch(/\.dm-l1-btn:nth-child\(3\) \{ --mode: var\(--role-on\)/);
+    expect(cabinRoles).toMatch(/\.dm-l1-btn:nth-child\(4\) \{ --mode: var\(--role-danger\)/);
+  });
+
+  it("marks the selected device row with more than a hue: a thick left edge as well as cyan", () => {
+    expect(cabinRoles).toMatch(/\.dm-device-row\.dm-row-selected \{[^}]*border-left-width:\s*5px/);
+    expect(cabinRoles).toMatch(/\.dm-device-row\.dm-row-selected \{[^}]*--role-select/);
+  });
+
+  it("leaves Monitoring alone: every role rule is scoped to a panel other than Monitoring, or excludes it", () => {
+    expect(cabinRoles.length, "roles section present").toBeGreaterThan(0);
+    const body = cabinRoles.replace(/\/\*[\s\S]*?\*\//g, "");
+    const selectors = [...body.matchAll(/([^{}@;]+)\{/g)].map((m) => m[1].trim()).filter((x) => x && !x.startsWith("media "));
+    expect(selectors.length).toBeGreaterThan(20);
+    const unscoped = selectors.filter((sel) => sel !== '[data-theme="signal"]' && !/\[data-panel/.test(sel) && !/:not\(\[data-panel="monitoring"\] \*\)/.test(sel));
+    expect(unscoped, "role rules that could reach Monitoring").toEqual([]);
+    // Any mention of Monitoring's panel is an exclusion, never a target.
+    for (const m of cabinRoles.matchAll(/data-panel="monitoring"/g)) expect(cabinRoles.slice(Math.max(0, m.index - 8), m.index)).toMatch(/:not\(\[$/);
+    expect(cabinRoles).not.toMatch(/\.kpi-|\.state-badge|\.location-section/);
+    // The page-wide accent colour must not be set on the root (it would colour Monitoring's checkbox).
+    expect(cabinRoles).not.toMatch(/\[data-theme="signal"\] \{[^}]*accent-color/);
+  });
+
+  it("gives every panel root a data-panel hook, and Monitoring has its own", () => {
+    for (const name of ["camera", "opportunities", "helpdesk", "places", "config", "devices", "monitoring", "rules"]) {
+      expect(appJsx, name).toContain(`data-panel="${name}"`);
+    }
+  });
+
+  it("keeps the focus ring cyan on every control outside Monitoring, and gives way to the system colours in forced colours", () => {
+    for (const css of [cabinRoles, hubRoles]) {
+      expect(css.length, "roles section present").toBeGreaterThan(0);
+      expect(css).toMatch(/@media \(not \(forced-colors: active\)\) \{\s*\[data-theme="signal"\] :is\(a, button, summary, \[role="button"\], \[tabindex\]\):focus-visible[^{]*\{\s*outline: 2px solid var\(--role-select\)/);
+      // Fields lose their UA outline when focused, so forced colours get one back.
+      expect(css).toMatch(/@media \(forced-colors: active\) \{[^}]*:focus-visible \{ outline: 2px solid Highlight/);
+    }
+    expect(cabinRoles).toMatch(/:focus-visible:not\(\[data-panel="monitoring"\] \*\)/);
+  });
+
+  it("keeps the glow's field selector the same as the field rule's", () => {
+    expect(cabinCss).toMatch(/:is\(input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\):not\(\[type="range"\]\), select:not\(\.presence-select\), textarea\):focus \{ box-shadow/);
+  });
+});
+
+describe("Signal surfaces: pure black fills, no grey hairlines (Nate 2026-10-29)", () => {
+  const sectionOf = (css, name) => {
+    const a = css.indexOf(`/* <${name}> */`), b = css.indexOf(`/* </${name}> */`);
+    return a >= 0 && b > a ? css.slice(a, b) : "";
+  };
+  const cabin = sectionOf(cabinCss, "signal-surfaces");
+
+  it("cabin: big frames float (no fill, no border colour), mid and small boxes get a coloured edge", () => {
+    expect(cabin.length, "surfaces section present").toBeGreaterThan(0);
+    expect(cabin).toMatch(/\.sensor-history-panel, \.event-log\) \{ background: transparent; border-color: transparent; \}/);
+    expect(cabin).toMatch(/\.dm-device-row[\s\S]*?\{\s*background: transparent; border-color: color-mix\(in srgb, var\(--hue, var\(--signal-cool\)\) 65%, transparent\)/);
+    expect(cabin).not.toMatch(/var\(--border\)|var\(--bg-secondary\)|var\(--surface\)|var\(--layer-/);
+    expect(cabin).not.toMatch(/#[0-9a-fA-F]{3,8}\b|animation|box-shadow|@keyframes/);
+    // The tiles' own status borders are left to the cue block.
+    expect(cabin).not.toMatch(/\.kpi-tile|\.state-badge/);
+  });
+
+  it("cabin: state-bearing rows keep their Alert and Watch edge colours (W-109/W-110)", () => {
+    const body = cabin.replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...body.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({ sel: m[1].trim(), decl: m[2] }));
+    expect(rules.length).toBeGreaterThan(5);
+    for (const { sel, decl } of rules) {
+      // Nothing that sets a whole border colour may name a cue-bearing class unless it excludes the critical state.
+      if (/(^|[\s,(])border-color\s*:/.test(decl) || /border-color/.test(decl.replace(/border-(top|right|bottom)-color/g, ""))) {
+        expect(sel, "border-color on a cue class").not.toMatch(/\.active-condition(?!s|-critical)|\.automation-alert-card|\.cabin-activity-warning|data-attn/);
+      }
+    }
+    // The only rule that colours those rows' edges leaves the left edge alone and excludes the critical class.
+    expect(cabin).toMatch(/\.active-condition:not\(\.active-condition-critical\)/);
+    expect(cabin).toMatch(/\.automation-alert-card:not\(\.automation-alert-critical\)/);
+    expect(cabin).not.toMatch(/border-left-color|\.active-condition-critical \{|\.automation-alert-critical \{/);
+  });
+
+  it("cabin: Monitoring only takes the Sensor History and live-log frames and the unselected chips and tabs", () => {
+    const body = cabin.replace(/\/\*[\s\S]*?\*\//g, "");
+    const selectors = [...body.matchAll(/([^{}]+)\{/g)].map((m) => m[1].trim()).filter(Boolean);
+    const open = selectors.filter((sel) => !/:not\(\[data-panel="monitoring"\] \*\)/.test(sel));
+    expect(open.every((sel) => /\.sensor-history-panel|\.event-log/.test(sel)), `unscoped: ${open.join(" | ")}`).toBe(true);
+    expect(cabin).toMatch(/\.sensor-history-device-chip:not\(\.selected\)/);
+    expect(cabin).toMatch(/\.sensor-history-topic-tab:not\(\.active\)/);
+    expect(cabin).not.toMatch(/alert-ctrl/);
+  });
+
+  it("hub: cards are the page black with no hairline, and small boxes have no grey fill", () => {
+    const hub = sectionOf(hubHtml, "signal-roles");
+    expect(hub).toMatch(/:is\(\.glass-card, #notepad-panel, #settings-panel\) \{ background: var\(--night\); border-color: transparent; \}/);
+    expect(hub).toMatch(/\.bday-item[^{]*\{\s*background: transparent; border-color: color-mix\(in srgb, var\(--hue/);
+  });
+});
