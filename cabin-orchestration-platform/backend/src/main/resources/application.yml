@@ -199,6 +199,17 @@ cabin:
       criticalPercent: ${STORAGE_CRITICAL_PERCENT:75}
       clearMarginPercent: ${STORAGE_CLEAR_MARGIN_PERCENT:3}
       renotifyHours: ${STORAGE_RENOTIFY_HOURS:24}
+  # Outdoor baseline for the sensor-history charts: daily pull of airport weather
+  # (Iowa Environmental Mesonet, public, no key). stations = location=PRIMARY[,FALLBACK];
+  # next location. Add home=<ICAO-less station id> only once the Home site's nearest
+  # airport is confirmed; a location with no entry gets no baseline. archiveDir is the
+  # cold-tier bind mount (/storage/archives/weather); see OutdoorWeatherService's javadoc.
+  weather:
+    enabled: ${WEATHER_ENABLED:true}
+    stations: ${WEATHER_STATIONS:cabin=UBE,RPD}
+    backfillDays: ${WEATHER_BACKFILL_DAYS:60}
+    archiveDir: ${WEATHER_ARCHIVE_DIR:/app/archives/weather}
+    cron: ${WEATHER_CRON:0 30 3 * * *}
   telemetryArchival:
     enabled: ${TELEMETRY_ARCHIVAL_ENABLED:true}
     hotRetentionMonths: ${TELEMETRY_ARCHIVAL_HOT_MONTHS:3}

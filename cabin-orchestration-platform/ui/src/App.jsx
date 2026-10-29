@@ -5465,6 +5465,33 @@ const SENSOR_FIELD_LABELS = Object.fromEntries(SENSOR_FIELD_OPTIONS.map(o => [o.
 // re-selections; the legend is what ties color back to name each render).
 const SENSOR_HISTORY_COLORS = ["#58a6ff", "#3fb950", "#f0883e", "#f85149", "#a371f7", "#39c5cf", "#d29922", "#ec6cb9"];
 
+// Outdoor baseline: the fields a nearby airport station can be compared against. Dew point is the
+// measure that tells "the weather got wetter" apart from "the building still holds moisture," so a
+// temperature chart also gets it. Daily values come from GET /api/weather/outdoor-history (Celsius
+// and percent, UTC days keyed by the first 10 characters of `day`, same as the indoor points).
+export const OUTDOOR_BASELINE_FIELDS = new Set(["humidity", "temperature"]);
+const OUTDOOR_BASELINE_STYLE = {
+  rhPct: { color: "#8b949e", dash: "6 3" },
+  tempC: { color: "#8b949e", dash: "6 3" },
+  dewpointC: { color: "#b1bac4", dash: "2 3" },
+};
+export function outdoorBaselineSeries(field, outdoor) {
+  const pts = Array.isArray(outdoor?.points) ? outdoor.points : [];
+  if (pts.length === 0) return [];
+  const specs = field === "humidity" ? [{ key: "rhPct", label: "Outdoor humidity" }]
+    : field === "temperature" ? [{ key: "tempC", label: "Outdoor temperature" }, { key: "dewpointC", label: "Outdoor dew point" }]
+    : [];
+  const stations = [...new Set(pts.map(p => p.station).filter(Boolean))];
+  const suffix = stations.length ? ` (${stations.join("/")})` : "";
+  return specs.map(sp => ({
+    key: sp.key,
+    label: `${sp.label}${suffix}`,
+    ...OUTDOOR_BASELINE_STYLE[sp.key],
+    byDay: Object.fromEntries(pts.filter(p => p[sp.key] != null)
+      .map(p => [String(p.day).slice(0, 10), { value: p[sp.key], n: p.sampleCount, partial: !!p.partial }])),
+  }));
+}
+
 const SENSOR_HISTORY_KNOWN_FIELDS = new Set(SENSOR_FIELD_OPTIONS.map(o => o.value));
 
 // D16 (Reporting Topics IA, ratified 2026-09-05): the Topic picker is the
@@ -5865,6 +5892,23 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   // the full requested window came back.
   const [rangeInfo, setRangeInfo] = useState(null);
 
+  // Outdoor baseline overlay (humidity and temperature charts). On by default: an indoor reading is
+  // only meaningful next to what the air outside was doing. A location with no configured station
+  // simply gets an empty answer and no overlay.
+  const [showOutdoor, setShowOutdoor] = useState(true);
+  const [outdoor, setOutdoor] = useState(null);
+  const outdoorEligible = topic === "comfort_air" && OUTDOOR_BASELINE_FIELDS.has(field) && !!location;
+  const outdoorWanted = outdoorEligible && showOutdoor;
+  useEffect(() => {
+    if (!outdoorWanted) { setOutdoor(null); return; }
+    let cancelled = false;
+    authedFetch(`${apiBase}/api/weather/outdoor-history?location=${encodeURIComponent(location)}&days=${days}`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setOutdoor(data && Array.isArray(data.points) ? data : null); })
+      .catch(() => { if (!cancelled) setOutdoor(null); });
+    return () => { cancelled = true; };
+  }, [outdoorWanted, apiBase, location, days, authedFetch]);
+
   // Alert History (D16): "a view over the alert event log (all types)" --
   // Cowork-ratified 2026-09-05 as a pure computed view, not a per-service
   // reports_to[] assignment, so it doesn't share any of the field/chart
@@ -5951,8 +5995,13 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   // backend flags partial for one device is partial for all of them --
   // this is just which of allDates that ever was, not a per-device fact.
   const partialDates = new Set(selectedIds.flatMap(id => (seriesByDevice[id] || []).filter(p => p.partial).map(p => p.day)));
-  const allDisplayValues = selectedIds.flatMap(id =>
-    (seriesByDevice[id] || []).filter(p => p.avg != null).map(p => toDisplay(p.avg)));
+  const dateKeys = allDates.map(d => String(d).slice(0, 10));
+  const outdoorSeries = outdoorWanted ? outdoorBaselineSeries(field, outdoor) : [];
+  const allDisplayValues = [
+    ...selectedIds.flatMap(id =>
+      (seriesByDevice[id] || []).filter(p => p.avg != null).map(p => toDisplay(p.avg))),
+    ...outdoorSeries.flatMap(sr => dateKeys.map(k => sr.byDay[k]).filter(Boolean).map(o => toDisplay(o.value))),
+  ];
   const chartMin = allDisplayValues.length ? Math.min(...allDisplayValues) : 0;
   const chartMax = allDisplayValues.length ? Math.max(...allDisplayValues) : 1;
   const range = chartMax - chartMin || 1;
@@ -5967,6 +6016,18 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(" ");
     return { deviceId, name: nameFor(deviceId), color: SENSOR_HISTORY_COLORS[idx % SENSOR_HISTORY_COLORS.length], d, hasPoints: pts.length > 0 };
+  });
+  // A gap in the outdoor series (a day the station did not report) breaks the line instead of
+  // being bridged, so the chart never draws a value that was not observed.
+  const outdoorPaths = outdoorSeries.map(sr => {
+    let d = "", pen = false;
+    dateKeys.forEach((k, i) => {
+      const o = sr.byDay[k];
+      if (!o) { pen = false; return; }
+      d += `${pen ? "L" : "M"}${toX(i).toFixed(1)},${toY(toDisplay(o.value)).toFixed(1)} `;
+      pen = true;
+    });
+    return { ...sr, d: d.trim(), hasPoints: d.length > 0 };
   });
 
   // 2026-08-27: long/tidy format (one row per date+device), not the wide
@@ -5987,6 +6048,11 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
         const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
         if (p?.avg == null) continue;
         rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount, p.partial ? "yes" : "no"].join(","));
+      }
+      for (const sr of outdoorSeries) {
+        const o = sr.byDay[String(day).slice(0, 10)];
+        if (!o) continue;
+        rows.push([new Date(day).toLocaleDateString(), `"${sr.label}"`, toDisplay(o.value).toFixed(2), o.n, o.partial ? "yes" : "no"].join(","));
       }
     }
     const blob = new Blob([header + rows.join("\n")], { type: "text/csv" });
@@ -6074,7 +6140,20 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                 </select>
               </label>
               <button className="btn-ghost" onClick={downloadCsv} disabled={selectedIds.length === 0 || allDates.length === 0}>Download CSV</button>
+              {outdoorEligible && (
+                <label className="dm-toolbar-select sensor-history-outdoor-toggle">
+                  <input type="checkbox" checked={showOutdoor} onChange={e => setShowOutdoor(e.target.checked)} /> Outdoor baseline
+                </label>
+              )}
             </div>
+            {outdoorWanted && outdoor && outdoor.stations?.length === 0 && (
+              <p className="config-hint sensor-history-outdoor-note">No outdoor weather station is set up for this location, so there is no baseline to show.</p>
+            )}
+            {outdoorWanted && outdoorSeries.length > 0 && (
+              <p className="config-hint sensor-history-outdoor-note">
+                Dashed line: nearest airport weather station ({outdoor.stations.join(", ")}), daily average of its hourly reports. Days are UTC days, so a day can differ slightly from the local calendar day.
+              </p>
+            )}
             {rangeInfo?.clamped && (
               <p className="config-hint sensor-history-clamp-note">
                 Showing last {rangeInfo.effectiveDays} days — this view's history is limited to {rangeInfo.effectiveDays} days, less than the {rangeInfo.requestedDays} requested.
@@ -6106,14 +6185,23 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                     {devicePaths.filter(p => p.hasPoints).map(p => (
                       <path key={p.deviceId} d={p.d} fill="none" stroke={p.color} strokeWidth="2"/>
                     ))}
+                    {outdoorPaths.filter(p => p.hasPoints).map(p => (
+                      <path key={p.key} d={p.d} fill="none" stroke={p.color} strokeWidth="1.5" strokeDasharray={p.dash} data-testid={`outdoor-line-${p.key}`}/>
+                    ))}
                   </svg>
                 )}
-                {selectedIds.length > 1 && (
+                {(selectedIds.length > 1 || outdoorPaths.length > 0) && (
                   <div className="sensor-history-legend">
-                    {devicePaths.map(p => (
+                    {selectedIds.length > 1 && devicePaths.map(p => (
                       <span key={p.deviceId} className="sensor-history-legend-item">
                         <span className="sensor-history-legend-swatch" style={{ background: p.color }} />
                         {p.name}
+                      </span>
+                    ))}
+                    {outdoorPaths.map(p => (
+                      <span key={p.key} className="sensor-history-legend-item">
+                        <span className="sensor-history-legend-swatch" style={{ background: p.color }} />
+                        {p.label}
                       </span>
                     ))}
                   </div>
@@ -6124,7 +6212,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                 </p>
                 <div className="sensor-history-table-wrap">
                   <table className="sensor-history-table">
-                    <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}</tr></thead>
+                    <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}{outdoorSeries.map(sr => <th key={sr.key}>{sr.label}</th>)}</tr></thead>
                     <tbody>
                       {[...allDates].reverse().map(day => (
                         <tr key={day}>
@@ -6137,6 +6225,10 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                             // samples or one stray point, which is exactly the kind of
                             // question an insurance inspector would ask.
                             return <td key={id}>{p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—"}</td>;
+                          })}
+                          {outdoorSeries.map(sr => {
+                            const o = sr.byDay[String(day).slice(0, 10)];
+                            return <td key={sr.key}>{o ? `${toDisplay(o.value).toFixed(1)}${unit} (n=${o.n})${o.partial ? " (partial)" : ""}` : "—"}</td>;
                           })}
                         </tr>
                       ))}
