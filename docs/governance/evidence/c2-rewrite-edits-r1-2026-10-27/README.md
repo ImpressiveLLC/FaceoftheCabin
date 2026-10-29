@@ -2,6 +2,10 @@
 
 Owner Code; verify Codex; spec and decisions Cowork ([spec r1, PR #299](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/299), section 4). **No model call, no deploy, no restart, no held-out prompt read.** This PR edits guide text and the context map only. Nothing here reaches Ask until it is merged and the backend is deployed. Acceptance stays HOLD; this is a measured-slice change, not an acceptance claim.
 
+## Revert 2026-10-29 (RW-3 and RW-4)
+
+RUN-2 and the held-out runs failed the spec's decision rules 3 and 4 (Q21 3 to 0 of 3, Q10 2 to 0 of 3, one governance flag on an unedited context), so the outcome is HOLD and the responsible edits are reverted (Cowork ruling on #244, 2026-10-29, by elimination: Edits 3a and 3b are the only change to the Q21 context, Edit 4a with map change M2 the only change to the Q10 context). Removed: Edit 3a, Edit 3b, Edit 4a and map change M2, in both map copies and the guides, with the RW-4 wiring assertion changed to the RUN-1 section list. `ask_helpdesk_behavior` (4567) and `live_sensors` (4789) are back to their RUN-1 contexts. Kept, with no regression traced to them: RW-1, RW-2, RW-5, RW-6, M1, K05 and K19. The security bullet in 3b can return later as its own tested edit. The rest of this file describes the r1 edits as built and is not rewritten.
+
 ## What changed
 
 | Item | File and heading | Chars | Questions |
@@ -11,10 +15,10 @@ Owner Code; verify Codex; spec and decisions Cowork ([spec r1, PR #299](https://
 | M1 | map: `presence-for-each-location` moves from `installation` to new `installation_presence` (declared right after it) | | Q15, Q18, Q19 context |
 | 2a | `operations.md` Device onboarding, lead | 900 | Q05, Q06, Q07 |
 | 2b | `operations.md` Device onboarding, closing paragraph (type B) | 466 | Q07 |
-| 3a | `ask-and-helpdesk.md` What a source currently means, lead | 472 | Q22 (shared category: Q21 guard) |
-| 3b | `ask-and-helpdesk.md` Questions and useful limits, two bullets (type B, security-relevant) | 265 + 167 | Q23 |
-| 4a | `operations.md` new section Live values and Ask (type B) | 416 | Q09 |
-| M2 | map: `live-values-and-ask` added first to `live_sensors` | | Q09, Q10 context |
+| 3a | `ask-and-helpdesk.md` What a source currently means, lead | 472 | Q22 (shared category: Q21 guard). **REVERTED 2026-10-29** |
+| 3b | `ask-and-helpdesk.md` Questions and useful limits, two bullets (type B, security-relevant) | 265 + 167 | Q23. **REVERTED 2026-10-29** |
+| 4a | `operations.md` new section Live values and Ask (type B) | 416 | Q09. **REVERTED 2026-10-29** |
+| M2 | map: `live-values-and-ask` added first to `live_sensors` | | Q09, Q10 context. **REVERTED 2026-10-29** |
 | 5 | `configuration.md` Credentials and access, lead | 439 | Q11 (and Q13's neighbour category) |
 | 6 | `contributing.md` Small, auditable changes, lead | 606 | Q24 |
 | 6b | `contributing.md` Small, auditable changes, step 6 replaced (208 to 313 characters; Codex HOLD, Cowork ruling 20:54 CDT) | +105 | Q24 |
@@ -29,8 +33,8 @@ Both copies of the map (`docs/ai-assistant/rag/context-fixtures-r2.json` and the
 | installation_presence (new) | n/a | 2350 | 3650 |
 | device_import_lifecycle | 2791 | 4161 | 1839 |
 | device_identity (shares the section) | 2791 | 4161 | 1839 |
-| ask_helpdesk_behavior | 4567 | 5475 | 525 |
-| live_sensors | 4789 | 5229 | 771 |
+| ask_helpdesk_behavior | 4567 | 4567 (was 5475 before the 2026-10-29 revert) | 1433 |
+| live_sensors | 4789 | 4789 (was 5229 before the 2026-10-29 revert) | 1211 |
 | credential_redaction | 1486 | 1927 | 4073 |
 | governance_contribution | 2491 | 3204 | 2796 |
 

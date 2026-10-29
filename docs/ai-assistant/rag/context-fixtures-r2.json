@@ -293,11 +293,6 @@
       "contextDocuments": [
         {
           "path": "ai-assistant/user-guide/operations.md",
-          "section": "live-values-and-ask",
-          "audience": "household"
-        },
-        {
-          "path": "ai-assistant/user-guide/operations.md",
           "section": "capability-map",
           "audience": "household"
         },
@@ -1038,6 +1033,7 @@
     "2026-10-27 wiring: guide sections for K09-K13 and K15 added to the map, and every category kept at or under the 6000-character document budget with no truncation. configuration_binding supplies the per-name, HA-token and rotation sections (Q13); the build-time trace table moves to config_build_time_binding (Q12); health_verification supplies a digest and the per-service table (Q16) while the triage table moves to health_triage; live_sensors keeps the capability map, badge and arming paragraphs while the roles and open items move to presence_roles_and_gaps; new categories self_healing_recovery, backup_restore_recipes, config_passthrough, ask_runtime_limits.",
     "2026-10-27 K19: opportunity_status now supplies the Opportunities and Tech ID Service section (administrator) ahead of the capability map; new keywords tech id, finding(s), power draw, power_draw_anomaly, optimization, acknowledged.",
     "2026-10-27 K05: rules_workflows gains the rules-and-alerts trigger/action catalog section (administrator) and trigger/cooldown/retarget/vocabulary keywords.",
-    "2026-10-27 C2 rewrite r1: answer-shaped leads under six guide headings plus a new live-values-and-ask section; presence-for-each-location moves from installation to the new installation_presence category; live_sensors gains live-values-and-ask first."
+    "2026-10-27 C2 rewrite r1: answer-shaped leads under six guide headings plus a new live-values-and-ask section; presence-for-each-location moves from installation to the new installation_presence category; live_sensors gains live-values-and-ask first.",
+    "2026-10-29 C2 revert (HOLD per RUN-2 decision rule 3 and 4): Edits 3a and 3b (ask-and-helpdesk.md) and 4a with map change M2 (live-values-and-ask, first in live_sensors) removed; ask_helpdesk_behavior and live_sensors context restored to the RUN-1 text. RW-1, RW-2, RW-5, RW-6, K05 and K19 stay."
   ]
 }

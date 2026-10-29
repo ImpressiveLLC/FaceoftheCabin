@@ -42,7 +42,7 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `device_identity` | 4162 | 0 | device-onboarding 4162 | none |
 | `device_import_lifecycle` | 4162 | 0 | device-onboarding 4162 | none |
 | `rules_workflows` | 4879 | 0 | rules-and-safety 1070, rules-and-alerts-trigger-and-action-catalog-k05 3809 | none |
-| `live_sensors` | 5233 | 5233 | live-values-and-ask 441, capability-map 3100, what-the-presence-badge-means 961, arming 731 | none |
+| `live_sensors` | 4792 | 4792 | capability-map 3100, what-the-presence-badge-means 961, arming 731 | none |
 | `credential_redaction` | 1928 | 0 | credentials-and-access 1928 | none |
 | `configuration_binding` | 5913 | 0 | per-name-reference-ask-home-assist 3126, ha-token-validity-k09-slice-2 1290, database-password-rotation-k09-sli 1497 | none |
 | `config_build_time_binding` | 3810 | 0 | trace-a-setting-to-its-consumer 3810 | none |
@@ -51,7 +51,7 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `installation_presence` | 2351 | 0 | presence-for-each-location 2351 | none |
 | `health_verification` | 5874 | 0 | service-health-at-a-glance 1723, running-versus-healthy-per-service 4151 | none |
 | `deployment_source` | 5922 | 0 | deployment-source-correction 5922 | none |
-| `ask_helpdesk_behavior` | 5478 | 5478 | current-behavior 2033, what-a-source-currently-means 2042, questions-and-useful-limits 1403 | none |
+| `ask_helpdesk_behavior` | 4570 | 4570 | current-behavior 2033, what-a-source-currently-means 1568, questions-and-useful-limits 969 | none |
 | `governance_contribution` | 3206 | 3206 | small-auditable-changes 2158, contribution-record 1048 | none |
 | `opportunity_status` | 5973 | 3100 | opportunities-and-the-tech-id-service-k19 2873, capability-map 3100 | none |
 | `home_collector_termux` | 0 | 0 | none | none |
@@ -63,7 +63,7 @@ Reviewed-document characters delivered to an administrator and to a household ro
 | `health_triage` | 3330 | 0 | first-determine-what-is-failing 3330 | none |
 | `presence_roles_and_gaps` | 2922 | 2922 | who-counts-location-roles-ratified 1273, what-is-not-settled 1649 | none |
 
-C2 rewrite r1 (2026-10-27, see [the edit evidence](../c2-rewrite-edits-r1-2026-10-27/README.md)) changed the seven rows `device_identity`, `device_import_lifecycle`, `live_sensors`, `credential_redaction`, `installation`, `ask_helpdesk_behavior` and `governance_contribution` and added `installation_presence`.
+C2 rewrite r1 (2026-10-27, see [the edit evidence](../c2-rewrite-edits-r1-2026-10-27/README.md)) changed the seven rows `device_identity`, `device_import_lifecycle`, `live_sensors`, `credential_redaction`, `installation`, `ask_helpdesk_behavior` and `governance_contribution` and added `installation_presence`. **Reverted 2026-10-29 (RUN-2 decision rules 3 and 4):** `live_sensors` and `ask_helpdesk_behavior` are back to their RUN-1 rows above (see [the revert note](../c2-rewrite-edits-r1-2026-10-27/README.md#revert-2026-10-29-rw-3-and-rw-4)).
 
 No category is truncated. `deployment_source` (now 5,922 after the #283 rollback-wording fix), `configuration_binding` (5,913) and `health_verification` (5,874) are within about 130 characters of the cap, so a short addition to any of them would start cutting; the wiring test fails when that happens.
 
