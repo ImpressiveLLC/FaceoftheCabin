@@ -2740,8 +2740,8 @@ select option { background: var(--bg-secondary); color: var(--text); }
    - Layout: flat cells separated by hairlines, no card shadows; status is a coloured word with a dot, and only Watch and Alert
      keep a loud chip and border.
    Placed AFTER the attention-cues block on purpose: the cues (border pattern, corner asterisks, icon, word) still apply to status
-   tiles and badges here, and this block only restyles what they leave open. No animation, pulse or glow (MA-16). The Family Hub
-   has the matching block with its own selectors.
+   tiles and badges here, and this block only restyles what they leave open. No animation or pulse (MA-16). Glow is allowed in normal use and lives in its own
+   marked section at the end of this block. The Family Hub has the matching block with its own selectors.
    ═══════════════════════════════════════════════════════════════════ */
 [data-theme="signal"] body { background: var(--bg); font-variant-numeric: tabular-nums; }
 [data-theme="signal"] :is(.platform-name, .panel-header-bar h2, h1, h2) {
@@ -2862,3 +2862,21 @@ select option { background: var(--bg-secondary); color: var(--text); }
   box-shadow: none; border-radius: 0;
 }
 [data-theme="signal"] .event-log, [data-theme="signal"] .api-status { font-family: var(--font-mono); }
+
+/* <signal-glow> */
+/* Neon glow, as in the reference panels. Static only: no animation, transition or pulse (MA-16). It decorates Normal and neutral
+   elements; Watch and Alert tiles and badges get none, so the attention cues (border pattern, asterisks, word) stay the only loud
+   thing and a glow never reads as a status. Dropped when the system asks for more contrast or forced colours (W-110). */
+@media (not (prefers-contrast: more)) and (not (forced-colors: active)) {
+  [data-theme="signal"] .kpi-value { text-shadow: 0 0 14px color-mix(in srgb, var(--signal-metric) 45%, transparent); }
+  [data-theme="signal"] .kpi-tile::before { box-shadow: 0 0 8px var(--signal-bar); }
+  [data-theme="signal"] .kpi-tile.kpi-state-ok { box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 10%, transparent); }
+  [data-theme="signal"] .state-badge.state-ok { text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent); }
+  [data-theme="signal"] .nav-active { text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent); }
+  [data-theme="signal"] .nav-active svg { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 60%, transparent)); }
+  [data-theme="signal"] .btn-primary { box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 22%, transparent); }
+  [data-theme="signal"] :is(.loc-active, .dc-active, .dm-l1-active, .btn-ghost-active) {
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent) !important;
+  }
+}
+/* </signal-glow> */

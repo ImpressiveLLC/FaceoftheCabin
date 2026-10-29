@@ -112,13 +112,44 @@ describe("Signal styling lives after the shared attention cues and stays inside 
     expect(hubHtml.indexOf('SIGNAL THEME ([data-theme="signal"])')).toBeGreaterThan(hubHtml.indexOf("/* </attention-cues> */"));
   });
 
-  it("adds no animation, glow or shadow of its own beyond clearing them (MA-16)", () => {
+  it("has no animation or pulse anywhere in Signal (MA-16)", () => {
     for (const css of [signalCss, hubSignal]) {
       expect(css).not.toMatch(/@keyframes|animation\s*:|transition\s*:/);
-      const shadows = [...css.matchAll(/box-shadow\s*:\s*([^;]+);/g)].map((m) => m[1].trim());
-      for (const s of shadows) expect(s, "only `none` is allowed").toBe("none");
-      expect(css).not.toMatch(/text-shadow\s*:\s*(?!\s*none)/);
-      expect(css).not.toMatch(/filter\s*:\s*drop-shadow|filter\s*:\s*blur/);
+      expect(css).not.toMatch(/filter\s*:\s*blur/);
+    }
+  });
+
+  // Nate 2026-10-29: glow is allowed in normal use (MA-16 only rules out pulsing and says "no glow" is not needed).
+  const glowOf = (css) => {
+    const a = css.indexOf("/* <signal-glow> */"), b = css.indexOf("/* </signal-glow> */");
+    return a >= 0 && b > a ? css.slice(a, b) : "";
+  };
+  const withoutGlow = (css) => css.replace(glowOf(css), "");
+
+  it("keeps glow in one marked section, static, and off for more-contrast and forced-colors", () => {
+    for (const css of [signalCss, hubSignal]) {
+      const g = glowOf(css);
+      expect(g.length, "glow section present").toBeGreaterThan(0);
+      expect(g).toMatch(/@media \(not \(prefers-contrast: more\)\) and \(not \(forced-colors: active\)\)/);
+      expect(g).toMatch(/text-shadow|box-shadow/);
+      expect(g).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    }
+  });
+
+  it("gives no glow to Watch or Alert, so the attention cues stay the only loud signal", () => {
+    for (const css of [signalCss, hubSignal]) {
+      for (const rule of glowOf(css).matchAll(/([^{}]+)\{[^}]*\}/g)) {
+        expect(rule[1], "glow selector").not.toMatch(/kpi-state-(warn|alarm|late|unknown)|state-(warn|alarm|late|unknown)/);
+      }
+    }
+  });
+
+  it("outside the glow section Signal only clears shadows", () => {
+    for (const css of [signalCss, hubSignal]) {
+      const rest = withoutGlow(css);
+      const shadows = [...rest.matchAll(/box-shadow\s*:\s*([^;]+);/g)].map((m) => m[1].trim());
+      for (const s of shadows) expect(s, "only `none` outside the glow section").toBe("none");
+      expect(rest).not.toMatch(/text-shadow\s*:\s*(?!\s*none)/);
     }
   });
 

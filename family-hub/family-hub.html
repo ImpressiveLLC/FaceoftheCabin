@@ -2026,11 +2026,12 @@
        SIGNAL THEME ([data-theme="signal"]) -- 2026-10-29, rebuilt from Nate's reference dashboards (the "Signal Room" Home
        Assistant wall panel): blue-black ground, square corners and white-at-7% hairlines, neon-green accent, Outfit for titles and
        tracked 9px labels, a light Outfit clock, Plex Mono for readings. Fonts are bundled in ./fonts. Placed after the attention
-       cues on purpose; no animation, pulse or glow (MA-16). cabin-ui's styles.css has the matching block.
+       cues on purpose; no animation or pulse (MA-16); glow is allowed and lives in the marked section at the end of this block.
+       cabin-ui's styles.css has the matching block.
        ══════════════════════════════════════════════════════════════════ */
     [data-theme="signal"] #starfield-slide { background: var(--night); }
     [data-theme="signal"] #clock {
-      font-family: var(--font-ui); font-weight: 200; letter-spacing: -0.03em; text-shadow: none; font-style: normal;
+      font-family: var(--font-ui); font-weight: 200; letter-spacing: -0.03em; font-style: normal;
     }
     [data-theme="signal"] #clock .ampm { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0.08em; opacity: 0.5; }
     [data-theme="signal"] #date-line { font-family: var(--font-ui); font-weight: 600; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream-dim); }
@@ -2067,6 +2068,16 @@
       background: color-mix(in srgb, var(--gold) 8%, transparent); color: var(--gold);
       border-color: color-mix(in srgb, var(--gold) 65%, transparent);
     }
+
+    /* <signal-glow> */
+    /* Neon glow, static only (no animation or pulse, MA-16); dropped for prefers-contrast: more and forced-colors (W-110). */
+    @media (not (prefers-contrast: more)) and (not (forced-colors: active)) {
+      [data-theme="signal"] #clock { text-shadow: 0 0 28px color-mix(in srgb, var(--cream) 22%, transparent); }
+      [data-theme="signal"] :is(.bday-days, .chore-count, .kid-count, .ev-time, .sched-num) { text-shadow: 0 0 10px var(--gold-glow); }
+      [data-theme="signal"] :is(.btn-gold, .np-send) { box-shadow: 0 0 12px var(--gold-glow); }
+      [data-theme="signal"] :is(.kid-sel-btn.active, .theme-pill.active, .np-author-pill.active) { box-shadow: 0 0 10px var(--gold-glow) !important; }
+    }
+    /* </signal-glow> */
 
     /* Tab buttons: one color in every state; the active tab is marked by its
        underline, not a different text color. */
