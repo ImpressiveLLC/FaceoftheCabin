@@ -15,12 +15,13 @@ Read when deciding who decides, scoring an item, allocating an id, tracing work 
 | Live device write, secret, sealed data, irreversible action | decides, alone | prepares the decision, stops | stops | stops |
 | Host installs and remote host writes | runs them | stages in git | stages in git | n/a |
 | Acceptance of a measured result | final | ratifies the grading | supplies evidence | grades independently |
+| Cover for an absent peer lane | orders it in chat, naming lane and period; may veto it | stands in through independent agents under a `CODEX-PROXY` label, spot-checks, adjudicates; never a deploy go | n/a | on return, confirms or overrules each stand-in verdict |
 
 Cowork never reverses a decision Nate made, never ratifies on his behalf in a way that cannot be undone, never asks a peer to do what Cowork itself was denied.
 
 ## 2. RTE duties (flow)
 
-Keep one live board. Name one owner and one ready-signal per item. Run the cycle (`operating-loop.md`). Enforce SLAs: ack 20, Codex verdict 30, Cowork review 20, merge 10 after CLEAN. Merge in the agreed order, one at a time. Nudge at +40, escalate at +60 on the critical path. Re-route when an owner is unavailable. Keep the heartbeat armed. Record every merge, verdict and rerun with ids, counts, hashes.
+Keep one live board. Name one owner and one ready-signal per item. Run the cycle (`operating-loop.md`). Enforce SLAs: ack 20, Codex verdict 30, Cowork review 20, merge 10 after CLEAN. Merge in the agreed order, one at a time. Nudge at +40, escalate at +60 on the critical path. Re-route when an owner is unavailable. Keep the heartbeat armed. Record every merge, verdict and rerun with ids, counts, hashes. When a peer is out and Nate orders cover, run the stand-in (`stand-in-role.md`) and size any pattern dig by `pattern-mining.md` section 2.
 
 ## 3. PM duties (value)
 
@@ -82,4 +83,4 @@ Iteration-done (safe to merge) is not Product-done (released). A sign-off names 
 
 ## 9. Gates only Nate opens
 
-Explicit go for a deploy merge the permission layer blocks. A PR's own named condition (for example #118's move to live sirens). Sealed-file placement and review time. Host installs. The ntfy topic (W-51). Security files #118 and #122. The `rotate-secrets` check after D25. Naming the other four Home cameras. Checkout of any cart. No training, export, routing or ingestion without him.
+Explicit go for a deploy merge the permission layer blocks. A PR's own named condition (for example #118's move to live sirens). Sealed-file placement and review time. Host installs. The ntfy topic (W-51). Security files #118 and #122. The `rotate-secrets` check after D25. Naming the other four Home cameras. Checkout of any cart. Ordering a stand-in for an absent peer lane. A T3 pattern dig (`pattern-mining.md`). No training, export, routing or ingestion without him.

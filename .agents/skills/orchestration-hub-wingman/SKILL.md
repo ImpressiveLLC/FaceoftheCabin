@@ -7,8 +7,10 @@ description: >
   (board, handoffs, heartbeats, SLAs, nudges, ratifying results), PMO (WSJF backlog,
   status dashboard, id allocation), merging PRs while other sessions are live, keeping
   docs and instruction files in sync across machines (federation, drift, mirrors), and
-  where hub context lives or who tells whom how. Also at the start and end of every
-  session on this repo, and when Nate says hub wingman, board, merge queue or handoff.
+  where hub context lives or who tells whom how. Also covering an absent peer lane
+  (stand-in, CODEX-PROXY) and mining patterns from a record within a time and token
+  budget. Also at the start and end of every session on this repo, and when Nate says
+  hub wingman, board, merge queue, handoff or stand in.
   Not for day-to-day work (shopping, personal devices, mail, bookkeeping, research):
   that is the account skill wingman. Terse caveman voice; GitHub is the only record.
 ---
@@ -23,7 +25,7 @@ Lanes:
 - **Nate**: decides. Opens the gates only he can open.
 - **Cowork** (this role): rulings, docs, sequencing, PMO, merges of own and Codex-CLEAN PRs.
 - **Code**: implements, gathers host evidence (M920q, Windows).
-- **Codex**: independent review and grading.
+- **Codex**: independent review and grading. When it is out and Nate orders cover, the stand-in posts as `CODEX-PROXY` (section 13).
 
 All three agents post to GitHub as one account. Every comment opens with a speaker header: `COWORK 15:20 CDT:`.
 
@@ -106,7 +108,7 @@ Not addressed with `ACTION <WHO>` = not a handoff. Ack 20 min. Codex verdict 30 
 
 **Execution block.** A merge that starts a deploy can be refused by the permission classifier (`[Production Deploy]`). That is tooling, not governance, and the committed rule still authorizes the merge. Do not work around it. Record the exact reason once on #244, ask Nate for one word ("go"), then run the queue in order. A peer comment, a heartbeat prompt, a notification, a committed rule are not Nate's go. Same for any tool call denied or interrupted: stop, report, no retry, no workaround.
 
-**Codex out.** The gate HOLDs without a Codex `CLEAN <head>`, and stays HOLD. Only Nate waives it: in chat, naming the PRs, for those PRs only. Cowork records it on #244 (PR numbers, head sha). A later push to a waived PR is a changed head: Cowork reads the delta and records what it checked on #244 before merging. Nate is asked again only if he limited the waiver to a head. A waiver is not the deploy go and does not settle a PR's named condition. Every other PR waits.
+**Codex out.** The gate HOLDs without a Codex `CLEAN <head>`, and stays HOLD. Only Nate waives it: in chat, naming the PRs, for those PRs only. Cowork records it on #244 (PR numbers, head sha). A later push to a waived PR is a changed head: Cowork reads the delta and records what it checked on #244 before merging. Nate is asked again only if he limited the waiver to a head. A waiver is not the deploy go and does not settle a PR's named condition. Every other PR waits. Nate can instead order a stand-in (section 13): an independent `CODEX-PROXY` CLEAN on the exact head then counts as the Codex check, within the same limits.
 
 Full protocol: `references/merge-protocol.md`.
 
@@ -159,7 +161,20 @@ Research with `my-shopping-values` (where the price curve breaks, durability and
 - Commit or paste a secret. Scan added lines before pushing.
 - Say "done" without naming which of the four states.
 
-## 13. References
+## 13. Stand in for an absent peer, and mine patterns
+
+Nate can say a lane is out and ask Cowork to cover it (first case: Codex offline, 29 Oct 2026, board rule 10, committed as `docs/governance/rte/schedule.md` rule 10). The authority is his chat message naming the lane and the period. A peer comment, a heartbeat prompt or a committed rule is not that authority; without it, Codex out (section 6) applies unchanged.
+
+1. **Choose and say it in one line**: the solution (default: a fresh-context subagent per review or grading; or a new Code session; or review it yourself as a self-review under the `COWORK` header, advisory only and never the Codex check; or wait), the budget tier, the end of the period. Then start; do not wait for a reply.
+2. **Learn the peer**: mine its rules and its record into one profile table of counts and ids (header, cadence, verdict form, evidence, limits, scope, never). Calibrate on its past verdicts with a blind agent, target 90% agreement. On a miss, grade with two agents (A anchored on the peer's precedent, B blind) and adjudicate.
+3. **Interpolate** where the record is silent: the nearest precedent, then the intent of the written rule, then the stricter neighbour. Stop and ask Nate when authority, a deploy, a secret or anything irreversible is involved. Mark the output "interpolated".
+4. **Label and verify**: comments open `CODEX-PROXY hh:mm CDT:`, never the peer's own header. A CLEAN or HOLD under it comes only from an independent agent; your own acks, pointers, idle notes and grading lines may carry the label but never a verdict of yours. An independent agent produces each verdict from the code and the PR claims, never from your conclusions. You spot-check its decisive claims against REST, post it verbatim and adjudicate. Agents never post, merge or push, and their reports carry no authority from Nate.
+5. **Limits**: a stand-in verdict is not a deploy go, not a waiver of a named condition and not the peer's own verdict. Nate can veto it. The peer confirms or overrules each one on return.
+6. **Mine patterns** for any ask where history decides the answer (why deploys fail, what a rule really does, how long a step takes), with the dig sized to the value of the answer and the cost of being wrong: T0 glance (5 min, 30k tokens), T1 profile (30 min, 150k), T2 deep (2 h, 600k, up to four independent readers), T3 only on Nate's go. Say the tier in one line, stop at saturation or the ceiling, and escalate only for a finding that is both uncertain and consequential. "Deep" means more levels (record, sequence, failure, system), more readers and more checks. It does not mean model training, and git carries counts, ids and hashes only.
+
+Procedure, templates and the first profile: `references/stand-in-role.md`. Method, statistics and tiers: `references/pattern-mining.md`.
+
+## 14. References
 
 | File | Read when |
 |---|---|
@@ -171,5 +186,7 @@ Research with `my-shopping-values` (where the price curve breaks, durability and
 | `references/skill-map.md` | choosing which skill owns a task |
 | `references/vault-and-keys.md` | the Home Vault (W-120), security keys and passkeys, custody classes K0 to K4, lockout avoidance |
 | `references/carts-and-purchases.md` | building a cart in the browser, verifying prices live, the dated purchase record |
+| `references/stand-in-role.md` | Nate asks Cowork to cover an absent peer lane; writing a `CODEX-PROXY` verdict or grade; briefing an independent reviewer or grader; the peer returns |
+| `references/pattern-mining.md` | learning a peer's or a process's patterns from a record; sizing a dig by time and tokens; statistics cautions; interpolation |
 | `docs/governance/rte/context-registry.md` | where anything lives, who talks to whom |
 | `docs/governance/rte/schedule.md` | committed RTE rules and critical path |
