@@ -1,10 +1,10 @@
 /**
  * ThemeProvider — independently-selectable palette + font presets.
  *
- * Presets: Modern (default), Attention (W-110 status palette and cues), Impressive (matches impressive.llc's live
+ * Presets: Modern (default), Attention (W-110 status palette and cues), Signal (near-black HA-wall-panel look, one teal accent), Impressive (matches impressive.llc's live
  * palette, added 2026-08-21 for cross-site continuity), LCARS, Monolith,
  * Bluefin-mono, Mad Science, Deep Space, 80s Neon, Pac-Man,
- * Asteroid City -- same 11-preset catalog as
+ * Asteroid City -- same 12-preset catalog as
  * family-hub.html's own THEMES object (kept in sync manually as of
  * 2026-08-07; see docs/ontology.yaml's theme_preference entry for the
  * cross-app drift this file and family-hub.html are both prone to --
@@ -90,6 +90,50 @@ export const THEMES = {
       "--attn-cue-scale": "1",
     },
     layers: { hues: ['--accent-hover', '--text', '--success'] },
+  },
+
+  // Signal (2026-10-29, Nate's reference dashboards: the "Signal Room" Home Assistant wall panel and the Gauss
+  // printer card). Near-black flat panels with hairline edges, ONE teal-green accent that doubles as "live/online",
+  // IBM Plex Mono for every reading, Syne for titles, Outfit for labels, thin state-coloured underlines under
+  // metrics, and amber/red kept for heat and trouble. Fonts are bundled (public/fonts, OFL), never fetched.
+  // The W-109 attention cues apply automatically (styles.css, <attention-cues>). The three --attn-* hues came from
+  // the W-111 search over this theme's own surfaces (#0b0d11 and #13161b); Alert and Watch differ in lightness
+  // as well as hue. Same values and same id in family-hub.html (ThemeCatalogDrift.test.jsx).
+  signal: {
+    id: "signal",
+    label: "Signal",
+    vars: {
+      "--bg":           "#0b0d11",
+      "--bg-secondary": "#13161b",
+      "--bg-tertiary":  "#1b1f26",
+      "--surface":      "#13161b",
+      "--border":       "#252a33",
+      "--border-focus": "#00e5a0",
+      "--text":         "#e8ebef",
+      "--text-muted":   "#8b939e",
+      "--text-dim":     "#5f6772",
+      "--accent":       "#00e5a0",
+      "--accent-hover": "#3dffbd",
+      "--success":      "#00e5a0",
+      "--warning":      "#ffa21f",
+      "--danger":       "#ff4d3d",
+      "--font-display": "'Syne', 'Outfit', system-ui, sans-serif",
+      "--font-ui":      "'Outfit', system-ui, sans-serif",
+      "--font-mono":    "'IBM Plex Mono', 'JetBrains Mono', monospace",
+      "--radius":       "6px",
+      "--radius-sm":    "4px",
+      // Metric hues from the references: heat orange, cool blue (used by the underline bars on readings).
+      "--signal-heat":  "#ff6b2c",
+      "--signal-cool":  "#2fb8ff",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#19a578", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#fdd94d", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#ea4a49", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
+    },
+    // Hairline, almost-neutral edges and flat fills: no shadow, one-pixel widths, little hue in the edge.
+    layers: { hues: ['--text-muted', '--text', '--accent'], shadow: 'none', edgeHue: 0.22, tints: [0.04, 0.05, 0.06] },
   },
 
   // Matches impressive.llc's actual live palette (2026-08-21, sampled

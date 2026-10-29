@@ -81,7 +81,7 @@ describe("Attention theme (a whole selectable theme, not an opt-in attribute)", 
     for (const sel of [".kpi-tile.kpi-state-alarm", ".kpi-tile.kpi-state-warn", ".kpi-tile.kpi-state-ok",
       ".state-badge.state-alarm", ".state-badge.state-warn", ".state-badge.state-ok", ".state-badge.state-offline",
       ".active-condition-critical", ".automation-alert-critical"]) {
-      expect(cabinCss, sel).toContain(`[data-theme="attention"] :is(`);
+      expect(cabinCss, sel).toContain(`:is([data-theme="attention"], [data-theme="signal"]) :is(`);
       expect(cabinCss, sel).toContain(sel);
     }
     // every mapped selector is scoped: no bare status class appears outside a data-attn or data-theme selector
