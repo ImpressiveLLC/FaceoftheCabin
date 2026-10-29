@@ -12,20 +12,18 @@ const hubHtmlPath = [path.join(path.dirname(fileURLToPath(import.meta.url)), "..
   .find(existsSync);
 const hubThemes = hubHtmlPath ? familyHubThemes(readFileSync(hubHtmlPath, "utf8")) : null;
 
-// Themes with no --attn-* tokens yet: pending W-110, nothing implemented (no fallback palette exists in the code).
-// An explicit list, written out on purpose and NOT derived from THEMES, so a theme added later fails the gate until someone
-// either gives it tokens or adds it here with a reason. Remove an id as its tokens land. Expiry: empty when W-110 closes.
-const PENDING_W110 = [
-  "modern", "impressive", "lcars", "monolith", "bluefin", "madscience", "deepspace", "neon80s", "pacman", "asteroidcity",
-];
+// Themes with no --attn-* tokens yet. W-110 landed tokens for all ten themes in both surfaces, so this is empty. It stays as an explicit
+// list, written out on purpose and NOT derived from THEMES, so a theme added later fails the gate until someone either gives it tokens or
+// adds it here with a reason.
+const PENDING_W110 = [];
 
 const good = {
   id: "synthetic",
   vars: {
     "--bg": "#0d1117", "--bg-secondary": "#161b22",
-    "--attn-normal": "#58a6ff", "--attn-normal-ink": "#0b0f14",
-    "--attn-watch": "#f2cc60", "--attn-watch-ink": "#0b0f14",
-    "--attn-alert": "#ff7b72", "--attn-alert-ink": "#0b0f14",
+    "--attn-normal": "#2093e8", "--attn-normal-ink": "#0b0f14",
+    "--attn-watch": "#fbe729", "--attn-watch-ink": "#0b0f14",
+    "--attn-alert": "#f75c3e", "--attn-alert-ink": "#0b0f14",
   },
 };
 const withVars = (patch) => ({ ...good, vars: { ...good.vars, ...patch } });
@@ -85,13 +83,15 @@ describe("evaluateTheme", () => {
     // the worse of the two surfaces counts: a fine card face does not rescue a page background the edge disappears into
     const page = evaluateTheme(withVars({ "--bg": "#f2cc60" }));
     expect(page.failures.join(" ")).toMatch(/watch: edge on surface/);
-    const same = evaluateTheme(withVars({ "--attn-watch": "#58a6ff" }));
+    const same = evaluateTheme(withVars({ "--attn-watch": good.vars["--attn-normal"] }));
     expect(same.status).toBe("unsupported");
     expect(same.hueFailures.join(" ")).toMatch(/normal vs watch under (deuteranopia|protanopia|tritanopia)/);
   });
 
   it("states the hue threshold is provisional until W-109 fixes it", () => {
     expect(THRESHOLDS.provisional).toContain("hueDeltaE00");
+    expect(THRESHOLDS.provisional).toContain("lightnessGap");
+    expect(THRESHOLDS.lightnessGap).toBe(20);
     expect(THRESHOLDS.hueDeltaE00).toBe(10);
     expect(THRESHOLDS.textOnTint).toBe(4.5);
     expect(THRESHOLDS.edgeOnSurface).toBe(3);
@@ -112,15 +112,28 @@ describe("the gate over the real themes", () => {
     expect(new Set(PENDING_W110).size).toBe(PENDING_W110.length);
   });
 
-  it("passes today only because every untokened theme is named on the pending list", () => {
+  it("passes with an empty pending list: every theme in the Cabin UI carries a complete, compliant token set", () => {
+    expect(report.filter((r) => r.status === "no-tokens")).toEqual([]);
     expect(attentionProblems(report, PENDING_W110)).toEqual([]);
+    expect(attentionProblems(report, [])).toEqual([]);
   });
 
-  it("fails without the tokens: the same themes with an empty pending list break the build", () => {
-    const problems = attentionProblems(report, []);
-    const untokened = report.filter((r) => r.status === "no-tokens").length;
-    expect(problems).toHaveLength(untokened);
-    if (untokened) expect(problems[0]).toMatch(/no attention tokens .* not on the pending list/);
+  it("nine themes are supported; Asteroid City is unsupported on lightness only, and routes to the strongest-weight cues", () => {
+    const byId = Object.fromEntries(report.map((r) => [r.id, r]));
+    for (const id of Object.keys(THEMES).filter((t) => t !== "asteroidcity")) expect(byId[id].status, id).toBe("supported");
+    expect(byId.asteroidcity.status).toBe("unsupported");
+    expect(byId.asteroidcity.failures).toEqual([]);
+    expect(byId.asteroidcity.hueFailures.every((f) => /lightness gap/.test(f))).toBe(true);
+    expect(THEMES.asteroidcity.vars["--attn-cue-scale"]).toBe("1.5");
+    for (const id of Object.keys(THEMES).filter((t) => t !== "asteroidcity")) expect(THEMES[id].vars["--attn-cue-scale"], id).toBe("1");
+  });
+
+  it("fails without the tokens: stripping every --attn-* from the same themes breaks the build for all ten", () => {
+    const stripped = Object.fromEntries(Object.entries(THEMES).map(([id, t]) => [id,
+      { ...t, vars: Object.fromEntries(Object.entries(t.vars).filter(([k]) => !k.startsWith("--attn-"))) }]));
+    const problems = attentionProblems(attentionReport(stripped), []);
+    expect(problems).toHaveLength(10);
+    expect(problems[0]).toMatch(/no attention tokens .* not on the pending list/);
   });
 
   it("a theme added later and not on the pending list fails the gate", () => {
@@ -156,18 +169,24 @@ describe("the gate over the real themes", () => {
     expect(attentionProblems([partial], ["synthetic"])).toHaveLength(1);
   });
 
-  it("reports the Family Hub surface separately, per theme, and it is pending too", () => {
+  it("reports the Family Hub surface separately, per theme, with the same outcome as the Cabin UI", () => {
     expect(hubThemes, "family-hub/family-hub.html must be reachable: Family Hub is a required W-111 surface").not.toBeNull();
     const hubReport = attentionReport(hubThemes, "hub");
     expect(hubReport.map((r) => r.id).sort()).toEqual(Object.keys(THEMES).sort());
     expect(hubReport.every((r) => r.surface === "hub")).toBe(true);
-    expect(hubReport.filter((r) => r.status !== "no-tokens")).toEqual([]);
-    expect(attentionProblems(hubReport, PENDING_W110)).toEqual([]);
-    expect(attentionProblems(hubReport, [])).toHaveLength(10);
+    expect(hubReport.filter((r) => r.status === "no-tokens")).toEqual([]);
+    expect(attentionProblems(hubReport, [])).toEqual([]);
+    expect(Object.fromEntries(hubReport.map((r) => [r.id, r.status]))).toEqual(Object.fromEntries(report.map((r) => [r.id, r.status])));
     expect(SURFACES.hub).toEqual(["--night"]);
     const text = formatReport([...report, ...hubReport]);
     expect(text).toMatch(/\| modern \| cabin \|/);
     expect(text).toMatch(/\| modern \| hub \|/);
+  });
+
+  it("gives Family Hub exactly the same attention values as the Cabin UI, so a theme reads the same in both apps", () => {
+    expect(hubThemes).not.toBeNull();
+    const keys = [...ATTN_STATES.flatMap((s) => [attnVar(s), attnInkVar(s)]), "--attn-cue-scale"];
+    for (const id of Object.keys(THEMES)) for (const k of keys) expect(hubThemes[id].vars[k], `${id} ${k}`).toBe(THEMES[id].vars[k]);
   });
 
   it("extracts Family Hub variables from its inline theme table", () => {
@@ -176,9 +195,9 @@ describe("the gate over the real themes", () => {
     expect(Object.keys(hubThemes)).toHaveLength(10);
   });
 
-  it("reports pending themes as unimplemented, not as having a compliant fallback", () => {
+  it("reports no pending themes, never claims a fallback palette, and still lists what was not run", () => {
     const text = formatReport(report);
-    expect(text).toMatch(/pending W-110: no attention tokens, nothing implemented/);
+    expect(text).not.toMatch(/pending W-110/);
     expect(text).not.toMatch(/fallback/i);
     expect(text).toMatch(/NOT_RUN/);
   });

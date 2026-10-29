@@ -1920,6 +1920,100 @@
       border-color: var(--layer-hover-edge);
       box-shadow: var(--layer-hover-shadow);
     }
+    /* <attention-cues> */
+    /* Attention presentation (W-109 matrix, W-110). Status has its own channel: only --attn-* hues, never --layer-N-* or --danger,
+       and never a bar (the critical alert keeps its red bar, label and pulse, untouched). No animation, pulse or glow anywhere in
+       this block. Cues are always on: border pattern, corner asterisks, icon and label carry the state, hue is the extra channel.
+       Opt in with data-attn="normal|watch|alert|unavailable|last-known-alert" on a card, and data-attn-chip on its label chip.
+       Embedded line-for-line in family-hub.html and styles.css; AttentionCuesDrift.test.jsx fails the build if the copies differ. */
+    :root { --attn-cue-scale: 1; --attn-contrast-scale: 1; }
+    [data-attn] {
+      --attn-hue: var(--attn-normal);
+      --attn-u: calc(1px * var(--attn-cue-scale, 1) * var(--attn-contrast-scale, 1));
+      position: relative;
+      box-sizing: border-box;
+      border: var(--attn-u) solid var(--attn-hue);
+    }
+    [data-attn="watch"] { --attn-hue: var(--attn-watch); border: calc(3 * var(--attn-u)) dotted var(--attn-hue); }
+    [data-attn="alert"] {
+      --attn-hue: var(--attn-alert);
+      border: calc(4 * var(--attn-u)) solid var(--attn-hue);
+      outline: calc(2 * var(--attn-u)) solid var(--attn-hue);
+      outline-offset: calc(-8 * var(--attn-u));
+    }
+    [data-attn="unavailable"] { --attn-hue: currentColor; border: var(--attn-u) dashed currentColor; }
+    [data-attn="last-known-alert"] { --attn-hue: var(--attn-alert); border: calc(2 * var(--attn-u)) dashed var(--attn-hue); }
+    [data-attn="alert"]::after, [data-attn="last-known-alert"]::after {
+      --attn-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8l-8.4 8.4' stroke='black' stroke-width='2' stroke-linecap='square' fill='none'/%3E%3C/svg%3E");
+      content: "";
+      position: absolute;
+      inset: calc(6 * var(--attn-u));
+      pointer-events: none;
+      background: var(--attn-hue);
+      -webkit-mask-image: var(--attn-star), var(--attn-star), var(--attn-star), var(--attn-star);
+      mask-image: var(--attn-star), var(--attn-star), var(--attn-star), var(--attn-star);
+      -webkit-mask-position: left top, right top, left bottom, right bottom;
+      mask-position: left top, right top, left bottom, right bottom;
+      -webkit-mask-size: calc(14 * var(--attn-u));
+      mask-size: calc(14 * var(--attn-u));
+      -webkit-mask-repeat: no-repeat;
+      mask-repeat: no-repeat;
+    }
+    /* Last known Alert is drawn in outline: thinner asterisks, dashed border, no fill. */
+    [data-attn="last-known-alert"]::after {
+      --attn-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8l-8.4 8.4' stroke='black' stroke-width='0.9' stroke-linecap='square' fill='none'/%3E%3C/svg%3E");
+    }
+    /* Label chip: the state word is always shown, with its own icon silhouette. */
+    [data-attn-chip] {
+      --attn-chip-hue: var(--attn-normal);
+      --attn-chip-ink: var(--attn-normal-ink);
+      --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6.5'/%3E%3Cpath d='M5 8.2l2 2 4-4.4'/%3E%3C/svg%3E");
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4em;
+      padding: 0.15em 0.6em;
+      font-weight: 700;
+      line-height: 1.3;
+      background: var(--attn-chip-hue);
+      color: var(--attn-chip-ink);
+      border-radius: var(--radius-sm, 4px);
+    }
+    [data-attn-chip]::before {
+      content: "";
+      flex: none;
+      width: 1.1em;
+      height: 1.1em;
+      background: currentColor;
+      -webkit-mask: var(--attn-icon) center / contain no-repeat;
+      mask: var(--attn-icon) center / contain no-repeat;
+    }
+    [data-attn-chip="watch"] {
+      --attn-chip-hue: var(--attn-watch); --attn-chip-ink: var(--attn-watch-ink);
+      --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2L14.5 13.5H1.5Z'/%3E%3C/svg%3E");
+    }
+    [data-attn-chip="alert"] {
+      --attn-chip-hue: var(--attn-alert); --attn-chip-ink: var(--attn-alert-ink);
+      --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.2 1.5h5.6l3.7 3.7v5.6l-3.7 3.7H5.2L1.5 10.8V5.2z'/%3E%3Cpath d='M8 4.8v4M8 11v.01'/%3E%3C/svg%3E");
+    }
+    [data-attn-chip="unavailable"] {
+      --attn-chip-hue: transparent; --attn-chip-ink: currentColor;
+      --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-dasharray='2.4 2.4'%3E%3Ccircle cx='8' cy='8' r='6.5'/%3E%3C/svg%3E");
+      outline: 1px dashed currentColor;
+      outline-offset: -1px;
+    }
+    [data-attn-chip="last-known-alert"] {
+      --attn-chip-hue: transparent; --attn-chip-ink: currentColor;
+      --attn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.2 1.5h5.6l3.7 3.7v5.6l-3.7 3.7H5.2L1.5 10.8V5.2z' stroke-dasharray='3 2'/%3E%3Cpath d='M8 5v3.4l2 1.2'/%3E%3C/svg%3E");
+      outline: 2px dashed var(--attn-alert);
+      outline-offset: -2px;
+    }
+    @media (prefers-contrast: more) { :root { --attn-contrast-scale: 1.5; } }
+    @media (forced-colors: active) {
+      [data-attn] { forced-color-adjust: none; border-color: CanvasText; outline-color: CanvasText; }
+      [data-attn]::after { background: CanvasText; }
+      [data-attn-chip] { forced-color-adjust: none; background: Canvas; color: CanvasText; outline: 1px solid CanvasText; outline-offset: -1px; }
+    }
+    /* </attention-cues> */
     /* Tab buttons: one color in every state; the active tab is marked by its
        underline, not a different text color. */
     .d-tab, .d-tab:hover, .d-tab.active { color: var(--tab-color); }
@@ -6052,6 +6146,11 @@ const THEMES = {
       '--rose':'#f85149', '--rose-glow':'rgba(248,81,73,0.18)',
       '--cream':'#e6edf3', '--cream-dim':'rgba(230,237,243,0.62)', '--cream-ghost':'rgba(230,237,243,0.28)',
       '--radius':'10px', '--font-display':"'Inter',system-ui,sans-serif", '--font-ui':"'Inter',system-ui,sans-serif",
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#2093e8', '--attn-normal-ink':'#0b0f14',
+      '--attn-watch':'#fbe729', '--attn-watch-ink':'#0b0f14',
+      '--attn-alert':'#f75c3e', '--attn-alert-ink':'#0b0f14',
+      '--attn-cue-scale':'1',
     },
     layers: { hues: ['#388bfd', '#e6edf3', '#3fb950'] },
     fonts: [],
@@ -6077,6 +6176,11 @@ const THEMES = {
       '--rose':'#ef4444', '--rose-glow':'rgba(239,68,68,0.18)',
       '--cream':'#eff0ec', '--cream-dim':'rgba(239,240,236,0.62)', '--cream-ghost':'rgba(239,240,236,0.28)',
       '--radius':'10px', '--font-display':"-apple-system,system-ui,sans-serif", '--font-ui':"-apple-system,system-ui,sans-serif",
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#6091dd', '--attn-normal-ink':'#0b0f14',
+      '--attn-watch':'#fee72b', '--attn-watch-ink':'#0b0f14',
+      '--attn-alert':'#fc5955', '--attn-alert-ink':'#0b0f14',
+      '--attn-cue-scale':'1',
     },
     layers: { hues: ['#3d3dff', '#989d9e', '#eff0ec'] },
     fonts: [],
@@ -6091,6 +6195,11 @@ const THEMES = {
       '--rose':'#ff2d55', '--rose-glow':'rgba(255,45,85,0.18)',
       '--cream':'#ffffff', '--cream-dim':'rgba(255,255,255,0.62)', '--cream-ghost':'rgba(255,255,255,0.28)',
       '--radius':'0px', '--font-display':"'Chakra Petch','Helvetica Neue',sans-serif", '--font-ui':"'Chakra Petch','Helvetica Neue',sans-serif",
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#0a95cf', '--attn-normal-ink':'#0b0f14',
+      '--attn-watch':'#f4e131', '--attn-watch-ink':'#0b0f14',
+      '--attn-alert':'#f45172', '--attn-alert-ink':'#0b0f14',
+      '--attn-cue-scale':'1',
     },
     layers: { hues: ['#00a3ff', '#4a4f5e', '#ffffff'], widths: ['1px', '2px', '1px'] },
     fonts: [{ id:'fh-font-deepspace', href:'https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Share+Tech+Mono&display=swap' }],
@@ -6108,6 +6217,11 @@ const THEMES = {
       '--rose':'#cc0000', '--rose-glow':'rgba(204,0,0,0.18)',
       '--cream':'#ffcc99', '--cream-dim':'rgba(204,153,204,0.92)', '--cream-ghost':'rgba(156,156,255,0.85)',
       '--radius':'18px', '--font-display':"'Michroma','Arial',sans-serif", '--font-ui':"'Titillium Web','Arial',sans-serif",
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#4da2d5', '--attn-normal-ink':'#0b0f14',
+      '--attn-watch':'#faf775', '--attn-watch-ink':'#0b0f14',
+      '--attn-alert':'#fb574b', '--attn-alert-ink':'#0b0f14',
+      '--attn-cue-scale':'1',
     },
     /* Antonio (condensed) was hard to read at speed. Michroma is the same
        wide, blocky sci-fi-console letterform LCARS is going for, without
@@ -6126,6 +6240,11 @@ const THEMES = {
       '--rose':'#884444', '--rose-glow':'rgba(136,68,68,0.18)',
       '--cream':'#cccccc', '--cream-dim':'rgba(204,204,204,0.62)', '--cream-ghost':'rgba(204,204,204,0.28)',
       '--radius':'2px', '--font-display':"'IBM Plex Mono','Courier New',monospace", '--font-ui':"'IBM Plex Mono','Courier New',monospace",
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#7692b8', '--attn-normal-ink':'#0b0f14',
+      '--attn-watch':'#fee07b', '--attn-watch-ink':'#0b0f14',
+      '--attn-alert':'#eb6660', '--attn-alert-ink':'#0b0f14',
+      '--attn-cue-scale':'1',
     },
     layers: { hues: ['#666666', '#cccccc', '#448844'] },
     fonts: [{ id:'fh-font-monolith', href:'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap' }],
@@ -6140,6 +6259,11 @@ const THEMES = {
       '--rose':'#a04040', '--rose-glow':'rgba(160,64,64,0.18)',
       '--cream':'#a0c8f0', '--cream-dim':'rgba(160,200,240,0.62)', '--cream-ghost':'rgba(160,200,240,0.28)',
       '--radius':'6px', '--font-display':"'Roboto Mono','JetBrains Mono',monospace", '--font-ui':"'Roboto Mono','JetBrains Mono',monospace",
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#499ca4', '--attn-normal-ink':'#0b0f14',
+      '--attn-watch':'#f5e64e', '--attn-watch-ink':'#0b0f14',
+      '--attn-alert':'#f36152', '--attn-alert-ink':'#0b0f14',
+      '--attn-cue-scale':'1',
     },
     layers: { hues: ['#4080c0', '#a0c8f0', '#40a080'] },
     fonts: [{ id:'fh-font-bluefin', href:'https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;600&display=swap' }],
@@ -6154,6 +6278,11 @@ const THEMES = {
       '--rose':'#ff006e', '--rose-glow':'rgba(255,0,110,0.18)',
       '--cream':'#c8ffb0', '--cream-dim':'rgba(200,255,176,0.62)', '--cream-ghost':'rgba(200,255,176,0.28)',
       '--radius':'2px', '--font-display':"'Share Tech Mono','Courier New',monospace", '--font-ui':"'Share Tech Mono','Courier New',monospace",
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#3ca3c3', '--attn-normal-ink':'#0b0f14',
+      '--attn-watch':'#eefe3b', '--attn-watch-ink':'#0b0f14',
+      '--attn-alert':'#fe439d', '--attn-alert-ink':'#0b0f14',
+      '--attn-cue-scale':'1',
     },
     layers: { hues: ['#39ff14', '#bf00ff', '#f5f500'] },
     fonts: [{ id:'fh-font-madscience', href:'https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap' }],
@@ -6168,6 +6297,11 @@ const THEMES = {
       '--rose':'#ffff66', '--rose-glow':'rgba(255,255,102,0.28)',
       '--cream':'#f6f0ff', '--cream-dim':'rgba(246,240,255,0.68)', '--cream-ghost':'rgba(246,240,255,0.30)',
       '--radius':'2px', '--font-display':"'Monoton','Chakra Petch',sans-serif", '--font-ui':"'Baumans','Oxanium',sans-serif",
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#2f8ff6', '--attn-normal-ink':'#0b0f14',
+      '--attn-watch':'#f7ec2a', '--attn-watch-ink':'#0b0f14',
+      '--attn-alert':'#fd5a4a', '--attn-alert-ink':'#0b0f14',
+      '--attn-cue-scale':'1',
     },
     layers: { hues: ['#ff2dd4', '#add8e6', '#ffff66'], shadow: 'glow', tab: '#ffff66' },
     fonts: [{ id:'fh-font-neon80s', href:'https://fonts.googleapis.com/css2?family=Monoton&display=swap' }],
@@ -6182,6 +6316,11 @@ const THEMES = {
       '--rose':'#ff0000', '--rose-glow':'rgba(255,0,0,0.3)',
       '--cream':'#ffffff', '--cream-dim':'rgba(255,255,255,0.72)', '--cream-ghost':'rgba(255,255,255,0.32)',
       '--radius':'16px', '--font-display':"'Crackman',system-ui,sans-serif", '--font-ui':"'VT323','Share Tech Mono',monospace",
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#1674ca', '--attn-normal-ink':'#ffffff',
+      '--attn-watch':'#fbb50f', '--attn-watch-ink':'#0b0f14',
+      '--attn-alert':'#f03336', '--attn-alert-ink':'#0b0f14',
+      '--attn-cue-scale':'1',
     },
     /* User-provided CC0 Crackman supplies the arcade display tier. */
     layers: { hues: ['#ffff00', '#00ffde', '#ffaa00'] },
@@ -6249,6 +6388,11 @@ const THEMES = {
       // crest-src swap below (a second, purpose-recolored SVG file), kept
       // here as the documented source of truth for those exact values.
       '--logo-fg':'#245548', '--logo-fill':'#608c4a', '--logo-highlight':'#a1c19b', '--logo-shadow':'rgba(36,85,72,0.34)',
+      /* Attention status layer (W-110): same values as cabin-ui's ThemeProvider.jsx; checked by attentionTokens.js. */
+      '--attn-normal':'#001e39', '--attn-normal-ink':'#ffffff',
+      '--attn-watch':'#523f17', '--attn-watch-ink':'#ffffff',
+      '--attn-alert':'#420103', '--attn-alert-ink':'#ffffff',
+      '--attn-cue-scale':'1.5',
     },
     layers: { hues: ['#e34e24', '#608c4a', '#ffffff'], shadow: 'hard', widths: ['3px', '3px', '2px'], edgeHue: 0, tints: [0, 0.4, 0.5] },
     fonts: [{ id:'fh-font-asteroid', href:'https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;500;700&family=Montserrat:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap' }],

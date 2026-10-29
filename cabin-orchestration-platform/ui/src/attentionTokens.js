@@ -24,7 +24,10 @@ export const THRESHOLDS = {
   // Pairwise distinguishability of the three hues under simulated colour-vision deficiency, as CIEDE2000.
   // A proposal Nate may amend (W-109 matrix section 5), so still reported as provisional.
   hueDeltaE00: 10,
-  provisional: ["hueDeltaE00"],
+  // Cowork ruling 5a (W-109 matrix section 5): Watch differs from Alert, and Normal from Watch, by at least this many L* points,
+  // measured after colour-vision simulation, so a green/amber/red triplet of similar lightness cannot pass. Also a proposal.
+  lightnessGap: 20,
+  provisional: ["hueDeltaE00", "lightnessGap"],
 };
 
 export const DEFICIENCIES = ["deuteranopia", "protanopia", "tritanopia"];
@@ -97,6 +100,7 @@ export function deltaE00FromLab([L1, a1, b1], [L2, a2, b2]) {
   return Math.sqrt((dLp / Sl) ** 2 + (dCp / Sc) ** 2 + (dHp / Sh) ** 2 + Rt * (dCp / Sc) * (dHp / Sh));
 }
 export const deltaE00 = (rgbA, rgbB) => deltaE00FromLab(toLab(rgbA), toLab(rgbB));
+export const lightness = (rgb) => toLab(rgb)[0];
 
 export function evaluateTheme(theme, surface = "cabin") {
   const vars = theme.vars || {};
@@ -126,6 +130,12 @@ export function evaluateTheme(theme, surface = "cabin") {
         const d = deltaE00(simulate(vars[attnVar(ATTN_STATES[i])], deficiency), simulate(vars[attnVar(ATTN_STATES[j])], deficiency));
         if (d < THRESHOLDS.hueDeltaE00) hueFailures.push(`${ATTN_STATES[i]} vs ${ATTN_STATES[j]} under ${deficiency}: deltaE00 ${d.toFixed(1)} < ${THRESHOLDS.hueDeltaE00} (provisional)`);
       }
+    }
+    // Lightness rule: Normal-Watch and Watch-Alert only (a Normal-Alert pair is already separated by hue and by the cues).
+    for (const [a, b] of [["normal", "watch"], ["watch", "alert"]]) {
+      if (!have(attnVar(a), attnVar(b))) continue;
+      const gap = Math.abs(lightness(simulate(vars[attnVar(a)], deficiency)) - lightness(simulate(vars[attnVar(b)], deficiency)));
+      if (gap < THRESHOLDS.lightnessGap) hueFailures.push(`${a} vs ${b} under ${deficiency}: lightness gap ${gap.toFixed(1)} L* < ${THRESHOLDS.lightnessGap} (provisional)`);
     }
   }
   const status = missing.length ? "partial" : failures.length ? "fail" : hueFailures.length ? "unsupported" : "supported";
@@ -167,5 +177,5 @@ export function formatReport(report) {
   const detail = (r) => (r.status === "no-tokens" ? "pending W-110: no attention tokens, nothing implemented"
     : [...r.failures, ...(r.hueFailures || [])].join("; ") || "meets the provisional thresholds (not human-verified)");
   return ["| theme | surface | status | detail |", "|---|---|---|---|", ...report.map((r) => `| ${r.id} | ${r.surface} | ${r.status} | ${detail(r)} |`), "",
-    "Covers Normal/Watch/Alert tokens only. NOT_RUN: other W-109 states, dotted and asterisk cues, forced colours, W-105 human gate."].join("\n");
+    "Covers the Normal/Watch/Alert tokens only. NOT_RUN: partial-coverage and latched-alarm presentation, a rendered check of the dotted and asterisk cues, forced colours, W-105 human gate."].join("\n");
 }
