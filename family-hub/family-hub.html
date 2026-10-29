@@ -2095,6 +2095,9 @@
       [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
     }
     [data-theme="signal"] :is(input, textarea)::placeholder { color: var(--cream-dim); }
+    /* Surfaces (Nate 2026-10-29: fills were grey against the black page). Big cards are pure page black with no hairline, told
+       apart by their hue bar; the small boxes inside keep a frame in an affirming colour, not grey. */
+    [data-theme="signal"] :is(.glass-card, #notepad-panel, #settings-panel) { background: var(--night); border-color: transparent; }
     /* Cards: a 3px top bar in the card's hue, its label in the same hue. */
     [data-theme="signal"] #cal-card { --hue: var(--role-select); }
     [data-theme="signal"] #chores-card { --hue: var(--role-on); }
@@ -2105,7 +2108,7 @@
     [data-theme="signal"] :is(.glass-card, #notepad-panel, #settings-panel) { border-top: 3px solid var(--hue, var(--role-select)); }
     [data-theme="signal"] :is(.glass-card, #notepad-panel, #settings-panel) .card-label { color: var(--hue, var(--cream-dim)); }
     [data-theme="signal"] :is(.bday-item, .reward-strip, .cabin-activity-row, .chore-day-block, .kid-reward-row, .reward-tile) {
-      border-color: color-mix(in srgb, var(--hue, var(--role-select)) 55%, transparent);
+      background: transparent; border-color: color-mix(in srgb, var(--hue, var(--role-select)) 55%, transparent);
     }
     /* Selected = cyan (an active pill or choice); confirm = lime (save and send). */
     [data-theme="signal"] :is(.kid-sel-btn.active, .theme-pill.active, .np-author-pill.active) {

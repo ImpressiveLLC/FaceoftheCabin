@@ -242,3 +242,27 @@ describe("Signal colour roles reach every tab except Monitoring (Nate 2026-10-29
     expect(cabinCss).toMatch(/:is\(input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\):not\(\[type="range"\]\), select:not\(\.presence-select\), textarea\):focus \{ box-shadow/);
   });
 });
+
+describe("Signal surfaces: pure black fills, no grey hairlines (Nate 2026-10-29)", () => {
+  const sectionOf = (css, name) => {
+    const a = css.indexOf(`/* <${name}> */`), b = css.indexOf(`/* </${name}> */`);
+    return a >= 0 && b > a ? css.slice(a, b) : "";
+  };
+  const cabin = sectionOf(cabinCss, "signal-surfaces");
+
+  it("cabin: big frames float (no fill, no border colour), mid and small boxes get a coloured edge", () => {
+    expect(cabin.length, "surfaces section present").toBeGreaterThan(0);
+    expect(cabin).toMatch(/\.sensor-history-panel[\s\S]*?\{\s*background: transparent; border-color: transparent;/);
+    expect(cabin).toMatch(/\.dm-device-row[\s\S]*?\{\s*background: transparent; border-color: color-mix\(in srgb, var\(--hue, var\(--signal-cool\)\) 55%, transparent\)/);
+    expect(cabin).not.toMatch(/var\(--border\)|var\(--bg-secondary\)|var\(--surface\)|var\(--layer-/);
+    expect(cabin).not.toMatch(/#[0-9a-fA-F]{3,8}\b|animation|box-shadow|@keyframes/);
+    // The tiles' own status borders are left to the cue block.
+    expect(cabin).not.toMatch(/\.kpi-tile|\.state-badge/);
+  });
+
+  it("hub: cards are the page black with no hairline, and small boxes have no grey fill", () => {
+    const hub = sectionOf(hubHtml, "signal-roles");
+    expect(hub).toMatch(/:is\(\.glass-card, #notepad-panel, #settings-panel\) \{ background: var\(--night\); border-color: transparent; \}/);
+    expect(hub).toMatch(/\.bday-item[^{]*\{\s*background: transparent; border-color: color-mix\(in srgb, var\(--hue/);
+  });
+});

@@ -2863,6 +2863,28 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 [data-theme="signal"] .event-log, [data-theme="signal"] .api-status { font-family: var(--font-mono); }
 
+/* <signal-surfaces> */
+/* Surfaces (2026-10-29, Nate: panel fills were grey against the pure-black page, and the thin grey outlines did not fit).
+   Big frames float: no fill and no hairline, as the Monitoring tile frame already does, so the page stays one black and the
+   cards are told apart by their hue bars and spacing. Mid and small boxes keep a frame, in an affirming colour (cyan, or the
+   card's own hue) at a strength that stays 3:1 against black, never grey. The tiles' own status borders are not touched. */
+[data-theme="signal"] :is(.active-conditions, .sidebar-card, .config-card, .dm-device-group, .dm-detail, .sensor-history-panel,
+  .pairing-card, .family-hub-card, .event-log, .demo-hidden-panel) {
+  background: transparent; border-color: transparent;
+}
+[data-theme="signal"] :is(.opportunity-card, .device-card, .dm-device-row, .dm-why-card, .dm-candidate-card, .rule-row, .active-condition,
+  .automation-alert-card, .camera-event-row, .camera-motion-row, .guest-access-row, .guest-alert-row, .guest-device-row, .add-place-form,
+  .dm-add-option, .presence-sensor, .alert-ctrl-unconfigured, .helpdesk-assistant .helpdesk-bubble) {
+  background: transparent; border-color: color-mix(in srgb, var(--hue, var(--signal-cool)) 55%, transparent);
+}
+[data-theme="signal"] :is(.camera-health-tile, .opportunity-detail, .workflow-execution-history, .opportunity-lineage-chip, .section-count-badge,
+  .code-block, .capability-chip, .meta-chip, .camera-clip-expanded, .camera-event-thumb, .presence-stats > div,
+  .sensor-history-device-chip, .sensor-history-topic-tab) {
+  border-color: color-mix(in srgb, var(--signal-cool) 50%, transparent);
+}
+[data-theme="signal"] .sensor-history-table th { background: transparent; }
+/* </signal-surfaces> */
+
 /* <signal-roles> */
 /* Colour roles (2026-10-29, Nate: the Monitoring page is the bar, every other tab should use the whole palette the same way).
    One hue per job, so a glance says what is selected, what state something is in, and what to do next:
@@ -2913,6 +2935,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
   color: var(--role-select); border-color: color-mix(in srgb, var(--role-select) 55%, transparent);
 }
 [data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) .btn-secondary:hover { background: color-mix(in srgb, var(--role-select) 10%, transparent); border-color: var(--role-select); }
+[data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) .btn-ghost { border-color: color-mix(in srgb, var(--role-select) 50%, transparent); }
 [data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) :is(.btn-ghost, .dm-l1-btn):hover:not(:disabled) {
   color: var(--text); border-color: color-mix(in srgb, var(--role-select) 60%, var(--border));
 }
@@ -2948,7 +2971,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 [data-theme="signal"] :is([data-panel="rules"] .sidebar-card strong, [data-panel="places"] .family-hub-card-header) { color: var(--hue, var(--text)); }
 
 /* Device Manager. Mode tabs carry their own hue even when idle (See cyan, Change orange, Add lime, Remove red); the active one fills. */
-[data-theme="signal"] [data-panel="devices"] .dm-l1-btn { --mode: var(--role-select); border-radius: 0; border-color: color-mix(in srgb, var(--mode) 30%, var(--border)); }
+[data-theme="signal"] [data-panel="devices"] .dm-l1-btn { --mode: var(--role-select); border-radius: 0; border-color: color-mix(in srgb, var(--mode) 55%, transparent); }
 [data-theme="signal"] [data-panel="devices"] .dm-l1-btn svg { color: var(--mode); }
 [data-theme="signal"] [data-panel="devices"] .dm-l1-btn:nth-child(2) { --mode: var(--role-edit); }
 [data-theme="signal"] [data-panel="devices"] .dm-l1-btn:nth-child(3) { --mode: var(--role-on); }
@@ -2969,7 +2992,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 
 /* Rows: flat cells. Hover tints cyan; the selected row gets a cyan border, a thick cyan left edge, a cyan tint and a cyan name. */
 [data-theme="signal"] [data-panel="devices"] .dm-device-row {
-  border-radius: 0; background: transparent; border-color: var(--border); box-shadow: none;
+  border-radius: 0; background: transparent; border-color: color-mix(in srgb, var(--hue, var(--role-select)) 55%, transparent); box-shadow: none;
 }
 [data-theme="signal"] [data-panel="devices"] .dm-device-row:hover {
   border-color: color-mix(in srgb, var(--role-select) 60%, var(--border)); background: color-mix(in srgb, var(--role-select) 5%, transparent);
