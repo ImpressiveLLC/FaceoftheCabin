@@ -55,10 +55,10 @@ class CabinAccessTokensControllerTest {
         CabinAccessToken t = controller.create(Map.of("label", "Test", "scope", List.of("dashboard")), signedInAs("nate@example.com"));
         controller.revoke(t.id());
 
-        List<CabinAccessToken> all = controller.list();
+        List<CabinAccessTokensController.AccessLinkView> all = controller.list();
 
         assertThat(all).hasSize(1);
-        assertThat(all.get(0).revokedAt()).isNotNull();
+        assertThat(all.get(0).token().revokedAt()).isNotNull();
     }
 
     private static final class InMemoryStore implements CabinAccessTokenStore {

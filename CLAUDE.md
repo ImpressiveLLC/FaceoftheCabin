@@ -685,7 +685,8 @@ column for writes is enforced, not just described. Reads follow D14: several
 |---|---|---|
 | `GET /api/alerts/active`, `/rules`, `/acknowledgments`; `POST /acknowledgments`; `DELETE /acknowledgments/{alertKey}` | AlertController | `GET` open; acknowledge and snooze need a signed-in session |
 | `POST /api/devices/{id}/discovery/run`, `/apply`; `GET .../discovery/latest` | DeviceDiscoveryController | writes need a signed-in session (W-31, merged 2026-10-03, live-verified 2026-10-04); `GET` open |
-| `GET`/`POST /api/access-tokens`, `DELETE /{id}` | CabinAccessTokensController | signed-in admin only; never a guest token |
+| `GET`/`POST /api/access-tokens`, `DELETE /{id}` | CabinAccessTokensController | signed-in admin only; never a guest token. `GET` returns each link with `firstUsedAt`, `lastUsedAt` and `useCount` (W-121) |
+| `GET /api/access-tokens/{id}/activity?days=` (W-121) | CabinAccessTokensController | signed-in admin only; demo links get 403. Newest first, at most 500 rows, from `cabin_access_events` (kept 90 days, `cabin.access.events-retention-days`) |
 | `/api/managed-users` (list, create, `/{id}/deactivate`, `/reactivate`, `/invite`, `/magic/{token}/consume`) | ManagedUsersController | admin; `consume` is exempt because the single-use magic-link token is the credential |
 | `POST /api/auth/session`, `POST /api/auth/session/revoke` | AuthController | `session` needs a Google token, managed session or existing CabinSession; `revoke` is open on purpose (holding the token is the proof) |
 | `GET /api/cross-domain/cabin-status-summary` | CrossDomainController | gated, plus a per-route household-role check (D11) |

@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.security.demo;
 
+import com.cabin.orchestrator.security.AccessClient;
+import com.cabin.orchestrator.security.AccessEvent;
 import com.cabin.orchestrator.security.CabinAccessToken;
 import com.cabin.orchestrator.security.CabinAccessTokenService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -91,16 +93,16 @@ public class DemoAccessFilter extends OncePerRequestFilter {
         applyDemoHeaders(response);
 
         if (!token.isValid(java.time.Instant.now())) {
-            deny(response, 401, "GUEST_LINK_INACTIVE", INACTIVE_MESSAGE, token, path, "INACTIVE");
+            deny(request, response, 401, "GUEST_LINK_INACTIVE", INACTIVE_MESSAGE, token, path, "INACTIVE");
             return;
         }
         if (!"GET".equalsIgnoreCase(request.getMethod()) && !"HEAD".equalsIgnoreCase(request.getMethod())) {
-            deny(response, 403, "GUEST_READ_ONLY", READ_ONLY_MESSAGE, token, path, "WRITE");
+            deny(request, response, 403, "GUEST_READ_ONLY", READ_ONLY_MESSAGE, token, path, "WRITE");
             return;
         }
         DemoAccessPolicy.RouteClass routeClass = DemoAccessPolicy.classify(path);
         if (routeClass == DemoAccessPolicy.RouteClass.DENY) {
-            deny(response, 403, "GUEST_SCOPE_NOT_INCLUDED", DENIAL_MESSAGE, token, path, "DENY");
+            deny(request, response, 403, "GUEST_SCOPE_NOT_INCLUDED", DENIAL_MESSAGE, token, path, "DENY");
             return;
         }
         request.setAttribute(REQUEST_ATTR_DEMO_TOKEN_ID, token.id());
@@ -112,12 +114,30 @@ public class DemoAccessFilter extends OncePerRequestFilter {
             if (deviceId != null && presence.presenceDevices().containsKey(deviceId)) {
                 log.info("demo request token={} route={} class={} redacted=series", token.id(), path, routeClass);
                 writeJson(response, 200, List.of());
+                record(token, request, path, routeClass.name(), 200, isPageOpen(request));
                 return;
             }
             request = clampDays(request);
         }
         log.info("demo request token={} route={} class={}", token.id(), path, routeClass);
-        chain.doFilter(request, response);
+        try {
+            chain.doFilter(request, response);
+        } finally {
+            record(token, request, path, routeClass.name(), response.getStatus(), isPageOpen(request));
+        }
+    }
+
+    /** The demo UI makes one cheap GET with this header when it mounts, so "opened the link" is its own event. */
+    static final String PAGE_OPEN_HEADER = "X-Demo-Page-Open";
+
+    private static boolean isPageOpen(HttpServletRequest request) {
+        return "1".equals(request.getHeader(PAGE_OPEN_HEADER));
+    }
+
+    private void record(CabinAccessToken token, HttpServletRequest request, String path, String policyClass,
+                        int status, boolean pageOpen) {
+        accessTokens.recordUse(token, AccessEvent.TIER_DEMO, pageOpen ? AccessEvent.ROUTE_PAGE_OPEN : path,
+            policyClass, status, AccessClient.ip(request), AccessClient.userAgent(request), pageOpen);
     }
 
     private HttpServletRequest clampDays(HttpServletRequest request) {
@@ -156,10 +176,11 @@ public class DemoAccessFilter extends OncePerRequestFilter {
         response.setHeader("Cache-Control", "no-store");
     }
 
-    private void deny(HttpServletResponse response, int status, String code, String message,
+    private void deny(HttpServletRequest request, HttpServletResponse response, int status, String code, String message,
                       CabinAccessToken token, String path, String reason) throws IOException {
         // R-GD: denials log at INFO under a dedicated logger, never as errors.
         log.info("demo denial token={} route={} code={} reason={}", token.id(), path, code, reason);
+        record(token, request, path, reason, status, false);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("code", code);
         body.put("denied_by_design", true);
