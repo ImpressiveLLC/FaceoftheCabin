@@ -2877,12 +2877,15 @@ select option { background: var(--bg-secondary); color: var(--text); }
   --role-edit: var(--signal-heat);
   --role-pending: var(--signal-amber);
   --role-danger: var(--danger);
-  accent-color: var(--role-select);
 }
+[data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) { accent-color: var(--role-select); }
 
-/* Keyboard focus is always cyan, on every control. */
-[data-theme="signal"] :is(a, button, summary, [role="button"], [tabindex]):focus-visible {
-  outline: 2px solid var(--role-select); outline-offset: 2px;
+/* Keyboard focus is cyan on every control outside Monitoring (its tiles keep their own ring). Not in forced colours: there the
+   system colours and the W-110 CanvasText outline on the status tiles apply, since cyan on a light Canvas is 1.64:1. */
+@media (not (forced-colors: active)) {
+  [data-theme="signal"] :is(a, button, summary, [role="button"], [tabindex]):focus-visible:not([data-panel="monitoring"] *) {
+    outline: 2px solid var(--role-select); outline-offset: 2px;
+  }
 }
 
 /* Fields: a cyan-tinted cell with a cyan hairline at rest, a full cyan edge and thick base when focused. */
@@ -2899,7 +2902,10 @@ select option { background: var(--bg-secondary); color: var(--text); }
   outline: 0; border-color: var(--role-select); border-bottom-width: 2px;
   background: color-mix(in srgb, var(--role-select) 9%, transparent);
 }
-[data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) :is(input, textarea)::placeholder { color: var(--text-dim); }
+@media (forced-colors: active) {
+  [data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select:not(.presence-select), textarea):focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+}
+[data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) :is(input, textarea)::placeholder { color: var(--text-muted); }
 [data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) :is(input, select, textarea):disabled { opacity: 0.45; border-color: var(--border); background: transparent; }
 
 /* Buttons: secondary = cyan (a thing you can do), ghost = neutral until hovered, primary = lime (confirm), danger = red. */
@@ -2953,7 +2959,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
   border-color: var(--mode) !important; border-bottom-width: 3px;
 }
 [data-theme="signal"] [data-panel="devices"] .dm-hint { color: var(--text-muted); }
-[data-theme="signal"] [data-panel="devices"] .dm-hint::before { content: "\25B8  "; color: var(--role-select); }
+[data-theme="signal"] [data-panel="devices"] .dm-hint::before { content: "\25B8  " / ""; color: var(--role-select); }
 
 /* Groups: square, a 3px left bar and the type name in the group's hue. */
 [data-theme="signal"] [data-panel="devices"] .dm-device-group {
@@ -3006,6 +3012,10 @@ select option { background: var(--bg-secondary); color: var(--text); }
 [data-theme="signal"] [data-panel="places"] .on-the-way-btn-prominent {
   color: var(--role-pending); background: transparent; border: 1px solid var(--role-pending); border-radius: 2px;
 }
+/* In forced colours the system palette decides: icons that carry an author hue follow the text colour instead. */
+@media (forced-colors: active) {
+  [data-theme="signal"] :is([data-panel="config"] .config-card-header svg, [data-panel="devices"] .dm-l1-btn svg, [data-panel="devices"] .dm-row-icon) { color: inherit; }
+}
 /* </signal-roles> */
 
 /* <signal-glow> */
@@ -3026,7 +3036,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
   /* Role glows: selected row and focused field in cyan, the active mode tab in its own hue. */
   [data-theme="signal"] [data-panel="devices"] .dm-device-row.dm-row-selected { box-shadow: 0 0 14px color-mix(in srgb, var(--role-select) 28%, transparent) !important; }
   [data-theme="signal"] [data-panel="devices"] .dm-l1-btn.dm-l1-active { box-shadow: 0 0 12px color-mix(in srgb, var(--mode) 32%, transparent) !important; }
-  [data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus { box-shadow: 0 0 10px color-mix(in srgb, var(--role-select) 35%, transparent); }
+  [data-theme="signal"] [data-panel]:not([data-panel="monitoring"]) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select:not(.presence-select), textarea):focus { box-shadow: 0 0 10px color-mix(in srgb, var(--role-select) 35%, transparent); }
   [data-theme="signal"] [data-panel="places"] .on-the-way-btn-prominent { box-shadow: 0 0 12px color-mix(in srgb, var(--role-pending) 30%, transparent); }
 }
 /* </signal-glow> */

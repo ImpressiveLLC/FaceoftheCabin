@@ -208,10 +208,18 @@ describe("Signal colour roles reach every tab except Monitoring (Nate 2026-10-29
     expect(cabinRoles).toMatch(/\.dm-device-row\.dm-row-selected \{[^}]*--role-select/);
   });
 
-  it("leaves Monitoring alone: no role rule targets its panel, its tiles or its readings", () => {
-    // The only mention of Monitoring's panel is an exclusion: every shared rule is written :not([data-panel="monitoring"]).
+  it("leaves Monitoring alone: every role rule is scoped to a panel other than Monitoring, or excludes it", () => {
+    expect(cabinRoles.length, "roles section present").toBeGreaterThan(0);
+    const body = cabinRoles.replace(/\/\*[\s\S]*?\*\//g, "");
+    const selectors = [...body.matchAll(/([^{}@;]+)\{/g)].map((m) => m[1].trim()).filter((x) => x && !x.startsWith("media "));
+    expect(selectors.length).toBeGreaterThan(20);
+    const unscoped = selectors.filter((sel) => sel !== '[data-theme="signal"]' && !/\[data-panel/.test(sel) && !/:not\(\[data-panel="monitoring"\] \*\)/.test(sel));
+    expect(unscoped, "role rules that could reach Monitoring").toEqual([]);
+    // Any mention of Monitoring's panel is an exclusion, never a target.
     for (const m of cabinRoles.matchAll(/data-panel="monitoring"/g)) expect(cabinRoles.slice(Math.max(0, m.index - 8), m.index)).toMatch(/:not\(\[$/);
     expect(cabinRoles).not.toMatch(/\.kpi-|\.state-badge|\.location-section/);
+    // The page-wide accent colour must not be set on the root (it would colour Monitoring's checkbox).
+    expect(cabinRoles).not.toMatch(/\[data-theme="signal"\] \{[^}]*accent-color/);
   });
 
   it("gives every panel root a data-panel hook, and Monitoring has its own", () => {
@@ -220,7 +228,17 @@ describe("Signal colour roles reach every tab except Monitoring (Nate 2026-10-29
     }
   });
 
-  it("keeps the focus ring cyan on every control in both apps", () => {
-    for (const css of [cabinRoles, hubRoles]) expect(css).toMatch(/:focus-visible\s*\{\s*outline: 2px solid var\(--role-select\)/);
+  it("keeps the focus ring cyan on every control outside Monitoring, and gives way to the system colours in forced colours", () => {
+    for (const css of [cabinRoles, hubRoles]) {
+      expect(css.length, "roles section present").toBeGreaterThan(0);
+      expect(css).toMatch(/@media \(not \(forced-colors: active\)\) \{\s*\[data-theme="signal"\] :is\(a, button, summary, \[role="button"\], \[tabindex\]\):focus-visible[^{]*\{\s*outline: 2px solid var\(--role-select\)/);
+      // Fields lose their UA outline when focused, so forced colours get one back.
+      expect(css).toMatch(/@media \(forced-colors: active\) \{[^}]*:focus-visible \{ outline: 2px solid Highlight/);
+    }
+    expect(cabinRoles).toMatch(/:focus-visible:not\(\[data-panel="monitoring"\] \*\)/);
+  });
+
+  it("keeps the glow's field selector the same as the field rule's", () => {
+    expect(cabinCss).toMatch(/:is\(input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\):not\(\[type="range"\]\), select:not\(\.presence-select\), textarea\):focus \{ box-shadow/);
   });
 });

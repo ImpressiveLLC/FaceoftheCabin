@@ -2077,7 +2077,10 @@
       --role-pending: var(--signal-amber); --role-danger: var(--rose);
       accent-color: var(--role-select);
     }
-    [data-theme="signal"] :is(a, button, summary, [role="button"], [tabindex]):focus-visible { outline: 2px solid var(--role-select); outline-offset: 2px; }
+    /* Not in forced colours: there the system colours apply (cyan on a light Canvas is 1.64:1). */
+    @media (not (forced-colors: active)) {
+      [data-theme="signal"] :is(a, button, summary, [role="button"], [tabindex]):focus-visible { outline: 2px solid var(--role-select); outline-offset: 2px; }
+    }
     [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea) {
       background: color-mix(in srgb, var(--role-select) 5%, transparent);
       border: 1px solid color-mix(in srgb, var(--role-select) 45%, var(--glass-border)); border-radius: 0; color: var(--cream);
@@ -2088,7 +2091,10 @@
     [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):focus {
       outline: 0; border-color: var(--role-select); border-bottom-width: 2px; background: color-mix(in srgb, var(--role-select) 9%, transparent);
     }
-    [data-theme="signal"] :is(input, textarea)::placeholder { color: var(--cream-ghost); }
+    @media (forced-colors: active) {
+      [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+    }
+    [data-theme="signal"] :is(input, textarea)::placeholder { color: var(--cream-dim); }
     /* Cards: a 3px top bar in the card's hue, its label in the same hue. */
     [data-theme="signal"] #cal-card { --hue: var(--role-select); }
     [data-theme="signal"] #chores-card { --hue: var(--role-on); }
@@ -2121,7 +2127,7 @@
       [data-theme="signal"] :is(.bday-days, .chore-count, .kid-count, .ev-time, .sched-num) { text-shadow: 0 0 10px var(--gold-glow); }
       [data-theme="signal"] :is(.btn-gold, .np-send) { box-shadow: 0 0 12px var(--gold-glow); }
       [data-theme="signal"] :is(.kid-sel-btn.active, .theme-pill.active, .np-author-pill.active) { box-shadow: 0 0 10px color-mix(in srgb, var(--role-select) 30%, transparent) !important; }
-      [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus { box-shadow: 0 0 10px color-mix(in srgb, var(--role-select) 35%, transparent); }
+      [data-theme="signal"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):focus { box-shadow: 0 0 10px color-mix(in srgb, var(--role-select) 35%, transparent); }
     }
     /* </signal-glow> */
 
