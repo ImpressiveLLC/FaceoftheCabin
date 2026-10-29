@@ -1006,7 +1006,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
 
   if (!auth.configured) {
     return (
-      <div className="panel-content">
+      <div data-panel="camera" className="panel-content">
         <div className="panel-header-bar"><h2>Camera Events</h2></div>
         <p className="config-desc">Google Sign-In isn't configured on this host yet (VITE_CABIN_GOOGLE_CLIENT_ID unset at build time).</p>
       </div>
@@ -1018,7 +1018,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   }
 
   return (
-    <div className="panel-content">
+    <div data-panel="camera" className="panel-content">
       <div className="panel-header-bar">
         <h2>Camera Events</h2>
         <div className="toolbar-right">
@@ -1391,7 +1391,7 @@ function OpportunityMapPanel({ auth }) {
   const visible = showDismissed ? opportunities : opportunities.filter(o => o.status !== "dismissed");
 
   return (
-    <div className="panel-content">
+    <div data-panel="opportunities" className="panel-content">
       <div className="panel-header-bar">
         <h2>Opportunities</h2>
         <div className="toolbar-right">
@@ -1491,7 +1491,7 @@ export function HelpdeskPanel({ auth }) { // exported for src/App.test.jsx
   };
 
   return (
-    <div className="panel-content helpdesk-panel">
+    <div data-panel="helpdesk" className="panel-content helpdesk-panel">
       <div className="panel-header-bar">
         <h2><MessageCircle size={18}/> Tiny Helpdesk</h2>
       </div>
@@ -1933,7 +1933,7 @@ export function FamilyHubPanel({ auth }) { // exported for src/App.test.jsx's re
   const onDragEnd   = () => { setDragIdx(null); setOverIdx(null); };
 
   return (
-    <div className="panel-content">
+    <div data-panel="places" className="panel-content">
       <div className="panel-header-bar">
         <div className="panel-header-title">
           <h2>My Places</h2>
@@ -2058,7 +2058,7 @@ export function FamilyConfigPanel({ auth }) {
   const remoteAccessMethods = (config?.remoteAccess || "Tailscale")
     .split(",").map(s => s.trim()).filter(Boolean);
   return (
-    <div className="panel-content">
+    <div data-panel="config" className="panel-content">
       <div className="panel-header-bar"><h2>Configuration</h2></div>
       <div className="config-grid">
         {!auth?.demo && <ConfigCard title="Google Account" icon={Home}>
@@ -3047,7 +3047,7 @@ export function DeviceManagerPanel({ auth }) {
   };
 
   return (
-    <div className="panel-content">
+    <div data-panel="devices" className="panel-content">
       <div className="panel-header-bar">
         <h2>Device Manager</h2>
         <div className="header-actions">
@@ -6374,7 +6374,7 @@ export function MonitoringPanel({ active, auth }) { // exported for src/App.test
   const handleViewChange = (v) => { setView(v); setSelected(null); setReorderMode(false); };
 
   return (
-    <div className="panel-content">
+    <div data-panel="monitoring" className="panel-content">
       <AlertControls panelId="MONITORING" />
       <div className="panel-header-bar">
         <h2>Monitoring</h2>
@@ -6831,7 +6831,7 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
   };
 
   return (
-    <div className="panel-content">
+    <div data-panel="rules" className="panel-content">
       <AlertControls panelId="RULES_ENGINE" />
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>

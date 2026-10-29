@@ -168,3 +168,59 @@ describe("Signal styling lives after the shared attention cues and stays inside 
     expect(signalCss).not.toMatch(/kpi-state-alarm[^{]*\{[^}]*border/);
   });
 });
+
+describe("Signal colour roles reach every tab except Monitoring (Nate 2026-10-29)", () => {
+  const rolesOf = (css) => {
+    const a = css.indexOf("/* <signal-roles> */"), b = css.indexOf("/* </signal-roles> */");
+    return a >= 0 && b > a ? css.slice(a, b) : "";
+  };
+  const appJsx = read("App.jsx");
+  const cabinRoles = rolesOf(cabinCss);
+  const hubRoles = rolesOf(hubHtml);
+
+  it("defines the five roles once, from the existing palette tokens, in both apps", () => {
+    for (const css of [cabinRoles, hubRoles]) {
+      expect(css.length, "roles section present").toBeGreaterThan(0);
+      for (const r of ["--role-on", "--role-select", "--role-edit", "--role-pending", "--role-danger"]) expect(css, r).toContain(r + ":");
+      expect(css).toMatch(/--role-select:\s*var\(--signal-cool\)/);
+      expect(css).toMatch(/--role-edit:\s*var\(--signal-heat\)/);
+      expect(css).toMatch(/--role-pending:\s*var\(--signal-amber\)/);
+    }
+  });
+
+  it("uses tokens only, no animation, and shadows only inside the glow section", () => {
+    for (const css of [cabinRoles, hubRoles]) {
+      expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+      expect(css).not.toMatch(/@keyframes|animation\s*:|transition\s*:/);
+      expect(css).not.toMatch(/box-shadow\s*:\s*(?!\s*none)|text-shadow\s*:\s*(?!\s*none)/);
+    }
+  });
+
+  it("colours Device Manager modes by job: See cyan, Change orange, Add lime, Remove red", () => {
+    expect(cabinRoles).toMatch(/\[data-panel="devices"\] \.dm-l1-btn \{ --mode: var\(--role-select\)/);
+    expect(cabinRoles).toMatch(/\.dm-l1-btn:nth-child\(2\) \{ --mode: var\(--role-edit\)/);
+    expect(cabinRoles).toMatch(/\.dm-l1-btn:nth-child\(3\) \{ --mode: var\(--role-on\)/);
+    expect(cabinRoles).toMatch(/\.dm-l1-btn:nth-child\(4\) \{ --mode: var\(--role-danger\)/);
+  });
+
+  it("marks the selected device row with more than a hue: a thick left edge as well as cyan", () => {
+    expect(cabinRoles).toMatch(/\.dm-device-row\.dm-row-selected \{[^}]*border-left-width:\s*5px/);
+    expect(cabinRoles).toMatch(/\.dm-device-row\.dm-row-selected \{[^}]*--role-select/);
+  });
+
+  it("leaves Monitoring alone: no role rule targets its panel, its tiles or its readings", () => {
+    // The only mention of Monitoring's panel is an exclusion: every shared rule is written :not([data-panel="monitoring"]).
+    for (const m of cabinRoles.matchAll(/data-panel="monitoring"/g)) expect(cabinRoles.slice(Math.max(0, m.index - 8), m.index)).toMatch(/:not\(\[$/);
+    expect(cabinRoles).not.toMatch(/\.kpi-|\.state-badge|\.location-section/);
+  });
+
+  it("gives every panel root a data-panel hook, and Monitoring has its own", () => {
+    for (const name of ["camera", "opportunities", "helpdesk", "places", "config", "devices", "monitoring", "rules"]) {
+      expect(appJsx, name).toContain(`data-panel="${name}"`);
+    }
+  });
+
+  it("keeps the focus ring cyan on every control in both apps", () => {
+    for (const css of [cabinRoles, hubRoles]) expect(css).toMatch(/:focus-visible\s*\{\s*outline: 2px solid var\(--role-select\)/);
+  });
+});
