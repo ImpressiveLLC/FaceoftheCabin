@@ -15,7 +15,7 @@ const read = (rel) => readFileSync(resolve(here, rel), "utf8");
 const cabinCss = read("styles.css");
 const hubHtml = read("../../../family-hub/family-hub.html");
 const hub = familyHubThemes(hubHtml);
-const FONT_DIRS = ["ibm-plex-mono", "syne", "outfit"];
+const FONT_DIRS = ["ibm-plex-mono", "syne", "outfit"]; // Syne stays bundled (Gauss-style card titles); Outfit now carries titles
 
 afterEach(() => {
   cleanup();
@@ -35,10 +35,10 @@ describe("Signal palette and type", () => {
     expect(hubHtml).toMatch(/label: 'Signal', id: 'signal'/);
   });
 
-  it("is a near-black ground with one teal-green accent that is also the ok colour", () => {
-    expect(v["--bg"]).toBe("#0b0d11");
-    expect(v["--bg-secondary"]).toBe("#13161b");
-    expect(v["--accent"]).toBe("#00e5a0");
+  it("is a blue-black ground with one neon-green accent that is also the ok colour", () => {
+    expect(v["--bg"]).toBe("#04070f");
+    expect(v["--bg-secondary"]).toBe("#0a0e17");
+    expect(v["--accent"]).toBe("#39ff14");
     expect(v["--success"]).toBe(v["--accent"]);
     expect(v["--warning"]).not.toBe(v["--accent"]);
     expect(v["--danger"]).not.toBe(v["--accent"]);
@@ -55,14 +55,14 @@ describe("Signal palette and type", () => {
     expect(h["--signal-cool"]).toBe(v["--signal-cool"]);
   });
 
-  it("uses Plex Mono for readings, Syne for titles and Outfit for labels", () => {
+  it("uses Plex Mono for readings and Outfit for titles and labels", () => {
     expect(v["--font-mono"]).toMatch(/^'IBM Plex Mono'/);
-    expect(v["--font-display"]).toMatch(/^'Syne'/);
+    expect(v["--font-display"]).toMatch(/^'Outfit'/);
     expect(v["--font-ui"]).toMatch(/^'Outfit'/);
     // The hub's table quotes font stacks with double quotes, which familyHubThemes() does not read, so match its own text.
     const chunk = hubHtml.slice(hubHtml.indexOf("label: 'Signal', id: 'signal'"), hubHtml.indexOf("fonts: [],", hubHtml.indexOf("label: 'Signal', id: 'signal'")));
     expect(chunk).toMatch(/'--font-mono':"'IBM Plex Mono'/);
-    expect(chunk).toMatch(/'--font-display':"'Syne'/);
+    expect(chunk).toMatch(/'--font-display':"'Outfit'/);
     expect(chunk).toMatch(/'--font-ui':"'Outfit'/);
   });
 
@@ -70,7 +70,7 @@ describe("Signal palette and type", () => {
     localStorage.setItem("cabin-theme", "signal");
     render(<ThemeProvider><span /></ThemeProvider>);
     expect(document.documentElement.getAttribute("data-theme")).toBe("signal");
-    expect(document.documentElement.style.getPropertyValue("--accent")).toBe("#00e5a0");
+    expect(document.documentElement.style.getPropertyValue("--accent")).toBe("#39ff14");
     expect(document.head.querySelectorAll("link[id^='cabin-font-']")).toHaveLength(0);
     expect(hub.signal.fonts ?? []).toHaveLength(0);
   });
@@ -92,7 +92,7 @@ describe("Signal fonts are bundled in both apps", () => {
     const cabinCssFonts = read(`${cabinFonts}/retro-fonts.css`);
     expect(read(`${hubFonts}/retro-fonts.css`)).toBe(cabinCssFonts);
     const urls = [...cabinCssFonts.matchAll(/url\('\.\/((?:ibm-plex-mono|syne|outfit)\/[^']+\.woff2)'\)/g)].map((m) => m[1]);
-    expect(urls.length).toBe(8); // Plex Mono 400/500/600, Syne 600/700, Outfit 400/500/600
+    expect(urls.length).toBe(11); // Plex Mono 400/500/600, Syne 600/700, Outfit 200/300/400/500/600/700
     for (const root of [cabinFonts, hubFonts]) {
       for (const f of urls) expect(existsSync(resolve(here, root, f)), `${root}/${f}`).toBe(true);
     }
@@ -112,13 +112,44 @@ describe("Signal styling lives after the shared attention cues and stays inside 
     expect(hubHtml.indexOf('SIGNAL THEME ([data-theme="signal"])')).toBeGreaterThan(hubHtml.indexOf("/* </attention-cues> */"));
   });
 
-  it("adds no animation, glow or shadow of its own beyond clearing them (MA-16)", () => {
+  it("has no animation or pulse anywhere in Signal (MA-16)", () => {
     for (const css of [signalCss, hubSignal]) {
       expect(css).not.toMatch(/@keyframes|animation\s*:|transition\s*:/);
-      const shadows = [...css.matchAll(/box-shadow\s*:\s*([^;]+);/g)].map((m) => m[1].trim());
-      for (const s of shadows) expect(s, "only `none` is allowed").toBe("none");
-      expect(css).not.toMatch(/text-shadow\s*:\s*(?!\s*none)/);
-      expect(css).not.toMatch(/filter\s*:\s*drop-shadow|filter\s*:\s*blur/);
+      expect(css).not.toMatch(/filter\s*:\s*blur/);
+    }
+  });
+
+  // Nate 2026-10-29: glow is allowed in normal use (MA-16 only rules out pulsing and says "no glow" is not needed).
+  const glowOf = (css) => {
+    const a = css.indexOf("/* <signal-glow> */"), b = css.indexOf("/* </signal-glow> */");
+    return a >= 0 && b > a ? css.slice(a, b) : "";
+  };
+  const withoutGlow = (css) => css.replace(glowOf(css), "");
+
+  it("keeps glow in one marked section, static, and off for more-contrast and forced-colors", () => {
+    for (const css of [signalCss, hubSignal]) {
+      const g = glowOf(css);
+      expect(g.length, "glow section present").toBeGreaterThan(0);
+      expect(g).toMatch(/@media \(not \(prefers-contrast: more\)\) and \(not \(forced-colors: active\)\)/);
+      expect(g).toMatch(/text-shadow|box-shadow/);
+      expect(g).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    }
+  });
+
+  it("gives no glow to Watch or Alert, so the attention cues stay the only loud signal", () => {
+    for (const css of [signalCss, hubSignal]) {
+      for (const rule of glowOf(css).matchAll(/([^{}]+)\{[^}]*\}/g)) {
+        expect(rule[1], "glow selector").not.toMatch(/kpi-state-(warn|alarm|late|unknown)|state-(warn|alarm|late|unknown)/);
+      }
+    }
+  });
+
+  it("outside the glow section Signal only clears shadows", () => {
+    for (const css of [signalCss, hubSignal]) {
+      const rest = withoutGlow(css);
+      const shadows = [...rest.matchAll(/box-shadow\s*:\s*([^;]+);/g)].map((m) => m[1].trim());
+      for (const s of shadows) expect(s, "only `none` outside the glow section").toBe("none");
+      expect(rest).not.toMatch(/text-shadow\s*:\s*(?!\s*none)/);
     }
   });
 
