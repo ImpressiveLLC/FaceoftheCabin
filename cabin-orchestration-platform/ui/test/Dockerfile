@@ -20,6 +20,8 @@ COPY cabin-orchestration-platform/ui/package.json cabin-orchestration-platform/u
 RUN npm ci
 COPY cabin-orchestration-platform/ui/. .
 COPY family-hub/family-hub.html /family-hub/family-hub.html
+# ThemeSignal.test.jsx checks the bundled fonts in both apps (Signal theme, 2026-10-29).
+COPY family-hub/fonts /family-hub/fonts
 COPY docs/ontology.yaml /docs/ontology.yaml
 
 CMD ["npm", "test"]
