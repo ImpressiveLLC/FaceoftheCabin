@@ -3015,6 +3015,7 @@ export function DeviceManagerPanel({ auth }) {
       setParentOnly(false);
       setLifecycleFilter(LIFECYCLE_FILTER_OPTIONS.map(o => o.value));
       setImportedFromFilter("");
+      setKindFilter("");
     }
     const group = groups.find(([, items]) => items.some(d => d.deviceId === target.deviceId));
     if (group && isGroupCollapsed(group[0])) setAllGroupsCollapsed([group[0]], false);
@@ -3110,8 +3111,8 @@ export function DeviceManagerPanel({ auth }) {
               </span>
               <button className="btn-ghost" onClick={() => {
                 setGroupBy("type"); setParentOnly(false);
-                setLifecycleFilter(DEFAULT_LIFECYCLE_FILTER); setImportedFromFilter(""); setReviewingPrevious(false);
-              }} title="Return Group, Parent scope, and State to their defaults">
+                setLifecycleFilter(DEFAULT_LIFECYCLE_FILTER); setImportedFromFilter(""); setKindFilter(""); setReviewingPrevious(false);
+              }} title="Return Group, Parent scope, State, and Kind to their defaults">
                 Reset Filters
               </button>
               {groupNames.length > 1 && (
