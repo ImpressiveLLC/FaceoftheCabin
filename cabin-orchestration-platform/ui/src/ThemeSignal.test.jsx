@@ -169,12 +169,21 @@ describe("Signal styling lives after the shared attention cues and stays inside 
     expect(signalCss).toMatch(/\.kpi-tile\.kpi-state-alarm \{ --signal-metric: var\(--danger\)/);
   });
 
+  it("W-124: in forced colours a tile is Canvas with CanvasText reading, label, note, icon and underline", () => {
+    // The cue block sets forced-color-adjust: none on status tiles, so system colours are not applied for us: say them.
+    const forced = [...signalCss.matchAll(/@media \(forced-colors: active\) \{([^@]*?)\n\}/g)].map((m) => m[1]).join("\n");
+    expect(forced).toMatch(/\.kpi-tile \{ background: Canvas; \}/);
+    expect(forced).toMatch(/\.kpi-tile :is\(\.kpi-value, \.kpi-value-note, \.kpi-label\)[^{]*\.kpi-tile > svg \{ color: CanvasText; \}/);
+    expect(forced).toMatch(/\.kpi-tile::before \{ background: CanvasText; \}/);
+  });
+
   it("W-124: reading and chip hues are set only outside forced colours, so a light Canvas stays readable", () => {
     const nonForced = signalCss.match(/@media \(not \(forced-colors: active\)\) \{[^@]*?\n\}/);
     expect(nonForced, "scoped colour block present").toBeTruthy();
     expect(nonForced[0]).toMatch(/\.kpi-value \{ color: var\(--signal-metric\)/);
     // Outside that block no .kpi-value or .state-badge rule sets a text colour.
-    const rest = signalCss.replace(nonForced[0], "");
+    // The forced-colours block is where the system colours are set on purpose (checked by the test above).
+    const rest = signalCss.replace(nonForced[0], "").replace(/@media \(forced-colors: active\) \{[^@]*?\n\}/g, "");
     for (const rule of rest.matchAll(/(\[data-theme="signal"\][^{}]*(?:\.kpi-value|\.state-badge)[^{}]*)\{([^}]*)\}/g)) {
       expect(rule[2], rule[1].trim()).not.toMatch(/(^|[;\s])color\s*:/);
     }

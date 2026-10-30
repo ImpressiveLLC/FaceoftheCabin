@@ -2856,14 +2856,21 @@ select option { background: var(--bg-secondary); color: var(--text); }
 [data-theme="signal"] :is(.state-badge.state-offline, .state-badge.state-not-configured) {
   background: transparent; border: 0;
 }
-/* Readings and chip words take their hue only outside forced colours: there the cue block's Canvas and CanvasText apply, and an
-   author hue (white, lime, amber) on a light Canvas is unreadable (W-124). */
+/* Readings and chip words take their hue only outside forced colours (W-124). The cue block gives a status tile
+   forced-color-adjust: none, so its author colours are NOT swapped for system colours, and a near-white reading, label or icon
+   would sit on the forced Canvas (1.11:1 on a light palette). The forced-colours block below therefore sets them explicitly. */
 @media (not (forced-colors: active)) {
   [data-theme="signal"] .kpi-value { color: var(--signal-metric); }
   [data-theme="signal"] .state-badge.state-ok { color: var(--accent); }
   [data-theme="signal"] :is(.state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown) { color: var(--warning); }
   [data-theme="signal"] .state-badge.state-alarm { color: var(--danger); }
   [data-theme="signal"] :is(.state-badge.state-offline, .state-badge.state-not-configured) { color: var(--text-muted); }
+}
+/* In forced colours a tile is Canvas with CanvasText reading, label, note, icon and underline, whatever the palette. */
+@media (forced-colors: active) {
+  [data-theme="signal"] .kpi-tile { background: Canvas; }
+  [data-theme="signal"] .kpi-tile :is(.kpi-value, .kpi-value-note, .kpi-label), [data-theme="signal"] .kpi-tile > svg { color: CanvasText; }
+  [data-theme="signal"] .kpi-tile::before { background: CanvasText; }
 }
 
 /* Quiet surfaces: lists, logs and cards are flat cells with a hairline. */
