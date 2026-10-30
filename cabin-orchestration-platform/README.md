@@ -131,7 +131,7 @@ Polling every 30 s via `/api/system/health`. Reset returns to `unconfigured` —
 
 ### Theme System
 
-Ten synchronized presets via `ThemeProvider` and Family Hub:
+11 synchronized presets via `ThemeProvider` and Family Hub:
 
 | Preset | Character |
 |--------|-----------|

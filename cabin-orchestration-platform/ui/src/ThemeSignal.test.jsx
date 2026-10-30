@@ -139,7 +139,9 @@ describe("Signal styling lives after the shared attention cues and stays inside 
   it("gives no glow to Watch or Alert, so the attention cues stay the only loud signal", () => {
     for (const css of [signalCss, hubSignal]) {
       for (const rule of glowOf(css).matchAll(/([^{}]+)\{[^}]*\}/g)) {
-        expect(rule[1], "glow selector").not.toMatch(/kpi-state-(warn|alarm|late|unknown)|state-(warn|alarm|late|unknown)/);
+        // A selector may name Watch and Alert only to exclude them.
+        const included = rule[1].replace(/:not\(\.kpi-state-(warn|alarm)\)/g, "");
+        expect(included, "glow selector").not.toMatch(/kpi-state-(warn|alarm|late|unknown)|state-(warn|alarm|late|unknown)/);
       }
     }
   });
@@ -150,6 +152,31 @@ describe("Signal styling lives after the shared attention cues and stays inside 
       const shadows = [...rest.matchAll(/box-shadow\s*:\s*([^;]+);/g)].map((m) => m[1].trim());
       for (const s of shadows) expect(s, "only `none` outside the glow section").toBe("none");
       expect(rest).not.toMatch(/text-shadow\s*:\s*(?!\s*none)/);
+    }
+  });
+
+  it("W-124: the glow on a tile's reading and bar excludes Watch and Alert tiles", () => {
+    const g = glowOf(signalCss);
+    expect(g).toMatch(/\.kpi-tile:not\(\.kpi-state-warn\):not\(\.kpi-state-alarm\) \.kpi-value \{ text-shadow/);
+    expect(g).toMatch(/\.kpi-tile:not\(\.kpi-state-warn\):not\(\.kpi-state-alarm\)::before \{ box-shadow/);
+  });
+
+  it("W-124: a Watch or Alert tile keeps its own hue over the calm metric hue (the :has() metric rules carry no specificity)", () => {
+    for (const m of signalCss.matchAll(/^\[data-theme="signal"\] \.kpi-tile(:[^{]*)\{ --signal-metric/gm)) {
+      if (m[1].includes(":has(")) expect(m[1], "metric :has() wrapped").toMatch(/^:where\(:has\(.*\)\) $/);
+    }
+    expect(signalCss).toMatch(/\.kpi-tile\.kpi-state-warn\s+\{ --signal-metric: var\(--warning\)/);
+    expect(signalCss).toMatch(/\.kpi-tile\.kpi-state-alarm \{ --signal-metric: var\(--danger\)/);
+  });
+
+  it("W-124: reading and chip hues are set only outside forced colours, so a light Canvas stays readable", () => {
+    const nonForced = signalCss.match(/@media \(not \(forced-colors: active\)\) \{[^@]*?\n\}/);
+    expect(nonForced, "scoped colour block present").toBeTruthy();
+    expect(nonForced[0]).toMatch(/\.kpi-value \{ color: var\(--signal-metric\)/);
+    // Outside that block no .kpi-value or .state-badge rule sets a text colour.
+    const rest = signalCss.replace(nonForced[0], "");
+    for (const rule of rest.matchAll(/(\[data-theme="signal"\][^{}]*(?:\.kpi-value|\.state-badge)[^{}]*)\{([^}]*)\}/g)) {
+      expect(rule[2], rule[1].trim()).not.toMatch(/(^|[;\s])color\s*:/);
     }
   });
 
@@ -284,6 +311,16 @@ describe("Signal surfaces: pure black fills, no grey hairlines (Nate 2026-10-29)
     expect(cabin).toMatch(/\.sensor-history-device-chip:not\(\.selected\)/);
     expect(cabin).toMatch(/\.sensor-history-topic-tab:not\(\.active\)/);
     expect(cabin).not.toMatch(/alert-ctrl/);
+  });
+
+  it("W-125: no surfaces rule sets a background on the critical (cue-block) rows, and the Sensor History header stays opaque", () => {
+    const body = cabin.replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const m of body.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (!/background\s*:/.test(m[2])) continue;
+      const sel = m[1].replace(/\.(active-condition|automation-alert-card):not\(\.(active-condition|automation-alert)-critical\)/g, "");
+      expect(sel, "background on a selector that reaches a critical row").not.toMatch(/(?<![-\w])\.active-condition(?![-\w])|\.automation-alert-card(?![-\w])|-critical/);
+    }
+    expect(cabin).not.toMatch(/sensor-history-table th/);
   });
 
   it("hub: cards are the page black with no hairline, and small boxes have no grey fill", () => {
