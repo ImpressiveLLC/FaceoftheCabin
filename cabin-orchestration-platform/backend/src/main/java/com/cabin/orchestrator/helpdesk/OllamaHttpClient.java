@@ -1,8 +1,10 @@
 package com.cabin.orchestrator.helpdesk;
 
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -28,7 +30,27 @@ public class OllamaHttpClient implements OllamaClient {
     @Value("${cabin.ollama.model:llama3.2:3b}")
     private String model;
 
-    private final RestTemplate rest = new RestTemplate();
+    /** Connect and read bounds (W-118): an Ollama that accepts the connection and never answers must not hold the Ask open. */
+    @Value("${cabin.ollama.connect-timeout-seconds:3}")
+    private int connectTimeoutSeconds = 3;
+
+    /** Well above a cold 3B generation (K15 measured tens of seconds on the M920q CPU), so a slow answer still lands. */
+    @Value("${cabin.ollama.read-timeout-seconds:120}")
+    private int readTimeoutSeconds = 120;
+
+    private RestTemplate rest = new RestTemplate(factory(3, 120));
+
+    @PostConstruct
+    void applyTimeouts() {
+        rest = new RestTemplate(factory(connectTimeoutSeconds, readTimeoutSeconds));
+    }
+
+    private static SimpleClientHttpRequestFactory factory(int connectSeconds, int readSeconds) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectSeconds * 1_000);
+        factory.setReadTimeout(readSeconds * 1_000);
+        return factory;
+    }
 
     @Override
     public Optional<String> generate(String prompt) {
