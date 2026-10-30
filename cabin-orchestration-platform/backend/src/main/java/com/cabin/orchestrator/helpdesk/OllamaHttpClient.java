@@ -31,18 +31,28 @@ public class OllamaHttpClient implements OllamaClient {
     private String model;
 
     /** Connect and read bounds (W-118): an Ollama that accepts the connection and never answers must not hold the Ask open. */
-    @Value("${cabin.ollama.connect-timeout-seconds:3}")
-    private int connectTimeoutSeconds = 3;
+    static final int DEFAULT_CONNECT_TIMEOUT_SECONDS = 3;
 
-    /** Well above a cold 3B generation (K15 measured tens of seconds on the M920q CPU), so a slow answer still lands. */
-    @Value("${cabin.ollama.read-timeout-seconds:120}")
-    private int readTimeoutSeconds = 120;
+    /**
+     * Below the smallest limit in front of the backend (nginx's 60 s proxy_read_timeout on /api/, Cloudflare Tunnel's 100 s), so a
+     * wedged Ollama ends in the raw-facts fallback, not a 504 or 524. Still above a cold 3B generation on the M920q CPU.
+     */
+    static final int DEFAULT_READ_TIMEOUT_SECONDS = 50;
 
-    private RestTemplate rest = new RestTemplate(factory(3, 120));
+    @Value("${cabin.ollama.connect-timeout-seconds:" + DEFAULT_CONNECT_TIMEOUT_SECONDS + "}")
+    private int connectTimeoutSeconds = DEFAULT_CONNECT_TIMEOUT_SECONDS;
 
+    @Value("${cabin.ollama.read-timeout-seconds:" + DEFAULT_READ_TIMEOUT_SECONDS + "}")
+    private int readTimeoutSeconds = DEFAULT_READ_TIMEOUT_SECONDS;
+
+    private RestTemplate rest = new RestTemplate(factory(DEFAULT_CONNECT_TIMEOUT_SECONDS, DEFAULT_READ_TIMEOUT_SECONDS));
+
+    /** Zero or negative would mean "no timeout" to the JDK client, which is the bug this class fixes, so it falls back to the default. */
     @PostConstruct
     void applyTimeouts() {
-        rest = new RestTemplate(factory(connectTimeoutSeconds, readTimeoutSeconds));
+        rest = new RestTemplate(factory(
+            connectTimeoutSeconds > 0 ? connectTimeoutSeconds : DEFAULT_CONNECT_TIMEOUT_SECONDS,
+            readTimeoutSeconds > 0 ? readTimeoutSeconds : DEFAULT_READ_TIMEOUT_SECONDS));
     }
 
     private static SimpleClientHttpRequestFactory factory(int connectSeconds, int readSeconds) {

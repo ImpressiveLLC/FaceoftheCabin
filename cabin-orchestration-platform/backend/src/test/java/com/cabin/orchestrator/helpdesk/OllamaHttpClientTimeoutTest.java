@@ -2,6 +2,7 @@ package com.cabin.orchestrator.helpdesk;
 
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.net.InetSocketAddress;
@@ -14,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OllamaHttpClientTimeoutTest {
 
     @Test
+    @Timeout(30)
     void aStalledOllamaReturnsEmptySoTheAskFallsBackToRawFacts() throws Exception {
         CountDownLatch release = new CountDownLatch(1);
         HttpServer stalled = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -43,9 +45,35 @@ class OllamaHttpClientTimeoutTest {
     }
 
     @Test
-    void defaultsAreBoundedAndWellAboveAColdGeneration() {
-        OllamaHttpClient client = new OllamaHttpClient();
-        assertThat((int) ReflectionTestUtils.getField(client, "connectTimeoutSeconds")).isEqualTo(3);
-        assertThat((int) ReflectionTestUtils.getField(client, "readTimeoutSeconds")).isGreaterThanOrEqualTo(60);
+    void defaultsAreBoundedAndBelowTheLimitsInFrontOfTheBackend() {
+        assertThat(OllamaHttpClient.DEFAULT_CONNECT_TIMEOUT_SECONDS).isEqualTo(3);
+        // nginx /api/ proxy_read_timeout 60 s and Cloudflare Tunnel 100 s: the fallback must arrive first.
+        assertThat(OllamaHttpClient.DEFAULT_READ_TIMEOUT_SECONDS).isBetween(30, 59);
+    }
+
+    @Test
+    @Timeout(30)
+    void zeroOrNegativeFallsBackToTheDefaultInsteadOfMeaningUnbounded() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        HttpServer stalled = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        stalled.createContext("/", exchange -> {
+            try { release.await(); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            exchange.close();
+        });
+        stalled.start();
+        try {
+            OllamaHttpClient client = new OllamaHttpClient();
+            ReflectionTestUtils.setField(client, "connectTimeoutSeconds", 0);
+            ReflectionTestUtils.setField(client, "readTimeoutSeconds", -1);
+            client.applyTimeouts();
+            org.springframework.web.client.RestTemplate rest = (org.springframework.web.client.RestTemplate) ReflectionTestUtils.getField(client, "rest");
+            org.springframework.http.client.SimpleClientHttpRequestFactory factory =
+                (org.springframework.http.client.SimpleClientHttpRequestFactory) rest.getRequestFactory();
+            assertThat((int) ReflectionTestUtils.getField(factory, "connectTimeout")).isEqualTo(3_000);
+            assertThat((int) ReflectionTestUtils.getField(factory, "readTimeout")).isEqualTo(OllamaHttpClient.DEFAULT_READ_TIMEOUT_SECONDS * 1_000);
+        } finally {
+            release.countDown();
+            stalled.stop(0);
+        }
     }
 }
