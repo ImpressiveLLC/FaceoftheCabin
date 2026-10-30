@@ -5248,6 +5248,23 @@ describe("OptimizationOpportunitiesCard", () => {
     expect(screen.getByText(/Drawing ~42W continuously for 60h/)).toBeTruthy();
   });
 
+  it("lists each service that repeats its parent's reading, with the guidance", async () => {
+    const auth = mockAuth({ ok: true, json: async () => [
+      { id: "op-2", opportunityType: "DUPLICATE_READING", deviceId: "z2m-heater_mech_room", status: "OPEN",
+        detectedAt: "2026-10-30T00:00:00Z", evidence: {
+          parentName: "heater_mech_room",
+          duplicates: [{ deviceId: "ha-x", name: "Mech Room Temperature", fields: ["temperature", "humidity"] }],
+          recommendations: ["Monitoring shows the reading once."] } },
+    ] });
+
+    render(<OptimizationOpportunitiesCard auth={auth} devices={devices} />);
+
+    expect(await screen.findByText(/Same readings reported by the device and 1 of its services/)).toBeTruthy();
+    expect(screen.getByText(/Mech Room Temperature: /)).toBeTruthy();
+    expect(screen.getByText("Monitoring shows the reading once.")).toBeTruthy();
+    expect(screen.getByText("Duplicate readings")).toBeTruthy();
+  });
+
   it("falls back to the bare deviceId when no matching device is found", async () => {
     const auth = mockAuth({ ok: true, json: async () => [
       { id: "op-1", opportunityType: "POWER_DRAW_ANOMALY", deviceId: "z2m-unknown", status: "OPEN",
