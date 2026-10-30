@@ -86,7 +86,7 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 | Deploy worktree (what Ask mounts read-only at `/app/docs`) | `/home/nate/FaceoftheCabin-deploy` | R (#244, 2026-10-27) |
 | Working clone for eval, training, helpdesk | `~/FaceoftheCabin` | R (`fotc-git-and-host-routing`) |
 | Older checkout, **not** what Ask reads | `~/repos/FaceoftheCabin` (was at `e8b2c9c`) | R |
-| Private evidence, C2 run 1 | Code's host, a private folder (exact path held by Code and Nate, not in git; ids, counts and hashes are posted, contents stay there) | R |
+| Private evidence, C2 runs 1 to 3 and the noise-floor replicate | Code's host, private run folders (exact paths held by Code and Nate, not in git; ids, counts and hashes are posted, contents stay there) | R |
 | Cold tier | `/storage` (HDD): backups, `archives/cabin_event/`, `cameras/frigate/`, `services/` (Home Assistant, Zigbee2MQTT, Frigate, Node-RED, mosquitto, uptime-kuma, blinkbridge), `.trim/` spool | R (`docs/STORAGE_ARCHITECTURE.md`) |
 | Hot tier | `/` NVMe: Docker, Postgres volume `infra_cabin_pgdata`, OS, `/home` | R |
 | Live secrets | The uncommitted `.env` beside the compose files in the deploy worktree (its template is `infra/.env.m920q.example`); the Ansible Vault password file in the host user's home | R, never read or copied |
@@ -100,6 +100,7 @@ Reach: only through Code sessions or Nate. The permission layer refuses remote h
 |---|---|---|
 | Short-path worktrees for repair and review | `C:\Users\nhsmr\wtNNN` | R (`cabin-peer-agent-collaboration`) |
 | Private grading folder, C1 | Nate's Windows PC, under his Documents (exact path held by Nate, not in git) | R |
+| Private grading folders, C2 (one folder per grading set, named c2- plus the set and the date, such as c2-run3-20261029 and c2-noisefloor-20261029) | Nate's Windows PC, under his Documents and under his user profile (exact paths held by Nate, not in git). Nate connects each folder to a session in the Claude desktop app (Add folder). A grading session writes only new grade files into the folder it is grading, and nothing leaves the PC | R (the board and #244: Nate adds a folder in the desktop app, graders write only new files, and the noise-floor folder was not connected at 19:42 CDT); V 2026-10-29 19:49 CDT (Cowork session, through the device bridge: the noise-floor folder was still not among the connected folders) |
 | Patch handoffs | `Downloads` (files for `git am`) | R |
 | Older dev checkout path in `CLAUDE.md` | `H:\My Drive\cabin-orchestration-platform-expanded\...`, which is inside Google Drive sync. A git working tree inside a cloud-sync folder can corrupt `.git`; confirm it is no longer in use. `docs/EXECUTION_PLAN_2026-07-30.md` calls `C:\dev\FaceoftheCabin` "your other local clone". Ask: Nate, is the `H:` path still a live checkout (yes or no)? | U |
 | Claude Code state | `%USERPROFILE%\.claude` (transcripts, user skills), the documented default; not inspected from here | R |
