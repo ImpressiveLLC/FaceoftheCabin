@@ -3727,7 +3727,7 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isG
             </header>
             {groupOpen && groupItems.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
               ref={selected === d.deviceId ? selectedRowRef : undefined}
-              onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} workflows={workflows} />)}
+              onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} auth={auth} workflows={workflows} />)}
           </section>
           );
         })}
@@ -4398,6 +4398,7 @@ function DmRowEnableToggle({ device, onToggled, auth }) {
         : (enabled ? "Disable" : "Enable"))}
     >
       {enabled ? <ToggleRight size={18} className="toggle-on"/> : <ToggleLeft size={18} className="toggle-off"/>}
+      {error && <span className="action-result action-error dm-row-enable-error">Not saved: {error}</span>}
     </button>
   );
 }
