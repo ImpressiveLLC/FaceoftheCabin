@@ -696,4 +696,53 @@ class HomeAssistantDiscoveryServiceTest {
         assertThat(eventPublisher.published).extracting(CabinEvent::sourceDeviceId)
             .contains("ha-cabin-sensor-kidde-co");
     }
+
+    // 2026-10-29: the mech room sensor was renamed in Home Assistant, so no name prefix matched its Zigbee
+    // device and its entities stayed unlinked (the temperature entity its own parent, the humidity entity a
+    // child of the temperature entity). The Zigbee hardware address in HA's device identifiers links them.
+    @Test
+    void aRenamedHaDeviceIsLinkedUnderItsZigbeeDeviceByHardwareAddress() {
+        registry.registerCandidate(new DeviceDescriptor("z2m-temp_mech_room", "temp_mech_room", DeviceType.TEMPERATURE_SENSOR,
+            Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/temp_mech_room", false, "cabin"),
+            Map.of("ieeeAddress", "0xa4c138063546aaaa", "vendorReportedFields", List.of("temperature", "humidity")));
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.mech_room_temp_and_humidity_temperature", "55",
+                Map.of("friendly_name", "Mech Room Temp and Humidity Temperature", "device_class", "temperature")),
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.mech_room_temp_and_humidity_humidity", "40",
+                Map.of("friendly_name", "Mech Room Temp and Humidity Humidity", "device_class", "humidity"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of(
+            "sensor.mech_room_temp_and_humidity_temperature", "ha-dev-mech",
+            "sensor.mech_room_temp_and_humidity_humidity", "ha-dev-mech"));
+        when(adapter.zigbeeAddressesByEntity("cabin")).thenReturn(Map.of(
+            "sensor.mech_room_temp_and_humidity_temperature", "0xa4c138063546aaaa",
+            "sensor.mech_room_temp_and_humidity_humidity", "0xa4c138063546aaaa"));
+        // The state before the fix: the humidity entity filed under its sibling temperature entity.
+        service.discoverLocation("cabin");
+        registry.setDiscoveredParent("ha-cabin-sensor-mech-room-temp-and-humidity-humidity", "");
+        registry.setDiscoveredParent("z2m-temp_mech_room", "");
+
+        service.discoverLocation("cabin");
+
+        assertThat(parentOf(registry.get("ha-cabin-sensor-mech-room-temp-and-humidity-temperature"))).isEqualTo("z2m-temp_mech_room");
+        assertThat(parentOf(registry.get("ha-cabin-sensor-mech-room-temp-and-humidity-humidity"))).isEqualTo("z2m-temp_mech_room");
+        assertThat(parentOf(registry.get("z2m-temp_mech_room"))).isEmpty();
+    }
+
+    @Test
+    void twoZigbeeDevicesClaimingOneAddressLinkNothingByAddress() {
+        for (String name : List.of("twin_a", "twin_b")) {
+            registry.registerCandidate(new DeviceDescriptor("z2m-" + name, name, DeviceType.TEMPERATURE_SENSOR,
+                Set.of(DeviceCapability.TELEMETRY), "mqtt", "zigbee2mqtt/" + name, false, "cabin"),
+                Map.of("ieeeAddress", "0xa4c138063546bbbb"));
+        }
+        when(adapter.discover("cabin")).thenReturn(List.of(
+            new HomeAssistantAdapter.DiscoveredEntity("sensor.renamed_thing_temperature", "20",
+                Map.of("friendly_name", "Renamed", "device_class", "temperature"))));
+        when(adapter.deviceIdsByEntity("cabin")).thenReturn(Map.of());
+        when(adapter.zigbeeAddressesByEntity("cabin")).thenReturn(Map.of("sensor.renamed_thing_temperature", "0xa4c138063546bbbb"));
+
+        service.discoverLocation("cabin");
+
+        assertThat(parentOf(registry.get("ha-cabin-sensor-renamed-thing-temperature"))).isEmpty();
+    }
 }
