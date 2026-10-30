@@ -8411,6 +8411,7 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
 // PlatformInfoCard.
 const OPPORTUNITY_TYPE_LABELS = {
   POWER_DRAW_ANOMALY: "Power",
+  DUPLICATE_READING: "Duplicate readings",
 };
 
 export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // exported for src/App.test.jsx -- tested standalone rather than through RulesPanel's much larger fetch surface
@@ -8419,6 +8420,7 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [typeFilter, setTypeFilter] = useState("ALL");
+  const app = useApp() || {};
   const doFetch = auth?.authedFetch || fetch;
   const apiBase = LOCATIONS.cabin.apiBase;
 
@@ -8500,8 +8502,24 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
                 <div className="rule-detail">
                   {watts != null && `Drawing ~${Number(watts).toFixed(0)}W`}
                   {hours != null && ` continuously for ${hours}h`}
+                  {o.opportunityType === "DUPLICATE_READING" && `Same readings reported by the device and ${(o.evidence?.duplicates || []).length} of its services`}
                   {" · detected "}{new Date(o.detectedAt).toLocaleString()}
                 </div>
+                {o.opportunityType === "DUPLICATE_READING" && (
+                  <div className="noisy-alert-item">
+                    <ul>
+                      {(o.evidence?.duplicates || []).map(d => (
+                        <li key={d.deviceId}>{d.name}: {(d.fields || []).map(f => SENSOR_FIELD_LABELS[f] || f).join(", ")}</li>
+                      ))}
+                    </ul>
+                    <ul>
+                      {(o.evidence?.recommendations || []).map((text, i) => <li key={i}>{text}</li>)}
+                    </ul>
+                    <div className="workflow-row-actions">
+                      <button type="button" className="btn-ghost" onClick={() => { app.setPendingDeviceFocus?.(o.deviceId); app.setActivePanel?.("DEVICE_MANAGER"); }}>Open device</button>
+                    </div>
+                  </div>
+                )}
                 <MetaChips items={[OPPORTUNITY_TYPE_LABELS[o.opportunityType] || o.opportunityType, o.status === "ACKNOWLEDGED" && "acknowledged"]} />
                 <div className="workflow-row-actions">
                   {o.status === "OPEN" && (

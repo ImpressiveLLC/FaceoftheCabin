@@ -20,5 +20,10 @@ package com.cabin.orchestrator.opportunities;
  * look" -- true and useful for every device type, including the heater.
  */
 public enum OpportunityType {
-    POWER_DRAW_ANOMALY
+    POWER_DRAW_ANOMALY,
+    /**
+     * A device and one of its services both enabled and both reporting the same measurement. Found by
+     * comparing what each reports, not by a rule per measurement. See DuplicateReadingAnalyticsService.
+     */
+    DUPLICATE_READING
 }
