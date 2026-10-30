@@ -1,10 +1,17 @@
 package com.cabin.orchestrator.presence;
 
+import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.kafka.EventPublisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -25,16 +32,80 @@ import java.util.concurrent.ConcurrentHashMap;
  * exactly one person or exactly one location -- home/presence/{anyone}
  * slots in with zero code changes once home has its own presence
  * automation.
+ *
+ * Location roles (D24, W-38 slice 1): a signal from a maintenance-only person is not counted -- they are a guest for
+ * presence -- and its arrival is recorded as a MAINTENANCE_VISIT audit event instead. A signal from a person who is not in
+ * the tracked-person registry is still counted (the siren gate fails safe and nothing silently stops being recognized) but
+ * is listed by unregisteredCounted(). This changes what the hub counts and shows; the siren gate itself lives in Node-RED
+ * and Home Assistant and is not changed here.
  */
 @Component
 public class PresenceSignalRegistry {
+
+    private static final Logger log = LoggerFactory.getLogger(PresenceSignalRegistry.class);
+
+    private final LocationRoleService roles;
+    private final EventPublisher events;
+
+    /** Without roles every signal is counted, as before W-38. */
+    public PresenceSignalRegistry() {
+        this(null, null);
+    }
+
+    @Autowired
+    public PresenceSignalRegistry(LocationRoleService roles, EventPublisher events) {
+        this.roles = roles;
+        this.events = events;
+    }
 
     public record Signal(String location, String personId, boolean present, Instant lastUpdated) {}
 
     private final Map<String, Signal> signals = new ConcurrentHashMap<>();
 
+    private final Set<String> unregistered = ConcurrentHashMap.newKeySet();
+    private final Map<String, Boolean> maintenancePresent = new ConcurrentHashMap<>();
+
     public void record(String location, String personId, boolean present) {
-        signals.put(key(location, personId), new Signal(location, personId, present, Instant.now()));
+        String key = key(location, personId);
+        LocationRoleService.Treatment treatment = treatmentOf(location, personId);
+        if (treatment == LocationRoleService.Treatment.MAINTENANCE_ONLY) {
+            signals.remove(key);
+            unregistered.remove(key);
+            Boolean was = maintenancePresent.put(key, present);
+            if (present && !Boolean.TRUE.equals(was)) recordMaintenanceVisit(location, personId);
+            return;
+        }
+        maintenancePresent.remove(key);
+        signals.put(key, new Signal(location, personId, present, Instant.now()));
+        if (treatment == LocationRoleService.Treatment.UNREGISTERED_COUNTED) unregistered.add(key);
+        else unregistered.remove(key);
+    }
+
+    /** Counted signals from people who are not in the tracked-person registry yet. */
+    public List<Signal> unregisteredCounted() {
+        return signals.entrySet().stream().filter(e -> unregistered.contains(e.getKey())).map(Map.Entry::getValue).toList();
+    }
+
+    private LocationRoleService.Treatment treatmentOf(String location, String personId) {
+        if (roles == null) return LocationRoleService.Treatment.COUNTED;
+        try {
+            return roles.treatmentOf(personId, location);
+        } catch (RuntimeException e) {
+            // A registry that cannot be read must never make a primary person stop counting.
+            log.warn("Location role lookup failed for {} at {}; counting the signal: {}", personId, location, e.getMessage());
+            return LocationRoleService.Treatment.COUNTED;
+        }
+    }
+
+    /** R-LR-8: who, which location, when. Not a presence signal and not an alert. */
+    private void recordMaintenanceVisit(String location, String personId) {
+        if (events == null) return;
+        try {
+            events.publish(new CabinEvent(UUID.randomUUID().toString(), "presence:" + location, "MAINTENANCE_VISIT", "INFO",
+                Instant.now(), Map.of("personId", personId, "location", location)));
+        } catch (RuntimeException e) {
+            log.warn("Could not record maintenance visit of {} at {}: {}", personId, location, e.getMessage());
+        }
     }
 
     public List<Signal> all() {
