@@ -65,20 +65,32 @@ public class PresenceSignalRegistry {
     private final Set<String> unregistered = ConcurrentHashMap.newKeySet();
     private final Map<String, Boolean> maintenancePresent = new ConcurrentHashMap<>();
 
-    public void record(String location, String personId, boolean present) {
+    /** A live signal; see the four-argument form for what the result means. */
+    public LocationRoleService.Treatment record(String location, String personId, boolean present) {
+        return record(location, personId, present, false);
+    }
+
+    /**
+     * Records one signal and returns how it was treated, so the caller can tell a counted signal from one that is not
+     * (D24 R-LR-2): COUNTED, UNREGISTERED_COUNTED (counted and flagged) or MAINTENANCE_ONLY (a guest for presence: nothing
+     * stored, and the caller must not announce it as a presence change). retained is true for a message the broker replays
+     * on subscribe; a replay never writes a maintenance visit, so a restart or deploy does not log a visit that did not happen.
+     */
+    public LocationRoleService.Treatment record(String location, String personId, boolean present, boolean retained) {
         String key = key(location, personId);
         LocationRoleService.Treatment treatment = treatmentOf(location, personId);
         if (treatment == LocationRoleService.Treatment.MAINTENANCE_ONLY) {
             signals.remove(key);
             unregistered.remove(key);
             Boolean was = maintenancePresent.put(key, present);
-            if (present && !Boolean.TRUE.equals(was)) recordMaintenanceVisit(location, personId);
-            return;
+            if (present && !retained && !Boolean.TRUE.equals(was)) recordMaintenanceVisit(location, personId);
+            return treatment;
         }
         maintenancePresent.remove(key);
         signals.put(key, new Signal(location, personId, present, Instant.now()));
         if (treatment == LocationRoleService.Treatment.UNREGISTERED_COUNTED) unregistered.add(key);
         else unregistered.remove(key);
+        return treatment;
     }
 
     /** Counted signals from people who are not in the tracked-person registry yet. */
@@ -119,6 +131,12 @@ public class PresenceSignalRegistry {
     // and would reset it to "just now" for a phone that has been silent for
     // days. The heartbeat carries the real report time.
     private final Map<String, Instant> seenByPerson = new ConcurrentHashMap<>();
+
+    /** A heartbeat from a maintenance-only person says nothing about the location's occupants, so it is not kept. */
+    public void recordSeen(String location, String personId, Instant seenAt) {
+        if (treatmentOf(location, personId) == LocationRoleService.Treatment.MAINTENANCE_ONLY) return;
+        recordSeen(personId, seenAt);
+    }
 
     /** Keeps the newest heartbeat per person; an older timestamp never replaces a newer one. */
     public void recordSeen(String personId, Instant seenAt) {

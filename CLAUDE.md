@@ -344,7 +344,7 @@ CONTACT_SENSOR, THERMOSTAT, TEMPERATURE_SENSOR, HUMIDITY_SENSOR,
 WATER_PRESSURE_SENSOR, POWER_METER, DISHWASHER, WASHING_MACHINE, DRYER,
 ROUTER, UPS, GOOGLE_HOME_DEVICE, HOME_ASSISTANT_ENTITY, DASHBOARD`
 
-### Location roles (D24, ratified 2026-10-13 — not enforced in code yet)
+### Location roles (D24, ratified 2026-10-13 — enforced for the hub's presence counting by W-38 slice 1; the siren gate is unchanged)
 A person's relationship to **one location**, separate from `HouseholdRole`
 (what a signed-in principal may do):
 - **`primary`** — the active users of the location (they live there or use
@@ -355,12 +355,14 @@ A person's relationship to **one location**, separate from `HouseholdRole`
   as on-site: a **guest** for presence (no phone check, no counted signal).
   One person can hold both at one location (at the cabin, Nate does).
 
-Today the rule holds only by configuration: a phone check
-(`check_authorized_user_phone_wifi.sh <person_id>`, person- and site-agnostic;
-the phone's MAC and LAN live in an uncommitted `authorized_user_phones.conf`)
-and a publisher exist for primary users only. The backend's
-`PresenceSignalRegistry` counts whoever publishes (W-38 builds the
-tracked-person registry). Setup for a new clone: `docs/REPLICATION.md` §3
+Enforcement (W-38 slice 1): the backend's tracked-person registry (`tracked_person_location_role`, admin-only
+`/api/presence/roles`) makes `PresenceSignalRegistry` count primary-role persons only. A maintenance-only arrival is
+not counted, publishes no `PRESENCE_CHANGED`, and is recorded once as a `MAINTENANCE_VISIT` INFO event; an
+unregistered person is still counted and flagged (`unregisteredCounted`). **The siren gate itself lives in Node-RED
+and Home Assistant and is not changed by this**: it still depends on the phone check
+(`check_authorized_user_phone_wifi.sh <person_id>`, person- and site-agnostic; the phone's MAC and LAN live in an
+uncommitted `authorized_user_phones.conf`) and a publisher existing for primary users only. Seed:
+`scripts/host/w38-register-primary-presence.sql`. Setup for a new clone: `docs/REPLICATION.md` §3
 "Who counts as present". Ontology: `location_role`,
 `check_authorized_user_phone_wifi`, `nodered_cabin_security_siren_gate`.
 

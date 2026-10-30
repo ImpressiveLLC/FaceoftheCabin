@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.locations.HubLocationService;
 import com.cabin.orchestrator.presence.LocationRole;
 import com.cabin.orchestrator.presence.LocationRoleService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
@@ -34,10 +35,12 @@ public class PresenceRolesController {
 
     private final LocationRoleService roles;
     private final PresenceSignalRegistry signals;
+    private final HubLocationService locations;
 
-    public PresenceRolesController(LocationRoleService roles, PresenceSignalRegistry signals) {
+    public PresenceRolesController(LocationRoleService roles, PresenceSignalRegistry signals, HubLocationService locations) {
         this.roles = roles;
         this.signals = signals;
+        this.locations = locations;
     }
 
     /** The assignments, plus who is currently being counted without one (the "unregistered, counted" flag). */
@@ -61,15 +64,29 @@ public class PresenceRolesController {
             Set<LocationRole> parsed = EnumSet.noneOf(LocationRole.class);
             Object raw = body.get("roles");
             if (raw instanceof List<?> list) {
-                for (Object item : list) parsed.add(LocationRole.valueOf(String.valueOf(item).trim().toUpperCase()));
+                for (Object item : list) {
+                    try {
+                        parsed.add(LocationRole.valueOf(String.valueOf(item).trim().toUpperCase()));
+                    } catch (IllegalArgumentException e) {
+                        throw new IllegalArgumentException("unknown role '" + item + "': use primary or maintenance");
+                    }
+                }
             } else if (raw != null) {
                 throw new IllegalArgumentException("roles must be a list of primary and maintenance");
             }
-            roles.assign((String) body.get("personId"), (String) body.get("location"), parsed);
+            String location = text(body.get("location"), "location").trim();
+            // A role for a place that does not exist would silently never apply.
+            if (locations.byId(location) == null) throw new IllegalArgumentException("unknown location '" + location + "'");
+            roles.assign(text(body.get("personId"), "personId"), location, parsed);
             return ResponseEntity.ok(Map.of("assignments", roles.assignments().stream().map(PresenceRolesController::view).toList()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private static String text(Object value, String field) {
+        if (!(value instanceof String s) || s.isBlank()) throw new IllegalArgumentException(field + " is required and must be a string");
+        return s;
     }
 
     private static Map<String, Object> view(TrackedPersonStore.Assignment a) {
