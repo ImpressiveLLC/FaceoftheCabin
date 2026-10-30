@@ -76,11 +76,50 @@ public class DeviceDiscoveryController {
         discoveryStore.save(new DeviceDiscoveryResult(runId, deviceId, requestedAt, null, List.of()));
 
         CompletableFuture.runAsync(() -> {
-            DeviceDiscoveryResult result = discoveryClient.runDiscovery(runId, descriptor.get(), status.attributes());
+            DeviceDiscoveryResult result = discoveryClient.runDiscovery(
+                runId, descriptor.get(), lookupAttributes(status.attributes(), registry::get));
             discoveryStore.save(result);
         }, discoveryExecutor);
 
         return Map.of("runId", runId, "deviceId", deviceId, "requestedAt", requestedAt.toString());
+    }
+
+    /**
+     * What a lookup may search for. A Home Assistant entity (a battery, a humidity reading, a
+     * calibration number) has no vendor or model of its own, so its generated description
+     * ("temp_kitchen Battery (battery)") went to the web search as-is and came back as cooking
+     * thermometers and doorbell batteries (found 2026-10-29). Such a service now searches as its
+     * nearest ancestor that does carry a vendor or model (the Zigbee device it belongs to), and
+     * with no description at all when none does, which keeps the lookup local. A device that
+     * reports its own vendor or model, and a description-only device from the network scan, are
+     * unchanged.
+     */
+    static Map<String, Object> lookupAttributes(Map<String, Object> attributes,
+                                                java.util.function.Function<String, DeviceStatus> byId) {
+        if (!"Home Assistant".equals(attributes.get("discoveredFrom")) || hasText(attributes.get("vendor"))
+                || hasText(attributes.get("model"))) {
+            return attributes;
+        }
+        Map<String, Object> lookup = new LinkedHashMap<>(attributes);
+        Set<String> seen = new HashSet<>();
+        Object next = attributes.get("parentDeviceId");
+        while (hasText(next) && seen.add(String.valueOf(next).trim()) && seen.size() <= 5) {
+            DeviceStatus parent = byId.apply(String.valueOf(next).trim());
+            if (parent == null) break;
+            Map<String, Object> parentAttributes = parent.attributes();
+            if (hasText(parentAttributes.get("vendor")) || hasText(parentAttributes.get("model"))) {
+                lookup.put("vendor", parentAttributes.getOrDefault("vendor", ""));
+                lookup.put("model", parentAttributes.getOrDefault("model", ""));
+                return lookup;
+            }
+            next = parentAttributes.get("parentDeviceId");
+        }
+        lookup.put("description", "");
+        return lookup;
+    }
+
+    private static boolean hasText(Object value) {
+        return value != null && !String.valueOf(value).isBlank();
     }
 
     /** Most recent discovery result for a device. pending=true while a run is still in flight. */
