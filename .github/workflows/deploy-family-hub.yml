@@ -199,8 +199,8 @@ jobs:
 # Duplicate this file as deploy-home.yml with:
 #   - runs-on: [self-hosted, home-hub]
 #   - DEPLOY_PATH pointed at the home machine's clone path
-#   - paths filter narrowed to locations/home/** if the two hosts should
-#     deploy independently of each other's changes
+#   - a paths filter if the two hosts should deploy independently of each
+#     other's changes
 #
 # ── Placeholder: web-hosted (non-self-hosted) target ───────────────────────
 # If a deployment target is ever a managed platform (Fly.io, Render, a VPS

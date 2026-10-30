@@ -63,8 +63,9 @@ Tailscale-only. This isn't an oversight to "fix" — it's the deliberate
 boundary between the product surface and the reconfiguration surface. See
 `docs/ontology.yaml` and `ROADMAP.md` for the full reasoning.
 
-**This diagram is Cabin-specific.** A second location, Home, has a real
-deploy template at `cabin-orchestration-platform/locations/home/` and a
+**This diagram is Cabin-specific.** A second location, Home, is a collector
+for the cabin backend (D23; the old `locations/home/` overlay was removed in
+W-59) and has a
 seeded (currently disabled) device inventory in `DeviceRegistry` — see
 "Home Location — Android/Termux Collector Bring-Up" below and
 `ROADMAP.md`'s Phase 8 for the current state and architecture.
@@ -1809,11 +1810,10 @@ spare Android phone under Termux, running Zigbee2MQTT) collects device
 telemetry and ships it to the M920q as the one shared "main brain." It does
 NOT run its own Postgres/Kafka/cabin-backend, and it does NOT need its own
 Home Assistant instance for the Zigbee path specifically — only MQTT
-telemetry needs to reach the M920q. A real, deployable-but-never-deployed
-full-stack overlay also exists at `cabin-orchestration-platform/locations/home/`
-for other (non-Zigbee) integrations — see the architecture note in that
-directory before assuming it should be stood up as-is; it predates the
-Phase 8 lightweight-collector correction.*
+telemetry needs to reach the M920q. A never-deployed full-stack
+overlay once existed at `cabin-orchestration-platform/locations/home/`; it
+predated the Phase 8 lightweight-collector correction and was removed in
+W-59 (D23).*
 
 **Status as of 2026-09-10**: a real bench POC (SMLIGHT SLZB-MR5U coordinator
 + Termux on a Sony Xperia) passed — Zigbee2MQTT formed a real Zigbee network

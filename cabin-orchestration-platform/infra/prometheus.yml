@@ -1,6 +1,6 @@
 # Prometheus scrape config for the cabin stack.
 # Frigate exposes Prometheus-format metrics at /api/metrics — see
-# infra/frigate.yml and locations/home/frigate.yml (metrics.enabled).
+# infra/frigate.yml (metrics.enabled).
 #
 # Target hostname "frigate" resolves two different ways depending on
 # which compose file is active:

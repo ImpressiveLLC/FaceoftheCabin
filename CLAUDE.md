@@ -271,12 +271,6 @@ cabin-orchestration-platform/
 │   ├── init-db/001_schema.sql
 │   ├── grafana/provisioning/
 │   └── watchdog/watchdog.py
-├── locations/
-│   └── home/                        RETIRED by D23 (never deployed); removal is W-59
-│       ├── docker-compose.yml       Same stack, 16 GB mem limits
-│       ├── frigate.yml              5× Reolink RLC-810A (192.168.1.20–24)
-│       ├── application-home.yml     Spring profile overlay
-│       └── .env.example
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── device-topic-contract.md     MQTT topic schema
@@ -396,7 +390,7 @@ Home for `cabin-backend` to call"; it is being renamed `HOME_HA_DEPLOYED`
 (W-60). A Home Assistant at Home would be a new decision (D23, R-HD-4). Do not
 treat `home-hub` URLs as live, and do not read "Home Assistant unreachable at
 Home" as an outage. The old `cabin-orchestration-platform/locations/home/` stack
-overlay was never deployed and is retired (removal tracked in W-59).
+overlay was never deployed; it was retired and removed (W-59).
 
 ---
 
