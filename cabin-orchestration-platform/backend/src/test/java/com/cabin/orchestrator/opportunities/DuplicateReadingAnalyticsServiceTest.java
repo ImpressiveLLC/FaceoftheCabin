@@ -98,4 +98,23 @@ class DuplicateReadingAnalyticsServiceTest {
         new DuplicateReadingAnalyticsService(registry, resolvedStore).evaluate("z2m-kitchen", more);
         verify(resolvedStore).save(any());
     }
+
+    @Test
+    void disablingTheLastRepeatingServiceLeavesNothingToScanAndTheCardIsNotPromisedToVanish() {
+        DeviceStatus parent = device("z2m-kitchen", true, null, List.of("temperature"));
+        DeviceStatus child = device("ha-kitchen-t", false, "z2m-kitchen", List.of("temperature"));
+        assertThat(DuplicateReadingAnalyticsService.findDuplicates(List.of(parent, child), byId(parent, child)::get)).isEmpty();
+
+        DeviceRegistry registry = mock(DeviceRegistry.class);
+        JdbcOptimizationOpportunityStore store = mock(JdbcOptimizationOpportunityStore.class);
+        when(store.findAll(OpportunityStatus.RESOLVED)).thenReturn(List.of());
+        when(store.findOpenOrAcknowledged(any(), any())).thenReturn(java.util.Optional.empty());
+        when(registry.get("z2m-kitchen")).thenReturn(parent);
+        new DuplicateReadingAnalyticsService(registry, store).evaluate("z2m-kitchen", List.of(
+            new DuplicateReadingAnalyticsService.Duplicate("ha-kitchen-t", "Kitchen T", List.of("temperature"))));
+        ArgumentCaptor<OptimizationOpportunity> saved = ArgumentCaptor.forClass(OptimizationOpportunity.class);
+        verify(store).save(saved.capture());
+        assertThat(String.valueOf(saved.getValue().evidence().get("recommendations")))
+            .contains("mark this card resolved").doesNotContain("removed from this list");
+    }
 }

@@ -129,7 +129,8 @@ public class DuplicateReadingAnalyticsService {
                 + "disabling the service.",
             "Keep a service only if you want it for something the parent does not do, such as a workflow that watches "
                 + "that entity. Disabling a service never deletes its history.",
-            "Services are removed from this list as soon as they are disabled or no longer repeat the parent."));
+            "A service drops off this list once it is disabled or stops repeating the parent, but a scan never closes a card: "
+                + "when the last service is disabled, mark this card resolved."));
 
         Optional<OptimizationOpportunity> existing = store.findOpenOrAcknowledged(parentId, OpportunityType.DUPLICATE_READING);
         String id = existing.map(OptimizationOpportunity::id).orElseGet(() -> UUID.randomUUID().toString());
