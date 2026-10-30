@@ -87,6 +87,8 @@ public class HomeAssistantDiscoveryService {
         Map<String, String> deviceIds = adapter.deviceIdsByEntity(location);
         Map<String, String> zigbeeLocations = nativeZigbeeLocationsBySlug();
         Map<String, List<String>> nativeIdsBySlug = nativeZigbeeIdsBySlug(location);
+        Map<String, String> zigbeeAddresses = adapter.zigbeeAddressesByEntity(location);
+        Map<String, String> nativeIdsByAddress = nativeZigbeeIdsByAddress(location);
         for (HomeAssistantAdapter.DiscoveredEntity entity : adapter.discover(location)) {
             String domain = domain(entity.entityId());
             if (isPresence(entity, domain)) {
@@ -202,7 +204,10 @@ public class HomeAssistantDiscoveryService {
             registry.update(new DeviceStatus(id, registered.type(), registered.name(),
                 newState, Instant.now(), merged, registered.location()));
             // W-88: the Zigbee device is the parent, its Home Assistant entities are its services.
-            String nativeId = nativeParentFor(entity.entityId(), nativeIdsBySlug);
+            // The hardware address is exact and survives a rename in Home Assistant; the name prefix is the
+            // fallback when HA's device identifiers are unavailable.
+            String nativeId = nativeIdsByAddress.get(zigbeeAddresses.get(entity.entityId()));
+            if (nativeId == null) nativeId = nativeParentFor(entity.entityId(), nativeIdsBySlug);
             if (nativeId != null) linkUnderNative(id, nativeId);
             // A sensor entity of a Zigbee device repeats readings the native device already logs
             // (found 2026-10-21: the attic sensor charted twice, once per device id). The entity
@@ -229,6 +234,23 @@ public class HomeAssistantDiscoveryService {
             if (!slug.isEmpty()) bySlug.computeIfAbsent(slug, k -> new ArrayList<>()).add(status.deviceId());
         }
         return bySlug;
+    }
+
+    /** Native Zigbee device ids by hardware address; an address two devices claim is ambiguous and left out. */
+    private Map<String, String> nativeZigbeeIdsByAddress(String location) {
+        Map<String, String> byAddress = new HashMap<>();
+        Set<String> ambiguous = new HashSet<>();
+        for (DeviceStatus status : registry.all()) {
+            if (!status.deviceId().startsWith("z2m-")) continue;
+            Optional<DeviceDescriptor> descriptor = registry.descriptor(status.deviceId());
+            if (descriptor.isEmpty() || !location.equals(descriptor.get().location())) continue;
+            Object address = status.attributes().get("ieeeAddress");
+            if (!(address instanceof String text) || text.isBlank()) continue;
+            String key = text.trim().toLowerCase(Locale.ROOT);
+            if (byAddress.putIfAbsent(key, status.deviceId()) != null) ambiguous.add(key);
+        }
+        ambiguous.forEach(byAddress::remove);
+        return byAddress;
     }
 
     private static String nativeSlug(DeviceDescriptor descriptor) {
@@ -263,11 +285,12 @@ public class HomeAssistantDiscoveryService {
             if (nativeStatus == null || nativeDescriptor.isEmpty()) return;
             String slug = nativeSlug(nativeDescriptor.get());
             String nativeParent = parentOf(nativeStatus);
-            if (!nativeParent.isEmpty() && isEntityOfNative(nativeParent, slug)) {
+            if (!nativeParent.isEmpty() && (isEntityOfNative(nativeParent, slug) || sharesHaDevice(nativeParent, entityDeviceId))) {
                 registry.setDiscoveredParent(nativeId, "");
             }
             String current = parentOf(registry.get(entityDeviceId));
-            if (current.isEmpty() || (!current.equals(nativeId) && isEntityOfNative(current, slug))) {
+            if (current.isEmpty() || (!current.equals(nativeId)
+                    && (isEntityOfNative(current, slug) || sharesHaDevice(current, entityDeviceId)))) {
                 registry.setDiscoveredParent(entityDeviceId, nativeId);
             }
         } catch (RuntimeException e) {
@@ -293,6 +316,15 @@ public class HomeAssistantDiscoveryService {
         Object reported = nativeStatus.attributes().get("vendorReportedFields");
         if (reported instanceof Collection<?> fields && fields.contains(measurement.get())) return true;
         return nativeStatus.attributes().get(measurement.get()) instanceof Number;
+    }
+
+    /** Two registry entries are entities of the same Home Assistant device (a sibling is not a parent). */
+    private boolean sharesHaDevice(String deviceId, String otherDeviceId) {
+        DeviceStatus a = registry.get(deviceId);
+        DeviceStatus b = registry.get(otherDeviceId);
+        Object haA = a == null ? null : a.attributes().get("haDeviceId");
+        Object haB = b == null ? null : b.attributes().get("haDeviceId");
+        return haA != null && !String.valueOf(haA).isBlank() && String.valueOf(haA).equals(String.valueOf(haB));
     }
 
     private static String parentOf(DeviceStatus status) {

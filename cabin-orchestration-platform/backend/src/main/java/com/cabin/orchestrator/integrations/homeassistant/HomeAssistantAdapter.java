@@ -141,6 +141,31 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
      * so a caller can always treat "not grouped" as the safe default.
      */
     public Map<String, String> deviceIdsByEntity(String location) {
+        return entityTemplate(location, "device_id(s.entity_id)");
+    }
+
+    private static final java.util.regex.Pattern ZIGBEE_ADDRESS =
+        java.util.regex.Pattern.compile("0x[0-9a-fA-F]{16}");
+
+    /**
+     * Maps an entity_id to the Zigbee hardware address (IEEE, lower case) of the physical device it
+     * belongs to, read from the identifiers of that entity's Home Assistant device. Zigbee2MQTT registers
+     * its devices with an identifier of the form zigbee2mqtt_0x..., so this holds however the device was
+     * renamed in Home Assistant (found 2026-10-29: the mech room sensor, renamed there, matched no Zigbee
+     * device by name). Empty when HA is unreachable or the template fails, like deviceIdsByEntity.
+     */
+    public Map<String, String> zigbeeAddressesByEntity(String location) {
+        Map<String, String> identifiers = entityTemplate(location,
+            "(device_attr(device_id(s.entity_id), 'identifiers') | string) if device_id(s.entity_id) else none");
+        Map<String, String> addresses = new LinkedHashMap<>();
+        identifiers.forEach((entityId, text) -> {
+            java.util.regex.Matcher m = ZIGBEE_ADDRESS.matcher(text);
+            if (m.find()) addresses.put(entityId, m.group().toLowerCase(java.util.Locale.ROOT));
+        });
+        return addresses;
+    }
+
+    private Map<String, String> entityTemplate(String location, String valueExpression) {
         String token = "home".equals(location) ? homeHaToken : cabinHaToken;
         String url = "home".equals(location) ? homeHaUrl : cabinHaUrl;
         if (token.isBlank()) {
@@ -155,7 +180,7 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
             // don't, which the JSON parse below simply drops).
             String template = "{% set ns = namespace(result={}) %}"
                 + "{% for s in states %}"
-                + "{% set ns.result = dict(ns.result, **{s.entity_id: device_id(s.entity_id)}) %}"
+                + "{% set ns.result = dict(ns.result, **{s.entity_id: " + valueExpression + "}) %}"
                 + "{% endfor %}"
                 + "{{ ns.result | tojson }}";
             Map<String, Object> body = Map.of("template", template);
