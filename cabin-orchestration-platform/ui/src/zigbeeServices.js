@@ -17,20 +17,30 @@ function measurementOf(device) {
   return COLLAPSIBLE.has(fromType) ? fromType : null;
 }
 
+// The Zigbee parent and the measurement when this device is a Home Assistant sensor entity repeating a reading
+// its enabled Zigbee parent already reports; null otherwise. Shared by the Monitoring collapse below and the
+// device card's explanation of why the entity has no tile of its own.
+export function duplicateOfZigbeeParent(child, byId) {
+  const parentId = child.attributes?.parentDeviceId;
+  if (!parentId || !child.deviceId.startsWith('ha-') || !child.attributes?.entityId?.startsWith('sensor.')) return null;
+  const parent = byId.get(parentId);
+  if (!parent || !parent.deviceId.startsWith('z2m-') || parent.location !== child.location ||
+      parent.attributes?.enabled === false) return null;
+  const measurement = measurementOf(child);
+  if (!measurement) return null;
+  const reported = parent.attributes?.vendorReportedFields || parent.attributes?.sourceReportedFields || [];
+  return reported.includes(measurement) ? { parent, measurement } : null;
+}
+
 export function collapseDuplicateZigbeeServices(devices) {
   const byId = new Map(devices.map(d => [d.deviceId, d]));
   const hidden = new Set();
   const filled = new Map();
   for (const child of devices) {
-    const parentId = child.attributes?.parentDeviceId;
-    if (!parentId || !child.deviceId.startsWith('ha-') || !child.attributes?.entityId?.startsWith('sensor.')) continue;
-    const parent = byId.get(parentId);
-    if (!parent || !parent.deviceId.startsWith('z2m-') || parent.location !== child.location ||
-        parent.attributes?.enabled === false) continue;
-    const measurement = measurementOf(child);
-    if (!measurement) continue;
-    const reported = parent.attributes?.vendorReportedFields || parent.attributes?.sourceReportedFields || [];
-    if (!reported.includes(measurement)) continue;
+    const duplicate = duplicateOfZigbeeParent(child, byId);
+    if (!duplicate) continue;
+    const { parent, measurement } = duplicate;
+    const parentId = parent.deviceId;
     hidden.add(child.deviceId);
     // Right after a restart the parent has no reading until its next report; the entity's live value fills the
     // one card instead of leaving it blank.

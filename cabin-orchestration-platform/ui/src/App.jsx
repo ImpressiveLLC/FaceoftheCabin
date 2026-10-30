@@ -1,5 +1,7 @@
 import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget, valueSegments } from "./electricalMonitoring";
-import { collapseDuplicateZigbeeServices } from "./zigbeeServices";
+import { collapseDuplicateZigbeeServices, duplicateOfZigbeeParent } from "./zigbeeServices";
+import { ExpandableList } from "./ExpandableList";
+import { DEVICE_KIND_OPTIONS, batteryLevel, makeKindOf } from "./deviceKinds";
 /**
  * Cabin Orchestration Platform — Shell UI
  *
@@ -1644,7 +1646,7 @@ export function checkinStatusLabel(state, checkinStatus) {
   const s = (state || "").toUpperCase();
   if (s === "ALARM" || s === "CRITICAL") return null;
   switch (checkinStatus) {
-    case "NOT_CONFIGURED": return { text: "Not configured", cls: "state-not-configured" };
+    case "NOT_CONFIGURED": return { text: "No check-in schedule", cls: "state-not-configured" };
     case "LATE":            return { text: "Late checking in", cls: "state-late" };
     case "MISSED":           return { text: "Not responding", cls: "state-offline" };
     default: return null; // ON_SCHEDULE, or no data yet — show the raw state
@@ -2887,6 +2889,7 @@ export function DeviceManagerPanel({ auth }) {
   const [lifecycleFilter, setLifecycleFilter] = useState(() =>
     readStoredJson("devices.lifecycleFilter", DEFAULT_LIFECYCLE_FILTER));
   const [importedFromFilter, setImportedFromFilter] = useState(() => localStorage.getItem("devices.importedFrom") || "");
+  const [kindFilter, setKindFilter] = useState(() => localStorage.getItem("devices.kind") || "");
   const [candidateDevices, setCandidateDevices] = useState([]);
   const [previouslyExposed, setPreviouslyExposed] = useState([]);
   const [reviewingPrevious, setReviewingPrevious] = useState(false);
@@ -2900,6 +2903,7 @@ export function DeviceManagerPanel({ auth }) {
   useEffect(() => localStorage.setItem("devices.parentOnly", String(parentOnly)), [parentOnly]);
   useEffect(() => localStorage.setItem("devices.lifecycleFilter", JSON.stringify(lifecycleFilter)), [lifecycleFilter]);
   useEffect(() => localStorage.setItem("devices.importedFrom", importedFromFilter), [importedFromFilter]);
+  useEffect(() => localStorage.setItem("devices.kind", kindFilter), [kindFilter]);
 
   const reviewLocations = useMemo(() => activeLocation === "both"
     ? [LOCATIONS.cabin, LOCATIONS.home]
@@ -2953,9 +2957,10 @@ export function DeviceManagerPanel({ auth }) {
   // control that is no longer shown -- it falls back to "All".
   const importOptions = useMemo(() => importedFromOptions(managerDevices), [managerDevices]);
   const activeImportedFrom = importOptions.includes(importedFromFilter) ? importedFromFilter : "";
+  const kindOf = useMemo(() => makeKindOf(managerDevices), [managerDevices]);
   const effectiveDeviceFilter = reviewingPrevious
     ? { parentOnly: false, lifecycle: ["DEFERRED", "IGNORED"], importedFrom: "" }
-    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter, importedFrom: activeImportedFrom });
+    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter, importedFrom: activeImportedFrom, kind: kindFilter, kindOf });
 
   // Hoisted up from DmSeeView (was local there) so See and Change render
   // the exact same saved grouping/order -- Change is a read-only consumer
@@ -3078,6 +3083,14 @@ export function DeviceManagerPanel({ auth }) {
                     : reviewingPrevious ? "Reviewing previously exposed devices ignores this"
                     : undefined}
                 />
+                <label className="dm-toolbar-select">Kind
+                  <select value={kindFilter} disabled={reviewingPrevious}
+                    onChange={e => setKindFilter(e.target.value)}
+                    title="Battery devices, wired devices, or the services and data elements that have no hardware of their own">
+                    <option value="">All</option>
+                    {DEVICE_KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </label>
                 {importOptions.length > 0 && (
                   <label className="dm-toolbar-select">Imported from
                     <select value={activeImportedFrom} disabled={reviewingPrevious}
@@ -3345,11 +3358,13 @@ export function importedFromOptions(devices) {
   return [...new Set(devices.map(d => d.attributes?.importedFrom).filter(Boolean))].sort();
 }
 
-export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecycle = DEFAULT_LIFECYCLE_FILTER, importedFrom = "" } = {}) {
+export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecycle = DEFAULT_LIFECYCLE_FILTER, importedFrom = "", kind = "", kindOf = null } = {}) {
+  const kindFor = kindOf || makeKindOf(devices);
   return devices.filter(d =>
     lifecycle.includes(deviceLifecycleState(d)) &&
     (!parentOnly || !d.attributes?.parentDeviceId) &&
-    (!importedFrom || d.attributes?.importedFrom === importedFrom));
+    (!importedFrom || d.attributes?.importedFrom === importedFrom) &&
+    (!kind || kindFor(d) === kind));
 }
 
 // 2026-08-25: the toolbar's device count used raw devices.length -- every
@@ -3376,7 +3391,7 @@ export function resolveDeviceManagerFilter(groupBy, saved) {
   // The source-platform facet is kept here on purpose: Lifecycle grouping is where
   // candidates are reviewed, and "just the SmartThings ones" is the point of it.
   if (groupBy === "candidate") {
-    return { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value), importedFrom: saved.importedFrom };
+    return { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value), importedFrom: saved.importedFrom, kind: saved.kind, kindOf: saved.kindOf };
   }
   return saved;
 }
@@ -3635,7 +3650,9 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
                 )}
               </span>
             </header>
-            {groupOpen && groupItems.map((d) => {
+            {groupOpen && <ExpandableList items={groupItems} noun="devices" forceOpen={reorderMode}
+              isPinned={d => isAlarm(d) || d.deviceId === selected}
+              renderItem={(d) => {
           const ignored = deviceLifecycleState(d) === "IGNORED";
           const isPinned = isAlarm(d) || ignored;
           const isOver = reorderMode && overItem?.kind === "device"
@@ -3666,7 +3683,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
               />
             </div>
           );
-        })}
+        }} />}
           </section>
           );
         })}
@@ -3725,9 +3742,11 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isG
                 </button>
               </span>
             </header>
-            {groupOpen && groupItems.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
-              ref={selected === d.deviceId ? selectedRowRef : undefined}
-              onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} auth={auth} workflows={workflows} />)}
+            {groupOpen && <ExpandableList items={groupItems} noun="devices"
+              isPinned={d => isAlarm(d) || d.deviceId === selected}
+              renderItem={d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
+                ref={selected === d.deviceId ? selectedRowRef : undefined}
+                onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} auth={auth} workflows={workflows} />} />}
           </section>
           );
         })}
@@ -4525,6 +4544,10 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
           {lifecycleLabels[lifecycle] || lifecycle}
         </span>
       )}
+      {batteryLevel(device) !== null && (
+        <span className={`health-chip ${batteryLevel(device) <= 20 ? "health-alarm" : "health-ok"}`}
+          title="Last reported battery level">{Math.round(batteryLevel(device))}%</span>
+      )}
       {deviceWorkflows.length > 0 && (
         <span className="workflow-badge" title={deviceWorkflows.map(w => w.name).join(", ")}>
           {deviceWorkflows.length} workflow{deviceWorkflows.length === 1 ? "" : "s"}
@@ -4551,6 +4574,7 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
   const parentDeviceId = device.attributes?.parentDeviceId;
   const appDevices = useApp()?.devices || [];
   const parentDevice = parentDeviceId ? appDevices.find(d => d.deviceId === parentDeviceId) : null;
+  const duplicateOf = duplicateOfZigbeeParent(device, new Map(appDevices.map(d => [d.deviceId, d])));
   const [lifecycleResult, setLifecycleResult] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const decide = async (action) => {
@@ -4569,6 +4593,13 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
     <div className="dm-detail-inner">
       <div className="dm-detail-name">{device.name}</div>
       <div className="dm-detail-id">{device.deviceId}</div>
+      {duplicateOf && (
+        <p className="config-desc dm-duplicate-note">
+          This {SENSOR_FIELD_LABELS[duplicateOf.measurement] || duplicateOf.measurement} reading is already reported by
+          {" "}{duplicateOf.parent.name}, so Monitoring shows it once, on that device's tile. You can still enable this
+          service; it is not shown as a second tile, and its history is included in the parent's chart.
+        </p>
+      )}
       <div className="dm-detail-rows">
         <div className="dm-detail-row"><span>Type</span><span>{device.type}</span></div>
         {device.attributes?.area && (

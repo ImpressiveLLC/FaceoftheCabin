@@ -3076,3 +3076,8 @@ select option { background: var(--bg-secondary); color: var(--text); }
   [data-theme="signal"] [data-panel="places"] .on-the-way-btn-prominent { box-shadow: 0 0 12px color-mix(in srgb, var(--role-pending) 30%, transparent); }
 }
 /* </signal-glow> */
+
+/* Common long-list approach (ExpandableList): the wrapper adds no box of its own. */
+.expandable-list { display: contents; }
+.expandable-list-toggle { align-self: flex-start; margin: 4px 8px; }
+.dm-duplicate-note { margin: 6px 0; }
