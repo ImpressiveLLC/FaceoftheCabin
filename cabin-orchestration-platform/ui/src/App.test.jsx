@@ -1739,7 +1739,7 @@ describe("checkinStatusLabel", () => {
   });
 
   it("shows NOT_CONFIGURED for disabled/not-yet-installed devices", () => {
-    expect(checkinStatusLabel("UNKNOWN", "NOT_CONFIGURED")).toEqual({ text: "Not configured", cls: "state-not-configured" });
+    expect(checkinStatusLabel("UNKNOWN", "NOT_CONFIGURED")).toEqual({ text: "No check-in schedule", cls: "state-not-configured" });
   });
 
   it("falls through to the raw state for ON_SCHEDULE or missing data", () => {
