@@ -3615,6 +3615,15 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     expect(JSON.parse(localStorage.getItem("devices.lifecycleFilter"))).toEqual(["ASSIGNED"]);
   });
 
+  it("a focus request clears a saved Kind filter that was hiding the target", async () => {
+    localStorage.setItem("devices.kind", "battery");
+    renderWithFocus(twoDevices, "d2");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    expect(localStorage.getItem("devices.kind")).toBe("");
+    expect(screen.getAllByText("Device Two").length).toBeGreaterThan(0);
+  });
+
   it("a focus request expands the target's collapsed group", async () => {
     localStorage.setItem("collapsed.deviceGroups.cabin.type", JSON.stringify({ LOCK: true }));
     renderWithFocus(twoDevices, "d2");
@@ -3689,6 +3698,17 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     expect(screen.getByRole("button", { name: "Parent devices only" }).className).not.toMatch(/btn-ghost-active/);
     expect(screen.getByRole("button", { name: /^state/i }).textContent).toMatch(/3 selected/);
     expect(screen.getByText("d1")).toBeTruthy(); // dm-detail-id -- still selected
+  });
+
+  it("Reset Filters clears a saved Kind filter", async () => {
+    localStorage.setItem("devices.kind", "battery");
+    renderPanel({ devices: twoDevices });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(screen.getByLabelText(/^kind$/i).value).toBe("battery");
+
+    fireEvent.click(screen.getByRole("button", { name: /reset filters/i }));
+    await waitFor(() => expect(screen.getByLabelText(/^kind$/i).value).toBe(""));
+    expect(localStorage.getItem("devices.kind")).toBe("");
   });
 
   it("Review previously exposed overrides Parent-only/State while checked", async () => {
