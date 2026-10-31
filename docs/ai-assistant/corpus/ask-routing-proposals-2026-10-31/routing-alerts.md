@@ -2,9 +2,9 @@
 
 For Code, who owns `context-fixtures-r2.json` (backend copy and the `docs/ai-assistant/rag/` mirror). Nothing here edits the map. The backend copy on main has **26** categories (the coverage map said 27).
 
-Phrasing numbers are the line numbers of `tools/routes.tsv` (1 to 150, in `tools/phrasings.json` order), with the row id.
+Phrasing numbers are the line numbers of the 150 phrasings in `../ask-coverage-tools/phrasings.json` (flattened in order), with the row id.
 
-Simulated with `ask-coverage-tools/route.py` against a proposed fixture (local simulation output, not committed). Every in-scope phrasing (1 to 25, 38 to 40, 105 to 109) routes to a category whose first section answers it. All proposed categories fit the 6000-character budget with the branch's text.
+Simulated with `ask-coverage-tools/route.py` against a proposed fixture (simulation output not committed). Every in-scope phrasing (1 to 25, 38 to 40, 105 to 109) routes to a category whose first section answers it. All proposed categories fit the 6000-character budget with the branch's text.
 
 ## Sections added or fixed
 
@@ -29,7 +29,7 @@ Budget note: `opportunity_status` today is K19 + `capability-map` = 5949 of 6000
 
 ## Proposed map changes
 
-Insert the new categories **before** `rules_workflows` so a tie with its generic `workflow` and `rule` keywords goes to them, and so `deployment_source`'s `push` loses to `push notification`.
+Declare `alert_silencing` **before** `status_checks` (otherwise phrasings 6, 8, 10 and 12 tie 1 to 1 and land on S1, S2 or S4 instead of the how-to S3) and before `leak_response` (phrasing 10). Insert the new categories **before** `rules_workflows` so a tie with its generic `workflow` and `rule` keywords goes to them, and so `deployment_source`'s `push` loses to `push notification`.
 
 | Category | New or existing | Keywords to add (whole words, singular) | Documents, in order | Total chars | Phrasings |
 |---|---|---|---|---|---|
@@ -39,7 +39,7 @@ Insert the new categories **before** `rules_workflows` so a tie with its generic
 | `leak_response` | new | leak, water leak, water back on, turn the water, main water, water valve, shut off the water, flood | S6, S3 (household), then operations.md `rules-and-safety` (administrator) | ~5770 | 11, 19, 22, 23 |
 | `workflow_reset_undo` | new, `boost: 1` | undo, reset, mark seen, reverse, take back, firing | S7, S6 (household) | ~4100 | 38, 39, 40 |
 | `optimization_opportunities` | new | duplicate reading, drawing power, 48 hour, optimization opportunity, power card | S9, then K19 (both administrator) | ~4700 | 24, 25 |
-| `rules_workflows` | existing | built-in rule, backend rule | append S8 (household) after its two sections | 5886 | 18 |
+| `rules_workflows` | existing | built-in rule, backend rule | append S8 (household) after its two sections: **over budget (about 7500 characters) if the admin proposal's prepend is also applied; do not do both.** Route S8 through its own small category or only one of the two | 5886 | 18 |
 | `presence_roles_and_gaps` | existing | counted but not assigned, maintenance visit, maintenance person, primary and maintenance, make someone a maintenance | unchanged (F1 is its first section) | 4871 | 105 to 109 |
 
 Notes for Code:
