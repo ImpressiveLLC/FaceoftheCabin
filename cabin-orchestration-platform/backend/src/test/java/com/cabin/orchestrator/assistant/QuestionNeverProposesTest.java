@@ -115,7 +115,36 @@ class QuestionNeverProposesTest {
         "Hey, hi, hello, ok, so, well, thanks, please, um, how do I turn off the heater?",
         "Isn’t the valve closed?",
         "Doesn’t the heater turn on by itself?",
-        "Hows the backend doing");
+        "Hows the backend doing",
+        "1 - How do I turn off the heater?",
+        "1 \u2013 Why is the valve closed",
+        "#3 how do I remove a device",
+        "#3) can I silence the siren",
+        "Step 2) how do I add a device",
+        "No. 4: why did my workflow not run",
+        "iv) what does Fire do",
+        "[1] How do I create a workflow?",
+        "{a} how do I silence an alert",
+        "> how do I restart the backend",
+        "1\uFE0F\u20E3 How do I turn off the heater?",
+        "2 how do I turn off the heater",
+        "I have a question about the heater: how do I turn it off?",
+        "I have a question, how do I turn off the heater?",
+        "One more question - why is the valve closed",
+        "Can I ask how I silence the siren?",
+        "May I ask: how do I add a device",
+        "I wonder how I silence the siren",
+        "Just curious, how do I silence the siren",
+        "Hi there, how do I add a device?",
+        "Hello there! Can I silence the siren?",
+        "Dear sir or madam, how do I add a device",
+        "Yes, how do I add a device",
+        "Anyway, what does Fire do on a workflow?",
+        "Would you tell me how I silence the siren",
+        "Can you explain how I silence the siren",
+        "Claude, how do I add a device",
+        "Assistant: how do I add a device",
+        "Kindly tell me how to silence the siren, why does it stay on?");
 
     final AtomicReference<String> modelOutput = new AtomicReference<>();
     final List<ProposalAuditLog.Entry> audit = new ArrayList<>();
@@ -292,5 +321,24 @@ class QuestionNeverProposesTest {
         List<String> answerFields = Arrays.stream(TinyHelpdeskAnswer.class.getRecordComponents()).map(c -> c.getName()).toList();
         assertEquals(List.of("question", "answer", "sources", "answeredByModel"), answerFields,
             "the Ask answer is text and citations only: no proposal, plan hash, step or entity id");
+    }
+
+    /** The wider opener and marker lists must not turn a plain command into a "question": these still propose. */
+    @Test
+    void commandsWithTheNewOpenersAndMarkersAreStillCommands() {
+        for (String command : List.of(
+                "Yes, turn on the porch light",
+                "Hi there, turn off the heater",
+                "Hello there! Turn on the porch light",
+                "Ok so turn off the porch light",
+                "1) Turn off the heater",
+                "#2 turn on the porch light",
+                "3 lights on please",
+                "Anyway, set the heater to 72 degrees",
+                "Kindly turn on the porch light",
+                "No. Turn on the porch light",
+                "Claude, turn off the heater")) {
+            assertFalse(QuestionShape.isQuestion(command), command);
+        }
     }
 }
