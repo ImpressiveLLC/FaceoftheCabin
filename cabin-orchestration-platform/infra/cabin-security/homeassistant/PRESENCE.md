@@ -228,3 +228,10 @@ cabin signal.
   package and prints HA's config check. This is the "dev-tools zone simulation":
   it exercises the same trigger and condition code without touching the
   production alarm.
+
+## Adding another primary person (W-38 slice 3)
+
+Do not copy the nate block by hand. Add the person to `scripts/host/w38-register-primary-presence.sql` (as `PRIMARY`) and to
+`gen/presence-people.json`, run `node gen/generate-presence.mjs`, review the diff, and apply it as described in
+`gen/README.md`. The generator refuses anyone who is not primary-role in that seed, so a maintenance-only person can never get a
+check or a publish permission. It cannot see the live registry (see the README for that limit).

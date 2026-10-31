@@ -4,7 +4,10 @@ Run from this directory, no dependencies (paho is stubbed):
     python -m unittest test_cabin_security_mqtt_publish -v
 """
 
+import json
+import os
 import sys
+import tempfile
 import types
 import unittest
 from unittest import mock
@@ -84,6 +87,96 @@ class ExistingAllowListIsUnchanged(unittest.TestCase):
         with mock.patch.object(sys, "argv", ["x", "only-one-arg"]):
             self.assertEqual(script.main(), 2)
         self.assertEqual(run("cabin/security/disarm_everything", "ON")[0], 3)
+
+
+class GeneratedPeople(unittest.TestCase):
+    """W-38 slice 3: the generated roster file can only add exact per-person presence topics, and fails closed."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.path = os.path.join(self.dir.name, "presence_people_allowlist.json")
+        patcher = mock.patch.object(script, "PEOPLE_FILE", self.path)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write(self, content):
+        with open(self.path, "w", encoding="utf-8") as handle:
+            handle.write(content if isinstance(content, str) else json.dumps(content))
+
+    def good(self, *people):
+        return {"version": 1, "people": [{"personId": p, "location": l} for p, l in people]}
+
+    def test_the_checked_in_file_for_nate_adds_nothing_the_base_does_not_already_allow(self):
+        real = os.path.join(os.path.dirname(os.path.abspath(script.__file__)), "presence_people_allowlist.json")
+        allowed, patterns = script.load_people(real)
+        self.assertEqual(set(allowed), {"cabin/presence/nate"})
+        self.assertEqual(set(patterns), {"cabin/presence/nate/last_seen"})
+        self.assertTrue(set(allowed) <= set(script.ALLOWED), "nate is already in the hand-reviewed base")
+        self.assertTrue(set(patterns) <= set(script.PATTERNS))
+
+    def test_a_listed_person_gets_exactly_their_two_topics_and_values(self):
+        self.write(self.good(("child_1", "cabin")))
+        for payload in ("home", "not_home"):
+            self.assertEqual(run("cabin/presence/child_1", payload)[0], 0, payload)
+        for payload in ("away", "HOME", "", "on"):
+            self.assertEqual(run("cabin/presence/child_1", payload)[0], 3, payload)
+        self.assertEqual(run("cabin/presence/child_1/last_seen", "2026-10-04T09:00:00Z")[0], 0)
+        self.assertEqual(run("cabin/presence/child_1/last_seen", "home")[0], 3)
+
+    def test_it_never_opens_another_person_location_or_topic(self):
+        self.write(self.good(("child_1", "cabin")))
+        for topic in ("home/presence/child_1", "cabin/presence/child_2", "cabin/presence/child_1/extra",
+                      "cabin/presence/+", "cabin/presence/#", "cabin/security/armed_away_x", "zigbee2mqtt/x/set"):
+            self.assertEqual(run(topic, "home")[0], 3, topic)
+
+    def test_a_person_who_is_not_listed_stays_refused(self):
+        self.write(self.good(("child_1", "cabin")))
+        self.assertEqual(run("cabin/presence/emma", "home")[0], 3)
+
+    def test_missing_file_adds_nothing_and_the_base_still_works(self):
+        self.assertEqual(script.load_people(), ({}, {}))
+        self.assertEqual(run("cabin/presence/nate", "home")[0], 0)
+        self.assertEqual(run("cabin/presence/child_1", "home")[0], 3)
+
+    def test_malformed_or_wrong_shape_files_add_nothing(self):
+        for content in ("", "not json", "[]", "null", "{}", '{"version": 1}', '{"version": 2, "people": []}',
+                        '{"version": 1, "people": {}}', '{"version": 1, "people": [], "extra": 1}',
+                        '{"version": "1", "people": []}'):
+            self.write(content)
+            self.assertEqual(script.load_people(), ({}, {}), content)
+            self.assertEqual(run("cabin/presence/child_1", "home")[0], 3, content)
+            self.assertEqual(run("cabin/presence/nate", "home")[0], 0, "base still works: " + content)
+
+    def test_one_bad_entry_rejects_the_whole_file(self):
+        bad_entries = [
+            {"personId": "Child_1", "location": "cabin"},        # uppercase
+            {"personId": "child-1", "location": "cabin"},        # hyphen
+            {"personId": "", "location": "cabin"},
+            {"personId": "a" * 33, "location": "cabin"},         # too long
+            {"personId": "child_1", "location": "garage"},       # location outside the fixed set
+            {"personId": "child_1", "location": "cabin", "topic": "cabin/security/armed_away"},  # tries to name a topic
+            {"personId": "child_1"},
+            {"personId": 7, "location": "cabin"},
+            {"personId": "child_1", "location": ["cabin"]},
+            {"personId": "../x", "location": "cabin"},
+            {"personId": "x/#", "location": "cabin"},
+            "child_1",
+        ]
+        for bad in bad_entries:
+            self.write({"version": 1, "people": [{"personId": "child_2", "location": "cabin"}, bad]})
+            self.assertEqual(script.load_people(), ({}, {}), repr(bad))
+            self.assertEqual(run("cabin/presence/child_2", "home")[0], 3, "the good entry is rejected with the bad one: " + repr(bad))
+
+    def test_an_oversized_file_or_too_many_people_adds_nothing(self):
+        self.write({"version": 1, "people": [{"personId": f"p{i}", "location": "cabin"} for i in range(33)]})
+        self.assertEqual(script.load_people(), ({}, {}))
+        self.write(" " * (script.MAX_PEOPLE_FILE_BYTES + 1))
+        self.assertEqual(script.load_people(), ({}, {}))
+
+    def test_a_listed_person_is_retained_like_nate(self):
+        self.write(self.good(("child_1", "cabin")))
+        self.assertEqual(run("cabin/presence/child_1", "home")[1].call_args.kwargs["retain"], True)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+  - binary_sensor:
+      name: {{NAME}} Phone On WiFi
+      # The argument is the person id; the phone's MAC and the LAN to sweep
+      # come from /config/authorized_user_phones.conf (not in git).
+      command: "/config/check_authorized_user_phone_wifi.sh {{PERSON}}"
+      payload_on: "ON"
+      payload_off: "OFF"
+      command_timeout: 30
+      scan_interval: 60
+

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "people": [
+    {
+      "personId": "nate",
+      "location": "cabin"
+    }
+  ]
+}

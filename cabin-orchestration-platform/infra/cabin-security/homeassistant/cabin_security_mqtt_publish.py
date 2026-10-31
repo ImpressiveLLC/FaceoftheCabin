@@ -1,5 +1,7 @@
 """Publish only the allow-listed cabin security states to local MQTT."""
 
+import json
+import os
 import re
 import sys
 from datetime import datetime
@@ -51,10 +53,52 @@ PATTERNS = {
 }
 
 
+# W-38 slice 3 (D24): per-person presence topics generated from the roster (gen/generate-presence.mjs). The hand-reviewed ALLOWED
+# and PATTERNS above stay the base; this file can only ADD, and only exact topics built here from a validated person id and a
+# location from a fixed set. It can never name a topic, widen a payload, or add a wildcard. FAIL CLOSED: a missing, unreadable,
+# oversized or malformed file adds nothing, and one bad entry rejects the whole file.
+PEOPLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presence_people_allowlist.json")
+PERSON_ID = re.compile(r"[a-z0-9_]{1,32}")
+PEOPLE_LOCATIONS = ("cabin", "home")
+MAX_PEOPLE_FILE_BYTES = 8192
+MAX_PEOPLE = 32
+
+
+def load_people(path=None):
+    """Return (allowed, patterns) added by the generated file, or two empty dicts if the file is absent or not wholly valid."""
+    path = PEOPLE_FILE if path is None else path
+    try:
+        if os.path.getsize(path) > MAX_PEOPLE_FILE_BYTES:
+            return {}, {}
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if not isinstance(data, dict) or set(data) != {"version", "people"} or data["version"] != 1:
+            return {}, {}
+        people = data["people"]
+        if not isinstance(people, list) or len(people) > MAX_PEOPLE:
+            return {}, {}
+        allowed, patterns = {}, {}
+        for entry in people:
+            if not isinstance(entry, dict) or set(entry) != {"personId", "location"}:
+                return {}, {}
+            person, location = entry["personId"], entry["location"]
+            if (not isinstance(person, str) or not PERSON_ID.fullmatch(person)
+                    or not isinstance(location, str) or location not in PEOPLE_LOCATIONS):
+                return {}, {}
+            allowed[f"{location}/presence/{person}"] = {"home", "not_home"}
+            patterns[f"{location}/presence/{person}/last_seen"] = ISO_UTC
+        return allowed, patterns
+    except (OSError, ValueError):
+        return {}, {}
+
+
 def is_allowed(topic, payload):
+    extra_allowed, extra_patterns = load_people()
     if topic in ALLOWED:
         return payload in ALLOWED[topic]
-    pattern = PATTERNS.get(topic)
+    if topic in extra_allowed:
+        return payload in extra_allowed[topic]
+    pattern = PATTERNS.get(topic) or extra_patterns.get(topic)
     if pattern is None or not pattern.fullmatch(payload):
         return False
     try:

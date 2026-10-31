@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "people": [
+    {
+      "personId": "nate",
+      "location": "cabin",
+      "zone": "zone.cabin",
+      "gpsTracker": "device_tracker.nates_s23",
+      "batterySensor": "sensor.nates_s23_battery_level"
+    }
+  ]
+}
