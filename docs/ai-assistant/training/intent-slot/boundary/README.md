@@ -13,7 +13,7 @@ that gap in plain words.
 
 ## What is in `boundary-candidates.jsonl`
 
-92 rows: **58 questions** (expected intent `answer_question`) and **34 commands** that must stay commands. Most commands are the
+92 rows: **58 questions** (55 clear, expected `answer_question`; 3 in an **ambiguous** bucket, expected `answer_question` or `clarify`) and **34 commands** that must stay commands. Every row carries its own `reason`. Most commands are the
 near-miss twin of a question (`contrast_of` points at it, and the pair shares a `group` so a split never separates them), for
 example "How do I turn off the heater from the app?" against "Turn off the heater", or "Can I silence the siren?" against
 "Silence the siren". Five more are polite or indirect commands ("Can you turn off the heater?").
@@ -32,13 +32,17 @@ no intent for (silencing an alert, restarting the backend) `unsupported` or `cla
 `evaluate_boundary.py` scores a run. **False action** = a question-shaped row whose predicted intent is `set_device_state`,
 `set_device_attribute`, `propose_automation` or `express_need`. **Missed command** = a command row predicted as `answer_question`.
 It queries only local Ollama through the package's own `evaluate.query` (the same strict-schema call), or scores a predictions
-file. A run with any row missing an output reports the rates as `NOT_MEASURED` and exits non-zero: a rate over failed queries
+file. A run with any row missing or invalid reports the rates as `NOT_MEASURED` and exits non-zero: a rate over failed queries
 would otherwise read a reassuring zero (the first attempt at this run did exactly that, every query failed, and is why the check
-exists). See [RESULTS.md](RESULTS.md) for the measured result.
+exists). Scoring validates **every** output with the package's own `contract.validate`: an output that is missing, not an object or
+not a valid intent is not an answer, and a prediction for an id that is not a candidate is an error. See [RESULTS.md](RESULTS.md)
+for the measured result and [run-2026-10-31-prompt-r1.json](run-2026-10-31-prompt-r1.json) for the per-row report.
 
 ```sh
-python -m unittest test_boundary -v                      # fixtures and scoring, no model
+python -m unittest discover -s boundary -p 'test_*.py' -v   # from the intent-slot folder; CI runs it; needs requirements.txt
 python evaluate_boundary.py --model cabin-intent-slot-prompt-r1 --output report.json   # needs local Ollama
+python evaluate_boundary.py --model TAG --queries-only preds.jsonl                      # query only (no contract import), score elsewhere
+python evaluate_boundary.py --predictions preds.jsonl --model-tag TAG --output report.json --run-report run.json
 ```
 
 ## Limits
