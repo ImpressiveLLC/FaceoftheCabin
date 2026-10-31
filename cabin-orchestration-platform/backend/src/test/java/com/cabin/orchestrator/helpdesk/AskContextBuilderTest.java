@@ -144,7 +144,7 @@ class AskContextBuilderTest {
     @Test
     void patternsMatchWholeWordsOnly() {
         assertThat(nodesOnly.categoryIdFor("Please authorize this")).isNull();
-        assertThat(nodesOnly.categoryIdFor("Running low on disk space")).isNull();
+        assertThat(nodesOnly.categoryIdFor("Running low on milk")).isNull();
         assertThat(nodesOnly.categoryIdFor("What is the current price of milk?")).isNull();
         assertThat(nodesOnly.categoryIdFor("Do notes sync between phones?")).isEqualTo("note_sync");
     }
