@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  * trusting the model alone (W-117 boundary item, refocus order item 2).
  *
  * <p>This is a LEXICAL guard with a stated reach, not a guarantee about all questions. A request counts when, after
- * normalising it, any sentence starts (after skipping conversational openers) with one of these lead words or phrases:
+ * normalising it, any sentence starts (after skipping conversational openers and list markers, however many are stacked) with one of these lead words or phrases:
  * how, why, what, where, which, who, whose, whom, does, did, is, are, was, were, am, and "can/could/may/might/should/shall/
  * must/do/does" followed by I, we, someone, anyone, a guest or "the X". Anything else is not caught (see the PR for the forms
  * still missed). It fails closed in the direction that matters: it only ever withholds a proposal and asks.
@@ -31,7 +31,7 @@ final class QuestionShape {
 
     private static final Set<String> LEAD_WORDS = Set.of(
         "how", "why", "what", "whats", "where", "wheres", "which", "who", "whose", "whom",
-        "does", "did", "is", "isnt", "are", "arent", "was", "were", "am");
+        "does", "did", "is", "isnt", "are", "arent", "was", "wasnt", "were", "werent", "am", "doesnt", "didnt", "hows", "whos", "whys");
 
     /** First-person or impersonal ability and permission questions: "can I", "should we", "do I". */
     private static final Pattern LEAD_PHRASE = Pattern.compile(
@@ -40,12 +40,17 @@ final class QuestionShape {
     /** Conversational openers skipped before the check, longest first so "thank you" wins over "thank". */
     private static final List<String> OPENERS = List.of(
         "quick question", "i was wondering", "just wondering", "tiny helpdesk", "thank you", "help desk", "helpdesk",
-        "question", "hello", "thanks", "please", "pls", "hey", "hi", "okay", "ok", "so", "well", "um", "uh", "oh", "ask", "ahoy");
+        "can you tell me", "could you tell me", "i want to know", "i need to know", "id like to know", "excuse me",
+        "good morning", "good afternoon", "good evening", "by the way", "tell me", "question", "hello", "thanks", "please",
+        "pls", "thx", "sorry", "hiya", "hey", "hmm", "yo", "hi", "okay", "ok", "alright", "sure", "actually", "btw", "also",
+        "and", "but", "then", "now", "so", "well", "um", "uh", "oh", "ask", "ahoy");
 
     private static final Pattern INVISIBLE = Pattern.compile("[\\p{Cf}\\u00AD]");
     private static final Pattern WHITESPACE = Pattern.compile("[\\s\\p{Z}]+");
     private static final Pattern LEADING_JUNK = Pattern.compile("^[^\\p{L}\\p{N}]+");
     private static final Pattern SENTENCE_BREAK = Pattern.compile("[.!?;:\\n\\r]+");
+    /** A list marker such as "1)", "a)" or "2]" left after the leading brackets are stripped. ("1." is split off as a sentence.) */
+    private static final Pattern LIST_MARKER = Pattern.compile("^(\\d{1,3}|[a-z])[)\\]]\\s*");
     private static final Pattern OPENER_PUNCTUATION = Pattern.compile("^[\\s,;:!.\\-–—]+");
 
     /** Look-alike letters from Cyrillic and Greek that NFKC leaves alone, folded to the Latin letter they imitate. */
@@ -85,8 +90,9 @@ final class QuestionShape {
 
     private static boolean startsLikeAQuestion(String sentence) {
         String s = LEADING_JUNK.matcher(WHITESPACE.matcher(sentence).replaceAll(" ").strip()).replaceFirst("");
-        for (int guard = 0; guard < 6; guard++) {
-            String stripped = stripOpener(s);
+        // Every pass strictly shortens the text, so this ends; it strips as many openers and markers as are stacked.
+        while (true) {
+            String stripped = LIST_MARKER.matcher(stripOpener(s)).replaceFirst("");
             if (stripped.equals(s)) break;
             s = LEADING_JUNK.matcher(stripped).replaceFirst("");
         }

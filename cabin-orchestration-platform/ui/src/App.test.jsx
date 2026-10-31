@@ -5004,6 +5004,15 @@ describe("FamilyConfigPanel — Managed Users (Tier 2)", () => {
     );
   }
 
+  it("tells a signed-in non-administrator that managed users are administrator-only instead of an empty list", async () => {
+    const auth = mockAuth([{ ok: false, status: 403, json: async () => ({}) }]);
+
+    renderPanel(auth);
+
+    expect(await screen.findByText("Only an administrator can manage these accounts.")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Email address")).toBeNull();
+  });
+
   it("lists existing managed users with their role and status", async () => {
     const auth = mockAuth([{ ok: true, json: async () => [
       { id: "u1", email: "alice@example.com", name: "Alice", role: "VIEWER", active: true },
