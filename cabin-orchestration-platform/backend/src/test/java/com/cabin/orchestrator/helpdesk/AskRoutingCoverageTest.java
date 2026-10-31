@@ -106,13 +106,78 @@ class AskRoutingCoverageTest {
     }
 
     @Test
-    void anAdministratorGetsTheAdministratorSectionsAndHouseholdGetsOnlyTheHouseholdOnes() {
+    void anAdministratorGetsTheTrimSectionAndAHouseholdMemberGetsNothingForDiskSpace() {
         String question = "How do I free up disk space?";
         List<String> admin = builder.buildContext(question, HouseholdRole.ADMINISTRATOR).stream().map(KnowledgeNode::entityRef).toList();
-        List<String> household = builder.buildContext(question, HouseholdRole.ADULT_HOUSEHOLD_MEMBER).stream().map(KnowledgeNode::entityRef).toList();
+        assertThat(admin).anyMatch(r -> r.endsWith("#disk-space-warnings"));
         assertThat(admin).anyMatch(r -> r.endsWith("#trim-old-backups"));
-        assertThat(household).anyMatch(r -> r.endsWith("#disk-space-warnings"));
-        assertThat(household).noneMatch(r -> r.endsWith("#trim-old-backups"));
+        // Disk space is about changing the system: administrator-only (Nate, option 3). A household question there gets no
+        // reviewed section and falls through to the word-overlap path, exactly as it did before routing.
+        assertThat(builder.categoryIdFor(question)).isEqualTo("storage_disk");
+        assertThat(builder.buildContext(question, HouseholdRole.ADULT_HOUSEHOLD_MEMBER)).isEmpty();
+        assertThat(builder.buildContext(question, null)).isEmpty();
+    }
+
+    /** The audience split, pinned: household keeps explain-and-status answers; anything that changes rules, workflows, devices or disk is administrator-only. */
+    private static final List<String> HOUSEHOLD = List.of(
+        "alert-levels-and-the-marks-on-the-tabs", "status-checks-what-needs-attention-right-now", "open-device-from-an-alert",
+        "ignore-remind-me-in-and-restore", "phone-notifications-what-reaches-your-phone-today",
+        "backend-rules-card-versus-home-assistant-and-node-red", "who-can-see-and-change-what",
+        "what-a-workflow-is-and-where-it-runs", "can-a-workflow-run-on-a-schedule-or-at-a-time-of-day",
+        "why-a-device-says-not-responding-late-or-has-a-blank-card", "find-a-device-filters-groups-and-layout",
+        "what-candidates-available-assigned-saved-for-later-and-ignored-mean");
+    private static final List<String> ADMINISTRATOR_ONLY = List.of(
+        "disk-space-warnings", "a-water-leak-alert-and-turning-the-water-back-on", "reset-mark-seen-and-why-there-is-no-undo",
+        "turn-a-workflow-on-or-off-run-it-by-hand-and-see-when-it-ran", "change-how-a-device-shows-on-monitoring",
+        "on-the-way-warm-up-the-cabin-before-you-arrive", "pair-a-zigbee-device", "remove-a-device-and-bring-it-back",
+        "rename-a-device-or-set-its-room-and-area", "scan-for-wifi-devices-at-home", "the-enabled-switch",
+        "turn-a-device-on-or-off-from-the-app");
+
+    @Test
+    void theAudienceSplitIsExactlyAsDecided() throws IOException {
+        com.fasterxml.jackson.databind.JsonNode categories = new com.fasterxml.jackson.databind.ObjectMapper().readTree(FIXTURE_COPY.toFile()).get("categories");
+        Map<String, java.util.Set<String>> audiences = new LinkedHashMap<>();
+        for (com.fasterxml.jackson.databind.JsonNode category : categories) {
+            for (com.fasterxml.jackson.databind.JsonNode ref : category.path("contextDocuments")) {
+                audiences.computeIfAbsent(ref.get("section").asText(), k -> new java.util.HashSet<>()).add(ref.get("audience").asText());
+            }
+        }
+        for (String section : HOUSEHOLD) {
+            assertThat(audiences.get(section)).as(section).containsExactly("household");
+        }
+        for (String section : ADMINISTRATOR_ONLY) {
+            assertThat(audiences.get(section)).as(section).containsExactly("administrator");
+        }
+    }
+
+    @Test
+    void householdKeepsTheExplainAndStatusAnswers() {
+        assertThat(refs("Where do I see what's wrong at the cabin right now?", HouseholdRole.ADULT_HOUSEHOLD_MEMBER))
+            .anyMatch(r -> r.endsWith("#status-checks-what-needs-attention-right-now"));
+        assertThat(refs("How do I ignore an alert?", HouseholdRole.ADULT_HOUSEHOLD_MEMBER))
+            .anyMatch(r -> r.endsWith("#ignore-remind-me-in-and-restore"));
+        assertThat(refs("Why does my sensor say offline?", HouseholdRole.CHILD))
+            .anyMatch(r -> r.endsWith("#why-a-device-says-not-responding-late-or-has-a-blank-card"));
+        assertThat(refs("Can I schedule something to happen every night at 10?", HouseholdRole.ADULT_HOUSEHOLD_MEMBER))
+            .anyMatch(r -> r.endsWith("#can-a-workflow-run-on-a-schedule-or-at-a-time-of-day"));
+    }
+
+    @Test
+    void aQuestionAboutChangingThingsGetsNoReviewedSectionForAHouseholdMember() {
+        // The category all of whose sections are now administrator-only: no reviewed section, so the word-overlap path as before.
+        for (String question : List.of(
+                "How do I turn the heater on from the app?",
+                "How do I rename a device?",
+                "How do I add a new Zigbee sensor?",
+                "How do I free up disk space?",
+                "How do I undo what a workflow did?")) {
+            assertThat(refs(question, HouseholdRole.ADULT_HOUSEHOLD_MEMBER)).as(question).isEmpty();
+            assertThat(refs(question, HouseholdRole.ADMINISTRATOR)).as(question + " (administrator)").isNotEmpty();
+        }
+    }
+
+    private List<String> refs(String question, HouseholdRole role) {
+        return builder.buildContext(question, role).stream().map(KnowledgeNode::entityRef).toList();
     }
 
     private static final class NoNodes implements KnowledgeNodeRepository {

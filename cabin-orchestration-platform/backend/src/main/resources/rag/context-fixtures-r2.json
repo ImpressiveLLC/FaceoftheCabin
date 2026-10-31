@@ -323,7 +323,7 @@
         {
           "path": "ai-assistant/user-guide/alerts-and-notifications.md",
           "section": "a-water-leak-alert-and-turning-the-water-back-on",
-          "audience": "household"
+          "audience": "administrator"
         },
         {
           "path": "ai-assistant/user-guide/alerts-and-notifications.md",
@@ -355,12 +355,12 @@
         {
           "path": "ai-assistant/user-guide/alerts-and-notifications.md",
           "section": "reset-mark-seen-and-why-there-is-no-undo",
-          "audience": "household"
+          "audience": "administrator"
         },
         {
           "path": "ai-assistant/user-guide/alerts-and-notifications.md",
           "section": "a-water-leak-alert-and-turning-the-water-back-on",
-          "audience": "household"
+          "audience": "administrator"
         }
       ],
       "boost": 1
@@ -445,7 +445,7 @@
         {
           "path": "ai-assistant/user-guide/workflows.md",
           "section": "turn-a-workflow-on-or-off-run-it-by-hand-and-see-when-it-ran",
-          "audience": "household"
+          "audience": "administrator"
         }
       ]
     },
@@ -636,7 +636,7 @@
         {
           "path": "ai-assistant/user-guide/access-and-storage.md",
           "section": "disk-space-warnings",
-          "audience": "household"
+          "audience": "administrator"
         },
         {
           "path": "ai-assistant/user-guide/access-and-storage.md",
@@ -1561,12 +1561,12 @@
         {
           "path": "ai-assistant/user-guide/devices.md",
           "section": "pair-a-zigbee-device",
-          "audience": "household"
+          "audience": "administrator"
         },
         {
           "path": "ai-assistant/user-guide/devices.md",
           "section": "scan-for-wifi-devices-at-home",
-          "audience": "household"
+          "audience": "administrator"
         },
         {
           "path": "ai-assistant/user-guide/devices.md",
@@ -1621,7 +1621,7 @@
         {
           "path": "ai-assistant/user-guide/devices.md",
           "section": "remove-a-device-and-bring-it-back",
-          "audience": "household"
+          "audience": "administrator"
         },
         {
           "path": "ai-assistant/user-guide/devices.md",
@@ -1653,17 +1653,17 @@
         {
           "path": "ai-assistant/user-guide/devices.md",
           "section": "rename-a-device-or-set-its-room-and-area",
-          "audience": "household"
+          "audience": "administrator"
         },
         {
           "path": "ai-assistant/user-guide/devices.md",
           "section": "the-enabled-switch",
-          "audience": "household"
+          "audience": "administrator"
         },
         {
           "path": "ai-assistant/user-guide/devices.md",
           "section": "change-how-a-device-shows-on-monitoring",
-          "audience": "household"
+          "audience": "administrator"
         }
       ]
     },
@@ -1689,12 +1689,12 @@
         {
           "path": "ai-assistant/user-guide/devices.md",
           "section": "turn-a-device-on-or-off-from-the-app",
-          "audience": "household"
+          "audience": "administrator"
         },
         {
           "path": "ai-assistant/user-guide/devices.md",
           "section": "on-the-way-warm-up-the-cabin-before-you-arrive",
-          "audience": "household"
+          "audience": "administrator"
         }
       ]
     },
