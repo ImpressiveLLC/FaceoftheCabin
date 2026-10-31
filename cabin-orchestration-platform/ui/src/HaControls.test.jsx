@@ -71,6 +71,43 @@ describe("DmPowerToggle (via DmDeviceRow)", () => {
       .toMatch(/Not changed: Home Assistant didn't accept/));
   });
 
+  it("W-130: a 504 says the outcome is unknown and shows the check-the-device message, never 'Not changed: HTTP 504'", async () => {
+    const message = "Timed out waiting for Home Assistant. The command may or may not have been carried out: check the device's state before trying again.";
+    const authedFetch = vi.fn(() => Promise.resolve({
+      ok: false, status: 504, json: () => Promise.resolve({ accepted: false, outcome: "unknown", message }),
+    }));
+    render(<DmDeviceRow device={heater()} onClick={() => {}} auth={{ authedFetch }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /turn on/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /turn on/i }).getAttribute("title")).toBe(message));
+    const title = screen.getByRole("button", { name: /turn on/i }).getAttribute("title");
+    expect(title).not.toMatch(/Not changed/);
+    expect(title).not.toMatch(/HTTP 504/);
+  });
+
+  it("W-130: a 504 without a message still says it may or may not have run", async () => {
+    const authedFetch = vi.fn(() => Promise.resolve({ ok: false, status: 504, json: () => Promise.resolve({}) }));
+    render(<DmDeviceRow device={heater()} onClick={() => {}} auth={{ authedFetch }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /turn on/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /turn on/i }).getAttribute("title"))
+      .toMatch(/may or may not have been carried out/));
+  });
+
+  it("W-130: a 502 still says it was not carried out", async () => {
+    const authedFetch = vi.fn(() => Promise.resolve({
+      ok: false, status: 502, json: () => Promise.resolve({ accepted: false, outcome: "not_accepted" }),
+    }));
+    render(<DmDeviceRow device={heater()} onClick={() => {}} auth={{ authedFetch }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /turn on/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /turn on/i }).getAttribute("title"))
+      .toMatch(/Not changed: Home Assistant didn't accept the command, so nothing was carried out/));
+  });
+
   it("re-syncs to the next poll's reported state", () => {
     const { rerender } = render(<DmDeviceRow device={heater()} onClick={() => {}} auth={{ authedFetch: okFetch() }} />);
     rerender(<DmDeviceRow device={heater({ state: "ON" })} onClick={() => {}} auth={{ authedFetch: okFetch() }} />);
@@ -99,6 +136,31 @@ describe("OnTheWayButton", () => {
     expect(JSON.parse(authedFetch.mock.calls[0][1].body)).toEqual({
       domain: "input_boolean", service: "turn_on", entity_id: "input_boolean.on_the_way_to_cabin",
     });
+  });
+
+  it("W-130: a 504 says the preheat may or may not have started, not 'Couldn't start preheat: HTTP 504'", async () => {
+    const authedFetch = vi.fn(() => Promise.resolve({
+      ok: false, status: 504, json: () => Promise.resolve({ accepted: false, outcome: "unknown", message: "x" }),
+    }));
+    render(<OnTheWayButton auth={{ authedFetch }} devices={devices} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /on the way/i }));
+
+    const text = (await screen.findByRole("status")).textContent;
+    expect(text).toMatch(/may or may not have started/);
+    expect(text).toMatch(/check the mech room heater/);
+    expect(text).not.toMatch(/Couldn't start preheat/);
+    expect(text).not.toMatch(/HTTP 504/);
+  });
+
+  it("W-130: a 502 still says the preheat could not start", async () => {
+    const authedFetch = vi.fn(() => Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({ accepted: false }) }));
+    render(<OnTheWayButton auth={{ authedFetch }} devices={devices} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /on the way/i }));
+
+    expect((await screen.findByRole("status")).textContent)
+      .toBe("Couldn't start preheat: Home Assistant didn't accept the command, so nothing was carried out");
   });
 
   it("asks to sign in on a 401 instead of claiming success", async () => {

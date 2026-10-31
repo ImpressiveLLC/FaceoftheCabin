@@ -3468,8 +3468,16 @@ export async function callHaService(doFetch, domain, service, entityId) {
   });
   if (response.status === 401) throw new Error("Sign in to control devices");
   const body = await response.json().catch(() => ({}));
+  // W-130: a read timeout (504, outcome "unknown") is NOT "did not happen": Home Assistant may have carried the command
+  // out. The error says so, with the backend's check-the-device message, and carries outcomeUnknown for the callers.
+  if (response.status === 504 || body.outcome === "unknown") {
+    const err = new Error(body.message
+      || "Timed out waiting for Home Assistant. The command may or may not have been carried out: check the device's state before trying again.");
+    err.outcomeUnknown = true;
+    throw err;
+  }
   if (!response.ok || body.accepted === false) {
-    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command" : `HTTP ${response.status}`));
+    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command, so nothing was carried out" : `HTTP ${response.status}`));
   }
   return body;
 }
@@ -4662,7 +4670,7 @@ function DmPowerToggle({ device, auth }) {
       await callHaService(auth?.authedFetch || fetch, "switch", next ? "turn_on" : "turn_off", target.entityId);
     } catch (err) {
       setOptimistic(null);
-      setError(err.message);
+      setError({ text: err.message, unknown: !!err.outcomeUnknown });
     } finally {
       setBusy(false);
     }
@@ -4675,7 +4683,7 @@ function DmPowerToggle({ device, auth }) {
       disabled={busy}
       aria-pressed={isOn}
       aria-label={`${device.name}: turn ${isOn ? "off" : "on"}`}
-      title={error ? `Not changed: ${error}` : `Turn ${isOn ? "off" : "on"} (${target.entityId})`}
+      title={error ? (error.unknown ? error.text : `Not changed: ${error.text}`) : `Turn ${isOn ? "off" : "on"} (${target.entityId})`}
     >
       <Power size={14}/> {isOn ? "On" : "Off"}
     </button>
@@ -4703,7 +4711,9 @@ export function OnTheWayButton({ auth, devices, prominent = false }) {
       const temp = mechRoomTemperature(devices);
       setToast({ ok: true, text: `Preheat started. Mech room is ${temp == null ? "not reporting" : fmtTemp(temp, tempUnit)}.` });
     } catch (err) {
-      setToast({ ok: false, text: `Couldn't start preheat: ${err.message}` });
+      setToast({ ok: false, text: err.outcomeUnknown
+        ? "Preheat: no answer from Home Assistant. It may or may not have started: check the mech room heater before trying again."
+        : `Couldn't start preheat: ${err.message}` });
     } finally {
       setBusy(false);
     }
