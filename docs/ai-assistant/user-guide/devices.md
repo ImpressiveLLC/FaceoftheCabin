@@ -17,7 +17,7 @@ Audience: household. Every device is in one of five states. The State filter and
 | State | What it means for you |
 |---|---|
 | Candidates | Found by an integration (pairing, a scan, Home Assistant, Zigbee2MQTT) and waiting for a person's decision. Looking at it, renaming it or closing the view leaves it a candidate. It is not monitored. |
-| Available | Someone chose **Use this device**. It is accepted but not set up: it stays switched off and unmonitored until a change is saved in Change (turning Enabled on and pressing **Save changes** is the usual one). |
+| Available | Someone chose **Use this device**. It is accepted but not set up: it stays off and unmonitored until Enabled is turned on and saved (Change > Enabled > **Save changes**, or the switch on its row). Saving any other change, such as a new name, makes it Assigned but leaves it off. |
 | Assigned | Set up for use. Assigned does not mean switched on: an Assigned device with Enabled off is not monitored and refuses the app's own command buttons (see [The Enabled switch](#the-enabled-switch)). |
 | Saved for later | Someone chose **Not now**. Kept for a later decision, hidden from the normal list and from Monitoring, and not checked or commanded. Find it with **Review previously exposed**. |
 | Ignored | Someone chose **Ignore**, or removed the device. Hidden the same way, with its data kept. |
@@ -44,7 +44,7 @@ Evidence: `NetworkScanFlow` in [App.jsx](../../../cabin-orchestration-platform/u
 
 ## Register a device manually
 
-Audience: administrator. Devices > **Add** > **Register manually** adds a device by its id: a Home Assistant entity, an RTSP camera or an MQTT device. Fill in Location, Device ID, Display Name, Type, Protocol Adapter and Connection String, then **Register Device**. Unlike pairing, the device is saved straight away as Assigned and enabled, so the app starts checking it. Registering does not create anything in Home Assistant, the camera or the MQTT broker; the thing named must already exist there. The form does not show an error if the hub refuses the save, so check that the device appears in See.
+Audience: meant for administrators (the app lets any signed-in account that may write use it). Devices > **Add** > **Register manually** adds a device by its id: a Home Assistant entity, an RTSP camera or an MQTT device. Fill in Location, Device ID, Display Name, Type, Protocol Adapter and Connection String, then **Register Device**. Unlike pairing, the device is saved straight away as Assigned and enabled, so the app starts checking it. Registering does not create anything in Home Assistant, the camera or the MQTT broker; the thing named must already exist there. The form does not show an error if the hub refuses the save, so check that the device appears in See.
 
 Evidence: `ManualAddForm` in [App.jsx](../../../cabin-orchestration-platform/ui/src/App.jsx); `DeviceController.registerDevice`; `DeviceRegistry.registerConfiguredDevice` (saves ASSIGNED).
 
@@ -92,7 +92,7 @@ Audience: household (signed in). Devices > **Change**, select the device.
 - **Area** has its own **Save** button. It is shown on the device's row and is the place Ask's device descriptions use. An area cannot be cleared once set, only changed.
 - **Parent device** puts a device underneath another one at the same location.
 
-Saving a change on an Available device assigns it; renaming a candidate leaves it a candidate.
+Saving a change on an Available device assigns it but does not turn it on (only Enabled does); renaming a candidate leaves it a candidate.
 
 Evidence: `DmEditForm`, `DmAreaEditor` in [App.jsx](../../../cabin-orchestration-platform/ui/src/App.jsx); `DeviceController.patchDeviceConfig` and `setArea` (blank area rejected); `DeviceRegistry.mergeDiscoveryDescriptor` (a saved name is kept); `KbGeneratorService.buildDescription` (uses the area).
 
@@ -110,20 +110,22 @@ Evidence: `DmRowEnableToggle` ("Enabling accepts and assigns this device") and `
 
 ## Turn a device on or off from the app
 
-Audience: household (signed in). **How do I turn the heater on?** Devices > See, find the heater's row and press its **On**/**Off** button. The button goes through Home Assistant and needs you signed in; signed out, its tip says "Sign in to control devices". It flips at once, then follows what the device reports.
+Audience: household (signed in). **How do I turn the heater on?** Devices > See, find the heater's row and press its **On**/**Off** button. The button goes through Home Assistant and needs you signed in; signed out, a press fails and its tip says "Not changed: Sign in to control devices". It flips at once, then follows what the device reports.
 
 Where on/off buttons appear:
 - The row's On/Off button: only on cabin devices that report On or Off as a Home Assistant switch and are Available or Assigned. Valves and locks never get it.
 - In a device's details in See, **Turn on** / **Turn off** (or **Open** / **Close** for a cover) appear for Assigned devices that accept commands, and work only while Enabled is on. Other command-capable devices show a note that their type has no one-tap buttons yet.
 - Assigned locks show **Lock** and **Unlock** in their details. The screen does not confirm the result; check the lock's state.
 
-**Why is there no on/off button?** The device is at Home, has not reported On or Off yet, is a candidate, Saved for later or Ignored, or is a valve or lock.
+**Why is there no on/off button?** The device is at Home, is not a Home Assistant switch, has not reported On or Off yet, is a candidate, Saved for later or Ignored, or is a valve or lock.
 
-**"No answer from Home Assistant."** The hub timed out waiting for Home Assistant. The command may or may not have run: check the device's state before pressing again. "Home Assistant didn't accept the command" means it is not known to have run.
+**"Timed out waiting for Home Assistant. The command may or may not have been carried out: check the device's state before trying again."** This is the row button's tip when the hub got no answer in time. The command may have run, so check the device before pressing again. "Not changed: Home Assistant didn't accept the command, so it is not known to have run" means it was refused.
+
+The **Turn on** / **Turn off** buttons in See details cannot tell a timeout from a refusal: both show "Action was not accepted. ...". A command that timed out may still have run, so check the device's state before pressing again.
 
 Freeze protection and leak shutoff are Home Assistant automations, not these buttons.
 
-Evidence: `DmPowerToggle`, `powerToggleTarget`, `callHaService`, `DmCapabilityActions`, `DmLockActions` in [App.jsx](../../../cabin-orchestration-platform/ui/src/App.jsx); [HaServiceController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/HaServiceController.java) (signed in; on/off for switches and on/off helpers only; any id naming a valve or lock refused; a timeout answers "outcome unknown", W-130).
+Evidence: `DmPowerToggle`, `powerToggleTarget`, `callHaService`, `DmCapabilityActions`, `DmLockActions` in [App.jsx](../../../cabin-orchestration-platform/ui/src/App.jsx); [HaServiceController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/HaServiceController.java) (signed in; on/off for switches and on/off helpers only; any id naming a valve or lock refused; a timeout answers "outcome unknown", W-130); detail buttons go through `HomeAssistantAdapter.sendCommand`, which reports a timeout as not accepted.
 
 ## On the Way: warm up the cabin before you arrive
 
@@ -143,15 +145,17 @@ Audience: household. The badge on a device comes from its check-ins, not from a 
 
 | Badge | Meaning |
 |---|---|
-| No check-in schedule | The app is not watching it: a candidate, Available, Saved for later, Ignored, or Enabled is off. |
+| No check-in schedule | The app is not watching it: a candidate, Available, or Enabled is off. |
 | Late checking in | Its expected report has not arrived yet. This does not prove it is offline. |
 | Not responding | No report for three times its usual interval (for Home Assistant devices, also a direct check failed). Its state then reads OFFLINE. |
 
-Usual intervals: mains-powered Zigbee devices 10 minutes, battery Zigbee sensors 26 hours (they sleep between reports), cameras 5 minutes, Home Assistant devices 15 minutes, others 30 minutes. A sensor that only reports when something changes (the CO sensor) is never marked late for being quiet.
+Saved for later and Ignored devices show no check-in badge at all, only their raw state.
+
+Usual intervals: mains-powered Zigbee devices 10 minutes, battery Zigbee sensors 26 hours (they sleep between reports), cameras 5 minutes; thermostats, locks, smoke and CO alarms, appliances (dishwasher, washer, dryer) and power meters 15 minutes; everything else 30 minutes. A device can also carry its own expected interval, which replaces these. A sensor that only reports when something changes (the CO sensor) is never marked late for being quiet.
 
 For a blank card, a card listed twice or power shown as unknown, see [A Zigbee plug or sensor is listed twice](maintenance.md#a-zigbee-plug-or-sensor-is-listed-twice-charts-twice-or-shows-power-as-unknown-w-88-2026-10-21).
 
-Evidence: `checkinStatusLabel`, `DmDeviceDetail` in [App.jsx](../../../cabin-orchestration-platform/ui/src/App.jsx); [DeviceHealthMonitor](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceHealthMonitor.java) (thresholds, MISSED_MULTIPLIER 3, event-driven exemption, reasons).
+Evidence: `checkinStatusLabel`, `DmDeviceDetail` in [App.jsx](../../../cabin-orchestration-platform/ui/src/App.jsx); [DeviceHealthMonitor](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceHealthMonitor.java) (`staleThresholdFor`: per-device `expectedCheckinMinutes`, then Zigbee mains/battery, then by type; MISSED_MULTIPLIER 3; event-driven exemption; only visible devices are checked, so Saved for later and Ignored get no check-in status).
 
 ## Change how a device shows on Monitoring
 
