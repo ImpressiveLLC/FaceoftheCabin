@@ -37,7 +37,9 @@ class OllamaHttpClientTimeoutTest {
             long seconds = (System.nanoTime() - started) / 1_000_000_000L;
 
             assertThat(answer).isEmpty();
-            assertThat(seconds).isLessThan(10);
+            // The stub releases at 8 s; the client bound is 1 s. Under 5 s proves the client gave up on its own bound, so an
+            // unbounded client (which only returns when the stub lets go at 8 s) fails here.
+            assertThat(seconds).isLessThan(5);
         } finally {
             release.countDown();
             stalled.stop(0);
