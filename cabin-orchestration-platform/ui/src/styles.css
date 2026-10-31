@@ -2874,6 +2874,11 @@ select option { background: var(--bg-secondary); color: var(--text); }
   [data-theme="signal"] .kpi-tile { background: Canvas; }
   [data-theme="signal"] .kpi-tile :is(.kpi-value, .kpi-value-note, .kpi-label), [data-theme="signal"] .kpi-tile > svg { color: CanvasText; }
   [data-theme="signal"] .kpi-tile::before { background: CanvasText; }
+  /* A Normal tile keeps the thin border but in CanvasText: its quiet author mix measured 2.01:1 in the dark scheme (W-126 item 2). */
+  [data-theme="signal"] .kpi-tile.kpi-state-ok { border-color: CanvasText; }
+  /* Watch and Alert chips lose their tint in forced colours: Canvas fill, CanvasText hairline; the word and icon carry the state
+     (W-126 item 3: the tint made the hairline 1.4 to 4.6:1 and left a coloured fill behind the word). */
+  [data-theme="signal"] :is(.state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown, .state-badge.state-alarm) { background: Canvas; border-color: CanvasText; }
 }
 
 /* Quiet surfaces: lists, logs and cards are flat cells with a hairline. */

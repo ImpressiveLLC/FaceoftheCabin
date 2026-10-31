@@ -343,7 +343,9 @@ describe("Signal surfaces: pure black fills, no grey hairlines (Nate 2026-10-29)
 // pseudo-elements, and its cascade for these long selector lists proved order-dependent (the same assertion passed and failed
 // between runs), so a green check would not mean what it says. The two W-126 fixes below are therefore pinned at the source with
 // whitespace-tolerant patterns, and were measured in a real Chromium page (see the PR): the Alert icon overlap went from 6 x 6 px
-// to 0, and the critical-row detail text from 3.96:1 to 4.93:1.
+// to 0, and the critical-row detail text from 3.96:1 to 4.93:1. The forced-colours items (2 and 3) were measured with Playwright's
+// Chromium emulation (ui/test/measure-forced-colours.cjs): Normal tile border 2.01:1 to 21:1 in the dark scheme, and the Watch and
+// Alert chip fill and hairline from tinted (hairline 1.4 to 4.6:1) to Canvas and CanvasText (21:1).
 describe("Signal W-126 fixes (source pins; measured in Chromium, see the PR)", () => {
   const compact = cabinCss.replace(/\s+/g, " ");
 
@@ -352,6 +354,12 @@ describe("Signal W-126 fixes (source pins; measured in Chromium, see the PR)", (
     expect(m, "alarm icon rule present").toBeTruthy();
     expect(Number(m[1])).toBeGreaterThanOrEqual(20);
     expect(Number(m[2])).toBeGreaterThanOrEqual(20);
+  });
+
+  it("W-126 items 2 and 3: in forced colours a Normal tile border and the Watch and Alert chips use system colours only", () => {
+    const forced = [...cabinCss.matchAll(/@media \(forced-colors: active\) \{([^@]*?)\n\}/g)].map((m) => m[1]).join("\n").replace(/\s+/g, " ");
+    expect(forced).toMatch(/\.kpi-tile\.kpi-state-ok \{ border-color: CanvasText; \}/);
+    expect(forced).toMatch(/\.state-badge\.state-warn, \.state-badge\.state-late, \.state-badge\.state-unknown, \.state-badge\.state-alarm\) \{ background: Canvas; border-color: CanvasText; \}/);
   });
 
   it("row detail text uses the muted text token in Signal, not the dimmer one that measured 3.96:1", () => {
