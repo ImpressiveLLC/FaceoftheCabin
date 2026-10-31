@@ -2558,6 +2558,12 @@ select option { background: var(--bg-secondary); color: var(--text); }
   align-self: flex-start; padding: 8px 22px; border-radius: 8px; border: 1px solid var(--danger);
   background: var(--bg); color: var(--danger); font-size: 14px; cursor: pointer;
 }
+.trim-commands {
+  margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+  color: var(--text); font-size: 11px; line-height: 1.5; overflow-x: auto; white-space: pre;
+}
+.trim-copy { align-self: flex-start; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 10px; cursor: pointer; }
+.storage-section { padding: 0 12px 12px; }
 .trim-go:disabled { opacity: 0.55; cursor: not-allowed; }
 .trim-want { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .trim-want input[type="number"] { width: 80px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 6px; }

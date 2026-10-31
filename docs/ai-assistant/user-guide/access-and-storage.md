@@ -62,7 +62,8 @@ What to do:
 - **Storage disk.** Expand the alert. Its Act step is the **Trim old backups** control (next section, administrator only). After that, recorded-video retention is the next thing to review, which is a host setting.
 - **System disk.** The alert says to check Docker's disk use and old images or build cache. The database lives on this disk, so never delete its volumes. This is a host task for an administrator.
 - A critical storage alert, like any critical alert, can only be snoozed for 1 hour.
-- If the hub's automatic backup trim is installed (host-dependent), it also removes the oldest backup copies at 70 percent full, back down to 55 percent, never leaving fewer than 3 per folder, and records an event each time it runs (a warning if it could not get the disk back down).
+- **Is the critical storage alert an emergency?** It depends on automatic backup trim. If it is installed, switched on and running (host-dependent), the storage-disk alert at 75 percent says "Not a true emergency": while the disk is at or above the automatic line (70 percent by default) the host removes the oldest backup copies, down to 55 percent by default, never leaving fewer than 3 per folder, and the level corrects itself. The alert quotes the numbers the host is actually using, shows as a warning, and does not send a phone push. It becomes critical, with a push, if automatic trim is not installed, is switched off, has stopped updating, could not free enough, or the disk is still that full a day later. In those cases the alert says automatic trim is not doing the job and that you need to act, using Trim old backups.
+- If the hub's automatic backup trim is installed (host-dependent), it removes the oldest backup copies as above and records an event each time it runs (a warning if it could not get the disk back down).
 - Whether the warning also reaches a phone depends on the hub's notification setup (host-dependent) and is not guaranteed.
 
 Changing the 60 and 75 percent lines in the hub's settings file has no effect today; see [Settings that never reach cabin-backend](configuration.md#settings-that-never-reach-cabin-backend-k09-slice-2).
@@ -75,14 +76,14 @@ Evidence: `StorageMonitorService` (defaults 60, 75, clear margin 3, repeat 24 ho
 
 How to use it (administrator only):
 
-1. In Rules & Alerts > Status Checks, expand the storage-disk alert. The **Trim old backups** control is its Act step.
+1. Open **Monitoring** and find the **Storage - backups and disk space** section (administrators only; nobody else sees it), or in Rules & Alerts > Status Checks expand the storage-disk alert, where the same control is its Act step.
 2. Move the slider "Keep the newest N nightly copies of each folder" toward **Trim more** or **Trim less**. Each folder row shows how many copies are kept and removed, and the summary shows about how much is freed and how full the disk would be.
 3. Optional: "Need room for a big job? Free up at least N GB", then **Set the slider**. If even keeping 1 copy is not enough, it says so; the rest of the space is recorded video or a one-off system copy, which this control does not touch.
 4. Press **Go**. The button reads "Trimming on the host" until the hub reports back, then the card shows "Last trim: removed N copies, freed" an amount.
 
 Things to know:
 
-- The app itself cannot delete files. A small service on the hub does the deleting (host-dependent). Until it is installed, the control says the host trim service has not produced a plan yet, and nothing can be trimmed from the app.
+- The app itself cannot delete files. A small service on the hub does the deleting (host-dependent). Until it is installed, the control says "Automatic backup trim is not running", shows how full the disk is, and lists the install commands for the owner to run once on the hub, with a Copy commands button. Nothing can be trimmed from the app until then, and nothing trims by itself. Once installed, the control also says whether automatic trim is on and with which numbers, and warns if the host service has stopped updating or its last automatic run could not free enough.
 - Anyone who is not an administrator sees "Only an administrator can trim storage."
 - How long sensor history is kept, and the monthly archive of old readings, are separate from this control; see [Backup and restore recipes per store](maintenance.md#backup-and-restore-recipes-per-store-k10-verified-from-source-only).
 
