@@ -21,5 +21,8 @@ jobs:
           python3 -m venv /tmp/intent-slot-venv
           /tmp/intent-slot-venv/bin/python -m pip install -r docs/ai-assistant/training/intent-slot/requirements.txt
           /tmp/intent-slot-venv/bin/python -m unittest discover -s docs/ai-assistant/training/intent-slot -p 'test_*.py' -v
+      - name: Validate the question-versus-command boundary tests
+        run: |
+          /tmp/intent-slot-venv/bin/python -m unittest discover -s docs/ai-assistant/training/intent-slot/boundary -p 'test_*.py' -v
       - name: Validate grading schema navigation
         run: node --test docs/ai-assistant/training/intent-slot/grading/schema.test.cjs
