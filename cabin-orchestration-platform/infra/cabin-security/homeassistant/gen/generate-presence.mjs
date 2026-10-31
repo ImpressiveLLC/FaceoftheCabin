@@ -94,16 +94,34 @@ const CONDITION = /^(person_id|location|role)\s*=\s*'([^']+)'$/i;
  * table name, a CTE, a nested block comment, any other statement at all) makes it throw, so the generator refuses to run
  * against a seed whose effect it cannot read exactly. Comments outside string literals are ignored.
  */
+/** Throw on any non-ASCII character outside a quoted value: a look-alike letter in a keyword or name would be read differently by a human and by the database. */
+function assertAsciiOutsideStrings(sql) {
+  let inString = false;
+  for (const ch of sql) {
+    if (ch === "'") inString = !inString;
+    else if (!inString && ch.codePointAt(0) > 127) throw new Error(`seed refused: non-ASCII character ${JSON.stringify(ch)} outside a quoted value`);
+  }
+}
+
 export function parseSeed(sqlText) {
   const seed = new Map();
-  const add = (p, l, r) => { const k = `${p}@${l}`; if (!seed.has(k)) seed.set(k, new Set()); seed.get(k).add(r); };
-  for (const stmt of statements(stripSqlComments(lf(sqlText)))) {
+  const present = new Set(); // person@location@role rows currently in the table, to catch a duplicate INSERT
+  const add = (p, l, r) => { const k = `${p}@${l}`; if (!seed.has(k)) seed.set(k, new Set()); seed.get(k).add(r); present.add(`${k}@${r}`); };
+  const code = stripSqlComments(lf(sqlText));
+  assertAsciiOutsideStrings(code);
+  for (const stmt of statements(code)) {
     const oneLine = stmt.replace(/\s+/g, " ");
     const insert = oneLine.match(INSERT_FORM);
     if (insert) {
+      const tolerant = /\bON\s+CONFLICT\s+DO\s+NOTHING$/i.test(oneLine);
       for (const m of insert[1].matchAll(new RegExp(ROW, "gi"))) {
         // The keywords are case-insensitive but the role is the exact stored value: 'primary' is not 'PRIMARY'.
         if (m[3] !== m[3].toUpperCase()) throw new Error(`seed refused: role must be exactly PRIMARY or MAINTENANCE, got ${JSON.stringify(m[3])}`);
+        // A row that is already there makes a plain INSERT fail on the primary key, so the seed would never apply while this
+        // reader believed it had: refuse it unless the statement says ON CONFLICT DO NOTHING.
+        if (present.has(`${m[1]}@${m[2]}@${m[3]}`) && !tolerant) {
+          throw new Error(`seed refused: duplicate row ${JSON.stringify([m[1], m[2], m[3]])} without ON CONFLICT DO NOTHING`);
+        }
         add(m[1], m[2], m[3]);
       }
       continue;
@@ -120,7 +138,13 @@ export function parseSeed(sqlText) {
         const [kp, kl] = key.split("@");
         if (conds.person_id !== undefined && kp !== conds.person_id) continue;
         if (conds.location !== undefined && kl !== conds.location) continue;
-        if (conds.role !== undefined) { roles.delete(conds.role); if (roles.size === 0) seed.delete(key); } else seed.delete(key);
+        if (conds.role !== undefined) {
+          roles.delete(conds.role); present.delete(`${key}@${conds.role}`);
+          if (roles.size === 0) seed.delete(key);
+        } else {
+          for (const role of roles) present.delete(`${key}@${role}`);
+          seed.delete(key);
+        }
       }
       continue;
     }
