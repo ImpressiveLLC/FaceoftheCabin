@@ -105,7 +105,17 @@ class QuestionNeverProposesTest {
         "Whats the difference between Watch and Alert",
         "What\u2019s the difference between Available and Assigned",
         "I need to know: how do I turn off the heater?",
-        "Turn on the porch light. Why is it so dark?");
+        "Turn on the porch light. Why is it so dark?",
+        "1) How do I turn off the heater?",
+        "(2) Why is the valve closed",
+        "a) can I silence the siren",
+        "Sorry, how do I remove a device?",
+        "Tell me how do I remove a device",
+        "Can you tell me how I silence the siren?",
+        "Hey, hi, hello, ok, so, well, thanks, please, um, how do I turn off the heater?",
+        "Isn’t the valve closed?",
+        "Doesn’t the heater turn on by itself?",
+        "Hows the backend doing");
 
     final AtomicReference<String> modelOutput = new AtomicReference<>();
     final List<ProposalAuditLog.Entry> audit = new ArrayList<>();
