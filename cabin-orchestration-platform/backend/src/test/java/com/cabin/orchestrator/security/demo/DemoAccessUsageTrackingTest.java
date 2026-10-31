@@ -5,6 +5,8 @@ import com.cabin.orchestrator.security.CabinAccessToken;
 import com.cabin.orchestrator.security.CabinAccessTokenService;
 import com.cabin.orchestrator.security.CabinAccessTokenStore;
 import com.cabin.orchestrator.security.CabinAccessTokensController;
+import com.cabin.orchestrator.security.GoogleAuthInterceptor;
+import com.cabin.orchestrator.security.HouseholdRole;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
@@ -133,7 +135,9 @@ class DemoAccessUsageTrackingTest {
         CabinAccessToken link = demoLink();
         CabinAccessTokensController controller = new CabinAccessTokensController(tokens);
 
-        assertEquals(List.of(), controller.activity(link.id(), 30));
+        org.springframework.mock.web.MockHttpServletRequest admin = new org.springframework.mock.web.MockHttpServletRequest();
+        admin.setAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE, HouseholdRole.ADMINISTRATOR);
+        assertEquals(List.of(), controller.activity(link.id(), 30, admin));
     }
 
     private final class RecordingStore implements CabinAccessTokenStore {

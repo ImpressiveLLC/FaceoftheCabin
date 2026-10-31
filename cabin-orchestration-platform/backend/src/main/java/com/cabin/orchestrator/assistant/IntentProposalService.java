@@ -146,6 +146,16 @@ public class IntentProposalService {
                 break;
         }
 
+        // The model decides answer-versus-act and is fallible. Whatever it said, a question-shaped request never becomes a
+        // proposal: ask instead (a read of a device's state, get_device_state, is not an action and is left alone).
+        if (!"get_device_state".equals(intent) && QuestionShape.isQuestion(text)) {
+            decisions.add(new ProposalAuditLog.Decision("request", "QUESTION_SHAPED", null,
+                List.of("question-shaped request: the model chose " + intent + ", so no proposal was made")));
+            return new Response(requestId, Status.CLARIFY, intent, "QUESTION_SHAPED",
+                "That sounded like a question. If you want me to do it, say so plainly (for example “turn on the porch light”); "
+                    + "if you are asking how it works, ask again and I will answer.", null, List.of(), List.of(), null);
+        }
+
         List<Part> parts = partsOf(parsed);
         if (parts == null) {
             return refused(requestId, intent, "MALFORMED_MODEL_OUTPUT", "I could not turn that into a safe, structured request, so nothing was proposed.");

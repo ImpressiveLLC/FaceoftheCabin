@@ -41,7 +41,7 @@ Automatic presence is optional: without it the toolbar badge is a manual setting
 4. **The Home Assistant Companion app on each primary user's phone**, plus Tailscale on that phone, since away from the location's LAN the app reaches Home Assistant only over Tailscale. This dependency is not meant to be permanent (W-36); until it is resolved, a phone that loses either shows as a stale signal.
 5. **The presence package and publisher script** applied to Home Assistant, then verified with the acceptance checks for the phone check and the heartbeat.
 
-Do not create a phone check or publisher for a maintenance-only user. Today that is the only thing that keeps their phone out of presence; the backend does not enforce roles yet (W-38). Tell the household that the siren gate treats a maintenance-only person on site as a guest, so maintenance visitors disarm on arrival (decided 2026-10-13: intended, not a defect). Sources: [REPLICATION, "Who counts as present"](../../REPLICATION.md), [PRESENCE.md][inst-7], [D24][inst-8].
+Do not create a phone check or publisher for a maintenance-only user, and record each person's roles in **Config > Location Roles** (administrator). Since W-38 (2026-10-30) the backend does not count a maintenance-only person's signal and records their arrival as a maintenance visit, but the Home Assistant phone check and the siren gate still follow only what is configured on the host. The per-person Home Assistant presence files come from the [presence generator][inst-13], which accepts only people who are primary in the reviewed seed; an operator applies its output on the host, and a role set in Config alone does not create a phone check. (Corrected 2026-10-31: this paragraph used to say the backend does not enforce roles.) Tell the household that the siren gate treats a maintenance-only person on site as a guest, so maintenance visitors disarm on arrival (decided 2026-10-13: intended, not a defect). Sources: [REPLICATION, "Who counts as present"](../../REPLICATION.md), [PRESENCE.md][inst-7], [D24][inst-8].
 
 Sources: [replication setup/acceptance][pres-1], [host provisioning role][pres-2], [base Compose][pres-3], [M920q overlay][pres-4], [production stack][pres-5], [deployment workflows][pres-6].
 
@@ -93,3 +93,4 @@ Targets for the reference-style links in the sections above.
 [inst-10]: ../../../ansible/roles/cabin_host/tasks/main.yml
 [inst-11]: ../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml
 [inst-12]: ../../../cabin-orchestration-platform/infra/docker-compose.local.yml
+[inst-13]: ../../../cabin-orchestration-platform/infra/cabin-security/homeassistant/gen/README.md

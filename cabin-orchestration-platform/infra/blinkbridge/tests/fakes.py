@@ -120,6 +120,7 @@ class FakeClient:
         self.open_errors: list = []
         self.refresh_hangs = False
         self.motion_state = {}           # name -> (bool, token)
+        self.raw = {}                    # name -> raw camera record dict
         self.sessions: List[FakeSession] = []
         self.session_kw: dict = {}
         self.closed = False
@@ -145,6 +146,9 @@ class FakeClient:
 
     def motion(self, name):
         return self.motion_state.get(name, (False, None))
+
+    def raw_camera(self, name):
+        return dict(self.raw.get(name, {}))
 
     async def open_livestream(self, name):
         if self.open_errors:

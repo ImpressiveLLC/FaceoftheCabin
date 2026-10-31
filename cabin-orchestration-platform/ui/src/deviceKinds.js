@@ -30,3 +30,31 @@ export function makeKindOf(devices) {
 export function deviceKind(device) {
   return makeKindOf([device])(device);
 }
+
+export const LOW_BATTERY_PERCENT = 20;
+
+// The battery devices in use (enabled), lowest battery first and devices that never reported a level last.
+export function batteryMaintenanceRows(devices, kindOf) {
+  // Right after a backend restart a Zigbee device has no level until its next report (about hourly), while the
+  // Home Assistant battery service under it already has one; use that until the device reports.
+  const serviceLevel = new Map();
+  for (const d of devices) {
+    const parentId = d.attributes?.parentDeviceId;
+    const level = batteryLevel(d);
+    if (parentId && level !== null && !serviceLevel.has(parentId)) serviceLevel.set(parentId, level);
+  }
+  return devices
+    .filter(d => d.attributes?.enabled !== false && kindOf(d) === 'battery')
+    .map(d => {
+      const level = batteryLevel(d) ?? serviceLevel.get(d.deviceId) ?? null;
+      return {
+        deviceId: d.deviceId,
+        name: d.name,
+        area: d.attributes?.area || d.attributes?.room || '',
+        level,
+        low: level !== null && level <= LOW_BATTERY_PERCENT,
+        lastSeen: d.lastSeen || null,
+      };
+    })
+    .sort((a, b) => (a.level ?? Infinity) - (b.level ?? Infinity) || a.name.localeCompare(b.name));
+}

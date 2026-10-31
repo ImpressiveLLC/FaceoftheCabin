@@ -37,4 +37,28 @@ describe('ExpandableList', () => {
     render(<ExpandableList items={items} renderItem={row} forceOpen />);
     expect(screen.getAllByTestId('row')).toHaveLength(25);
   });
+
+  it('shows 25 on a wide screen and ten on a phone or tablet when given a base and a wide limit', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ deviceId: `w${i}` }));
+    const original = window.matchMedia;
+    try {
+      window.matchMedia = query => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} });
+      const wide = render(<ExpandableList items={many} renderItem={row} limit={{ base: 10, wide: 25 }} noun="tiles" />);
+      expect(screen.getAllByTestId('row')).toHaveLength(25);
+      expect(screen.getByRole('button', { name: 'Show 15 more tiles' })).toBeTruthy();
+      wide.unmount();
+      window.matchMedia = query => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} });
+      render(<ExpandableList items={many} renderItem={row} limit={{ base: 10, wide: 25 }} noun="tiles" />);
+      expect(screen.getAllByTestId('row')).toHaveLength(10);
+      expect(screen.getByRole('button', { name: 'Show 30 more tiles' })).toBeTruthy();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it('makes the control prominent: its own class, not the small ghost button', () => {
+    render(<ExpandableList items={items} renderItem={row} />);
+    const button = screen.getByRole('button', { name: /Show 15 more/ });
+    expect(button.className).toBe('expandable-list-toggle');
+  });
 });
