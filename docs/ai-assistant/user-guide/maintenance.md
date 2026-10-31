@@ -86,15 +86,15 @@ Sources: [overlay](../../../cabin-orchestration-platform/infra/docker-compose.m9
 
 ## Deployment source correction
 
-**Short answer.** Updates deploy when a change is merged to `main`: the hub's own runner picks it up and rebuilds the parts whose files changed (each part has its own rules, in the table below). The backend runs its tests first, checks its health after starting, and on a failed check goes back to the previous version by itself; the third-party service stack does the same. The web app, Family Hub and discovery service have no automatic rollback; to roll one back, deploy the previous commit. Home Assistant automations and Node-RED flows edited by hand on the hub are not deployed this way. Details and exceptions follow.
+**Short answer.** Merging to `main` deploys automatically, per the table below. Only the backend and the production stack check health afterwards and roll back by themselves; if a Family Hub, cabin-ui or discovery deploy is wrong, redeploy the previous commit. Home Assistant automations and Node-RED flows edited by hand on the hub are not deployed this way.
 
-The old Maintenance Deployment section describes backend deployment as manual-only. The current [deploy-cabin-backend workflow](../../../.github/workflows/deploy-cabin-backend.yml) instead has a main-push path filter and manual dispatch. Its implementation tests, builds/tags a candidate, checks health and has rollback handling. The workflow is the source for current configured behavior; none of this proves its latest run succeeded.
+The [deploy-cabin-backend workflow](../../../.github/workflows/deploy-cabin-backend.yml) has a main-push path filter and manual dispatch; it tests, builds/tags a candidate, checks health and has rollback handling. The workflow is the source for configured behavior; none of this proves its latest run succeeded.
 
 For a release, record separately: repository/commit, tests, built image, target host/stack, deployed image/commit, health result and real feature verification. Obtain authorization for the actual deployment; do not merge, dispatch, rebuild or restart merely because a PR exists. The [family-hub](../../../.github/workflows/deploy-family-hub.yml), [discovery](../../../.github/workflows/deploy-cabin-discovery.yml) and [production stack](../../../.github/workflows/deploy-production-stack.yml) have separate scopes/triggers. Read the relevant workflow rather than applying one generic deployment recipe.
 
 ### Workflow table at `main` (K13)
 
-Audience: operator. Read from the files in `.github/workflows/` at `main`; no run was triggered or inspected here (`NOT_RUN`), and a workflow file does not show that its latest run succeeded. Deploys run on the self-hosted `cabin-m920q` runner; pull-request checks run on GitHub-hosted runners with no host access.
+Audience: operator. Read from the files in `.github/workflows/` at `main`; no run was triggered or inspected here (`NOT_RUN`). Deploys run on the self-hosted `cabin-m920q` runner; pull-request checks run on GitHub-hosted runners with no host access.
 
 | Workflow | Starts on | Gate before change | Change applied | Health check and rollback |
 |---|---|---|---|---|
@@ -108,9 +108,8 @@ Audience: operator. Read from the files in `.github/workflows/` at `main`; no ru
 
 Where a document and a workflow disagree, the workflow is the source:
 
-- Older text says the backend deploys by hand only, or that no workflow runs on a pull request. Both are out of date: the backend deploys from a push to `main`, and the tooling and kiosk workflows above run on pull requests.
+- Older text saying the backend deploys only by hand, or that no workflow runs on a pull request, is out of date: the backend deploys on a push to `main`, and the tooling and kiosk workflows run on pull requests.
 - A backend-only change under `cabin-orchestration-platform/` also starts `deploy-family-hub`, which rebuilds the UI. A UI-only change does not start the backend deploy.
-- Only the backend and the production stack have a post-deploy health check and rollback. The Family Hub, cabin-ui and discovery deploys do not; if one is wrong, redeploy the previous commit.
 - Rollback to an earlier backend image exists only while an earlier SHA-tagged image is still on the host. The image prune after a deploy removes untagged images only.
 
 Sources: [deploy-cabin-backend](../../../.github/workflows/deploy-cabin-backend.yml), [deploy-family-hub](../../../.github/workflows/deploy-family-hub.yml), [deploy-cabin-discovery](../../../.github/workflows/deploy-cabin-discovery.yml), [deploy-production-stack](../../../.github/workflows/deploy-production-stack.yml), [rotate-secrets](../../../.github/workflows/rotate-secrets.yml).

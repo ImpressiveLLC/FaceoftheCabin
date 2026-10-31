@@ -6,7 +6,7 @@ Audience: administrators, plus the household-safe summary in "Who can see and ch
 
 | Who | How they get in | What they can do |
 |---|---|---|
-| Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Trim old backups, Optimization Opportunities, Location Roles and platform import |
+| Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Guest Access (share and demo links), Managed Users, Trim old backups, Optimization Opportunities, Location Roles and platform import |
 | Household member signed in with Google | Google sign-in with any other accepted account | See the app and make the changes that need a sign-in, for example workflows, notes and chores. Administrator-only screens say "Admin access required" or "Only an administrator can trim storage" |
 | Managed user, "Household member (read/write)" | An emailed sign-in link (Managed Users) | Same as a household member. Cannot manage share links or managed users |
 | Managed user, "Viewer (read-only)" | An emailed sign-in link | Look only. Any change is refused |
@@ -49,9 +49,9 @@ Evidence: `DemoLinkSection` in `App.jsx`; `CabinAccessTokenService.create` (a de
 - **Invite** needs the hub's email service to be set up (host-dependent). If it is not, Invite shows an error instead of "Invite sent."
 - A managed user can never manage share links or other managed users, even as a household member.
 
-Managing links and managed users needs a Google sign-in; the server refuses managed accounts, guest links and demo links on these screens. The screens are meant for administrators. As of main, these two backend routes do not check the administrator list themselves.
+Only administrators manage share links and managed users. Managed accounts, guest links and demo links are always refused on these screens.
 
-Evidence: `ManagedUsersCard` in `App.jsx`; `ManagedUsersController`; `ManagedUserService` (`MAGIC_LINK_TTL` 30 minutes, `SESSION_TTL` 90 days, `validateSession` ends a deactivated user's sessions); `ResendEmailSender` refuses to send when its key is not configured; `GoogleAuthInterceptor.handleManagedSession` returns 403 for `/api/managed-users` and `/api/access-tokens`; neither controller checks `HouseholdRole.ADMINISTRATOR`.
+Evidence: `ManagedUsersCard` in `App.jsx`; `ManagedUsersController`; `ManagedUserService` (`MAGIC_LINK_TTL` 30 minutes, `SESSION_TTL` 90 days, `validateSession` ends a deactivated user's sessions); `ResendEmailSender` refuses to send when its key is not configured; `GoogleAuthInterceptor.handleManagedSession` returns 403 for `/api/managed-users` and `/api/access-tokens`.
 
 ## Disk space warnings
 

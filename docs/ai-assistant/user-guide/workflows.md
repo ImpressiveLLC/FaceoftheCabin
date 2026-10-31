@@ -30,7 +30,7 @@ The form, top to bottom:
 4. **After it fires** (explained under "Workflow settings" below).
 5. **Then, do this**: one or more actions. **+ Add another action** adds a step. Each action has an optional **sec cooldown**.
 
-Example: to shut off the water when a leak is detected, choose When "A device reports something", Specifically "Water leak detected", Then "Shut off the main water valve". The valve action is fixed to the main water valve; **Change target device** exists but is meant for a real replacement only.
+Example: to shut off the water when a leak is detected, choose When "A device reports something", Specifically "Water leak detected", Then "Shut off the main water valve". The valve action is fixed to the main water valve; **Change target device** exists but is meant for a real replacement only. Reopening the valve later is a separate, human-only step: do it only after the leak is found and fixed, following the owner's own valve procedure.
 
 Choices marked **"not available yet"** are planned triggers or actions shown so you can see what is coming. They cannot be picked or run. The trigger and action lists come from the app's built-in catalog; you cannot add your own events or actions.
 
@@ -46,13 +46,13 @@ Evidence: `WorkflowCreateForm`, `actionsFor` (privileged actions only for MANUAL
 
 - **Activate** checks the workflow again before turning it on: every action that needs a device must point at a device that exists, can take commands and is assigned. If a check fails, the workflow stays a draft. As of main the row does not display the reason, so a row that still says draft after Activate means a check failed; look for a **Broken** label or a target device that is not assigned. Deactivate does no checks.
 - **Fire now** appears only on an active "A person triggers it" workflow. It runs that workflow's actions immediately. Every press is a new run, recorded with your email.
-- **History** on a row lists each run with what each action did ("ok", "skipped" with a reason such as a cooldown, or "failed" with the error).
-- **Recent**, next to the Workflows card, lists "Unviewed workflow firings" for the selected location. **Mark seen** removes one from that list.
+- **History** on a row lists the 10 most recent runs with what each step reported: "ok", the water valve's command status, "skipped" with a reason such as a cooldown, or "failed" with the error. For the water valve, ACCEPTED means the command was sent, not that the valve has moved; check the valve. A notification marked ok was sent by the hub; whether it reaches a phone depends on the hub's notification setup (host-dependent).
+- At the top of the Workflows card, **Recent** (shown only when there is something unseen) lists "Unviewed workflow firings" for the selected location. **Mark seen** removes one from that list.
 - **Reset** on a run in History marks that run resolved.
 
-Neither Reset nor Mark seen undoes anything. They never reverse an action and never reopen the water valve. There is no undo button. To reverse an action, run a separate workflow made for that, for example a workflow set to "A person triggers it" that opens the main water valve.
+Neither Reset nor Mark seen undoes anything. They never reverse an action and never reopen the water valve. There is no undo button. To reverse an action, run a separate workflow made for that, for example a workflow set to "A person triggers it" that opens the main water valve. Reopen the valve only after the leak is fixed, following the owner's own procedure.
 
-Evidence: `WorkflowRow` (its `act` helper checks only the HTTP status, while activation failures return HTTP 200 with an `error` field), `WorkflowExecutionHistory` (Reset tooltip "does not undo or reverse its actions") and `RecentExecutionsList` (Mark seen; "Undo is deliberately not offered") in `App.jsx`; `fireManual` ("Workflow is not active -- activate it first") in `RulesController.java`.
+Evidence: `WorkflowRow` (its `act` helper checks only the HTTP status, while activation failures return HTTP 200 with an `error` field), `WorkflowExecutionHistory` (`?limit=10`; shows `commandStatus` for a command step; Reset tooltip "does not undo or reverse its actions") and `RecentExecutionsList` (rendered inside `WorkflowRulesCard`, only when non-empty; Mark seen; "Undo is deliberately not offered") in `App.jsx`; `fireManual` ("Workflow is not active -- activate it first") in `RulesController.java`.
 
 ## Workflow settings: After it fires, cooldown and broken targets
 
