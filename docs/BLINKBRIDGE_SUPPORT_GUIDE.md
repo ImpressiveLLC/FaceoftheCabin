@@ -11,6 +11,17 @@ For whoever answers "the Blink camera is offline". Plain steps first, details af
 | Camera Health tile red / bridge down | **Down.** The bridge itself stopped | Tell Nate; it normally restarts itself within ~10 minutes |
 | Alert only on Blink motion, no video | Webhook worked, live view could not open | Same as "reconnecting" |
 
+## Camera missing from the bridge
+
+`curl -s http://<blinkbridge ip>:8811/healthz` lists `expected`, `live` and `missing`. A camera under `missing` means Blink stopped
+listing it (Blink-side error). The bridge re-logs in by itself and reports unhealthy after 15 minutes, then the watchdog restarts it.
+Check the log for `camera set shrank`.
+
+## Motion did not start a live view
+
+AldrichFront has no cloud clips, so the bridge cannot see its motion itself. Live view on motion comes from the phone push path.
+`last_liveview_request_age_s` in `/healthz` shows when the bridge last got a start request for each camera.
+
 ## 30-second triage
 
 1. **A Frigate 404 from mediamtx is normal for an idle Blink camera.** It only has a stream while someone is watching or motion started one.

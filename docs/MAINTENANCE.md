@@ -1312,6 +1312,20 @@ exponential backoff with jitter; a throttle signal pauses all Blink calls for 5 
 poll succeeded for 30 min; a Docker HEALTHCHECK uses it; a watchdog thread exits the process if the loop dies for 10 min.
 Tests (fake blinkpy and ffmpeg) run in `.github/workflows/blinkbridge-tooling.yml`.
 
+Camera set (added 2026-10-31): Blink can answer a poll with fewer cameras (blinkpy `homescreen possibly down or throttled`),
+which silently dropped the driveway from 2026-10-28 until a restart. The bridge now knows the expected set (the
+`cameras.enabled` list, else every camera seen at login), logs `camera set shrank: <name> missing`, re-discovers with a fresh
+login (backoff 60 s to 10 min, deferred while a camera is live), and `/healthz` shows `expected`, `live`, `missing` and fails
+(503) when a configured camera has been missing over 15 minutes, so Docker and the host watchdog restart it. A camera
+permanently removed from the Blink account: put it in `cameras.disabled`.
+
+Motion signal (verified 2026-10-31): the bridge polls blinkpy `motion_detected`, which is derived from cloud clips and is
+structurally False for cameras without clips (AldrichFront); `get_events` is retired. So `motion_liveview_enabled` cannot fire
+for AldrichFront, in the legacy bridge or this one. The real trigger is the push path: Blink app notification on the S23 ->
+HA Companion -> `cabin/blink/motion` -> cabin-backend -> bridge `/liveview/<camera>/start`. `/healthz` now reports
+`last_liveview_request_age_s` per camera: if it never moves after real motion, the break is upstream of the bridge (check the
+S23 notification access and the HA automation), not in the bridge.
+
 How it self-heals: a failed liveview (Blink ended it, `Broken pipe`, stalled ffmpeg, open timeout) is torn down and
 retried by the camera's own backoff (5 s doubling to 5 min, jittered); a Blink throttle pauses every Blink call for
 5 to 30 min; an expired token triggers a fresh login. Diagnose: `docker ps` shows `(healthy)`/`(unhealthy)`;
