@@ -1099,4 +1099,59 @@ class GoogleAuthInterceptorTest {
             assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()), uri);
         }
     }
+
+    // ---- real Spring routing (MockMvc): the open reads still work and no spelling reaches an account route unauthenticated ----
+
+    @org.springframework.web.bind.annotation.RestController
+    static class RoutingProbe {
+        @org.springframework.web.bind.annotation.GetMapping("/api/alerts/active") String alerts() { return "alerts"; }
+        @org.springframework.web.bind.annotation.GetMapping("/api/devices") String devices() { return "devices"; }
+        @org.springframework.web.bind.annotation.GetMapping("/api/devices/{id}") String device(@org.springframework.web.bind.annotation.PathVariable String id) { return "device"; }
+        @org.springframework.web.bind.annotation.GetMapping("/api/managed-users") String users() { return "users"; }
+        @org.springframework.web.bind.annotation.GetMapping("/api/access-tokens") String tokens() { return "tokens"; }
+    }
+
+    private org.springframework.test.web.servlet.MockMvc mvc() {
+        return org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new RoutingProbe()).addInterceptors(interceptor).build();
+    }
+
+    @Test
+    void theOpenReadsStillWorkWithNoCredentialThroughRealRouting() throws Exception {
+        org.springframework.test.web.servlet.MockMvc mvc = mvc();
+        for (String uri : List.of("/api/alerts/active", "/api/devices", "/api/devices/abc")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(uri))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        }
+    }
+
+    @Test
+    void noSpellingOfAnAccountRouteIsServedWithoutACredentialOrToAManagedSession() throws Exception {
+        org.springframework.test.web.servlet.MockMvc mvc = mvc();
+        String managed = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        for (String uri : List.of("/api/managed-users", "/api/access-tokens", "/api/alerts/../managed-users", "/api/devices/../access-tokens",
+                "/api/devices/x/../../managed-users", "/api//managed-users", "/api/./access-tokens", "/api/managed%2Dusers",
+                "/api/devices/..%2Fmanaged-users", "/API/MANAGED-USERS", "/api/managed-users;a=b")) {
+            int anonymous = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(uri)).andReturn().getResponse().getStatus();
+            assertNotEquals(200, anonymous, "anonymous " + uri);
+            int viaManaged = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(uri)
+                .header("Authorization", "ManagedSession " + managed)).andReturn().getResponse().getStatus();
+            assertNotEquals(200, viaManaged, "managed session " + uri);
+        }
+    }
+
+    @Test
+    void aSpellingTheRawPathDoesNotMatchIsNeverAdmittedAsAnOpenRead() throws Exception {
+        // The normalised path may deny, never admit: each of these normalises to /api/alerts/active or /api/devices, but the
+        // raw path is not an open prefix, so with no credential the interceptor must refuse (401), not open it.
+        for (String uri : List.of("/API/ALERTS/active", "/api//alerts/active", "/api/./alerts/active", "/api/alerts%2Factive",
+                "/api/x/../alerts/active", "/api/devices/../devices")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
+            request.setRequestURI(uri);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(request, response, new Object()), uri);
+            assertEquals(401, response.getStatus(), uri);
+        }
+        MockHttpServletRequest plain = new MockHttpServletRequest("GET", "/api/alerts/active");
+        assertTrue(interceptor.preHandle(plain, new MockHttpServletResponse(), new Object()), "the plain open read is unchanged");
+    }
 }
