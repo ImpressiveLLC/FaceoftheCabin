@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
+import { dashboardCommandLimit } from "./App.jsx";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, outdoorBaselineSeries, OUTDOOR_BASELINE_FIELDS, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
@@ -1919,6 +1920,65 @@ describe("DmCapabilityActions — one-tap action hint", () => {
     expect(screen.getByRole("button", { name: "Turn on" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Turn off" })).toBeTruthy();
     expect(screen.queryByText(/safe one-tap buttons for a small preset/i)).toBeNull();
+  });
+});
+
+describe("DmCapabilityActions: no dashboard command buttons for a valve or a lock (safety order 2026-10-31)", () => {
+  afterEach(cleanup);
+
+  const base = { state: "ONLINE", location: "cabin", type: "HOME_ASSISTANT_ENTITY",
+    attributes: { deviceLifecycle: "ASSIGNED", capabilities: ["COMMAND"] } };
+
+  it("renders no Turn on, Turn off, Open or Close for the main water valve, however it is named", () => {
+    const valves = [
+      { ...base, deviceId: "z2m-main_water_valve", name: "Main shutoff", attributes: { ...base.attributes, entityId: "switch.main_water_valve" } },
+      { ...base, deviceId: "ha-cabin-switch-x", name: "Main Water Valve", attributes: { ...base.attributes, entityId: "switch.shutoff" } },
+      { ...base, deviceId: "ha-cabin-cover-y", name: "Shutoff", attributes: { ...base.attributes, entityId: "cover.water_valve" } },
+    ];
+    for (const valve of valves) {
+      cleanup();
+      render(<DmDeviceDetail device={valve} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+      for (const label of ["Turn on", "Turn off", "Open", "Close"]) {
+        expect(screen.queryByRole("button", { name: label }), `${valve.deviceId} ${label}`).toBeNull();
+      }
+      expect(screen.getByText(/does not send commands to a valve or a lock/i)).toBeTruthy();
+    }
+  });
+
+  it("a lock keeps the secure Lock button and loses Unlock", () => {
+    const lock = { ...base, deviceId: "lock_front", name: "Front Door Lock", type: "LOCK",
+      attributes: { ...base.attributes, entityId: "lock.front_door" } };
+    render(<AppContext.Provider value={{ refreshDevices: vi.fn() }}>
+      <DmDeviceDetail device={lock} onConfigure={() => {}} onLifecycleAction={vi.fn()} />
+    </AppContext.Provider>);
+    expect(screen.getByRole("button", { name: /^lock$/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /unlock/i })).toBeNull();
+  });
+
+  it("anything else named lock gets no buttons, and an ordinary switch still does", () => {
+    const relay = { ...base, deviceId: "ha-cabin-switch-z", name: "Garage Lock Relay", attributes: { ...base.attributes, entityId: "switch.garage_lock" } };
+    render(<DmDeviceDetail device={relay} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Turn on" })).toBeNull();
+    cleanup();
+    const porch = { ...base, deviceId: "ha-cabin-switch-p", name: "Porch Light", attributes: { ...base.attributes, entityId: "switch.porch" } };
+    render(<DmDeviceDetail device={porch} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Turn on" })).toBeTruthy();
+  });
+
+  it("dashboardCommandLimit also uses the device type and capability, not only the labels", () => {
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Plug", type: "WATER_VALVE" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Plug", type: "POWER_METER", attributes: { capabilities: ["COMMAND", "ACCESS_CONTROL"] } })).toBe("lock-only");
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Plug", type: "POWER_METER", attributes: { capabilities: ["COMMAND"] } })).toBeNull();
+  });
+
+  it("dashboardCommandLimit mirrors the backend rules", () => {
+    expect(dashboardCommandLimit({ deviceId: "z2m-main_water_valve" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Water Valve" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "a", type: "LOCK", name: "Water valve lock" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "lock_front", type: "LOCK", name: "Front Door Lock" })).toBe("lock-only");
+    expect(dashboardCommandLimit({ deviceId: "g", name: "Garage Lock Relay" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "p", name: "Porch Light" })).toBeNull();
+    expect(dashboardCommandLimit(null)).toBeNull();
   });
 });
 
