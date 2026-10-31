@@ -94,8 +94,9 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // method-agnostic, so this split has to happen here instead of in
         // WebConfig.
         String path = request.getRequestURI();
+        String npath = decisionPath(request);
         String contextPath = request.getContextPath();
-        boolean isFindingsCollection = path.equals(contextPath + "/api/tech-id/findings");
+        boolean isFindingsCollection = equalsBoth(path, npath, contextPath + "/api/tech-id/findings");
         if (isFindingsCollection
                 && ("GET".equalsIgnoreCase(request.getMethod()) || "POST".equalsIgnoreCase(request.getMethod()))) {
             return true;
@@ -108,7 +109,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // above) because every GET under this prefix is legitimately open
         // and every non-GET is legitimately gated — no path-specific split
         // needed the way tech-id's dual-auth-model endpoint required.
-        boolean isRulesRead = path.startsWith(contextPath + "/api/rules/") && "GET".equalsIgnoreCase(request.getMethod());
+        boolean isRulesRead = startsWithBoth(path, npath, contextPath + "/api/rules/") && "GET".equalsIgnoreCase(request.getMethod());
         if (isRulesRead) {
             return true;
         }
@@ -119,7 +120,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // MANUALLY_CURATED troubleshooting content) that had no gate at all
         // before this, in the same "unauthenticated write reachable from
         // the open internet" category as the 2026-09-01 events/alerts fix.
-        boolean isKbRead = path.startsWith(contextPath + "/api/kb/") && "GET".equalsIgnoreCase(request.getMethod());
+        boolean isKbRead = startsWithBoth(path, npath, contextPath + "/api/kb/") && "GET".equalsIgnoreCase(request.getMethod());
         if (isKbRead) {
             return true;
         }
@@ -135,8 +136,9 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // Except /api/alerts/history (W-64): that one lists when doors opened
         // and motion fired and who silenced what -- the occupancy-revealing
         // data the /api/events gate exists for -- so it needs a real session.
-        boolean isAlertsRead = path.startsWith(contextPath + "/api/alerts/") && "GET".equalsIgnoreCase(request.getMethod())
-            && !path.equals(contextPath + ALERT_HISTORY_PATH);
+        // Either view of the path naming it keeps it closed (normalised paths deny, never admit).
+        boolean isAlertsRead = startsWithBoth(path, npath, contextPath + "/api/alerts/") && "GET".equalsIgnoreCase(request.getMethod())
+            && !(path.equals(contextPath + ALERT_HISTORY_PATH) || npath.equals(contextPath + ALERT_HISTORY_PATH));
         if (isAlertsRead) {
             return true;
         }
@@ -150,7 +152,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // found POST /api/devices/{id}/command reachable anonymously because
         // this prefix was missing from WebConfig altogether. HEAD is a read
         // too (Spring routes it to the GET handler) and monitors may use it.
-        boolean isDevicesRead = (path.equals(contextPath + "/api/devices") || path.startsWith(contextPath + "/api/devices/"))
+        boolean isDevicesRead = (equalsBoth(path, npath, contextPath + "/api/devices") || startsWithBoth(path, npath, contextPath + "/api/devices/"))
             && ("GET".equalsIgnoreCase(request.getMethod()) || "HEAD".equalsIgnoreCase(request.getMethod()));
         if (isDevicesRead) {
             return true;
@@ -163,7 +165,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // and archive a place -- and PATCH can repoint a place's apiBase, which
         // the UI then sends signed-in tokens to -- so they require a signed-in
         // session; guest and demo tokens are read-only and get 403.
-        boolean isLocationsRead = (path.equals(contextPath + "/api/locations") || path.startsWith(contextPath + "/api/locations/"))
+        boolean isLocationsRead = (equalsBoth(path, npath, contextPath + "/api/locations") || startsWithBoth(path, npath, contextPath + "/api/locations/"))
             && ("GET".equalsIgnoreCase(request.getMethod()) || "HEAD".equalsIgnoreCase(request.getMethod()));
         if (isLocationsRead) {
             return true;
@@ -181,8 +183,8 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // bare GET /api/events collection (camera/motion replay) stays
         // gated below; only these two exact sub-paths are exempted.
         boolean isSensorHistoryRead = "GET".equalsIgnoreCase(request.getMethod())
-            && (path.equals(contextPath + "/api/events/telemetry-history")
-                || path.equals(contextPath + "/api/events/reported-fields"));
+            && (equalsBoth(path, npath, contextPath + "/api/events/telemetry-history")
+                || equalsBoth(path, npath, contextPath + "/api/events/reported-fields"));
         if (isSensorHistoryRead) {
             return true;
         }
@@ -193,7 +195,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // tech-id findings collection above. Every OTHER /api/managed-users
         // endpoint (list/create/deactivate/invite) stays behind the normal
         // Google gate via WebConfig's path pattern.
-        boolean isMagicLinkConsume = path.startsWith(contextPath + "/api/managed-users/magic/")
+        boolean isMagicLinkConsume = startsWithBoth(path, npath, contextPath + "/api/managed-users/magic/")
             && "POST".equalsIgnoreCase(request.getMethod());
         if (isMagicLinkConsume) {
             return true;
@@ -347,11 +349,12 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // its path happens to also match a granted read prefix.
         CabinAccessToken accessToken = tokenOpt.get();
         String path = request.getRequestURI();
+        String npath = decisionPath(request);
         String contextPath = request.getContextPath();
         // The one exception: a roof_spec link may POST exactly the comment
         // endpoint. Exact path, exact method, exact scope -- nothing else.
         boolean roofSpecPost = "POST".equalsIgnoreCase(request.getMethod())
-            && path.equals(contextPath + ROOF_SPEC_POST_PATH)
+            && equalsBoth(path, npath, contextPath + ROOF_SPEC_POST_PATH)
             && accessToken.scope().contains("roof_spec");
         if (!"GET".equalsIgnoreCase(request.getMethod()) && !roofSpecPost) {
             recordGuestUse(accessToken, request, "WRITE", HttpServletResponse.SC_FORBIDDEN);
@@ -363,10 +366,10 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
             .filter(Objects::nonNull)
             .flatMap(List::stream)
             .map(prefix -> contextPath + prefix)
-            .anyMatch(base -> path.equals(base) || path.startsWith(base + "/"));
+            .anyMatch(base -> equalsBoth(path, npath, base) || startsWithBoth(path, npath, base + "/"));
         // alerts_read maps to the whole /api/alerts prefix, which would reach
         // the alert history too -- but that is a signed-in-only view (W-64).
-        if (!covered || path.equals(contextPath + ALERT_HISTORY_PATH)) {
+        if (!covered || path.equals(contextPath + ALERT_HISTORY_PATH) || npath.equals(contextPath + ALERT_HISTORY_PATH)) {
             recordGuestUse(accessToken, request, "DENY", HttpServletResponse.SC_FORBIDDEN);
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "This access link doesn't cover that page");
             return false;
@@ -418,9 +421,10 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // managing who else has access. Checked before the write/GET gate
         // below so a VIEWER can't reach these as a GET either (e.g. listing
         // every other managed user's email).
-        String path = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        if (path.startsWith(contextPath + "/api/managed-users") || path.startsWith(contextPath + "/api/access-tokens")) {
+        // Decided on the normalised path, not the raw request URI: percent-encoded, dot-segment, doubled-slash,
+        // path-parameter and upper-case spellings reach the same handler. AdministratorOnly in the handlers is the
+        // second wall (W-132).
+        if (managesAccess(request)) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Managing access/accounts requires a real admin sign-in");
             return false;
         }
@@ -431,8 +435,78 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         }
         request.setAttribute(REQUEST_ATTR_EMAIL, user.email());
         request.setAttribute(REQUEST_ATTR_MANAGED_USER_ID, user.id());
-        request.setAttribute(REQUEST_ATTR_HOUSEHOLD_ROLE, resolveHouseholdRole(user.email()));
+        // A managed session is never an administrator, even when its email is on cabin.admin.emails (W-132): the
+        // administrator role comes only from a real Google sign-in or a CabinSession issued for one.
+        request.setAttribute(REQUEST_ATTR_HOUSEHOLD_ROLE, HouseholdRole.ADULT_HOUSEHOLD_MEMBER);
         return true;
+    }
+
+    /**
+     * The normalised view of the request path: context path plus the normalised path (see normalisedPath). It is used to DENY
+     * and to confirm, never to admit by itself: an admission test needs the raw path and this one to agree, so
+     * "/api/devices/../managed-users" is not an open devices read. A malformed encoding maps to a path no open rule matches, so
+     * such a request needs a credential like any other.
+     */
+    String decisionPath(HttpServletRequest request) {
+        String contextPath = request.getContextPath() == null ? "" : request.getContextPath();
+        String normalised = normalisedPath(request.getRequestURI(), request.getContextPath());
+        return contextPath + (normalised == null ? "/__malformed__" : normalised);
+    }
+
+    /** True when this request, however its path is spelled, is under the account or access management routes (or cannot be read safely). */
+    boolean managesAccess(HttpServletRequest request) {
+        String normalised = normalisedPath(request.getRequestURI(), request.getContextPath());
+        if (normalised == null) return true; // malformed encoding: fail closed
+        String raw = request.getRequestURI() == null ? "" : request.getRequestURI();
+        String context = request.getContextPath() == null ? "" : request.getContextPath();
+        // Deny if EITHER view names an account or access route.
+        return normalised.startsWith("/api/managed-users") || normalised.startsWith("/api/access-tokens")
+            || raw.startsWith(context + "/api/managed-users") || raw.startsWith(context + "/api/access-tokens");
+    }
+
+    /**
+     * Admission tests (an open read, a guest scope, the magic-link consume) need BOTH the raw request path and the normalised path
+     * to match. The normalised path is used to deny, never to admit on its own: widening what counts as an open route would let a
+     * spelling the router does not serve the same way be treated as open (W-132 review).
+     */
+    private static boolean startsWithBoth(String raw, String normalised, String prefix) {
+        return raw.startsWith(prefix) && normalised.startsWith(prefix);
+    }
+
+    private static boolean equalsBoth(String raw, String normalised, String value) {
+        return raw.equals(value) && normalised.equals(value);
+    }
+
+    /**
+     * The path the container and Spring will route on: path parameters (;x=y) dropped, percent-decoded until stable (so a
+     * double-encoded spelling cannot hide), duplicate slashes collapsed, dot segments resolved, lower-cased, and the context
+     * path removed. Null when the encoding is malformed.
+     */
+    static String normalisedPath(String requestUri, String contextPath) {
+        if (requestUri == null) return "";
+        String path = requestUri;
+        try {
+            for (int i = 0; i < 4; i++) {
+                String stripped = path.replaceAll(";[^/]*", "");
+                String decoded = java.net.URLDecoder.decode(stripped.replace("+", "%2B"), java.nio.charset.StandardCharsets.UTF_8);
+                if (decoded.equals(path)) break;
+                path = decoded;
+            }
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        java.util.ArrayDeque<String> segments = new java.util.ArrayDeque<>();
+        for (String segment : path.replace('\\', '/').split("/")) {
+            if (segment.isEmpty() || segment.equals(".")) continue;
+            if (segment.equals("..")) { segments.pollLast(); continue; }
+            segments.addLast(segment.toLowerCase(java.util.Locale.ROOT));
+        }
+        String joined = "/" + String.join("/", segments);
+        String context = contextPath == null || contextPath.isEmpty() ? "" : normalisedPath(contextPath, "");
+        if (context != null && !context.isEmpty() && !context.equals("/") && joined.startsWith(context)) {
+            joined = joined.substring(context.length());
+        }
+        return joined.isEmpty() ? "/" : joined;
     }
 
     // Query param exists for the same reason extractToken()'s does: an

@@ -678,11 +678,9 @@ class GoogleAuthInterceptorTest {
     }
 
     @Test
-    void aManagedSessionEmailMatchingAdminEmailsResolvesToAdministratorRole() throws Exception {
-        // D11 authorization-model hard gate (WSJF #6) -- role derivation must
-        // work identically regardless of which auth path produced the email,
-        // matching aValidManagedSessionSetsTheSameEmailAttributeAGoogleTokenWould
-        // above proving the email attribute itself is path-independent.
+    void aManagedSessionEmailMatchingAdminEmailsStaysAnAdultHouseholdMember() throws Exception {
+        // W-132 reverses the D11 slice that let a managed session take ADMINISTRATOR from its email: the administrator role
+        // comes only from a real Google sign-in or a CabinSession issued for one. The email attribute itself is still set.
         ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "member@example.com, someone-else@example.com");
         String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
@@ -690,7 +688,7 @@ class GoogleAuthInterceptorTest {
 
         assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
 
-        assertEquals(HouseholdRole.ADMINISTRATOR, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
+        assertEquals(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
     }
 
     @Test
@@ -1075,5 +1073,111 @@ class GoogleAuthInterceptorTest {
 
         assertFalse(interceptor.preHandle(request, response, new Object()));
         assertEquals(401, response.getStatus());
+    }
+
+    // ---- W-132: managed sessions never hold the administrator role; admin paths are judged on the normalised path ----
+
+    @Test
+    void aManagedSessionNeverResolvesAsAdministratorEvenWhenItsEmailIsOnTheAdminList() throws Exception {
+        ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "member@example.com");
+        String managed = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
+        request.addHeader("Authorization", "ManagedSession " + managed);
+
+        assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
+
+        assertEquals(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
+        // the same email through a real sign-in (a CabinSession) is still the administrator
+        String cabinSession = cabinSessions.issue("member@example.com").token();
+        MockHttpServletRequest signedIn = new MockHttpServletRequest("GET", "/api/notes");
+        signedIn.addHeader("Authorization", "CabinSession " + cabinSession);
+        assertTrue(interceptor.preHandle(signedIn, new MockHttpServletResponse(), new Object()));
+        assertEquals(HouseholdRole.ADMINISTRATOR, signedIn.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
+    }
+
+    @Test
+    void everySpellingOfAnAccountOrAccessRouteIsRefusedForAManagedSession() throws Exception {
+        String managed = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        for (String uri : List.of(
+                "/api/managed-users", "/api/managed-users/", "/api/access-tokens", "/api/access-tokens/abc/activity",
+                "/api/managed%2Dusers", "/api/managed%2dusers/x", "/api/%61ccess-tokens", "/api/access%2Dtokens",
+                "/api//managed-users", "/api/./managed-users", "/api/devices/../managed-users", "/api/x/%2e%2e/managed-users",
+                "/api/managed-users;a=b", "/api/access-tokens;jsessionid=1", "/API/Managed-Users", "/api/ACCESS-TOKENS",
+                "/api/%2561ccess-tokens", "/api/managed-users%00", "/api/managed-%zzusers")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
+            request.setRequestURI(uri);
+            request.addHeader("Authorization", "ManagedSession " + managed);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(request, response, new Object()), uri);
+            assertEquals(403, response.getStatus(), uri);
+        }
+    }
+
+    @Test
+    void anOrdinaryPathStillWorksForAManagedSession() throws Exception {
+        String managed = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        for (String uri : List.of("/api/devices", "/api/devices/z2m-x/command", "/api/devices/x")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
+            request.setRequestURI(uri);
+            request.addHeader("Authorization", "ManagedSession " + managed);
+            assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()), uri);
+        }
+    }
+
+    // ---- real Spring routing (MockMvc): the open reads still work and no spelling reaches an account route unauthenticated ----
+
+    // A plain @Controller with @ResponseBody, not @RestController: RestControllerCorsGuardTest scans the classpath for the latter.
+    @org.springframework.stereotype.Controller
+    @org.springframework.web.bind.annotation.ResponseBody
+    static class RoutingProbe {
+        @org.springframework.web.bind.annotation.GetMapping("/api/alerts/active") String alerts() { return "alerts"; }
+        @org.springframework.web.bind.annotation.GetMapping("/api/devices") String devices() { return "devices"; }
+        @org.springframework.web.bind.annotation.GetMapping("/api/devices/{id}") String device(@org.springframework.web.bind.annotation.PathVariable String id) { return "device"; }
+        @org.springframework.web.bind.annotation.GetMapping("/api/managed-users") String users() { return "users"; }
+        @org.springframework.web.bind.annotation.GetMapping("/api/access-tokens") String tokens() { return "tokens"; }
+    }
+
+    private org.springframework.test.web.servlet.MockMvc mvc() {
+        return org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new RoutingProbe()).addInterceptors(interceptor).build();
+    }
+
+    @Test
+    void theOpenReadsStillWorkWithNoCredentialThroughRealRouting() throws Exception {
+        org.springframework.test.web.servlet.MockMvc mvc = mvc();
+        for (String uri : List.of("/api/alerts/active", "/api/devices", "/api/devices/abc")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(uri))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        }
+    }
+
+    @Test
+    void noSpellingOfAnAccountRouteIsServedWithoutACredentialOrToAManagedSession() throws Exception {
+        org.springframework.test.web.servlet.MockMvc mvc = mvc();
+        String managed = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        for (String uri : List.of("/api/managed-users", "/api/access-tokens", "/api/alerts/../managed-users", "/api/devices/../access-tokens",
+                "/api/devices/x/../../managed-users", "/api//managed-users", "/api/./access-tokens", "/api/managed%2Dusers",
+                "/api/devices/..%2Fmanaged-users", "/API/MANAGED-USERS", "/api/managed-users;a=b")) {
+            int anonymous = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(uri)).andReturn().getResponse().getStatus();
+            assertNotEquals(200, anonymous, "anonymous " + uri);
+            int viaManaged = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(uri)
+                .header("Authorization", "ManagedSession " + managed)).andReturn().getResponse().getStatus();
+            assertNotEquals(200, viaManaged, "managed session " + uri);
+        }
+    }
+
+    @Test
+    void aSpellingTheRawPathDoesNotMatchIsNeverAdmittedAsAnOpenRead() throws Exception {
+        // The normalised path may deny, never admit: each of these normalises to /api/alerts/active or /api/devices, but the
+        // raw path is not an open prefix, so with no credential the interceptor must refuse (401), not open it.
+        for (String uri : List.of("/API/ALERTS/active", "/api//alerts/active", "/api/./alerts/active", "/api/alerts%2Factive",
+                "/api/x/../alerts/active", "/api/devices/../devices")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
+            request.setRequestURI(uri);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(request, response, new Object()), uri);
+            assertEquals(401, response.getStatus(), uri);
+        }
+        MockHttpServletRequest plain = new MockHttpServletRequest("GET", "/api/alerts/active");
+        assertTrue(interceptor.preHandle(plain, new MockHttpServletResponse(), new Object()), "the plain open read is unchanged");
     }
 }
