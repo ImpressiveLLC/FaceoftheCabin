@@ -2,6 +2,7 @@ import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget, v
 import { collapseDuplicateZigbeeServices, duplicateOfZigbeeParent } from "./zigbeeServices";
 import { ExpandableList } from "./ExpandableList";
 import { DEVICE_KIND_OPTIONS, batteryLevel, makeKindOf } from "./deviceKinds";
+import { BatteryMaintenanceCard } from "./BatteryMaintenanceCard";
 /**
  * Cabin Orchestration Platform — Shell UI
  *
@@ -3376,6 +3377,9 @@ export function DeviceManagerPanel({ auth }) {
           {focusNotice} <button type="button" className="active-condition-link" onClick={() => setFocusNotice(null)}>Dismiss</button>
         </p>
       )}
+      {kindFilter === "battery" && !reviewingPrevious && (
+        <BatteryMaintenanceCard devices={managerDevices} kindOf={kindOf} onSelect={setSelected} />
+      )}
       {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} groups={groups} reorderGroup={reorderGroup} reorderDevice={reorderDevice}
         selected={selected} onSelect={setSelected}
         reorderMode={reorderMode} groupFlow={groupFlow}
@@ -6561,7 +6565,9 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       </div>
 
       <div className={`kpi-grid ${reorderMode ? "reorder-mode" : ""}`}>
-        {kpiEntries.map(({ globalIdx, tile }) => {
+        <ExpandableList items={kpiEntries} keyOf={e => e.tile.deviceId} noun="tiles" forceOpen={reorderMode}
+          isPinned={e => pinnedCount != null && e.globalIdx < pinnedCount}
+          renderItem={({ globalIdx, tile }) => {
           const isPinned = pinnedCount != null && globalIdx < pinnedCount;
           return (
             <KpiTile key={tile.deviceId} {...tile}
@@ -6574,7 +6580,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
               onDragEnd={reorderMode ? onDragEnd : undefined}
             />
           );
-        })}
+        }} />
       </div>
 
       <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
@@ -6598,12 +6604,13 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
             {liveMessages.length === 0 && (
               <div className="event-log-empty">No live events yet from {locCfg.label}</div>
             )}
-            {liveMessages.map((m, i) => (
-              <div key={i} className="event-row">
-                <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
-                <span className="event-body">{JSON.stringify(m)}</span>
-              </div>
-            ))}
+            <ExpandableList items={liveMessages.map((m, i) => ({ m, i }))} keyOf={e => e.i} noun="events"
+              renderItem={({ m, i }) => (
+                <div key={i} className="event-row">
+                  <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
+                  <span className="event-body">{JSON.stringify(m)}</span>
+                </div>
+              )} />
           </>
         )}
       </div>
@@ -7831,7 +7838,9 @@ function StatusChecksCard({ auth }) {
       </div>
       {open && (
       <div className="active-conditions-list">
-        {items.map(item => {
+        <ExpandableList items={items} keyOf={item => item.id} noun="checks"
+          isPinned={item => (item.severity || "").toLowerCase() === "critical" || expandedId === item.id}
+          renderItem={item => {
           const expanded = expandedId === item.id;
           const steps = item.kind === "automation" ? automationAlertSteps(item.raw) : deviceConditionSteps(item);
           return (
@@ -7929,7 +7938,7 @@ function StatusChecksCard({ auth }) {
               </div>
             </div>
           );
-        })}
+        }} />
       </div>
       )}
       {silencedList}
@@ -8581,7 +8590,9 @@ function RecentExecutionsList({ workflows, activeLocation, auth }) {
         </span>
       </div>
       <p className="config-hint">Unviewed workflow firings.</p>
-      {!collapsed && recent.map((exec, idx) => {
+      {!collapsed && <ExpandableList items={recent.map((exec, idx) => ({ exec, idx }))}
+        keyOf={e => e.exec.executionId ?? e.idx} noun="firings"
+        renderItem={({ exec, idx }) => {
         const wf = workflows.find(w => w.workflowId === exec.workflowId);
         return (
           <div key={exec.executionId ?? idx} className="rule-row">
@@ -8595,7 +8606,7 @@ function RecentExecutionsList({ workflows, activeLocation, auth }) {
             </div>
           </div>
         );
-      })}
+      }} />}
     </div>
   );
 }
@@ -8624,7 +8635,8 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
       {workflows.length === 0 && <p className="config-hint">No workflows configured yet.</p>}
       {!collapsed && workflows.length > 0 && (
         <div className="workflow-rows-list">
-          {workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} devices={devices} onChanged={onChanged} />)}
+          <ExpandableList items={workflows} keyOf={w => w.workflowId} noun="workflows"
+            renderItem={w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} devices={devices} onChanged={onChanged} />} />
         </div>
       )}
       {!creating && (
@@ -8740,7 +8752,7 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
       {actionError && <p className="action-result action-error">{actionError}</p>}
       {!error && visible.length === 0 && <p className="config-hint">No open opportunities — the cabin looks good.</p>}
       <div className="rule-rows">
-        {visible.map(o => {
+        <ExpandableList items={visible} keyOf={o => o.id} noun="opportunities" renderItem={o => {
           const device = devices.find(d => d.deviceId === o.deviceId);
           const area = device?.attributes?.area;
           const deviceLabel = device ? `${area ? area + " · " : ""}${device.name}` : o.deviceId;
@@ -8782,7 +8794,7 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
               </div>
             </div>
           );
-        })}
+        }} />
       </div>
     </div>
   );
