@@ -1,6 +1,7 @@
 package com.cabin.orchestrator.api;
 
 import com.cabin.orchestrator.devices.DeviceCommandGuard;
+import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.integrations.homeassistant.HomeAssistantAdapter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,9 +43,11 @@ public class HaServiceController {
     private static final Pattern DENIED_ENTITY = DeviceCommandGuard.DENIED_ENTITY; // shared with the device command path
 
     private final HomeAssistantAdapter ha;
+    private final DeviceRegistry registry;
 
-    public HaServiceController(HomeAssistantAdapter ha) {
+    public HaServiceController(HomeAssistantAdapter ha, DeviceRegistry registry) {
         this.ha = ha;
+        this.registry = registry;
     }
 
     public record ServiceCall(String domain, String service, String entity_id, String location) {}
@@ -52,6 +55,11 @@ public class HaServiceController {
     @PostMapping("/services")
     public ResponseEntity<Map<String, Object>> call(@RequestBody ServiceCall req) {
         String rejection = rejectionReason(req);
+        // The entity id is only text: a valve registered under an entity id that does not say "valve" is still a valve.
+        if (rejection == null && registry.descriptorsByConnectionString(req.entity_id()).stream()
+                .anyMatch(d -> DeviceCommandGuard.isValveOrLock(d, registry.get(d.deviceId())))) {
+            rejection = "entity not allowed from the dashboard: " + req.entity_id();
+        }
         if (rejection != null) {
             return ResponseEntity.badRequest().body(Map.of("accepted", false, "error", rejection));
         }

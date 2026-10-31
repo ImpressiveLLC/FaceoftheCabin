@@ -602,6 +602,14 @@ public class DeviceRegistry {
             descriptor, statuses.get(descriptor.deviceId()), record.lifecycleState(), record.extraAttributes(), record.updatedAt()));
     }
 
+    /** Every registered descriptor whose connection string is this one (case-insensitive), whatever its adapter or location. */
+    public List<DeviceDescriptor> descriptorsByConnectionString(String connection) {
+        if (connection == null) return List.of();
+        return descriptors.values().stream()
+            .filter(d -> d.connectionString() != null && d.connectionString().equalsIgnoreCase(connection))
+            .toList();
+    }
+
     public Optional<DeviceDescriptor> descriptorByConnection(String adapter, String connection, String location) {
         return descriptors.values().stream()
             .filter(d -> Objects.equals(adapter, d.protocolAdapter()))

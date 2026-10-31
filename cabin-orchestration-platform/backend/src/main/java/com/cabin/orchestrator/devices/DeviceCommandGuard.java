@@ -76,6 +76,22 @@ public final class DeviceCommandGuard {
         return Optional.empty();
     }
 
+    /**
+     * True when this device is, by its id, name, entity id, connection string or type, a valve or a lock. The dashboard's
+     * Home Assistant service route (/api/ha/services) names only an entity id, so it asks this about the registered
+     * device that owns that entity: a valve whose entity id does not say "valve" (a renamed entity) is still refused.
+     * Either argument may be null.
+     */
+    public static boolean isValveOrLock(DeviceDescriptor descriptor, DeviceStatus device) {
+        if (descriptor != null && descriptor.type() == DeviceType.LOCK) return true;
+        if (device != null && device.type() == DeviceType.LOCK) return true;
+        String text = (descriptor == null ? "" : nullToEmpty(descriptor.deviceId()) + " " + nullToEmpty(descriptor.name()) + " "
+            + nullToEmpty(descriptor.connectionString()))
+            + " " + (device == null ? "" : nullToEmpty(device.deviceId()) + " " + nullToEmpty(device.name()) + " "
+            + nullToEmpty(device.attributes() == null ? null : device.attributes().get("entityId")));
+        return DENIED_ENTITY.matcher(text.toLowerCase(Locale.ROOT)).find();
+    }
+
     private static boolean lockPayloadAllowed(String protocolAdapter, Object payload) {
         if (payload == null) return true;
         if (!"mqtt".equals(protocolAdapter)) return false;
