@@ -185,6 +185,10 @@ Negation, quoted instructions and prompt injection cannot supply authorization.
   Its only planned live path is the existing W-27 `/api/ha/services` heater-switch
   scope, after the shadow report and Nate's explicit go. This spec authorizes no
   new executor, arbitrary service, valve-open or unlock capability.
+- A timeout of a service call (the Home Assistant adapter is bounded at 3 s connect and
+  30 s read) means the **outcome is unknown**, never "did not happen": Home Assistant
+  may have carried the command out. A future executor must read the state back before
+  it retries, and must not report a timed-out run as not executed.
 - Before a future run, display the exact resolved target, operation and values.
   D27 R-OC-11's option-card tap confirms that displayed plan (one card for one
   option); recognizing a need or receiving model text never confirms it. Bind
@@ -562,6 +566,7 @@ npm install && npm run dev
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
 | `CABIN_PRESENCE_STALE_AFTER_HOURS` | PresenceController | Hours of phone silence after which `/api/presence` reports `stale: true` and the badge reads "Presence unknown". Default `6`. Keep equal to Node-RED's `PRESENCE_STALE_HOURS` (siren gate, W-33) so the badge and the siren agree |
+| `CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS`, `CABIN_OLLAMA_READ_TIMEOUT_SECONDS` | OllamaHttpClient | Ask path bounds (W-118): defaults 3 and 50 seconds, the read timeout kept below nginx's 60 s and Cloudflare's 100 s so a stalled model ends in the raw-facts fallback. Zero or negative falls back to the default; per read, not a total deadline. Passed through `docker-compose.m920q.yml`. The Home Assistant adapter uses `cabin.ha.connect-timeout-seconds` / `cabin.ha.read-timeout-seconds` (3 and 30, not passed through compose) |
 | `CABIN_ASK_INTENT_ENABLED` | HelpdeskProposeController | `true` turns on `POST /api/helpdesk/propose` (default `false`, route answers 404). Also tunable: `CABIN_ASK_INTENT_MODEL` (default `cabin-intent-slot-prompt-r1`, an Ollama tag that must exist), `CABIN_ASK_INTENT_PROPOSAL_TTL_SECONDS` (300), `CABIN_ASK_INTENT_MAX_INPUT_CHARS` (500), `CABIN_ASK_INTENT_TIMEOUT_SECONDS` (60), `CABIN_ASK_RESOLVER_MAX_INVENTORY_AGE_SECONDS` (120), `CABIN_ASK_RESOLVER_MAX_OBSERVATION_AGE_HOURS` (6). None is passed through `docker-compose.m920q.yml` yet |
 | `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). **Blank on the M920q as of 2026-10-12, so no backend push reaches a phone (W-51)**. The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
 | `WEATHER_ENABLED` | OutdoorWeatherService | `true` by default; `false` switches the daily airport-weather pull off (the chart then shows no outdoor line for new days). Also tunable: `WEATHER_STATIONS` (default `cabin=UBE,RPD`: per location id, primary station first, then fallbacks), `WEATHER_BACKFILL_DAYS` (60), `WEATHER_ARCHIVE_DIR` (`/app/archives/weather`, the bind mount of `/storage/archives/weather`), `WEATHER_CRON` (`0 30 3 * * *`). None is passed through `docker-compose.m920q.yml`, so the defaults apply. See `docs/OUTDOOR_WEATHER_BASELINE.md` |

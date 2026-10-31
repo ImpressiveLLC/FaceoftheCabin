@@ -120,4 +120,32 @@ class HomeAssistantAdapterTest {
     void adapterTypeIsHaRest() {
         assertEquals("ha_rest", new HomeAssistantAdapter().adapterType());
     }
+
+    /** W-127 item 3: a Home Assistant that accepts the connection and never answers returns empty within the bound, not hangs. */
+    @Test
+    @org.junit.jupiter.api.Timeout(30)
+    void aStalledHomeAssistantReturnsEmptyWithinTheReadTimeout() throws Exception {
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        com.sun.net.httpserver.HttpServer stalled = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        stalled.createContext("/", exchange -> {
+            try { release.await(8, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            exchange.close();
+        });
+        stalled.start();
+        try {
+            HomeAssistantAdapter adapter = new HomeAssistantAdapter();
+            ReflectionTestUtils.setField(adapter, "cabinHaUrl", "http://127.0.0.1:" + stalled.getAddress().getPort());
+            ReflectionTestUtils.setField(adapter, "cabinHaToken", "t");
+            ReflectionTestUtils.setField(adapter, "connectTimeoutSeconds", 1);
+            ReflectionTestUtils.setField(adapter, "readTimeoutSeconds", 1);
+            adapter.applyTimeouts();
+
+            long started = System.nanoTime();
+            assertEquals(java.util.Optional.empty(), adapter.fetchVersion("cabin"));
+            assertTrue((System.nanoTime() - started) / 1_000_000_000L < 7, "returned within the bound, not at the stub's release");
+        } finally {
+            release.countDown();
+            stalled.stop(0);
+        }
+    }
 }

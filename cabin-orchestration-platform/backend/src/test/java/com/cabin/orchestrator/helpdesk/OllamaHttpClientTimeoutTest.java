@@ -20,7 +20,7 @@ class OllamaHttpClientTimeoutTest {
         CountDownLatch release = new CountDownLatch(1);
         HttpServer stalled = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         stalled.createContext("/", exchange -> {
-            try { release.await(); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            try { release.await(8, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
             exchange.close();
         });
         stalled.start();
@@ -75,5 +75,26 @@ class OllamaHttpClientTimeoutTest {
             release.countDown();
             stalled.stop(0);
         }
+    }
+
+    @Test
+    void secondsToMillisecondsSaturatesInsteadOfOverflowing() {
+        assertThat(OllamaHttpClient.millis(50)).isEqualTo(50_000);
+        assertThat(OllamaHttpClient.millis(Integer.MAX_VALUE)).isEqualTo(Integer.MAX_VALUE);
+        assertThat(OllamaHttpClient.millis(3_000_000)).isEqualTo(Integer.MAX_VALUE);
+    }
+
+    /** The compose defaults repeat the Java constants; they must agree (W-127 item 4). */
+    @Test
+    void theComposeDefaultsAgreeWithTheJavaConstants() throws Exception {
+        java.nio.file.Path compose = java.nio.file.Path.of("../infra/docker-compose.m920q.yml");
+        if (!java.nio.file.Files.exists(compose)) compose = java.nio.file.Path.of("cabin-orchestration-platform/infra/docker-compose.m920q.yml");
+        String text = java.nio.file.Files.readString(compose);
+        java.util.regex.Matcher connect = java.util.regex.Pattern.compile("CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS: \\$\\{CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS:-(\\d+)\\}").matcher(text);
+        java.util.regex.Matcher read = java.util.regex.Pattern.compile("CABIN_OLLAMA_READ_TIMEOUT_SECONDS: \\$\\{CABIN_OLLAMA_READ_TIMEOUT_SECONDS:-(\\d+)\\}").matcher(text);
+        assertThat(connect.find()).as("connect default present in compose").isTrue();
+        assertThat(read.find()).as("read default present in compose").isTrue();
+        assertThat(Integer.parseInt(connect.group(1))).isEqualTo(OllamaHttpClient.DEFAULT_CONNECT_TIMEOUT_SECONDS);
+        assertThat(Integer.parseInt(read.group(1))).isEqualTo(OllamaHttpClient.DEFAULT_READ_TIMEOUT_SECONDS);
     }
 }

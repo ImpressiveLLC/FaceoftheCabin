@@ -163,4 +163,20 @@ class PlatformInfoServiceTest {
         assertEquals("floating", items.get("fe.react").get("track"));
         assertTrue(items.get("fe.react").get("locked") != null, "the version package-lock.json actually builds is shown next to the floating range");
     }
+
+    /** W-127 item 6: versions() and specs() used to probe Ollama twice; a wedged one held the page for twice its timeout. */
+    @Test
+    void theOllamaVersionIsProbedOncePerResponse() {
+        int[] calls = {0};
+        OllamaClient counting = new OllamaClient() {
+            @Override public Optional<String> generate(String prompt) { return Optional.empty(); }
+            @Override public Optional<String> fetchVersion() { calls[0]++; return Optional.of("0.33.2"); }
+        };
+        Map<String, Object> result = newService(counting).get();
+
+        assertEquals(1, calls[0]);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> versions = (Map<String, Object>) result.get("versions");
+        assertEquals("0.33.2", versions.get("ollama"));
+    }
 }

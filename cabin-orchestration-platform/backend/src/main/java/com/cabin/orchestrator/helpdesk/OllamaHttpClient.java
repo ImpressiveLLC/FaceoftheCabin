@@ -55,10 +55,15 @@ public class OllamaHttpClient implements OllamaClient {
             readTimeoutSeconds > 0 ? readTimeoutSeconds : DEFAULT_READ_TIMEOUT_SECONDS));
     }
 
+    /** Seconds to milliseconds, saturating instead of overflowing int for an absurdly large setting (W-127 item 5). */
+    static int millis(int seconds) {
+        return (int) Math.min(Integer.MAX_VALUE, seconds * 1_000L);
+    }
+
     private static SimpleClientHttpRequestFactory factory(int connectSeconds, int readSeconds) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(connectSeconds * 1_000);
-        factory.setReadTimeout(readSeconds * 1_000);
+        factory.setConnectTimeout(millis(connectSeconds));
+        factory.setReadTimeout(millis(readSeconds));
         return factory;
     }
 
