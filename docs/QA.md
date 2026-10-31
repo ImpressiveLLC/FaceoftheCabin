@@ -222,3 +222,15 @@ Nothing calls these on its own. Applying to live rows needs Nate's approval.
 ### W-105 independent measurement oracle
 
 [Catalog, checker, review and operator gates](governance/verification/measurement-attention/README.md). Run the documented Python unit checks for fixture/comparator integrity. Runtime outputs require a production adapter; absent results deliberately exit 2 and remain NOT_RUN. Human vision/comfort/comprehension cases remain NOT_RUN until observed; no automated simulation substitutes for participants. No attention-style change or live W-93 apply is authorized by these checks.
+
+### Breaker box state fix (2026-10-31)
+Cause: `electricalMonitoringDevices` read relay state only from the parent's `switch.*` children and fell back to the
+parent's own report only when there were none. The breaker box has two enabled switch children, the relay (ON) and
+HA's configuration switch `metering_only_mode` (OFF). They disagreed, so the card said "State unknown" while Device
+Manager showed the parent's own ON. The heater was unaffected only because its configuration switch is disabled.
+Fix: the device's own ON/OFF wins; switch children are the fallback and still say "State unknown" when they disagree.
+S61 energy: the Z2M definition for S61SZBTPB exposes state, power, current, voltage and linkquality only, no energy, so
+"Energy unavailable" is correct and its HA energy child stays UNKNOWN until the converter changes (W-108).
+Door contacts: nothing in code selects by `ACCESS_CONTROL` except the lock resolver (needs `COMMAND` too, which contacts
+lack) and the two door-contact trigger vocabulary rows' `appliesToCapability`, which is stored but read by no code or UI.
+Removing it from the contacts at re-detect is safe at runtime; the ontology rows still declare `ACCESS_CONTROL`.

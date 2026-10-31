@@ -52,12 +52,15 @@ export function electricalMonitoringDevices(devices) {
     unresolved.forEach(d => hidden.add(d.deviceId));
     attrs.unresolvedServiceCount = unresolved.length;
     const switches = children.filter(d => d.attributes?.entityId?.startsWith('switch.'));
-    const states = switches.map(d => d.attributes.state);
+    const childStates = switches.map(d => d.attributes.state);
     // The device's own reported relay state, its alias's, then the mapped switch entities'.
     // Never inferred from watts or from ONLINE: ON at 0 W is a real state (nothing drawing).
     const ownState = ['ON','OFF'].includes(attrs.state) && active(parent) ? attrs.state
       : aliases.map(d => d.attributes?.state).find(v => ['ON','OFF'].includes(v));
-    if (!states.length && ownState) states.push(ownState);
+    // The device's own report wins. Switch entities are only a fallback: HA also lists
+    // configuration switches (metering-only mode) under the same parent, and one of those
+    // saying OFF must not cancel the relay's own ON (breaker box, 2026-10-31).
+    const states = ownState ? [ownState] : childStates;
     if (states.length && states.every(s => s === states[0] && ['ON','OFF'].includes(s))) {
       attrs.mappedSwitchState = states[0];
     }
