@@ -50,7 +50,10 @@ export function stripSqlComments(sql) {
       while (i < sql.length && sql[i] !== "\n") i += 1;
     } else if (c === "/" && sql[i + 1] === "*") {
       const end = sql.indexOf("*/", i + 2);
-      i = end < 0 ? sql.length : end + 2;
+      const body = end < 0 ? sql.slice(i + 2) : sql.slice(i + 2, end);
+      // PostgreSQL nests block comments, this reader does not: a nested opener would make it read a row the database ignores.
+      if (end < 0 || body.includes("/*")) throw new Error("seed refused: unterminated or nested block comment");
+      i = end + 2;
       out += " ";
     } else {
       out += c; i += 1;
@@ -69,36 +72,59 @@ function statements(sql) {
     if (c === "'") inString = !inString; // '' toggles twice, which is correct
     if (c === ";" && !inString) { out.push(cur); cur = ""; } else cur += c;
   }
+  if (inString) throw new Error("seed refused: unterminated string literal");
   if (cur.trim()) out.push(cur);
   return out.map((t) => t.trim()).filter(Boolean);
 }
 
+const ROW = "\\(\\s*'([^']+)'\\s*,\\s*'([^']+)'\\s*,\\s*'(PRIMARY|MAINTENANCE)'\\s*\\)";
+const INSERT_FORM = new RegExp(
+  `^INSERT\\s+INTO\\s+${SEED_TABLE}\\s*\\(\\s*person_id\\s*,\\s*location\\s*,\\s*role\\s*\\)\\s*VALUES\\s*((?:${ROW}\\s*,\\s*)*${ROW})(?:\\s+ON\\s+CONFLICT\\s+DO\\s+NOTHING)?$`, "i");
+const DELETE_FORM = new RegExp(`^DELETE\\s+FROM\\s+${SEED_TABLE}\\s+WHERE\\s+(.+)$`, "i");
+const CONDITION = /^(person_id|location|role)\s*=\s*'([^']+)'$/i;
+
 /**
- * Map of "person@location" to the set of roles the seed SQL leaves in the table. Reads only INSERT INTO and DELETE FROM
- * tracked_person_location_role (other tables are ignored), ignores comments, and applies a later DELETE of a person (with its
- * optional location and role conditions) so a row that the file itself removes is not a primary person.
+ * Map of "person@location" to the set of roles the seed SQL leaves in the table.
+ *
+ * A STRICT allow-list, not a reader that skips what it does not understand: the only statements accepted are
+ *   INSERT INTO tracked_person_location_role (person_id, location, role) VALUES ('p', 'l', 'PRIMARY'|'MAINTENANCE'), ...
+ *       [ON CONFLICT DO NOTHING]
+ *   DELETE FROM tracked_person_location_role WHERE person_id = '..' [AND location = '..'] [AND role = '..']
+ * and anything else (UPDATE, TRUNCATE, DROP, a DELETE with OR or an unknown column or no WHERE, a schema-qualified or quoted
+ * table name, a CTE, a nested block comment, any other statement at all) makes it throw, so the generator refuses to run
+ * against a seed whose effect it cannot read exactly. Comments outside string literals are ignored.
  */
 export function parseSeed(sqlText) {
   const seed = new Map();
   const add = (p, l, r) => { const k = `${p}@${l}`; if (!seed.has(k)) seed.set(k, new Set()); seed.get(k).add(r); };
   for (const stmt of statements(stripSqlComments(lf(sqlText)))) {
-    const insert = stmt.match(new RegExp(`^INSERT\\s+INTO\\s+${SEED_TABLE}\\b`, "i"));
-    const del = stmt.match(new RegExp(`^DELETE\\s+FROM\\s+${SEED_TABLE}\\b`, "i"));
+    const oneLine = stmt.replace(/\s+/g, " ");
+    const insert = oneLine.match(INSERT_FORM);
     if (insert) {
-      const values = stmt.slice(insert[0].length).replace(/^[^]*?\bVALUES\b/i, "");
-      for (const m of values.matchAll(/\(\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'(PRIMARY|MAINTENANCE)'\s*\)/g)) add(m[1], m[2], m[3]);
-    } else if (del) {
-      const where = stmt.slice(del[0].length).match(/^\s*WHERE\b([^]*)$/i);
-      if (!where) { seed.clear(); continue; } // DELETE with no WHERE empties the table
-      const cond = (name) => { const m = where[1].match(new RegExp(`\\b${name}\\s*=\\s*'([^']+)'`, "i")); return m ? m[1] : null; };
-      const [p, l, r] = [cond("person_id"), cond("location"), cond("role")];
+      for (const m of insert[1].matchAll(new RegExp(ROW, "gi"))) {
+        // The keywords are case-insensitive but the role is the exact stored value: 'primary' is not 'PRIMARY'.
+        if (m[3] !== m[3].toUpperCase()) throw new Error(`seed refused: role must be exactly PRIMARY or MAINTENANCE, got ${JSON.stringify(m[3])}`);
+        add(m[1], m[2], m[3]);
+      }
+      continue;
+    }
+    const del = oneLine.match(DELETE_FORM);
+    if (del) {
+      const conds = {};
+      for (const part of del[1].split(/\s+AND\s+/i)) {
+        const c = part.trim().match(CONDITION);
+        if (!c || conds[c[1].toLowerCase()] !== undefined) throw new Error(`seed refused: unsupported DELETE condition ${JSON.stringify(part)}`);
+        conds[c[1].toLowerCase()] = c[2];
+      }
       for (const [key, roles] of [...seed]) {
         const [kp, kl] = key.split("@");
-        if (p !== null && kp !== p) continue;
-        if (l !== null && kl !== l) continue;
-        if (r !== null) { roles.delete(r); if (roles.size === 0) seed.delete(key); } else seed.delete(key);
+        if (conds.person_id !== undefined && kp !== conds.person_id) continue;
+        if (conds.location !== undefined && kl !== conds.location) continue;
+        if (conds.role !== undefined) { roles.delete(conds.role); if (roles.size === 0) seed.delete(key); } else seed.delete(key);
       }
+      continue;
     }
+    throw new Error(`seed refused: statement not in the supported forms: ${JSON.stringify(oneLine.slice(0, 80))}`);
   }
   return seed;
 }

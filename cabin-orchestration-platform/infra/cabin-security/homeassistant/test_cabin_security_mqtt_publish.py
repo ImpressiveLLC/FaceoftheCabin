@@ -202,6 +202,13 @@ class GeneratedPeople(unittest.TestCase):
     def test_a_path_that_is_not_a_regular_file_adds_nothing(self):
         self.assertEqual(script.load_people(self.dir.name), ({}, {}), "a directory")
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "needs a POSIX FIFO (not run on Windows)")
+    def test_a_fifo_is_refused_without_blocking_on_it(self):
+        fifo = os.path.join(self.dir.name, "fifo.json")
+        os.mkfifo(fifo)
+        # Opening a FIFO for reading blocks until a writer appears; the regular-file check must refuse it before any open.
+        self.assertEqual(script.load_people(fifo), ({}, {}))
+
     def test_a_hostile_file_cannot_break_the_base_path_or_crash_the_loader(self):
         for content in ("[" * 4000 + "]" * 4000,                 # deep nesting: RecursionError in the JSON parser
                         '{"version": 1, "people": [' + '{"personId": "x", "location": "cabin"},' * 400 + "]}",

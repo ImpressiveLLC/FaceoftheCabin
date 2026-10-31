@@ -13,7 +13,7 @@ const lf = (t) => t.replace(/\r\n/g, "\n");
 
 const NATE = { personId: "nate", location: "cabin", zone: "zone.cabin", gpsTracker: "device_tracker.nates_s23", batterySensor: "sensor.nates_s23_battery_level" };
 const CHILD = { personId: "child_1", location: "cabin", zone: "zone.cabin", gpsTracker: "device_tracker.child_1_phone", batterySensor: "sensor.child_1_phone_battery_level" };
-const seedWith = (...rows) => parseSeed(rows.map(([p, l, r]) => `INSERT INTO tracked_person_location_role VALUES ('${p}', '${l}', '${r}');`).join("\n"));
+const seedWith = (...rows) => parseSeed(rows.map(([p, l, r]) => `INSERT INTO tracked_person_location_role (person_id, location, role) VALUES ('${p}', '${l}', '${r}');`).join("\n"));
 const roster = (...people) => ({ version: 1, people });
 
 test("ACCEPTANCE: the roster {nate} regenerates today's file and allow-list byte for byte, so nothing live changes", () => {
@@ -71,7 +71,7 @@ test("a person who is maintenance-only or not in the seed is REFUSED (D24 R-LR-4
 });
 
 test("a commented-out seed row does not count", () => {
-  const seed = parseSeed("-- ('child_1', 'cabin', 'PRIMARY')\nINSERT INTO tracked_person_location_role VALUES ('nate', 'cabin', 'PRIMARY');");
+  const seed = parseSeed("-- ('child_1', 'cabin', 'PRIMARY')\nINSERT INTO tracked_person_location_role (person_id, location, role) VALUES ('nate', 'cabin', 'PRIMARY');");
   assert.throws(() => validateRoster(roster(CHILD), seed), /not PRIMARY/);
 });
 
@@ -99,7 +99,7 @@ test("parseSeed: line, inline and block comments never produce a person", () => 
       ('nate', 'cabin', 'PRIMARY'), -- ('c2', 'cabin', 'PRIMARY'),
       /* ('c3', 'cabin', 'PRIMARY'), */ ('c4', 'cabin', 'MAINTENANCE')
     ON CONFLICT DO NOTHING;
-    /* INSERT INTO ${T} VALUES ('c5', 'cabin', 'PRIMARY');
+    /* INSERT INTO ${T} (person_id, location, role) VALUES ('c5', 'cabin', 'PRIMARY');
        spanning lines */`;
   const seed = parseSeed(sql);
   assert.ok(primary(seed, "nate"));
@@ -109,21 +109,61 @@ test("parseSeed: line, inline and block comments never produce a person", () => 
 
 test("parseSeed: a comment marker inside a string literal is not a comment", () => {
   assert.equal(stripSqlComments("SELECT '-- not a comment', '/* nor this */'"), "SELECT '-- not a comment', '/* nor this */'");
-  const seed = parseSeed(`INSERT INTO ${T} VALUES ('a--b', 'cabin', 'PRIMARY');`);
+  const seed = parseSeed(`INSERT INTO ${T} (person_id, location, role) VALUES ('a--b', 'cabin', 'PRIMARY');`);
   assert.ok(primary(seed, "a--b"));
 });
 
-test("parseSeed: only INSERT INTO the tracked-person table counts", () => {
-  const seed = parseSeed(`INSERT INTO other_table VALUES ('c1', 'cabin', 'PRIMARY');
-    INSERT INTO ${T}_archive VALUES ('c2', 'cabin', 'PRIMARY');
-    UPDATE ${T} SET role = 'PRIMARY' WHERE person_id = 'c3';
-    SELECT ('c4', 'cabin', 'PRIMARY');
-    INSERT INTO ${T} VALUES ('nate', 'cabin', 'PRIMARY');`);
+const INS = `INSERT INTO ${T} (person_id, location, role) VALUES ('nate', 'cabin', 'PRIMARY')`;
+const refuses = (sql, why) => assert.throws(() => parseSeed(sql), /seed refused/, why);
+
+test("the real seed file still parses to exactly nate@cabin PRIMARY", () => {
+  const seed = parseSeed(fs.readFileSync(seedPath, "utf8"));
   assert.deepEqual([...seed.keys()], ["nate@cabin"]);
+  assert.deepEqual([...seed.get("nate@cabin")], ["PRIMARY"]);
+});
+
+test("parseSeed is a strict allow-list: anything but the exact INSERT form and a simple AND-only DELETE makes it refuse", () => {
+  // the demoting UPDATE: bob is seeded PRIMARY and then set to MAINTENANCE; a lenient reader would still generate him
+  refuses(`INSERT INTO ${T} (person_id, location, role) VALUES ('bob', 'cabin', 'PRIMARY'); UPDATE ${T} SET role = 'MAINTENANCE' WHERE person_id = 'bob';`, "UPDATE");
+  refuses(`${INS}; TRUNCATE ${T};`, "TRUNCATE");
+  refuses(`${INS}; TRUNCATE TABLE ${T};`, "TRUNCATE TABLE");
+  refuses(`${INS}; DROP TABLE ${T};`, "DROP");
+  refuses(`${INS}; DELETE FROM ${T} WHERE person_id = 'nate' OR location = 'cabin';`, "DELETE with OR");
+  refuses(`${INS}; DELETE FROM ${T} WHERE person_id = 'nate' AND created_at < now();`, "DELETE unknown column");
+  refuses(`${INS}; DELETE FROM ${T} WHERE person_id IN ('nate');`, "DELETE IN");
+  refuses(`${INS}; DELETE FROM ${T} WHERE person_id = 'nate' AND person_id = 'bob';`, "DELETE repeated column");
+  refuses(`${INS}; DELETE FROM ${T};`, "DELETE with no WHERE");
+  refuses(`INSERT INTO public.${T} (person_id, location, role) VALUES ('nate', 'cabin', 'PRIMARY');`, "schema-qualified");
+  refuses(`INSERT INTO "${T}" (person_id, location, role) VALUES ('nate', 'cabin', 'PRIMARY');`, "quoted table");
+  refuses(`WITH x AS (SELECT 1) INSERT INTO ${T} (person_id, location, role) VALUES ('nate', 'cabin', 'PRIMARY');`, "CTE");
+  refuses(`INSERT INTO ${T} VALUES ('nate', 'cabin', 'PRIMARY');`, "no column list");
+  refuses(`INSERT INTO ${T} (role, person_id, location) VALUES ('PRIMARY', 'nate', 'cabin');`, "reordered columns");
+  refuses(`${INS} ON CONFLICT (person_id) DO UPDATE SET role = 'MAINTENANCE';`, "ON CONFLICT DO UPDATE");
+  refuses(`${INS} RETURNING *;`, "RETURNING");
+  refuses(`INSERT INTO ${T} (person_id, location, role) VALUES ('nate', 'cabin', 'primary');`, "lowercase role");
+  refuses(`INSERT INTO ${T} (person_id, location, role) SELECT 'nate', 'cabin', 'PRIMARY';`, "INSERT ... SELECT");
+  refuses(`INSERT INTO other_table VALUES ('c1', 'cabin', 'PRIMARY');`, "any other statement");
+  refuses(`SELECT 1; ${INS};`, "any other statement, even a harmless one");
+  refuses(`DO $$ BEGIN UPDATE ${T} SET role = 'MAINTENANCE'; END $$;`, "DO block");
+});
+
+test("parseSeed refuses a nested block-comment opener, an unterminated comment and an unterminated string", () => {
+  refuses(`/* outer /* inner */ ('c1', 'cabin', 'PRIMARY') */ ${INS};`, "nested block comment");
+  refuses(`${INS}; /* never closed`, "unterminated comment");
+  refuses(`${INS}; INSERT INTO ${T} (person_id, location, role) VALUES ('nate, 'cabin', 'PRIMARY');`, "unterminated string");
+});
+
+test("parseSeed accepts the supported forms, including several rows, ON CONFLICT DO NOTHING and extra whitespace", () => {
+  const seed = parseSeed(`insert  into ${T}
+      ( person_id , location , role )   values
+      ('a', 'cabin', 'PRIMARY'),
+      ('b', 'home', 'MAINTENANCE')
+    on conflict do nothing;`);
+  assert.deepEqual([...seed.keys()].sort(), ["a@cabin", "b@home"]);
 });
 
 test("parseSeed: a later DELETE removes the person, narrowed by location and role when given", () => {
-  const base = `INSERT INTO ${T} VALUES ('c1', 'cabin', 'PRIMARY'), ('c1', 'home', 'PRIMARY'), ('c2', 'cabin', 'PRIMARY'), ('c2', 'cabin', 'MAINTENANCE');`;
+  const base = `INSERT INTO ${T} (person_id, location, role) VALUES ('c1', 'cabin', 'PRIMARY'), ('c1', 'home', 'PRIMARY'), ('c2', 'cabin', 'PRIMARY'), ('c2', 'cabin', 'MAINTENANCE');`;
   assert.equal(primary(parseSeed(base + `DELETE FROM ${T} WHERE person_id = 'c1';`), "c1"), false);
   assert.equal(primary(parseSeed(base + `DELETE FROM ${T} WHERE person_id = 'c1';`), "c1", "home"), false);
   const byLocation = parseSeed(base + `DELETE FROM ${T} WHERE person_id = 'c1' AND location = 'cabin';`);
@@ -132,13 +172,12 @@ test("parseSeed: a later DELETE removes the person, narrowed by location and rol
   const byRole = parseSeed(base + `DELETE FROM ${T} WHERE person_id = 'c2' AND role = 'PRIMARY';`);
   assert.equal(primary(byRole, "c2"), false);
   assert.ok(byRole.get("c2@cabin").has("MAINTENANCE"), "the maintenance row stays");
-  assert.equal(primary(parseSeed(base + `DELETE FROM ${T};`), "c1"), false, "no WHERE empties the table");
-  assert.equal(primary(parseSeed(`DELETE FROM ${T} WHERE person_id = 'c1'; INSERT INTO ${T} VALUES ('c1', 'cabin', 'PRIMARY');`), "c1"), true, "a DELETE before the INSERT does not remove it");
+  assert.equal(primary(parseSeed(`DELETE FROM ${T} WHERE person_id = 'c1'; INSERT INTO ${T} (person_id, location, role) VALUES ('c1', 'cabin', 'PRIMARY');`), "c1"), true, "a DELETE before the INSERT does not remove it");
   assert.equal(primary(parseSeed(`-- DELETE FROM ${T} WHERE person_id = 'c1';\n` + base), "c1"), true, "a commented-out DELETE does nothing");
 });
 
 test("a roster person the seed later deletes is refused", () => {
-  const seed = parseSeed(`INSERT INTO ${T} VALUES ('child_1', 'cabin', 'PRIMARY'); DELETE FROM ${T} WHERE person_id = 'child_1';`);
+  const seed = parseSeed(`INSERT INTO ${T} (person_id, location, role) VALUES ('child_1', 'cabin', 'PRIMARY'); DELETE FROM ${T} WHERE person_id = 'child_1';`);
   assert.throws(() => validateRoster(roster(CHILD), seed), /not PRIMARY/);
 });
 
@@ -162,6 +201,11 @@ test("two people cannot share a GPS tracker or a battery sensor", () => {
   assert.throws(() => validateRoster(roster(CHILD, { ...other, gpsTracker: CHILD.gpsTracker }), seed), /gpsTracker .* already used/);
   assert.throws(() => validateRoster(roster(CHILD, { ...other, batterySensor: CHILD.batterySensor }), seed), /batterySensor .* already used/);
   assert.doesNotThrow(() => validateRoster(roster(CHILD, { ...other, gpsTracker: "device_tracker.child_2_phone", batterySensor: "sensor.child_2_phone_battery_level" }), seed));
+});
+
+test("the generator's own location check refuses a location outside cabin and home, even when the seed says PRIMARY there", () => {
+  const seed = seedWith(["child_1", "garage", "PRIMARY"]);
+  assert.throws(() => validateRoster(roster({ ...CHILD, location: "garage" }), seed), /location must be one of cabin, home/);
 });
 
 test("display names turn ids into the Home Assistant entity names", () => {
