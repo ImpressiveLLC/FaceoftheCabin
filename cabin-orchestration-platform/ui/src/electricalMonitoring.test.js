@@ -165,3 +165,23 @@ describe('card value wording is never larger than the readings (valueSegments)',
     expect(notes(text)).toEqual(['Power unavailable', 'Energy unavailable', 'OFF']);
   });
 });
+
+describe('relay state precedence (breaker box, 2026-10-31)', () => {
+  const relay = (id, entity, state) => ({deviceId:id, type:'HOME_ASSISTANT_ENTITY', location:'cabin',
+    attributes:{enabled:true, deviceLifecycle:'ASSIGNED', parentDeviceId:'p', entityId:entity, state}});
+  it('uses the parent own ON even when a configuration switch child reports OFF', () => {
+    const p = {...parent('p'), attributes:{...parent('p').attributes, state:'ON', power:1.2}};
+    const card = electricalMonitoringDevices([p, relay('r', 'switch.p', 'ON'), relay('m', 'switch.p_metering_only_mode', 'OFF')])[0];
+    expect(card.attributes.mappedSwitchState).toBe('ON');
+    expect(electricalValue(card.attributes)).toBe('1.2 W · 48.32 kWh · ON');
+  });
+  it('uses the parent own OFF over a child saying ON', () => {
+    const p = {...parent('p'), attributes:{...parent('p').attributes, state:'OFF'}};
+    expect(electricalMonitoringDevices([p, relay('r', 'switch.p', 'ON')])[0].attributes.mappedSwitchState).toBe('OFF');
+  });
+  it('still says State unknown when the parent has no state and the switch children disagree', () => {
+    const card = electricalMonitoringDevices([parent('p'), relay('r', 'switch.p', 'ON'), relay('m', 'switch.m', 'OFF')])[0];
+    expect(card.attributes.mappedSwitchState).toBeUndefined();
+    expect(electricalValue(card.attributes)).toMatch(/State unknown$/);
+  });
+});
