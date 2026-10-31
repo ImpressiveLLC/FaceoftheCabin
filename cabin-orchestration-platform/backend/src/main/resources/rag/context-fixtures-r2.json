@@ -705,6 +705,34 @@
       ]
     },
     {
+      "id": "alert_noise",
+      "description": "An alert that keeps firing or being silenced becomes an Alert noise opportunity; what to check per alert kind (W-65)",
+      "keywordPatterns": [
+        "alert keeps firing",
+        "keeps firing",
+        "fires too often",
+        "noisy alert",
+        "alert noise",
+        "alert fatigue",
+        "too many alerts"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.rules",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations.md",
+          "section": "an-alert-keeps-firing",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
       "id": "live_sensors",
       "description": "Live readings unavailable via Ask; distinguish examples from current observations; presence signal limitations",
       "keywordPatterns": [

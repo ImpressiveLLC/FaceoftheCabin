@@ -1036,6 +1036,30 @@ class GoogleAuthInterceptorTest {
         assertEquals(403, response.getStatus());
     }
 
+    // W-64: the alert history lists door/motion times and who silenced what,
+    // so unlike the other GETs under /api/alerts it must not be anonymous
+    // or reachable by an alerts_read share link.
+    @Test
+    void alertHistoryRequiresASessionUnlikeTheOtherAlertsReads() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        assertFalse(interceptor.preHandle(new MockHttpServletRequest("GET", "/api/alerts/history"), response, new Object()));
+        assertEquals(401, response.getStatus());
+
+        MockHttpServletResponse stillOpen = new MockHttpServletResponse();
+        assertTrue(interceptor.preHandle(new MockHttpServletRequest("GET", "/api/alerts/active"), stillOpen, new Object()));
+    }
+
+    @Test
+    void anAllScopesGuestTokenIsDeniedOnAlertHistory() throws Exception {
+        CabinAccessToken token = allScopesGuestToken();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/alerts/history");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(403, response.getStatus());
+    }
+
     @Test
     void anExpiredAllScopesGuestTokenIs401NotDeniedByScope() throws Exception {
         // Distinguishes the two guest-token failure modes W-2 asks for:

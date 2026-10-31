@@ -689,6 +689,7 @@ column for writes is enforced, not just described. Reads follow D14: several
 | Routes | Controller | Who may call |
 |---|---|---|
 | `GET /api/alerts/active`, `/rules`, `/acknowledgments`; `POST /acknowledgments`; `DELETE /acknowledgments/{alertKey}` | AlertController | `GET` open; acknowledge and snooze need a signed-in session |
+| `GET /api/alerts/history?window=&limit=&offset=&deviceId=` (W-64) | AlertController | signed-in session only (it lists door/motion times and who silenced what); refused for guest tokens, DENY for demo |
 | `POST /api/devices/{id}/discovery/run`, `/apply`; `GET .../discovery/latest` | DeviceDiscoveryController | writes need a signed-in session (W-31, merged 2026-10-03, live-verified 2026-10-04); `GET` open |
 | `GET`/`POST /api/access-tokens`, `DELETE /{id}` | CabinAccessTokensController | signed-in admin only; never a guest token. `GET` returns each link with `firstUsedAt`, `lastUsedAt` and `useCount` (W-121) |
 | `GET /api/access-tokens/{id}/activity?days=` (W-121) | CabinAccessTokensController | signed-in admin only; demo links get 403. Newest first, at most 500 rows, from `cabin_access_events` (kept 90 days, `cabin.access.events-retention-days`) |

@@ -9175,7 +9175,130 @@ elements:
       existed. Corrected the same day: both the top banner and this list
       independently computed their own totals until they visibly
       disagreed (banner counted active_alert_condition only) -- see
-      nav_alert_summary_banner's own notes.
+      nav_alert_summary_banner's own notes. W-64 (2026-10-12) added "Open
+      workflow" / "Open rule" beside "Open device" on automation rows
+      (payload.ruleId; ui_rules_panel is the target) and the reviewable log
+      behind them, alert_history_entry.
+
+  - id: alert_history_entry
+    entity_type: owl:Class
+    layer: fullstack
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-10-12"
+      ref: "W-64: JdbcAlertHistoryStore, AlertTransitionRecorder, AlertHistoryService, GET /api/alerts/history, App.jsx AlertHistoryLog"
+    data_class: composite
+    data_type: owl:Class
+    ui_display_name: "Alert history entry"
+    source: >
+      Two homes, merged at read time by AlertHistoryService (one fact, one
+      home -- nothing is copied between them): the alert_history table
+      (device-condition RAISED/RESOLVED transitions written by
+      AlertTransitionRecorder, plus every IGNORED/SNOOZED/UN_IGNORED/
+      SNOOZE_EXPIRED written by AlertController and
+      JdbcAlertAcknowledgmentStore), and the automation_alert_see_think_act
+      events already in cabin_event (always action RAISED).
+    transformation: >
+      active_alert_condition (stateless, ActiveAlertService.snapshot())
+        --AlertTransitionRecorder, every ~60s, diffed against the log's
+        latest RAISED/RESOLVED row per alertKey--> alert_history RAISED/RESOLVED
+      POST/DELETE /api/alerts/acknowledgments --> alert_history IGNORED/SNOOZED/UN_IGNORED
+      an expired snooze deleted on read --> alert_history SNOOZE_EXPIRED (stamped with the time it expired)
+      cabin_event AUTOMATION_ALERT/WORKFLOW_ACTION/WORKFLOW_UNCONFIRMED --> RAISED entries (not stored again)
+    rendering:
+      semantic: "What happened to an alert, when, and who decided it"
+      systems: "Monitoring > Sensor History > Alert History (AlertHistoryLog)"
+      technical: >
+        GET /api/alerts/history?window=&limit=&offset=&deviceId=, newest
+        first. Signed-in sessions only: unlike the other GETs under
+        /api/alerts it is not covered by the open-read carve-out, is refused
+        for guest tokens, and is DENY for demo tokens, because it lists door
+        and motion times and who silenced what.
+      compliance: "Alert History topic of D16"
+    definition: >
+      One line of the reviewable alert record. alertKey is the same unified
+      key alert_acknowledgment uses ("device:{deviceId}:{alarm|missed-checkin}"
+      or "automation:{ruleId}:{deviceId|none}"); every
+      WORKFLOW_UNCONFIRMED_{executionId} alert is collapsed to one rule so
+      repeats can be counted. Append-only: the application never updates or
+      deletes a row.
+    relationships:
+      - target: active_alert_condition
+        type: derived_from
+        cardinality: "N:1"
+      - target: automation_alert_see_think_act
+        type: derived_from
+        cardinality: "N:1"
+      - target: ui_status_check_item
+        type: relates_to
+        cardinality: "N:N"
+    relates_to:
+      ui_components: [ui_rules_panel, ui_device_manager_panel]
+      elements: []
+    notes: >
+      D16 ratified the Alert History topic as "all types -> alert event log"
+      (2026-09-05) but it shipped showing only the live active snapshot; this
+      is the log it described (DL-2026-10-12-02). Device-condition history
+      starts when W-64 deploys -- ActiveAlertService is stateless by design
+      and recorded nothing before that. "Open workflow" on an entry or a
+      Status Check row reads the workflow id from payload.ruleId
+      ("WORKFLOW_" + workflowId); a WORKFLOW_UNCONFIRMED_ alert is a failed
+      command confirmation, so it links to its device only.
+
+  - id: optimization_opportunity
+    entity_type: owl:Class
+    layer: backend
+    primitive: false
+    schema_version: "0.1.0"
+    migration_status: complete
+    lifecycle_status: used
+    first_used:
+      date: "2026-10-12"
+      ref: "W-65: AlertFrequencyAnalyticsService, AlertRecommendations (POWER_DRAW_ANOMALY predates this entity: OptimizationAnalyticsService)"
+    data_class: derived
+    data_type: owl:Class
+    ui_display_name: "Optimization opportunity"
+    source: >
+      optimization_opportunity table (JdbcOptimizationOpportunityStore),
+      written by two scheduled scans and read by GET /api/opportunities
+      (administrator only). POWER_DRAW_ANOMALY: a power meter drawing
+      continuously. NOISY_ALERT: one row per device whose alerts keep
+      recurring or keep being silenced, counted over a rolling window from
+      alert_history_entry rows and cabin_event.
+    transformation: >
+      alert_history_entry + cabin_event(AUTOMATION_ALERT, WORKFLOW_ACTION,
+      WORKFLOW_UNCONFIRMED) --AlertFrequencyAnalyticsService hourly, per device,
+      any alert at >= 5 raises or >= 3 silences in 7 days--> NOISY_ALERT row
+      whose evidence lists each noisy alert with its counts and deterministic
+      recommendations. Never auto-resolved; only counts after the last
+      resolution are considered for a re-open.
+    rendering:
+      semantic: "A pattern worth a look, with where to look -- never an automatic change"
+      systems: "Rules & Alerts > Optimization Opportunities (OptimizationOpportunitiesCard)"
+      technical: >
+        Per-type rows. NOISY_ALERT shows each alert's counts, its
+        recommendations, and Open device / Open workflow / Open rule.
+      compliance: "Rules & Alerts panel"
+    definition: >
+      An admin-reviewed finding about a device, with status OPEN,
+      ACKNOWLEDGED or RESOLVED. Safety-class alerts (safety-category device,
+      DEVICE_ALARM, SAFETY_ALARM, FREEZE_RISK) are advised to be investigated,
+      never tuned down or silenced.
+    relationships:
+      - target: alert_history_entry
+        type: derived_from
+        cardinality: "N:N"
+    relates_to:
+      ui_components: [ui_rules_panel, ui_device_manager_panel]
+      elements: []
+    notes: >
+      Guidance for an administrator who sees one of these lives in git, in
+      docs/ai-assistant/user-guide/operations.md ("An alert keeps firing"),
+      not in the runtime knowledge base. Its text is the prose twin of
+      AlertRecommendations.
 
   - id: nav_alert_summary_banner
     entity_type: owl:Class

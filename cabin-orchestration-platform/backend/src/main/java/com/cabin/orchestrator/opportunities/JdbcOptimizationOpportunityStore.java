@@ -97,6 +97,21 @@ public class JdbcOptimizationOpportunityStore {
         return rows.isEmpty() ? Optional.empty() : Optional.of(fromRow(rows.get(0)));
     }
 
+    /**
+     * When an admin last resolved an opportunity of this type for this
+     * device, if ever. A detector that counts a rolling window needs it so a
+     * resolution is not undone an hour later by the same already-addressed
+     * events still sitting in that window.
+     */
+    public Optional<Instant> latestResolvedAt(String deviceId, OpportunityType type) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            SELECT MAX(resolved_at) AS at FROM optimization_opportunity
+            WHERE device_id = ? AND opportunity_type = ? AND status = 'RESOLVED'
+            """, deviceId, type.name());
+        Object at = rows.isEmpty() ? null : rows.get(0).get("at");
+        return at instanceof Timestamp t ? Optional.of(t.toInstant()) : Optional.empty();
+    }
+
     private OptimizationOpportunity fromRow(Map<String, Object> row) {
         Object resolvedAtVal = row.get("resolved_at");
         return new OptimizationOpportunity(

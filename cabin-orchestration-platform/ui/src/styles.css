@@ -700,6 +700,7 @@ body {
   border: 1px solid var(--layer-2-edge); border-radius: var(--radius);
 }
 .rule-row > div { min-width: 0; flex: 1; }
+.rule-row-focused { border-color: var(--link); box-shadow: 0 0 0 1px var(--link); }
 .rule-dot { font-size: 10px; padding-top: 4px; }
 .rule-active { color: var(--success); }
 .rule-defined { color: var(--link); }
@@ -810,6 +811,19 @@ body {
 .sensor-history-alert-severity { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); }
 .sensor-history-alert-title { color: var(--text); }
 .sensor-history-alert-detail { color: var(--text-dim); font-size: 11px; }
+
+/* W-64: reviewable alert history (Monitoring > Alert History) */
+.alert-history-log { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.alert-history-log h4 { margin: 0; font-size: 12px; color: var(--text); }
+.alert-history-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.alert-history-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.alert-history-item { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.alert-history-time { color: var(--text-dim); font-size: 11px; white-space: nowrap; }
+.alert-history-action { font-weight: 600; }
+.alert-history-action.action-ignored, .alert-history-action.action-snoozed { color: var(--warning); }
+.alert-history-action.action-resolved, .alert-history-action.action-un_ignored { color: var(--success); }
+.alert-history-who { color: var(--text-dim); font-size: 11px; }
+.alert-history-links { display: flex; gap: 8px; margin-left: auto; }
 
 /* Security & Presence: per-sensor motion history (PresenceActivityView).
    A sensor is a row-card (layer 2) inside the panel (layer 1); the four stat
@@ -2565,6 +2579,9 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 .on-the-way-btn-prominent:hover:not(:disabled), .on-the-way-btn-prominent:focus-visible { outline: 2px solid var(--text-muted); }
 .on-the-way-btn-prominent:disabled { opacity: 0.6; cursor: wait; }
+/* W-65: noisy-alert opportunity detail */
+.noisy-alert-item { margin-top: 6px; font-size: 12px; }
+.noisy-alert-item ul { margin: 4px 0; padding-left: 18px; color: var(--text-muted); }
 
 /* One display toggle floats without reserving a banner or shrinking content. */
 .kiosk-toggle {

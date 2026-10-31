@@ -6,7 +6,7 @@ PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
 StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
-mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, ZigbeePairingFlow, pairingRefusedMessage } from "./App.jsx";
+mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, AlertHistoryLog, alertRulesTarget, ZigbeePairingFlow, pairingRefusedMessage } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
@@ -4568,6 +4568,113 @@ describe("StatusChecksCard — ignore/snooze actions", () => {
   });
 });
 
+// W-64: an automation alert links to the workflow / built-in rule behind it,
+// not just its device.
+describe("StatusChecksCard — Open workflow / Open rule (W-64)", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  function renderAutomation(ruleId) {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const setActivePanel = vi.fn(), setPendingRulesFocus = vi.fn(), setPendingDeviceFocus = vi.fn();
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"], activeAlerts: [],
+        automationAlerts: [{ eventId: "e1", sourceDeviceId: "z2m-leak", eventType: "WORKFLOW_ACTION", severity: "CRITICAL",
+          timestamp: "2026-10-12T10:00:00Z", payload: { ruleId, see: "Water leak detected", think: "matched" } }],
+        automationAlertsLoading: false, alertAcknowledgments: [],
+        setActivePanel, setPendingRulesFocus, setPendingDeviceFocus,
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+    return { setActivePanel, setPendingRulesFocus };
+  }
+
+  it("Open workflow hands the workflow id to the Rules panel", () => {
+    const { setActivePanel, setPendingRulesFocus } = renderAutomation("WORKFLOW_wf-leak-1");
+
+    fireEvent.click(screen.getByRole("button", { name: /open workflow/i }));
+
+    expect(setPendingRulesFocus).toHaveBeenCalledWith({ kind: "workflow", id: "wf-leak-1" });
+    expect(setActivePanel).toHaveBeenCalledWith("RULES_ENGINE");
+  });
+
+  it("a built-in rule alert says Open rule", () => {
+    const { setPendingRulesFocus } = renderAutomation("FREEZE_RISK");
+
+    fireEvent.click(screen.getByRole("button", { name: /open rule/i }));
+
+    expect(setPendingRulesFocus).toHaveBeenCalledWith({ kind: "rule", id: "FREEZE_RISK" });
+  });
+
+  it("a failed command confirmation has a device link but no workflow link", () => {
+    renderAutomation("WORKFLOW_UNCONFIRMED_exec-1");
+
+    expect(screen.getByRole("button", { name: /open device/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /open workflow/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /open rule/i })).toBeNull();
+  });
+});
+
+describe("rules focus lands on the matching row (W-64)", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  it("opens the focused workflow's history and clears the request", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    const setPendingRulesFocus = vi.fn();
+    const workflows = [
+      { workflowId: "wf-a", name: "Other workflow", location: "cabin", enabled: true, actions: [] },
+      { workflowId: "wf-leak-1", name: "Leak response", location: "cabin", enabled: true, actions: [] },
+    ];
+    render(
+      <AppContext.Provider value={{ pendingRulesFocus: { kind: "workflow", id: "wf-leak-1" }, setPendingRulesFocus }}>
+        <WorkflowRulesCard workflows={workflows} auth={{ signedIn: false }} />
+      </AppContext.Provider>
+    );
+
+    await waitFor(() => expect(setPendingRulesFocus).toHaveBeenCalledWith(null));
+    expect(screen.getAllByRole("button", { name: "Hide history" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "History" })).toHaveLength(1);
+  });
+
+  it("highlights the focused built-in rule once the catalog has loaded", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    const authedFetch = vi.fn((url) => Promise.resolve({
+      ok: true,
+      json: async () => url.includes("/api/alerts/rules")
+        ? [{ ruleId: "FREEZE_RISK", name: "Freeze Risk", enabled: true, trigger: "t", action: "a", owner: "CABIN_BACKEND", configurationMode: "DEPLOY_TIME" },
+           { ruleId: "SAFETY_ALARM", name: "Safety Alarm", enabled: true, trigger: "t", action: "a", owner: "CABIN_BACKEND", configurationMode: "CODE" }]
+        : [],
+    }));
+    const setPendingRulesFocus = vi.fn();
+    render(
+      <AppContext.Provider value={{ activeLocation: "cabin", activeAlertLocations: [], activeAlerts: [], alertAcknowledgments: [],
+        pendingRulesFocus: { kind: "rule", id: "FREEZE_RISK" }, setPendingRulesFocus }}>
+        <RulesPanel auth={{ authedFetch }} />
+      </AppContext.Provider>
+    );
+
+    await waitFor(() => expect(setPendingRulesFocus).toHaveBeenCalledWith(null));
+    expect(screen.getByText("Freeze Risk").closest(".rule-row").className).toContain("rule-row-focused");
+    expect(screen.getByText("Safety Alarm").closest(".rule-row").className).not.toContain("rule-row-focused");
+  });
+
+  it("ignores a focus request for a workflow that isn't listed", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    const setPendingRulesFocus = vi.fn();
+    render(
+      <AppContext.Provider value={{ pendingRulesFocus: { kind: "workflow", id: "gone" }, setPendingRulesFocus }}>
+        <WorkflowRulesCard workflows={[{ workflowId: "wf-a", name: "A", location: "cabin", enabled: true, actions: [] }]} auth={{ signedIn: false }} />
+      </AppContext.Provider>
+    );
+
+    await screen.findByText("A");
+    expect(setPendingRulesFocus).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Hide history" })).toBeNull();
+  });
+});
+
 // 2026-09-19 (user directive): "for each alert, only one expansion path
 // (drill-down path) can be open in the box" -- and clicking elsewhere in
 // the UI while one is open retracts it back to the plain list rather than
@@ -5281,6 +5388,32 @@ describe("OptimizationOpportunitiesCard", () => {
 
     expect(await screen.findByText("Mech Room · heater_mech_room")).toBeTruthy();
     expect(screen.getByText(/Drawing ~42W continuously for 60h/)).toBeTruthy();
+  });
+
+  it("shows a noisy-alert opportunity's counts and advice, with links to the device and workflow (W-65)", async () => {
+    const setActivePanel = vi.fn(), setPendingDeviceFocus = vi.fn(), setPendingRulesFocus = vi.fn();
+    const auth = mockAuth({ ok: true, json: async () => [
+      { id: "op-9", opportunityType: "NOISY_ALERT", deviceId: "z2m-heater_mech_room", status: "OPEN",
+        detectedAt: "2026-10-12T00:00:00Z", evidence: { windowDays: 7, alerts: [
+          { alertKey: "automation:WORKFLOW_wf1:z2m-heater_mech_room", kind: "automation", ruleId: "WORKFLOW_wf1",
+            raised: 8, silenced: 3, recommendations: ["give its notify action a cooldown"] },
+        ] } },
+    ] });
+
+    render(
+      <AppContext.Provider value={{ setActivePanel, setPendingDeviceFocus, setPendingRulesFocus }}>
+        <OptimizationOpportunitiesCard auth={auth} devices={devices} />
+      </AppContext.Provider>
+    );
+
+    expect(await screen.findByText(/Alerts keep recurring \(last 7 days\)/)).toBeTruthy();
+    expect(screen.getByText(/raised 8×, silenced 3×/)).toBeTruthy();
+    expect(screen.getByText("give its notify action a cooldown")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open device" }));
+    expect(setPendingDeviceFocus).toHaveBeenCalledWith("z2m-heater_mech_room");
+    fireEvent.click(screen.getByRole("button", { name: "Open workflow" }));
+    expect(setPendingRulesFocus).toHaveBeenCalledWith({ kind: "workflow", id: "wf1" });
+    expect(setActivePanel).toHaveBeenLastCalledWith("RULES_ENGINE");
   });
 
   it("lists each service that repeats its parent's reading, with the guidance", async () => {
@@ -6274,8 +6407,7 @@ describe("SensorHistoryPanel Alert History link", () => {
     );
     fireEvent.click(await screen.findByRole("tab", { name: /alert history/i }));
 
-    expect(await screen.findByText(/last 24 hours of alerts and automation actions/i)).toBeTruthy();
-    expect(screen.getByText(/full historical log is not built yet/i)).toBeTruthy();
+    expect(await screen.findByText(/everything that has happened is in the log below/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /open status checks/i }));
 
     expect(setActivePanel).toHaveBeenCalledWith("RULES_ENGINE");
@@ -6286,8 +6418,129 @@ describe("SensorHistoryPanel Alert History link", () => {
     render(<SensorHistoryPanel devices={devices} apiBase="http://cabin" tempUnit="F" />);
     fireEvent.click(await screen.findByRole("tab", { name: /alert history/i }));
 
-    await screen.findByText(/full historical log is not built yet/i);
+    await screen.findByText(/everything that has happened is in the log below/i);
     expect(screen.queryByRole("button", { name: /open status checks/i })).toBeNull();
+  });
+});
+
+// W-64: the Alert History tab is a real, reviewable log, not just the live
+// snapshot -- device conditions, every ignore/snooze/bring-back, and the
+// automation alerts already in the event log.
+describe("AlertHistoryLog (W-64)", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const entry = (over) => ({
+    entryId: "h:1", occurredAt: "2026-10-12T10:00:00Z", alertKey: "device:z2m-leak:missed-checkin", kind: "device",
+    deviceId: "z2m-leak", condition: "MISSED_CHECKIN", ruleId: null, severity: "WARN", action: "RAISED",
+    actor: null, snoozedUntil: null, title: "Leak sensor missed its check-in window", ...over,
+  });
+  const json = (body, status = 200) => Promise.resolve({ ok: status < 400, status, json: async () => body });
+  const devices = [{ deviceId: "z2m-leak", name: "Leak sensor", location: "cabin", attributes: {} }];
+
+  function renderLog({ history = [], silenced = [], signedIn = true, ctx = {}, fetchImpl } = {}) {
+    const authedFetch = fetchImpl || vi.fn((url, opts) => {
+      if (opts?.method === "DELETE") return json({ ok: true });
+      if (url.includes("/api/alerts/history")) return json(history);
+      if (url.includes("/api/alerts/acknowledgments")) return json(silenced);
+      return json({});
+    });
+    render(
+      <AppContext.Provider value={{ devices, ...ctx }}>
+        <AlertHistoryLog devices={devices} location="cabin" authedFetch={authedFetch} signedIn={signedIn} />
+      </AppContext.Provider>
+    );
+    return authedFetch;
+  }
+
+  it("lists raises, silencing and automation alerts newest-first with who did what", async () => {
+    renderLog({ history: [
+      entry({ entryId: "h:3", action: "IGNORED", actor: "nate@example.com", title: null }),
+      entry({ entryId: "e:9", kind: "automation", alertKey: "automation:FREEZE_RISK:z2m-leak", ruleId: "FREEZE_RISK",
+        title: "Outdoor temperature is near freezing", condition: null }),
+      entry({ entryId: "h:1" }),
+    ] });
+
+    expect(await screen.findByText("Ignored")).toBeTruthy();
+    expect(screen.getByText("by nate@example.com")).toBeTruthy();
+    expect(screen.getByText(/outdoor temperature is near freezing — leak sensor/i)).toBeTruthy();
+    expect(screen.getByText("Leak sensor missed its check-in window")).toBeTruthy();
+    expect(screen.getAllByText("Raised")).toHaveLength(2);
+  });
+
+  it("asks for the range it was set to", async () => {
+    const authedFetch = renderLog();
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(expect.stringContaining("/api/alerts/history?window=7d")));
+
+    fireEvent.change(screen.getByLabelText("Alert history range"), { target: { value: "30d" } });
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(expect.stringContaining("window=30d")));
+  });
+
+  it("says to sign in instead of showing an empty log when the server refuses", async () => {
+    renderLog({ fetchImpl: vi.fn((url) => url.includes("/history") ? json({}, 401) : json([])) });
+
+    expect(await screen.findByText(/sign in to see the alert history/i)).toBeTruthy();
+    expect(screen.queryByText(/nothing recorded in this range/i)).toBeNull();
+  });
+
+  it("offers Un-ignore for a silenced alert and sends the DELETE", async () => {
+    const authedFetch = renderLog({ silenced: [
+      { alertKey: "device:z2m-leak:missed-checkin", mode: "IGNORED", snoozedUntil: null, acknowledgedBy: "nate@example.com" },
+    ] });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Un-ignore" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/alerts/acknowledgments/device%3Az2m-leak%3Amissed-checkin"), { method: "DELETE" }));
+  });
+
+  it("does not offer Un-ignore when signed out", async () => {
+    renderLog({ signedIn: false, silenced: [
+      { alertKey: "device:z2m-leak:missed-checkin", mode: "IGNORED", snoozedUntil: null, acknowledgedBy: "nate@example.com" },
+    ] });
+
+    await screen.findByText(/silenced right now/i);
+    expect(screen.queryByRole("button", { name: "Un-ignore" })).toBeNull();
+  });
+
+  it("opens the device and the workflow behind an entry", async () => {
+    const setActivePanel = vi.fn(), setPendingDeviceFocus = vi.fn(), setPendingRulesFocus = vi.fn();
+    renderLog({
+      ctx: { setActivePanel, setPendingDeviceFocus, setPendingRulesFocus },
+      history: [entry({ entryId: "e:5", kind: "automation", alertKey: "automation:WORKFLOW_wf1:z2m-leak",
+        ruleId: "WORKFLOW_wf1", title: "Water leak detected", condition: null })],
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open device" }));
+    expect(setPendingDeviceFocus).toHaveBeenCalledWith("z2m-leak");
+    expect(setActivePanel).toHaveBeenLastCalledWith("DEVICE_MANAGER");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open workflow" }));
+    expect(setPendingRulesFocus).toHaveBeenCalledWith({ kind: "workflow", id: "wf1" });
+    expect(setActivePanel).toHaveBeenLastCalledWith("RULES_ENGINE");
+  });
+
+  it("hides entries for a device that belongs to the other location", async () => {
+    renderLog({
+      ctx: { devices: [...devices, { deviceId: "home-cam", name: "Home cam", location: "home", attributes: {} }] },
+      history: [entry({ entryId: "h:1" }), entry({ entryId: "h:2", deviceId: "home-cam", title: "Home cam is quiet" })],
+    });
+
+    expect(await screen.findByText("Leak sensor missed its check-in window")).toBeTruthy();
+    expect(screen.queryByText("Home cam is quiet")).toBeNull();
+  });
+});
+
+describe("alertRulesTarget (W-64)", () => {
+  it("maps a workflow notification back to its workflow", () => {
+    expect(alertRulesTarget("WORKFLOW_wf-1")).toEqual({ kind: "workflow", id: "wf-1" });
+  });
+  it("gives a failed command confirmation no workflow to open", () => {
+    expect(alertRulesTarget("WORKFLOW_UNCONFIRMED_exec-9")).toBeNull();
+  });
+  it("treats any other id as a built-in rule, and nothing as nothing", () => {
+    expect(alertRulesTarget("FREEZE_RISK")).toEqual({ kind: "rule", id: "FREEZE_RISK" });
+    expect(alertRulesTarget(undefined)).toBeNull();
   });
 });
 
