@@ -61,14 +61,30 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
     @Value("${HOME_HA_TOKEN:}")
     private String homeHaToken;
 
-    /** Bounded so a Home Assistant that accepts the connection and never answers cannot stall a discovery pass or a command (W-118). */
-    private final RestTemplate rest = new RestTemplate(boundedFactory());
+    /**
+     * Bounded so a Home Assistant that accepts the connection and never answers cannot stall a discovery pass or a command (W-118).
+     * A timeout on a service call means the OUTCOME IS UNKNOWN: Home Assistant may have carried the command out. It never means
+     * "did not happen" (W-127 item 7; any future W-75 executor must read the state back before it retries).
+     */
+    @org.springframework.beans.factory.annotation.Value("${cabin.ha.connect-timeout-seconds:3}")
+    private int connectTimeoutSeconds = 3;
+
+    @org.springframework.beans.factory.annotation.Value("${cabin.ha.read-timeout-seconds:30}")
+    private int readTimeoutSeconds = 30;
+
+    private RestTemplate rest = new RestTemplate(boundedFactory(3, 30));
+
+    @jakarta.annotation.PostConstruct
+    void applyTimeouts() {
+        rest = new RestTemplate(boundedFactory(
+            connectTimeoutSeconds > 0 ? connectTimeoutSeconds : 3, readTimeoutSeconds > 0 ? readTimeoutSeconds : 30));
+    }
     private final ObjectMapper jsonMapper = new ObjectMapper();
 
-    private static org.springframework.http.client.SimpleClientHttpRequestFactory boundedFactory() {
+    private static org.springframework.http.client.SimpleClientHttpRequestFactory boundedFactory(int connectSeconds, int readSeconds) {
         org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(3_000);
-        factory.setReadTimeout(30_000);
+        factory.setConnectTimeout((int) Math.min(Integer.MAX_VALUE, connectSeconds * 1_000L));
+        factory.setReadTimeout((int) Math.min(Integer.MAX_VALUE, readSeconds * 1_000L));
         return factory;
     }
 
