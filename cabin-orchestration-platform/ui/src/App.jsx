@@ -3477,7 +3477,7 @@ export async function callHaService(doFetch, domain, service, entityId) {
     throw err;
   }
   if (!response.ok || body.accepted === false) {
-    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command, so nothing was carried out" : `HTTP ${response.status}`));
+    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command, so it is not known to have run" : `HTTP ${response.status}`));
   }
   return body;
 }

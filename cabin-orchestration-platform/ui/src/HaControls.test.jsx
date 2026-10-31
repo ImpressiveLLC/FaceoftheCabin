@@ -96,7 +96,7 @@ describe("DmPowerToggle (via DmDeviceRow)", () => {
       .toMatch(/may or may not have been carried out/));
   });
 
-  it("W-130: a 502 still says it was not carried out", async () => {
+  it("W-130: a 502 says the command was not accepted and is not known to have run (the backend also uses 502 for an error answered after send)", async () => {
     const authedFetch = vi.fn(() => Promise.resolve({
       ok: false, status: 502, json: () => Promise.resolve({ accepted: false, outcome: "not_accepted" }),
     }));
@@ -105,13 +105,28 @@ describe("DmPowerToggle (via DmDeviceRow)", () => {
     fireEvent.click(screen.getByRole("button", { name: /turn on/i }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: /turn on/i }).getAttribute("title"))
-      .toMatch(/Not changed: Home Assistant didn't accept the command, so nothing was carried out/));
+      .toMatch(/Not changed: Home Assistant didn't accept the command, so it is not known to have run/));
   });
 
   it("re-syncs to the next poll's reported state", () => {
     const { rerender } = render(<DmDeviceRow device={heater()} onClick={() => {}} auth={{ authedFetch: okFetch() }} />);
     rerender(<DmDeviceRow device={heater({ state: "ON" })} onClick={() => {}} auth={{ authedFetch: okFetch() }} />);
     expect(screen.getByRole("button", { name: /turn off/i }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("W-130: an outcome-unknown body is honoured on a status other than 504", async () => {
+    const message = "Timed out waiting for Home Assistant. The command may or may not have been carried out: check the device's state before trying again.";
+    for (const status of [200, 500, 502, 503]) {
+      cleanup();
+      const authedFetch = vi.fn(() => Promise.resolve({
+        ok: status === 200, status, json: () => Promise.resolve({ accepted: false, outcome: "unknown", message }),
+      }));
+      render(<DmDeviceRow device={heater()} onClick={() => {}} auth={{ authedFetch }} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /turn on/i }));
+
+      await waitFor(() => expect(screen.getByRole("button", { name: /turn on/i }).getAttribute("title")).toBe(message), { timeout: 2000 });
+    }
   });
 });
 
@@ -160,7 +175,7 @@ describe("OnTheWayButton", () => {
     fireEvent.click(screen.getByRole("button", { name: /on the way/i }));
 
     expect((await screen.findByRole("status")).textContent)
-      .toBe("Couldn't start preheat: Home Assistant didn't accept the command, so nothing was carried out");
+      .toBe("Couldn't start preheat: Home Assistant didn't accept the command, so it is not known to have run");
   });
 
   it("asks to sign in on a 401 instead of claiming success", async () => {
