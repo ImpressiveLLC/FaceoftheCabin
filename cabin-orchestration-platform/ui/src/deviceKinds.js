@@ -30,3 +30,23 @@ export function makeKindOf(devices) {
 export function deviceKind(device) {
   return makeKindOf([device])(device);
 }
+
+export const LOW_BATTERY_PERCENT = 20;
+
+// The battery devices in use (enabled), lowest battery first and devices that never reported a level last.
+export function batteryMaintenanceRows(devices, kindOf) {
+  return devices
+    .filter(d => d.attributes?.enabled !== false && kindOf(d) === 'battery')
+    .map(d => {
+      const level = batteryLevel(d);
+      return {
+        deviceId: d.deviceId,
+        name: d.name,
+        area: d.attributes?.area || d.attributes?.room || '',
+        level,
+        low: level !== null && level <= LOW_BATTERY_PERCENT,
+        lastSeen: d.lastSeen || null,
+      };
+    })
+    .sort((a, b) => (a.level ?? Infinity) - (b.level ?? Infinity) || a.name.localeCompare(b.name));
+}

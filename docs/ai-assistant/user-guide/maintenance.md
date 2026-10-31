@@ -21,13 +21,16 @@ Use only established authorized read endpoints for diagnosis. Method names alone
 
 ## A camera is not delivering frames
 
-Audience: operator. Source-reviewed against the live host on 2026-10-03. The full procedure and the site facts are in the [Maintenance & Operations Guide](../../MAINTENANCE.md#a-camera-on-a-different-network-than-the-m920q).
+Audience: operator. Source-reviewed against the live host on 2026-10-03; the Blink row and the detection wording were rechecked against `main` and the Maintenance guide on 2026-10-31 (`NOT_RUN` on the host). The full procedure and the site facts are in the [Maintenance & Operations Guide](../../MAINTENANCE.md#a-camera-on-a-different-network-than-the-m920q).
+
+In plain words, a camera with no video or no events usually has one of four causes: it is a Blink camera, which only streams after Blink itself sees motion, so it is idle most of the time; the Blink bridge has hung; the camera's network address changed; or detection is switched off for that camera, so it records but never makes events. Check them in the order below.
 
 | Observation | Safe next check | What it does not prove |
 |---|---|---|
+| A Blink camera (the driveway, or the Home Blink camera when it is enabled) shows offline or no frames, and Frigate logs `404 Not Found` for its stream | Look at the Blink bridge's own log: a healthy one logs a motion poll every 30 to 40 seconds (`docker logs -t --tail 1 blinkbridge`). If its last line is minutes or hours old while the container still says "Up", it has hung; `docker restart blinkbridge` has fixed it each time so far. | The 404 alone proves nothing: a Blink camera has a stream only while a live view is open, so an idle, healthy Blink camera logs it every ten seconds. "Up" does not mean the bridge is working. |
 | Frigate reports `camera_fps` 0.0 for one camera and its log says "No route to host" | Confirm the camera's current address in its own app or the router's client list, then from the M920q run `ip route get <ip>`, `ping`, and `nc -zv <ip> 554`. | "No route to host" shows that nothing answers at that address. It does not show the camera is off: it may have a new address or sit on another subnet. |
 | The camera answers but Frigate still shows no frames | Test the stream from inside the Frigate container with the full ffprobe path `/usr/lib/ffmpeg/7.0/bin/ffprobe`, letting the password expand there. Try a wrong password once, not in a loop. | A reachable camera is not a working stream: paths differ by firmware, and the password may differ from the one in the vault. |
-| Frames and recording are fine but the camera never produces events | Read Frigate's effective config for the camera (`/api/config`): is `detect.enabled` true, and which classes does `objects.track` list? | Frames and continuous recording do not mean detection is on. Frigate 0.17 defaults detection to off. |
+| Frames and recording are fine but the camera never produces events | Read Frigate's effective config for the camera (`/api/config`): is `detect.enabled` true, and which classes does `objects.track` list? | Frames and continuous recording do not mean detection is on. On this cabin's Frigate 0.17, a camera written without a detection setting showed detection off and tracked people only (observed 2026-09-30, W-39; [Maintenance guide](../../MAINTENANCE.md)); set both explicitly. |
 | The camera is on a different network from the M920q | Prefer a cable from the M920q's spare Ethernet port to the camera's network. A Wi-Fi join takes the M920q off its own network, Tailscale and the internet. | A network name does not identify a network: names repeat across the cabin, Home and several bands. |
 
 Camera configuration changes go through a pull request, and the camera password never goes into the file or the repository.
@@ -59,6 +62,8 @@ Audience: operator. Source-reviewed at `main` from the Compose files, the Blink 
 
 ## What detects and what recovers
 
+**Short answers.** *Will it restart on its own if something crashes?* Only if the container stops: Docker then starts it again. A container that is still running but stuck or unhealthy is not restarted, except the Blink bridge (its own loop recovers, and a host timer restarts it if that timer is installed, host-dependent). *How do I restart one service?* That is an administrator task on the cabin hub (`docker restart <container>`). A restart keeps the container's stored data, and restarting Zigbee2MQTT does not re-pair or erase devices, but a restart does not pick up changed values in `.env`; those need the container recreated through Compose. A stuck Blink bridge has been recovered more than once with `docker restart blinkbridge` (Maintenance guide). After a Frigate configuration change, Frigate must be restarted before the change takes effect.
+
 Detection and recovery are separate. Several layers exist; only some of them restart anything.
 
 | Layer | Detects | Recovers by itself? | Where recorded |
@@ -84,13 +89,15 @@ Sources: [overlay](../../../cabin-orchestration-platform/infra/docker-compose.m9
 
 ## Deployment source correction
 
-The old Maintenance Deployment section describes backend deployment as manual-only. The current [deploy-cabin-backend workflow](../../../.github/workflows/deploy-cabin-backend.yml) instead has a main-push path filter and manual dispatch. Its implementation tests, builds/tags a candidate, checks health and has rollback handling. The workflow is the source for current configured behavior; none of this proves its latest run succeeded.
+**Short answer.** Merging to `main` deploys automatically, per the table below. Only the backend and the production stack check health afterwards and roll back by themselves; if a Family Hub, cabin-ui or discovery deploy is wrong, redeploy the previous commit. Home Assistant automations and Node-RED flows edited by hand on the hub are not deployed this way.
+
+The [deploy-cabin-backend workflow](../../../.github/workflows/deploy-cabin-backend.yml) has a main-push path filter and manual dispatch; it tests, builds/tags a candidate, checks health and has rollback handling. The workflow is the source for configured behavior; none of this proves its latest run succeeded.
 
 For a release, record separately: repository/commit, tests, built image, target host/stack, deployed image/commit, health result and real feature verification. Obtain authorization for the actual deployment; do not merge, dispatch, rebuild or restart merely because a PR exists. The [family-hub](../../../.github/workflows/deploy-family-hub.yml), [discovery](../../../.github/workflows/deploy-cabin-discovery.yml) and [production stack](../../../.github/workflows/deploy-production-stack.yml) have separate scopes/triggers. Read the relevant workflow rather than applying one generic deployment recipe.
 
 ### Workflow table at `main` (K13)
 
-Audience: operator. Read from the files in `.github/workflows/` at `main`; no run was triggered or inspected here (`NOT_RUN`), and a workflow file does not show that its latest run succeeded. Deploys run on the self-hosted `cabin-m920q` runner; pull-request checks run on GitHub-hosted runners with no host access.
+Audience: operator. Read from the files in `.github/workflows/` at `main`; no run was triggered or inspected here (`NOT_RUN`). Deploys run on the self-hosted `cabin-m920q` runner; pull-request checks run on GitHub-hosted runners with no host access.
 
 | Workflow | Starts on | Gate before change | Change applied | Health check and rollback |
 |---|---|---|---|---|
@@ -104,9 +111,8 @@ Audience: operator. Read from the files in `.github/workflows/` at `main`; no ru
 
 Where a document and a workflow disagree, the workflow is the source:
 
-- Older text says the backend deploys by hand only, or that no workflow runs on a pull request. Both are out of date: the backend deploys from a push to `main`, and the tooling and kiosk workflows above run on pull requests.
+- Older text saying the backend deploys only by hand, or that no workflow runs on a pull request, is out of date: the backend deploys on a push to `main`, and the tooling and kiosk workflows run on pull requests.
 - A backend-only change under `cabin-orchestration-platform/` also starts `deploy-family-hub`, which rebuilds the UI. A UI-only change does not start the backend deploy.
-- Only the backend and the production stack have a post-deploy health check and rollback. The Family Hub, cabin-ui and discovery deploys do not; if one is wrong, redeploy the previous commit.
 - Rollback to an earlier backend image exists only while an earlier SHA-tagged image is still on the host. The image prune after a deploy removes untagged images only.
 
 Sources: [deploy-cabin-backend](../../../.github/workflows/deploy-cabin-backend.yml), [deploy-family-hub](../../../.github/workflows/deploy-family-hub.yml), [deploy-cabin-discovery](../../../.github/workflows/deploy-cabin-discovery.yml), [deploy-production-stack](../../../.github/workflows/deploy-production-stack.yml), [rotate-secrets](../../../.github/workflows/rotate-secrets.yml).
@@ -134,6 +140,8 @@ Existing component guidance is available now: [REPLICATION section 10](../../REP
 
 ## Backup and restore recipes per store (K10, verified from source only)
 
+**Short answer.** Configuration and service files are set up to be copied to the storage disk every night (whether those timers run on the hub is host-dependent and not verified), and sensor history gets an hourly additive copy while the backend is running. The application database and the credential vault have no documented, tested backup, and no restore has ever been rehearsed. Ask the operator what a backup was taken from, and whether it was ever restored, before relying on it.
+
 Audience: operator. Every row is read from source or a guide; no backup was taken, no restore was rehearsed and nothing was checked on the host. Each restore step is `NOT_RUN`. A copy that has never been restored is an unproven backup.
 
 | Store | What copies it, per source | Restore recipe in the repo | Known limits | Evidence |
@@ -157,15 +165,15 @@ Sources: [backup-modular](../../../scripts/host/backup-modular), [storage archit
 
 ## A Zigbee plug or sensor is listed twice, charts twice, or shows power as unknown (W-88, 2026-10-21)
 
-Audience: operator. A Zigbee device appears as a native `z2m-*` device and as separate Home Assistant `ha-cabin-*` entities of the same hardware. The platform treats the **Zigbee device as the parent** and each Home Assistant entity as one of its **services**: one card, with the other services underneath and still usable. Only the parent's readings are logged, so one sensor produces one chart series. If an entity is not underneath its Zigbee device, check that its Home Assistant entity id starts with the Zigbee friendly name at the same location; a name shared by two devices is deliberately not linked. A parent a person chose is not overridden.
+Audience: operator. **Why is my plug or sensor listed twice?** One Zigbee device reaches the app twice: once from Zigbee2MQTT and once as one or more Home Assistant entities of the same hardware. The app treats the **Zigbee device as the parent** and each Home Assistant entity as one of its **services**: one card, with the services listed underneath ("Belongs to" in a service's details) and still usable. Devices > **Parent devices only** hides the services. A reading the Zigbee device already reports is logged once, under the Zigbee device, so one sensor makes one chart line; switches and on/off sensors still log under their own entity so workflows watching them keep firing. The app links an entity to its Zigbee device by the device's hardware address when Home Assistant provides it, and otherwise by the entity id starting with the Zigbee device's name at the same location. A name or address two devices share is deliberately not linked, and a parent a person chose is not overridden. Rechecked against `main` on 2026-10-31: `HomeAssistantDiscoveryService` (address first, name prefix as fallback; the duplicate-row skip applies to `sensor` entities only); the ids involved look like `z2m-*` (Zigbee) and `ha-cabin-*` (Home Assistant).
 
 | Observation | Safe next question/check | What it does not prove |
 |---|---|---|
 | Power, voltage, current or energy read unknown | Is the model supported by the running Zigbee2MQTT? In its device list, `supported: false` with "Automatically generated definition" means it has no converters, so every reading stays `null` and Reconfigure cannot help; a newer Zigbee2MQTT is the fix (found on a new SONOFF S61SZBTPB, 2026-10-21). If it is supported, Z2M sends `null` until the first report: Reconfigure in the Zigbee2MQTT UI and cycle the load once. | An empty reading is not a faulty plug or a platform outage. A Zigbee2MQTT upgrade affects every Zigbee device; back up its data folder first. |
-| The card has no on/off or power tile | Is the device enabled (not just assigned)? Is its type Power meter? Devices registered before 2026-10-21 may carry the old generic type; person-approved re-detect routes exist (W-93: `POST /api/devices/redetect/preview`, `/{deviceId}/redetect/apply`, `/{deviceId}/redetect/rollback`); whether the live device has been corrected is not established here. | "Assigned" does not mean enabled or monitored. |
-| A chart series stopped on 2026-10-20 or the sensor has two cards, one blank | The Zigbee device is the parent and the Home Assistant entity (often the one a person renamed) is its service. The chart and the card follow the parent; rename the Zigbee device to set the name. The old rows under the entity are still included in the parent's history, and this holds for any parent, including a Home Assistant (`ha-*`) device with linked `sensor.*` entities (#275), not only native Zigbee ones. A Zigbee card can be blank for up to an hour after a backend restart (hourly battery reports). | A blank card is not a dead sensor; check the next hourly report before concluding it is offline. |
+| The Monitoring card has no power tile | Is the device enabled (not just assigned)? Is its type Power meter? Devices registered before 2026-10-21 may carry the old generic type; person-approved re-detect routes exist (W-93: `POST /api/devices/redetect/preview`, `/{deviceId}/redetect/apply`, `/{deviceId}/redetect/rollback`), with no button for them in the app; whether the live device has been corrected is not established here. For a missing On/Off button see [Turn a device on or off from the app](devices.md#turn-a-device-on-or-off-from-the-app). | "Assigned" does not mean enabled or monitored. |
+| A chart series stopped on 2026-10-20 or the sensor has two cards, one blank | The Zigbee device is the parent and the Home Assistant entity (often the one a person renamed) is its service. The chart and the card follow the parent; rename the Zigbee device to set the name. The old rows under the entity are still included in the parent's history, and this holds for any parent, including a Home Assistant (`ha-*`) device with linked `sensor.*` entities (#275), not only native Zigbee ones. After a backend restart a battery Zigbee card can stay blank until the sensor next reports (these sensors often report hourly; the interval depends on the sensor and was not verified here). | A blank card is not a dead sensor; wait for its next report, and check **Last seen** and the check-in reason in See, before concluding it is offline. |
 | Optimization Opportunities shows "Duplicate readings" | A device and one of its services are both enabled and report the same measurement (found by comparing what each reports, so it applies to any measurement). Monitoring shows the reading once on the parent's tile and the parent's chart includes the service's history. Disable the service unless a workflow needs that entity. | Disabling a service never deletes its history; a resolved opportunity stays resolved until a different service starts repeating the parent. |
-| A chart shows two aligned lines for one sensor | Which two device ids? One `z2m-*` and one `ha-cabin-*` of the same hardware are the old double logging; new readings go to the parent only. | Old rows remain; they are history, not a current fault. Deleting telemetry is a dry-run script run by the owner, never an agent session. |
+| A chart shows two aligned lines for one sensor | Which two device ids? One `z2m-*` and one `ha-cabin-*` of the same hardware are the old double logging; new readings of that measurement go to the parent only. | Old rows remain; they are history, not a current fault. Deleting telemetry is a dry-run script run by the owner, never an agent session. |
 
 Full steps: [Maintenance guide, adding a Zigbee smart plug or switch that measures power](../../MAINTENANCE.md).
 
