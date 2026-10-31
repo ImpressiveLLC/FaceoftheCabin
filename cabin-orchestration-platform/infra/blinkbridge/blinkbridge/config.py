@@ -58,6 +58,9 @@ class Settings:
     loop_stale: float = 120.0          # /healthz fails if the loop has not ticked in this long
     poll_stale: float = 1800.0         # ...or no successful Blink poll in this long
     startup_grace: float = 600.0
+    camera_missing_unhealthy: float = 900.0  # a configured camera absent from Blink this long => unhealthy
+    rediscover_base: float = 60.0      # backoff between re-discovery (re-login) attempts
+    rediscover_cap: float = 600.0
     watchdog_exit_after: float = 600.0  # in-process dead-man: exit(70) if the loop is this stale
 
     @property

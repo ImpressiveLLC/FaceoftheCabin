@@ -38,7 +38,7 @@ def make_app(sup) -> web.Application:
         return web.json_response(runner.status())
 
     async def healthz(request: web.Request) -> web.Response:
-        ok, body = sup.hb.status()
+        ok, body = sup.health()
         body["ready"] = sup.ready
         body["cameras"] = {n: r.state.value for n, r in sup.runners.items()}
         return web.json_response(body, status=200 if ok else 503)
