@@ -62,7 +62,7 @@ One stack on cabin-hub; Home reports to it as a collector over Tailscale (D23)
 Central `DeviceRegistry` holds `DeviceDescriptor` (static config) and `DeviceStatus` (runtime state) for all devices across both locations. Protocol adapters implement a `ProtocolAdapter` interface:
 
 - **Zigbee2MqttAdapter** — subscribes to `zigbee2mqtt/#`, auto-discovers devices from `bridge/devices`, infers capabilities by recursively walking the `exposes[]` schema (handles composite features like THIRDREALITY Drip Detect). Any device registered by Z2M is auto-registered with a `z2m-` prefix.
-- **HomeAssistantAdapter** — uses the HA REST API on `cabin-hub`; it can route by device location, but there is no Home Assistant at Home (D23).
+- **HomeAssistantAdapter**: uses the HA REST API on `cabin-hub`; it can route by device location, but there is no Home Assistant at Home (D23).
 
 21 devices are seeded as defaults.
 

@@ -1319,9 +1319,9 @@ mechanism, not something invented from scratch.
    Frigate is wanted. Official Docker images exist for Zigbee2MQTT/
    Mosquitto/Frigate on arm64 already. Real work still needed: an actual
    "collector-only" compose profile doesn't exist in this repo yet (see
-   "Required design work" above) — today's `locations/home/
-   docker-compose.yml` can't just be pointed at a Pi as-is, it would try
-   to stand up the full stack.
+   "Required design work" above) — the old `locations/home/
+   docker-compose.yml` (removed in W-59, D23) could not just be pointed at a Pi
+   as-is, it would have tried to stand up the full stack.
 2. **Android + Termux.** Lowest acquisition barrier of all (an idle
    phone many people already own), and *more* viable for this scoped-
    down collector role than for running a full stack — Mosquitto/a
