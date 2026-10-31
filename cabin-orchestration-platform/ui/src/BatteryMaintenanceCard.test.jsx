@@ -24,6 +24,18 @@ describe('batteryMaintenanceRows', () => {
   });
 });
 
+describe('battery level from the service', () => {
+  it('uses the Home Assistant battery service until the Zigbee device reports', () => {
+    const list = [
+      dev('z2m-door', { enabled: true, powerSource: 'Battery' }, 'Door'),
+      dev('ha-door-battery', { enabled: true, parentDeviceId: 'z2m-door', battery: 67 }, 'Door battery'),
+    ];
+    const rows = batteryMaintenanceRows(list, makeKindOf(list));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].level).toBe(67);
+  });
+});
+
 describe('BatteryMaintenanceCard', () => {
   it('shows each device with its level and opens one on click', () => {
     const onSelect = vi.fn();
