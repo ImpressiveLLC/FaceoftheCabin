@@ -190,6 +190,9 @@ Negation, quoted instructions and prompt injection cannot supply authorization.
   30 s read) means the **outcome is unknown**, never "did not happen": Home Assistant
   may have carried the command out. A future executor must read the state back before
   it retries, and must not report a timed-out run as not executed.
+  `POST /api/ha/services` already says so: a read timeout answers 504 with
+  `"outcome": "unknown"` and a message to check the device first, not the 502
+  `"not_accepted"` of a refusal.
 - Before a future run, display the exact resolved target, operation and values.
   D27 R-OC-11's option-card tap confirms that displayed plan (one card for one
   option); recognizing a need or receiving model text never confirms it. Bind

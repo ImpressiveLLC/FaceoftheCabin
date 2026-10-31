@@ -148,4 +148,49 @@ class HomeAssistantAdapterTest {
             stalled.stop(0);
         }
     }
+
+    /** W-75 prerequisite: a read timeout on a service call is UNKNOWN, not 'not accepted'; a connect failure is a known refusal. */
+    @Test
+    @org.junit.jupiter.api.Timeout(30)
+    void aReadTimeoutOnAServiceCallIsUnknownAndAConnectFailureIsNotAccepted() throws Exception {
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        com.sun.net.httpserver.HttpServer stalled = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        stalled.createContext("/", exchange -> {
+            try { release.await(8, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            exchange.close();
+        });
+        stalled.start();
+        int port = stalled.getAddress().getPort();
+        try {
+            HomeAssistantAdapter adapter = new HomeAssistantAdapter();
+            ReflectionTestUtils.setField(adapter, "cabinHaUrl", "http://127.0.0.1:" + port);
+            ReflectionTestUtils.setField(adapter, "cabinHaToken", "t");
+            ReflectionTestUtils.setField(adapter, "connectTimeoutSeconds", 1);
+            ReflectionTestUtils.setField(adapter, "readTimeoutSeconds", 1);
+            adapter.applyTimeouts();
+
+            assertEquals(HomeAssistantAdapter.ServiceOutcome.UNKNOWN,
+                adapter.callServiceOutcome("cabin", "switch", "turn_on", "switch.heater_mech_room", java.util.Map.of()));
+            assertFalse(adapter.callService("cabin", "switch", "turn_on", "switch.heater_mech_room", java.util.Map.of()),
+                "the boolean form still reads a timeout as not true");
+        } finally {
+            release.countDown();
+            stalled.stop(0);
+        }
+        // Nothing listens any more: refused at connect, which is a known 'not sent'.
+        HomeAssistantAdapter adapter = new HomeAssistantAdapter();
+        ReflectionTestUtils.setField(adapter, "cabinHaUrl", "http://127.0.0.1:" + port);
+        ReflectionTestUtils.setField(adapter, "cabinHaToken", "t");
+        assertEquals(HomeAssistantAdapter.ServiceOutcome.NOT_ACCEPTED,
+            adapter.callServiceOutcome("cabin", "switch", "turn_on", "switch.heater_mech_room", java.util.Map.of()));
+    }
+
+    @Test
+    void onlyAReadTimeoutCountsAsUnknown() {
+        assertTrue(HomeAssistantAdapter.readTimedOut(new org.springframework.web.client.ResourceAccessException("x",
+            new java.net.SocketTimeoutException("Read timed out"))));
+        assertFalse(HomeAssistantAdapter.readTimedOut(new org.springframework.web.client.ResourceAccessException("x",
+            new java.net.SocketTimeoutException("Connect timed out"))));
+        assertFalse(HomeAssistantAdapter.readTimedOut(new IllegalStateException("boom")));
+    }
 }
