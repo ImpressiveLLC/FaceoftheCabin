@@ -71,7 +71,41 @@ class QuestionNeverProposesTest {
     static final List<String> ACTION_OUTPUTS = List.of(
         "{\"intent\":\"set_device_state\",\"slots\":{\"device_name\":\"light\",\"state\":\"on\"},\"requires_confirmation\":true,\"clarification\":null,\"automation\":null}",
         "{\"intent\":\"set_device_state\",\"slots\":{\"device_name\":\"heater\",\"location\":\"mech room\",\"state\":\"off\"},\"requires_confirmation\":true,\"clarification\":null,\"automation\":null}",
-        "{\"intent\":\"set_device_attribute\",\"slots\":{\"device_name\":\"thermostat\",\"site\":\"cabin\",\"attribute_type\":\"temperature\",\"attribute_value\":\"68\",\"unit\":\"F\"},\"requires_confirmation\":true,\"clarification\":null,\"automation\":null}");
+        "{\"intent\":\"set_device_attribute\",\"slots\":{\"device_name\":\"thermostat\",\"site\":\"cabin\",\"attribute_type\":\"temperature\",\"attribute_value\":\"68\",\"unit\":\"F\"},\"requires_confirmation\":true,\"clarification\":null,\"automation\":null}",
+        // an automation proposal: the third kind of intent that makes a proposal
+        "{\"intent\":\"propose_automation\",\"slots\":{},\"requires_confirmation\":true,\"clarification\":null,\"automation\":"
+            + "{\"trigger\":{\"target\":{\"device_name\":\"front door contact\",\"location\":\"entry\",\"site\":\"cabin\"},"
+            + "\"attribute\":\"contact\",\"operator\":\"eq\",\"value\":\"open\",\"unit\":null},\"conditions\":[],\"actions\":["
+            + "{\"target\":{\"device_name\":\"heater\",\"location\":\"mech room\",\"site\":\"cabin\"},\"operation\":\"on\","
+            + "\"attribute\":null,\"value\":null,\"unit\":null,\"delay_seconds\":0}]}}");
+
+    /**
+     * The same questions dressed up: a quote, a bracket, a bullet, a greeting or filler word, leading whitespace and line breaks,
+     * fullwidth and look-alike letters, an invisible character, a question after another sentence. Every one must be seen as a question.
+     */
+    static final List<String> DISGUISED_QUESTIONS = List.of(
+        "\"How do I turn off the heater?\"",
+        "\u201CHow do I turn off the heater?\u201D",
+        "(Can I silence the siren?)",
+        "- Why is the valve closed",
+        "\u2022 What does Fire do on a workflow?",
+        "   \n\t How do I remove a device?",
+        "\u00A0\u00A0Can I turn the porch light on from here?",
+        "Hi! How do I turn off the heater?",
+        "hello, can I silence the siren",
+        "Ok so how do I add a new Zigbee device",
+        "Thanks. Why didn't my workflow run?",
+        "Quick question: how do I create a workflow?",
+        "Hey Ask, where is the API token kept?",
+        "Tiny Helpdesk - how do I restart the backend",
+        "Please, how do I free up space on the disk?",
+        "\uFF28\uFF4F\uFF57 do I turn off the heater?",
+        "h\u043Ew do I turn off the heater?",
+        "Wh\u200By is the valve closed?",
+        "Whats the difference between Watch and Alert",
+        "What\u2019s the difference between Available and Assigned",
+        "I need to know: how do I turn off the heater?",
+        "Turn on the porch light. Why is it so dark?");
 
     final AtomicReference<String> modelOutput = new AtomicReference<>();
     final List<ProposalAuditLog.Entry> audit = new ArrayList<>();
@@ -133,6 +167,44 @@ class QuestionNeverProposesTest {
     }
 
     @Test
+    void aDisguisedQuestionIsStillAQuestionWhateverActionTheModelPicks() {
+        for (String question : DISGUISED_QUESTIONS) {
+            for (String output : ACTION_OUTPUTS) {
+                Response r = ask(question, output);
+                String why = question + " <- " + output.substring(0, 40);
+                assertNull(r.proposal(), "no proposal: " + why);
+                assertTrue(r.steps().isEmpty(), "no resolved step or target: " + why);
+                assertEquals(Status.CLARIFY, r.status(), why);
+                assertEquals("QUESTION_SHAPED", r.code(), why);
+            }
+        }
+    }
+
+    @Test
+    void quotedGreetingLedAndLeadingWhitespaceQuestionsAreEachCaughtOnTheirOwn() {
+        assertTrue(QuestionShape.isQuestion("\"How do I turn off the heater?\""));
+        assertTrue(QuestionShape.isQuestion("Hi! How do I turn off the heater?"));
+        assertTrue(QuestionShape.isQuestion("   \n\t How do I remove a device?"));
+        assertTrue(QuestionShape.isQuestion("\uFF28\uFF4F\uFF57 do I turn off the heater?"));
+        assertTrue(QuestionShape.isQuestion("h\u043Ew do I turn off the heater?"));
+    }
+
+    @Test
+    void theKnownCostAQuestionFollowedByACommandGetsAClarification() {
+        Response r = ask("How does the porch light work? Turn it on.", ACTION_OUTPUTS.get(0));
+        assertEquals(Status.CLARIFY, r.status());
+        assertNull(r.proposal());
+    }
+
+    @Test
+    void commandsThatMerelyContainAQuestionWordLaterOrStartWithOneAsAPrefixAreNotQuestions() {
+        for (String command : List.of("Turn on the porch light because why not", "Whatever, turn the heater off", "Isolate the garage sensor",
+                "Howard, turn on the porch light", "Turn off what I left on", "Hi, please turn on the porch light", "Thanks, turn the heater off")) {
+            assertFalse(QuestionShape.isQuestion(command), command);
+        }
+    }
+
+    @Test
     void theWithheldProposalIsRecordedInTheAuditLog() {
         Response r = ask("Can I turn the porch light on from here?", ACTION_OUTPUTS.get(0));
 
@@ -182,7 +254,7 @@ class QuestionNeverProposesTest {
         assertTrue(QuestionShape.isQuestion("  why is the valve closed?"));
         assertTrue(QuestionShape.isQuestion("Can I silence the siren"));
         assertTrue(QuestionShape.isQuestion("should we restart the backend"));
-        assertTrue(QuestionShape.isQuestion("What’s the difference between Watch and Alert"));
+        assertTrue(QuestionShape.isQuestion("What\u2019s the difference between Watch and Alert"));
         assertFalse(QuestionShape.isQuestion("Turn off the heater"));
         assertFalse(QuestionShape.isQuestion("Turn off the heater?"), "a question mark alone is not a question");
         assertFalse(QuestionShape.isQuestion("Can you turn off the heater?"));
@@ -196,7 +268,7 @@ class QuestionNeverProposesTest {
         assertFalse(QuestionShape.isQuestion(null));
     }
 
-    // ── /ask: the Ask path has no way to propose ────────────────────────────
+    // \u2500\u2500 /ask: the Ask path has no way to propose \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     @Test
     void theAskPathHoldsNothingThatProposesAndItsAnswerCarriesNoProposalOrTarget() {
