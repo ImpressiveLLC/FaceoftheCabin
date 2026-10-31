@@ -2139,6 +2139,12 @@ export function LocationRolesCard({ auth }) {
   const apiBase = LOCATIONS.cabin.apiBase;
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
+  // Focus follows the action so a keyboard or screen-reader user is never left on a control that has gone: after Remove it
+  // moves to Confirm, after Cancel back to that row's Remove, after a confirmed removal to the next row's Remove (or the card top).
+  const [focusId, setFocusId] = useState(null);
+  useEffect(() => {
+    if (focusId) { document.getElementById(focusId)?.focus(); setFocusId(null); }
+  }, [focusId, data, removing]);
 
   const load = useCallback(() => doFetch(`${apiBase}/api/presence/roles`)
     .then(async r => {
@@ -2197,13 +2203,15 @@ export function LocationRolesCard({ auth }) {
   };
   const chosen = Object.entries(newRoles).filter(([, on]) => on).map(([role]) => role);
   const existing = data.assignments.find(a => a.personId === personId.trim() && a.location === location);
-  const removeConsequence = (a) => a.roles.includes("primary")
-    ? `${a.personId} will stop counting as present at ${a.location}.`
-    : `${a.personId}'s signals at ${a.location} will count as presence again, unless you assign them a role.`;
+  // The backend counts and flags a person with no role, whichever role they had: removal never stops anyone counting.
+  const removeConsequence = (a) =>
+    `Removing leaves ${a.personId} with no role at ${a.location}: their signals are still counted as presence, and they are listed as counted but not assigned until a role is set again.`;
+  const rowKey = (a) => `${a.location}:${a.personId}`;
+  const idOf = (prefix, a) => `${prefix}-${rowKey(a).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
   return (
     <>
-      <p className="config-desc">
+      <p className="config-desc" id="location-roles-top" tabIndex={-1}>
         Primary people are the active users of a location: their phone counts as presence. Maintenance people establish and
         look after a location: they are a guest for presence, so an arrival is recorded as a visit and not counted.
       </p>
@@ -2237,7 +2245,8 @@ export function LocationRolesCard({ auth }) {
             <thead><tr><th>Person</th><th>Location</th><th>Primary</th><th>Maintenance</th><th></th></tr></thead>
             <tbody>
               {data.assignments.map(a => (
-                <tr key={`${a.location}:${a.personId}`}>
+                <React.Fragment key={`${a.location}:${a.personId}`}>
+                <tr>
                   <td>{a.personId}</td>
                   <td>{a.location}</td>
                   {["primary", "maintenance"].map(role => {
@@ -2246,29 +2255,47 @@ export function LocationRolesCard({ auth }) {
                       <td key={role}>
                         <input type="checkbox" disabled={saving || last} checked={a.roles.includes(role)}
                           title={last ? "A person needs at least one role. Use Remove to take them out." : undefined}
+                          aria-describedby={last ? "location-roles-last-hint" : undefined}
                           aria-label={`${a.personId} ${role} at ${a.location}`} onChange={() => toggle(a, role)} />
                       </td>
                     );
                   })}
                   <td>
-                    {removing === `${a.location}:${a.personId}` ? (
-                      <span role="group" aria-label={`Confirm removing ${a.personId} at ${a.location}`}>
-                        <span className="config-hint">{removeConsequence(a)}</span>{" "}
-                        <button className="btn-danger" disabled={saving}
-                          onClick={async () => { if (await save(a.personId, a.location, [], `${a.personId} at ${a.location} was removed.`)) setRemoving(null); }}>
-                          Confirm remove
-                        </button>{" "}
-                        <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
-                      </span>
-                    ) : (
-                      <button className="btn-ghost" disabled={saving} aria-label={`Remove ${a.personId} at ${a.location}`}
-                        onClick={() => setRemoving(`${a.location}:${a.personId}`)}>Remove</button>
-                    )}
+                    <button className="btn-ghost" id={idOf("remove", a)} disabled={saving || removing === rowKey(a)}
+                      aria-label={`Remove ${a.personId} at ${a.location}`}
+                      onClick={() => { setRemoving(rowKey(a)); setFocusId(idOf("confirm", a)); }}>Remove</button>
                   </td>
                 </tr>
+                {removing === rowKey(a) && (
+                  <tr key={`${rowKey(a)}:confirm`}>
+                    <td colSpan={5}>
+                      <div role="group" aria-label={`Confirm removing ${a.personId} at ${a.location}`}>
+                        <p className="config-hint">{removeConsequence(a)}</p>
+                        <button className="btn-danger" id={idOf("confirm", a)} disabled={saving}
+                          onClick={async () => {
+                            const i = data.assignments.findIndex(x => rowKey(x) === rowKey(a));
+                            const next = data.assignments[i + 1] || data.assignments[i - 1];
+                            if (await save(a.personId, a.location, [], `${a.personId} at ${a.location} was removed.`)) {
+                              setRemoving(null);
+                              setFocusId(next ? idOf("remove", next) : "location-roles-top");
+                            }
+                          }}>
+                          Confirm remove
+                        </button>{" "}
+                        <button className="btn-ghost" onClick={() => { setRemoving(null); setFocusId(idOf("remove", a)); }}>Cancel</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
+        )}
+        {data.assignments.length > 0 && (
+          <p className="config-hint" id="location-roles-last-hint">
+            A person always keeps at least one role here, so the last ticked box is locked. To take someone out, use Remove.
+          </p>
         )}
       </section>
       <section aria-label="Assign a role">

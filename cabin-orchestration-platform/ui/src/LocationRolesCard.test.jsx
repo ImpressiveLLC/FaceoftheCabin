@@ -116,7 +116,7 @@ describe("LocationRolesCard safety and repairs (#342 HOLD)", () => {
     const { auth, puts } = recorder(ONE);
     render(<LocationRolesCard auth={auth} />);
     fireEvent.click(await screen.findByLabelText("Remove nate at cabin"));
-    expect(screen.getByText(/nate will stop counting as present at cabin/)).toBeTruthy();
+    expect(screen.getByText(/Removing leaves nate with no role at cabin: their signals are still counted as presence, and they are listed as counted but not assigned until a role is set again/)).toBeTruthy();
     expect(puts).toEqual([]);
     fireEvent.click(screen.getByText("Cancel"));
     expect(puts).toEqual([]);
@@ -125,11 +125,11 @@ describe("LocationRolesCard safety and repairs (#342 HOLD)", () => {
     await waitFor(() => expect(puts).toEqual([{ personId: "nate", location: "cabin", roles: [] }]));
   });
 
-  it("warns that a removed maintenance person counts as presence again", async () => {
+  it("says the same truthful thing for a maintenance person: still counted, flagged until a role is set", async () => {
     const { auth } = recorder({ assignments: [{ personId: "contractor", location: "cabin", roles: ["maintenance"] }], unregisteredCounted: [] });
     render(<LocationRolesCard auth={auth} />);
     fireEvent.click(await screen.findByLabelText("Remove contractor at cabin"));
-    expect(screen.getByText(/signals at cabin will count as presence again/)).toBeTruthy();
+    expect(screen.getByText(/Removing leaves contractor with no role at cabin: their signals are still counted as presence/)).toBeTruthy();
   });
 
   it("Assign adds the ticked roles to the ones the person already holds", async () => {
@@ -182,5 +182,43 @@ describe("LocationRolesCard safety and repairs (#342 HOLD)", () => {
     unmount();
     render(<LocationRolesCard auth={authWith(() => respond(200, { assignments: [], unregisteredCounted: [] }))} />);
     expect(await screen.findByText(/People publishing presence are still counted/)).toBeTruthy();
+  });
+
+  it("the reason the last box is locked is visible text and described-by, not only a tooltip", async () => {
+    const { auth } = recorder(ONE);
+    render(<LocationRolesCard auth={auth} />);
+    const box = await screen.findByLabelText("nate primary at cabin");
+    expect(screen.getByText(/the last ticked box is locked/)).toBeTruthy();
+    expect(box.getAttribute("aria-describedby")).toBe("location-roles-last-hint");
+    expect(document.getElementById("location-roles-last-hint")).toBeTruthy();
+  });
+
+  it("moves focus: Remove goes to Confirm, Cancel goes back to Remove", async () => {
+    const { auth } = recorder(ONE);
+    render(<LocationRolesCard auth={auth} />);
+    fireEvent.click(await screen.findByLabelText("Remove nate at cabin"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText("Confirm remove")));
+    fireEvent.click(screen.getByText("Cancel"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Remove nate at cabin")));
+  });
+
+  it("after a confirmed removal focus goes to the next row's Remove, or the card top when it was the last", async () => {
+    const two = { assignments: [
+      { personId: "nate", location: "cabin", roles: ["primary"] },
+      { personId: "emma", location: "cabin", roles: ["primary"] },
+    ], unregisteredCounted: [] };
+    const { auth } = recorder(two);
+    render(<LocationRolesCard auth={auth} />);
+    fireEvent.click(await screen.findByLabelText("Remove nate at cabin"));
+    fireEvent.click(screen.getByText("Confirm remove"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Remove emma at cabin")));
+  });
+
+  it("the confirm step is its own full-width row under the person, not a cell", async () => {
+    const { auth } = recorder(ONE);
+    render(<LocationRolesCard auth={auth} />);
+    fireEvent.click(await screen.findByLabelText("Remove nate at cabin"));
+    const group = screen.getByRole("group", { name: "Confirm removing nate at cabin" });
+    expect(group.closest("td").getAttribute("colspan")).toBe("5");
   });
 });
