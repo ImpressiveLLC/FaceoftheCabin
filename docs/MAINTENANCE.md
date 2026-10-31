@@ -63,8 +63,9 @@ Tailscale-only. This isn't an oversight to "fix" — it's the deliberate
 boundary between the product surface and the reconfiguration surface. See
 `docs/ontology.yaml` and `ROADMAP.md` for the full reasoning.
 
-**This diagram is Cabin-specific.** A second location, Home, has a real
-deploy template at `cabin-orchestration-platform/locations/home/` and a
+**This diagram is Cabin-specific.** A second location, Home, is a collector
+for the cabin backend (D23; the old `locations/home/` overlay was removed in
+W-59) and has a
 seeded (currently disabled) device inventory in `DeviceRegistry` — see
 "Home Location — Android/Termux Collector Bring-Up" below and
 `ROADMAP.md`'s Phase 8 for the current state and architecture.
@@ -1352,6 +1353,28 @@ exponential backoff with jitter; a throttle signal pauses all Blink calls for 5 
 poll succeeded for 30 min; a Docker HEALTHCHECK uses it; a watchdog thread exits the process if the loop dies for 10 min.
 Tests (fake blinkpy and ffmpeg) run in `.github/workflows/blinkbridge-tooling.yml`.
 
+Camera set (added 2026-10-31): Blink can answer a poll with fewer cameras (blinkpy `homescreen possibly down or throttled`),
+which silently dropped the driveway from 2026-10-28 until a restart. The bridge now knows the expected set (the
+`cameras.enabled` list, else every camera seen at login), logs `camera set shrank: <name> missing`, re-discovers with a fresh
+login (backoff 60 s to 10 min, deferred while a camera is live), and `/healthz` shows `expected`, `live`, `missing` and fails
+(503) when a configured camera has been missing over 15 minutes, so Docker and the host watchdog restart it. A camera
+permanently removed from the Blink account: put it in `cameras.disabled`.
+
+Motion signal (verified 2026-10-31): the bridge polls blinkpy `motion_detected`, which is derived from cloud clips and is
+structurally False for cameras without clips (AldrichFront); `get_events` is retired. So `motion_liveview_enabled` cannot fire
+for AldrichFront, in the legacy bridge or this one. The real trigger is the push path: Blink app notification on the S23 ->
+HA Companion -> `cabin/blink/motion` -> cabin-backend -> bridge `/liveview/<camera>/start`. `/healthz` now reports
+`last_liveview_request_age_s` per camera: if it never moves after real motion, the break is upstream of the bridge (check the
+S23 notification access and the HA automation), not in the bridge.
+
+Activity detector (added 2026-10-31, after Blink alerted on a real AldrichFront walk the bridge never saw): every poll the bridge
+diffs each camera's whole homescreen record (volatile fields such as signal and battery excluded), logs
+`camera record changed {...}` with exactly which keys moved, and treats a change in `cameras.motion_signal_keys` (default
+`thumbnail`, `last_record`, `video`) as activity: it starts a liveview for cameras in `motion_liveview_enabled`. The keys
+Blink really updates for this camera are not known yet. After cutover, walk past AldrichFront and read
+`docker logs blinkbridge | grep "record changed"` and `curl http://<blinkbridge ip>:8811/debug/cameras` (redacted); then set
+`motion_signal_keys` to what moved. `/healthz` shows `last_activity` per camera (age and source).
+
 How it self-heals: a failed liveview (Blink ended it, `Broken pipe`, stalled ffmpeg, open timeout) is torn down and
 retried by the camera's own backoff (5 s doubling to 5 min, jittered); a Blink throttle pauses every Blink call for
 5 to 30 min; an expired token triggers a fresh login. Diagnose: `docker ps` shows `(healthy)`/`(unhealthy)`;
@@ -1834,14 +1857,14 @@ Assistant runs only on the M920q; Home is a collector (Termux Zigbee2MQTT
 under `home_z2m/...`, plus the phone-side network-scan agent), reporting
 over MQTT/Tailscale. There is **no Home Assistant at Home**, so
 `HOME_HA_URL`/`HOME_HA_TOKEN`/`vault_home_ha_token` stay blank and
-`HOME_HUB_DEPLOYED=false` on purpose — despite the name, that flag only
+`HOME_HA_DEPLOYED=false` on purpose (renamed from `HOME_HUB_DEPLOYED`, W-60; the old name is still read for one release) — despite the name, that flag only
 means "a separate HA instance exists at Home for cabin-backend to call,"
 not "Home is live." `HaTokenHomeHealthIndicator` reports `OUT_OF_SERVICE`
 for it by design, and the rotation preflight allows the blank because the
 live value is blank too. A Home HA gets stood up only if a Home-only
 integration ever needs one; then: token in the vault (hash-verified, same
 method as `989fb07`), `HOME_HA_URL` as a Tailscale IP (Termux/MagicDNS
-gotcha below), `HOME_HUB_DEPLOYED=true`.
+gotcha below), `HOME_HA_DEPLOYED=true`.
 
 *Home is a second physical property, distinct from Cabin. Per `ROADMAP.md`'s
 Phase 8 (Accessible Hardware Program), Home is designed as a lightweight
@@ -1850,11 +1873,10 @@ spare Android phone under Termux, running Zigbee2MQTT) collects device
 telemetry and ships it to the M920q as the one shared "main brain." It does
 NOT run its own Postgres/Kafka/cabin-backend, and it does NOT need its own
 Home Assistant instance for the Zigbee path specifically — only MQTT
-telemetry needs to reach the M920q. A real, deployable-but-never-deployed
-full-stack overlay also exists at `cabin-orchestration-platform/locations/home/`
-for other (non-Zigbee) integrations — see the architecture note in that
-directory before assuming it should be stood up as-is; it predates the
-Phase 8 lightweight-collector correction.*
+telemetry needs to reach the M920q. A never-deployed full-stack
+overlay once existed at `cabin-orchestration-platform/locations/home/`; it
+predated the Phase 8 lightweight-collector correction and was removed in
+W-59 (D23).*
 
 **Status as of 2026-09-10**: a real bench POC (SMLIGHT SLZB-MR5U coordinator
 + Termux on a Sony Xperia) passed — Zigbee2MQTT formed a real Zigbee network
@@ -2211,6 +2233,8 @@ SONOFF SNZB-02P sensor. Four symptoms, three causes.
 6. Monitoring and the weekly power suggestions read the Zigbee parent's readings, so they begin once real power values arrive; allow the usual window of consistent draw before expecting a suggestion.
 
 **Charts and cards after the link (found 2026-10-24).** Making the Zigbee device the parent stopped the linked Home Assistant sensor entity writing its own readings, so a chart that had been built on that entity (the outside temperature sensor, renamed "Temp Outside | Lower Level Temperature" in the chart) stopped on 2026-10-20 while the readings carried on under the Zigbee device, which showed up as a second, blank card under its raw name. Fixed: a Zigbee parent's history (`/api/events/telemetry-history`) and its picker entry (`/api/events/reported-fields`) now include the rows logged under its linked HA sensor entities, so the series is continuous and offered once; Monitoring shows one card per physical device (an entity that repeats a reading its Zigbee parent reports is not a second card, and a blank parent reading after a backend restart is filled from the entity until the next report). To get the name you want on the chart and card, rename the **Zigbee device** (Device Manager, edit, name); the history follows it. Battery sensors report about hourly, so a Zigbee card can read blank for up to an hour after any backend restart.
+
+**Linking by Zigbee address, and a Home Assistant device renamed there (found 2026-10-29).** The first version of the link matched a Home Assistant entity to its Zigbee device by the Zigbee friendly name at the start of the entity id, so a device renamed in Home Assistant (the mech room sensor, "Mech Room Temp and Humidity") matched nothing: its temperature entity stood alone as a second "parent" beside the Zigbee device and its humidity entity hung under the temperature entity. Discovery now also reads the Zigbee hardware address from the entity's Home Assistant device identifiers (`zigbee2mqtt_0x...`) and links by that, which survives any rename; the name match is the fallback. A sibling entity of the same Home Assistant device is replaced as a parent, never kept. An address two Zigbee devices claim is left unlinked. Nothing is renamed or deleted, and history stays under its old ids and is included in the parent's chart. If a renamed device still shows as its own parent after a discovery cycle, the Home Assistant template call is failing (it fails safe to the name match); enable debug logging for the homeassistant package and look for `HA device_id lookup unavailable`.
 
 **A device registered before this change keeps its old shape** (type and capabilities are sticky once configured, by design). The cabin dehumidifier switch `z2m-0xa4c1381f3884ffff` is one: use *Re-check device info* on its card, or the one-time `discovery/apply` `mode=replace` correction in the `cabin-3rd-party-device-onboarding` skill, Step 4 (confirm with the owner first). Tracked as W-93.
 

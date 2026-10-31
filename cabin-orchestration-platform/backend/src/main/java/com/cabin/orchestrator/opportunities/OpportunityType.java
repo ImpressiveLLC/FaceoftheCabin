@@ -28,5 +28,10 @@ public enum OpportunityType {
      * places to look, never that the alert is wrong. See
      * AlertFrequencyAnalyticsService and AlertRecommendations.
      */
-    NOISY_ALERT
+    NOISY_ALERT,
+    /**
+     * A device and one of its services both enabled and both reporting the same measurement. Found by
+     * comparing what each reports, not by a rule per measurement. See DuplicateReadingAnalyticsService.
+     */
+    DUPLICATE_READING
 }

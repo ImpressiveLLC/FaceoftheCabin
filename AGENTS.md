@@ -1,4 +1,5 @@
 # AGENTS.md — FaceoftheCabin platform
+<!-- GENERATED from CLAUDE.md by .claude/skills/orchestration-hub-wingman/scripts/fed-regen.sh. Do not edit by hand: change CLAUDE.md, run the script, commit both. Drift check: fed-check.sh. -->
 
 ## Doc 27 environmental-node collaboration handoff
 
@@ -36,8 +37,8 @@ This platform is designed to be worked on across multiple machines. The rule is 
 2. On the new machine: `git pull origin main`
 3. Never commit directly on the M920q unless doing cabin-specific infra work — push from there immediately
 
-**Several Codex sessions work this repo at once.** Before merging any PR or
-pushing to a shared file, load `.Codex/skills/fotc-peer-merge-sequencing/`:
+**Several Claude sessions work this repo at once.** Before merging any PR or
+pushing to a shared file, load `.claude/skills/fotc-peer-merge-sequencing/`:
 find the agreed merge order, check the other live sessions and every open PR
 with `git merge-tree`, settle overlaps with a merge-order note on the PR, and
 merge strictly one at a time. Work in your own worktree, never another
@@ -45,9 +46,9 @@ session's checkout.
 
 **Single source of truth:** GitHub `ImpressiveLLC/FaceoftheCabin`. If something isn't there, it doesn't exist on other machines.
 
-**If Codex can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
+**If Claude can't find prior work:** it means it wasn't pushed before switching. Check `git log --oneline` on the originating machine before concluding work is lost.
 
-**Several agent sessions (Codex, Codex, Cowork) push to this repo at once.**
+**Several agent sessions (Claude Code, Codex, Cowork) push to this repo at once.**
 Load the project skill `cabin-peer-agent-collaboration` when a PR conflicts, an
 Autofix event arrives, or you are about to merge: it covers re-reading a branch
 before touching it, repairing conflicts by merging `origin/main` in (never
@@ -55,13 +56,13 @@ rebase or force-push), the resolver for the append-only tables every PR edits,
 merging only a clean PR pinned to the commit you checked, and which PRs wait
 for Nate.
 
-**Decisions made where Codex can't commit (Codex web at the cabin — no
-Codex on the M920q) need an explicit hand-back, not just a good
+**Decisions made where Claude can't commit (Claude web at the cabin — no
+Claude Code on the M920q) need an explicit hand-back, not just a good
 conversation.** Found 2026-08-06: a real, discussed, agreed decision about
-`blinkbridge`'s architecture was made in a cabin Codex-web session and
+`blinkbridge`'s architecture was made in a cabin Claude-web session and
 then genuinely lost — nothing in the repo recorded it, and the next
-Codex session had to reconstruct it from the user's memory alone.
-The context-loading side of this was already solved (paste AGENTS.md's
+Claude Code session had to reconstruct it from the user's memory alone.
+The context-loading side of this was already solved (paste CLAUDE.md's
 URL at the start of a cabin web session — see the cabin-context guidance
 this file is meant to satisfy), but nothing closed the loop on the way
 back out. **If you reach a real decision, plan, or agreement in a session
@@ -100,6 +101,14 @@ The Python schema and, since 2026-10-16, the Java contract accept `express_need`
 alias of `light`); the route answers a need with its name and no options.
 The admin-only, flag-off `/api/helpdesk/propose` route returns proposals only and
 has no executor. This handoff neither completes POC2 nor enables W-75.
+
+**Priority (Nate, 2026-10-26):** Ask's goal is answering configuration and
+maintenance questions from the corpus, so the order is C2 corpus, then C1
+evaluated retrieval, then C3 one-stop Ask (W-117,
+[directive](docs/ai-assistant/wsjf-backlog.md#priority-directive-corpus-answers-first-nate-2026-10-26)).
+This POC2 and the intent/slot slot-level polish are parked behind it, except
+the question-versus-command boundary (config questions must reach
+`answer_question`, never be treated as commands). Nothing here is deleted.
 
 ### Meaning, slots and output
 
@@ -147,7 +156,8 @@ belong in model output; server-resolved proposal data is a separate contract.
 | "I'm cold"; "I feel chilly" | `express_need`, `concept: cold`; missing device/temperature alone does not justify bare `clarify`. |
 | "It's too cold in the cabin bedroom" | Same intent, `site: cabin`, `location: bedroom`; no assumed reading or heater target. |
 | "Turn on the mech room heater" | Existing `set_device_state`, not `express_need`; normal resolution and confirmation apply. |
-| "Set the heater to 72" | `clarify` for the missing temperature unit; never infer Fahrenheit/Celsius. |
+| "Set the heater to 72" | Value 36 or above with no unit is Fahrenheit by rule (Nate, 2026-10-26): normal `set_device_attribute` handling with unit `F`. |
+| "Set the heater to 30" | `clarify` for the missing unit: a value below 36 with no unit is ambiguous (0 to 35); never infer. Below 0 is not supported. |
 | "I'm not cold"; "Don't turn on the heater" | No positive cold need or heating option; existing non-action/clarification handling as appropriate. |
 | "I'm cold at home" | Recognize the need and Home constraint; no cabin fallback or W-75 execution at Home. |
 | "I have a cold"; "If I were cold..." | Do not assume present thermal discomfort; clarify meaning when needed. |
@@ -176,6 +186,13 @@ Negation, quoted instructions and prompt injection cannot supply authorization.
   Its only planned live path is the existing W-27 `/api/ha/services` heater-switch
   scope, after the shadow report and Nate's explicit go. This spec authorizes no
   new executor, arbitrary service, valve-open or unlock capability.
+- A timeout of a service call (the Home Assistant adapter is bounded at 3 s connect and
+  30 s read) means the **outcome is unknown**, never "did not happen": Home Assistant
+  may have carried the command out. A future executor must read the state back before
+  it retries, and must not report a timed-out run as not executed.
+  `POST /api/ha/services` already says so: a read timeout answers 504 with
+  `"outcome": "unknown"` and a message to check the device first, not the 502
+  `"not_accepted"` of a refusal.
 - Before a future run, display the exact resolved target, operation and values.
   D27 R-OC-11's option-card tap confirms that displayed plan (one card for one
   option); recognizing a need or receiving model text never confirms it. Bind
@@ -262,12 +279,6 @@ cabin-orchestration-platform/
 │   ├── init-db/001_schema.sql
 │   ├── grafana/provisioning/
 │   └── watchdog/watchdog.py
-├── locations/
-│   └── home/                        RETIRED by D23 (never deployed); removal is W-59
-│       ├── docker-compose.yml       Same stack, 16 GB mem limits
-│       ├── frigate.yml              5× Reolink RLC-810A (192.168.1.20–24)
-│       ├── application-home.yml     Spring profile overlay
-│       └── .env.example
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── device-topic-contract.md     MQTT topic schema
@@ -335,7 +346,7 @@ CONTACT_SENSOR, THERMOSTAT, TEMPERATURE_SENSOR, HUMIDITY_SENSOR,
 WATER_PRESSURE_SENSOR, POWER_METER, DISHWASHER, WASHING_MACHINE, DRYER,
 ROUTER, UPS, GOOGLE_HOME_DEVICE, HOME_ASSISTANT_ENTITY, DASHBOARD`
 
-### Location roles (D24, ratified 2026-10-13 — not enforced in code yet)
+### Location roles (D24, ratified 2026-10-13 — enforced for the hub's presence counting by W-38 slice 1; the siren gate is unchanged)
 A person's relationship to **one location**, separate from `HouseholdRole`
 (what a signed-in principal may do):
 - **`primary`** — the active users of the location (they live there or use
@@ -346,12 +357,14 @@ A person's relationship to **one location**, separate from `HouseholdRole`
   as on-site: a **guest** for presence (no phone check, no counted signal).
   One person can hold both at one location (at the cabin, Nate does).
 
-Today the rule holds only by configuration: a phone check
-(`check_authorized_user_phone_wifi.sh <person_id>`, person- and site-agnostic;
-the phone's MAC and LAN live in an uncommitted `authorized_user_phones.conf`)
-and a publisher exist for primary users only. The backend's
-`PresenceSignalRegistry` counts whoever publishes (W-38 builds the
-tracked-person registry). Setup for a new clone: `docs/REPLICATION.md` §3
+Enforcement (W-38 slice 1): the backend's tracked-person registry (`tracked_person_location_role`, admin-only
+`/api/presence/roles`) makes `PresenceSignalRegistry` count primary-role persons only. A maintenance-only arrival is
+not counted, publishes no `PRESENCE_CHANGED`, and is recorded once as a `MAINTENANCE_VISIT` INFO event; an
+unregistered person is still counted and flagged (`unregisteredCounted`). **The siren gate itself lives in Node-RED
+and Home Assistant and is not changed by this**: it still depends on the phone check
+(`check_authorized_user_phone_wifi.sh <person_id>`, person- and site-agnostic; the phone's MAC and LAN live in an
+uncommitted `authorized_user_phones.conf`) and a publisher existing for primary users only. Seed:
+`scripts/host/w38-register-primary-presence.sql`. Setup for a new clone: `docs/REPLICATION.md` §3
 "Who counts as present". Ontology: `location_role`,
 `check_authorized_user_phone_wifi`, `nodered_cabin_security_siren_gate`.
 
@@ -380,14 +393,14 @@ The M920q is x86_64; ARM/Android appears only in the collector role (see
 
 **Blank is correct for Home's Home Assistant settings.** `HOME_HA_URL`
 defaults to `http://home-hub:8123`, but `HOME_HA_TOKEN` and `vault_home_ha_token`
-are blank on purpose and `HOME_HUB_DEPLOYED` defaults to `false`
+are blank on purpose and `HOME_HA_DEPLOYED` defaults to `false`
 (`HaTokenHomeHealthIndicator`), so `application.yml` reports Home's HA as out
 of service by design. That flag means only "a separate Home Assistant exists at
-Home for `cabin-backend` to call"; it is being renamed `HOME_HA_DEPLOYED`
-(W-60). A Home Assistant at Home would be a new decision (D23, R-HD-4). Do not
+Home for `cabin-backend` to call"; it was renamed from `HOME_HUB_DEPLOYED`
+(W-60), and the old name is still read for one release. A Home Assistant at Home would be a new decision (D23, R-HD-4). Do not
 treat `home-hub` URLs as live, and do not read "Home Assistant unreachable at
 Home" as an outage. The old `cabin-orchestration-platform/locations/home/` stack
-overlay was never deployed and is retired (removal tracked in W-59).
+overlay was never deployed; it was retired and removed (W-59).
 
 ---
 
@@ -557,8 +570,10 @@ npm install && npm run dev
 | `FAMILY_DASHBOARD_URL` | DashboardController | Familia Hub URL |
 | `GOOGLE_CLIENT_ID/SECRET` | GoogleHomeIntegration | OAuth |
 | `CABIN_PRESENCE_STALE_AFTER_HOURS` | PresenceController | Hours of phone silence after which `/api/presence` reports `stale: true` and the badge reads "Presence unknown". Default `6`. Keep equal to Node-RED's `PRESENCE_STALE_HOURS` (siren gate, W-33) so the badge and the siren agree |
-| `CABIN_ASK_INTENT_ENABLED` | HelpdeskProposeController | `true` turns on `POST /api/helpdesk/propose` (default `false`, route answers 404). Also tunable: `CABIN_ASK_INTENT_MODEL` (default `cabin-intent-slot-prompt-r1`, an Ollama tag that must exist), `CABIN_ASK_INTENT_PROPOSAL_TTL_SECONDS` (300), `CABIN_ASK_INTENT_MAX_INPUT_CHARS` (500), `CABIN_ASK_INTENT_TIMEOUT_SECONDS` (60), `CABIN_ASK_RESOLVER_MAX_INVENTORY_AGE_SECONDS` (120), `CABIN_ASK_RESOLVER_MAX_OBSERVATION_AGE_HOURS` (6). None is passed through `docker-compose.m920q.yml` yet |
+| `CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS`, `CABIN_OLLAMA_READ_TIMEOUT_SECONDS` | OllamaHttpClient | Ask path bounds (W-118): defaults 3 and 50 seconds, the read timeout kept below nginx's 60 s and Cloudflare's 100 s so a stalled model ends in the raw-facts fallback. Zero or negative falls back to the default; per read, not a total deadline. Passed through `docker-compose.m920q.yml`. The Home Assistant adapter uses `cabin.ha.connect-timeout-seconds` / `cabin.ha.read-timeout-seconds` (3 and 30, not passed through compose) |
+| `CABIN_ASK_INTENT_ENABLED` | HelpdeskProposeController | `true` turns on `POST /api/helpdesk/propose` (default `false`, route answers 404). Also tunable: `CABIN_ASK_INTENT_MODEL` (default `cabin-intent-slot-prompt-r1`, an Ollama tag that must exist), `CABIN_ASK_INTENT_PROPOSAL_TTL_SECONDS` (300), `CABIN_ASK_INTENT_MAX_INPUT_CHARS` (500), `CABIN_ASK_INTENT_TIMEOUT_SECONDS` (60), `CABIN_ASK_RESOLVER_MAX_INVENTORY_AGE_SECONDS` (120), `CABIN_ASK_RESOLVER_MAX_OBSERVATION_AGE_HOURS` (6). Only `CABIN_ASK_INTENT_ENABLED` and `CABIN_ASK_INTENT_MODEL` are passed through `docker-compose.m920q.yml`; the others take their defaults there |
 | `CABIN_ALERT_NTFY_TOPIC` | NtfyAlertPublisher | ntfy.sh topic for CRITICAL-severity push. Empty = no-op (events still persist). **Blank on the M920q as of 2026-10-12, so no backend push reaches a phone (W-51)**. The topic functions as a shared secret (ntfy.sh topics aren't access-controlled) — real value lives only in `infra/.env` on the M920q, never committed; `infra/.env.m920q.example` has the placeholder + full reasoning |
+| `WEATHER_ENABLED` | OutdoorWeatherService | `true` by default; `false` switches the daily airport-weather pull off (the chart then shows no outdoor line for new days). Also tunable: `WEATHER_STATIONS` (default `cabin=UBE,RPD`: per location id, primary station first, then fallbacks), `WEATHER_BACKFILL_DAYS` (60), `WEATHER_ARCHIVE_DIR` (`/app/archives/weather`, the bind mount of `/storage/archives/weather`), `WEATHER_CRON` (`0 30 3 * * *`). None is passed through `docker-compose.m920q.yml`, so the defaults apply. See `docs/OUTDOOR_WEATHER_BASELINE.md` |
 
 ---
 
@@ -676,7 +691,8 @@ column for writes is enforced, not just described. Reads follow D14: several
 |---|---|---|
 | `GET /api/alerts/active`, `/rules`, `/acknowledgments`; `POST /acknowledgments`; `DELETE /acknowledgments/{alertKey}` | AlertController | `GET` open; acknowledge and snooze need a signed-in session |
 | `POST /api/devices/{id}/discovery/run`, `/apply`; `GET .../discovery/latest` | DeviceDiscoveryController | writes need a signed-in session (W-31, merged 2026-10-03, live-verified 2026-10-04); `GET` open |
-| `GET`/`POST /api/access-tokens`, `DELETE /{id}` | CabinAccessTokensController | signed-in admin only; never a guest token |
+| `GET`/`POST /api/access-tokens`, `DELETE /{id}` | CabinAccessTokensController | signed-in admin only; never a guest token. `GET` returns each link with `firstUsedAt`, `lastUsedAt` and `useCount` (W-121) |
+| `GET /api/access-tokens/{id}/activity?days=` (W-121) | CabinAccessTokensController | signed-in admin only; demo links get 403. Newest first, at most 500 rows, from `cabin_access_events` (kept 90 days, `cabin.access.events-retention-days`) |
 | `/api/managed-users` (list, create, `/{id}/deactivate`, `/reactivate`, `/invite`, `/magic/{token}/consume`) | ManagedUsersController | admin; `consume` is exempt because the single-use magic-link token is the credential |
 | `POST /api/auth/session`, `POST /api/auth/session/revoke` | AuthController | `session` needs a Google token, managed session or existing CabinSession; `revoke` is open on purpose (holding the token is the proof) |
 | `GET /api/cross-domain/cabin-status-summary` | CrossDomainController | gated, plus a per-route household-role check (D11) |
@@ -687,7 +703,9 @@ column for writes is enforced, not just described. Reads follow D14: several
 | `/api/schedule/rules`, `/api/schedule/holidays` | ScheduleRulesController, HolidaysController | gated |
 | `/api/chores/assignments`, `/api/chores/definitions` (CRUD, `reorder`, `restore`) | ChoreAssignmentsController, ChoreDefinitionsController | gated (under `/api/chores/**`) |
 | `GET /api/presence/activity` | PresenceActivityController | gated (under `/api/presence/**`) |
+| `GET`/`PUT /api/presence/roles` (W-38 slice 1, D24) | PresenceRolesController | administrator only. Who is `primary` or `maintenance` at each location. Presence counts primary only; a maintenance-only arrival is recorded as a `MAINTENANCE_VISIT` INFO event and not counted; an unregistered person is counted and flagged (`unregisteredCounted`). Changes what the hub counts and shows, not the siren gate (Node-RED and HA). Seed: `scripts/host/w38-register-primary-presence.sql` |
 | `GET /api/frigate-metrics` | FrigateMetricsController | no interceptor pattern: open `GET` (per-camera health from Prometheus) |
+| `GET /api/weather/outdoor-history?location=&days=` (outdoor baseline, 2026-10-29) | WeatherController | open `GET` (demo policy ALLOW): public weather data, no device or household detail. Daily outdoor temperature, dew point and relative humidity from the location's configured airport station(s) (`cabin.weather.stations`; a location with no entry returns no points), capped at `cabin.history.max-days`. Rows live in `outdoor_observation`; a raw and a monthly CSV log go to `/storage/archives/weather`. See `docs/OUTDOOR_WEATHER_BASELINE.md` |
 | `GET /api/context/cabin-context.jsonld`, `GET /api/devices/{id}/jsonld` | JsonLdController | open `GET` |
 | `POST /api/webhooks/blink-motion` | BlinkMotionWebhookController | its own shared-secret header (`cabin.blinkMotionWebhook.apiKey`); 503 or 401 when the key is unset or wrong |
 | `GET`/`POST /api/locations`, `PATCH /{id}`, `POST /reorder`, `DELETE /{id}` | LocationsController | **writes are open, a known gap: W-32.** The UI sends signed-in users' tokens to the `apiBase` this controller stores |
@@ -781,7 +799,7 @@ All items below are **complete and pushed to GitHub**:
 - `AutomationRuleService` — presence-aware lock/motion rules; safety rules parallel to Node-RED
 - Nav rail alert state machine: unconfigured → watching → warn (<20 min) → critical (≥20 min)
 - `useDraggableOrder` — HTML5 DnD reorder, localStorage, ALARM auto-pin; works in both panels
-- **ThemeProvider** — 10 synchronized presets across Cabin UI and Family Hub, including Asteroid City
+- **ThemeProvider** — 11 synchronized presets across Cabin UI and Family Hub, including Asteroid City and Signal (the HA "Signal Room" wall-panel look: blue-black, neon-green accent, Outfit and Plex Mono, rebuilt 2026-10-29; the W-110 status palette and cues apply to it only, and the separate "Attention" theme of #317 was removed). Signal colour roles outside Monitoring: lime = on/confirm/add, cyan = selected/focused/fields, orange = change, amber = pending/next step, red = remove/danger; Monitoring keeps its approved tiles, status borders and focus ring: no role rule, accent colour or cyan focus ring reaches it, and the cyan ring is off in forced colours. The Signal surfaces rules (pure-black fills, unboxed big frames, coloured edges on small boxes) reach it only for the Sensor History and live-log frames and the unselected Sensor History chips and tabs; Alert and Watch row edges keep their W-110 colours everywhere.
 - **Family Notepad** (`family-hub/family-hub.html`) — slide-in/out overlay, right edge, docked with `#chores-card`/`#dashboard-fab`/`#settings-btn`. Full behavioral spec in [`docs/PRODUCT_NOTES.md`](docs/PRODUCT_NOTES.md) § "2026-07-30 — Family Hub: Family Notepad Overlay". Postgres-backed via `cabin-backend`'s `/api/notes` as of 2026-08-01 (cross-device, Google-token gated) — `localStorage` is now an offline mirror/fallback, not the source of truth. Note authorship requires an explicitly-selected "Who am I?" actor as of 2026-08-02 (see PRODUCT_NOTES.md) — never silently defaults.
 
 - **Event severity tiering + ntfy alerting** (2026-08-06) — `AlertSeverityClassifier`
@@ -940,7 +958,7 @@ All items below are **complete and pushed to GitHub**:
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
 - Swap `notify.mobile_app_YOUR_PHONE` in `CabinAutomations` for real HA mobile app service name
 - Armed/presence-aware severity escalation (deliberate MVP scope cut, see `event_severity`'s notes)
-- home-hub deployment
+- Home collector: more devices and its presence signal (no home-hub stack, D23)
 - Production Docker Compose with env-var secrets
 - If Family Notepad needs to sync across devices: `/api/notes` endpoint + poll/WebSocket push (see limitation in PRODUCT_NOTES.md)
 
@@ -1009,7 +1027,7 @@ a change before pushing) still works exactly as before — see "Manual
 
 ## Testing
 
-**Run the whole backend suite before merging, not just the tests you touched** (`./mvnw -o test`; the Docker-backed classes error without a Docker daemon, everything else must pass). Repo-wide guard tests only fail when a *new* thing is added: on 2026-10-12 `DemoAccessTest.everyMappedGetRouteIsClassified` stopped W-11's deploy because a new GET route had no `DemoAccessPolicy` entry, and `WriteGateAuditTest` does the same for new write routes. The intent-slot tooling has its own offline pull-request checks; backend CI still first runs at the post-merge gate on the M920q.
+**Run the whole backend suite before merging, not just the tests you touched** (`./mvnw -o test`; the Docker-backed classes error without a Docker daemon, everything else must pass). Repo-wide guard tests only fail when a *new* thing is added: on 2026-10-12 `DemoAccessTest.everyMappedGetRouteIsClassified` stopped W-11's deploy because a new GET route had no `DemoAccessPolicy` entry, and `WriteGateAuditTest` does the same for new write routes. Two more guards turn a failure that used to show up later into a failed `mvn test`: `BeanConstructorGuardTest` (fails a stereotype-annotated class that has several constructors, none marked `@Autowired` or `@Inject`, and no no-argument constructor; with no constructor Spring can choose, the app stops with "No default constructor found", never turns healthy and the deploy rolls back, as on 2026-10-16 and 2026-10-29; the guard checks that arrangement only, not every Spring constructor rule) and `RestControllerCorsGuardTest` (this repository's convention is a class-level `@CrossOrigin` on every `@RestController`, and the guard fails any controller without one; the UI and the API are on different origins, so a controller without CORS works in curl and in unit tests but the browser blocks its replies, as with the weather route on 2026-10-29; Spring also supports global and method-level CORS, which the guard does not accept in its place). The intent-slot tooling has its own offline pull-request checks; backend CI still first runs at the post-merge gate on the M920q.
 
 **First tests in this project's history, added 2026-08-06** —
 `backend/src/test/java/com/cabin/orchestrator/events/`:

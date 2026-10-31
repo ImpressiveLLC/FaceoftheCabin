@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { App, DEMO_BANNER_TEXT, HIDDEN_FOR_DEMO, FamilyConfigPanel, AppContext, DemoLinkSection, shareLinkStatus, formatStopTime } from "./App.jsx";
+import { App, DEMO_BANNER_TEXT, HIDDEN_FOR_DEMO, FamilyConfigPanel, AppContext, DemoLinkSection, shareLinkStatus, formatStopTime, GuestAccessCard, AccessActivity, accessRoutePanel, describeLinkUsage } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // D22 required test 8 (UI half): demo mode shows the banner, renders no
@@ -123,5 +123,77 @@ describe("Create a demo link (Config > Guest Access)", () => {
       .toMatchObject({ active: false, badge: "Expired" });
     expect(shareLinkStatus({ expiresAt: "2026-10-01T15:00:00Z", revokedAt: "2026-09-23T15:00:00Z" }, now))
       .toMatchObject({ active: false, badge: "Revoked" });
+  });
+});
+
+describe("Access link usage (Config > Guest Access)", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const link = (over = {}) => ({
+    id: "link-1", token: "secret", label: "Agent preview", scope: ["demo"],
+    expiresAt: "2099-01-01T00:00:00Z", revokedAt: null, createdBy: "nate@example.com", createdAt: "2026-10-01T00:00:00Z",
+    firstUsedAt: null, lastUsedAt: null, useCount: 0, ...over,
+  });
+
+  it("maps recorded routes to panel names", () => {
+    expect(accessRoutePanel("page_open")).toBe("Opened the link");
+    expect(accessRoutePanel("/api/events/telemetry-history")).toBe("Sensor History");
+    expect(accessRoutePanel("/api/alerts/active")).toBe("Alerts");
+    expect(accessRoutePanel("/api/rules/workflows")).toBe("Rules");
+    expect(accessRoutePanel("/api/devices/abc")).toBe("Devices");
+    expect(accessRoutePanel("/api/camera/list")).toBe("Other");
+  });
+
+  it("describes a link that was never opened and one that was", () => {
+    expect(describeLinkUsage(link())).toBe("Never opened");
+    expect(describeLinkUsage(link({ lastUsedAt: "2026-10-28T15:00:00Z", useCount: 1 })))
+      .toBe(`Last opened ${formatStopTime("2026-10-28T15:00:00Z")} · 1 open`);
+    expect(describeLinkUsage(link({ lastUsedAt: "2026-10-28T15:00:00Z", useCount: 4 }))).toContain("4 opens");
+  });
+
+  it("shows last opened and the opens count on each Access Links row", async () => {
+    const used = link({ id: "used", label: "Insurance agent", lastUsedAt: "2026-10-28T15:00:00Z", useCount: 3 });
+    const unused = link({ id: "unused", label: "Contractor" });
+    const authedFetch = vi.fn(() => Promise.resolve({ ok: true, status: 200, json: async () => [used, unused] }));
+    render(<ThemeProvider><GuestAccessCard auth={{ authedFetch }} /></ThemeProvider>);
+
+    expect(await screen.findByText(/Last opened .* · 3 opens/)).toBeTruthy();
+    expect(screen.getByText("Never opened")).toBeTruthy();
+  });
+
+  it("lists time, panel and status in the activity expander", async () => {
+    const events = [
+      { id: 2, occurredAt: "2026-10-28T15:10:00Z", route: "/api/alerts/active", status: 200, hits: 4 },
+      { id: 1, occurredAt: "2026-10-28T15:00:00Z", route: "page_open", status: 200, hits: 1 },
+    ];
+    const doFetch = vi.fn(() => Promise.resolve({ ok: true, status: 200, json: async () => events }));
+    const { container } = render(<AccessActivity id="link-1" doFetch={doFetch} apiBase="http://api" />);
+    const details = container.querySelector("details");
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+
+    expect(await screen.findByText("Alerts")).toBeTruthy();
+    expect(screen.getByText("Opened the link")).toBeTruthy();
+    expect(doFetch.mock.calls[0][0]).toBe("http://api/api/access-tokens/link-1/activity?days=30");
+  });
+
+  it("says so when the activity cannot be loaded", async () => {
+    const doFetch = vi.fn(() => Promise.resolve({ ok: false, status: 403, json: async () => ({}) }));
+    const { container } = render(<AccessActivity id="link-1" doFetch={doFetch} apiBase="http://api" />);
+    const details = container.querySelector("details");
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+
+    expect(await screen.findByText("Could not load activity.")).toBeTruthy();
+  });
+
+  it("the demo page sends one tagged page-open call on mount", async () => {
+    const fetchMock = stubFetch();
+    render(<ThemeProvider><App demoToken="demo-tok" /></ThemeProvider>);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, o]) => o?.headers?.["X-Demo-Page-Open"] === "1")).toBe(true));
+    const tagged = fetchMock.mock.calls.filter(([, o]) => o?.headers?.["X-Demo-Page-Open"] === "1");
+    expect(tagged).toHaveLength(1);
+    expect(String(tagged[0][0])).toContain("/api/dashboard/config");
+    expect(tagged[0][1].headers.Authorization).toBe("CabinToken demo-tok");
   });
 });

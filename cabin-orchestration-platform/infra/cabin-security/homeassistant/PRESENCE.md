@@ -162,6 +162,8 @@ cp -p cabin_security_mqtt_publish.py       cabin_security_mqtt_publish.py.bak-$d
 # from a checkout of this branch: copy these into place
 #   packages/cabin_security_presence.yaml
 #   cabin_security_mqtt_publish.py
+#   presence_people_allowlist.json             (W-38 slice 3; beside the script, same folder; it only adds exact
+#                                               per-person presence topics, and a missing or bad file adds nothing)
 #   check_authorized_user_phone_wifi.sh        (chmod +x, LF line endings)
 # and create authorized_user_phones.conf from authorized_user_phones.conf.example
 # (the phone's MAC and the cabin LAN; not committed)
@@ -176,7 +178,7 @@ start has been recorded yet), so the heartbeat starts as soon as the phone repor
 Keep the old `check_nate_phone_wifi.sh` until the new sensor reads correctly, then
 move it to `check_nate_phone_wifi.sh.bak-$d`.
 
-Rollback: copy the `.bak-$d` files back, remove the new script, reload.
+Rollback: copy the `.bak-$d` files back, remove the new script and `presence_people_allowlist.json`, reload.
 
 ### Checks after applying
 
@@ -228,3 +230,10 @@ cabin signal.
   package and prints HA's config check. This is the "dev-tools zone simulation":
   it exercises the same trigger and condition code without touching the
   production alarm.
+
+## Adding another primary person (W-38 slice 3)
+
+Do not copy the nate block by hand. Add the person to `scripts/host/w38-register-primary-presence.sql` (as `PRIMARY`) and to
+`gen/presence-people.json`, run `node gen/generate-presence.mjs`, review the diff, and apply it as described in
+`gen/README.md`. The generator refuses anyone who is not primary-role in that seed, so a maintenance-only person can never get a
+check or a publish permission. It cannot see the live registry (see the README for that limit).

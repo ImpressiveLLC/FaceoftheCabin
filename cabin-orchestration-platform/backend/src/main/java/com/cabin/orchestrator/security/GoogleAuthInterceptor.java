@@ -316,10 +316,16 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         "dashboard", List.of("/api/dashboard"),
         "device_states", List.of("/api/devices"),
         "alerts_read", List.of("/api/alerts"),
-        "observations_read", List.of("/api/events/telemetry-history", "/api/events/reported-fields")
+        "observations_read", List.of("/api/events/telemetry-history", "/api/events/reported-fields"),
+        // Roof Monitoring page: read the thread, and (the one write a guest link
+        // has, see handleGuestToken) post a comment or requested input.
+        "roof_spec", List.of("/api/roof-spec")
     );
 
     private static final String ALERT_HISTORY_PATH = "/api/alerts/history";
+
+    /** The single write path a guest link may ever use, and only with the roof_spec scope. */
+    static final String ROOF_SPEC_POST_PATH = "/api/roof-spec/entries";
 
     private String extractGuestToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
@@ -339,13 +345,19 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // A guest link is never a write credential, full stop -- checked
         // before scope so a POST/PATCH/DELETE can't slip through even if
         // its path happens to also match a granted read prefix.
-        if (!"GET".equalsIgnoreCase(request.getMethod())) {
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "This access link is read-only");
-            return false;
-        }
         CabinAccessToken accessToken = tokenOpt.get();
         String path = request.getRequestURI();
         String contextPath = request.getContextPath();
+        // The one exception: a roof_spec link may POST exactly the comment
+        // endpoint. Exact path, exact method, exact scope -- nothing else.
+        boolean roofSpecPost = "POST".equalsIgnoreCase(request.getMethod())
+            && path.equals(contextPath + ROOF_SPEC_POST_PATH)
+            && accessToken.scope().contains("roof_spec");
+        if (!"GET".equalsIgnoreCase(request.getMethod()) && !roofSpecPost) {
+            recordGuestUse(accessToken, request, "WRITE", HttpServletResponse.SC_FORBIDDEN);
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "This access link is read-only");
+            return false;
+        }
         boolean covered = accessToken.scope().stream()
             .map(SCOPE_PATH_PREFIXES::get)
             .filter(Objects::nonNull)
@@ -355,11 +367,32 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // alerts_read maps to the whole /api/alerts prefix, which would reach
         // the alert history too -- but that is a signed-in-only view (W-64).
         if (!covered || path.equals(contextPath + ALERT_HISTORY_PATH)) {
+            recordGuestUse(accessToken, request, "DENY", HttpServletResponse.SC_FORBIDDEN);
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "This access link doesn't cover that page");
             return false;
         }
         request.setAttribute(REQUEST_ATTR_GUEST_TOKEN_ID, accessToken.id());
+        request.setAttribute(REQUEST_ATTR_GUEST_TOKEN, accessToken);
         return true;
+    }
+
+    /** The link a request was admitted with, kept so afterCompletion can record the real response status. */
+    private static final String REQUEST_ATTR_GUEST_TOKEN = "cabin.auth.guestToken";
+
+    /** Tier 1 usage trail. Demo links are recorded by DemoAccessFilter, so they are skipped here. */
+    private void recordGuestUse(CabinAccessToken token, HttpServletRequest request, String policyClass, int status) {
+        if (token.scope().contains(com.cabin.orchestrator.security.demo.DemoAccessFilter.DEMO_SCOPE)) return;
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        accessTokens.recordUse(token, AccessEvent.TIER_VIEW, path, policyClass, status,
+            AccessClient.ip(request), AccessClient.userAgent(request), false);
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        Object admitted = request.getAttribute(REQUEST_ATTR_GUEST_TOKEN);
+        if (admitted instanceof CabinAccessToken token) {
+            recordGuestUse(token, request, "GUEST", response.getStatus());
+        }
     }
 
     /** Request attribute key holding the managed user's own id, set only after a successful check below. */

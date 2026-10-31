@@ -4,6 +4,8 @@ Audience: installer/operator. Status: source-reviewed planning and prerequisite 
 
 ## Minimum inputs
 
+**Short answer.** Ask only for what the selected capabilities need. It needs: the capabilities and household needs, an authorized target host and operator access, the household's own repository and instance identity, its access model, domain and account ownership, and only the integrations or devices it enables. Camera, GPS or other site details are asked for only when that feature is selected, for example zone-based presence. Never collect SSH keys, tokens, OAuth secrets or vault passwords in chat (use secure setup and vault pointers), and never copy the existing cabin instance's credentials, seed data or deployed paths as defaults.
+
 Ask only for choices required by selected capabilities, retain confirmed non-secret answers and show assumptions for correction.
 
 | Input | When needed | What should not be collected in chat |
@@ -39,19 +41,21 @@ Automatic presence is optional: without it the toolbar badge is a manual setting
 4. **The Home Assistant Companion app on each primary user's phone**, plus Tailscale on that phone, since away from the location's LAN the app reaches Home Assistant only over Tailscale. This dependency is not meant to be permanent (W-36); until it is resolved, a phone that loses either shows as a stale signal.
 5. **The presence package and publisher script** applied to Home Assistant, then verified with the acceptance checks for the phone check and the heartbeat.
 
-Do not create a phone check or publisher for a maintenance-only user. Today that is the only thing that keeps their phone out of presence; the backend does not enforce roles yet (W-38). Tell the household that the siren gate treats a maintenance-only person on site as a guest, so maintenance visitors disarm on arrival (decided 2026-10-13: intended, not a defect). Sources: [REPLICATION, "Who counts as present"](../../REPLICATION.md), [PRESENCE.md](../../../cabin-orchestration-platform/infra/cabin-security/homeassistant/PRESENCE.md), [D24](../../governance/decisions/ontology-decisions.md#d24--location-roles-primary-and-maintenance).
+Do not create a phone check or publisher for a maintenance-only user, and record each person's roles in **Config > Location Roles** (administrator). Since W-38 (2026-10-30) the backend does not count a maintenance-only person's signal and records their arrival as a maintenance visit, but the Home Assistant phone check and the siren gate still follow only what is configured on the host. The per-person Home Assistant presence files come from the [presence generator][inst-13], which accepts only people who are primary in the reviewed seed; an operator applies its output on the host, and a role set in Config alone does not create a phone check. (Corrected 2026-10-31: this paragraph used to say the backend does not enforce roles.) Tell the household that the siren gate treats a maintenance-only person on site as a guest, so maintenance visitors disarm on arrival (decided 2026-10-13: intended, not a defect). Sources: [REPLICATION, "Who counts as present"](../../REPLICATION.md), [PRESENCE.md][inst-7], [D24][inst-8].
 
-Sources: [replication setup/acceptance](../../REPLICATION.md), [host provisioning role](../../../ansible/roles/cabin_host/tasks/main.yml), [base Compose](../../../cabin-orchestration-platform/infra/docker-compose.yml), [M920q overlay](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml), [production stack](../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml), [deployment workflows](../../../.github/workflows).
+Sources: [replication setup/acceptance][pres-1], [host provisioning role][pres-2], [base Compose][pres-3], [M920q overlay][pres-4], [production stack][pres-5], [deployment workflows][pres-6].
 
 ## Verified clean-host limitations
 
+**Short answers.** No: the M920q overlay assumes an existing support stack and an external `cabin_default` network (it disables base services and joins that network), and the production stack also uses host bind mounts and a locally built Blink bridge. A blank host needs an explicit, reviewed arrangement first. No: `bootstrap-ubuntu.sh` installs development packages only, not Docker or Compose and not the deployment, so running it is not a complete platform install. Host provisioning, the DNS, tunnel and OAuth account steps, and application deployment are separate procedures.
+
 | Source observation | Consequence for recreation |
 |---|---|
-| [bootstrap-ubuntu.sh](../../../cabin-orchestration-platform/scripts/bootstrap-ubuntu.sh) installs development packages but does not install Docker/Compose or deploy the platform. | Running it is not a complete platform install. |
-| [cabin_host role](../../../ansible/roles/cabin_host/tasks/main.yml) installs Docker/Compose, updates a checkout and registers a GitHub runner; [Ansible guide](../../../ansible/README.md) says DNS/tunnel/OAuth are external steps. | Host preparation alone does not complete application or account setup. Audit the current runner/platform prerequisites when executing. |
+| [bootstrap-ubuntu.sh][inst-9] installs development packages but does not install Docker/Compose or deploy the platform. | Running it is not a complete platform install. |
+| [cabin_host role][inst-10] installs Docker/Compose, updates a checkout and registers a GitHub runner; [Ansible guide](../../../ansible/README.md) says DNS/tunnel/OAuth are external steps. | Host preparation alone does not complete application or account setup. Audit the current runner/platform prerequisites when executing. |
 | The M920q overlay disables duplicate base services and joins an external `cabin_default` network. | It assumes an existing support stack/network. A blank host needs an explicit reviewed arrangement first. |
-| The [production stack](../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml) uses host bind mounts and a locally built Blink bridge. | A cloned compose file is insufficient unless required host content/build context is supplied or the capability omitted through a supported plan. |
-| [Local Compose override](../../../cabin-orchestration-platform/infra/docker-compose.local.yml) only disables selected Linux-specific services. | It is not a self-contained replacement for the app-service definitions added by the M920q overlay. |
+| The [production stack][inst-11] uses host bind mounts and a locally built Blink bridge. | A cloned compose file is insufficient unless required host content/build context is supplied or the capability omitted through a supported plan. |
+| [Local Compose override][inst-12] only disables selected Linux-specific services. | It is not a self-contained replacement for the app-service definitions added by the M920q overlay. |
 | The Ollama compose comment specifies a separate initial model pull. | Starting an Ollama container does not prove the required model exists. Model installation/digest verification is a setup step. |
 | Existing environment/browser configuration includes instance-specific defaults. | An independent installation needs explicit approved substitutions and a browser check against its own endpoints. |
 
@@ -72,3 +76,21 @@ Verify at minimum:
 - A documented backup restores required state on an isolated replacement target before claiming recovery capability.
 
 Use [existing acceptance tests](../../REPLICATION.md#5-new-instance-acceptance-test), [maintenance checks](maintenance.md) and [corpus evals](../rag/eval-questions.md). Do not introduce bad credentials, fake sensor events or destructive tests into the live cabin to prove a new installation path. At this revision every clean-room acceptance result is **NOT RUN**.
+
+## Link targets
+
+Targets for the reference-style links in the sections above.
+
+[pres-1]: ../../REPLICATION.md
+[pres-2]: ../../../ansible/roles/cabin_host/tasks/main.yml
+[pres-3]: ../../../cabin-orchestration-platform/infra/docker-compose.yml
+[pres-4]: ../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml
+[pres-5]: ../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml
+[pres-6]: ../../../.github/workflows
+[inst-7]: ../../../cabin-orchestration-platform/infra/cabin-security/homeassistant/PRESENCE.md
+[inst-8]: ../../governance/decisions/ontology-decisions.md#d24--location-roles-primary-and-maintenance
+[inst-9]: ../../../cabin-orchestration-platform/scripts/bootstrap-ubuntu.sh
+[inst-10]: ../../../ansible/roles/cabin_host/tasks/main.yml
+[inst-11]: ../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml
+[inst-12]: ../../../cabin-orchestration-platform/infra/docker-compose.local.yml
+[inst-13]: ../../../cabin-orchestration-platform/infra/cabin-security/homeassistant/gen/README.md

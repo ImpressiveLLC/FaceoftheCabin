@@ -1,10 +1,10 @@
 /**
  * ThemeProvider — independently-selectable palette + font presets.
  *
- * Presets: Modern (default), Impressive (matches impressive.llc's live
+ * Presets: Modern (default), Attention (W-110 status palette and cues), Signal (near-black HA-wall-panel look, one teal accent), Impressive (matches impressive.llc's live
  * palette, added 2026-08-21 for cross-site continuity), LCARS, Monolith,
  * Bluefin-mono, Mad Science, Deep Space, 80s Neon, Pac-Man,
- * Asteroid City -- same 10-preset catalog as
+ * Asteroid City -- same 12-preset catalog as
  * family-hub.html's own THEMES object (kept in sync manually as of
  * 2026-08-07; see docs/ontology.yaml's theme_preference entry for the
  * cross-app drift this file and family-hub.html are both prone to --
@@ -45,9 +45,63 @@ export const THEMES = {
       "--font-mono":    "'JetBrains Mono', 'Fira Code', monospace",
       "--radius":       "10px",
       "--radius-sm":    "6px",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#2093e8", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#fbe729", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#f75c3e", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent-hover', '--text', '--success'] },
+  },
+
+  // Signal (2026-10-29, rebuilt the same day from Nate's reference dashboards: the "Signal Room" Home Assistant wall
+  // panel). Blue-black ground, flat square cells with white-at-7% hairlines, ONE neon-green accent that doubles as
+  // "live/online", and readings coloured by meaning (orange heat, cyan water, amber power, red trouble). Outfit carries
+  // titles and the tracked 9px labels (a light weight for the big numerals), IBM Plex Mono carries readings. Fonts are
+  // bundled (public/fonts, OFL), never fetched. Glow only on Normal and neutral elements, never on Watch or Alert (MA-16, W-124). The W-109 cues apply to
+  // this theme only (styles.css, <attention-cues>); the three --attn-* hues came from the W-111 search over this
+  // theme's own surfaces, and the neon display colours are separate from them. Same values and id in family-hub.html
+  // (ThemeCatalogDrift.test.jsx).
+  signal: {
+    id: "signal",
+    label: "Signal",
+    vars: {
+      "--bg":           "#04070f",
+      "--bg-secondary": "#0a0e17",
+      "--bg-tertiary":  "#0f121b",
+      "--surface":      "#0a0e17",
+      "--border":       "#161b26",
+      "--border-focus": "#39ff14",
+      "--text":         "#eef4fb",
+      "--text-muted":   "#7a8497",
+      "--text-dim":     "#6b7487",
+      "--accent":       "#39ff14",
+      "--accent-hover": "#7dff5e",
+      "--success":      "#39ff14",
+      "--warning":      "#ffb90c",
+      "--danger":       "#ff2a36",
+      "--font-display": "'Outfit', system-ui, sans-serif",
+      "--font-ui":      "'Outfit', system-ui, sans-serif",
+      "--font-mono":    "'IBM Plex Mono', 'JetBrains Mono', monospace",
+      "--radius":       "0px",
+      "--radius-sm":    "2px",
+      // Data hues sampled from the reference dashboard (neon green is --accent): heat orange, bed amber (--warning),
+      // chamber cyan, trouble red (--danger). Used for readings and their underline bars.
+      "--signal-heat":  "#ff5b30",
+      "--signal-cool":  "#15ddff",
+      "--signal-amber": "#ffc222",
+      "--signal-power": "#f86800",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#84a21b", "--attn-normal-ink": "#04070f",
+      "--attn-watch": "#fed51b", "--attn-watch-ink": "#04070f",
+      "--attn-alert": "#cf1a05", "--attn-alert-ink": "#ffffff",
+      "--attn-cue-scale": "1",
+    },
+    // Hairline, almost-neutral edges and flat fills: no shadow, one-pixel widths, little hue in the edge.
+    layers: { hues: ['--text-muted', '--text', '--accent'], shadow: 'none', edgeHue: 0.22, tints: [0.04, 0.05, 0.06] },
   },
 
   // Matches impressive.llc's actual live palette (2026-08-21, sampled
@@ -84,6 +138,12 @@ export const THEMES = {
       // Deep Space's tab back-lit glow recipe, in this theme's electric blue.
       "--selected-glow": "0 0 8px #3d3dff, 0 0 24px #3d3dff40",
       "--selected-color": "#3d3dff",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#6091dd", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#fee72b", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#fc5955", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent-hover', '--text-muted', '--text'] },
@@ -123,6 +183,12 @@ export const THEMES = {
       "--font-mono":    "'Share Tech Mono', monospace",
       "--radius":       "18px",
       "--radius-sm":    "4px",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#4da2d5", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#faf775", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#fb574b", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     // Panels orange, cards lavender, tiles light blue, all on black (no fill
@@ -152,6 +218,12 @@ export const THEMES = {
       "--font-mono":    "'IBM Plex Mono', monospace",
       "--radius":       "2px",
       "--radius-sm":    "1px",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#7692b8", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#fee07b", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#eb6660", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--text-muted', '--text', '--success'] },
@@ -179,6 +251,12 @@ export const THEMES = {
       "--font-mono":    "'Roboto Mono', monospace",
       "--radius":       "6px",
       "--radius-sm":    "3px",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#499ca4", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#f5e64e", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#f36152", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent-hover', '--text', '--success'] },
@@ -209,6 +287,12 @@ export const THEMES = {
       "--radius-sm":    "1px",
       "--glow-green":   "0 0 8px #39ff14, 0 0 20px #39ff1440",
       "--glow-purple":  "0 0 8px #bf00ff, 0 0 20px #bf00ff40",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#3ca3c3", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#eefe3b", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#fe439d", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent', '--accent-2', '--warning'] },
@@ -241,6 +325,12 @@ export const THEMES = {
       // Same back-lit glow and HAL red as the active tab, on selected data.
       "--selected-glow": "0 0 8px #ff2d55, 0 0 24px #ff2d5540",
       "--selected-color": "#ff2d55",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#0a95cf", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#f4e131", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#f45172", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     // Cards are a bold dark gray, not amber: no orange or brown edge in Deep Space.
@@ -283,6 +373,12 @@ export const THEMES = {
       "--radius":       "2px",
       "--radius-sm":    "1px",
       "--glow-neon":    "0 0 8px #ff2dd4, 0 0 24px #ff2dd440",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#2f8ff6", "--attn-normal-ink": "#0b0f14",
+      "--attn-watch": "#f7ec2a", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#fd5a4a", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent', '--accent-2', '--warning'], shadow: 'glow', tab: '--warning' },
@@ -314,6 +410,12 @@ export const THEMES = {
       // Deep Space's tab back-lit glow recipe, in this theme's yellow.
       "--selected-glow": "0 0 8px #ffff00, 0 0 24px #ffff0040",
       "--selected-color": "#ffff00",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      "--attn-normal": "#1674ca", "--attn-normal-ink": "#ffffff",
+      "--attn-watch": "#fbb50f", "--attn-watch-ink": "#0b0f14",
+      "--attn-alert": "#f03336", "--attn-alert-ink": "#0b0f14",
+      "--attn-cue-scale": "1",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent', '--success', '--warning'] },
@@ -382,6 +484,13 @@ export const THEMES = {
       "--logo-fill":      "#608c4a",
       "--logo-highlight": "#a1c19b",
       "--logo-shadow":    "rgba(36, 85, 72, 0.34)",
+      // Attention status layer (W-110, matrix: docs/governance/proposals/2026-10-26-w109-attention-presentation-matrix.md).
+      // Separate from --layer-N-* and --danger. Same values in family-hub.html; checked by attentionTokens.js.
+      // Unsupported theme (surfaces force dark status colors): lightness gap is short, so cues draw at 1.5x weight (MA-18).
+      "--attn-normal": "#001e39", "--attn-normal-ink": "#ffffff",
+      "--attn-watch": "#523f17", "--attn-watch-ink": "#ffffff",
+      "--attn-alert": "#420103", "--attn-alert-ink": "#ffffff",
+      "--attn-cue-scale": "1.5",
     },
     // Layer hues, largest object -> smallest (see surfaceLayers.js / docs Visual system).
     layers: { hues: ['--accent', '--success', '#ffffff'], shadow: 'hard', edgeHue: 0, widths: ['3px', '3px', '2px'], tints: [0, 0.4, 0.5] },
@@ -400,8 +509,8 @@ const STORAGE_KEY = "cabin-theme";
 // unit-testable -- see src/ThemeProvider.test.jsx.
 export function resolveInitialThemeId(searchParams, storedThemeId, themes = THEMES) {
   const fromUrl = searchParams.get("theme");
-  if (fromUrl && themes[fromUrl]) return fromUrl;
-  return (storedThemeId && themes[storedThemeId]) ? storedThemeId : "modern";
+  if (fromUrl && Object.hasOwn(themes, fromUrl)) return fromUrl;
+  return (storedThemeId && Object.hasOwn(themes, storedThemeId)) ? storedThemeId : "modern";
 }
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -430,7 +539,7 @@ export function ThemeProvider({ children }) {
     resolveInitialThemeId(new URLSearchParams(window.location.search), localStorage.getItem(STORAGE_KEY))
   );
 
-  const theme = THEMES[themeId] || THEMES.modern;
+  const theme = Object.hasOwn(THEMES, themeId) ? THEMES[themeId] : THEMES.modern;
   // Custom properties the previous theme stamped on <html>. A theme only lists
   // the variables it needs (Deep Space's --glow-hal, --selected-glow ...), so
   // without this a value set by one theme stayed on the page after switching to
@@ -490,7 +599,7 @@ export function ThemeProvider({ children }) {
   }, [themeId, theme]);
 
   const setTheme = (id) => {
-    if (THEMES[id]) setThemeId(id);
+    if (Object.hasOwn(THEMES, id)) setThemeId(id);
   };
 
   return (

@@ -1,0 +1,37 @@
+root_id,persisted_row,type,site,rows_in_group,enabled_rows,lifecycle,telemetry_first,telemetry_last,telemetry_rows
+ha-cabin-binary-sensor-starlink-connectivity,NO (dangling parent),,cabin,21,6,,2026-08-25,2026-10-27,669774
+ha-cabin-binary-sensor-living-room-kidde-co-temp-and-humidity-cabin-upstairs-co-alarm,yes,CO_ALARM,cabin,20,10,enabled; lifecycle=ASSIGNED,2026-08-24,2026-10-26,97479
+z2m-heater_mech_room,yes,POWER_METER,cabin,14,4,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,18641
+z2m-smart_switch_breaker_box,yes,POWER_METER,cabin,14,13,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,15482
+ha-cabin-sensor-loonie-mc-frigerton-top-zone,NO (dangling parent),,cabin,8,1,,2026-08-24,2026-10-26,31347
+z2m-temp_kitchen,yes,TEMPERATURE_SENSOR,cabin,8,2,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,7010
+z2m-door_front_contact,yes,CONTACT_SENSOR,cabin,7,3,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,2144
+z2m-leak_alarm_dishwasher,yes,WATER_LEAK_SENSOR,cabin,7,5,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-27,111270
+z2m-leak_alarm_fridge,yes,WATER_LEAK_SENSOR,cabin,7,3,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,10124
+ha-cabin-sensor-mech-room-temp-and-humidity-temperature,yes,TEMPERATURE_SENSOR,cabin,7,3,enabled; lifecycle=ASSIGNED,2026-08-25,2026-10-27,2033
+z2m-door_second_contact,yes,CONTACT_SENSOR,cabin,6,2,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,2149
+z2m-motion_entry,yes,MOTION_SENSOR,cabin,6,4,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,13265
+z2m-0x..f4e8ae,yes,TEMPERATURE_SENSOR,cabin,6,5,enabled; lifecycle=ASSIGNED,2026-10-18,2026-10-26,716
+z2m-0x..84ffff,yes,HOME_ASSISTANT_ENTITY,cabin,6,6,enabled; lifecycle=ASSIGNED,2026-10-21,2026-10-27,3206
+ha-cabin-switch-bathroom-leak-detect-alarm,NO (dangling parent),,cabin,5,3,,2026-09-05,2026-10-26,71
+z2m-temp_outside_lowest,yes,TEMPERATURE_SENSOR,cabin,5,4,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,3801
+ha-cabin-sensor-sun-next-rising,NO (dangling parent),,cabin,5,2,,2026-08-25,2026-10-26,400
+z2m-leak_mech_room,yes,WATER_LEAK_SENSOR,cabin,4,3,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,243
+z2m-main_water_valve,yes,HOME_ASSISTANT_ENTITY,cabin,3,1,enabled; lifecycle=ASSIGNED,2026-08-10,2026-10-26,72
+ha-cabin-binary-sensor-zigbee2mqtt-bridge-connection-state,NO (dangling parent),,cabin,3,1,,2026-09-11,2026-10-23,19
+ha-cabin-sensor-backup-backup-manager-state,NO (dangling parent),,cabin,3,1,,2026-09-07,2026-10-26,16
+ha-cabin-binary-sensor-c4000lg-router-wan-status,NO (dangling parent),,cabin,3,0,,2026-09-23,2026-09-23,8
+ha-cabin-sensor-nates-s23-battery-level,yes,HOME_ASSISTANT_ENTITY,cabin,3,0,disabled; lifecycle=CANDIDATE,2026-08-24,2026-10-26,1257
+driveway,yes,CAMERA,cabin,1,1,enabled; lifecycle=ASSIGNED,,,0
+ha-cabin-sensor-kidde-air-quality-alarm-temperature,yes,TEMPERATURE_SENSOR,cabin,1,0,disabled; lifecycle=ASSIGNED,2026-09-23,2026-09-23,2
+home-cam-driveway,yes,CAMERA,home,1,1,enabled; lifecycle=ASSIGNED,,,0
+home_aldrich_front,yes,CAMERA,home,1,1,enabled; lifecycle=ASSIGNED,,,0
+netscan-brother_hl_l2480dw,yes,HOME_ASSISTANT_ENTITY,home,1,1,enabled; lifecycle=ASSIGNED,,,0
+netscan-lg_webos_tv_oled42c5pua,yes,HOME_ASSISTANT_ENTITY,home,1,1,enabled; lifecycle=ASSIGNED,,,0
+netscan-myrouter,yes,HOME_ASSISTANT_ENTITY,home,1,1,enabled; lifecycle=ASSIGNED,,,0
+netscan-oled42c5pua,yes,HOME_ASSISTANT_ENTITY,home,1,1,enabled; lifecycle=ASSIGNED,,,0
+netscan-retropie,yes,HOME_ASSISTANT_ENTITY,home,1,1,enabled; lifecycle=ASSIGNED,,,0
+netscan-slzb_mr5u,yes,HOME_ASSISTANT_ENTITY,home,1,1,enabled; lifecycle=ASSIGNED,,,0
+z2m-home-0x..e966f4,yes,TEMPERATURE_SENSOR,home,1,1,enabled; lifecycle=ASSIGNED,2026-10-16,2026-10-27,495
+z2m-leak_alarm_bathroom,yes,WATER_LEAK_SENSOR,cabin,1,1,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-26,2218
+z2m-temp_mech_room,yes,TEMPERATURE_SENSOR,cabin,1,1,enabled; lifecycle=ASSIGNED,2026-08-06,2026-10-27,4215

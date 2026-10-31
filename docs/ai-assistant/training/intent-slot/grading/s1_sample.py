@@ -13,7 +13,7 @@ from pathlib import Path
 
 HOLD_OUT_SOURCE = "ha"
 DEFAULT_SEED = "s1-2026-10-19"
-DEFAULT_TARGET = 300
+DEFAULT_TARGET = 200
 MIN_PER_CELL = 3
 NEAR_DUPLICATE = 0.75
 
@@ -220,6 +220,8 @@ def build(rows, seed=DEFAULT_SEED, target=DEFAULT_TARGET):
         "sample_by_intent": dict(sorted(Counter(r["target"]["intent"] for r in sample).items())),
         "sample_by_room": dict(sorted(Counter(room_of(r["text"]) for r in sample).items())),
         "sample_with_label_flag": sum(1 for r in sample if label_flags(r)),
+        "suspect_source_label_ids": [r["id"] for r in sample if label_flags(r)],
+        "spanning_family_ids": sorted(cross),
         "sample_ids": sample_ids,
         "sample_sha256": sha256_of(sample_ids),
         "families_sha256": sha256_of(sorted(f"{fam}:{','.join(sorted(ids))}" for fam, ids in family_map.items())),
@@ -242,8 +244,10 @@ def main():
     manifest["candidate_sha256"] = hashlib.sha256(args.candidates.read_bytes()).hexdigest()
     args.private_output.mkdir(parents=True, exist_ok=True)
     args.committed_output.mkdir(parents=True, exist_ok=True)
+    suspect = set(manifest["suspect_source_label_ids"])
     (args.private_output / "sample.jsonl").write_text(
-        "".join(json.dumps(r, sort_keys=True) + "\n" for r in sample), encoding="utf-8")
+        "".join(json.dumps(dict(r, suspect_source_label=r["id"] in suspect), sort_keys=True) + chr(10) for r in sample),
+        encoding="utf-8")
     (args.committed_output / "s1-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (args.committed_output / "families.json").write_text(json.dumps(family_map, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     json.dump({k: manifest[k] for k in ("input_rows", "pool_rows", "held_out_rows", "pool_family_count", "sample_count",

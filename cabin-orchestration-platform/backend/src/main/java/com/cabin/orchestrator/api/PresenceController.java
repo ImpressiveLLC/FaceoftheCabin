@@ -58,6 +58,8 @@ public class PresenceController {
         body.put("signalAgeSeconds", freshness.signalAgeSeconds());
         body.put("stale", freshness.stale());
         body.put("staleAfterHours", freshness.staleAfterHours());
+        // W-38: counted signals from people not yet in the tracked-person registry (a count only; names are admin-only).
+        body.put("unregisteredCounted", signalRegistry.unregisteredCounted().size());
         body.put("signals", signalRegistry.all().stream()
             .map(s -> Map.of(
                 "location", s.location(),

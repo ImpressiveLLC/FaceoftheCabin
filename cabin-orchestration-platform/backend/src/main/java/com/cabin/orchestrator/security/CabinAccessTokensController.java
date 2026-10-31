@@ -1,9 +1,11 @@
 package com.cabin.orchestrator.security;
 
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -25,13 +27,29 @@ public class CabinAccessTokensController {
         this.tokens = tokens;
     }
 
+    /** A link plus how it has been used. The token fields stay flat so existing readers of this list are unaffected. */
+    public record AccessLinkView(@JsonUnwrapped CabinAccessToken token, Instant firstUsedAt, Instant lastUsedAt, long useCount) { }
+
     @GetMapping
-    public List<CabinAccessToken> list() {
-        return tokens.list();
+    public List<AccessLinkView> list(HttpServletRequest request) {
+        AdministratorOnly.require(request);
+        Map<String, AccessUsage> usage = tokens.usage();
+        return tokens.list().stream().map(t -> {
+            AccessUsage u = usage.getOrDefault(t.id(), AccessUsage.NONE);
+            return new AccessLinkView(t, u.firstUsedAt(), u.lastUsedAt(), u.useCount());
+        }).toList();
+    }
+
+    /** Who opened a link and what they looked at, newest first. Admin only (the whole prefix is gated and denied to demo links). */
+    @GetMapping("/{id}/activity")
+    public List<AccessEvent> activity(@PathVariable String id, @RequestParam(defaultValue = "30") int days, HttpServletRequest request) {
+        AdministratorOnly.require(request);
+        return tokens.activity(id, days);
     }
 
     @PostMapping
     public CabinAccessToken create(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+        AdministratorOnly.require(request);
         String label = (String) body.get("label");
         if (label == null || label.isBlank()) throw new IllegalArgumentException("label is required");
         @SuppressWarnings("unchecked")
@@ -44,7 +62,8 @@ public class CabinAccessTokensController {
     }
 
     @DeleteMapping("/{id}")
-    public void revoke(@PathVariable String id) {
+    public void revoke(@PathVariable String id, HttpServletRequest request) {
+        AdministratorOnly.require(request);
         tokens.revoke(id);
     }
 }

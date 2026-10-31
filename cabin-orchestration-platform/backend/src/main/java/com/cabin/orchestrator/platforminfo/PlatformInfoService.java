@@ -66,21 +66,25 @@ public class PlatformInfoService {
     }
 
     public Map<String, Object> get() {
+        // One probe per live key for the whole response: versions() and specs() used to probe HA, Zigbee2MQTT and Ollama
+        // twice each, so a wedged Ollama could hold this page for twice its read timeout (W-127 item 6).
+        Map<String, Optional<String>> live = new LinkedHashMap<>();
+        for (String key : PlatformSpecsCatalog.LIVE_KEYS) live.put(key, probe(key));
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("versions", versions());
-        out.put("specs", specs());
+        out.put("versions", versions(live));
+        out.put("specs", specs(live));
         out.put("hardware", HARDWARE_CATALOG);
         out.put("aiDisclosure", aiDisclosure());
         return out;
     }
 
-    private Map<String, Object> versions() {
+    private Map<String, Object> versions(Map<String, Optional<String>> live) {
         Map<String, Object> v = new LinkedHashMap<>();
         BuildProperties props = buildProperties.getIfAvailable();
         v.put("cabinBackend", props != null ? props.getVersion() : "unknown (build-info not present -- run via mvn package, not test-compile)");
-        v.put("homeAssistant", haAdapter.fetchVersion("cabin").orElse("unavailable (HA unreachable or token not configured)"));
-        v.put("zigbee2mqtt", z2mAdapter.getBridgeVersion().orElse("unavailable (no bridge/info received yet)"));
-        v.put("ollama", ollamaClient.fetchVersion().orElse("unavailable (Ollama unreachable)"));
+        v.put("homeAssistant", live.getOrDefault("home-assistant", Optional.empty()).orElse("unavailable (HA unreachable or token not configured)"));
+        v.put("zigbee2mqtt", live.getOrDefault("zigbee2mqtt", Optional.empty()).orElse("unavailable (no bridge/info received yet)"));
+        v.put("ollama", live.getOrDefault("ollama", Optional.empty()).orElse("unavailable (Ollama unreachable)"));
         v.put("mqttBroker", "not exposed by Mosquitto over MQTT -- no version topic to read");
         return v;
     }
@@ -90,9 +94,7 @@ public class PlatformInfoService {
      * the backend can probe (null when it can't, or when the probe finds nothing) and a
      * count of how each entry is pinned so what may need maintenance stands out.
      */
-    private Map<String, Object> specs() {
-        Map<String, Optional<String>> live = new LinkedHashMap<>();
-        for (String key : PlatformSpecsCatalog.LIVE_KEYS) live.put(key, probe(key));
+    private Map<String, Object> specs(Map<String, Optional<String>> live) {
 
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (String t : List.of("pinned", "series", "floating", "unmanaged")) counts.put(t, 0);

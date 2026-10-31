@@ -40,6 +40,8 @@ public final class DemoAccessPolicy {
             "/api/dashboard/config", "/api/locations", "/api/system/health", "/api/system/platform-info",
             "/api/ontology/entities", "/api/context/cabin-context.jsonld",
             "/api/devices/meta/types", "/api/devices/meta/lifecycle", "/api/devices/display-config",
+            // Public airport weather for the chart's outdoor baseline: no device or household detail.
+            "/api/weather/outdoor-history",
             "/api/rules/vocabulary/triggers", "/api/rules/vocabulary/actions");
 
         put(RouteClass.ALLOW_REDACT,
@@ -56,7 +58,7 @@ public final class DemoAccessPolicy {
             "/api/kb/**", "/api/helpdesk/**", "/api/assistant/**", "/api/opportunities/**", "/api/opportunities",
             "/api/cross-domain/**", "/api/platform-import/**", "/api/tech-id/**",
             "/api/managed-users/**", "/api/access-tokens/**", "/api/access-tokens",
-            "/api/auth/**", "/api/webhooks/**",
+            "/api/auth/**", "/api/webhooks/**", "/api/roof-spec/**",
             // W-11: disk capacity is operator detail, not part of the demo. The alerts it raises are events.
             "/api/system/storage", "/api/system/storage/trim",
             "/api/profiles/**", "/api/profiles", "/api/chores/**", "/api/chores",

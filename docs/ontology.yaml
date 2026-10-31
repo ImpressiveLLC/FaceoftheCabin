@@ -6407,7 +6407,7 @@ elements:
     data_class: raw
     data_type: xsd:string
     constraint:
-      enum: "deepspace | modern | lcars | monolith | bluefin | madscience | neon80s | pacman | asteroidcity"
+      enum: "deepspace | modern | impressive | lcars | monolith | bluefin | madscience | neon80s | pacman | asteroidcity | signal"
     ui_display_name: "Theme"
     source: localStorage["cabin-theme"]
     rendering:
@@ -6502,6 +6502,17 @@ elements:
       leave stale values for variables the new preset does not define (seen:
       a stray orange control border after cycling through Asteroid City; a
       reload clears it).
+      ADDED 2026-10-29 (record catch-up, no behaviour change): the catalog is 11
+      presets and the enum above now lists all of them. impressive was added
+      2026-08-21 (04e20a9) and this enum never caught up; signal was added
+      2026-10-29 (a2e5874) and rebuilt the same day from the reference
+      dashboards (c489d5a), which also removed the Attention theme that c31bced
+      (W-109, #317) had added the same day. The "9 presets" and "10 presets"
+      counts above are dated history and are left as written; this entry's enum
+      was two behind until this edit.
+      ThemeCatalogDrift.test.jsx compares cabin-ui's THEMES with family-hub.html's,
+      not with this enum, so nothing fails when this entry lags: update the enum
+      whenever a preset is added or removed.
 
 
   - id: family_hub_access_log

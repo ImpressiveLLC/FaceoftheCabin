@@ -1,0 +1,21 @@
+  - id: cabin_presence_publish_{{PERSON}}_last_seen
+    alias: {{LASTSEEN_ALIAS}}
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+    conditions:
+      - condition: template
+        value_template: >-
+          {% set phone = states.{{BATTERY}} %}
+          {% set note = states.automation.cabin_presence_note_home_assistant_start %}
+          {{ phone is not none
+             and note is not none
+             and phone.state not in ['unavailable', 'unknown']
+             and (note.attributes.last_triggered is none
+                  or phone.last_reported > note.attributes.last_triggered) }}
+    actions:
+      - action: shell_command.cabin_security_publish
+        data:
+          topic: {{LOCATION}}/presence/{{PERSON}}/last_seen
+          payload: "{{ states.{{BATTERY}}.last_reported.strftime('%Y-%m-%dT%H:%M:%SZ') }}"

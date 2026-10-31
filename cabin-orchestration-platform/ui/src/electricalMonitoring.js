@@ -52,12 +52,15 @@ export function electricalMonitoringDevices(devices) {
     unresolved.forEach(d => hidden.add(d.deviceId));
     attrs.unresolvedServiceCount = unresolved.length;
     const switches = children.filter(d => d.attributes?.entityId?.startsWith('switch.'));
-    const states = switches.map(d => d.attributes.state);
+    const childStates = switches.map(d => d.attributes.state);
     // The device's own reported relay state, its alias's, then the mapped switch entities'.
     // Never inferred from watts or from ONLINE: ON at 0 W is a real state (nothing drawing).
     const ownState = ['ON','OFF'].includes(attrs.state) && active(parent) ? attrs.state
       : aliases.map(d => d.attributes?.state).find(v => ['ON','OFF'].includes(v));
-    if (!states.length && ownState) states.push(ownState);
+    // The device's own report wins. Switch entities are only a fallback: HA also lists
+    // configuration switches (metering-only mode) under the same parent, and one of those
+    // saying OFF must not cancel the relay's own ON (breaker box, 2026-10-31).
+    const states = ownState ? [ownState] : childStates;
     if (states.length && states.every(s => s === states[0] && ['ON','OFF'].includes(s))) {
       attrs.mappedSwitchState = states[0];
     }
@@ -79,6 +82,18 @@ export function electricalValue(attributes = {}) {
   if (attributes.mappedSwitchState) metrics.push(attributes.mappedSwitchState);
   else if (attributes.monitoringGroup) metrics.push('State unknown');
   return metrics.join(' · ') || 'Measurement unavailable';
+}
+
+// A card value like "55.8°F · 49.8%" or "Power unavailable · Energy unavailable · State unknown" is shown in two sizes:
+// readings (anything with a digit) stay large, and the wording around them (unavailable, unknown, ON, OFF) drops to the
+// card's smallest text size, so a sentence never outweighs a number. A single bare word (ONLINE, UNKNOWN, Dry) and any value with no wording part stay one plain, large string.
+export function valueSegments(value) {
+  const parts = typeof value === 'string' ? value.split(' · ') : [value];
+  const compound = parts.length > 1;
+  return parts.map(part => {
+    const text = String(part);
+    return { text, note: (/\s/.test(text.trim()) && /unavailable|unknown/i.test(text)) || (compound && !/\d/.test(text)) };
+  });
 }
 
 // Follow only known same-location parent links. Cycles never send the user to an arbitrary device.

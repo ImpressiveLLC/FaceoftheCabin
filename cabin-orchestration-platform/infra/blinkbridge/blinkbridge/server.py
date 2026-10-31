@@ -38,14 +38,29 @@ def make_app(sup) -> web.Application:
         return web.json_response(runner.status())
 
     async def healthz(request: web.Request) -> web.Response:
-        ok, body = sup.hb.status()
+        ok, body = sup.health()
         body["ready"] = sup.ready
         body["cameras"] = {n: r.state.value for n, r in sup.runners.items()}
         return web.json_response(body, status=200 if ok else 503)
+
+    async def debug_cameras(request: web.Request) -> web.Response:
+        # What Blink currently reports per camera, secrets and ids redacted. For finding the real motion signal.
+        redact = ("serial", "token", "password", "mac", "ssid", "email", "account")
+        out = {}
+        for name in sup.runners:
+            try:
+                raw = sup.client.raw_camera(name)
+            except Exception as exc:
+                out[name] = {"error": repr(exc)}
+                continue
+            out[name] = {k: ("<redacted>" if (k == "id" or k.endswith("_id") or any(r in k.lower() for r in redact)) else (str(v)[:120] if not isinstance(v, (bool, int, float, type(None))) else v))
+                         for k, v in sorted(raw.items())}
+        return web.json_response(out)
 
     app = web.Application()
     app.router.add_post("/liveview/{camera}/start", start)
     app.router.add_post("/liveview/{camera}/stop", stop)
     app.router.add_get("/liveview/{camera}/status", status)
     app.router.add_get("/healthz", healthz)
+    app.router.add_get("/debug/cameras", debug_cameras)
     return app

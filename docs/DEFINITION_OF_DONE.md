@@ -573,7 +573,8 @@ accumulate.*
   artifact's new reconciliation pin, `wsjf-backlog.md`'s DEP09) — but
   whoever holds product priority (Nate/Cowork) should read both before
   assuming either one is the complete backlog.
-- **`cabin-orchestration-platform/locations/home/docker-compose.yml` —
+- **`cabin-orchestration-platform/locations/home/docker-compose.yml` (the
+  whole directory was removed in W-59, 2026-10-30) —
   correction 2026-09-13: already flagged, only the sweep remains.**
   Checked the live file directly: a deprecation header was already
   added 2026-09-11 (predates this item's own "needs a banner" framing

@@ -20,10 +20,18 @@ import java.util.Set;
  * too, or the series appears to stop the day the link was made (found 2026-10-24 on the cabin's outside
  * temperature sensor: "Temp Outside | Lower Level Temperature" lost every reading after 2026-10-20).
  *
- * Only {@code z2m-*} parents and {@code ha-*} {@code sensor.*} children at the same location are folded
- * together; nothing else changes meaning.
+ * Found again 2026-10-26: the Mech Room and Kidde humidity columns went blank because their parents are
+ * {@code ha-*} entities (a Home Assistant device whose sensor entities link to one entity as parent), and the
+ * fold only started from a {@code z2m-*} parent. The readings were never lost: they sit under the linked
+ * children. Any parent with linked sensor entities now folds them, not only a native Zigbee one.
+ *
+ * Only {@code ha-*} {@code sensor.*} children at the same location as their parent are folded in; nothing
+ * else changes meaning.
  */
 public final class ServiceHistory {
+
+    /** Attribute name on the current device that lists the ids its readings were logged under before. */
+    public static final String FORMER_DEVICE_IDS = "formerDeviceIds";
 
     private ServiceHistory() {}
 
@@ -32,11 +40,33 @@ public final class ServiceHistory {
         List<String> ids = new ArrayList<>();
         ids.add(deviceId);
         DeviceStatus parent = registry.get(deviceId);
-        if (parent == null || !isNativeZigbee(deviceId)) return ids;
+        if (parent == null) return ids;
         for (DeviceStatus child : registry.all()) {
             if (isSensorServiceOf(child, deviceId, parent.location())) ids.add(child.deviceId());
         }
+        for (String former : formerIds(parent, registry)) {
+            if (!ids.contains(former)) ids.add(former);
+        }
         return ids;
+    }
+
+    /**
+     * W-101b ruling 5 (D3): ids this device was logged under before, kept on the current parent as the
+     * {@code formerDeviceIds} attribute. History only: it is never a parent id, never validated as one and
+     * never routes a command or a reading. A former id that is also a live row's id is ignored here, so a
+     * second device's own history can never be folded in by a stale entry.
+     */
+    public static List<String> formerIds(DeviceStatus device, DeviceRegistry registry) {
+        Object raw = device.attributes().get(FORMER_DEVICE_IDS);
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object o : list) {
+            if (!(o instanceof String s) || s.isBlank()) continue;
+            String id = s.trim();
+            if (id.equals(device.deviceId()) || registry.get(id) != null || out.contains(id)) continue;
+            out.add(id);
+        }
+        return out;
     }
 
     /**
@@ -57,13 +87,19 @@ public final class ServiceHistory {
             if (parentDescriptor.isEmpty() || !parentDescriptor.get().enabled()) continue;
             merged.computeIfAbsent(parentId, k -> new LinkedHashSet<>()).addAll(merged.remove(id));
         }
+        // Former ids (D3). The owner need not have logged anything itself, and a disabled owner leaves the
+        // former entry in the picker, as for the entity fold above.
+        for (DeviceStatus owner : registry.all()) {
+            Optional<DeviceDescriptor> descriptor = registry.descriptor(owner.deviceId());
+            if (descriptor.isEmpty() || !descriptor.get().enabled()) continue;
+            for (String former : formerIds(owner, registry)) {
+                Set<String> fields = merged.remove(former);
+                if (fields != null) merged.computeIfAbsent(owner.deviceId(), k -> new LinkedHashSet<>()).addAll(fields);
+            }
+        }
         Map<String, List<String>> result = new LinkedHashMap<>();
         merged.forEach((id, fields) -> result.put(id, new ArrayList<>(fields)));
         return result;
-    }
-
-    private static boolean isNativeZigbee(String deviceId) {
-        return deviceId.startsWith("z2m-");
     }
 
     private static boolean isSensorServiceOf(DeviceStatus child, String parentId, String parentLocation) {

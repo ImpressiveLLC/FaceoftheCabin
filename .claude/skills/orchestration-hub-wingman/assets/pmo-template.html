@@ -1,0 +1,91 @@
+<title>Cabin PMO Status</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: summary strip, then who-needs-what, then one filterable backlog table. */
+:root{--bg:#f6f7f5;--surface:#ffffff;--fg:#1b2420;--muted:#5d6a63;--line:#dde2de;--accent:#1f6f5c;--good:#2f7d4f;--warn:#b26b00;--crit:#b3382c;--info:#2d5f9a;--chip:#eaeeea;--display:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;--body:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121815;--surface:#1a221e;--fg:#e6ece8;--muted:#9aa8a0;--line:#2b3631;--accent:#5fc3a6;--good:#6fcf92;--warn:#e0a24a;--crit:#f08073;--info:#86b3e6;--chip:#243029;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121815;--surface:#1a221e;--fg:#e6ece8;--muted:#9aa8a0;--line:#2b3631;--accent:#5fc3a6;--good:#6fcf92;--warn:#e0a24a;--crit:#f08073;--info:#86b3e6;--chip:#243029;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1100px;margin:0 auto;display:grid;gap:22px}
+h1{font:600 26px/1.1 var(--display);margin:0;letter-spacing:.01em;text-wrap:balance}
+h2{font:600 13px/1 var(--display);text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 10px}
+.sub{color:var(--muted);font-size:13px;margin-top:6px;line-height:1.45}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px;min-width:0}
+.tile b{display:block;font:600 28px/1 var(--display);font-variant-numeric:tabular-nums}
+.tile span{font-size:12px;color:var(--muted)}
+.tile.a b{color:var(--info)}.tile.b b{color:var(--crit)}.tile.d b{color:var(--good)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px 16px;min-width:0}
+ul{margin:0;padding-left:18px;display:grid;gap:7px;font-size:13.5px;line-height:1.4}
+li b{font-weight:600}
+.gate{display:grid;gap:9px}
+.g{display:grid;gap:4px;font-size:13px}
+.g .row{display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
+.bar{height:8px;background:var(--chip);border-radius:4px;position:relative;overflow:hidden}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--info);display:block}
+.bar i.ok{background:var(--good)}
+.mark{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--fg)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font:600 11px/1 var(--display);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.35}
+td.id{font-family:var(--mono);font-size:12px;white-space:nowrap}
+td.n{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+td.st{color:var(--muted);font-size:12px;max-width:340px}
+.pill{display:inline-block;font:600 11px/1 var(--display);letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.p-Active{color:var(--info)}.p-Blocked{color:var(--crit)}.p-Backlog{color:var(--warn)}.p-Done{color:var(--good)}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.chip{font:600 12px var(--body);background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:14px;padding:6px 11px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.chip:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=search]{flex:1;min-width:160px;font:13px var(--body);padding:7px 10px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}
+.scroll{overflow-x:auto;max-height:640px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.scroll table{min-width:760px}
+.foot{font-size:12px;color:var(--muted);line-height:1.5}
+a{color:var(--accent)}
+.prs{display:grid;gap:6px;font-size:13px}
+.prs div{display:flex;gap:8px;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:6px}
+.prs div:last-child{border:0}
+.prs .m{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<div class="wrap">
+<header>
+<h1>Cabin PMO Status</h1>
+<div class="sub">__SUB__</div>
+</header>
+<section><div class="tiles" id="tiles"></div></section>
+<section class="cols">
+<div class="panel"><h2>Needs Nate</h2><ul>__NEEDS__</ul></div>
+<div class="panel"><h2>Open pull requests</h2><div class="prs">__PRS__</div>__PRFOOT__</div>
+__MEASURE__
+</section>
+<section>
+<h2>Backlog</h2>
+<div class="tools" id="tools"></div>
+<div class="scroll"><table><thead><tr><th>ID</th><th>Work</th><th>State</th><th style="text-align:right">WSJF</th><th style="text-align:right">Size</th><th>Owner</th><th>Status and blocker</th></tr></thead><tbody id="rows"></tbody></table></div>
+<p class="foot">State is read from the first word of each row's status text, so rows that use words outside the status vocabulary (done, built, green-lit) are mapped by best fit. Blank WSJF means unscored.</p>
+</section>
+</div>
+<script>
+const ROWS=__DATA__;
+const cats=["Active","Blocked","Backlog","Done"];
+let sel=new Set(["Active","Blocked","Backlog"]),q="";
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function tiles(){const n=c=>ROWS.filter(r=>r.cat===c).length;
+document.getElementById("tiles").innerHTML=
+`<div class="tile"><b>${ROWS.length}</b><span>tracked items</span></div>
+<div class="tile a"><b>${n("Active")}</b><span>active or ready</span></div>
+<div class="tile b"><b>${n("Blocked")}</b><span>gated or held</span></div>
+<div class="tile"><b>${n("Backlog")}</b><span>proposed, in backlog</span></div>
+<div class="tile d"><b>${n("Done")}</b><span>merged or done</span></div>`}
+function tools(){const t=document.getElementById("tools");t.innerHTML="";
+cats.forEach(c=>{const b=document.createElement("button");b.className="chip";b.type="button";b.textContent=c;b.setAttribute("aria-pressed",sel.has(c));b.onclick=()=>{sel.has(c)?sel.delete(c):sel.add(c);tools();draw()};t.appendChild(b)});
+const i=document.createElement("input");i.type="search";i.id="q";i.placeholder="Filter by id, word or owner";i.value=q;i.oninput=e=>{q=e.target.value.toLowerCase();draw()};t.appendChild(i);if(q)i.focus()}
+function draw(){const rank={Active:0,Blocked:1,Backlog:2,Done:3};
+const list=ROWS.filter(r=>sel.has(r.cat)&&(!q||(r.id+" "+r.title+" "+r.owner+" "+r.status).toLowerCase().includes(q)))
+.sort((a,b)=>rank[a.cat]-rank[b.cat]||(b.wsjf||0)-(a.wsjf||0));
+document.getElementById("rows").innerHTML=list.map(r=>`<tr><td class="id">${esc(r.id)}</td><td>${esc(r.title)}</td><td><span class="pill p-${r.cat}">${r.cat}</span></td><td class="n">${r.wsjf==null?"":r.wsjf.toFixed(1)}</td><td class="n">${esc(r.size.replace("\u2014",""))}</td><td>${esc(r.owner)}</td><td class="st">${esc(r.status)}${r.blocked&&r.blocked!=="\u2014"&&r.blocked!=="none"?"<br><i>Blocked by: "+esc(r.blocked)+"</i>":""}</td></tr>`).join("")||'<tr><td colspan="7">No items match.</td></tr>'}
+tiles();tools();draw();
+</script>

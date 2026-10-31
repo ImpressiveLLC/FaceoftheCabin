@@ -23,6 +23,7 @@ class CabinAccessTokensControllerTest {
     private MockHttpServletRequest signedInAs(String email) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setAttribute(GoogleAuthInterceptor.REQUEST_ATTR_EMAIL, email);
+        request.setAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE, HouseholdRole.ADMINISTRATOR);
         return request;
     }
 
@@ -53,12 +54,12 @@ class CabinAccessTokensControllerTest {
     @Test
     void listReturnsEveryIssuedLinkIncludingRevokedOnes() {
         CabinAccessToken t = controller.create(Map.of("label", "Test", "scope", List.of("dashboard")), signedInAs("nate@example.com"));
-        controller.revoke(t.id());
+        controller.revoke(t.id(), signedInAs("nate@example.com"));
 
-        List<CabinAccessToken> all = controller.list();
+        List<CabinAccessTokensController.AccessLinkView> all = controller.list(signedInAs("nate@example.com"));
 
         assertThat(all).hasSize(1);
-        assertThat(all.get(0).revokedAt()).isNotNull();
+        assertThat(all.get(0).token().revokedAt()).isNotNull();
     }
 
     private static final class InMemoryStore implements CabinAccessTokenStore {

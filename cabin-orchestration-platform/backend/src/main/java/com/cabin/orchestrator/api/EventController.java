@@ -64,9 +64,9 @@ public class EventController {
      * adding one there would touch all of them for one narrow need), so
      * this filters post-fetch by joining each event's sourceDeviceId
      * against DeviceRegistry.byLocation() instead. Exists specifically so
-     * a location whose own backend isn't deployed yet (see
-     * cabin-orchestration-platform/locations/home/, still an undeployed
-     * scaffold) can still show its devices' events by querying the
+     * a location whose own backend isn't deployed (Home is a
+     * collector for the cabin backend, D23; the old locations/home/ overlay
+     * was retired in W-59) can still show its devices' events by querying the
      * backend that's actually processing them, filtered down to just that
      * location — see App.jsx's CameraEventsPanel for the caller.
      */

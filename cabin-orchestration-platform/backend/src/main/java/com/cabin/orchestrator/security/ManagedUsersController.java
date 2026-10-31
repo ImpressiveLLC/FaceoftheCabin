@@ -9,7 +9,8 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 
 /**
- * Admin CRUD (create/list/deactivate/reactivate/invite) plus the one
+ * Admin CRUD (create/list/deactivate/reactivate/invite), each route refusing anyone who is not an ADMINISTRATOR
+ * (AdministratorOnly), plus the one
  * genuinely public endpoint in this class -- POST .../magic/{token}/consume,
  * which a managed user's browser calls right after clicking their emailed
  * link. That one can never require a Google token (a managed user has no
@@ -31,12 +32,14 @@ public class ManagedUsersController {
     }
 
     @GetMapping
-    public List<ManagedUser> list() {
+    public List<ManagedUser> list(HttpServletRequest request) {
+        AdministratorOnly.require(request);
         return service.list();
     }
 
     @PostMapping
     public ManagedUser create(@RequestBody Map<String, String> body, HttpServletRequest request) {
+        AdministratorOnly.require(request);
         String email = body.get("email");
         String name = body.get("name");
         String roleRaw = body.get("role");
@@ -53,12 +56,14 @@ public class ManagedUsersController {
     }
 
     @PostMapping("/{id}/deactivate")
-    public Map<String, Object> deactivate(@PathVariable String id) {
+    public Map<String, Object> deactivate(@PathVariable String id, HttpServletRequest request) {
+        AdministratorOnly.require(request);
         return setActive(id, false);
     }
 
     @PostMapping("/{id}/reactivate")
-    public Map<String, Object> reactivate(@PathVariable String id) {
+    public Map<String, Object> reactivate(@PathVariable String id, HttpServletRequest request) {
+        AdministratorOnly.require(request);
         return setActive(id, true);
     }
 
@@ -72,7 +77,8 @@ public class ManagedUsersController {
     }
 
     @PostMapping("/{id}/invite")
-    public Map<String, Object> invite(@PathVariable String id) {
+    public Map<String, Object> invite(@PathVariable String id, HttpServletRequest request) {
+        AdministratorOnly.require(request);
         try {
             service.invite(id);
             return Map.of("sent", true);

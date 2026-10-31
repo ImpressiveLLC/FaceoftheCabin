@@ -57,13 +57,25 @@ public class HaServiceController {
         // The M920q is the head for both locations (docs/MAINTENANCE.md,
         // Home Location, 2026-10-01) -- "cabin" unless a caller says otherwise.
         String location = req.location() == null || req.location().isBlank() ? "cabin" : req.location();
-        boolean ok = ha.callService(location, req.domain(), req.service(), req.entity_id(), Map.of());
-        Map<String, Object> body = Map.of(
-            "accepted", ok,
-            "domain", req.domain(),
-            "service", req.service(),
-            "entity_id", req.entity_id());
-        return ok ? ResponseEntity.ok(body) : ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+        HomeAssistantAdapter.ServiceOutcome outcome =
+            ha.callServiceOutcome(location, req.domain(), req.service(), req.entity_id(), Map.of());
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("accepted", outcome == HomeAssistantAdapter.ServiceOutcome.ACCEPTED);
+        body.put("outcome", outcome.name().toLowerCase(java.util.Locale.ROOT));
+        body.put("domain", req.domain());
+        body.put("service", req.service());
+        body.put("entity_id", req.entity_id());
+        return switch (outcome) {
+            case ACCEPTED -> ResponseEntity.ok(body);
+            // A read timeout is NOT "did not happen": Home Assistant may have carried the command out. Say so, and do not
+            // invite a blind retry (W-75 prerequisite).
+            case UNKNOWN -> {
+                body.put("message", "Timed out waiting for Home Assistant. The command may or may not have been carried out: "
+                    + "check the device's state before trying again.");
+                yield ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(body);
+            }
+            case NOT_ACCEPTED -> ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+        };
     }
 
     /** Null when the call is allowed; otherwise a short reason for the 400. */

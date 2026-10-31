@@ -163,6 +163,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * it needs a resolved household role (AssistantInventoryController checks
  * it); it is not an open read like /api/devices. Demo tokens: DENY.
  *
+ * /api/roof-spec — added 2026-10-27, comments and requested inputs for the
+ * Roof Monitoring page. A "roof_spec" guest link may GET it and POST only
+ * /api/roof-spec/entries (GoogleAuthInterceptor.handleGuestToken); DELETE is
+ * signed-in only. No device or other route is reachable with that scope.
+ *
  * cabin.security.googleAuth.enabled defaults to true (secure by default —
  * absence of the property changes nothing). The only reason it exists is
  * local verification: there's no way to obtain a real Google access token
@@ -192,6 +197,7 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/managed-users/**", "/api/kb/**", "/api/cross-domain/**", "/api/helpdesk/**",
                 "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session",
                 "/api/presence/**", "/api/security/**", "/api/opportunities/**", "/api/alerts/**",
-                "/api/devices/**", "/api/ha/**", "/api/assistant/**", "/api/locations/**", "/api/system/storage/trim");
+                "/api/devices/**", "/api/ha/**", "/api/assistant/**", "/api/locations/**", "/api/system/storage/trim",
+                "/api/roof-spec/**");
     }
 }

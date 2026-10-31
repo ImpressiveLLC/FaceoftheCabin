@@ -1,0 +1,89 @@
+# Sharing access and keeping the disk healthy
+
+Audience: administrators, plus the household-safe summary in "Who can see and change what". Behavior as of `main` on 2026-10-31, read from the app and backend source; nothing here was run on the live hub. Anything that depends on how the hub is set up is marked "host-dependent". No link, token, password or address appears here.
+
+## Who can see and change what
+
+| Who | How they get in | What they can do |
+|---|---|---|
+| Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Guest Access (share and demo links), Managed Users, Trim old backups, Optimization Opportunities, Location Roles and platform import |
+| Household member signed in with Google | Google sign-in with any other accepted account | See the app and make the changes that need a sign-in, for example workflows, notes and chores. Administrator-only screens say "Admin access required" or "Only an administrator can trim storage" |
+| Managed user, "Household member (read/write)" | An emailed sign-in link (Managed Users) | Same as a household member. Cannot manage share links or managed users |
+| Managed user, "Viewer (read-only)" | An emailed sign-in link | Look only. Any change is refused |
+| Guest link | A share link from Guest Access | Read-only, and only the parts ticked when the link was made: Dashboard, Device states, Alerts, Historical readings |
+| Demo link | A demo link from Guest Access | The whole app, read-only. Cameras, locks, motion and door sensors, and phones show as "hidden for Demo viewers" |
+
+Signing in with Google is in Config. Workflow buttons appear only when signed in; when signed out, Rules & Alerts says "Sign in with Google (Configuration tab) to create or manage workflows."
+
+Evidence: `GoogleAuthInterceptor` (role derivation, managed-session gate, guest scope list `SCOPE_PATH_PREFIXES`), `ManagedUserRole.allowsWrite`, `DemoAccessFilter`, `StorageTrimController`, `HIDDEN_FOR_DEMO` and `GUEST_SCOPE_OPTIONS` in `App.jsx`.
+
+## Share read-only access with a link (Guest Access)
+
+**Short answer.** To give someone without a Google account (an insurance adjuster, a contractor) a look at the cabin, go to Config > **Guest Access** > "Other share links". Type a label, tick what they may see (**Dashboard**, **Device states**, **Alerts**, **Historical readings**), set **Expires in** (days; blank means never), and press **Create link**. Copy the link straight away: "copy it now, it won't be shown again".
+
+- The link is read-only. It can never change anything, and it cannot open anything you did not tick.
+- **Revoke** next to a link stops it at once. A stopped link stays in the list marked **Revoked** or **Expired** as a record. Revoking cannot be undone; make a new link instead.
+- Each link shows when it was last opened and how many times. **View activity** lists the last 30 days: time, which part of the app, and the result.
+- The Config card for the Roof Monitoring page makes a separate kind of link that can only read that page and post comments or answers there. Revoke it from the Guest Access list.
+
+What it does not do: it does not create an account, and it does not send anything. You send the link yourself.
+
+Evidence: `GuestAccessCard`, `AccessActivity`, `RoofSpecOwnerCard` in `App.jsx`; `CabinAccessTokensController` (`/api/access-tokens`), `CabinAccessToken.isActive`; usage trail kept 90 days by default (`cabin.access.events-retention-days`).
+
+## Give someone a demo link
+
+**Short answer.** For someone evaluating the product, use Config > **Guest Access** > "Demo link for product evaluation". Name it after the person and why (for example "Agent evaluation - Jane Doe"), set **Lives for** (whole days, 1 or more), press **Create demo link**, and copy the link at once; it is shown only once.
+
+- A demo link shows the real app read-only with no sign-in. Cameras, locks, motion and door sensors, and phones are hidden, and the Config cards for Guest Access, Managed Users and Location Roles are not shown to it.
+- It always has an end date. The form shows "it stops working on" a date before you create it. After that, anyone opening it sees "This link is no longer active." To end it early, press **Revoke** in the list.
+
+Evidence: `DemoLinkSection` in `App.jsx`; `CabinAccessTokenService.create` (a demo link holds only the demo scope and defaults to 30 days if no lifetime is sent); `DemoAccessFilter` refuses every change.
+
+## Add someone without a Google account (Managed Users)
+
+**Short answer.** In Config > **Managed Users**, enter their email address and name, choose **Viewer (read-only)** or **Household member (read/write)**, and press **Add managed user**. Then press **Invite** to email them a sign-in link. There is no password.
+
+- Adding and inviting are separate, so you can fix a mistyped email before anything is sent.
+- The emailed link works once and expires after 30 minutes. If it has expired or was used, press **Invite** again. After they use it, they stay signed in on that browser for up to 90 days.
+- **Deactivate** signs them out everywhere at once and blocks new links. **Reactivate** lets them be invited again. Nothing is deleted.
+- **Invite** needs the hub's email service to be set up (host-dependent). If it is not, Invite shows an error instead of "Invite sent."
+- A managed user can never manage share links or other managed users, even as a household member.
+
+Only administrators manage share links and managed users. Managed accounts, guest links and demo links are always refused on these screens.
+
+Evidence: `ManagedUsersCard` in `App.jsx`; `ManagedUsersController`; `ManagedUserService` (`MAGIC_LINK_TTL` 30 minutes, `SESSION_TTL` 90 days, `validateSession` ends a deactivated user's sessions); `ResendEmailSender` refuses to send when its key is not configured; `GoogleAuthInterceptor.handleManagedSession` returns 403 for `/api/managed-users` and `/api/access-tokens`.
+
+## Disk space warnings
+
+**Short answer.** The hub watches two disks: the large storage disk (nightly backups, recorded video, sensor-history archives) and the system disk (the database and Docker). At **60 percent** full you get a warning; at **75 percent**, a critical alert. It appears in Rules & Alerts > Status Checks, says how full the disk is, and says what to do. It clears once the disk falls 3 points below the line, and repeats once a day while the disk stays above it. The warning itself never deletes anything.
+
+What to do:
+
+- **Storage disk.** Expand the alert. Its Act step is the **Trim old backups** control (next section, administrator only). After that, recorded-video retention is the next thing to review, which is a host setting.
+- **System disk.** The alert says to check Docker's disk use and old images or build cache. The database lives on this disk, so never delete its volumes. This is a host task for an administrator.
+- A critical storage alert, like any critical alert, can only be snoozed for 1 hour.
+- If the hub's automatic backup trim is installed (host-dependent), it also removes the oldest backup copies at 70 percent full, back down to 55 percent, never leaving fewer than 3 per folder, and records an event each time it runs (a warning if it could not get the disk back down).
+- Whether the warning also reaches a phone depends on the hub's notification setup (host-dependent) and is not guaranteed.
+
+Changing the 60 and 75 percent lines in the hub's settings file has no effect today; see [Settings that never reach cabin-backend](configuration.md#settings-that-never-reach-cabin-backend-k09-slice-2).
+
+Evidence: `StorageMonitorService` (defaults 60, 75, clear margin 3, repeat 24 hours; HDD and NVMe mounts; `actionFor` text); `application.yml` `cabin.storage.monitor`; `CRITICAL_SNOOZE_DURATIONS` in `App.jsx`; [STORAGE_ARCHITECTURE.md](../../STORAGE_ARCHITECTURE.md) "Why it filled to 99%" for the automatic trim settings.
+
+## Trim old backups
+
+**Short answer.** Trim old backups frees space on the storage disk by deleting older copies of the nightly backups. It is safe for your data in this sense: it never touches sensor history (telemetry), the database or recorded video, and it always keeps the newest copy of every backup folder. It is permanent: deleted backup copies cannot be brought back.
+
+How to use it (administrator only):
+
+1. In Rules & Alerts > Status Checks, expand the storage-disk alert. The **Trim old backups** control is its Act step.
+2. Move the slider "Keep the newest N nightly copies of each folder" toward **Trim more** or **Trim less**. Each folder row shows how many copies are kept and removed, and the summary shows about how much is freed and how full the disk would be.
+3. Optional: "Need room for a big job? Free up at least N GB", then **Set the slider**. If even keeping 1 copy is not enough, it says so; the rest of the space is recorded video or a one-off system copy, which this control does not touch.
+4. Press **Go**. The button reads "Trimming on the host" until the hub reports back, then the card shows "Last trim: removed N copies, freed" an amount.
+
+Things to know:
+
+- The app itself cannot delete files. A small service on the hub does the deleting (host-dependent). Until it is installed, the control says the host trim service has not produced a plan yet, and nothing can be trimmed from the app.
+- Anyone who is not an administrator sees "Only an administrator can trim storage."
+- How long sensor history is kept, and the monthly archive of old readings, are separate from this control; see [Backup and restore recipes per store](maintenance.md#backup-and-restore-recipes-per-store-k10-verified-from-source-only).
+
+Evidence: `StorageTrimWidget` in `App.jsx` (labels and the note "Go permanently deletes the older backup copies, oldest first. The newest copy of each folder is never removed. Telemetry is never touched."); `StorageTrimController` (administrator only); `StorageTrimService.request` (keep at least 1; the host tool refuses telemetry and database paths); [STORAGE_ARCHITECTURE.md](../../STORAGE_ARCHITECTURE.md) "Trim control (W-62)"; backlog W-62 and W-11b "built, needs the host agent installed" (checked 2026-10-31; whether it is installed on the hub is not verified).

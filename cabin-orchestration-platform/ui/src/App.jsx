@@ -1,5 +1,8 @@
-import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget } from "./electricalMonitoring";
-import { collapseDuplicateZigbeeServices } from "./zigbeeServices";
+import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget, valueSegments } from "./electricalMonitoring";
+import { collapseDuplicateZigbeeServices, duplicateOfZigbeeParent } from "./zigbeeServices";
+import { ExpandableList, COLLAPSED_LIMIT } from "./ExpandableList";
+import { DEVICE_KIND_OPTIONS, batteryLevel, makeKindOf } from "./deviceKinds";
+import { BatteryMaintenanceCard } from "./BatteryMaintenanceCard";
 /**
  * Cabin Orchestration Platform — Shell UI
  *
@@ -34,6 +37,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import KioskControls from "./KioskControls.jsx";
+import { RoofSpecPage } from "./RoofSpecPage.jsx";
 
 // ─── Temperature unit ──────────────────────────────────────────────────────
 function useTempUnit() {
@@ -1005,7 +1009,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
 
   if (!auth.configured) {
     return (
-      <div className="panel-content">
+      <div data-panel="camera" className="panel-content">
         <div className="panel-header-bar"><h2>Camera Events</h2></div>
         <p className="config-desc">Google Sign-In isn't configured on this host yet (VITE_CABIN_GOOGLE_CLIENT_ID unset at build time).</p>
       </div>
@@ -1017,7 +1021,7 @@ export function CameraEventsPanel({ auth }) { // exported for src/App.test.jsx's
   }
 
   return (
-    <div className="panel-content">
+    <div data-panel="camera" className="panel-content">
       <div className="panel-header-bar">
         <h2>Camera Events</h2>
         <div className="toolbar-right">
@@ -1390,7 +1394,7 @@ function OpportunityMapPanel({ auth }) {
   const visible = showDismissed ? opportunities : opportunities.filter(o => o.status !== "dismissed");
 
   return (
-    <div className="panel-content">
+    <div data-panel="opportunities" className="panel-content">
       <div className="panel-header-bar">
         <h2>Opportunities</h2>
         <div className="toolbar-right">
@@ -1490,7 +1494,7 @@ export function HelpdeskPanel({ auth }) { // exported for src/App.test.jsx
   };
 
   return (
-    <div className="panel-content helpdesk-panel">
+    <div data-panel="helpdesk" className="panel-content helpdesk-panel">
       <div className="panel-header-bar">
         <h2><MessageCircle size={18}/> Tiny Helpdesk</h2>
       </div>
@@ -1643,7 +1647,7 @@ export function checkinStatusLabel(state, checkinStatus) {
   const s = (state || "").toUpperCase();
   if (s === "ALARM" || s === "CRITICAL") return null;
   switch (checkinStatus) {
-    case "NOT_CONFIGURED": return { text: "Not configured", cls: "state-not-configured" };
+    case "NOT_CONFIGURED": return { text: "No check-in schedule", cls: "state-not-configured" };
     case "LATE":            return { text: "Late checking in", cls: "state-late" };
     case "MISSED":           return { text: "Not responding", cls: "state-offline" };
     default: return null; // ON_SCHEDULE, or no data yet — show the raw state
@@ -1932,7 +1936,7 @@ export function FamilyHubPanel({ auth }) { // exported for src/App.test.jsx's re
   const onDragEnd   = () => { setDragIdx(null); setOverIdx(null); };
 
   return (
-    <div className="panel-content">
+    <div data-panel="places" className="panel-content">
       <div className="panel-header-bar">
         <div className="panel-header-title">
           <h2>My Places</h2>
@@ -2057,7 +2061,7 @@ export function FamilyConfigPanel({ auth }) {
   const remoteAccessMethods = (config?.remoteAccess || "Tailscale")
     .split(",").map(s => s.trim()).filter(Boolean);
   return (
-    <div className="panel-content">
+    <div data-panel="config" className="panel-content">
       <div className="panel-header-bar"><h2>Configuration</h2></div>
       <div className="config-grid">
         {!auth?.demo && <ConfigCard title="Google Account" icon={Home}>
@@ -2099,8 +2103,14 @@ export function FamilyConfigPanel({ auth }) {
         {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2}>
           <GuestAccessCard auth={auth} />
         </ConfigCard>}
+        {!auth?.demo && <ConfigCard title="AcmeOptix by ImpressiveLLC" icon={Link2} wide>
+          <RoofSpecOwnerCard auth={auth} />
+        </ConfigCard>}
         {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus}>
           <ManagedUsersCard auth={auth} />
+        </ConfigCard>}
+        {!auth?.demo && <ConfigCard title="Location Roles" icon={UserPlus}>
+          <LocationRolesCard auth={auth} />
         </ConfigCard>}
         <ConfigCard title="Platform" icon={Cpu} wide>
           <p className="config-desc">{config?.platformName || "Orchestration Platform"}</p>
@@ -2109,6 +2119,213 @@ export function FamilyConfigPanel({ auth }) {
         </ConfigCard>
       </div>
     </div>
+  );
+}
+
+// W-38 slice 2 (D24): who is primary and who is maintenance at each location. ADMINISTRATOR-only on the server
+// (GET/PUT /api/presence/roles); a non-admin sees a plain message, like PlatformInfoCard. Primary counts as presence;
+// maintenance is a guest (arrival recorded, not counted). A person who is publishing presence but is not listed yet is
+// still counted and shows under "Counted but not assigned" until given a role. The siren gate is Node-RED/HA, not this.
+export function LocationRolesCard({ auth }) {
+  const [data, setData] = useState(null);
+  const [forbidden, setForbidden] = useState(false);
+  const [error, setError] = useState(null);
+  const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(null); // the row whose Remove is awaiting confirmation
+  const [personId, setPersonId] = useState("");
+  const [location, setLocation] = useState(Object.keys(LOCATIONS)[0] || "cabin");
+  const [newRoles, setNewRoles] = useState({ primary: true, maintenance: false });
+  const doFetch = auth?.authedFetch || fetch;
+  const apiBase = LOCATIONS.cabin.apiBase;
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+  // Focus follows the action so a keyboard or screen-reader user is never left on a control that has gone: after Remove it
+  // moves to Confirm, after Cancel back to that row's Remove, after a confirmed removal to the next row's Remove (or the card top).
+  const [focusId, setFocusId] = useState(null);
+  useEffect(() => {
+    if (focusId) { document.getElementById(focusId)?.focus(); setFocusId(null); }
+  }, [focusId, data, removing]);
+
+  const load = useCallback(() => doFetch(`${apiBase}/api/presence/roles`)
+    .then(async r => {
+      if (!alive.current) return;
+      if (r.status === 403) { setForbidden(true); return; }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const body = await r.json();
+      // A response without the expected lists (an older backend mid-deploy) reads as empty, never a crash.
+      if (!alive.current) return;
+      setData({
+        assignments: Array.isArray(body?.assignments) ? body.assignments : [],
+        unregisteredCounted: Array.isArray(body?.unregisteredCounted) ? body.unregisteredCounted : [],
+      });
+      setError(null);
+    })
+    .catch(err => { if (alive.current) setError(err.message); }), [doFetch, apiBase]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Resolves true when the server accepted the change, so a caller can keep what the admin typed after a refusal.
+  const save = async (person, loc, roles, saidAfter) => {
+    setSaving(true);
+    setNotice("");
+    try {
+      const r = await doFetch(`${apiBase}/api/presence/roles`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ personId: person, location: loc, roles }),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${r.status}`);
+      }
+      await load();
+      if (alive.current) { setError(null); setNotice(saidAfter); }
+      return true;
+    } catch (err) {
+      if (alive.current) setError(err.message);
+      return false;
+    } finally {
+      if (alive.current) setSaving(false);
+    }
+  };
+
+  if (forbidden) return <p className="config-desc">Admin access required to assign location roles.</p>;
+  if (!data) return <p className="config-desc">{error ? `Couldn't load location roles: ${error}` : "Loading..."}</p>;
+
+  const sentence = (person, loc, roles) => roles.length === 0
+    ? `${person} at ${loc} has no role.`
+    : `${person} at ${loc} is now ${roles.join(" and ")}.`;
+  // The last ticked box is disabled: emptying the list is a removal, which has its own confirmed Remove button.
+  const toggle = (a, role) => {
+    const has = a.roles.includes(role);
+    if (has && a.roles.length === 1) return;
+    const roles = has ? a.roles.filter(r => r !== role) : [...a.roles, role];
+    save(a.personId, a.location, roles, sentence(a.personId, a.location, roles));
+  };
+  const chosen = Object.entries(newRoles).filter(([, on]) => on).map(([role]) => role);
+  const existing = data.assignments.find(a => a.personId === personId.trim() && a.location === location);
+  // The backend counts and flags a person with no role, whichever role they had: removal never stops anyone counting.
+  const removeConsequence = (a) =>
+    `Removing leaves ${a.personId} with no role at ${a.location}: their signals are still counted as presence, and they are listed as counted but not assigned until a role is set again.`;
+  const rowKey = (a) => `${a.location}:${a.personId}`;
+  const idOf = (prefix, a) => `${prefix}-${rowKey(a).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
+  return (
+    <>
+      <p className="config-desc" id="location-roles-top" tabIndex={-1}>
+        Primary people are the active users of a location: their phone counts as presence. Maintenance people establish and
+        look after a location: they are a guest for presence, so an arrival is recorded as a visit and not counted.
+      </p>
+      <p role="status" aria-live="polite" className={notice ? "action-result" : "config-hint"}>{notice}</p>
+      {error && <p className="action-result action-error" role="alert">{error}</p>}
+      {data.unregisteredCounted.length > 0 && (
+        <section aria-label="Counted but not assigned">
+          <h4 className="platform-section-title">Counted but not assigned</h4>
+          <p className="config-hint">Still counted as present, so nothing stops being recognized, until you give them a role.</p>
+          <div className="guest-access-list">
+            {data.unregisteredCounted.map(p => (
+              <div className="guest-access-row" key={`${p.location}:${p.personId}`}>
+                <span><strong>{p.personId}</strong> at {p.location}</span>
+                <span className="managed-users-row-actions">
+                  <button className="btn-secondary" disabled={saving} aria-label={`Make ${p.personId} primary at ${p.location}`}
+                    onClick={() => save(p.personId, p.location, ["primary"], sentence(p.personId, p.location, ["primary"]))}>Make primary</button>
+                  <button className="btn-secondary" disabled={saving} aria-label={`Make ${p.personId} maintenance at ${p.location}`}
+                    onClick={() => save(p.personId, p.location, ["maintenance"], sentence(p.personId, p.location, ["maintenance"]))}>Make maintenance</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      <section aria-label="Assigned roles">
+        <h4 className="platform-section-title">Assigned</h4>
+        {data.assignments.length === 0 ? (
+          <p className="config-hint">No one is assigned yet. People publishing presence are still counted, and listed above as not assigned.</p>
+        ) : (
+          <table className="platform-info-table">
+            <thead><tr><th>Person</th><th>Location</th><th>Primary</th><th>Maintenance</th><th></th></tr></thead>
+            <tbody>
+              {data.assignments.map(a => (
+                <React.Fragment key={`${a.location}:${a.personId}`}>
+                <tr>
+                  <td>{a.personId}</td>
+                  <td>{a.location}</td>
+                  {["primary", "maintenance"].map(role => {
+                    const last = a.roles.includes(role) && a.roles.length === 1;
+                    return (
+                      <td key={role}>
+                        <input type="checkbox" disabled={saving || last} checked={a.roles.includes(role)}
+                          title={last ? "A person needs at least one role. Use Remove to take them out." : undefined}
+                          aria-describedby={last ? "location-roles-last-hint" : undefined}
+                          aria-label={`${a.personId} ${role} at ${a.location}`} onChange={() => toggle(a, role)} />
+                      </td>
+                    );
+                  })}
+                  <td>
+                    <button className="btn-ghost" id={idOf("remove", a)} disabled={saving || removing === rowKey(a)}
+                      aria-label={`Remove ${a.personId} at ${a.location}`}
+                      onClick={() => { setRemoving(rowKey(a)); setFocusId(idOf("confirm", a)); }}>Remove</button>
+                  </td>
+                </tr>
+                {removing === rowKey(a) && (
+                  <tr key={`${rowKey(a)}:confirm`}>
+                    <td colSpan={5}>
+                      <div role="group" aria-label={`Confirm removing ${a.personId} at ${a.location}`}>
+                        <p className="config-hint">{removeConsequence(a)}</p>
+                        <button className="btn-danger" id={idOf("confirm", a)} disabled={saving}
+                          onClick={async () => {
+                            const i = data.assignments.findIndex(x => rowKey(x) === rowKey(a));
+                            const next = data.assignments[i + 1] || data.assignments[i - 1];
+                            if (await save(a.personId, a.location, [], `${a.personId} at ${a.location} was removed.`)) {
+                              setRemoving(null);
+                              setFocusId(next ? idOf("remove", next) : "location-roles-top");
+                            }
+                          }}>
+                          Confirm remove
+                        </button>{" "}
+                        <button className="btn-ghost" onClick={() => { setRemoving(null); setFocusId(idOf("remove", a)); }}>Cancel</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {data.assignments.length > 0 && (
+          <p className="config-hint" id="location-roles-last-hint">
+            A person always keeps at least one role here, so the last ticked box is locked. To take someone out, use Remove.
+          </p>
+        )}
+      </section>
+      <section aria-label="Assign a role">
+        <h4 className="platform-section-title">Assign a person</h4>
+        <div className="guest-access-form">
+          <input aria-label="Person id" placeholder="person id, e.g. nate" value={personId} onChange={e => setPersonId(e.target.value)} />
+          <select aria-label="Location" value={location} onChange={e => setLocation(e.target.value)}>
+            {Object.keys(LOCATIONS).map(id => <option key={id} value={id}>{id}</option>)}
+          </select>
+          {["primary", "maintenance"].map(role => (
+            <label key={role}>
+              <input type="checkbox" checked={newRoles[role]} onChange={e => setNewRoles({ ...newRoles, [role]: e.target.checked })} /> {role}
+            </label>
+          ))}
+          <button className="btn-secondary" disabled={saving || !personId.trim() || chosen.length === 0}
+            onClick={async () => {
+              // Adds to what the person already holds there; it never takes a role away.
+              const roles = [...new Set([...(existing ? existing.roles : []), ...chosen])];
+              if (await save(personId.trim(), location, roles, sentence(personId.trim(), location, roles))) setPersonId("");
+            }}>Assign</button>
+        </div>
+        <p className="config-hint">
+          {existing
+            ? `${existing.personId} already holds ${existing.roles.join(" and ")} at ${location}; the ticked roles are added to those.`
+            : "The ticked roles are added to any the person already holds at that location."}
+          {" "}Locations are the fixed cabin and home pair for now.
+        </p>
+      </section>
+    </>
   );
 }
 
@@ -2265,7 +2482,116 @@ const GUEST_SCOPE_OPTIONS = [
   ["observations_read", "Historical readings"],
 ];
 
-function GuestAccessCard({ auth }) {
+// Owner side of the Roof Monitoring page: make a comment-only link for the
+// roofer (scope "roof_spec" -- it can read the thread and post a comment, and
+// nothing else), and read/reply to the thread in place.
+export function RoofSpecOwnerCard({ auth }) { // exported for src/RoofSpecPage.test.jsx
+  const doFetch = auth?.authedFetch || fetch;
+  const apiBase = LOCATIONS.cabin.apiBase;
+  const [label, setLabel] = useState("");
+  const [days, setDays] = useState("60");
+  const [link, setLink] = useState(null);
+  const [error, setError] = useState(null);
+  const [open, setOpen] = useState(false); // mount (and fetch) the thread only once opened
+  const create = async () => {
+    setError(null); setLink(null);
+    try {
+      const r = await doFetch(`${apiBase}/api/access-tokens`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label.trim(), scope: ["roof_spec"], expiresInDays: days.trim() ? Number(days) : null }),
+      });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(b.message || b.error || `HTTP ${r.status}`);
+      setLink(`${window.location.origin}/roof/${b.token}`);
+      setLabel("");
+    } catch (err) { setError(err.message); }
+  };
+  return (
+    <>
+      <p className="config-desc">Roof Monitoring page for the Collins roof. A link made here can read the page and post comments or answers, and nothing else in the app.</p>
+      <div className="guest-access-form">
+        <input value={label} placeholder="Name shown on their comments, e.g. Aaron Ogdahl, Collins" onChange={e => setLabel(e.target.value)} />
+        <label className="guest-access-expiry">Expires in <input type="number" min="1" value={days} onChange={e => setDays(e.target.value)} /> days (blank = never)</label>
+        <button className="btn-primary" onClick={create} disabled={!label.trim()}>Create roof page link</button>
+        {error && <p className="action-result action-error">Not created: {error}</p>}
+      </div>
+      {link && (
+        <div className="guest-access-new-link">
+          <strong>Link created. Copy it now, it won't be shown again:</strong>
+          <code>{link}</code>
+          <button className="btn-ghost" onClick={() => navigator.clipboard?.writeText(link)}>Copy</button>
+        </div>
+      )}
+      <p className="config-hint">Revoke it from the Guest Access list above.</p>
+      <details onToggle={e => setOpen(e.currentTarget.open)}>
+        <summary>Open the page and its comments</summary>
+        {open && <RoofSpecPage owner authedFetch={doFetch} apiBase={apiBase} />}
+      </details>
+    </>
+  );
+}
+
+// Access link usage tracking (HO-2026-10-29): which panel a recorded request belongs to.
+const ACCESS_PANELS = [
+  ["/api/events/telemetry-history", "Sensor History"],
+  ["/api/events/reported-fields", "Sensor History"],
+  ["/api/alerts", "Alerts"],
+  ["/api/rules", "Rules"],
+  ["/api/devices", "Devices"],
+  ["/api/dashboard", "Dashboard"],
+  ["/api/roof-spec", "Roof Monitoring"],
+  ["/api/presence", "Presence"],
+  ["/api/security", "Presence"],
+];
+
+export function accessRoutePanel(route) { // exported for src/DemoAccess.test.jsx
+  if (route === "page_open") return "Opened the link";
+  const hit = ACCESS_PANELS.find(([prefix]) => route === prefix || route.startsWith(prefix + "/"));
+  return hit ? hit[1] : "Other";
+}
+
+export function describeLinkUsage(token) { // exported for src/DemoAccess.test.jsx
+  if (!token.lastUsedAt) return "Never opened";
+  const opens = Number(token.useCount) || 0;
+  return `Last opened ${formatStopTime(token.lastUsedAt)} · ${opens} ${opens === 1 ? "open" : "opens"}`;
+}
+
+export function AccessActivity({ id, doFetch, apiBase }) { // exported for src/DemoAccess.test.jsx
+  const [events, setEvents] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const load = () => {
+    if (events || failed) return;
+    doFetch(`${apiBase}/api/access-tokens/${id}/activity?days=30`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(body => setEvents(Array.isArray(body) ? body : []))
+      .catch(() => setFailed(true));
+  };
+  return (
+    <details className="guest-access-activity" onToggle={e => { if (e.target.open) load(); }}>
+      <summary>View activity</summary>
+      {failed && <p className="config-hint">Could not load activity.</p>}
+      {!failed && events === null && <p className="config-hint">Loading…</p>}
+      {events && events.length === 0 && <p className="config-hint">No activity recorded in the last 30 days.</p>}
+      {events && events.length > 0 && (
+        <table className="guest-access-activity-table">
+          <thead><tr><th>Time</th><th>Panel</th><th>Status</th><th>Times</th></tr></thead>
+          <tbody>
+            {events.map(ev => (
+              <tr key={ev.id}>
+                <td>{formatStopTime(ev.occurredAt)}</td>
+                <td>{accessRoutePanel(ev.route)}</td>
+                <td>{ev.status}</td>
+                <td>{ev.hits}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </details>
+  );
+}
+
+export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.jsx
   const [tokens, setTokens] = useState([]);
   const [label, setLabel] = useState("");
   const [scope, setScope] = useState({ dashboard: true, device_states: true, alerts_read: true, observations_read: true });
@@ -2318,6 +2644,26 @@ function GuestAccessCard({ auth }) {
     refresh();
   };
 
+  const rows = tokens.map(t => ({ t, status: shareLinkStatus(t) }));
+  const activeTokens = rows.filter(r => r.status.active);
+  const pastTokens = rows.filter(r => !r.status.active);
+  const renderRow = ({ t, status }) => (
+    <div key={t.id} className={`guest-access-row ${status.active ? "" : "guest-access-revoked"}`}>
+      <div>
+        <strong>{t.label}</strong>
+        {t.scope?.includes("demo") && <span className="state-badge demo-badge">Demo</span>}
+        <span className="config-hint">
+          {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
+        </span>
+        <span className="config-hint guest-access-usage">{describeLinkUsage(t)}</span>
+        <AccessActivity id={t.id} doFetch={doFetch} apiBase={apiBase} />
+      </div>
+      {status.active
+        ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
+        : <span className="config-hint">{status.badge}</span>}
+    </div>
+  );
+
   return (
     <>
       <DemoLinkSection doFetch={doFetch} apiBase={apiBase} onCreated={refresh} />
@@ -2354,24 +2700,15 @@ function GuestAccessCard({ auth }) {
 
       <div className="guest-access-list">
         {tokens.length === 0 && <p className="config-hint">No share links yet.</p>}
-        {tokens.map(t => {
-          const status = shareLinkStatus(t);
-          return (
-            <div key={t.id} className={`guest-access-row ${status.active ? "" : "guest-access-revoked"}`}>
-              <div>
-                <strong>{t.label}</strong>
-                {t.scope?.includes("demo") && <span className="state-badge demo-badge">Demo</span>}
-                <span className="config-hint">
-                  {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
-                </span>
-              </div>
-              {status.active
-                ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
-                : <span className="config-hint">{status.badge}</span>}
-            </div>
-          );
-        })}
+        {tokens.length > 0 && activeTokens.length === 0 && <p className="config-hint">No active share links.</p>}
+        {activeTokens.map(renderRow)}
       </div>
+      {pastTokens.length > 0 && (
+        <details className="guest-access-history">
+          <summary>History: {pastTokens.length} revoked or expired</summary>
+          <div className="guest-access-list">{pastTokens.map(renderRow)}</div>
+        </details>
+      )}
     </>
   );
 }
@@ -2763,6 +3100,7 @@ export function DeviceManagerPanel({ auth }) {
   const [lifecycleFilter, setLifecycleFilter] = useState(() =>
     readStoredJson("devices.lifecycleFilter", DEFAULT_LIFECYCLE_FILTER));
   const [importedFromFilter, setImportedFromFilter] = useState(() => localStorage.getItem("devices.importedFrom") || "");
+  const [kindFilter, setKindFilter] = useState(() => localStorage.getItem("devices.kind") || "");
   const [candidateDevices, setCandidateDevices] = useState([]);
   const [previouslyExposed, setPreviouslyExposed] = useState([]);
   const [reviewingPrevious, setReviewingPrevious] = useState(false);
@@ -2776,6 +3114,7 @@ export function DeviceManagerPanel({ auth }) {
   useEffect(() => localStorage.setItem("devices.parentOnly", String(parentOnly)), [parentOnly]);
   useEffect(() => localStorage.setItem("devices.lifecycleFilter", JSON.stringify(lifecycleFilter)), [lifecycleFilter]);
   useEffect(() => localStorage.setItem("devices.importedFrom", importedFromFilter), [importedFromFilter]);
+  useEffect(() => localStorage.setItem("devices.kind", kindFilter), [kindFilter]);
 
   const reviewLocations = useMemo(() => activeLocation === "both"
     ? [LOCATIONS.cabin, LOCATIONS.home]
@@ -2829,9 +3168,10 @@ export function DeviceManagerPanel({ auth }) {
   // control that is no longer shown -- it falls back to "All".
   const importOptions = useMemo(() => importedFromOptions(managerDevices), [managerDevices]);
   const activeImportedFrom = importOptions.includes(importedFromFilter) ? importedFromFilter : "";
+  const kindOf = useMemo(() => makeKindOf(managerDevices), [managerDevices]);
   const effectiveDeviceFilter = reviewingPrevious
     ? { parentOnly: false, lifecycle: ["DEFERRED", "IGNORED"], importedFrom: "" }
-    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter, importedFrom: activeImportedFrom });
+    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter, importedFrom: activeImportedFrom, kind: kindFilter, kindOf });
 
   // Hoisted up from DmSeeView (was local there) so See and Change render
   // the exact same saved grouping/order -- Change is a read-only consumer
@@ -2886,6 +3226,7 @@ export function DeviceManagerPanel({ auth }) {
       setParentOnly(false);
       setLifecycleFilter(LIFECYCLE_FILTER_OPTIONS.map(o => o.value));
       setImportedFromFilter("");
+      setKindFilter("");
     }
     const group = groups.find(([, items]) => items.some(d => d.deviceId === target.deviceId));
     if (group && isGroupCollapsed(group[0])) setAllGroupsCollapsed([group[0]], false);
@@ -2923,7 +3264,7 @@ export function DeviceManagerPanel({ auth }) {
   };
 
   return (
-    <div className="panel-content">
+    <div data-panel="devices" className="panel-content">
       <div className="panel-header-bar">
         <h2>Device Manager</h2>
         <div className="header-actions">
@@ -2954,6 +3295,14 @@ export function DeviceManagerPanel({ auth }) {
                     : reviewingPrevious ? "Reviewing previously exposed devices ignores this"
                     : undefined}
                 />
+                <label className="dm-toolbar-select">Kind
+                  <select value={kindFilter} disabled={reviewingPrevious}
+                    onChange={e => setKindFilter(e.target.value)}
+                    title="Battery devices, wired devices, or the services and data elements that have no hardware of their own">
+                    <option value="">All</option>
+                    {DEVICE_KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </label>
                 {importOptions.length > 0 && (
                   <label className="dm-toolbar-select">Imported from
                     <select value={activeImportedFrom} disabled={reviewingPrevious}
@@ -2973,8 +3322,8 @@ export function DeviceManagerPanel({ auth }) {
               </span>
               <button className="btn-ghost" onClick={() => {
                 setGroupBy("type"); setParentOnly(false);
-                setLifecycleFilter(DEFAULT_LIFECYCLE_FILTER); setImportedFromFilter(""); setReviewingPrevious(false);
-              }} title="Return Group, Parent scope, and State to their defaults">
+                setLifecycleFilter(DEFAULT_LIFECYCLE_FILTER); setImportedFromFilter(""); setKindFilter(""); setReviewingPrevious(false);
+              }} title="Return Group, Parent scope, State, and Kind to their defaults">
                 Reset Filters
               </button>
               {groupNames.length > 1 && (
@@ -3027,6 +3376,9 @@ export function DeviceManagerPanel({ auth }) {
         <p className="action-result action-error" role="status">
           {focusNotice} <button type="button" className="active-condition-link" onClick={() => setFocusNotice(null)}>Dismiss</button>
         </p>
+      )}
+      {kindFilter === "battery" && !reviewingPrevious && (
+        <BatteryMaintenanceCard devices={managerDevices} kindOf={kindOf} onSelect={setSelected} />
       )}
       {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} groups={groups} reorderGroup={reorderGroup} reorderDevice={reorderDevice}
         selected={selected} onSelect={setSelected}
@@ -3120,8 +3472,16 @@ export async function callHaService(doFetch, domain, service, entityId) {
   });
   if (response.status === 401) throw new Error("Sign in to control devices");
   const body = await response.json().catch(() => ({}));
+  // W-130: a read timeout (504, outcome "unknown") is NOT "did not happen": Home Assistant may have carried the command
+  // out. The error says so, with the backend's check-the-device message, and carries outcomeUnknown for the callers.
+  if (response.status === 504 || body.outcome === "unknown") {
+    const err = new Error(body.message
+      || "Timed out waiting for Home Assistant. The command may or may not have been carried out: check the device's state before trying again.");
+    err.outcomeUnknown = true;
+    throw err;
+  }
   if (!response.ok || body.accepted === false) {
-    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command" : `HTTP ${response.status}`));
+    throw new Error(body.error || (response.status === 502 ? "Home Assistant didn't accept the command, so it is not known to have run" : `HTTP ${response.status}`));
   }
   return body;
 }
@@ -3221,11 +3581,13 @@ export function importedFromOptions(devices) {
   return [...new Set(devices.map(d => d.attributes?.importedFrom).filter(Boolean))].sort();
 }
 
-export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecycle = DEFAULT_LIFECYCLE_FILTER, importedFrom = "" } = {}) {
+export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecycle = DEFAULT_LIFECYCLE_FILTER, importedFrom = "", kind = "", kindOf = null } = {}) {
+  const kindFor = kindOf || makeKindOf(devices);
   return devices.filter(d =>
     lifecycle.includes(deviceLifecycleState(d)) &&
     (!parentOnly || !d.attributes?.parentDeviceId) &&
-    (!importedFrom || d.attributes?.importedFrom === importedFrom));
+    (!importedFrom || d.attributes?.importedFrom === importedFrom) &&
+    (!kind || kindFor(d) === kind));
 }
 
 // 2026-08-25: the toolbar's device count used raw devices.length -- every
@@ -3252,7 +3614,7 @@ export function resolveDeviceManagerFilter(groupBy, saved) {
   // The source-platform facet is kept here on purpose: Lifecycle grouping is where
   // candidates are reviewed, and "just the SmartThings ones" is the point of it.
   if (groupBy === "candidate") {
-    return { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value), importedFrom: saved.importedFrom };
+    return { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value), importedFrom: saved.importedFrom, kind: saved.kind, kindOf: saved.kindOf };
   }
   return saved;
 }
@@ -3511,7 +3873,9 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
                 )}
               </span>
             </header>
-            {groupOpen && groupItems.map((d) => {
+            {groupOpen && <ExpandableList items={groupItems} noun="devices" forceOpen={reorderMode}
+              isPinned={d => isAlarm(d) || d.deviceId === selected}
+              renderItem={(d) => {
           const ignored = deviceLifecycleState(d) === "IGNORED";
           const isPinned = isAlarm(d) || ignored;
           const isOver = reorderMode && overItem?.kind === "device"
@@ -3542,7 +3906,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
               />
             </div>
           );
-        })}
+        }} />}
           </section>
           );
         })}
@@ -3601,9 +3965,11 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isG
                 </button>
               </span>
             </header>
-            {groupOpen && groupItems.map(d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
-              ref={selected === d.deviceId ? selectedRowRef : undefined}
-              onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} workflows={workflows} />)}
+            {groupOpen && <ExpandableList items={groupItems} noun="devices"
+              isPinned={d => isAlarm(d) || d.deviceId === selected}
+              renderItem={d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
+                ref={selected === d.deviceId ? selectedRowRef : undefined}
+                onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} auth={auth} workflows={workflows} />} />}
           </section>
           );
         })}
@@ -4274,6 +4640,7 @@ function DmRowEnableToggle({ device, onToggled, auth }) {
         : (enabled ? "Disable" : "Enable"))}
     >
       {enabled ? <ToggleRight size={18} className="toggle-on"/> : <ToggleLeft size={18} className="toggle-off"/>}
+      {error && <span className="action-result action-error dm-row-enable-error">Not saved: {error}</span>}
     </button>
   );
 }
@@ -4307,7 +4674,7 @@ function DmPowerToggle({ device, auth }) {
       await callHaService(auth?.authedFetch || fetch, "switch", next ? "turn_on" : "turn_off", target.entityId);
     } catch (err) {
       setOptimistic(null);
-      setError(err.message);
+      setError({ text: err.message, unknown: !!err.outcomeUnknown });
     } finally {
       setBusy(false);
     }
@@ -4320,7 +4687,7 @@ function DmPowerToggle({ device, auth }) {
       disabled={busy}
       aria-pressed={isOn}
       aria-label={`${device.name}: turn ${isOn ? "off" : "on"}`}
-      title={error ? `Not changed: ${error}` : `Turn ${isOn ? "off" : "on"} (${target.entityId})`}
+      title={error ? (error.unknown ? error.text : `Not changed: ${error.text}`) : `Turn ${isOn ? "off" : "on"} (${target.entityId})`}
     >
       <Power size={14}/> {isOn ? "On" : "Off"}
     </button>
@@ -4348,7 +4715,9 @@ export function OnTheWayButton({ auth, devices, prominent = false }) {
       const temp = mechRoomTemperature(devices);
       setToast({ ok: true, text: `Preheat started. Mech room is ${temp == null ? "not reporting" : fmtTemp(temp, tempUnit)}.` });
     } catch (err) {
-      setToast({ ok: false, text: `Couldn't start preheat: ${err.message}` });
+      setToast({ ok: false, text: err.outcomeUnknown
+        ? "Preheat: no answer from Home Assistant. It may or may not have started: check the mech room heater before trying again."
+        : `Couldn't start preheat: ${err.message}` });
     } finally {
       setBusy(false);
     }
@@ -4400,6 +4769,10 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
           {lifecycleLabels[lifecycle] || lifecycle}
         </span>
       )}
+      {batteryLevel(device) !== null && (
+        <span className={`health-chip ${batteryLevel(device) <= 20 ? "health-alarm" : "health-ok"}`}
+          title="Last reported battery level">{Math.round(batteryLevel(device))}%</span>
+      )}
       {deviceWorkflows.length > 0 && (
         <span className="workflow-badge" title={deviceWorkflows.map(w => w.name).join(", ")}>
           {deviceWorkflows.length} workflow{deviceWorkflows.length === 1 ? "" : "s"}
@@ -4426,6 +4799,7 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
   const parentDeviceId = device.attributes?.parentDeviceId;
   const appDevices = useApp()?.devices || [];
   const parentDevice = parentDeviceId ? appDevices.find(d => d.deviceId === parentDeviceId) : null;
+  const duplicateOf = duplicateOfZigbeeParent(device, new Map(appDevices.map(d => [d.deviceId, d])));
   const [lifecycleResult, setLifecycleResult] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const decide = async (action) => {
@@ -4444,6 +4818,13 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
     <div className="dm-detail-inner">
       <div className="dm-detail-name">{device.name}</div>
       <div className="dm-detail-id">{device.deviceId}</div>
+      {duplicateOf && (
+        <p className="config-desc dm-duplicate-note">
+          This {SENSOR_FIELD_LABELS[duplicateOf.measurement] || duplicateOf.measurement} reading is already reported by
+          {" "}{duplicateOf.parent.name}, so Monitoring shows it once, on that device's tile. You can still enable this
+          service; it is not shown as a second tile, and its history is included in the parent's chart.
+        </p>
+      )}
       <div className="dm-detail-rows">
         <div className="dm-detail-row"><span>Type</span><span>{device.type}</span></div>
         {device.attributes?.area && (
@@ -5341,6 +5722,33 @@ const SENSOR_FIELD_LABELS = Object.fromEntries(SENSOR_FIELD_OPTIONS.map(o => [o.
 // re-selections; the legend is what ties color back to name each render).
 const SENSOR_HISTORY_COLORS = ["#58a6ff", "#3fb950", "#f0883e", "#f85149", "#a371f7", "#39c5cf", "#d29922", "#ec6cb9"];
 
+// Outdoor baseline: the fields a nearby airport station can be compared against. Dew point is the
+// measure that tells "the weather got wetter" apart from "the building still holds moisture," so a
+// temperature chart also gets it. Daily values come from GET /api/weather/outdoor-history (Celsius
+// and percent, UTC days keyed by the first 10 characters of `day`, same as the indoor points).
+export const OUTDOOR_BASELINE_FIELDS = new Set(["humidity", "temperature"]);
+const OUTDOOR_BASELINE_STYLE = {
+  rhPct: { color: "#8b949e", dash: "6 3" },
+  tempC: { color: "#8b949e", dash: "6 3" },
+  dewpointC: { color: "#b1bac4", dash: "2 3" },
+};
+export function outdoorBaselineSeries(field, outdoor) {
+  const pts = Array.isArray(outdoor?.points) ? outdoor.points : [];
+  if (pts.length === 0) return [];
+  const specs = field === "humidity" ? [{ key: "rhPct", label: "Outdoor humidity" }]
+    : field === "temperature" ? [{ key: "tempC", label: "Outdoor temperature" }, { key: "dewpointC", label: "Outdoor dew point" }]
+    : [];
+  const stations = [...new Set(pts.map(p => p.station).filter(Boolean))];
+  const suffix = stations.length ? ` (${stations.join("/")})` : "";
+  return specs.map(sp => ({
+    key: sp.key,
+    label: `${sp.label}${suffix}`,
+    ...OUTDOOR_BASELINE_STYLE[sp.key],
+    byDay: Object.fromEntries(pts.filter(p => p[sp.key] != null)
+      .map(p => [String(p.day).slice(0, 10), { value: p[sp.key], n: p.sampleCount, partial: !!p.partial }])),
+  }));
+}
+
 const SENSOR_HISTORY_KNOWN_FIELDS = new Set(SENSOR_FIELD_OPTIONS.map(o => o.value));
 
 // D16 (Reporting Topics IA, ratified 2026-09-05): the Topic picker is the
@@ -5907,6 +6315,28 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   // the full requested window came back.
   const [rangeInfo, setRangeInfo] = useState(null);
 
+  // Outdoor baseline overlay (humidity and temperature charts). On by default: an indoor reading is
+  // only meaningful next to what the air outside was doing. A location with no configured station
+  // simply gets an empty answer and no overlay.
+  const [showOutdoor, setShowOutdoor] = useState(true);
+  // The response is stored with the query it answered, and used only while that is still the query on
+  // screen: switching from Cabin to Home (or another range) must not keep drawing the previous
+  // location's line and station label while the next response loads.
+  const [outdoorState, setOutdoorState] = useState({ key: null, data: null });
+  const outdoorEligible = topic === "comfort_air" && OUTDOOR_BASELINE_FIELDS.has(field) && !!location;
+  const outdoorWanted = outdoorEligible && showOutdoor;
+  const outdoorKey = outdoorWanted ? `${apiBase}|${location}|${days}` : null;
+  const outdoor = outdoorKey !== null && outdoorState.key === outdoorKey ? outdoorState.data : null;
+  useEffect(() => {
+    if (outdoorKey === null) { setOutdoorState({ key: null, data: null }); return; }
+    let cancelled = false;
+    authedFetch(`${apiBase}/api/weather/outdoor-history?location=${encodeURIComponent(location)}&days=${days}`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setOutdoorState({ key: outdoorKey, data: data && Array.isArray(data.points) ? data : null }); })
+      .catch(() => { if (!cancelled) setOutdoorState({ key: outdoorKey, data: null }); });
+    return () => { cancelled = true; };
+  }, [outdoorKey, apiBase, location, days, authedFetch]);
+
   // Alert History (D16): "a view over the alert event log (all types)" --
   // Cowork-ratified 2026-09-05 as a pure computed view, not a per-service
   // reports_to[] assignment, so it doesn't share any of the field/chart
@@ -5993,8 +6423,13 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   // backend flags partial for one device is partial for all of them --
   // this is just which of allDates that ever was, not a per-device fact.
   const partialDates = new Set(selectedIds.flatMap(id => (seriesByDevice[id] || []).filter(p => p.partial).map(p => p.day)));
-  const allDisplayValues = selectedIds.flatMap(id =>
-    (seriesByDevice[id] || []).filter(p => p.avg != null).map(p => toDisplay(p.avg)));
+  const dateKeys = allDates.map(d => String(d).slice(0, 10));
+  const outdoorSeries = outdoorWanted ? outdoorBaselineSeries(field, outdoor) : [];
+  const allDisplayValues = [
+    ...selectedIds.flatMap(id =>
+      (seriesByDevice[id] || []).filter(p => p.avg != null).map(p => toDisplay(p.avg))),
+    ...outdoorSeries.flatMap(sr => dateKeys.map(k => sr.byDay[k]).filter(Boolean).map(o => toDisplay(o.value))),
+  ];
   const chartMin = allDisplayValues.length ? Math.min(...allDisplayValues) : 0;
   const chartMax = allDisplayValues.length ? Math.max(...allDisplayValues) : 1;
   const range = chartMax - chartMin || 1;
@@ -6009,6 +6444,18 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(" ");
     return { deviceId, name: nameFor(deviceId), color: SENSOR_HISTORY_COLORS[idx % SENSOR_HISTORY_COLORS.length], d, hasPoints: pts.length > 0 };
+  });
+  // A gap in the outdoor series (a day the station did not report) breaks the line instead of
+  // being bridged, so the chart never draws a value that was not observed.
+  const outdoorPaths = outdoorSeries.map(sr => {
+    let d = "", pen = false;
+    dateKeys.forEach((k, i) => {
+      const o = sr.byDay[k];
+      if (!o) { pen = false; return; }
+      d += `${pen ? "L" : "M"}${toX(i).toFixed(1)},${toY(toDisplay(o.value)).toFixed(1)} `;
+      pen = true;
+    });
+    return { ...sr, d: d.trim(), hasPoints: d.length > 0 };
   });
 
   // 2026-08-27: long/tidy format (one row per date+device), not the wide
@@ -6029,6 +6476,11 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
         const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
         if (p?.avg == null) continue;
         rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount, p.partial ? "yes" : "no"].join(","));
+      }
+      for (const sr of outdoorSeries) {
+        const o = sr.byDay[String(day).slice(0, 10)];
+        if (!o) continue;
+        rows.push([new Date(day).toLocaleDateString(), `"${sr.label}"`, toDisplay(o.value).toFixed(2), o.n, o.partial ? "yes" : "no"].join(","));
       }
     }
     const blob = new Blob([header + rows.join("\n")], { type: "text/csv" });
@@ -6113,7 +6565,20 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                 </select>
               </label>
               <button className="btn-ghost" onClick={downloadCsv} disabled={selectedIds.length === 0 || allDates.length === 0}>Download CSV</button>
+              {outdoorEligible && (
+                <label className="dm-toolbar-select sensor-history-outdoor-toggle">
+                  <input type="checkbox" checked={showOutdoor} onChange={e => setShowOutdoor(e.target.checked)} /> Outdoor baseline
+                </label>
+              )}
             </div>
+            {outdoorWanted && outdoor && outdoor.stations?.length === 0 && (
+              <p className="config-hint sensor-history-outdoor-note">No outdoor weather station is set up for this location, so there is no baseline to show.</p>
+            )}
+            {outdoorWanted && outdoorSeries.length > 0 && (
+              <p className="config-hint sensor-history-outdoor-note">
+                Dashed line: nearest airport weather station ({outdoor.stations.join(", ")}), daily average of its hourly reports. Days are UTC days, so a day can differ slightly from the local calendar day.
+              </p>
+            )}
             {rangeInfo?.clamped && (
               <p className="config-hint sensor-history-clamp-note">
                 Showing last {rangeInfo.effectiveDays} days — this view's history is limited to {rangeInfo.effectiveDays} days, less than the {rangeInfo.requestedDays} requested.
@@ -6145,14 +6610,23 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                     {devicePaths.filter(p => p.hasPoints).map(p => (
                       <path key={p.deviceId} d={p.d} fill="none" stroke={p.color} strokeWidth="2"/>
                     ))}
+                    {outdoorPaths.filter(p => p.hasPoints).map(p => (
+                      <path key={p.key} d={p.d} fill="none" stroke={p.color} strokeWidth="1.5" strokeDasharray={p.dash} data-testid={`outdoor-line-${p.key}`}/>
+                    ))}
                   </svg>
                 )}
-                {selectedIds.length > 1 && (
+                {(selectedIds.length > 1 || outdoorPaths.length > 0) && (
                   <div className="sensor-history-legend">
-                    {devicePaths.map(p => (
+                    {selectedIds.length > 1 && devicePaths.map(p => (
                       <span key={p.deviceId} className="sensor-history-legend-item">
                         <span className="sensor-history-legend-swatch" style={{ background: p.color }} />
                         {p.name}
+                      </span>
+                    ))}
+                    {outdoorPaths.map(p => (
+                      <span key={p.key} className="sensor-history-legend-item">
+                        <span className="sensor-history-legend-swatch" style={{ background: p.color }} />
+                        {p.label}
                       </span>
                     ))}
                   </div>
@@ -6163,7 +6637,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                 </p>
                 <div className="sensor-history-table-wrap">
                   <table className="sensor-history-table">
-                    <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}</tr></thead>
+                    <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}{outdoorSeries.map(sr => <th key={sr.key}>{sr.label}</th>)}</tr></thead>
                     <tbody>
                       {[...allDates].reverse().map(day => (
                         <tr key={day}>
@@ -6176,6 +6650,10 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                             // samples or one stray point, which is exactly the kind of
                             // question an insurance inspector would ask.
                             return <td key={id}>{p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—"}</td>;
+                          })}
+                          {outdoorSeries.map(sr => {
+                            const o = sr.byDay[String(day).slice(0, 10)];
+                            return <td key={sr.key}>{o ? `${toDisplay(o.value).toFixed(1)}${unit} (n=${o.n})${o.partial ? " (partial)" : ""}` : "—"}</td>;
                           })}
                         </tr>
                       ))}
@@ -6250,7 +6728,10 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       </div>
 
       <div className={`kpi-grid ${reorderMode ? "reorder-mode" : ""}`}>
-        {kpiEntries.map(({ globalIdx, tile }) => {
+        <ExpandableList items={kpiEntries} keyOf={e => e.tile.deviceId} noun="tiles" forceOpen={reorderMode}
+          limit={{ base: COLLAPSED_LIMIT, wide: 25 }}
+          isPinned={e => pinnedCount != null && e.globalIdx < pinnedCount}
+          renderItem={({ globalIdx, tile }) => {
           const isPinned = pinnedCount != null && globalIdx < pinnedCount;
           return (
             <KpiTile key={tile.deviceId} {...tile}
@@ -6263,7 +6744,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
               onDragEnd={reorderMode ? onDragEnd : undefined}
             />
           );
-        })}
+        }} />
       </div>
 
       <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
@@ -6288,12 +6769,13 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
             {liveMessages.length === 0 && (
               <div className="event-log-empty">No live events yet from {locCfg.label}</div>
             )}
-            {liveMessages.map((m, i) => (
-              <div key={i} className="event-row">
-                <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
-                <span className="event-body">{JSON.stringify(m)}</span>
-              </div>
-            ))}
+            <ExpandableList items={liveMessages.map((m, i) => ({ m, i }))} keyOf={e => e.i} noun="events"
+              renderItem={({ m, i }) => (
+                <div key={i} className="event-row">
+                  <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
+                  <span className="event-body">{JSON.stringify(m)}</span>
+                </div>
+              )} />
           </>
         )}
       </div>
@@ -6317,7 +6799,7 @@ export function MonitoringPanel({ active, auth }) { // exported for src/App.test
   const handleViewChange = (v) => { setView(v); setSelected(null); setReorderMode(false); };
 
   return (
-    <div className="panel-content">
+    <div data-panel="monitoring" className="panel-content">
       <AlertControls panelId="MONITORING" />
       <div className="panel-header-bar">
         <h2>Monitoring</h2>
@@ -6595,6 +7077,21 @@ function severityClass(override) {
 // MnSeeView already built for the old separate list view, just wired
 // onto the actual tile instead. All undefined/false outside reorder
 // mode, so normal (non-reorder) rendering is untouched.
+// Readings stay at the large size; wording such as "unavailable" or "State unknown" uses the card's smallest text size.
+function KpiValue({ value }) {
+  const segments = valueSegments(value);
+  if (!segments.some(s => s.note)) {
+    return <div className="kpi-value">{value}</div>;
+  }
+  return (
+    <div className="kpi-value kpi-value-mixed">
+      {segments.map((s, i) => (
+        <span key={i} className={s.note ? "kpi-value-note" : undefined}>{s.text}{i < segments.length - 1 ? " · " : ""}</span>
+      ))}
+    </div>
+  );
+}
+
 function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPinned, isOver,
     onDragStart, onDragOver, onDrop, onDragEnd }) {
   const { displayConfigs, devices = [], setActivePanel, setPendingDeviceFocus } = useApp();
@@ -6632,7 +7129,7 @@ function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPin
         : <GripVertical size={13} className="drag-handle"/>)}
       <Icon size={22} />
       <div className="kpi-label">{effectiveLabel}</div>
-      <div className="kpi-value">{effectiveValue}</div>
+      <KpiValue value={effectiveValue} />
       <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>
   );
@@ -6759,7 +7256,7 @@ export function RulesPanel({ auth }) { // exported for src/App.test.jsx's locati
   };
 
   return (
-    <div className="panel-content">
+    <div data-panel="rules" className="panel-content">
       <AlertControls panelId="RULES_ENGINE" />
       <div className="panel-header-bar">
         <h2>Rules &amp; Alerts</h2>
@@ -7265,7 +7762,8 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
     if (keepN != null || !view?.targets?.length) return;
     const configured = view.targets[0].keep || 3;
     const max = Math.max(...view.targets.map(t => t.count));
-    setKeepN(Math.min(Math.max(1, configured), max));
+    // Functional update: a value the user already chose in the same tick as the first load must not be overwritten by the default.
+    setKeepN((current) => current ?? Math.min(Math.max(1, configured), max));
   }, [view, keepN]);
 
   // After Go, wait for the host to report this request's result.
@@ -7523,7 +8021,9 @@ function StatusChecksCard({ auth }) {
       </div>
       {open && (
       <div className="active-conditions-list">
-        {items.map(item => {
+        <ExpandableList items={items} keyOf={item => item.id} noun="checks"
+          isPinned={item => (item.severity || "").toLowerCase() === "critical" || expandedId === item.id}
+          renderItem={item => {
           const expanded = expandedId === item.id;
           const steps = item.kind === "automation" ? automationAlertSteps(item.raw) : deviceConditionSteps(item);
           return (
@@ -7631,7 +8131,7 @@ function StatusChecksCard({ auth }) {
               </div>
             </div>
           );
-        })}
+        }} />
       </div>
       )}
       {silencedList}
@@ -8295,7 +8795,9 @@ function RecentExecutionsList({ workflows, activeLocation, auth }) {
         </span>
       </div>
       <p className="config-hint">Unviewed workflow firings.</p>
-      {!collapsed && recent.map((exec, idx) => {
+      {!collapsed && <ExpandableList items={recent.map((exec, idx) => ({ exec, idx }))}
+        keyOf={e => e.exec.executionId ?? e.idx} noun="firings"
+        renderItem={({ exec, idx }) => {
         const wf = workflows.find(w => w.workflowId === exec.workflowId);
         return (
           <div key={exec.executionId ?? idx} className="rule-row">
@@ -8309,7 +8811,7 @@ function RecentExecutionsList({ workflows, activeLocation, auth }) {
             </div>
           </div>
         );
-      })}
+      }} />}
     </div>
   );
 }
@@ -8338,7 +8840,8 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
       {workflows.length === 0 && <p className="config-hint">No workflows configured yet.</p>}
       {!collapsed && workflows.length > 0 && (
         <div className="workflow-rows-list">
-          {workflows.map(w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} devices={devices} onChanged={onChanged} />)}
+          <ExpandableList items={workflows} keyOf={w => w.workflowId} noun="workflows"
+            renderItem={w => <WorkflowRow key={w.workflowId} workflow={w} auth={auth} devices={devices} onChanged={onChanged} />} />
         </div>
       )}
       {!creating && (
@@ -8378,6 +8881,7 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
 const OPPORTUNITY_TYPE_LABELS = {
   POWER_DRAW_ANOMALY: "Power",
   NOISY_ALERT: "Alert noise",
+  DUPLICATE_READING: "Duplicate readings",
 };
 
 // W-65: one noisy alert's line -- what it is, how often, and where to go.
@@ -8465,7 +8969,7 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
       {actionError && <p className="action-result action-error">{actionError}</p>}
       {!error && visible.length === 0 && <p className="config-hint">No open opportunities — the cabin looks good.</p>}
       <div className="rule-rows">
-        {visible.map(o => {
+        <ExpandableList items={visible} keyOf={o => o.id} noun="opportunities" renderItem={o => {
           const device = devices.find(d => d.deviceId === o.deviceId);
           const area = device?.attributes?.area;
           const deviceLabel = device ? `${area ? area + " · " : ""}${device.name}` : o.deviceId;
@@ -8480,6 +8984,7 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
                   {watts != null && `Drawing ~${Number(watts).toFixed(0)}W`}
                   {hours != null && ` continuously for ${hours}h`}
                   {o.opportunityType === "NOISY_ALERT" && `Alerts keep recurring (last ${o.evidence?.windowDays ?? "?"} days)`}
+                  {o.opportunityType === "DUPLICATE_READING" && `Same readings reported by the device and ${(o.evidence?.duplicates || []).length} of its services`}
                   {" · detected "}{new Date(o.detectedAt).toLocaleString()}
                 </div>
                 {o.opportunityType === "NOISY_ALERT" && (o.evidence?.alerts || []).map(alert => {
@@ -8501,6 +9006,21 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
                     </div>
                   );
                 })}
+                {o.opportunityType === "DUPLICATE_READING" && (
+                  <div className="noisy-alert-item">
+                    <ul>
+                      {(o.evidence?.duplicates || []).map(d => (
+                        <li key={d.deviceId}>{d.name}: {(d.fields || []).map(f => SENSOR_FIELD_LABELS[f] || f).join(", ")}</li>
+                      ))}
+                    </ul>
+                    <ul>
+                      {(o.evidence?.recommendations || []).map((text, i) => <li key={i}>{text}</li>)}
+                    </ul>
+                    <div className="workflow-row-actions">
+                      <button type="button" className="btn-ghost" onClick={() => { app.setPendingDeviceFocus?.(o.deviceId); app.setActivePanel?.("DEVICE_MANAGER"); }}>Open device</button>
+                    </div>
+                  </div>
+                )}
                 <MetaChips items={[OPPORTUNITY_TYPE_LABELS[o.opportunityType] || o.opportunityType, o.status === "ACKNOWLEDGED" && "acknowledged"]} />
                 <div className="workflow-row-actions">
                   {o.status === "OPEN" && (
@@ -8511,7 +9031,7 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
               </div>
             </div>
           );
-        })}
+        }} />
       </div>
     </div>
   );
@@ -9213,6 +9733,14 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   const demoAuth = useDemoAuth(demoToken);
   const cameraAuth = demoToken ? demoAuth : googleAuth;
   const isDemo = !!demoToken;
+  // Usage tracking: the demo page is a SPA route that never reaches the backend, so one cheap
+  // authenticated GET on mount (tagged) records that the link was opened.
+  const demoAuthedFetch = demoAuth.authedFetch;
+  useEffect(() => {
+    if (!demoToken) return;
+    demoAuthedFetch(`${LOCATIONS.cabin.apiBase}/api/dashboard/config`, { headers: { "X-Demo-Page-Open": "1" } })
+      .catch(() => {});
+  }, [demoToken, demoAuthedFetch]);
   const {
     alerts: activeAlerts,
     locations: activeAlertLocations,
@@ -9758,11 +10286,13 @@ if (rootEl) {
   const demoMatch = window.location.pathname.match(/^\/demo\/([^/]+)/);
   if (demoMatch) installDemoFetch(decodeURIComponent(demoMatch[1]));
   const magicMatch = window.location.pathname.match(/^\/auth\/magic\/([^/]+)/);
+  const roofMatch = window.location.pathname.match(/^\/roof\/([^/]+)/);
   createRoot(rootEl).render(
     <ThemeProvider>
       {guestMatch ? <GuestDashboard token={guestMatch[1]} />
         : demoMatch ? <App demoToken={decodeURIComponent(demoMatch[1])} />
         : magicMatch ? <MagicLinkLanding token={magicMatch[1]} />
+        : roofMatch ? <div className="guest-view roof-shell"><RoofSpecPage token={roofMatch[1]} apiBase={LOCATIONS.cabin.apiBase} /></div>
         : <App />}
     </ThemeProvider>
   );

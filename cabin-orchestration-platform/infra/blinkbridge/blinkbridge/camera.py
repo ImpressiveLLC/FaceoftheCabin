@@ -13,7 +13,7 @@ from typing import Callable, Optional
 
 from .backoff import Backoff
 from .config import slug
-from .errors import ThrottledError, classify
+from .errors import ThrottledError, TransientError, classify
 from .relay import RelayProcess, Spawn, relay_args
 
 log = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ class Env:
     spawn: Optional[Spawn]
     gate: Callable[[], float]                 # seconds Blink must be left alone (throttle), 0 if clear
     on_throttle: Callable[[float, str], None]  # (delay, reason) -> supervisor blocks all Blink calls
+    present: Callable[[str], bool] = lambda name: True  # is the camera in Blink's latest answer?
 
 
 class CameraRunner:
@@ -51,10 +52,12 @@ class CameraRunner:
         self.feed_task: Optional[asyncio.Future] = None
         self.relay: Optional[RelayProcess] = None
         self.live_since = 0.0
+        self.last_request_at: Optional[float] = None  # clock() of the latest start request
         self.lock = asyncio.Lock()
 
     # ---- requests -------------------------------------------------------------------
     def request(self, duration: float) -> None:
+        self.last_request_at = self.env.clock()
         end = self.env.clock() + duration
         self.deadline = end if self.deadline is None else max(self.deadline, end)
 
@@ -120,6 +123,9 @@ class CameraRunner:
                 self.state = State.IDLE
             return
         if now < self.next_retry_at or self.env.gate() > 0:
+            return
+        if not self.env.present(self.name):
+            self._fail(TransientError("camera missing from Blink account response"))
             return
         await self._open()
 

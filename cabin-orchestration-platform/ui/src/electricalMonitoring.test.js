@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget } from './electricalMonitoring';
+import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget, valueSegments } from './electricalMonitoring';
 const parent = (id, location = 'cabin', energy = 48.32) => ({deviceId:id, name:id, type:'POWER_METER', location, attributes:{enabled:true, deviceLifecycle:'ASSIGNED', vendorReportedFields:['power','voltage', ...(energy == null ? [] : ['energy'])], power:0, voltage:122.3, ...(energy == null ? {} : {energy})}});
 const child = (id, pid, field, value, extra = {}) => ({deviceId:id, name:id, type:'POWER_METER', location:'cabin', attributes:{enabled:true, deviceLifecycle:'ASSIGNED', parentDeviceId:pid, entityId:`sensor.${id}`, sourceReportedFields:[field], [field]:value, ...extra}});
 describe('one physical smart-switch card', () => {
@@ -135,5 +135,53 @@ describe('smart-switch card always shows power and relay state together (post-#2
     const pw = child('pw', 'z2m-0xa4c1381f3884ffff', 'power', 263.26, {serviceRole:'measurement'});
     const card = electricalMonitoringDevices([s61(), sw, pw]).find(d => d.deviceId === 'z2m-0xa4c1381f3884ffff');
     expect(electricalValue(card.attributes)).toBe('263.26 W · Energy unavailable · ON');
+  });
+});
+
+describe('card value wording is never larger than the readings (valueSegments)', () => {
+  const notes = value => valueSegments(value).filter(s => s.note).map(s => s.text);
+  const readings = value => valueSegments(value).filter(s => !s.note).map(s => s.text);
+
+  it('keeps numbers large and drops the wording around them', () => {
+    expect(readings('263.26 W \u00b7 Energy unavailable \u00b7 ON')).toEqual(['263.26 W']);
+    expect(notes('263.26 W \u00b7 Energy unavailable \u00b7 ON')).toEqual(['Energy unavailable', 'ON']);
+    expect(notes('Power unavailable \u00b7 Energy unavailable \u00b7 State unknown')).toHaveLength(3);
+    expect(readings('55.8\u00b0F \u00b7 49.8%')).toEqual(['55.8\u00b0F', '49.8%']);
+    expect(notes('55.8\u00b0F \u00b7 49.8%')).toEqual([]);
+  });
+
+  it('leaves single plain values alone, so ONLINE, Dry and plain numbers stay as before', () => {
+    for (const v of ['ONLINE', 'Dry', 'UNKNOWN', '42.96%', '928.35 ppm', '59.0\u00b0F']) expect(notes(v)).toEqual([]);
+  });
+
+  it('shrinks a lone unavailable or unknown message', () => {
+    expect(notes('Voltage unavailable')).toEqual(['Voltage unavailable']);
+    expect(notes('Measurement unavailable')).toEqual(['Measurement unavailable']);
+  });
+
+  it('is what electricalValue produces for the circled cards', () => {
+    const text = electricalValue({ monitoringGroup: 'x', mappedSwitchState: 'OFF' });
+    expect(readings(text)).toEqual([]);
+    expect(notes(text)).toEqual(['Power unavailable', 'Energy unavailable', 'OFF']);
+  });
+});
+
+describe('relay state precedence (breaker box, 2026-10-31)', () => {
+  const relay = (id, entity, state) => ({deviceId:id, type:'HOME_ASSISTANT_ENTITY', location:'cabin',
+    attributes:{enabled:true, deviceLifecycle:'ASSIGNED', parentDeviceId:'p', entityId:entity, state}});
+  it('uses the parent own ON even when a configuration switch child reports OFF', () => {
+    const p = {...parent('p'), attributes:{...parent('p').attributes, state:'ON', power:1.2}};
+    const card = electricalMonitoringDevices([p, relay('r', 'switch.p', 'ON'), relay('m', 'switch.p_metering_only_mode', 'OFF')])[0];
+    expect(card.attributes.mappedSwitchState).toBe('ON');
+    expect(electricalValue(card.attributes)).toBe('1.2 W · 48.32 kWh · ON');
+  });
+  it('uses the parent own OFF over a child saying ON', () => {
+    const p = {...parent('p'), attributes:{...parent('p').attributes, state:'OFF'}};
+    expect(electricalMonitoringDevices([p, relay('r', 'switch.p', 'ON')])[0].attributes.mappedSwitchState).toBe('OFF');
+  });
+  it('still says State unknown when the parent has no state and the switch children disagree', () => {
+    const card = electricalMonitoringDevices([parent('p'), relay('r', 'switch.p', 'ON'), relay('m', 'switch.m', 'OFF')])[0];
+    expect(card.attributes.mappedSwitchState).toBeUndefined();
+    expect(electricalValue(card.attributes)).toMatch(/State unknown$/);
   });
 });

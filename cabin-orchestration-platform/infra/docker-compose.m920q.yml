@@ -195,7 +195,7 @@ services:
       HA_TOKEN: ${HA_TOKEN:-}
       HOME_HA_URL: ${HOME_HA_URL:-http://home-hub:8123}
       HOME_HA_TOKEN: ${HOME_HA_TOKEN:-}
-      HOME_HUB_DEPLOYED: ${HOME_HUB_DEPLOYED:-false}
+      HOME_HA_DEPLOYED: ${HOME_HA_DEPLOYED:-${HOME_HUB_DEPLOYED:-false}}
       KAFKA_BOOTSTRAP: cabin-kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://cabin-postgres:5432/cabin
       # Same Web Client ID family-hub signs in with (see family-hub's
@@ -229,6 +229,11 @@ services:
       # created first (scripts/host/intent-slot-baseline).
       CABIN_ASK_INTENT_ENABLED: ${CABIN_ASK_INTENT_ENABLED:-false}
       CABIN_ASK_INTENT_MODEL: ${CABIN_ASK_INTENT_MODEL:-cabin-intent-slot-prompt-r1}
+      # Ask path Ollama bounds (W-118): the read default sits below nginx's 60 s and Cloudflare's 100 s so a wedged
+      # Ollama ends in the raw-facts fallback, not a 504 or 524. A recorded 54 s Ask trial now falls back to raw facts:
+      # a known trade-off of the 50 s default. The read timeout is per read, not a total deadline (W-127 item 2).
+      CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS: ${CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS:-3}
+      CABIN_OLLAMA_READ_TIMEOUT_SECONDS: ${CABIN_OLLAMA_READ_TIMEOUT_SECONDS:-50}
       # "cabinCameraName:blinkDeviceName" pairs, comma-separated -- see
       # CameraMediaController's javadoc. Was never set here before
       # 2026-08-15 (the app-level @Value default silently covered the
@@ -313,6 +318,8 @@ services:
       # this container/image and stays inspectable/backupable the same
       # way as everything else under /storage.
       - /storage/archives/cabin_event:/app/archives/cabin_event
+      # Read-write -- OutdoorWeatherService's raw and monthly outdoor-weather CSV log (cold tier).
+      - /storage/archives/weather:/app/archives/weather
     networks:
       - default         # project network: reaches cabin-postgres, cabin-kafka
       - cabin_default   # existing network: reaches mosquitto, nodered, z2m

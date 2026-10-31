@@ -18,6 +18,7 @@ Where the M920q's data lives, which disk is which tier, what must never be dropp
 | `/storage/backups/` | **640 GB** | Nightly rsync snapshots by four systemd timers (`backup-home`, `backup-configs`, `backup-services`, `backup-data`), run by `/usr/local/bin/backup-modular`. **No pruning** until W-48: 101 full copies of `/home` (577 GB, mostly the 13 GB `poc1-work`), about 100 of `/storage/services` (35 GB), plus one 29 GB system copy from 2026-06-29 |
 | `/storage/cameras/frigate/recordings/` | 172 GB | Frigate continuous (5 days) and alert/detection (10 days, mode motion) recordings. The Reolink's 4K main stream measures **27 to 40 GB per day** (Frigate's own bandwidth figure, 6.3 GB per day, understates it; the old 80 to 160 GB estimate overstated it) |
 | `/storage/archives/` | 0.43 GB | Telemetry cold copies, see below |
+| `/storage/archives/weather/` | not yet measured | Outdoor weather cold copies (added 2026-10-29, `docs/OUTDOOR_WEATHER_BASELINE.md`): a raw download per run and a monthly CSV per location and station, written by `cabin-backend` through the bind mount `/app/archives/weather`. Nothing deletes them, and the same rows are in the Postgres table `outdoor_observation` |
 | `/storage/services/` | 0.64 GB | Home Assistant, Zigbee2MQTT, Frigate config, Node-RED, mosquitto, uptime-kuma |
 
 ## Telemetry: the data that must be kept

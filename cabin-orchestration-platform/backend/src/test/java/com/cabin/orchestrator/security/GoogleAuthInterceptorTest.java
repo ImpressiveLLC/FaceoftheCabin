@@ -34,9 +34,12 @@ class GoogleAuthInterceptorTest {
     private CabinSessionService cabinSessions;
     private GoogleAuthInterceptor interceptor;
     private final List<String> sentMagicLinkUrls = new java.util.ArrayList<>();
+    /** Every recordUse call the fake store received: {tokenId, tier, route, policyClass, status}. */
+    private final List<Object[]> recordedUse = new java.util.ArrayList<>();
 
     @BeforeEach
     void setUp() {
+        recordedUse.clear();
         accessTokens = new CabinAccessTokenService(new InMemoryAccessTokenStore());
         sentMagicLinkUrls.clear();
         managedUsers = new ManagedUserService(new InMemoryManagedUserStore(), new InMemoryMagicLinkTokenStore(),
@@ -105,7 +108,7 @@ class GoogleAuthInterceptorTest {
     }
 
     /** Minimal in-memory fake -- no database needed for this unit test. */
-    private static final class InMemoryAccessTokenStore implements CabinAccessTokenStore {
+    private class InMemoryAccessTokenStore implements CabinAccessTokenStore {
         private final Map<String, CabinAccessToken> byToken = new HashMap<>();
 
         @Override public List<CabinAccessToken> loadAll() { return List.copyOf(byToken.values()); }
@@ -122,6 +125,11 @@ class GoogleAuthInterceptorTest {
                     existing.expiresAt(), revokedAt, existing.createdBy(), existing.createdAt())
                 : existing);
         }
+
+        @Override public void recordUse(String tokenId, Instant at, String tier, String route, String policyClass,
+                                        int status, String clientIp, String userAgent, boolean pageOpen) {
+            recordedUse.add(new Object[] { tokenId, tier, route, policyClass, status, clientIp, userAgent });
+        }
     }
 
     @Test
@@ -132,6 +140,66 @@ class GoogleAuthInterceptorTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         assertTrue(interceptor.preHandle(request, response, new Object()));
+    }
+
+    // Access link usage tracking (HO-2026-10-29): a Tier 1 request leaves a trail by link id.
+    @Test
+    void aTierOneGuestRequestIsRecordedWithTheLinkIdAndTheRealResponseStatus() throws Exception {
+        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("dashboard"), null, "nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dashboard/config");
+        request.setRequestURI("/api/dashboard/config");
+        request.setParameter("t", token.token());
+        request.addHeader("CF-Connecting-IP", "203.0.113.9");
+        request.addHeader("User-Agent", "TestBrowser/1");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertTrue(interceptor.preHandle(request, response, new Object()));
+        response.setStatus(200);
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        assertEquals(1, recordedUse.size());
+        Object[] call = recordedUse.get(0);
+        assertEquals(token.id(), call[0]);
+        assertEquals("view", call[1]);
+        assertEquals("/api/dashboard/config", call[2]);
+        assertEquals(200, call[4]);
+        assertEquals("203.0.113.9", call[5]);
+        for (Object field : call) {
+            assertFalse(String.valueOf(field).contains(token.token()), "the bearer token must never be stored");
+        }
+    }
+
+    @Test
+    void aTierOneRefusalIsRecordedWithItsStatus() throws Exception {
+        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("alerts_read"), null, "nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dashboard/config");
+        request.setRequestURI("/api/dashboard/config");
+        request.setParameter("t", token.token());
+
+        assertFalse(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
+
+        assertEquals(1, recordedUse.size());
+        assertEquals(403, recordedUse.get(0)[4]);
+        assertEquals("DENY", recordedUse.get(0)[3]);
+    }
+
+    @Test
+    void aFailureToRecordNeverBreaksTheGuestRequest() throws Exception {
+        accessTokens = new CabinAccessTokenService(new InMemoryAccessTokenStore() {
+            @Override public void recordUse(String tokenId, Instant at, String tier, String route, String policyClass,
+                                            int status, String clientIp, String userAgent, boolean pageOpen) {
+                throw new IllegalStateException("database down");
+            }
+        });
+        interceptor = new GoogleAuthInterceptor(accessTokens, managedUsers, cabinSessions);
+        CabinAccessToken token = accessTokens.create("Insurance Claim", List.of("dashboard"), null, "nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/dashboard/config");
+        request.setRequestURI("/api/dashboard/config");
+        request.setParameter("t", token.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertTrue(interceptor.preHandle(request, response, new Object()));
+        interceptor.afterCompletion(request, response, new Object(), null);
     }
 
     // D12's fourth scope, added 2026-09-01 once the target endpoint was confirmed.
@@ -188,6 +256,45 @@ class GoogleAuthInterceptorTest {
 
         assertFalse(interceptor.preHandle(request, response, new Object()));
         assertEquals(403, response.getStatus());
+    }
+
+    // Roof Monitoring page: the one write a guest link has.
+    private boolean guestCall(List<String> scope, String method, String path) throws Exception {
+        CabinAccessToken token = accessTokens.create("Aaron, Collins", scope, null, "nate@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest(method, path);
+        request.setParameter("t", token.token());
+        return interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
+    }
+
+    @Test
+    void aRoofSpecLinkCanReadAndPostComments() throws Exception {
+        assertTrue(guestCall(List.of("roof_spec"), "GET", "/api/roof-spec/entries"));
+        assertTrue(guestCall(List.of("roof_spec"), "POST", "/api/roof-spec/entries"));
+    }
+
+    @Test
+    void aRoofSpecLinkCannotDeleteOrPostAnywhereElse() throws Exception {
+        for (String[] c : new String[][] {
+            {"DELETE", "/api/roof-spec/entries/abc"},
+            {"POST", "/api/roof-spec/entries/abc"},
+            {"PATCH", "/api/roof-spec/entries"},
+            {"POST", "/api/devices/x/command"},
+            {"POST", "/api/alerts/acknowledgments"},
+            {"POST", "/api/access-tokens"} }) {
+            assertFalse(guestCall(List.of("roof_spec"), c[0], c[1]), c[0] + " " + c[1]);
+        }
+    }
+
+    @Test
+    void aRoofSpecLinkDoesNotGrantTheOtherReadScopes() throws Exception {
+        // /api/devices GET is open to everyone by design (D14), so use gated reads.
+        assertFalse(guestCall(List.of("roof_spec"), "GET", "/api/events"));
+        assertFalse(guestCall(List.of("roof_spec"), "GET", "/api/camera/list"));
+    }
+
+    @Test
+    void otherScopesCannotPostComments() throws Exception {
+        assertFalse(guestCall(List.of("dashboard", "device_states", "alerts_read", "observations_read"), "POST", "/api/roof-spec/entries"));
     }
 
     @Test

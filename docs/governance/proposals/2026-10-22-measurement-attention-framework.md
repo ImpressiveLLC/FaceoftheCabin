@@ -621,6 +621,12 @@ Open decisions for Nate (proxy-PO may rule; unanswered until recorded in Git):
 | MA-17 | Stored per browser, or per signed-in person? Per browser is the simplest and matches themes today; a shared kiosk then has one setting for everyone. | W-110 |
 | MA-18 | May the color-safe palette override a theme's own status hues, or only be offered in themes that can support it? | W-109, W-111 |
 
+**Recorded 2026-10-25 22:19 CDT (Nate, relayed to Cowork in session; Cowork records in Git):**
+
+- **MA-17: ruled by Nate.** Stored per browser, like the theme.
+- **MA-18: ruled by Nate.** The color-safe palette overrides a theme's status hues only where that theme supports it. A theme that cannot support it must be updated or supplemented with its own distinct, striking visual cue, so that a state needing attention beyond normal interaction is obvious without relying on hue. W-109 defines the cue per theme; W-111 fails a theme that has neither a compliant palette nor the cue.
+- **MA-16: ruled by Nate 2026-10-25 22:33 CDT.** No user toggles in the default design. The default presentation itself must have no pulsing and must give every color-blind-relevant state a non-color cue as well as its hue (an asterisk at the corners or a dotted border, specified per state in W-109). Toggles do not change the core implementation. A "Color safe" toggle and a separate "No motion" toggle are backlogged as W-116, not a current requirement. "No glow" and "calm" are not needed now: cross that bridge later.
+
 ### 15.5 Verification
 
 - Text on an attention tint at least 4.5:1. Attention border and icon against the adjacent surface at least 3:1.
@@ -631,3 +637,11 @@ Open decisions for Nate (proxy-PO may rule; unanswered until recorded in Git):
 ### 15.6 Sequencing
 
 Two lanes converge at W-98. The data lane is unchanged: W-101, then W-102 and W-103, then W-96, then W-97. The presentation lane is W-109, then W-110 and W-111 in parallel, using fixture states and fixed token names; it needs no assessment data, so it starts immediately and removes presentation design from the W-98 critical path. W-98 consumes both lanes. Dependencies, not WSJF order, govern.
+
+## 16. Codex follow-through after #251/#252
+
+Proxy-PO accepts W-98's presentation dependencies and W-105's section 15.5 cases, subject to section 15.6 sequencing; no attention presentation changes before the W-109 matrix. MA-16–18 remain with Nate. W-107 planning review was completed by #245, independently of implementation or release completion.
+
+The [independent verification/oracle package](../verification/measurement-attention/README.md) records #252 authorization/field-preservation/restart evidence limits, the exact successful hosted run, and the gated operator plan. It supplies 44 expected-outcome fixtures and six explicitly NOT_RUN human/interactive cases. Catalog/comparator checks are not evaluator conformance. W-96 schema and the production adapter for these fixtures remain integration deliverables; do not call the catalog an implemented assessment engine. The original 37 local errors remain individually unverified without their original head-linked log/XML, despite the stronger zero-error post-merge CI evidence. No live re-detect performed; Nate's approval follows an actual previewed diff.
+
+Runtime progress: #247/#248/#249 smart-switch cards/relay inference, #250 water-valve classification, #252 re-detect API, and #253 parent-linked history have merged. Exact deployed/live acceptance is separate. #244 remains the scope/closure tracker; no threshold, source catalog, human gate, converter recovery or general release is completed by those merges alone.

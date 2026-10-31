@@ -61,8 +61,32 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
     @Value("${HOME_HA_TOKEN:}")
     private String homeHaToken;
 
-    private final RestTemplate rest = new RestTemplate();
+    /**
+     * Bounded so a Home Assistant that accepts the connection and never answers cannot stall a discovery pass or a command (W-118).
+     * A timeout on a service call means the OUTCOME IS UNKNOWN: Home Assistant may have carried the command out. It never means
+     * "did not happen" (W-127 item 7; any future W-75 executor must read the state back before it retries).
+     */
+    @org.springframework.beans.factory.annotation.Value("${cabin.ha.connect-timeout-seconds:3}")
+    private int connectTimeoutSeconds = 3;
+
+    @org.springframework.beans.factory.annotation.Value("${cabin.ha.read-timeout-seconds:30}")
+    private int readTimeoutSeconds = 30;
+
+    private RestTemplate rest = new RestTemplate(boundedFactory(3, 30));
+
+    @jakarta.annotation.PostConstruct
+    void applyTimeouts() {
+        rest = new RestTemplate(boundedFactory(
+            connectTimeoutSeconds > 0 ? connectTimeoutSeconds : 3, readTimeoutSeconds > 0 ? readTimeoutSeconds : 30));
+    }
     private final ObjectMapper jsonMapper = new ObjectMapper();
+
+    private static org.springframework.http.client.SimpleClientHttpRequestFactory boundedFactory(int connectSeconds, int readSeconds) {
+        org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout((int) Math.min(Integer.MAX_VALUE, connectSeconds * 1_000L));
+        factory.setReadTimeout((int) Math.min(Integer.MAX_VALUE, readSeconds * 1_000L));
+        return factory;
+    }
 
     public record DiscoveredEntity(String entityId, String state, Map<String, Object> attributes) {}
 
@@ -141,6 +165,31 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
      * so a caller can always treat "not grouped" as the safe default.
      */
     public Map<String, String> deviceIdsByEntity(String location) {
+        return entityTemplate(location, "device_id(s.entity_id)");
+    }
+
+    private static final java.util.regex.Pattern ZIGBEE_ADDRESS =
+        java.util.regex.Pattern.compile("0x[0-9a-fA-F]{16}");
+
+    /**
+     * Maps an entity_id to the Zigbee hardware address (IEEE, lower case) of the physical device it
+     * belongs to, read from the identifiers of that entity's Home Assistant device. Zigbee2MQTT registers
+     * its devices with an identifier of the form zigbee2mqtt_0x..., so this holds however the device was
+     * renamed in Home Assistant (found 2026-10-29: the mech room sensor, renamed there, matched no Zigbee
+     * device by name). Empty when HA is unreachable or the template fails, like deviceIdsByEntity.
+     */
+    public Map<String, String> zigbeeAddressesByEntity(String location) {
+        Map<String, String> identifiers = entityTemplate(location,
+            "(device_attr(device_id(s.entity_id), 'identifiers') | string) if device_id(s.entity_id) else none");
+        Map<String, String> addresses = new LinkedHashMap<>();
+        identifiers.forEach((entityId, text) -> {
+            java.util.regex.Matcher m = ZIGBEE_ADDRESS.matcher(text);
+            if (m.find()) addresses.put(entityId, m.group().toLowerCase(java.util.Locale.ROOT));
+        });
+        return addresses;
+    }
+
+    private Map<String, String> entityTemplate(String location, String valueExpression) {
         String token = "home".equals(location) ? homeHaToken : cabinHaToken;
         String url = "home".equals(location) ? homeHaUrl : cabinHaUrl;
         if (token.isBlank()) {
@@ -155,7 +204,7 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
             // don't, which the JSON parse below simply drops).
             String template = "{% set ns = namespace(result={}) %}"
                 + "{% for s in states %}"
-                + "{% set ns.result = dict(ns.result, **{s.entity_id: device_id(s.entity_id)}) %}"
+                + "{% set ns.result = dict(ns.result, **{s.entity_id: " + valueExpression + "}) %}"
                 + "{% endfor %}"
                 + "{{ ns.result | tojson }}";
             Map<String, Object> body = Map.of("template", template);
@@ -254,11 +303,23 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
      */
     public boolean callService(String location, String domain, String service, String entityId,
                                Map<String, Object> extra) {
+        return callServiceOutcome(location, domain, service, entityId, extra) == ServiceOutcome.ACCEPTED;
+    }
+
+    /**
+     * What is known about a service call. UNKNOWN is a read timeout: the request was sent and Home Assistant may have carried
+     * the command out, so it must never be reported as "not accepted" or retried blind (W-75 prerequisite, W-127 item 7).
+     * NOT_ACCEPTED means the call was refused, failed before it was sent (no token, connect failure) or HA answered with an error.
+     */
+    public enum ServiceOutcome { ACCEPTED, NOT_ACCEPTED, UNKNOWN }
+
+    public ServiceOutcome callServiceOutcome(String location, String domain, String service, String entityId,
+                                             Map<String, Object> extra) {
         String token = tokenFor(location);
         if (token.isBlank()) {
             log.warn("HA token not configured for location '{}' — cannot call {}.{} on {}",
                 location, domain, service, entityId);
-            return false;
+            return ServiceOutcome.NOT_ACCEPTED;
         }
         try {
             HttpHeaders headers = bearerHeaders(token);
@@ -267,11 +328,27 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
             body.put("entity_id", entityId);
             rest.exchange(urlFor(location) + "/api/services/" + domain + "/" + service,
                 HttpMethod.POST, new HttpEntity<>(body, headers), Void.class);
-            return true;
+            return ServiceOutcome.ACCEPTED;
         } catch (Exception e) {
+            if (readTimedOut(e)) {
+                log.error("HA service {}.{} timed out waiting for {}: OUTCOME UNKNOWN, the command may have been carried out: {}",
+                    domain, service, entityId, e.getMessage());
+                return ServiceOutcome.UNKNOWN;
+            }
             log.error("HA service {}.{} failed for {}: {}", domain, service, entityId, e.getMessage());
-            return false;
+            return ServiceOutcome.NOT_ACCEPTED;
         }
+    }
+
+    /** A read timeout: the request went out and no answer came back. A connect timeout is not one (nothing was sent). */
+    static boolean readTimedOut(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof java.net.SocketTimeoutException && t.getMessage() != null
+                    && t.getMessage().toLowerCase(java.util.Locale.ROOT).contains("read")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String urlFor(DeviceDescriptor d) {

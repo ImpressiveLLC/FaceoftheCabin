@@ -34,6 +34,7 @@ class ManagedUsersControllerTest {
     private MockHttpServletRequest signedInAs(String email) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setAttribute(GoogleAuthInterceptor.REQUEST_ATTR_EMAIL, email);
+        request.setAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE, HouseholdRole.ADMINISTRATOR);
         return request;
     }
 
@@ -73,17 +74,17 @@ class ManagedUsersControllerTest {
         ManagedUser created = controller.create(
             Map.of("email", "a@example.com", "name", "Alice", "role", "VIEWER"), signedInAs("nate@example.com"));
 
-        Map<String, Object> deactivated = controller.deactivate(created.id());
+        Map<String, Object> deactivated = controller.deactivate(created.id(), signedInAs("nate@example.com"));
         assertThat(deactivated.get("active")).isEqualTo(false);
         assertThat(service.list().get(0).active()).isFalse();
 
-        Map<String, Object> reactivated = controller.reactivate(created.id());
+        Map<String, Object> reactivated = controller.reactivate(created.id(), signedInAs("nate@example.com"));
         assertThat(reactivated.get("active")).isEqualTo(true);
     }
 
     @Test
     void deactivateOnAnUnknownIdReturnsAnErrorNotAnException() {
-        Map<String, Object> result = controller.deactivate("no-such-id");
+        Map<String, Object> result = controller.deactivate("no-such-id", signedInAs("nate@example.com"));
         assertThat(result).containsKey("error");
     }
 
@@ -92,7 +93,7 @@ class ManagedUsersControllerTest {
         ManagedUser created = controller.create(
             Map.of("email", "a@example.com", "name", "Alice", "role", "VIEWER"), signedInAs("nate@example.com"));
 
-        Map<String, Object> result = controller.invite(created.id());
+        Map<String, Object> result = controller.invite(created.id(), signedInAs("nate@example.com"));
 
         assertThat(result.get("sent")).isEqualTo(true);
         assertThat(sentUrls).hasSize(1);
@@ -102,9 +103,9 @@ class ManagedUsersControllerTest {
     void inviteOnADeactivatedUserReturnsAnErrorNotAnException() {
         ManagedUser created = controller.create(
             Map.of("email", "a@example.com", "name", "Alice", "role", "VIEWER"), signedInAs("nate@example.com"));
-        controller.deactivate(created.id());
+        controller.deactivate(created.id(), signedInAs("nate@example.com"));
 
-        Map<String, Object> result = controller.invite(created.id());
+        Map<String, Object> result = controller.invite(created.id(), signedInAs("nate@example.com"));
 
         assertThat(result).containsKey("error");
         assertThat(sentUrls).isEmpty();
@@ -114,7 +115,7 @@ class ManagedUsersControllerTest {
     void consumeMagicLinkReturnsARealSessionShape() {
         ManagedUser created = controller.create(
             Map.of("email", "a@example.com", "name", "Alice", "role", "HOUSEHOLD_MEMBER"), signedInAs("nate@example.com"));
-        controller.invite(created.id());
+        controller.invite(created.id(), signedInAs("nate@example.com"));
         String token = sentUrls.get(0).substring(sentUrls.get(0).lastIndexOf('/') + 1);
 
         Map<String, Object> result = controller.consumeMagicLink(token);
@@ -136,10 +137,10 @@ class ManagedUsersControllerTest {
     void listReturnsEveryEnrolledUserIncludingDeactivatedOnes() {
         ManagedUser created = controller.create(
             Map.of("email", "a@example.com", "name", "Alice", "role", "VIEWER"), signedInAs("nate@example.com"));
-        controller.deactivate(created.id());
+        controller.deactivate(created.id(), signedInAs("nate@example.com"));
 
-        assertThat(controller.list()).hasSize(1);
-        assertThat(controller.list().get(0).active()).isFalse();
+        assertThat(controller.list(signedInAs("nate@example.com"))).hasSize(1);
+        assertThat(controller.list(signedInAs("nate@example.com")).get(0).active()).isFalse();
     }
 
     private static final class InMemoryManagedUserStore implements ManagedUserStore {

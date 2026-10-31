@@ -140,7 +140,7 @@
   {
     "id": "train-unit",
     "utterances": [
-      "Set the thermostat to 70",
+      "Set the thermostat to 28",
       "Make the bedroom 22 degrees"
     ],
     "target": {
@@ -607,6 +607,763 @@
         "concept": "humid"
       },
       "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-1",
+    "utterances": [
+      "Switch that on",
+      "Flip it on please",
+      "Get that going"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which device do you mean?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-pair-1",
+    "utterances": [
+      "Switch the family room lamp on"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lamp",
+        "location": "family room",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-2",
+    "utterances": [
+      "Turn that off",
+      "Shut it off",
+      "Can you kill that for me"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which device should I turn off?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-pair-2",
+    "utterances": [
+      "Turn the attic fan off"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "fan",
+        "location": "attic",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-3",
+    "utterances": [
+      "Dim it a little",
+      "Make it dimmer",
+      "Bring that down some"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which light do you want dimmed?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-4",
+    "utterances": [
+      "Make it brighter",
+      "Bring it up a notch",
+      "Crank that up"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which light should I brighten, and in which room?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-5",
+    "utterances": [
+      "Stop it",
+      "Turn it back off",
+      "Put that back the way it was"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which device do you want me to change back?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-pair-5",
+    "utterances": [
+      "Put the guest room humidifier back off"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "humidifier",
+        "location": "guest room",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-6",
+    "utterances": [
+      "Start it up",
+      "Get it running",
+      "Fire that up"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which device should I start?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-pronoun-pair-6",
+    "utterances": [
+      "Start up the garage heater"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "heater",
+        "location": "garage",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-1",
+    "utterances": [
+      "Turn on the lamp",
+      "Switch on a lamp",
+      "Put the lamp on"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which lamp, and in which room?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-pair-1",
+    "utterances": [
+      "Turn on the study lamp"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lamp",
+        "location": "study",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-2",
+    "utterances": [
+      "Turn off the fan",
+      "Shut the fan off",
+      "Stop the fan"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which fan do you mean? Please name the room.",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-pair-2",
+    "utterances": [
+      "Turn off the loft fan"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "fan",
+        "location": "loft",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-3",
+    "utterances": [
+      "Switch the heater on",
+      "Start the heater",
+      "Get the heater going"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which heater, and in which room?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-pair-3",
+    "utterances": [
+      "Switch the pantry heater on"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "heater",
+        "location": "pantry",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-4",
+    "utterances": [
+      "Turn off the light",
+      "Kill the light",
+      "Lights out please"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which light, and in which room?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-pair-4",
+    "utterances": [
+      "Turn off the porch light"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "light",
+        "location": "porch",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-5",
+    "utterances": [
+      "Turn on the plug",
+      "Power up the plug",
+      "Switch the plug on"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which plug do you mean?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-pair-5",
+    "utterances": [
+      "Turn on the yard plug"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "plug",
+        "location": "yard",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-6",
+    "utterances": [
+      "Turn off the humidifier",
+      "Stop the humidifier",
+      "Shut the humidifier off"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which humidifier, and in which room?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-noroom-pair-6",
+    "utterances": [
+      "Turn off the attic humidifier"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "humidifier",
+        "location": "attic",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-1",
+    "utterances": [
+      "Set the family room thermostat to 18",
+      "Make the family room 18",
+      "Put the family room thermostat at 18 please"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Celsius or Fahrenheit?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-pair-1",
+    "utterances": [
+      "Set the family room thermostat to 18 degrees Celsius"
+    ],
+    "target": {
+      "intent": "set_device_attribute",
+      "slots": {
+        "device_name": "thermostat",
+        "location": "family room",
+        "attribute_type": "temperature",
+        "attribute_value": "18",
+        "unit": "C"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-2",
+    "utterances": [
+      "Set the study thermostat to 21",
+      "Make the study 21",
+      "Get the study to 21"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Celsius or Fahrenheit?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-pair-2",
+    "utterances": [
+      "Set the study thermostat to 21 degrees Celsius"
+    ],
+    "target": {
+      "intent": "set_device_attribute",
+      "slots": {
+        "device_name": "thermostat",
+        "location": "study",
+        "attribute_type": "temperature",
+        "attribute_value": "21",
+        "unit": "C"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-3",
+    "utterances": [
+      "Set the loft thermostat to 25",
+      "Have the loft at 25",
+      "Loft thermostat, 25"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Celsius or Fahrenheit?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-pair-3",
+    "utterances": [
+      "Set the loft thermostat to 25 degrees Celsius"
+    ],
+    "target": {
+      "intent": "set_device_attribute",
+      "slots": {
+        "device_name": "thermostat",
+        "location": "loft",
+        "attribute_type": "temperature",
+        "attribute_value": "25",
+        "unit": "C"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-4",
+    "utterances": [
+      "Set the guest room thermostat to 30",
+      "Make the guest room 30",
+      "Guest room thermostat to 30 please"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Celsius or Fahrenheit?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-pair-4",
+    "utterances": [
+      "Set the guest room thermostat to 30 degrees Fahrenheit"
+    ],
+    "target": {
+      "intent": "set_device_attribute",
+      "slots": {
+        "device_name": "thermostat",
+        "location": "guest room",
+        "attribute_type": "temperature",
+        "attribute_value": "30",
+        "unit": "F"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-5",
+    "utterances": [
+      "Set the garage thermostat to 33",
+      "Bring the garage to 33",
+      "Garage at 33"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Celsius or Fahrenheit?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-pair-5",
+    "utterances": [
+      "Set the garage thermostat to 33 degrees Fahrenheit"
+    ],
+    "target": {
+      "intent": "set_device_attribute",
+      "slots": {
+        "device_name": "thermostat",
+        "location": "garage",
+        "attribute_type": "temperature",
+        "attribute_value": "33",
+        "unit": "F"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-6",
+    "utterances": [
+      "Set the attic thermostat to 35",
+      "Keep the attic at 35",
+      "Attic thermostat to 35"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Celsius or Fahrenheit?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-nounit-pair-6",
+    "utterances": [
+      "Set the attic thermostat to 35 degrees Fahrenheit"
+    ],
+    "target": {
+      "intent": "set_device_attribute",
+      "slots": {
+        "device_name": "thermostat",
+        "location": "attic",
+        "attribute_type": "temperature",
+        "attribute_value": "35",
+        "unit": "F"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-1",
+    "utterances": [
+      "Don't switch on the dryer tonight",
+      "Never turn on the dryer at night",
+      "Do not run the dryer tonight"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you want to cancel a request, or stop an automation from running the dryer?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-pair-1",
+    "utterances": [
+      "Switch on the dryer in the laundry room"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "dryer",
+        "location": "laundry room",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-2",
+    "utterances": [
+      "Don't turn off the sump pump",
+      "Never shut the sump pump off",
+      "Do not switch the sump pump off"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you want to cancel a request, or keep an automation from turning the sump pump off?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-pair-2",
+    "utterances": [
+      "Switch the basement sump pump off"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "sump pump",
+        "location": "basement",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-3",
+    "utterances": [
+      "Do not open the attic window",
+      "Never open the attic window",
+      "Don't let the attic window open"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you want to cancel a request, or stop an automation?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-4",
+    "utterances": [
+      "Don't heat the garage tonight",
+      "Never warm up the garage at night",
+      "Do not turn the garage heater on tonight"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you want to cancel a request, or stop an automation from heating the garage?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-pair-4",
+    "utterances": [
+      "Turn the garage heater on"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "heater",
+        "location": "garage",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-5",
+    "utterances": [
+      "Please don't dim the study lamp",
+      "Never dim the study lamp",
+      "Do not lower the study lamp"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you want to cancel a request, or stop an automation from dimming the study lamp?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-pair-5",
+    "utterances": [
+      "Switch the study lamp on"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "lamp",
+        "location": "study",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-6",
+    "utterances": [
+      "Not the pantry fan, leave it alone",
+      "Don't touch the pantry fan",
+      "Never change the pantry fan"
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you want to cancel a request, or stop an automation from changing the pantry fan?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-clarify-negation-pair-6",
+    "utterances": [
+      "Switch the pantry fan off"
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "fan",
+        "location": "pantry",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-unsupported-subzero-1",
+    "utterances": [
+      "Set the loft thermostat to -5",
+      "Make the loft thermostat -5"
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-unsupported-subzero-2",
+    "utterances": [
+      "Set the attic thermostat to minus ten",
+      "Make the attic thermostat minus ten"
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
       "clarification": null,
       "automation": null
     }
