@@ -35,7 +35,7 @@ class HealthAggregationIntegrationTest {
         contextRunner
             .withPropertyValues(
                 "HA_TOKEN=a-real-token",
-                "HOME_HUB_DEPLOYED=false",
+                "HOME_HA_DEPLOYED=false",
                 "management.endpoint.health.status.order=down,up,out-of-service,unknown")
             .run(context -> {
                 HealthEndpoint endpoint = context.getBean(HealthEndpoint.class);
@@ -52,7 +52,7 @@ class HealthAggregationIntegrationTest {
         contextRunner
             .withPropertyValues(
                 "HA_TOKEN=a-real-token",
-                "HOME_HUB_DEPLOYED=false")
+                "HOME_HA_DEPLOYED=false")
             .run(context -> {
                 HealthEndpoint endpoint = context.getBean(HealthEndpoint.class);
                 assertEquals(Status.OUT_OF_SERVICE, endpoint.health().getStatus(),
@@ -65,7 +65,7 @@ class HealthAggregationIntegrationTest {
         contextRunner
             .withPropertyValues(
                 "HA_TOKEN=",
-                "HOME_HUB_DEPLOYED=false",
+                "HOME_HA_DEPLOYED=false",
                 "management.endpoint.health.status.order=down,up,out-of-service,unknown")
             .run(context -> {
                 HealthEndpoint endpoint = context.getBean(HealthEndpoint.class);

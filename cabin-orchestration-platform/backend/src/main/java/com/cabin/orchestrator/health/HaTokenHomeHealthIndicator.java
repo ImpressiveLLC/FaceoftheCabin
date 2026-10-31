@@ -16,8 +16,11 @@ import org.springframework.stereotype.Component;
  * never fire (false negative forever) or misfire once home is genuinely
  * live and still using that same hostname (false negative then too).
  *
- * HOME_HUB_DEPLOYED is a new, explicit, non-secret flag instead (default
- * false, set true by Nate once the home hub is actually connected) --
+ * HOME_HA_DEPLOYED (renamed from HOME_HUB_DEPLOYED, W-60 / D23 R-HD-6: it only
+ * means "a separate Home Assistant exists at Home for cabin-backend to call",
+ * not "Home is live"; the old name is still read for one release) is a new,
+ * explicit, non-secret flag instead (default false, set true by Nate once a
+ * Home Assistant at Home is actually connected) --
  * see infra/.env.m920q.example and docker-compose.m920q.yml's cabin-backend
  * environment block, which is an explicit allowlist and needed the new var
  * added there too, same lesson as this project's own Vaultwarden-wiring
@@ -34,18 +37,18 @@ import org.springframework.stereotype.Component;
 @Component
 public class HaTokenHomeHealthIndicator implements HealthIndicator {
 
-    @Value("${HOME_HUB_DEPLOYED:false}")
-    private boolean homeHubDeployed;
+    @Value("${HOME_HA_DEPLOYED:${HOME_HUB_DEPLOYED:false}}")
+    private boolean homeHaDeployed;
 
     @Value("${HOME_HA_TOKEN:}")
     private String homeHaToken;
 
     @Override
     public Health health() {
-        if (!homeHubDeployed) {
+        if (!homeHaDeployed) {
             return Health.outOfService()
                 .withDetail("location", "home")
-                .withDetail("reason", "home hub not yet deployed (HOME_HUB_DEPLOYED=false)")
+                .withDetail("reason", "no Home Assistant at Home (HOME_HA_DEPLOYED=false)")
                 .build();
         }
         if (homeHaToken.isBlank()) {

@@ -250,7 +250,7 @@ management:
         # general, wrong for this app's specific use of it.
         # HaTokenHomeHealthIndicator (Sprint 5 WSJF #1) deliberately
         # reports OUT_OF_SERVICE for the home location until the home hub
-        # is actually deployed (HOME_HUB_DEPLOYED=false), which is the
+        # is actually deployed (HOME_HA_DEPLOYED=false), which is the
         # normal, permanent state today -- not a fault. Left at the
         # default order, that single indicator would drag the aggregate
         # /actuator/health status to OUT_OF_SERVICE forever, which

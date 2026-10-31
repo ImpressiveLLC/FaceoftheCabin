@@ -389,11 +389,11 @@ The M920q is x86_64; ARM/Android appears only in the collector role (see
 
 **Blank is correct for Home's Home Assistant settings.** `HOME_HA_URL`
 defaults to `http://home-hub:8123`, but `HOME_HA_TOKEN` and `vault_home_ha_token`
-are blank on purpose and `HOME_HUB_DEPLOYED` defaults to `false`
+are blank on purpose and `HOME_HA_DEPLOYED` defaults to `false`
 (`HaTokenHomeHealthIndicator`), so `application.yml` reports Home's HA as out
 of service by design. That flag means only "a separate Home Assistant exists at
-Home for `cabin-backend` to call"; it is being renamed `HOME_HA_DEPLOYED`
-(W-60). A Home Assistant at Home would be a new decision (D23, R-HD-4). Do not
+Home for `cabin-backend` to call"; it was renamed from `HOME_HUB_DEPLOYED`
+(W-60), and the old name is still read for one release. A Home Assistant at Home would be a new decision (D23, R-HD-4). Do not
 treat `home-hub` URLs as live, and do not read "Home Assistant unreachable at
 Home" as an outage. The old `cabin-orchestration-platform/locations/home/` stack
 overlay was never deployed and is retired (removal tracked in W-59).

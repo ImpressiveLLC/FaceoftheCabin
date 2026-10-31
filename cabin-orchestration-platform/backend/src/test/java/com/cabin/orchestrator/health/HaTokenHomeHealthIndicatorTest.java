@@ -11,13 +11,13 @@ class HaTokenHomeHealthIndicatorTest {
 
     private static HaTokenHomeHealthIndicator indicatorWith(boolean deployed, String token) {
         HaTokenHomeHealthIndicator indicator = new HaTokenHomeHealthIndicator();
-        ReflectionTestUtils.setField(indicator, "homeHubDeployed", deployed);
+        ReflectionTestUtils.setField(indicator, "homeHaDeployed", deployed);
         ReflectionTestUtils.setField(indicator, "homeHaToken", token);
         return indicator;
     }
 
     @Test
-    void reportsOutOfServiceWhenHomeHubIsNotDeployedRegardlessOfToken() {
+    void reportsOutOfServiceWhenNoHomeHaIsDeployedRegardlessOfToken() {
         Health health = indicatorWith(false, "").health();
 
         assertEquals(Status.OUT_OF_SERVICE, health.getStatus());
