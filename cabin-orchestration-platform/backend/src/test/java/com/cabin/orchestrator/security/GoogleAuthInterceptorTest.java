@@ -678,11 +678,9 @@ class GoogleAuthInterceptorTest {
     }
 
     @Test
-    void aManagedSessionEmailMatchingAdminEmailsResolvesToAdministratorRole() throws Exception {
-        // D11 authorization-model hard gate (WSJF #6) -- role derivation must
-        // work identically regardless of which auth path produced the email,
-        // matching aValidManagedSessionSetsTheSameEmailAttributeAGoogleTokenWould
-        // above proving the email attribute itself is path-independent.
+    void aManagedSessionEmailMatchingAdminEmailsStaysAnAdultHouseholdMember() throws Exception {
+        // W-132 reverses the D11 slice that let a managed session take ADMINISTRATOR from its email: the administrator role
+        // comes only from a real Google sign-in or a CabinSession issued for one. The email attribute itself is still set.
         ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "member@example.com, someone-else@example.com");
         String sessionToken = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
@@ -690,7 +688,7 @@ class GoogleAuthInterceptorTest {
 
         assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
 
-        assertEquals(HouseholdRole.ADMINISTRATOR, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
+        assertEquals(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
     }
 
     @Test
@@ -1051,5 +1049,54 @@ class GoogleAuthInterceptorTest {
 
         assertFalse(interceptor.preHandle(request, response, new Object()));
         assertEquals(401, response.getStatus());
+    }
+
+    // ---- W-132: managed sessions never hold the administrator role; admin paths are judged on the normalised path ----
+
+    @Test
+    void aManagedSessionNeverResolvesAsAdministratorEvenWhenItsEmailIsOnTheAdminList() throws Exception {
+        ReflectionTestUtils.setField(interceptor, "adminEmailsRaw", "member@example.com");
+        String managed = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/notes");
+        request.addHeader("Authorization", "ManagedSession " + managed);
+
+        assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
+
+        assertEquals(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, request.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
+        // the same email through a real sign-in (a CabinSession) is still the administrator
+        String cabinSession = cabinSessions.issue("member@example.com").token();
+        MockHttpServletRequest signedIn = new MockHttpServletRequest("GET", "/api/notes");
+        signedIn.addHeader("Authorization", "CabinSession " + cabinSession);
+        assertTrue(interceptor.preHandle(signedIn, new MockHttpServletResponse(), new Object()));
+        assertEquals(HouseholdRole.ADMINISTRATOR, signedIn.getAttribute(GoogleAuthInterceptor.REQUEST_ATTR_HOUSEHOLD_ROLE));
+    }
+
+    @Test
+    void everySpellingOfAnAccountOrAccessRouteIsRefusedForAManagedSession() throws Exception {
+        String managed = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        for (String uri : List.of(
+                "/api/managed-users", "/api/managed-users/", "/api/access-tokens", "/api/access-tokens/abc/activity",
+                "/api/managed%2Dusers", "/api/managed%2dusers/x", "/api/%61ccess-tokens", "/api/access%2Dtokens",
+                "/api//managed-users", "/api/./managed-users", "/api/devices/../managed-users", "/api/x/%2e%2e/managed-users",
+                "/api/managed-users;a=b", "/api/access-tokens;jsessionid=1", "/API/Managed-Users", "/api/ACCESS-TOKENS",
+                "/api/%2561ccess-tokens", "/api/managed-users%00", "/api/managed-%zzusers")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
+            request.setRequestURI(uri);
+            request.addHeader("Authorization", "ManagedSession " + managed);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(interceptor.preHandle(request, response, new Object()), uri);
+            assertEquals(403, response.getStatus(), uri);
+        }
+    }
+
+    @Test
+    void anOrdinaryPathStillWorksForAManagedSession() throws Exception {
+        String managed = issueManagedSessionToken(ManagedUserRole.HOUSEHOLD_MEMBER);
+        for (String uri : List.of("/api/devices", "/api/devices/z2m-x/command", "/api/devices/x")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
+            request.setRequestURI(uri);
+            request.addHeader("Authorization", "ManagedSession " + managed);
+            assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()), uri);
+        }
     }
 }

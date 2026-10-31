@@ -93,7 +93,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // through the Google-token check below. Spring's addPathPatterns is
         // method-agnostic, so this split has to happen here instead of in
         // WebConfig.
-        String path = request.getRequestURI();
+        String path = decisionPath(request);
         String contextPath = request.getContextPath();
         boolean isFindingsCollection = path.equals(contextPath + "/api/tech-id/findings");
         if (isFindingsCollection
@@ -340,7 +340,7 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // before scope so a POST/PATCH/DELETE can't slip through even if
         // its path happens to also match a granted read prefix.
         CabinAccessToken accessToken = tokenOpt.get();
-        String path = request.getRequestURI();
+        String path = decisionPath(request);
         String contextPath = request.getContextPath();
         // The one exception: a roof_spec link may POST exactly the comment
         // endpoint. Exact path, exact method, exact scope -- nothing else.
@@ -410,9 +410,10 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // managing who else has access. Checked before the write/GET gate
         // below so a VIEWER can't reach these as a GET either (e.g. listing
         // every other managed user's email).
-        String path = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        if (path.startsWith(contextPath + "/api/managed-users") || path.startsWith(contextPath + "/api/access-tokens")) {
+        // Decided on the normalised path, not the raw request URI: percent-encoded, dot-segment, doubled-slash,
+        // path-parameter and upper-case spellings reach the same handler. AdministratorOnly in the handlers is the
+        // second wall (W-132).
+        if (managesAccess(request)) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Managing access/accounts requires a real admin sign-in");
             return false;
         }
@@ -423,8 +424,60 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         }
         request.setAttribute(REQUEST_ATTR_EMAIL, user.email());
         request.setAttribute(REQUEST_ATTR_MANAGED_USER_ID, user.id());
-        request.setAttribute(REQUEST_ATTR_HOUSEHOLD_ROLE, resolveHouseholdRole(user.email()));
+        // A managed session is never an administrator, even when its email is on cabin.admin.emails (W-132): the
+        // administrator role comes only from a real Google sign-in or a CabinSession issued for one.
+        request.setAttribute(REQUEST_ATTR_HOUSEHOLD_ROLE, HouseholdRole.ADULT_HOUSEHOLD_MEMBER);
         return true;
+    }
+
+    /**
+     * The path every admission decision is made on: context path plus the normalised path (see normalisedPath), so
+     * "/api/devices/../managed-users" is judged as the managed-users route it reaches, not as an open devices read. A malformed
+     * encoding maps to a path no open rule matches, so such a request needs a credential like any other.
+     */
+    String decisionPath(HttpServletRequest request) {
+        String contextPath = request.getContextPath() == null ? "" : request.getContextPath();
+        String normalised = normalisedPath(request.getRequestURI(), request.getContextPath());
+        return contextPath + (normalised == null ? "/__malformed__" : normalised);
+    }
+
+    /** True when this request, however its path is spelled, is under the account or access management routes (or cannot be read safely). */
+    boolean managesAccess(HttpServletRequest request) {
+        String normalised = normalisedPath(request.getRequestURI(), request.getContextPath());
+        if (normalised == null) return true; // malformed encoding: fail closed
+        return normalised.startsWith("/api/managed-users") || normalised.startsWith("/api/access-tokens");
+    }
+
+    /**
+     * The path the container and Spring will route on: path parameters (;x=y) dropped, percent-decoded until stable (so a
+     * double-encoded spelling cannot hide), duplicate slashes collapsed, dot segments resolved, lower-cased, and the context
+     * path removed. Null when the encoding is malformed.
+     */
+    static String normalisedPath(String requestUri, String contextPath) {
+        if (requestUri == null) return "";
+        String path = requestUri;
+        try {
+            for (int i = 0; i < 4; i++) {
+                String stripped = path.replaceAll(";[^/]*", "");
+                String decoded = java.net.URLDecoder.decode(stripped.replace("+", "%2B"), java.nio.charset.StandardCharsets.UTF_8);
+                if (decoded.equals(path)) break;
+                path = decoded;
+            }
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        java.util.ArrayDeque<String> segments = new java.util.ArrayDeque<>();
+        for (String segment : path.replace('\\', '/').split("/")) {
+            if (segment.isEmpty() || segment.equals(".")) continue;
+            if (segment.equals("..")) { segments.pollLast(); continue; }
+            segments.addLast(segment.toLowerCase(java.util.Locale.ROOT));
+        }
+        String joined = "/" + String.join("/", segments);
+        String context = contextPath == null || contextPath.isEmpty() ? "" : normalisedPath(contextPath, "");
+        if (context != null && !context.isEmpty() && !context.equals("/") && joined.startsWith(context)) {
+            joined = joined.substring(context.length());
+        }
+        return joined.isEmpty() ? "/" : joined;
     }
 
     // Query param exists for the same reason extractToken()'s does: an
