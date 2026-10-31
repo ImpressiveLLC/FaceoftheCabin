@@ -2811,9 +2811,9 @@ select option { background: var(--bg-secondary); color: var(--text); }
   --signal-metric: var(--text);
   --signal-bar: color-mix(in srgb, var(--accent) 60%, transparent);
 }
-[data-theme="signal"] .kpi-tile:has(svg.lucide-thermometer) { --signal-metric: var(--signal-heat); --signal-bar: color-mix(in srgb, var(--signal-heat) 65%, transparent); }
-[data-theme="signal"] .kpi-tile:has(:is(svg.lucide-droplets, svg.lucide-droplet, svg.lucide-waves, svg.lucide-cloud)) { --signal-metric: var(--signal-cool); --signal-bar: color-mix(in srgb, var(--signal-cool) 65%, transparent); }
-[data-theme="signal"] .kpi-tile:has(:is(svg.lucide-zap, svg.lucide-power, svg.lucide-activity)) { --signal-metric: var(--signal-amber); --signal-bar: color-mix(in srgb, var(--signal-amber) 65%, transparent); }
+[data-theme="signal"] .kpi-tile:where(:has(svg.lucide-thermometer)) { --signal-metric: var(--signal-heat); --signal-bar: color-mix(in srgb, var(--signal-heat) 65%, transparent); }
+[data-theme="signal"] .kpi-tile:where(:has(:is(svg.lucide-droplets, svg.lucide-droplet, svg.lucide-waves, svg.lucide-cloud))) { --signal-metric: var(--signal-cool); --signal-bar: color-mix(in srgb, var(--signal-cool) 65%, transparent); }
+[data-theme="signal"] .kpi-tile:where(:has(:is(svg.lucide-zap, svg.lucide-power, svg.lucide-activity))) { --signal-metric: var(--signal-amber); --signal-bar: color-mix(in srgb, var(--signal-amber) 65%, transparent); }
 [data-theme="signal"] .kpi-tile.kpi-state-warn  { --signal-metric: var(--warning); --signal-bar: var(--warning); }
 [data-theme="signal"] .kpi-tile.kpi-state-alarm { --signal-metric: var(--danger);  --signal-bar: var(--danger); }
 [data-theme="signal"] .kpi-tile > svg { position: absolute; top: 14px; right: 14px; width: 16px; height: 16px; color: var(--text-dim); }
@@ -2823,7 +2823,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 [data-theme="signal"] .kpi-value {
   font-family: var(--font-mono); font-size: 22px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.1;
-  color: var(--signal-metric); overflow-wrap: anywhere;
+  overflow-wrap: anywhere;
 }
 [data-theme="signal"] .kpi-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
 [data-theme="signal"] .kpi-label { padding-right: 22px; }
@@ -2844,17 +2844,33 @@ select option { background: var(--bg-secondary); color: var(--text); }
   font-family: var(--font-ui); font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
   padding: 2px 8px 2px 6px; border-radius: 2px;
 }
-[data-theme="signal"] .state-badge.state-ok { --attn-chip-hue: var(--accent); background: transparent; border: 0; padding-left: 0; color: var(--accent); }
+[data-theme="signal"] .state-badge.state-ok { --attn-chip-hue: var(--accent); background: transparent; border: 0; padding-left: 0; }
 [data-theme="signal"] :is(.state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown) {
   --attn-chip-hue: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent);
-  color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 60%, transparent);
 }
 [data-theme="signal"] .state-badge.state-alarm {
   --attn-chip-hue: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent);
-  color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 65%, transparent);
 }
 [data-theme="signal"] :is(.state-badge.state-offline, .state-badge.state-not-configured) {
-  background: transparent; color: var(--text-muted); border: 0;
+  background: transparent; border: 0;
+}
+/* Readings and chip words take their hue only outside forced colours (W-124). The cue block gives a status tile
+   forced-color-adjust: none, so its author colours are NOT swapped for system colours, and a near-white reading, label or icon
+   would sit on the forced Canvas (1.11:1 on a light palette). The forced-colours block below therefore sets them explicitly. */
+@media (not (forced-colors: active)) {
+  [data-theme="signal"] .kpi-value { color: var(--signal-metric); }
+  [data-theme="signal"] .state-badge.state-ok { color: var(--accent); }
+  [data-theme="signal"] :is(.state-badge.state-warn, .state-badge.state-late, .state-badge.state-unknown) { color: var(--warning); }
+  [data-theme="signal"] .state-badge.state-alarm { color: var(--danger); }
+  [data-theme="signal"] :is(.state-badge.state-offline, .state-badge.state-not-configured) { color: var(--text-muted); }
+}
+/* In forced colours a tile is Canvas with CanvasText reading, label, note, icon and underline, whatever the palette. */
+@media (forced-colors: active) {
+  [data-theme="signal"] .kpi-tile { background: Canvas; }
+  [data-theme="signal"] .kpi-tile :is(.kpi-value, .kpi-value-note, .kpi-label), [data-theme="signal"] .kpi-tile > svg { color: CanvasText; }
+  [data-theme="signal"] .kpi-tile::before { background: CanvasText; }
 }
 
 /* Quiet surfaces: lists, logs and cards are flat cells with a hairline. */
@@ -2874,7 +2890,6 @@ select option { background: var(--bg-secondary); color: var(--text); }
 [data-theme="signal"] .sensor-history-panel :is(.sensor-history-device-chip:not(.selected), .sensor-history-topic-tab:not(.active)) {
   border-color: color-mix(in srgb, var(--signal-cool) 55%, transparent);
 }
-[data-theme="signal"] .sensor-history-panel .sensor-history-table th { background: transparent; }
 [data-theme="signal"] :is(.active-conditions, .sidebar-card, .config-card, .dm-device-group, .dm-detail, .pairing-card, .family-hub-card,
   .demo-hidden-panel):not([data-panel="monitoring"] *) {
   background: transparent; border-color: transparent;
@@ -2885,7 +2900,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
   background: transparent; border-color: color-mix(in srgb, var(--hue, var(--signal-cool)) 65%, transparent);
 }
 /* Alert and Watch rows: no fill, but the state edge (left, or the whole 4px Alert border) stays the cue block's. */
-[data-theme="signal"] :is(.active-condition, .automation-alert-card):not([data-panel="monitoring"] *) { background: transparent; }
+[data-theme="signal"] :is(.active-condition:not(.active-condition-critical), .automation-alert-card:not(.automation-alert-critical)):not([data-panel="monitoring"] *) { background: transparent; }
 [data-theme="signal"] .active-condition:not(.active-condition-critical):not([data-panel="monitoring"] *),
 [data-theme="signal"] .automation-alert-card:not(.automation-alert-critical):not([data-panel="monitoring"] *) {
   border-top-color: color-mix(in srgb, var(--hue, var(--signal-cool)) 65%, transparent);
@@ -3059,8 +3074,8 @@ select option { background: var(--bg-secondary); color: var(--text); }
    elements; Watch and Alert tiles and badges get none, so the attention cues (border pattern, asterisks, word) stay the only loud
    thing and a glow never reads as a status. Dropped when the system asks for more contrast or forced colours (W-110). */
 @media (not (prefers-contrast: more)) and (not (forced-colors: active)) {
-  [data-theme="signal"] .kpi-value { text-shadow: 0 0 14px color-mix(in srgb, var(--signal-metric) 45%, transparent); }
-  [data-theme="signal"] .kpi-tile::before { box-shadow: 0 0 8px var(--signal-bar); }
+  [data-theme="signal"] .kpi-tile:not(.kpi-state-warn):not(.kpi-state-alarm) .kpi-value { text-shadow: 0 0 14px color-mix(in srgb, var(--signal-metric) 45%, transparent); }
+  [data-theme="signal"] .kpi-tile:not(.kpi-state-warn):not(.kpi-state-alarm)::before { box-shadow: 0 0 8px var(--signal-bar); }
   [data-theme="signal"] .kpi-tile.kpi-state-ok { box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 10%, transparent); }
   [data-theme="signal"] .state-badge.state-ok { text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent); }
   [data-theme="signal"] .nav-active { text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent); }

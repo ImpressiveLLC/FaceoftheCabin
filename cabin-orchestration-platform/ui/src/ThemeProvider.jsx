@@ -60,7 +60,7 @@ export const THEMES = {
   // panel). Blue-black ground, flat square cells with white-at-7% hairlines, ONE neon-green accent that doubles as
   // "live/online", and readings coloured by meaning (orange heat, cyan water, amber power, red trouble). Outfit carries
   // titles and the tracked 9px labels (a light weight for the big numerals), IBM Plex Mono carries readings. Fonts are
-  // bundled (public/fonts, OFL), never fetched. No glow: the attention cues forbid it (MA-16). The W-109 cues apply to
+  // bundled (public/fonts, OFL), never fetched. Glow only on Normal and neutral elements, never on Watch or Alert (MA-16, W-124). The W-109 cues apply to
   // this theme only (styles.css, <attention-cues>); the three --attn-* hues came from the W-111 search over this
   // theme's own surfaces, and the neon display colours are separate from them. Same values and id in family-hub.html
   // (ThemeCatalogDrift.test.jsx).
@@ -509,8 +509,8 @@ const STORAGE_KEY = "cabin-theme";
 // unit-testable -- see src/ThemeProvider.test.jsx.
 export function resolveInitialThemeId(searchParams, storedThemeId, themes = THEMES) {
   const fromUrl = searchParams.get("theme");
-  if (fromUrl && themes[fromUrl]) return fromUrl;
-  return (storedThemeId && themes[storedThemeId]) ? storedThemeId : "modern";
+  if (fromUrl && Object.hasOwn(themes, fromUrl)) return fromUrl;
+  return (storedThemeId && Object.hasOwn(themes, storedThemeId)) ? storedThemeId : "modern";
 }
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -539,7 +539,7 @@ export function ThemeProvider({ children }) {
     resolveInitialThemeId(new URLSearchParams(window.location.search), localStorage.getItem(STORAGE_KEY))
   );
 
-  const theme = THEMES[themeId] || THEMES.modern;
+  const theme = Object.hasOwn(THEMES, themeId) ? THEMES[themeId] : THEMES.modern;
   // Custom properties the previous theme stamped on <html>. A theme only lists
   // the variables it needs (Deep Space's --glow-hal, --selected-glow ...), so
   // without this a value set by one theme stayed on the page after switching to
@@ -599,7 +599,7 @@ export function ThemeProvider({ children }) {
   }, [themeId, theme]);
 
   const setTheme = (id) => {
-    if (THEMES[id]) setThemeId(id);
+    if (Object.hasOwn(THEMES, id)) setThemeId(id);
   };
 
   return (
