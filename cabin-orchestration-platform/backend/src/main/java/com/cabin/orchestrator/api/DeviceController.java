@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.devices.DeviceCommandGuard;
 import com.cabin.orchestrator.devices.DeviceHealthMonitor;
 import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.devices.DeviceRepository;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 @RestController
@@ -228,12 +230,23 @@ public class DeviceController {
 
     /** Send a command to a device */
     @PostMapping("/{deviceId}/command")
-    public Map<String, Object> sendCommand(@PathVariable String deviceId,
-                                            @RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> sendCommand(@PathVariable String deviceId,
+                                                           @RequestBody Map<String, Object> body) {
         String command = String.valueOf(body.get("command"));
         Object payload = body.get("payload");
+        // The valve and lock denial every dashboard command path shares (DeviceCommandGuard): a valve takes no command from
+        // here and a lock only lock.lock. This path used to check only Enabled and Assigned.
+        Optional<String> denied = DeviceCommandGuard.denial(registry.get(deviceId), command);
+        if (denied.isPresent()) {
+            Map<String, Object> refusal = new LinkedHashMap<>();
+            refusal.put("deviceId", deviceId);
+            refusal.put("command", command);
+            refusal.put("accepted", false);
+            refusal.put("error", denied.get());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(refusal);
+        }
         boolean ok = registry.sendCommand(deviceId, command, payload);
-        return Map.of("deviceId", deviceId, "command", command, "accepted", ok);
+        return ResponseEntity.ok(Map.of("deviceId", deviceId, "command", command, "accepted", ok));
     }
 
     /** List available device types and capabilities (Device Manager discovery) */

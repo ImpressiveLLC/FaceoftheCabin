@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.devices.DeviceCommandGuard;
 import com.cabin.orchestrator.integrations.homeassistant.HomeAssistantAdapter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -38,7 +39,7 @@ public class HaServiceController {
     static final Set<String> ALLOWED_DOMAINS = Set.of("switch", "input_boolean");
     static final Set<String> ALLOWED_SERVICES = Set.of("turn_on", "turn_off", "toggle");
     private static final Pattern ENTITY_ID = Pattern.compile("^[a-z0-9_]+\\.[a-z0-9_]+$");
-    private static final Pattern DENIED_ENTITY = Pattern.compile("valve|lock");
+    private static final Pattern DENIED_ENTITY = DeviceCommandGuard.DENIED_ENTITY; // shared with the device command path
 
     private final HomeAssistantAdapter ha;
 
