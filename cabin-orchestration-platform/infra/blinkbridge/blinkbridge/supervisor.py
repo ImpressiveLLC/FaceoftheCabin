@@ -13,6 +13,10 @@ from .health import Heartbeat
 
 log = logging.getLogger(__name__)
 
+# Fields that change on every poll or are not activity; excluded from the per-camera diff.
+VOLATILE_KEYS = {"signals", "wifi_strength", "battery", "battery_state", "battery_voltage", "temperature",
+                 "battery_check_time", "updated_at", "attr_motion_detected"}
+
 
 class Supervisor:
     def __init__(self, settings: Settings, client, clock: Callable[[], float] = time.monotonic,
@@ -29,6 +33,8 @@ class Supervisor:
         self.next_login_at = 0.0
         self.last_log_at = clock()
         self._motion_active: Dict[str, bool] = {}
+        self._snapshots: Dict[str, dict] = {}
+        self.last_motion: Dict[str, tuple] = {}   # camera -> (clock, source)
         self._motion_token: Dict[str, Optional[str]] = {}
         self.poll_backoff = Backoff(settings.poll_backoff_base, settings.poll_backoff_cap, rng)
         self.throttle_backoff = Backoff(settings.throttle_floor, settings.throttle_cap, rng)
@@ -215,28 +221,62 @@ class Supervisor:
             ok = False
             body["ok"] = False
             body["last_error"] = body.get("last_error") or "camera(s) missing from Blink: " + ", ".join(sorted(missing))
+        body["last_activity"] = {n: {"age_s": round(now - at, 1), "source": src}
+                                 for n, (at, src) in self.last_motion.items()}
         body["last_liveview_request_age_s"] = {
             n: (None if r.last_request_at is None else round(now - r.last_request_at, 1))
             for n, r in self.runners.items()}
         return ok, body
 
+    def _on_motion(self, name: str, runner, source: str) -> None:
+        self.last_motion[name] = (self.clock(), source)
+        self._log(logging.INFO, "%s: Blink activity (%s)", name, source)
+        if name in self.s.motion_liveview:
+            runner.request(self.s.motion_max)
+
     def _detect_motion(self) -> None:
         for name, runner in self.runners.items():
-            try:
-                active, token = self.client.motion(name)
-            except Exception as exc:
-                log.warning("%s: cannot read motion: %r", name, exc)
+            if name not in self.live_names:
                 continue
-            was_active = self._motion_active.get(name, False)
-            prev_token = self._motion_token.get(name)
-            new = active and (not was_active or (token is not None and token != prev_token))
-            self._motion_active[name] = active
-            if active and token is not None:
-                self._motion_token[name] = token
-            if new:
-                self._log(logging.INFO, "%s: new Blink motion event", name)
-                if name in self.s.motion_liveview:
-                    runner.request(self.s.motion_max)
+            self._motion_flag(name, runner)
+            self._activity_diff(name, runner)
+
+    def _motion_flag(self, name: str, runner) -> None:
+        try:
+            active, token = self.client.motion(name)
+        except Exception as exc:
+            log.warning("%s: cannot read motion: %r", name, exc)
+            return
+        was_active = self._motion_active.get(name, False)
+        prev_token = self._motion_token.get(name)
+        new = active and (not was_active or (token is not None and token != prev_token))
+        self._motion_active[name] = active
+        if active and token is not None:
+            self._motion_token[name] = token
+        if new:
+            self._on_motion(name, runner, "motion_detected")
+
+    def _activity_diff(self, name: str, runner) -> None:
+        """Diff the camera's whole homescreen record between polls: log every change, trigger on signal keys."""
+        try:
+            raw = self.client.raw_camera(name)
+        except Exception as exc:
+            log.warning("%s: cannot read camera record: %r", name, exc)
+            return
+        snap = {k: v for k, v in raw.items() if k not in VOLATILE_KEYS}
+        prev = self._snapshots.get(name)
+        self._snapshots[name] = snap
+        if prev is None:
+            self._log(logging.INFO, "%s: camera record baseline keys=%s", name, sorted(snap))
+            return
+        changed = {k: (prev.get(k), snap.get(k)) for k in set(prev) | set(snap) if prev.get(k) != snap.get(k)}
+        if not changed:
+            return
+        shown = {k: (str(a)[:60], str(b)[:60]) for k, (a, b) in sorted(changed.items())}
+        self._log(logging.INFO, "%s: camera record changed %s", name, shown)
+        keys = [k for k in changed if k in self.s.motion_signal_keys or k.replace("attr_", "") in self.s.motion_signal_keys]
+        if keys:
+            self._on_motion(name, runner, "record change: " + ",".join(sorted(keys)))
 
     # ---- long-running -----------------------------------------------------------------
     async def run(self, stop: asyncio.Event) -> None:

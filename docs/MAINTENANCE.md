@@ -1326,6 +1326,14 @@ HA Companion -> `cabin/blink/motion` -> cabin-backend -> bridge `/liveview/<came
 `last_liveview_request_age_s` per camera: if it never moves after real motion, the break is upstream of the bridge (check the
 S23 notification access and the HA automation), not in the bridge.
 
+Activity detector (added 2026-10-31, after Blink alerted on a real AldrichFront walk the bridge never saw): every poll the bridge
+diffs each camera's whole homescreen record (volatile fields such as signal and battery excluded), logs
+`camera record changed {...}` with exactly which keys moved, and treats a change in `cameras.motion_signal_keys` (default
+`thumbnail`, `last_record`, `video`) as activity: it starts a liveview for cameras in `motion_liveview_enabled`. The keys
+Blink really updates for this camera are not known yet. After cutover, walk past AldrichFront and read
+`docker logs blinkbridge | grep "record changed"` and `curl http://<blinkbridge ip>:8811/debug/cameras` (redacted); then set
+`motion_signal_keys` to what moved. `/healthz` shows `last_activity` per camera (age and source).
+
 How it self-heals: a failed liveview (Blink ended it, `Broken pipe`, stalled ffmpeg, open timeout) is torn down and
 retried by the camera's own backoff (5 s doubling to 5 min, jittered); a Blink throttle pauses every Blink call for
 5 to 30 min; an expired token triggers a fresh login. Diagnose: `docker ps` shows `(healthy)`/`(unhealthy)`;
