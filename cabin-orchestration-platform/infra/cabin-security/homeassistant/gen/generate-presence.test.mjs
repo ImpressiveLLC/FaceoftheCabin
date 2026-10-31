@@ -153,6 +153,29 @@ test("parseSeed refuses a nested block-comment opener, an unterminated comment a
   refuses(`${INS}; INSERT INTO ${T} (person_id, location, role) VALUES ('nate, 'cabin', 'PRIMARY');`, "unterminated string");
 });
 
+test("parseSeed refuses the nested-comment trick: a row that looks disabled but that PostgreSQL would run", () => {
+  // PostgreSQL nests block comments, so after the inner */ the text up to the final */ is still a comment to the database,
+  // but a reader that stops at the first */ would see an active INSERT for bob.
+  refuses(`/* disabled /* note */ INSERT INTO ${T} (person_id, location, role) VALUES ('bob', 'cabin', 'PRIMARY'); -- */ ${INS};`, "nested comment");
+});
+
+test("parseSeed refuses non-ASCII outside quoted values, but allows it inside a value or a comment", () => {
+  refuses(`INSERT INTO ${T} (person_id, location, r\u043ele) VALUES ('nate', 'cabin', 'PRIMARY');`, "Cyrillic o in a column name");
+  refuses(`INSERT INTO ${T} (person_id, location, role) VALUES ('nate', 'cabin', 'PRIMARY')\u00a0ON CONFLICT DO NOTHING;`, "non-breaking space");
+  refuses(`\u2060${INS};`, "zero-width joiner");
+  assert.doesNotThrow(() => parseSeed(`-- r\u00e9sum\u00e9\n${INS};`), "non-ASCII in a comment is ignored");
+  assert.ok(parseSeed(`INSERT INTO ${T} (person_id, location, role) VALUES ('ren\u00e9', 'cabin', 'PRIMARY');`).has("ren\u00e9@cabin"), "inside a quoted value");
+});
+
+test("parseSeed refuses a duplicate row unless the statement says ON CONFLICT DO NOTHING", () => {
+  const row = `('nate', 'cabin', 'PRIMARY')`;
+  refuses(`INSERT INTO ${T} (person_id, location, role) VALUES ${row}, ${row};`, "duplicate within one statement");
+  refuses(`${INS}; ${INS};`, "duplicate across statements");
+  assert.doesNotThrow(() => parseSeed(`${INS}; ${INS} ON CONFLICT DO NOTHING;`), "a tolerant re-insert is fine");
+  assert.doesNotThrow(() => parseSeed(`${INS}; DELETE FROM ${T} WHERE person_id = 'nate'; ${INS};`), "re-insert after a delete is fine");
+  assert.doesNotThrow(() => parseSeed(`${INS}; DELETE FROM ${T} WHERE person_id = 'nate' AND role = 'PRIMARY'; ${INS};`));
+});
+
 test("parseSeed accepts the supported forms, including several rows, ON CONFLICT DO NOTHING and extra whitespace", () => {
   const seed = parseSeed(`insert  into ${T}
       ( person_id , location , role )   values
