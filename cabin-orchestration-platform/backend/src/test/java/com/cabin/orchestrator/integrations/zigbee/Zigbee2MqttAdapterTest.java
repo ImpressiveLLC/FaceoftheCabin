@@ -832,4 +832,20 @@ class Zigbee2MqttAdapterTest {
         assertEquals(Set.of(DeviceCapability.COMMAND, DeviceCapability.TELEMETRY),
             registry.descriptor("z2m-main_water_valve").orElseThrow().capabilities());
     }
+
+    @Test
+    void aCommandTargetResolvesFromItsFriendlyNameAndFromTheIeeeAddressZigbee2MqttAlsoAccepts() throws Exception {
+        deliver("zigbee2mqtt/bridge/devices", """
+            [{"ieee_address":"0x00158d0001abcdef","friendly_name":"main_water_valve","type":"Router","definition":{
+              "model":"SWV","description":"valve","vendor":"X","exposes":[]}}]
+            """);
+
+        assertEquals(Set.of("z2m-main_water_valve"), adapter.deviceIdsReachedBy("main_water_valve"));
+        assertEquals(Set.of("z2m-main_water_valve"), adapter.deviceIdsReachedBy("zigbee2mqtt/main_water_valve"));
+        assertEquals(Set.of("z2m-main_water_valve"), adapter.deviceIdsReachedBy("zigbee2mqtt/0x00158d0001abcdef"));
+        assertEquals(Set.of("z2m-main_water_valve"), adapter.deviceIdsReachedBy("0X00158D0001ABCDEF"));
+        assertTrue(adapter.deviceIdsReachedBy("not_a_device").isEmpty());
+        assertTrue(adapter.deviceIdsReachedBy("0x00158d0001ffffff").isEmpty());
+        assertTrue(adapter.deviceIdsReachedBy(null).isEmpty());
+    }
 }

@@ -1,10 +1,13 @@
 package com.cabin.orchestrator.devices;
 
+import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.devices.model.DeviceType;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -38,6 +41,20 @@ public final class DeviceCommandGuard {
     private DeviceCommandGuard() {}
 
     /**
+     * A registered device a command actually reaches: the target itself, any device sharing its connection string, and
+     * (for Zigbee2MQTT) the device owning the name or IEEE address it is sent to. {@code inferredType} and
+     * {@code inferredCapabilities} are what Zigbee2MQTT discovery said the device is, which survives a PUT that relabels
+     * the registered type; both may be null.
+     */
+    public record Reached(String deviceId, DeviceDescriptor descriptor, DeviceStatus status,
+                          DeviceType inferredType, Set<DeviceCapability> inferredCapabilities) {}
+
+    /** Everything a command reaches, and whether an MQTT target resolved to no known device at all. */
+    public record Resolution(List<Reached> reached, boolean unresolved) {
+        public static final Resolution NONE = new Resolution(List.of(), false);
+    }
+
+    /**
      * Why a dashboard command to this device is refused, or empty when it may go on to the registry's own checks.
      *
      * <p>The command is sent to the descriptor's {@code connectionString} (the Home Assistant entity or the Zigbee2MQTT
@@ -50,6 +67,17 @@ public final class DeviceCommandGuard {
      * payload is exactly {@code {"state":"LOCK"}} (what the adapter needs to lock at all).
      */
     public static Optional<String> denial(DeviceDescriptor descriptor, DeviceStatus device, String command, Object payload) {
+        return denial(descriptor, device, command, payload, Resolution.NONE);
+    }
+
+    /**
+     * Same, plus every device the command reaches. The guard used to judge labels on the target only; a neutral device whose
+     * connection string is a valve's Zigbee2MQTT name or IEEE address reaches the valve, and a lock relabelled by a PUT is
+     * still a lock to discovery. Any other device reached that is a valve or lock refuses the command, and an MQTT target
+     * that resolves to no known device is refused.
+     */
+    public static Optional<String> denial(DeviceDescriptor descriptor, DeviceStatus device, String command, Object payload,
+                                          Resolution resolution) {
         if (descriptor == null && device == null) return Optional.empty();
         if (descriptor == null || device == null) {
             return Optional.of("This device cannot be commanded from the dashboard: its configuration is incomplete.");
@@ -58,10 +86,31 @@ public final class DeviceCommandGuard {
             + nullToEmpty(device.attributes() == null ? null : device.attributes().get("entityId")) + " "
             + nullToEmpty(descriptor.deviceId()) + " " + nullToEmpty(descriptor.name()) + " "
             + nullToEmpty(descriptor.connectionString())).toLowerCase(Locale.ROOT);
-        if (text.contains("valve")) {
+        String selfId = descriptor.deviceId();
+        if (resolution != null && resolution.unresolved()) {
+            return Optional.of("This device's Zigbee2MQTT target is not a known device, so it cannot be commanded from the dashboard.");
+        }
+        if (resolution != null) {
+            for (Reached other : resolution.reached()) {
+                if (!selfId.equals(other.deviceId()) && isValveOrLock(other.descriptor(), other.status(), other.inferredType(), other.inferredCapabilities())) {
+                    return Optional.of("This command would reach a valve or lock, which cannot be commanded from the dashboard.");
+                }
+            }
+        }
+        DeviceType selfInferred = null;
+        Set<DeviceCapability> selfCaps = null;
+        if (resolution != null) {
+            for (Reached r : resolution.reached()) {
+                if (selfId.equals(r.deviceId())) { selfInferred = r.inferredType(); selfCaps = r.inferredCapabilities(); }
+            }
+        }
+        if (text.contains("valve") || device.type() == DeviceType.WATER_VALVE || descriptor.type() == DeviceType.WATER_VALVE
+                || selfInferred == DeviceType.WATER_VALVE) {
             return Optional.of("A valve cannot be commanded from the dashboard.");
         }
-        if (device.type() == DeviceType.LOCK || descriptor.type() == DeviceType.LOCK) {
+        if (device.type() == DeviceType.LOCK || descriptor.type() == DeviceType.LOCK || selfInferred == DeviceType.LOCK
+                || (selfCaps != null && selfCaps.contains(DeviceCapability.ACCESS_CONTROL))
+                || (descriptor.capabilities() != null && descriptor.capabilities().contains(DeviceCapability.ACCESS_CONTROL))) {
             if (!SECURE_LOCK_COMMAND.equals(command)) {
                 return Optional.of("A lock can only be locked from the dashboard, never unlocked.");
             }
@@ -83,8 +132,16 @@ public final class DeviceCommandGuard {
      * Either argument may be null.
      */
     public static boolean isValveOrLock(DeviceDescriptor descriptor, DeviceStatus device) {
-        if (descriptor != null && descriptor.type() == DeviceType.LOCK) return true;
-        if (device != null && device.type() == DeviceType.LOCK) return true;
+        return isValveOrLock(descriptor, device, null, null);
+    }
+
+    public static boolean isValveOrLock(DeviceDescriptor descriptor, DeviceStatus device, DeviceType inferredType,
+                                        Set<DeviceCapability> inferredCapabilities) {
+        for (DeviceType type : new DeviceType[] {descriptor == null ? null : descriptor.type(), device == null ? null : device.type(), inferredType}) {
+            if (type == DeviceType.LOCK || type == DeviceType.WATER_VALVE) return true;
+        }
+        if (inferredCapabilities != null && inferredCapabilities.contains(DeviceCapability.ACCESS_CONTROL)) return true;
+        if (descriptor != null && descriptor.capabilities() != null && descriptor.capabilities().contains(DeviceCapability.ACCESS_CONTROL)) return true;
         String text = (descriptor == null ? "" : nullToEmpty(descriptor.deviceId()) + " " + nullToEmpty(descriptor.name()) + " "
             + nullToEmpty(descriptor.connectionString()))
             + " " + (device == null ? "" : nullToEmpty(device.deviceId()) + " " + nullToEmpty(device.name()) + " "

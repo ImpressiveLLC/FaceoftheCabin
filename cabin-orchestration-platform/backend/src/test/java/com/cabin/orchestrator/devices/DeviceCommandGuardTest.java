@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.devices;
 
+import com.cabin.orchestrator.devices.model.DeviceCapability;
 import com.cabin.orchestrator.api.DeviceController;
 import com.cabin.orchestrator.api.HaServiceController;
 import com.cabin.orchestrator.devices.display.DeviceDisplayConfigService;
@@ -201,5 +202,90 @@ class DeviceCommandGuardTest {
 
         assertEquals(403, controller.sendCommand("z2m-door", Map.of("command", "lock.lock", "payload", Map.of("state", "UNLOCK"))).getStatusCode().value());
         verify(registry, never()).sendCommand(anyString(), anyString(), any());
+    }
+
+    // ---- round 4: the guard follows the device a command reaches, not the labels on the target ----
+
+    private static DeviceCommandGuard.Reached reached(String id, String name, DeviceType type, DeviceType inferred, Set<DeviceCapability> caps) {
+        return new DeviceCommandGuard.Reached(id, descriptor(id, name, type, "zigbee2mqtt/" + id, "mqtt"),
+            device(id, name, type, null), inferred, caps);
+    }
+
+    @Test
+    void aNeutralDevicePointedAtTheValvesIeeeAddressIsRefused() {
+        DeviceDescriptor neutral = descriptor("plug-9", "Porch plug", DeviceType.POWER_METER, "zigbee2mqtt/0x00158d0001abcdef", "mqtt");
+        DeviceStatus status = device("plug-9", "Porch plug", DeviceType.POWER_METER, null);
+        DeviceCommandGuard.Resolution reachesValve = new DeviceCommandGuard.Resolution(List.of(
+            reached("plug-9", "Porch plug", DeviceType.POWER_METER, null, null),
+            reached("z2m-0x00158d0001abcdef", "Shutoff", DeviceType.WATER_VALVE, DeviceType.WATER_VALVE, null)), false);
+
+        assertTrue(DeviceCommandGuard.denial(neutral, status, "state.set", Map.of("state", "ON"), reachesValve).isPresent());
+        // the old four-argument form, which saw only labels, let it through: that is the bypass
+        assertTrue(DeviceCommandGuard.denial(neutral, status, "state.set", Map.of("state", "ON")).isEmpty());
+    }
+
+    @Test
+    void anMqttTargetThatResolvesToNoKnownDeviceIsRefused() {
+        DeviceDescriptor neutral = descriptor("plug-9", "Porch plug", DeviceType.POWER_METER, "zigbee2mqtt/0x00158d0001ffffff", "mqtt");
+        assertTrue(DeviceCommandGuard.denial(neutral, device("plug-9", "Porch plug", DeviceType.POWER_METER, null), "state.set",
+            Map.of("state", "ON"), new DeviceCommandGuard.Resolution(List.of(), true)).isPresent());
+    }
+
+    @Test
+    void aLockRelabelledByAPutIsStillALockToDiscovery() {
+        DeviceDescriptor relabelled = descriptor("z2m-hall", "Hall plug", DeviceType.POWER_METER, "zigbee2mqtt/hall", "mqtt");
+        DeviceStatus status = device("z2m-hall", "Hall plug", DeviceType.POWER_METER, null);
+        DeviceCommandGuard.Resolution resolution = new DeviceCommandGuard.Resolution(List.of(
+            reached("z2m-hall", "Hall plug", DeviceType.POWER_METER, DeviceType.LOCK, Set.of(DeviceCapability.ACCESS_CONTROL))), false);
+
+        assertTrue(DeviceCommandGuard.denial(relabelled, status, "state.set", Map.of("state", "UNLOCK"), resolution).isPresent(), "unlock command");
+        assertTrue(DeviceCommandGuard.denial(relabelled, status, "lock.lock", Map.of("state", "UNLOCK"), resolution).isPresent(), "unlock payload");
+        assertTrue(DeviceCommandGuard.denial(relabelled, status, "lock.lock", Map.of("state", "LOCK"), resolution).isEmpty(), "locking stays possible");
+    }
+
+    @Test
+    void aValveTypeIsRefusedWhateverItsLabelsSay() {
+        DeviceDescriptor valve = descriptor("ha-1", "Main shutoff", DeviceType.WATER_VALVE, "switch.main_shutoff", "ha_rest");
+        assertTrue(DeviceCommandGuard.denial(valve, device("ha-1", "Main shutoff", DeviceType.WATER_VALVE, null), "switch.turn_on", null).isPresent());
+        assertTrue(DeviceCommandGuard.isValveOrLock(valve, null));
+    }
+
+    @Test
+    void theCommandEndpointRefusesAnMqttDeviceAddressedAtTheValvesIeee() {
+        Zigbee2MqttAdapter z2m = mock(Zigbee2MqttAdapter.class);
+        DeviceRegistry reg = mock(DeviceRegistry.class);
+        DeviceController c = new DeviceController(reg, z2m, mock(MqttBridgeService.class), mock(DeviceHealthMonitor.class),
+            mock(DeviceDisplayConfigService.class), mock(JdbcDeviceLifecycleVocabularyStore.class),
+            mock(DeviceReportingRelationshipRepository.class), mock(DeviceRepository.class));
+        DeviceDescriptor neutral = descriptor("plug-9", "Porch plug", DeviceType.POWER_METER, "zigbee2mqtt/0x00158d0001abcdef", "mqtt");
+        DeviceDescriptor valve = descriptor("z2m-main_water_valve", "Shutoff", DeviceType.HOME_ASSISTANT_ENTITY, "zigbee2mqtt/main_water_valve", "mqtt");
+        when(reg.descriptor("plug-9")).thenReturn(Optional.of(neutral));
+        when(reg.get("plug-9")).thenReturn(device("plug-9", "Porch plug", DeviceType.POWER_METER, null));
+        when(reg.descriptor("z2m-main_water_valve")).thenReturn(Optional.of(valve));
+        when(reg.get("z2m-main_water_valve")).thenReturn(device("z2m-main_water_valve", "Shutoff", DeviceType.HOME_ASSISTANT_ENTITY, null));
+        when(z2m.deviceIdsReachedBy("zigbee2mqtt/0x00158d0001abcdef")).thenReturn(Set.of("z2m-main_water_valve"));
+        when(z2m.inferredShape(anyString())).thenReturn(Optional.empty());
+        when(reg.sendCommand(anyString(), anyString(), any())).thenReturn(true);
+
+        assertEquals(403, c.sendCommand("plug-9", Map.of("command", "state.set", "payload", Map.of("state", "ON"))).getStatusCode().value());
+        verify(reg, never()).sendCommand(anyString(), anyString(), any());
+    }
+
+    @Test
+    void theCommandEndpointRefusesARelabelledLockWithAnUnlockPayload() {
+        Zigbee2MqttAdapter z2m = mock(Zigbee2MqttAdapter.class);
+        DeviceRegistry reg = mock(DeviceRegistry.class);
+        DeviceController c = new DeviceController(reg, z2m, mock(MqttBridgeService.class), mock(DeviceHealthMonitor.class),
+            mock(DeviceDisplayConfigService.class), mock(JdbcDeviceLifecycleVocabularyStore.class),
+            mock(DeviceReportingRelationshipRepository.class), mock(DeviceRepository.class));
+        DeviceDescriptor relabelled = descriptor("z2m-hall", "Hall plug", DeviceType.POWER_METER, "zigbee2mqtt/hall", "mqtt");
+        when(reg.descriptor("z2m-hall")).thenReturn(Optional.of(relabelled));
+        when(reg.get("z2m-hall")).thenReturn(device("z2m-hall", "Hall plug", DeviceType.POWER_METER, null));
+        when(z2m.deviceIdsReachedBy("zigbee2mqtt/hall")).thenReturn(Set.of("z2m-hall"));
+        when(z2m.inferredShape("z2m-hall")).thenReturn(Optional.of(new Zigbee2MqttAdapter.InferredShape(DeviceType.LOCK, Set.of(DeviceCapability.ACCESS_CONTROL))));
+        when(reg.sendCommand(anyString(), anyString(), any())).thenReturn(true);
+
+        assertEquals(403, c.sendCommand("z2m-hall", Map.of("command", "lock.lock", "payload", Map.of("state", "UNLOCK"))).getStatusCode().value());
+        verify(reg, never()).sendCommand(anyString(), anyString(), any());
     }
 }

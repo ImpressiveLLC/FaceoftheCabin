@@ -236,7 +236,8 @@ public class DeviceController {
         Object payload = body.get("payload");
         // The valve and lock denial every dashboard command path shares (DeviceCommandGuard): a valve takes no command from
         // here and a lock only lock.lock. This path used to check only Enabled and Assigned.
-        Optional<String> denied = DeviceCommandGuard.denial(registry.descriptor(deviceId).orElse(null), registry.get(deviceId), command, payload);
+        Optional<String> denied = DeviceCommandGuard.denial(registry.descriptor(deviceId).orElse(null), registry.get(deviceId), command, payload,
+            commandResolution(deviceId));
         if (denied.isPresent()) {
             Map<String, Object> refusal = new LinkedHashMap<>();
             refusal.put("deviceId", deviceId);
@@ -247,6 +248,33 @@ public class DeviceController {
         }
         boolean ok = registry.sendCommand(deviceId, command, payload);
         return ResponseEntity.ok(Map.of("deviceId", deviceId, "command", command, "accepted", ok));
+    }
+
+    /**
+     * Every registered device this command reaches (see DeviceCommandGuard.denial): devices sharing the target's
+     * connection string, and for an mqtt target the device owning that Zigbee2MQTT name or IEEE address, each with what
+     * discovery inferred it to be. An mqtt target that resolves to no known device is marked unresolved.
+     */
+    private DeviceCommandGuard.Resolution commandResolution(String deviceId) {
+        DeviceDescriptor target = registry.descriptor(deviceId).orElse(null);
+        if (target == null) return DeviceCommandGuard.Resolution.NONE;
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+        ids.add(deviceId);
+        registry.descriptorsByConnectionString(target.connectionString()).forEach(d -> ids.add(d.deviceId()));
+        boolean unresolved = false;
+        if ("mqtt".equals(target.protocolAdapter())) {
+            java.util.Set<String> reached = z2mAdapter.deviceIdsReachedBy(target.connectionString());
+            ids.addAll(reached);
+            unresolved = reached.isEmpty();
+        }
+        java.util.List<DeviceCommandGuard.Reached> out = new java.util.ArrayList<>();
+        for (String id : ids) {
+            java.util.Optional<Zigbee2MqttAdapter.InferredShape> shape = z2mAdapter.inferredShape(id);
+            out.add(new DeviceCommandGuard.Reached(id, registry.descriptor(id).orElse(null), registry.get(id),
+                shape.map(Zigbee2MqttAdapter.InferredShape::type).orElse(null),
+                shape.map(Zigbee2MqttAdapter.InferredShape::capabilities).orElse(null)));
+        }
+        return new DeviceCommandGuard.Resolution(out, unresolved);
     }
 
     /** List available device types and capabilities (Device Manager discovery) */
