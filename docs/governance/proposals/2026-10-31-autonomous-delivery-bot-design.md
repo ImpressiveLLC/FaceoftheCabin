@@ -9,7 +9,7 @@ existing open-source projects, 5% customisation.**
 
 - Models: Claude (headless CLI) for design, review and code, plus local Ollama on Linux for cheap routine steps.
 - Authority: **tiered** (below). Safety, auth, credentials, host changes, money and deletes always stop for Nate.
-- Placement: decide after this design (runner and vault may be split across machines).
+- Placement: decide after this design (runner and vault may be split across machines). **Spike runner: a Linux machine, not WSL2 and not the M920q** (Nate, 2026-10-31); which one is still to be named.
 
 ## Reuse survey (what exists)
 
@@ -90,6 +90,6 @@ effort; the spike below measures it instead of promising it.
 
 ## Open questions for Nate
 
-1. Which Linux machine (or WSL2 on `ilikethelights`) hosts the spike runner?
+1. Which Linux machine hosts the spike runner (hostname, user, how Code reaches it)? Decided: Linux, not WSL2, not the M920q.
 2. Is a second reviewer CLI available (Codex login) or should the reviewer be a second Claude role with different instructions?
 3. Daily digest to where (GitHub issue comment, email, ntfy)?
