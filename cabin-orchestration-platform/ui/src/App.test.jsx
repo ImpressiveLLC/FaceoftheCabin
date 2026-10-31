@@ -4812,6 +4812,9 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
   function mockAuth(accessTokenResponses) {
     const queue = [...accessTokenResponses];
     const authedFetch = vi.fn((url) => {
+      if (url.includes("/api/presence/roles")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ assignments: [], unregisteredCounted: [] }) });
+      }
       if (url.includes("/api/system/platform-info")) {
         return Promise.resolve({ ok: true, json: async () => ({ versions: {}, hardware: [], aiDisclosure: null }) });
       }
@@ -4921,6 +4924,9 @@ describe("FamilyConfigPanel — Managed Users (Tier 2)", () => {
   function mockAuth(managedUserResponses) {
     const queue = [...managedUserResponses];
     const authedFetch = vi.fn((url) => {
+      if (url.includes("/api/presence/roles")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ assignments: [], unregisteredCounted: [] }) });
+      }
       if (url.includes("/api/system/platform-info")) {
         return Promise.resolve({ ok: true, json: async () => ({ versions: {}, hardware: [], aiDisclosure: null }) });
       }
