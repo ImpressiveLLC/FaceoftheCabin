@@ -39,18 +39,27 @@ final class QuestionShape {
 
     /** Conversational openers skipped before the check, longest first so "thank you" wins over "thank". */
     private static final List<String> OPENERS = List.of(
-        "quick question", "i was wondering", "just wondering", "tiny helpdesk", "thank you", "help desk", "helpdesk",
-        "can you tell me", "could you tell me", "i want to know", "i need to know", "id like to know", "excuse me",
-        "good morning", "good afternoon", "good evening", "by the way", "tell me", "question", "hello", "thanks", "please",
-        "pls", "thx", "sorry", "hiya", "hey", "hmm", "yo", "hi", "okay", "ok", "alright", "sure", "actually", "btw", "also",
-        "and", "but", "then", "now", "so", "well", "um", "uh", "oh", "ask", "ahoy");
+        // multi-word forms first, so "i have a question about" wins over "i"
+        "quick question", "one more question", "another question", "next question", "my question is", "i have a question about",
+        "i have a question", "i had a question", "can i ask", "could i ask", "may i ask", "i would like to ask", "id like to ask",
+        "i was wondering", "just wondering", "i wonder", "just curious", "curious", "wondering", "one more thing", "quick one",
+        "tiny helpdesk", "thank you", "thanks a lot", "many thanks", "help desk", "helpdesk", "ask the helpdesk", "hey there",
+        "hi there", "hello there", "good day", "good morning", "good afternoon", "good evening", "dear sir or madam", "dear sir",
+        "can you tell me", "could you tell me", "would you tell me", "can you explain", "could you explain", "i want to know",
+        "i need to know", "id like to know", "i would like to know", "excuse me", "by the way", "anyway", "tell me",
+        "question", "hello", "thanks", "please", "kindly", "pls", "thx", "ty", "cheers", "sorry", "hiya", "hey", "hmm", "hmmm",
+        "yo", "hi", "okay", "ok", "alright", "sure", "right", "yes", "yeah", "yep", "no", "nope", "like", "actually", "btw",
+        "also", "and", "but", "then", "now", "so", "well", "um", "uh", "er", "oh", "ah", "ask", "assistant", "bot", "claude",
+        "ahoy");
 
-    private static final Pattern INVISIBLE = Pattern.compile("[\\p{Cf}\\u00AD]");
+    private static final Pattern INVISIBLE = Pattern.compile("[\\p{Cf}\\u00AD\\uFE0F\\u20E3]");
     private static final Pattern WHITESPACE = Pattern.compile("[\\s\\p{Z}]+");
     private static final Pattern LEADING_JUNK = Pattern.compile("^[^\\p{L}\\p{N}]+");
     private static final Pattern SENTENCE_BREAK = Pattern.compile("[.!?;:\\n\\r]+");
     /** A list marker such as "1)", "a)" or "2]" left after the leading brackets are stripped. ("1." is split off as a sentence.) */
-    private static final Pattern LIST_MARKER = Pattern.compile("^(\\d{1,3}|[a-z])[)\\]]\\s*");
+    private static final Pattern LIST_MARKER = Pattern.compile(
+        "^(?:(?:step|no|number|item|q|question)\\.?\\s*)?#?(?:\\d{1,3}|[a-z]{1,4})\\s*[)\\]}>\\-–—]+\\s*"
+        + "|^#\\d{1,3}\\s+|^\\d{1,3}\\s+(?=[a-z])");
     private static final Pattern OPENER_PUNCTUATION = Pattern.compile("^[\\s,;:!.\\-–—]+");
 
     /** Look-alike letters from Cyrillic and Greek that NFKC leaves alone, folded to the Latin letter they imitate. */
