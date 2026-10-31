@@ -6776,6 +6776,10 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
         apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch}
         signedIn={!!auth?.signedIn} />
 
+      {locCfg.id === "cabin" && auth?.signedIn && !auth?.demo && (
+        <StorageSection apiBase={locCfg.apiBase} authedFetch={auth?.authedFetch} />
+      )}
+
       {auth?.demo
         ? <DemoCameraCards devices={devices.filter(d => !d.location || d.location === locCfg.id)} title={`Camera Health — ${locCfg.label}`} />
         : <CameraHealthPanel locCfg={locCfg} />}
@@ -6804,6 +6808,27 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Nate, 2026-10-31: the Trim control was reachable only from inside an expanded disk alert. This puts it on the
+// Monitoring page so an administrator can find it any time, alerting or not. The widget itself hides for
+// anyone who is not an administrator.
+function StorageSection({ apiBase, authedFetch }) {
+  const { isCollapsed, toggle } = useCollapsedSections("collapsed.storageSection");
+  const collapsed = isCollapsed("trim");
+  return (
+    <div className="event-log storage-section">
+      <div className="event-log-header">
+        <span>Storage — backups and disk space</span>
+        <button type="button" className="section-caret" onClick={() => toggle("trim")}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand storage" : "Collapse storage"}>
+          {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+        </button>
+      </div>
+      {!collapsed && <StorageTrimWidget apiBase={apiBase} authedFetch={authedFetch} quietWhenForbidden />}
     </div>
   );
 }
@@ -7754,7 +7779,20 @@ export function keepForFreeing(targets, wantGb) {
   return { keepN: 1, achievable: true, maxFreeGb: atMinimum };
 }
 
-export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 }) {
+// Same commands as docs/STORAGE_ARCHITECTURE.md "Trim control"; the backend sends them too (installCommands),
+// this copy is only the fallback if an older backend does not.
+const TRIM_INSTALL_COMMANDS = [
+  "git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin",
+  "sudo install -m 0755 scripts/host/cabin-storage-prune /usr/local/bin/cabin-storage-prune",
+  "sudo install -m 0755 scripts/host/cabin-storage-trim-agent /usr/local/bin/cabin-storage-trim-agent",
+  "sudo install -m 0644 scripts/host/cabin-storage-trim-agent.service /etc/systemd/system/cabin-storage-trim-agent.service",
+  "sudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent",
+].join("\n");
+
+// quietWhenForbidden: the Monitoring page shows this to every signed-in user; anyone who is not an
+// administrator should see nothing rather than an error about a control they were never meant to have.
+export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000, quietWhenForbidden = false }) {
+  const [copied, setCopied] = useState(false);
   const [view, setView] = useState(null);
   const [problem, setProblem] = useState(null);
   const [keepN, setKeepN] = useState(null);
@@ -7801,9 +7839,25 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
     return () => clearInterval(id);
   }, [waitingFor, load, pollMs]);
 
-  if (problem && !view) return <p className="trim-note" role="status">{problem}</p>;
+  if (problem && !view) return quietWhenForbidden && /administrator|Sign in/.test(problem) ? null : <p className="trim-note" role="status">{problem}</p>;
   if (!view) return <p className="trim-note" role="status">Loading the trim plan…</p>;
-  if (!view.installed) return <p className="trim-note" role="status">{view.message}</p>;
+  if (!view.installed) {
+    const cmds = view.installCommands || TRIM_INSTALL_COMMANDS;
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(cmds); setCopied(true); } catch { setCopied(false); setProblem("Copy was blocked by the browser; select the commands and copy them by hand."); }
+    };
+    return (
+      <div className="trim-widget">
+        <strong>Automatic backup trim is not running</strong>
+        {view.disk && <p className="trim-note">Disk now: {view.disk.usedPercent}% full, {Math.round(view.disk.freeGb)} GB free of {Math.round(view.disk.totalGb)} GB.</p>}
+        <p className="trim-note" role="status">{view.message}</p>
+        <p className="trim-note">To turn it on, the owner runs these on the M920q once (sudo needs the host password, so an agent cannot do it). The Trim control and automatic trimming then work without further steps:</p>
+        <pre className="trim-commands" aria-label="Install commands for the host trim service">{cmds}</pre>
+        <button type="button" className="trim-copy" onClick={copy}>{copied ? "Copied" : "Copy commands"}</button>
+        {problem && <p className="trim-error" role="alert">{problem}</p>}
+      </div>
+    );
+  }
   if (!view.targets?.length) return <p className="trim-note" role="status">No dated backup folders to trim.</p>;
 
   const max = Math.max(...view.targets.map(t => t.count));
@@ -7835,8 +7889,10 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
       <strong>Trim old backups</strong>
       {disk && <p className="trim-note">Disk now: {disk.usedPercent}% full, {Math.round(disk.freeGb)} GB free of {Math.round(disk.totalGb)} GB.</p>}
       {view.auto && (view.auto.enabled
-        ? <p className="trim-note">Automatic: at {view.auto.aboveFull}% full the oldest backup copies are removed until the disk is back to {view.auto.downTo}%, never leaving fewer than {view.auto.floorKeep} per folder. You are told each time.</p>
-        : <p className="trim-note">Automatic trimming is turned off on the host.</p>)}
+        ? <p className="trim-note">Automatic trim is on: at {view.auto.aboveFull}% full the oldest backup copies are removed until the disk is back to {view.auto.downTo}%, never leaving fewer than {view.auto.floorKeep} per folder. You are told each time.</p>
+        : <p className="trim-note">Automatic trim is turned off on the host (TRIM_AUTO=0), so nothing trims on its own. Use the control below.</p>)}
+      {view.autoTrim === "stale" && <p className="trim-error">The host trim service has stopped updating its plan, so automatic trim may not be running.</p>}
+      {view.autoTrim === "stuck" && <p className="trim-error">The last automatic trim could not get the disk under its line. Trim more by hand below.</p>}
       {view.stale && <p className="trim-note">This plan is more than 12 hours old, so recent folders may be missing from it.</p>}
       {!view.sizesMeasured && <p className="trim-note">The host is still measuring folder sizes (the first pass takes several minutes). You can trim now; the amount freed shows when it finishes.</p>}
 
