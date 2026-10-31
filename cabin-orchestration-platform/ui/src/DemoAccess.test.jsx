@@ -161,6 +161,14 @@ describe("Access link usage (Config > Guest Access)", () => {
     expect(screen.getByText("Never opened")).toBeTruthy();
   });
 
+  it("tells a signed-in non-administrator that access links are administrator-only instead of an empty form", async () => {
+    const authedFetch = vi.fn(() => Promise.resolve({ ok: false, status: 403, json: async () => ({}) }));
+    render(<ThemeProvider><GuestAccessCard auth={{ authedFetch }} /></ThemeProvider>);
+
+    expect(await screen.findByText("Only an administrator can create and manage access links.")).toBeTruthy();
+    expect(screen.queryByText("Other share links")).toBeNull();
+  });
+
   it("lists time, panel and status in the activity expander", async () => {
     const events = [
       { id: 2, occurredAt: "2026-10-28T15:10:00Z", route: "/api/alerts/active", status: 200, hits: 4 },

@@ -19,7 +19,9 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * "Signed-in admin only" for account and access management, enforced per route and kept enforced (safety order 2026-10-31).
@@ -33,9 +35,10 @@ class AdministratorRouteAuditTest {
     /** The single-use magic-link consume: the one-time token is its credential, a managed user has no Google account. */
     private static final Set<String> EXEMPT = Set.of("ManagedUsersController.consumeMagicLink");
 
+    private static final CabinAccessTokenService TOKENS = mock(CabinAccessTokenService.class);
+    private static final ManagedUserService MANAGED = mock(ManagedUserService.class);
     private static final List<Object> CONTROLLERS = List.of(
-        new CabinAccessTokensController(mock(CabinAccessTokenService.class)),
-        new ManagedUsersController(mock(ManagedUserService.class)));
+        new CabinAccessTokensController(TOKENS), new ManagedUsersController(MANAGED));
 
     private static final List<HouseholdRole> NOT_ADMIN = Arrays.stream(HouseholdRole.values())
         .filter(r -> r != HouseholdRole.ADMINISTRATOR).toList();
@@ -96,10 +99,13 @@ class AdministratorRouteAuditTest {
                 List<HouseholdRole> callers = new ArrayList<>(NOT_ADMIN);
                 callers.add(null);   // an unresolved role is refused too
                 for (HouseholdRole role : callers) {
+                    clearInvocations(TOKENS, MANAGED);
                     Throwable thrown = assertThrows(InvocationTargetException.class,
                         () -> m.invoke(controller, argsFor(m, requestWith(role))), route + " as " + role).getCause();
                     assertInstanceOf(ResponseStatusException.class, thrown, route + " as " + role + ": " + thrown);
                     assertEquals(HttpStatus.FORBIDDEN, ((ResponseStatusException) thrown).getStatusCode(), route + " as " + role);
+                    // the refusal must come before the side effect, not after it
+                    verifyNoInteractions(TOKENS, MANAGED);
                 }
             }
         }

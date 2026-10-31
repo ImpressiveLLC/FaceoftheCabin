@@ -2599,12 +2599,13 @@ export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.
   const [creating, setCreating] = useState(false);
   const [newLink, setNewLink] = useState(null);
   const [error, setError] = useState(null);
+  const [forbidden, setForbidden] = useState(false);
   const doFetch = auth?.authedFetch || fetch;
   const apiBase = LOCATIONS.cabin.apiBase;
 
   const refresh = useCallback(() => {
     doFetch(`${apiBase}/api/access-tokens`)
-      .then(r => r.ok ? r.json() : [])
+      .then(r => { if (r.status === 403) setForbidden(true); return r.ok ? r.json() : []; })
       .then(body => setTokens(Array.isArray(body) ? body : []))
       .catch(() => {});
   }, [doFetch, apiBase]);
@@ -2663,6 +2664,8 @@ export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.
         : <span className="config-hint">{status.badge}</span>}
     </div>
   );
+
+  if (forbidden) return <p className="config-hint">Only an administrator can create and manage access links.</p>;
 
   return (
     <>
@@ -2848,12 +2851,13 @@ function ManagedUsersCard({ auth }) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
   const [actionResult, setActionResult] = useState(null);
+  const [forbidden, setForbidden] = useState(false);
   const doFetch = auth?.authedFetch || fetch;
   const apiBase = LOCATIONS.cabin.apiBase;
 
   const refresh = useCallback(() => {
     doFetch(`${apiBase}/api/managed-users`)
-      .then(r => r.ok ? r.json() : [])
+      .then(r => { if (r.status === 403) setForbidden(true); return r.ok ? r.json() : []; })
       .then(body => setUsers(Array.isArray(body) ? body : []))
       .catch(() => {});
   }, [doFetch, apiBase]);
@@ -2894,6 +2898,8 @@ function ManagedUsersCard({ auth }) {
     const body = await response.json().catch(() => ({}));
     setActionResult(body.error ? { id, ok: false, message: body.error } : { id, ok: true, message: "Invite sent." });
   };
+
+  if (forbidden) return <p className="config-hint">Only an administrator can manage these accounts.</p>;
 
   return (
     <>
