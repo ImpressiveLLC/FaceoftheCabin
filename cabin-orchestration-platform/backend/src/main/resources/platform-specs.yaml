@@ -132,7 +132,6 @@ groups:
           - cabin-orchestration-platform/discovery-service/Dockerfile
           - cabin-orchestration-platform/discovery-service/test/Dockerfile
           - cabin-orchestration-platform/infra/docker-compose.yml
-          - cabin-orchestration-platform/locations/home/docker-compose.yml
       - id: rt.blinkbridge-rewrite
         name: Blinkbridge rewrite image (manual cutover only)
         kind: image
@@ -373,7 +372,6 @@ groups:
         track: floating
         sources:
           - cabin-orchestration-platform/infra/docker-compose.yml
-          - cabin-orchestration-platform/locations/home/docker-compose.yml
         live: postgres
         note: PostgreSQL 16 is fixed; the TimescaleDB release moves with the tag. Back up before pulling.
       - id: svc.kafka
@@ -384,7 +382,6 @@ groups:
         track: pinned
         sources:
           - cabin-orchestration-platform/infra/docker-compose.yml
-          - cabin-orchestration-platform/locations/home/docker-compose.yml
         note: Confluent Platform 7.6.x ships Apache Kafka 3.6.x.
       - id: svc.mosquitto-stack
         name: Mosquitto MQTT broker (production stack)
@@ -393,16 +390,15 @@ groups:
         declared: latest
         track: floating
         sources: [cabin-orchestration-platform/infra/production-stack/docker-compose.yml]
-        note: The base compose and Home use eclipse-mosquitto:2; the running broker's version isn't exposed over MQTT.
+        note: The base compose uses eclipse-mosquitto:2; the running broker's version isn't exposed over MQTT.
       - id: svc.mosquitto-base
-        name: Mosquitto MQTT broker (base compose, Home)
+        name: Mosquitto MQTT broker (base compose)
         kind: image
         keys: ["eclipse-mosquitto:2"]
         declared: "2"
         track: series
         sources:
           - cabin-orchestration-platform/infra/docker-compose.yml
-          - cabin-orchestration-platform/locations/home/docker-compose.yml
       - id: svc.home-assistant
         name: Home Assistant
         kind: image
@@ -412,7 +408,6 @@ groups:
         sources:
           - cabin-orchestration-platform/infra/docker-compose.yml
           - cabin-orchestration-platform/infra/production-stack/docker-compose.yml
-          - cabin-orchestration-platform/locations/home/docker-compose.yml
         live: home-assistant
         note: Read the release notes before pulling; integrations (Kidde, Liebherr) break across releases.
       - id: svc.zigbee2mqtt
@@ -432,7 +427,6 @@ groups:
         sources:
           - cabin-orchestration-platform/infra/docker-compose.yml
           - cabin-orchestration-platform/infra/production-stack/docker-compose.yml
-          - cabin-orchestration-platform/locations/home/docker-compose.yml
         note: Flows are versioned in Git; the Node-RED release itself floats.
       - id: svc.frigate
         name: Frigate NVR
@@ -443,7 +437,6 @@ groups:
         sources:
           - cabin-orchestration-platform/infra/docker-compose.yml
           - cabin-orchestration-platform/infra/production-stack/docker-compose.yml
-          - cabin-orchestration-platform/locations/home/docker-compose.yml
       - id: svc.mediamtx
         name: MediaMTX (RTSP relay)
         kind: image
@@ -474,7 +467,6 @@ groups:
         sources:
           - cabin-orchestration-platform/infra/docker-compose.m920q.yml
           - cabin-orchestration-platform/infra/docker-compose.yml
-          - cabin-orchestration-platform/locations/home/docker-compose.yml
       - id: svc.prometheus
         name: Prometheus
         kind: image

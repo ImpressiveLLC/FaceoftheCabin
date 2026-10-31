@@ -11,7 +11,7 @@ by these documents. Preserve hub-location identities and approved secret provisi
 > For standing up a **genuinely separate, independently-running** copy —
 > your own accounts, your own domain, your own host, your own GitHub repo.
 > Not a second location sharing this family's config (that's what
-> `cabin-orchestration-platform/locations/home/` is for) — a completely
+> the Home collector is for, D23) — a completely
 > independent stack for a different family/user, using this repo as a
 > template.
 >
