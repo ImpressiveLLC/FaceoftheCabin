@@ -338,3 +338,23 @@ describe("Signal surfaces: pure black fills, no grey hairlines (Nate 2026-10-29)
     expect(hub).toMatch(/\.bday-item[^{]*\{\s*background: transparent; border-color: color-mix\(in srgb, var\(--hue/);
   });
 });
+
+// W-126 item 1 asked for a computed-style check beside the CSS-source tests. jsdom cannot give one here: it ignores var(), :has() and
+// pseudo-elements, and its cascade for these long selector lists proved order-dependent (the same assertion passed and failed
+// between runs), so a green check would not mean what it says. The two W-126 fixes below are therefore pinned at the source with
+// whitespace-tolerant patterns, and were measured in a real Chromium page (see the PR): the Alert icon overlap went from 6 x 6 px
+// to 0, and the critical-row detail text from 3.96:1 to 4.93:1.
+describe("Signal W-126 fixes (source pins; measured in Chromium, see the PR)", () => {
+  const compact = cabinCss.replace(/\s+/g, " ");
+
+  it("an Alert tile's icon sits clear of the corner asterisks (20 px or more from the top and right)", () => {
+    const m = compact.match(/\.kpi-tile\.kpi-state-alarm > svg \{ top: (\d+)px; right: (\d+)px; \}/);
+    expect(m, "alarm icon rule present").toBeTruthy();
+    expect(Number(m[1])).toBeGreaterThanOrEqual(20);
+    expect(Number(m[2])).toBeGreaterThanOrEqual(20);
+  });
+
+  it("row detail text uses the muted text token in Signal, not the dimmer one that measured 3.96:1", () => {
+    expect(compact).toMatch(/\[data-theme="signal"\] \.active-condition p \{ color: var\(--text-muted\); \}/);
+  });
+});

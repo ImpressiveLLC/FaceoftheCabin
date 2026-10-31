@@ -2834,6 +2834,9 @@ select option { background: var(--bg-secondary); color: var(--text); }
 [data-theme="signal"] .kpi-tile.kpi-state-ok { border-color: color-mix(in srgb, var(--attn-normal) 30%, var(--border)); }
 /* Room for the four corner asterisks inside an Alert tile. */
 [data-theme="signal"] .kpi-tile.kpi-state-alarm { padding: 24px 26px 24px; }
+/* The Alert tile's icon sits inside the padding, clear of the corner asterisks (they fill 6 to 20 px from each edge): at the
+   default 14 px it overlapped the top-right asterisk by 6 x 6 px (W-126 item 4). */
+[data-theme="signal"] .kpi-tile.kpi-state-alarm > svg { top: 24px; right: 26px; }
 /* A healthy status banner is one hairline; warn and critical banners keep their heavier border. */
 [data-theme="signal"] .alert-ctrl-ok { border-width: 1px; }
 [data-theme="signal"] .kpi-value-note { font-family: var(--font-ui); font-size: 11px; font-weight: 500; letter-spacing: 0.04em; }
@@ -2912,6 +2915,9 @@ select option { background: var(--bg-secondary); color: var(--text); }
   border-color: color-mix(in srgb, var(--signal-cool) 55%, transparent);
 }
 /* </signal-surfaces> */
+
+/* Row detail text: --text-dim measured 3.96:1 on the critical row fill at 11 px; --text-muted is 4.9:1 (W-126 item 5). */
+[data-theme="signal"] .active-condition p { color: var(--text-muted); }
 
 /* <signal-roles> */
 /* Colour roles (2026-10-29, Nate: the Monitoring page is the bar, every other tab should use the whole palette the same way).
