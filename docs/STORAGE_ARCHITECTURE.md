@@ -115,6 +115,17 @@ What now keeps it down (Nate, 2026-10-13: "notification and auto trimming at a m
 | Auto-trim | at **70%** the host agent removes the oldest backup folders, one at a time, until the disk is at **55%**, never leaving fewer than **3** per folder | `TRIM_AUTO_ABOVE`, `TRIM_AUTO_TO`, `TRIM_AUTO_FLOOR` in `/etc/cabin-storage-trim-agent.env`; `TRIM_AUTO=0` turns it off |
 | Told | every automatic trim publishes a `STORAGE_AUTO_TRIM` event: INFO when it reached its line, WARN (and a push) when it hit the floor with the disk still full or failed | `StorageTrimService.announceAutoResult` |
 
+**What the critical alert means (2026-10-31).** The `storage-hdd` alert at 75% is not always an emergency, so its severity follows the agent. The monitor reads the agent's `plan.json` and `result.json` (`AutoTrimStatus`):
+
+| Agent state | Critical-line alert | Push |
+|---|---|---|
+| Installed, auto on, plan under 12 hours old, last automatic run did not fail or hit the floor | Published as **WARN**, text says "Not a true emergency", quotes the plan's own thresholds and the level corrects itself | No |
+| Not installed, `TRIM_AUTO=0`, plan older than 12 hours, or the last automatic run (within 24 hours) failed or hit the floor | **CRITICAL**, text says automatic trim is not doing the job and manual action is needed | Yes |
+| Was WARN as above, and the agent then goes away or hits its floor while the disk is still over the line | Raised to **CRITICAL** once | Yes |
+| Still over the line after the 24-hour repeat interval | The repeat is **CRITICAL** even with auto-trim on, since it should have cleared by then | Yes |
+
+The NVMe has no automatic remedy and stays CRITICAL. Nothing repeats on every pass: a level change, the escalation and the daily repeat are the only publishes. The 60% warning is unchanged.
+
 Automatic trimming touches only the dated backup folders (`cabin-storage-prune apply --auto-below`). BI telemetry, databases and recorded video are never touched by it. **The root fix is still to install the new `backup-modular`** (W-48), which keeps 7/14/30/14 copies and leaves out regenerable data, so the backups stop growing in the first place. Auto-trim is the safety net, not the plan.
 
 **Room for a big job.** The Trim control has a "Free up at least N GB" box: it sets the slider to the most copies you can keep and still free that much, and says plainly when even the minimum is not enough (then the remaining space is recorded video, set by Frigate retention, and the one-off 29 GB system copy). Setting `TRIM_AUTO=0` and `allowed_root` entries for a new mount is how a big job gets the disk without the agent trimming under it.
@@ -143,7 +154,7 @@ sudo install -m 0644 scripts/host/cabin-storage-trim-agent.service /etc/systemd/
 sudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent
 ```
 
-The backend deploy picks up the new route on its own. Until the agent has written its first plan the widget says the host service is not installed. The first plan lists folder names at once and the sizes follow once the host has measured them (several minutes on the HDD).
+The backend deploy picks up the new route on its own. Until the agent has written its first plan the widget says automatic trim is not running, shows these same commands with a Copy button and the disk's current usage, and offers no slider (there is nothing to act on). On 2026-10-31 the agent was not installed on the M920q and the disk was at 80%. **Where to find the control:** a Storage section on Monitoring (administrators; hidden for everyone else) and the Act step of the storage-disk alert. The first plan lists folder names at once and the sizes follow once the host has measured them (several minutes on the HDD).
 
 **Scope.** It trims the dated nightly backup folders only. Recorded video is governed by Frigate's retention (days), and BI telemetry is never touched. Other storage (W-63) uses the same tool through `allowed_root`.
 

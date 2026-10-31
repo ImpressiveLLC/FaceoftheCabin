@@ -6961,7 +6961,7 @@ describe("Trim old backups: big-job helper and automatic policy", () => {
     expect(await screen.findByText(/at 70% full the oldest backup copies are removed until the disk is back to 55%.*fewer than 3 per folder/)).toBeTruthy();
     unmount();
     render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view({ auto: { enabled: false, aboveFull: 70, downTo: 55, floorKeep: 3 } }))} />);
-    expect(await screen.findByText(/Automatic trimming is turned off on the host/)).toBeTruthy();
+    expect(await screen.findByText(/Automatic trim is turned off on the host/)).toBeTruthy();
   });
 
   it("an automatic result is labelled, and a floor stop is explained", async () => {
@@ -7183,5 +7183,124 @@ describe("SensorHistoryPanel outdoor baseline", () => {
     render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
     await screen.findByRole("button", { name: "Mech Room" });
     expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull();
+  });
+});
+
+
+// Nate, 2026-10-31: with the host trim agent not installed the widget used to say only "has not produced a plan
+// yet". It must say what is wrong, that automatic trim is not running, how to install it, and let the owner copy
+// the commands; and the control must be findable from Monitoring, not only from inside an alert.
+describe("Storage trim: not installed, automatic trim states, and the Monitoring entry point", () => {
+  afterEach(cleanup);
+  const reply = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
+  const GB = 1024 ** 3;
+  const notInstalled = {
+    installed: false, pending: false, autoTrim: "not-installed", disk: { usedPercent: 80, freeGb: 225, totalGb: 916 },
+    message: "Automatic backup trim is not running: the host trim service has not produced a plan, so it is not installed (or has stopped).",
+    installCommands: "git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin\nsudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent",
+  };
+  const installed = (extra = {}) => ({
+    installed: true, pending: false, stale: false, sizesMeasured: true, lastResult: null, autoTrim: "on",
+    disk: { usedPercent: 80, freeGb: 225, totalGb: 916 }, auto: { enabled: true, aboveFull: 70, downTo: 55, floorKeep: 3 },
+    targets: [{ id: "backups-home", keep: 3, count: 6, snapshots: Array.from({ length: 6 }, (_, i) => ({ name: `2026-01-0${i + 1}`, bytes: 10 * GB })) }],
+    ...extra,
+  });
+
+  it("not installed: says what is wrong, shows the disk, the exact install commands, and no slider", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, notInstalled)} />);
+    expect(await screen.findByText("Automatic backup trim is not running")).toBeTruthy();
+    expect(screen.getByText(/Disk now: 80% full, 225 GB free of 916 GB/)).toBeTruthy();
+    expect(screen.getByText(/not installed \(or has stopped\)/)).toBeTruthy();
+    const cmds = screen.getByLabelText("Install commands for the host trim service");
+    expect(cmds.textContent).toBe(notInstalled.installCommands);
+    expect(screen.queryByRole("slider")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Go" })).toBeNull();
+  });
+
+  it("not installed: falls back to the built-in commands if the backend sent none", async () => {
+    const { installCommands, ...old } = notInstalled;
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, old)} />);
+    const cmds = await screen.findByLabelText("Install commands for the host trim service");
+    expect(cmds.textContent).toContain("sudo install -m 0755 scripts/host/cabin-storage-trim-agent /usr/local/bin/cabin-storage-trim-agent");
+    expect(cmds.textContent).toContain("sudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent");
+  });
+
+  it("the copy button puts the commands on the clipboard", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, notInstalled)} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Copy commands" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(notInstalled.installCommands));
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("installed with automatic trim on: slider stays and the thresholds come from the plan", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, installed({ auto: { enabled: true, aboveFull: 66, downTo: 44, floorKeep: 5 } }))} />);
+    expect(await screen.findByRole("slider")).toBeTruthy();
+    expect(screen.getByText(/Automatic trim is on: at 66% full .* back to 44%, never leaving fewer than 5 per folder/)).toBeTruthy();
+    expect(screen.queryByText(/Automatic backup trim is not running/)).toBeNull();
+  });
+
+  it("installed with automatic trim off: says nothing trims on its own, slider stays", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, installed({ autoTrim: "disabled", auto: { enabled: false, aboveFull: 70, downTo: 55, floorKeep: 3 } }))} />);
+    expect(await screen.findByText(/Automatic trim is turned off on the host \(TRIM_AUTO=0\), so nothing trims on its own/)).toBeTruthy();
+    expect(screen.getByRole("slider")).toBeTruthy();
+  });
+
+  it("flags a stopped agent and a stuck automatic run", async () => {
+    const { unmount } = render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, installed({ autoTrim: "stale", stale: true }))} />);
+    expect(await screen.findByText(/has stopped updating its plan, so automatic trim may not be running/)).toBeTruthy();
+    unmount();
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, installed({ autoTrim: "stuck" }))} />);
+    expect(await screen.findByText(/could not get the disk under its line/)).toBeTruthy();
+  });
+
+  it("the disk-alert Act step shows the install help when the agent is absent", async () => {
+    vi.stubGlobal("fetch", vi.fn((url) => (String(url).includes("/api/system/storage/trim") ? reply(200, notInstalled) : new Promise(() => {}))));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"], activeAlerts: [],
+        automationAlerts: [{
+          eventId: "e2", sourceDeviceId: "storage-storage-hdd", severity: "CRITICAL", timestamp: "2026-10-31T12:00:00Z",
+          payload: { ruleId: "STORAGE_THRESHOLD", see: "storage-hdd is 80% full", think: "Crossed the 75% critical line",
+            act: "Automatic trim is not installed on the host, so nothing will clear this on its own and it needs you." },
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "See more" }));
+    expect(await screen.findByLabelText("Install commands for the host trim service")).toBeTruthy();
+    expect(screen.getByText(/needs you/)).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("Monitoring has a Storage section an administrator can reach without an alert", async () => {
+    const authedFetch = vi.fn((url) => (String(url).includes("/api/system/storage/trim") ? reply(200, notInstalled) : new Promise(() => {})));
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(
+      <ThemeProvider>
+        <AppContext.Provider value={{ devices: [], activeLocation: "cabin", activeProfile: "AT_CABIN", alertAcknowledgments: [], activeAlerts: [], activeAlertLocations: [], automationAlerts: [] }}>
+          <MonitoringPanel active={true} auth={{ authedFetch, signedIn: true }} />
+        </AppContext.Provider>
+      </ThemeProvider>
+    );
+    expect(await screen.findByText("Storage — backups and disk space")).toBeTruthy();
+    expect(await screen.findByLabelText("Install commands for the host trim service")).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("Monitoring shows nothing about storage to a non-administrator or a signed-out visitor", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const ctx = { devices: [], activeLocation: "cabin", activeProfile: "AT_CABIN", alertAcknowledgments: [], activeAlerts: [], activeAlertLocations: [], automationAlerts: [] };
+    const forbidden = vi.fn(() => reply(403, {}));
+    const { unmount } = render(<ThemeProvider><AppContext.Provider value={ctx}><MonitoringPanel active={true} auth={{ authedFetch: forbidden, signedIn: true }} /></AppContext.Provider></ThemeProvider>);
+    await waitFor(() => expect(forbidden).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText(/Only an administrator can trim storage/)).toBeNull());
+    unmount();
+    render(<ThemeProvider><AppContext.Provider value={ctx}><MonitoringPanel active={true} auth={{ authedFetch: () => new Promise(() => {}), signedIn: false }} /></AppContext.Provider></ThemeProvider>);
+    expect(screen.queryByText("Storage — backups and disk space")).toBeNull();
+    vi.unstubAllGlobals();
   });
 });
