@@ -339,7 +339,7 @@ CONTACT_SENSOR, THERMOSTAT, TEMPERATURE_SENSOR, HUMIDITY_SENSOR,
 WATER_PRESSURE_SENSOR, POWER_METER, DISHWASHER, WASHING_MACHINE, DRYER,
 ROUTER, UPS, GOOGLE_HOME_DEVICE, HOME_ASSISTANT_ENTITY, DASHBOARD`
 
-### Location roles (D24, ratified 2026-10-13 — not enforced in code yet)
+### Location roles (D24, ratified 2026-10-13 — enforced for the hub's presence counting by W-38 slice 1; the siren gate is unchanged)
 A person's relationship to **one location**, separate from `HouseholdRole`
 (what a signed-in principal may do):
 - **`primary`** — the active users of the location (they live there or use
@@ -350,12 +350,14 @@ A person's relationship to **one location**, separate from `HouseholdRole`
   as on-site: a **guest** for presence (no phone check, no counted signal).
   One person can hold both at one location (at the cabin, Nate does).
 
-Today the rule holds only by configuration: a phone check
-(`check_authorized_user_phone_wifi.sh <person_id>`, person- and site-agnostic;
-the phone's MAC and LAN live in an uncommitted `authorized_user_phones.conf`)
-and a publisher exist for primary users only. The backend's
-`PresenceSignalRegistry` counts whoever publishes (W-38 builds the
-tracked-person registry). Setup for a new clone: `docs/REPLICATION.md` §3
+Enforcement (W-38 slice 1): the backend's tracked-person registry (`tracked_person_location_role`, admin-only
+`/api/presence/roles`) makes `PresenceSignalRegistry` count primary-role persons only. A maintenance-only arrival is
+not counted, publishes no `PRESENCE_CHANGED`, and is recorded once as a `MAINTENANCE_VISIT` INFO event; an
+unregistered person is still counted and flagged (`unregisteredCounted`). **The siren gate itself lives in Node-RED
+and Home Assistant and is not changed by this**: it still depends on the phone check
+(`check_authorized_user_phone_wifi.sh <person_id>`, person- and site-agnostic; the phone's MAC and LAN live in an
+uncommitted `authorized_user_phones.conf`) and a publisher existing for primary users only. Seed:
+`scripts/host/w38-register-primary-presence.sql`. Setup for a new clone: `docs/REPLICATION.md` §3
 "Who counts as present". Ontology: `location_role`,
 `check_authorized_user_phone_wifi`, `nodered_cabin_security_siren_gate`.
 
@@ -693,6 +695,7 @@ column for writes is enforced, not just described. Reads follow D14: several
 | `/api/schedule/rules`, `/api/schedule/holidays` | ScheduleRulesController, HolidaysController | gated |
 | `/api/chores/assignments`, `/api/chores/definitions` (CRUD, `reorder`, `restore`) | ChoreAssignmentsController, ChoreDefinitionsController | gated (under `/api/chores/**`) |
 | `GET /api/presence/activity` | PresenceActivityController | gated (under `/api/presence/**`) |
+| `GET`/`PUT /api/presence/roles` (W-38 slice 1, D24) | PresenceRolesController | administrator only. Who is `primary` or `maintenance` at each location. Presence counts primary only; a maintenance-only arrival is recorded as a `MAINTENANCE_VISIT` INFO event and not counted; an unregistered person is counted and flagged (`unregisteredCounted`). Changes what the hub counts and shows, not the siren gate (Node-RED and HA). Seed: `scripts/host/w38-register-primary-presence.sql` |
 | `GET /api/frigate-metrics` | FrigateMetricsController | no interceptor pattern: open `GET` (per-camera health from Prometheus) |
 | `GET /api/weather/outdoor-history?location=&days=` (outdoor baseline, 2026-10-29) | WeatherController | open `GET` (demo policy ALLOW): public weather data, no device or household detail. Daily outdoor temperature, dew point and relative humidity from the location's configured airport station(s) (`cabin.weather.stations`; a location with no entry returns no points), capped at `cabin.history.max-days`. Rows live in `outdoor_observation`; a raw and a monthly CSV log go to `/storage/archives/weather`. See `docs/OUTDOOR_WEATHER_BASELINE.md` |
 | `GET /api/context/cabin-context.jsonld`, `GET /api/devices/{id}/jsonld` | JsonLdController | open `GET` |

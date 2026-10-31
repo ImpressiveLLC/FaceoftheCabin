@@ -10,6 +10,7 @@ import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.integrations.cameras.BlinkLiveviewService;
 import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.presence.PresenceService;
+import com.cabin.orchestrator.presence.LocationRoleService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
 import com.cabin.orchestrator.security.SecurityStateRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -217,7 +218,7 @@ public class MqttBridgeService implements MqttCallback {
                 // W-34 heartbeat: a timestamp, not a presence value, so it must
                 // never reach handlePresenceTopic (which would read it as
                 // not-"home" and mark the person absent).
-                handlePresenceLastSeen(parts[2], payload);
+                handlePresenceLastSeen(parts[0], parts[2], payload);
                 if (blinkRelayPulse != null && "cabin".equals(parts[0]) && parts[2].equals(blinkRelayPresencePerson)) {
                     blinkRelayPulse.record(payload, java.time.Instant.now());
                 }
@@ -228,7 +229,7 @@ public class MqttBridgeService implements MqttCallback {
                 // Plain text ("home"/"not_home"), same reasoning as camera
                 // topics above -- must be handled before the generic
                 // JSON-parse fallback below, not through it.
-                handlePresenceTopic(parts, payload);
+                handlePresenceTopic(parts, payload, message.isRetained());
                 return;
             }
 
@@ -445,12 +446,15 @@ public class MqttBridgeService implements MqttCallback {
      * of a phone joining or leaving the WiFi, not just whatever was last
      * manually picked.
      */
-    private void handlePresenceTopic(String[] parts, String payload) {
+    private void handlePresenceTopic(String[] parts, String payload, boolean retained) {
         String location = parts[0];
         String personId = parts[2];
         boolean present = "home".equalsIgnoreCase(payload.trim());
-        presenceSignalRegistry.record(location, personId, present);
+        LocationRoleService.Treatment treatment = presenceSignalRegistry.record(location, personId, present, retained);
         presenceService.recomputeFromSignals();
+        // D24 R-LR-2: a maintenance-only person is a guest for presence, so their arrival is not a presence change and
+        // must not fire presence-arrived workflows. The registry has already recorded it as a MAINTENANCE_VISIT.
+        if (treatment == LocationRoleService.Treatment.MAINTENANCE_ONLY) return;
         // Added 2026-08-21 -- this only ever updated PresenceSignalRegistry
         // before, so WorkflowRuleService (which only reacts to real
         // CabinEvents) had no way to see a presence change at all, real or
@@ -474,9 +478,9 @@ public class MqttBridgeService implements MqttCallback {
      * unparseable payload is ignored (and logged) rather than throwing, so a
      * bad publisher can never take the subscription down or reset the age.
      */
-    private void handlePresenceLastSeen(String personId, String payload) {
+    private void handlePresenceLastSeen(String location, String personId, String payload) {
         try {
-            presenceSignalRegistry.recordSeen(personId, Instant.parse(payload.trim()));
+            presenceSignalRegistry.recordSeen(location, personId, Instant.parse(payload.trim()));
         } catch (java.time.format.DateTimeParseException e) {
             log.warn("Ignoring unparseable presence heartbeat for {}: '{}'", personId, payload);
         }
