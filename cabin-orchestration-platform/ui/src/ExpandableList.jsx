@@ -4,9 +4,31 @@ import React, { useEffect, useRef, useState } from 'react';
 // person clicks anywhere outside the list. Rows that must never be hidden (an active alarm, the selected row)
 // are always shown and do not count against the limit.
 export const COLLAPSED_LIMIT = 10;
+// A wide screen (a conventional monitor or a kiosk) has room for about three full rows of cards; phones and tablets keep ten.
+export const WIDE_QUERY = '(min-width: 1200px)';
+
+function matchWide() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(WIDE_QUERY) : null;
+}
+
+function useWide() {
+  const [wide, setWide] = useState(() => Boolean(matchWide()?.matches));
+  useEffect(() => {
+    const query = matchWide();
+    if (!query || !query.addEventListener) return undefined;
+    const onChange = event => setWide(event.matches);
+    setWide(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return wide;
+}
 
 export function ExpandableList({ items, renderItem, keyOf = item => item.deviceId, isPinned = () => false,
-                                  limit = COLLAPSED_LIMIT, forceOpen = false, noun = 'items' }) {
+                                  limit: limitProp = COLLAPSED_LIMIT, forceOpen = false, noun = 'items' }) {
+  // limit is a number, or { base, wide } to show more on a wide screen.
+  const wide = useWide();
+  const limit = typeof limitProp === 'number' ? limitProp : (wide ? limitProp.wide : limitProp.base);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -34,9 +56,10 @@ export function ExpandableList({ items, renderItem, keyOf = item => item.deviceI
     <div className="expandable-list" ref={ref}>
       {visible.map(item => <ExpandableRow key={keyOf(item)} item={item} renderItem={renderItem} />)}
       {needsToggle && !forceOpen && (
-        <button type="button" className="btn-ghost btn-ghost-sm expandable-list-toggle" aria-expanded={open}
+        <button type="button" className="expandable-list-toggle" aria-expanded={open}
           onClick={() => setOpen(o => !o)}>
           {open ? 'Show fewer' : `Show ${hidden} more ${noun}`}
+          <span aria-hidden="true" className="expandable-list-chevron">{open ? '▲' : '▼'}</span>
         </button>
       )}
     </div>

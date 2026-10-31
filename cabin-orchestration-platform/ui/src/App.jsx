@@ -1,6 +1,6 @@
 import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget, valueSegments } from "./electricalMonitoring";
 import { collapseDuplicateZigbeeServices, duplicateOfZigbeeParent } from "./zigbeeServices";
-import { ExpandableList } from "./ExpandableList";
+import { ExpandableList, COLLAPSED_LIMIT } from "./ExpandableList";
 import { DEVICE_KIND_OPTIONS, batteryLevel, makeKindOf } from "./deviceKinds";
 import { BatteryMaintenanceCard } from "./BatteryMaintenanceCard";
 /**
@@ -6566,6 +6566,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
 
       <div className={`kpi-grid ${reorderMode ? "reorder-mode" : ""}`}>
         <ExpandableList items={kpiEntries} keyOf={e => e.tile.deviceId} noun="tiles" forceOpen={reorderMode}
+          limit={{ base: COLLAPSED_LIMIT, wide: 25 }}
           isPinned={e => pinnedCount != null && e.globalIdx < pinnedCount}
           renderItem={({ globalIdx, tile }) => {
           const isPinned = pinnedCount != null && globalIdx < pinnedCount;
