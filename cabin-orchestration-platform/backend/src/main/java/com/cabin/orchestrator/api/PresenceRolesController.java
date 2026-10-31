@@ -3,6 +3,7 @@ package com.cabin.orchestrator.api;
 import com.cabin.orchestrator.locations.HubLocationService;
 import com.cabin.orchestrator.presence.LocationRole;
 import com.cabin.orchestrator.presence.LocationRoleService;
+import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
 import com.cabin.orchestrator.presence.TrackedPersonStore;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
@@ -36,11 +37,14 @@ public class PresenceRolesController {
     private final LocationRoleService roles;
     private final PresenceSignalRegistry signals;
     private final HubLocationService locations;
+    private final PresenceService presenceService;
 
-    public PresenceRolesController(LocationRoleService roles, PresenceSignalRegistry signals, HubLocationService locations) {
+    public PresenceRolesController(LocationRoleService roles, PresenceSignalRegistry signals, HubLocationService locations,
+                                   PresenceService presenceService) {
         this.roles = roles;
         this.signals = signals;
         this.locations = locations;
+        this.presenceService = presenceService;
     }
 
     /** The assignments, plus who is currently being counted without one (the "unregistered, counted" flag). */
@@ -63,6 +67,10 @@ public class PresenceRolesController {
         try {
             Set<LocationRole> parsed = EnumSet.noneOf(LocationRole.class);
             Object raw = body.get("roles");
+            // An absent key is an error, never a removal: only an explicit empty list removes (W-129 item 3).
+            if (!body.containsKey("roles") || raw == null) {
+                throw new IllegalArgumentException("roles is required: a list of primary and maintenance, or an empty list to remove");
+            }
             if (raw instanceof List<?> list) {
                 for (Object item : list) {
                     try {
@@ -77,7 +85,12 @@ public class PresenceRolesController {
             String location = text(body.get("location"), "location").trim();
             // A role for a place that does not exist would silently never apply.
             if (locations.byId(location) == null) throw new IllegalArgumentException("unknown location '" + location + "'");
-            roles.assign(text(body.get("personId"), "personId"), location, parsed);
+            String person = text(body.get("personId"), "personId").trim();
+            roles.assign(person, location, parsed);
+            // The stored signal was recorded under the old roles: re-judge it now so a departure is not lost and the
+            // "unregistered" flag clears at once.
+            signals.reevaluate(location, person);
+            presenceService.recomputeFromSignals();
             return ResponseEntity.ok(Map.of("assignments", roles.assignments().stream().map(PresenceRolesController::view).toList()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
