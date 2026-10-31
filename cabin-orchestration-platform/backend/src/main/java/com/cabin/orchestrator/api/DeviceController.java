@@ -236,7 +236,7 @@ public class DeviceController {
         Object payload = body.get("payload");
         // The valve and lock denial every dashboard command path shares (DeviceCommandGuard): a valve takes no command from
         // here and a lock only lock.lock. This path used to check only Enabled and Assigned.
-        Optional<String> denied = DeviceCommandGuard.denial(registry.get(deviceId), command);
+        Optional<String> denied = DeviceCommandGuard.denial(registry.descriptor(deviceId).orElse(null), registry.get(deviceId), command, payload);
         if (denied.isPresent()) {
             Map<String, Object> refusal = new LinkedHashMap<>();
             refusal.put("deviceId", deviceId);
