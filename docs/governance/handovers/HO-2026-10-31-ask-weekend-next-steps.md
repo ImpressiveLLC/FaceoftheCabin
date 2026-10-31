@@ -19,7 +19,7 @@ Open:
 
 1. #363 repair on a new commit, re-review, deploy.
 2. #369: review that the admin categories are declared before `rules_workflows`, `alert_silencing` before `status_checks` and `leak_response`, no category over 6000 characters (`ContextMapWiringTest`), `workflow_basics` measured, and the before and after numbers on the 150 phrasings are reported. Audience stays administrator-only unless Nate decides.
-3. W-132 managed-session hardening (neutral description; detail was given to Code privately).
+3. W-132 managed-session access-check hardening (detail was given to Code privately).
 4. After each deploy: rerun the 150 phrasings and the boundary set, report no-category and wrong-category rates and the question-to-action rate. Unrun runtime gates stay `NOT_MEASURED`.
 5. Sunday test: baseline of today's Ask first; an improved test only if routing, the UI fixes and the deploy go land Saturday. Firm yes or no by Saturday midday.
 6. Backlog hygiene (neutral wording only): the P3 notes from W-117, W-38 and the #367 and #360 reviews.
