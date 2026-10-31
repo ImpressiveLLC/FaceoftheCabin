@@ -22,6 +22,9 @@ class Settings:
     enabled: List[str] = field(default_factory=list)
     disabled: List[str] = field(default_factory=list)
     motion_liveview: List[str] = field(default_factory=list)
+    # Camera record keys whose change counts as activity (diffed every poll). Blink's motion flag is clip
+    # derived and never fires without cloud clips; these catch what the homescreen record does expose.
+    motion_signal_keys: List[str] = field(default_factory=lambda: ["thumbnail", "last_record", "video"])
     log_level: str = "INFO"
     http_port: int = 8811
     ffmpeg_bin: str = "ffmpeg"
@@ -58,6 +61,9 @@ class Settings:
     loop_stale: float = 120.0          # /healthz fails if the loop has not ticked in this long
     poll_stale: float = 1800.0         # ...or no successful Blink poll in this long
     startup_grace: float = 600.0
+    camera_missing_unhealthy: float = 900.0  # a configured camera absent from Blink this long => unhealthy
+    rediscover_base: float = 60.0      # backoff between re-discovery (re-login) attempts
+    rediscover_cap: float = 600.0
     watchdog_exit_after: float = 600.0  # in-process dead-man: exit(70) if the loop is this stale
 
     @property
@@ -91,6 +97,8 @@ def load(path: Optional[str] = None, env: Optional[Mapping[str, str]] = None) ->
     s.enabled = list(cams.get("enabled", []))
     s.disabled = list(cams.get("disabled", []))
     s.motion_liveview = list(cams.get("motion_liveview_enabled", []))
+    if "motion_signal_keys" in cams:
+        s.motion_signal_keys = list(cams["motion_signal_keys"])
     s.log_level = str(raw.get("log_level", "INFO")).upper()
     s.poll_interval = max(float(blink.get("poll_interval", MIN_POLL_INTERVAL)), MIN_POLL_INTERVAL)
     s.http_port = int(env.get("BLINKBRIDGE_PORT", s.http_port))

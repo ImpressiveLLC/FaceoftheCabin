@@ -112,6 +112,21 @@ class BlinkpyClient:
         attrs = self.blink.cameras[name].attributes
         return bool(attrs.get("motion_detected")), (attrs.get("last_record") or attrs.get("video"))
 
+    def raw_camera(self, name: str) -> dict:
+        """Everything Blink currently says about one camera (homescreen record plus blinkpy-derived attributes)."""
+        out: dict = {}
+        hs = getattr(self.blink, "homescreen", None) or {}
+        for key in ("cameras", "owls", "doorbells"):
+            for dev in hs.get(key, None) or []:
+                if isinstance(dev, dict) and dev.get("name") == name:
+                    out.update(dev)
+        cam = self.blink.cameras.get(name) if self.blink else None
+        if cam is not None:
+            attrs = cam.attributes
+            for k in ("last_record", "video", "thumbnail", "motion_detected"):
+                out["attr_" + k] = attrs.get(k)
+        return out
+
     async def open_livestream(self, name: str) -> LiveSession:
         camera = self.blink.cameras[name]
         try:

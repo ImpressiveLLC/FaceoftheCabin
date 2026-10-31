@@ -13,6 +13,10 @@ from .health import Heartbeat
 
 log = logging.getLogger(__name__)
 
+# Fields that change on every poll or are not activity; excluded from the per-camera diff.
+VOLATILE_KEYS = {"signals", "wifi_strength", "battery", "battery_state", "battery_voltage", "temperature",
+                 "battery_check_time", "updated_at", "attr_motion_detected"}
+
 
 class Supervisor:
     def __init__(self, settings: Settings, client, clock: Callable[[], float] = time.monotonic,
@@ -29,11 +33,20 @@ class Supervisor:
         self.next_login_at = 0.0
         self.last_log_at = clock()
         self._motion_active: Dict[str, bool] = {}
+        self._snapshots: Dict[str, dict] = {}
+        self.last_motion: Dict[str, tuple] = {}   # camera -> (clock, source)
         self._motion_token: Dict[str, Optional[str]] = {}
         self.poll_backoff = Backoff(settings.poll_backoff_base, settings.poll_backoff_cap, rng)
         self.throttle_backoff = Backoff(settings.throttle_floor, settings.throttle_cap, rng)
         self.auth_backoff = Backoff(settings.auth_backoff_base, settings.auth_backoff_cap, rng)
-        self.env = Env(settings, client, clock, rng, spawn, self.gate, self.on_throttle)
+        # Cameras we expect Blink to list: the configured set, else everything seen at login.
+        self.expected: set = set(settings.enabled) - set(settings.disabled)
+        self.live_names: set = set()
+        self.missing_since: Dict[str, float] = {}
+        self.rediscover_backoff = Backoff(settings.rediscover_base, settings.rediscover_cap, rng)
+        self.next_rediscover_at = 0.0
+        self.env = Env(settings, client, clock, rng, spawn, self.gate, self.on_throttle,
+                       present=lambda name: name in self.live_names)
 
     # ---- throttle gate (shared by polling, login and every camera) --------------------
     def gate(self) -> float:
@@ -113,14 +126,19 @@ class Supervisor:
             self._log(logging.WARNING, "motion poll: blink login failed (%s); retry in %.0fs", err, delay)
             return False
         self.auth_backoff.reset()
-        enabled = set(self.s.enabled) if self.s.enabled else set(names)
-        enabled -= set(self.s.disabled)
+        self.live_names = set(names)
+        if not self.s.enabled:
+            self.expected |= set(names) - set(self.s.disabled)
         old = self.runners
         self.runners = {}
-        for n in names:
-            if n in enabled:
-                self.runners[n] = old.get(n) or CameraRunner(n, self.env)
+        for n in sorted(self.expected):
+            self.runners[n] = old.get(n) or CameraRunner(n, self.env)
         self.ready = True
+        if self.s.motion_liveview and not old:
+            self._log(logging.WARNING,
+                      "motion_liveview_enabled=%s uses Blink motion_detected, which never fires for cameras without cloud clips; "
+                      "the real trigger is the push path (HA -> cabin/blink/motion -> cabin-backend -> /liveview/<camera>/start)",
+                      sorted(self.s.motion_liveview))
         self.next_poll_at = 0.0
         self._log(logging.INFO, "blink ready: enabled cameras=%s", sorted(self.runners))
         return True
@@ -146,6 +164,7 @@ class Supervisor:
         self.throttle_backoff.reset()
         self.next_poll_at = self.clock() + self.s.poll_interval + self.rng() * self.s.poll_jitter
         self._detect_motion()
+        self._check_camera_set()
         self._status_line("ok")
 
     async def _poll_failed(self, err) -> None:
@@ -162,23 +181,102 @@ class Supervisor:
         self.next_poll_at = self.clock() + delay
         self._log(logging.WARNING, "motion poll failed (%s: %s); next in %.0fs", type(err).__name__, err, delay)
 
+    def _check_camera_set(self) -> None:
+        """Blink sometimes answers with a shorter camera list (homescreen errors). Never accept that silently."""
+        now = self.clock()
+        try:
+            self.live_names = set(self.client.camera_names())
+        except Exception as exc:
+            log.warning("cannot list cameras: %r", exc)
+            return
+        missing = self.expected - self.live_names
+        for name in [n for n in self.missing_since if n not in missing]:
+            self._log(logging.INFO, "camera back in Blink response: %s (missing %.0fs)", name, now - self.missing_since.pop(name))
+        if not missing:
+            self.rediscover_backoff.reset()
+            return
+        for name in sorted(missing):
+            if name not in self.missing_since:
+                self.missing_since[name] = now
+                self._log(logging.WARNING, "camera set shrank: %s missing from Blink (expected %d, live %d)",
+                          name, len(self.expected), len(self.live_names & self.expected))
+        busy = any(r.state in (State.LIVE, State.STARTING) for r in self.runners.values())
+        if now >= self.next_rediscover_at and not busy:
+            delay = self.rediscover_backoff.next_delay()
+            self.next_rediscover_at = now + delay
+            self._log(logging.WARNING, "re-discovering cameras via fresh login (missing %s); next attempt in >=%.0fs",
+                      sorted(missing), delay)
+            self.ready = False  # next tick logs in again and rebuilds the camera list
+            self.next_login_at = 0.0
+
+    def health(self):
+        """Heartbeat status plus camera-set check: a configured camera missing too long is unhealthy."""
+        ok, body = self.hb.status()
+        now = self.clock()
+        missing = {n: round(now - t, 1) for n, t in self.missing_since.items()}
+        body["expected"] = sorted(self.expected)
+        body["live"] = sorted(self.live_names & self.expected)
+        body["missing"] = missing
+        if any(age > self.s.camera_missing_unhealthy for age in missing.values()):
+            ok = False
+            body["ok"] = False
+            body["last_error"] = body.get("last_error") or "camera(s) missing from Blink: " + ", ".join(sorted(missing))
+        body["last_activity"] = {n: {"age_s": round(now - at, 1), "source": src}
+                                 for n, (at, src) in self.last_motion.items()}
+        body["last_liveview_request_age_s"] = {
+            n: (None if r.last_request_at is None else round(now - r.last_request_at, 1))
+            for n, r in self.runners.items()}
+        return ok, body
+
+    def _on_motion(self, name: str, runner, source: str) -> None:
+        self.last_motion[name] = (self.clock(), source)
+        self._log(logging.INFO, "%s: Blink activity (%s)", name, source)
+        if name in self.s.motion_liveview:
+            runner.request(self.s.motion_max)
+
     def _detect_motion(self) -> None:
         for name, runner in self.runners.items():
-            try:
-                active, token = self.client.motion(name)
-            except Exception as exc:
-                log.warning("%s: cannot read motion: %r", name, exc)
+            if name not in self.live_names:
                 continue
-            was_active = self._motion_active.get(name, False)
-            prev_token = self._motion_token.get(name)
-            new = active and (not was_active or (token is not None and token != prev_token))
-            self._motion_active[name] = active
-            if active and token is not None:
-                self._motion_token[name] = token
-            if new:
-                self._log(logging.INFO, "%s: new Blink motion event", name)
-                if name in self.s.motion_liveview:
-                    runner.request(self.s.motion_max)
+            self._motion_flag(name, runner)
+            self._activity_diff(name, runner)
+
+    def _motion_flag(self, name: str, runner) -> None:
+        try:
+            active, token = self.client.motion(name)
+        except Exception as exc:
+            log.warning("%s: cannot read motion: %r", name, exc)
+            return
+        was_active = self._motion_active.get(name, False)
+        prev_token = self._motion_token.get(name)
+        new = active and (not was_active or (token is not None and token != prev_token))
+        self._motion_active[name] = active
+        if active and token is not None:
+            self._motion_token[name] = token
+        if new:
+            self._on_motion(name, runner, "motion_detected")
+
+    def _activity_diff(self, name: str, runner) -> None:
+        """Diff the camera's whole homescreen record between polls: log every change, trigger on signal keys."""
+        try:
+            raw = self.client.raw_camera(name)
+        except Exception as exc:
+            log.warning("%s: cannot read camera record: %r", name, exc)
+            return
+        snap = {k: v for k, v in raw.items() if k not in VOLATILE_KEYS}
+        prev = self._snapshots.get(name)
+        self._snapshots[name] = snap
+        if prev is None:
+            self._log(logging.INFO, "%s: camera record baseline keys=%s", name, sorted(snap))
+            return
+        changed = {k: (prev.get(k), snap.get(k)) for k in set(prev) | set(snap) if prev.get(k) != snap.get(k)}
+        if not changed:
+            return
+        shown = {k: (str(a)[:60], str(b)[:60]) for k, (a, b) in sorted(changed.items())}
+        self._log(logging.INFO, "%s: camera record changed %s", name, shown)
+        keys = [k for k in changed if k in self.s.motion_signal_keys or k.replace("attr_", "") in self.s.motion_signal_keys]
+        if keys:
+            self._on_motion(name, runner, "record change: " + ",".join(sorted(keys)))
 
     # ---- long-running -----------------------------------------------------------------
     async def run(self, stop: asyncio.Event) -> None:
