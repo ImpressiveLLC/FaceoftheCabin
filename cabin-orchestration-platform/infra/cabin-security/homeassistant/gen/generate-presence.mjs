@@ -17,7 +17,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const haDir = path.resolve(here, "..");
 const repoRoot = path.resolve(here, "../../../../..");
 
-export const PERSON_ID = /^[a-z0-9_]{1,32}$/;
+// Lowercase words joined by single underscores, so two ids can never slug to the same Home Assistant entity id
+// (a__b and a_b would both become binary_sensor.a_b_phone_on_wifi). 1 to 32 characters.
+export const PERSON_ID = /^(?=.{1,32}$)[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 export const LOCATIONS = ["cabin", "home"];
 const ZONE = /^zone\.[a-z0-9_]+$/;
 const TRACKER = /^device_tracker\.[a-z0-9_]+$/;
@@ -26,14 +28,77 @@ const ROSTER_KEYS = ["personId", "location", "zone", "gpsTracker", "batterySenso
 
 const lf = (text) => text.replace(/\r\n/g, "\n");
 
-/** Map of "person@location" to the set of roles the seed SQL gives them. */
+const SEED_TABLE = "tracked_person_location_role";
+
+/** Remove -- and block comments that are outside string literals, so a commented-out row can never be read as a real one. */
+export function stripSqlComments(sql) {
+  let out = "";
+  let i = 0;
+  let inString = false;
+  while (i < sql.length) {
+    const c = sql[i];
+    if (inString) {
+      out += c;
+      if (c === "'") {
+        if (sql[i + 1] === "'") { out += "'"; i += 2; continue; } // '' is an escaped quote
+        inString = false;
+      }
+      i += 1;
+    } else if (c === "'") {
+      inString = true; out += c; i += 1;
+    } else if (c === "-" && sql[i + 1] === "-") {
+      while (i < sql.length && sql[i] !== "\n") i += 1;
+    } else if (c === "/" && sql[i + 1] === "*") {
+      const end = sql.indexOf("*/", i + 2);
+      i = end < 0 ? sql.length : end + 2;
+      out += " ";
+    } else {
+      out += c; i += 1;
+    }
+  }
+  return out;
+}
+
+/** Split on ; outside string literals. */
+function statements(sql) {
+  const out = [];
+  let cur = "";
+  let inString = false;
+  for (let i = 0; i < sql.length; i += 1) {
+    const c = sql[i];
+    if (c === "'") inString = !inString; // '' toggles twice, which is correct
+    if (c === ";" && !inString) { out.push(cur); cur = ""; } else cur += c;
+  }
+  if (cur.trim()) out.push(cur);
+  return out.map((t) => t.trim()).filter(Boolean);
+}
+
+/**
+ * Map of "person@location" to the set of roles the seed SQL leaves in the table. Reads only INSERT INTO and DELETE FROM
+ * tracked_person_location_role (other tables are ignored), ignores comments, and applies a later DELETE of a person (with its
+ * optional location and role conditions) so a row that the file itself removes is not a primary person.
+ */
 export function parseSeed(sqlText) {
   const seed = new Map();
-  const body = lf(sqlText).split("\n").filter((line) => !line.trim().startsWith("--")).join("\n");
-  for (const m of body.matchAll(/\(\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'(PRIMARY|MAINTENANCE)'\s*\)/g)) {
-    const key = `${m[1]}@${m[2]}`;
-    if (!seed.has(key)) seed.set(key, new Set());
-    seed.get(key).add(m[3]);
+  const add = (p, l, r) => { const k = `${p}@${l}`; if (!seed.has(k)) seed.set(k, new Set()); seed.get(k).add(r); };
+  for (const stmt of statements(stripSqlComments(lf(sqlText)))) {
+    const insert = stmt.match(new RegExp(`^INSERT\\s+INTO\\s+${SEED_TABLE}\\b`, "i"));
+    const del = stmt.match(new RegExp(`^DELETE\\s+FROM\\s+${SEED_TABLE}\\b`, "i"));
+    if (insert) {
+      const values = stmt.slice(insert[0].length).replace(/^[^]*?\bVALUES\b/i, "");
+      for (const m of values.matchAll(/\(\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'(PRIMARY|MAINTENANCE)'\s*\)/g)) add(m[1], m[2], m[3]);
+    } else if (del) {
+      const where = stmt.slice(del[0].length).match(/^\s*WHERE\b([^]*)$/i);
+      if (!where) { seed.clear(); continue; } // DELETE with no WHERE empties the table
+      const cond = (name) => { const m = where[1].match(new RegExp(`\\b${name}\\s*=\\s*'([^']+)'`, "i")); return m ? m[1] : null; };
+      const [p, l, r] = [cond("person_id"), cond("location"), cond("role")];
+      for (const [key, roles] of [...seed]) {
+        const [kp, kl] = key.split("@");
+        if (p !== null && kp !== p) continue;
+        if (l !== null && kl !== l) continue;
+        if (r !== null) { roles.delete(r); if (roles.size === 0) seed.delete(key); } else seed.delete(key);
+      }
+    }
   }
   return seed;
 }
@@ -47,6 +112,8 @@ export function validateRoster(roster, seed) {
   if (extra.length) errors.push(`unknown roster keys: ${extra.join(", ")}`);
   if (roster.people.length > 32) errors.push("more than 32 people");
   const seen = new Set();
+  const trackers = new Set();
+  const batteries = new Set();
   for (const p of roster.people) {
     const who = JSON.stringify(p?.personId);
     const keys = Object.keys(p || {});
@@ -61,6 +128,10 @@ export function validateRoster(roster, seed) {
     if (!BATTERY.test(p.batterySensor || "")) errors.push(`${who}: batterySensor must look like sensor.xxx`);
     if (seen.has(p.personId)) errors.push(`${who}: listed twice (one location per person in v1)`);
     seen.add(p.personId);
+    if (trackers.has(p.gpsTracker)) errors.push(`${who}: gpsTracker ${p.gpsTracker} is already used by another person`);
+    if (batteries.has(p.batterySensor)) errors.push(`${who}: batterySensor ${p.batterySensor} is already used by another person`);
+    trackers.add(p.gpsTracker);
+    batteries.add(p.batterySensor);
     const roles = seed.get(`${p.personId}@${p.location}`);
     if (!roles || !roles.has("PRIMARY")) {
       errors.push(`${who}: not PRIMARY at ${p.location} in scripts/host/w38-register-primary-presence.sql; a maintenance-only or unregistered person never gets a check or a publish permission`);

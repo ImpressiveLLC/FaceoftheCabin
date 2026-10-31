@@ -162,6 +162,8 @@ cp -p cabin_security_mqtt_publish.py       cabin_security_mqtt_publish.py.bak-$d
 # from a checkout of this branch: copy these into place
 #   packages/cabin_security_presence.yaml
 #   cabin_security_mqtt_publish.py
+#   presence_people_allowlist.json             (W-38 slice 3; beside the script, same folder; it only adds exact
+#                                               per-person presence topics, and a missing or bad file adds nothing)
 #   check_authorized_user_phone_wifi.sh        (chmod +x, LF line endings)
 # and create authorized_user_phones.conf from authorized_user_phones.conf.example
 # (the phone's MAC and the cabin LAN; not committed)
@@ -176,7 +178,7 @@ start has been recorded yet), so the heartbeat starts as soon as the phone repor
 Keep the old `check_nate_phone_wifi.sh` until the new sensor reads correctly, then
 move it to `check_nate_phone_wifi.sh.bak-$d`.
 
-Rollback: copy the `.bak-$d` files back, remove the new script, reload.
+Rollback: copy the `.bak-$d` files back, remove the new script and `presence_people_allowlist.json`, reload.
 
 ### Checks after applying
 

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { allowlist, displayName, generate, loadTemplates, parseSeed, render, validateRoster } from "./generate-presence.mjs";
+import { allowlist, displayName, generate, loadTemplates, parseSeed, render, stripSqlComments, validateRoster } from "./generate-presence.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const haDir = path.resolve(here, "..");
@@ -13,7 +13,7 @@ const lf = (t) => t.replace(/\r\n/g, "\n");
 
 const NATE = { personId: "nate", location: "cabin", zone: "zone.cabin", gpsTracker: "device_tracker.nates_s23", batterySensor: "sensor.nates_s23_battery_level" };
 const CHILD = { personId: "child_1", location: "cabin", zone: "zone.cabin", gpsTracker: "device_tracker.child_1_phone", batterySensor: "sensor.child_1_phone_battery_level" };
-const seedWith = (...rows) => parseSeed(rows.map(([p, l, r]) => `INSERT INTO t VALUES ('${p}', '${l}', '${r}');`).join("\n"));
+const seedWith = (...rows) => parseSeed(rows.map(([p, l, r]) => `INSERT INTO tracked_person_location_role VALUES ('${p}', '${l}', '${r}');`).join("\n"));
 const roster = (...people) => ({ version: 1, people });
 
 test("ACCEPTANCE: the roster {nate} regenerates today's file and allow-list byte for byte, so nothing live changes", () => {
@@ -71,7 +71,7 @@ test("a person who is maintenance-only or not in the seed is REFUSED (D24 R-LR-4
 });
 
 test("a commented-out seed row does not count", () => {
-  const seed = parseSeed("-- ('child_1', 'cabin', 'PRIMARY')\nINSERT INTO t VALUES ('nate', 'cabin', 'PRIMARY');");
+  const seed = parseSeed("-- ('child_1', 'cabin', 'PRIMARY')\nINSERT INTO tracked_person_location_role VALUES ('nate', 'cabin', 'PRIMARY');");
   assert.throws(() => validateRoster(roster(CHILD), seed), /not PRIMARY/);
 });
 
@@ -88,6 +88,80 @@ test("bad ids, locations, entity ids, unknown keys, duplicates and oversized ros
   assert.throws(() => validateRoster({ version: 1, people: [], extra: 1 }, seed), /unknown roster keys/);
   const many = Array.from({ length: 33 }, (_, i) => ({ ...CHILD, personId: `p${i}` }));
   assert.throws(() => validateRoster(roster(...many), seedWith(...many.map((m) => [m.personId, "cabin", "PRIMARY"]))), /more than 32/);
+});
+
+const T = "tracked_person_location_role";
+const primary = (seed, p, l = "cabin") => seed.get(`${p}@${l}`)?.has("PRIMARY") === true;
+
+test("parseSeed: line, inline and block comments never produce a person", () => {
+  const sql = `-- ('c1', 'cabin', 'PRIMARY')
+    INSERT INTO ${T} (person_id, location, role) VALUES
+      ('nate', 'cabin', 'PRIMARY'), -- ('c2', 'cabin', 'PRIMARY'),
+      /* ('c3', 'cabin', 'PRIMARY'), */ ('c4', 'cabin', 'MAINTENANCE')
+    ON CONFLICT DO NOTHING;
+    /* INSERT INTO ${T} VALUES ('c5', 'cabin', 'PRIMARY');
+       spanning lines */`;
+  const seed = parseSeed(sql);
+  assert.ok(primary(seed, "nate"));
+  for (const id of ["c1", "c2", "c3", "c5"]) assert.equal(seed.has(`${id}@cabin`), false, id);
+  assert.ok(seed.get("c4@cabin").has("MAINTENANCE") && !primary(seed, "c4"));
+});
+
+test("parseSeed: a comment marker inside a string literal is not a comment", () => {
+  assert.equal(stripSqlComments("SELECT '-- not a comment', '/* nor this */'"), "SELECT '-- not a comment', '/* nor this */'");
+  const seed = parseSeed(`INSERT INTO ${T} VALUES ('a--b', 'cabin', 'PRIMARY');`);
+  assert.ok(primary(seed, "a--b"));
+});
+
+test("parseSeed: only INSERT INTO the tracked-person table counts", () => {
+  const seed = parseSeed(`INSERT INTO other_table VALUES ('c1', 'cabin', 'PRIMARY');
+    INSERT INTO ${T}_archive VALUES ('c2', 'cabin', 'PRIMARY');
+    UPDATE ${T} SET role = 'PRIMARY' WHERE person_id = 'c3';
+    SELECT ('c4', 'cabin', 'PRIMARY');
+    INSERT INTO ${T} VALUES ('nate', 'cabin', 'PRIMARY');`);
+  assert.deepEqual([...seed.keys()], ["nate@cabin"]);
+});
+
+test("parseSeed: a later DELETE removes the person, narrowed by location and role when given", () => {
+  const base = `INSERT INTO ${T} VALUES ('c1', 'cabin', 'PRIMARY'), ('c1', 'home', 'PRIMARY'), ('c2', 'cabin', 'PRIMARY'), ('c2', 'cabin', 'MAINTENANCE');`;
+  assert.equal(primary(parseSeed(base + `DELETE FROM ${T} WHERE person_id = 'c1';`), "c1"), false);
+  assert.equal(primary(parseSeed(base + `DELETE FROM ${T} WHERE person_id = 'c1';`), "c1", "home"), false);
+  const byLocation = parseSeed(base + `DELETE FROM ${T} WHERE person_id = 'c1' AND location = 'cabin';`);
+  assert.equal(primary(byLocation, "c1"), false);
+  assert.equal(primary(byLocation, "c1", "home"), true, "the other location stays");
+  const byRole = parseSeed(base + `DELETE FROM ${T} WHERE person_id = 'c2' AND role = 'PRIMARY';`);
+  assert.equal(primary(byRole, "c2"), false);
+  assert.ok(byRole.get("c2@cabin").has("MAINTENANCE"), "the maintenance row stays");
+  assert.equal(primary(parseSeed(base + `DELETE FROM ${T};`), "c1"), false, "no WHERE empties the table");
+  assert.equal(primary(parseSeed(`DELETE FROM ${T} WHERE person_id = 'c1'; INSERT INTO ${T} VALUES ('c1', 'cabin', 'PRIMARY');`), "c1"), true, "a DELETE before the INSERT does not remove it");
+  assert.equal(primary(parseSeed(`-- DELETE FROM ${T} WHERE person_id = 'c1';\n` + base), "c1"), true, "a commented-out DELETE does nothing");
+});
+
+test("a roster person the seed later deletes is refused", () => {
+  const seed = parseSeed(`INSERT INTO ${T} VALUES ('child_1', 'cabin', 'PRIMARY'); DELETE FROM ${T} WHERE person_id = 'child_1';`);
+  assert.throws(() => validateRoster(roster(CHILD), seed), /not PRIMARY/);
+});
+
+test("ids must be single-underscore words, so two ids can never share a sensor entity id", () => {
+  const ids = ["a__b", "_a", "a_", "1a", "a-b", "A", "a b", "_", "a".repeat(33)];
+  for (const personId of ids) {
+    assert.throws(() => validateRoster(roster({ ...CHILD, personId }), seedWith([personId, "cabin", "PRIMARY"])), /roster refused/, personId);
+  }
+  for (const personId of ["nate", "child_1", "a1_b2", "a".repeat(32)]) {
+    assert.doesNotThrow(() => validateRoster(roster({ ...CHILD, personId, gpsTracker: `device_tracker.${personId}`, batterySensor: `sensor.${personId}` }), seedWith([personId, "cabin", "PRIMARY"])), personId);
+  }
+  // and every accepted id slugs back to itself from its display name
+  for (const personId of ["nate", "child_1", "a1_b2"]) {
+    assert.equal(displayName(personId).toLowerCase().replace(/ /g, "_"), personId);
+  }
+});
+
+test("two people cannot share a GPS tracker or a battery sensor", () => {
+  const other = { ...CHILD, personId: "child_2" };
+  const seed = seedWith(["child_1", "cabin", "PRIMARY"], ["child_2", "cabin", "PRIMARY"]);
+  assert.throws(() => validateRoster(roster(CHILD, { ...other, gpsTracker: CHILD.gpsTracker }), seed), /gpsTracker .* already used/);
+  assert.throws(() => validateRoster(roster(CHILD, { ...other, batterySensor: CHILD.batterySensor }), seed), /batterySensor .* already used/);
+  assert.doesNotThrow(() => validateRoster(roster(CHILD, { ...other, gpsTracker: "device_tracker.child_2_phone", batterySensor: "sensor.child_2_phone_battery_level" }), seed));
 });
 
 test("display names turn ids into the Home Assistant entity names", () => {

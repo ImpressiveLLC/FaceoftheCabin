@@ -104,6 +104,10 @@ class GeneratedPeople(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write(content if isinstance(content, str) else json.dumps(content))
 
+    def write_bytes(self, content):
+        with open(self.path, "wb") as handle:
+            handle.write(content)
+
     def good(self, *people):
         return {"version": 1, "people": [{"personId": p, "location": l} for p, l in people]}
 
@@ -173,6 +177,55 @@ class GeneratedPeople(unittest.TestCase):
         self.assertEqual(script.load_people(), ({}, {}))
         self.write(" " * (script.MAX_PEOPLE_FILE_BYTES + 1))
         self.assertEqual(script.load_people(), ({}, {}))
+
+    def padded(self, size, version=1, person="child_1"):
+        """A VALID JSON document with a valid person, padded with whitespace to exactly `size` bytes."""
+        body = json.dumps({"version": version, "people": [{"personId": person, "location": "cabin"}]})
+        return body + " " * (size - len(body.encode("utf-8")))
+
+    def test_a_valid_file_just_over_the_size_limit_adds_nothing_but_one_at_the_limit_works(self):
+        self.write(self.padded(script.MAX_PEOPLE_FILE_BYTES))
+        self.assertEqual(os.path.getsize(self.path), script.MAX_PEOPLE_FILE_BYTES)
+        self.assertEqual(run("cabin/presence/child_1", "home")[0], 0, "exactly at the limit is accepted")
+        self.write(self.padded(script.MAX_PEOPLE_FILE_BYTES + 1))
+        self.assertEqual(os.path.getsize(self.path), script.MAX_PEOPLE_FILE_BYTES + 1)
+        json.loads(open(self.path, encoding="utf-8").read())  # it really is valid JSON: only the size rejects it
+        self.assertEqual(script.load_people(), ({}, {}))
+        self.assertEqual(run("cabin/presence/child_1", "home")[0], 3)
+
+    def test_a_wrong_version_carrying_a_valid_person_adds_nothing(self):
+        for version in (2, 0, -1, "1", 1.0, True, None, [1]):
+            self.write({"version": version, "people": [{"personId": "child_1", "location": "cabin"}]})
+            self.assertEqual(script.load_people(), ({}, {}), repr(version))
+            self.assertEqual(run("cabin/presence/child_1", "home")[0], 3, repr(version))
+
+    def test_a_path_that_is_not_a_regular_file_adds_nothing(self):
+        self.assertEqual(script.load_people(self.dir.name), ({}, {}), "a directory")
+
+    def test_a_hostile_file_cannot_break_the_base_path_or_crash_the_loader(self):
+        for content in ("[" * 4000 + "]" * 4000,                 # deep nesting: RecursionError in the JSON parser
+                        '{"version": 1, "people": [' + '{"personId": "x", "location": "cabin"},' * 400 + "]}",
+                        b'{"version": 1, "people": "\\ud800"}',   # lone surrogate escape
+                        b"\xff\xfe\x00"):                         # not UTF-8
+            (self.write_bytes if isinstance(content, bytes) else self.write)(content)
+            self.assertEqual(script.load_people(), ({}, {}), repr(content[:20]))
+            self.assertEqual(run("cabin/presence/nate", "home")[0], 0, "base topic unaffected")
+            self.assertEqual(run("cabin/presence/nate/last_seen", "2026-10-04T09:00:00Z")[0], 0, "base heartbeat unaffected")
+            self.assertEqual(run("cabin/security/armed_away", "ON")[0], 0, "armed_away unaffected")
+
+    def test_a_base_topic_is_decided_without_reading_the_generated_file(self):
+        with mock.patch.object(script, "load_people", side_effect=AssertionError("must not be read")):
+            self.assertEqual(run("cabin/presence/nate", "home")[0], 0)
+            self.assertEqual(run("cabin/presence/nate/last_seen", "2026-10-04T09:00:00Z")[0], 0)
+            self.assertEqual(run("cabin/security/armed_away", "OFF")[0], 0)
+
+    def test_person_ids_must_be_single_underscore_words_so_two_ids_never_share_an_entity_id(self):
+        for bad in ("a__b", "_a", "a_", "1a", "a-b", "A", "a b", "a.b", "_", "a" * 33):
+            self.write({"version": 1, "people": [{"personId": "child_2", "location": "cabin"}, {"personId": bad, "location": "cabin"}]})
+            self.assertEqual(script.load_people(), ({}, {}), repr(bad))
+        for good in ("nate", "child_1", "a1_b2", "a" * 32):
+            self.write({"version": 1, "people": [{"personId": good, "location": "cabin"}]})
+            self.assertIn(f"cabin/presence/{good}", script.load_people()[0], good)
 
     def test_a_listed_person_is_retained_like_nate(self):
         self.write(self.good(("child_1", "cabin")))

@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import stat
 import sys
 from datetime import datetime
 
@@ -58,7 +59,8 @@ PATTERNS = {
 # location from a fixed set. It can never name a topic, widen a payload, or add a wildcard. FAIL CLOSED: a missing, unreadable,
 # oversized or malformed file adds nothing, and one bad entry rejects the whole file.
 PEOPLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presence_people_allowlist.json")
-PERSON_ID = re.compile(r"[a-z0-9_]{1,32}")
+# Same shape as the generator: single underscores between lowercase words, so two ids never share an entity id.
+PERSON_ID = re.compile(r"(?=.{1,32}$)[a-z][a-z0-9]*(?:_[a-z0-9]+)*")
 PEOPLE_LOCATIONS = ("cabin", "home")
 MAX_PEOPLE_FILE_BYTES = 8192
 MAX_PEOPLE = 32
@@ -68,11 +70,18 @@ def load_people(path=None):
     """Return (allowed, patterns) added by the generated file, or two empty dicts if the file is absent or not wholly valid."""
     path = PEOPLE_FILE if path is None else path
     try:
-        if os.path.getsize(path) > MAX_PEOPLE_FILE_BYTES:
+        # A regular file only (not a directory, device or fifo), read with a hard bound so a hostile file cannot stall the
+        # publisher or fill memory.
+        if not stat.S_ISREG(os.stat(path).st_mode):
             return {}, {}
-        with open(path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        if not isinstance(data, dict) or set(data) != {"version", "people"} or data["version"] != 1:
+        with open(path, "rb") as handle:
+            raw = handle.read(MAX_PEOPLE_FILE_BYTES + 1)
+        if len(raw) > MAX_PEOPLE_FILE_BYTES:
+            return {}, {}
+        data = json.loads(raw.decode("utf-8"))
+        if not isinstance(data, dict) or set(data) != {"version", "people"}:
+            return {}, {}
+        if type(data["version"]) is not int or data["version"] != 1:  # True == 1 in Python; an int 1 only
             return {}, {}
         people = data["people"]
         if not isinstance(people, list) or len(people) > MAX_PEOPLE:
@@ -88,17 +97,21 @@ def load_people(path=None):
             allowed[f"{location}/presence/{person}"] = {"home", "not_home"}
             patterns[f"{location}/presence/{person}/last_seen"] = ISO_UTC
         return allowed, patterns
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):  # ValueError covers JSON and UTF-8 decode errors
         return {}, {}
 
 
 def is_allowed(topic, payload):
-    extra_allowed, extra_patterns = load_people()
+    # The hand-reviewed base (ALLOWED, PATTERNS) is decided first and never reads the generated file, so nothing in that file can
+    # affect a base topic.
+    pattern = PATTERNS.get(topic)
     if topic in ALLOWED:
         return payload in ALLOWED[topic]
-    if topic in extra_allowed:
-        return payload in extra_allowed[topic]
-    pattern = PATTERNS.get(topic) or extra_patterns.get(topic)
+    if pattern is None:
+        extra_allowed, extra_patterns = load_people()
+        if topic in extra_allowed:
+            return payload in extra_allowed[topic]
+        pattern = extra_patterns.get(topic)
     if pattern is None or not pattern.fullmatch(payload):
         return False
     try:
