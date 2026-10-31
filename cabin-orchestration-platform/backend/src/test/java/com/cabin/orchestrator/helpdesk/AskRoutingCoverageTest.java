@@ -85,6 +85,26 @@ class AskRoutingCoverageTest {
         pinned.forEach((question, category) -> assertThat(builder.categoryIdFor(question)).as(question).isEqualTo(category));
     }
 
+    /**
+     * Every in-scope phrasing of the three routing proposals (120 of the 150) and the category the map sends it to
+     * (src/test/resources/rag/routing-pins.json, written by docs/ai-assistant/corpus/ask-coverage-tools/write_pins.py,
+     * which refuses a pin the proposals do not accept). Changing a keyword so that any of them moves fails here, naming it.
+     */
+    @Test
+    void everyInScopePhrasingStillReachesItsPinnedCategory() throws IOException {
+        com.fasterxml.jackson.databind.JsonNode pins = new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(getClass().getResourceAsStream("/rag/routing-pins.json"));
+        assertThat(pins.size()).as("pinned phrasings").isEqualTo(120);
+        List<String> moved = new java.util.ArrayList<>();
+        for (com.fasterxml.jackson.databind.JsonNode pin : pins) {
+            String routed = builder.categoryIdFor(pin.get("question").asText());
+            if (!pin.get("category").asText().equals(routed)) {
+                moved.add(pin.get("n").asInt() + " " + pin.get("question").asText() + " -> " + routed + " (pinned " + pin.get("category").asText() + ")");
+            }
+        }
+        assertThat(moved).as("phrasings that no longer reach their pinned category").isEmpty();
+    }
+
     @Test
     void theWordWorkflowAloneStillReachesTheRulesCategory() {
         assertThat(builder.categoryIdFor("Which triggers can a workflow use, and can it lock a door?")).isEqualTo("rules_workflows");
