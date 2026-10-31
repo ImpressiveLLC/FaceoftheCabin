@@ -303,11 +303,23 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
      */
     public boolean callService(String location, String domain, String service, String entityId,
                                Map<String, Object> extra) {
+        return callServiceOutcome(location, domain, service, entityId, extra) == ServiceOutcome.ACCEPTED;
+    }
+
+    /**
+     * What is known about a service call. UNKNOWN is a read timeout: the request was sent and Home Assistant may have carried
+     * the command out, so it must never be reported as "not accepted" or retried blind (W-75 prerequisite, W-127 item 7).
+     * NOT_ACCEPTED means the call was refused, failed before it was sent (no token, connect failure) or HA answered with an error.
+     */
+    public enum ServiceOutcome { ACCEPTED, NOT_ACCEPTED, UNKNOWN }
+
+    public ServiceOutcome callServiceOutcome(String location, String domain, String service, String entityId,
+                                             Map<String, Object> extra) {
         String token = tokenFor(location);
         if (token.isBlank()) {
             log.warn("HA token not configured for location '{}' — cannot call {}.{} on {}",
                 location, domain, service, entityId);
-            return false;
+            return ServiceOutcome.NOT_ACCEPTED;
         }
         try {
             HttpHeaders headers = bearerHeaders(token);
@@ -316,11 +328,27 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
             body.put("entity_id", entityId);
             rest.exchange(urlFor(location) + "/api/services/" + domain + "/" + service,
                 HttpMethod.POST, new HttpEntity<>(body, headers), Void.class);
-            return true;
+            return ServiceOutcome.ACCEPTED;
         } catch (Exception e) {
+            if (readTimedOut(e)) {
+                log.error("HA service {}.{} timed out waiting for {}: OUTCOME UNKNOWN, the command may have been carried out: {}",
+                    domain, service, entityId, e.getMessage());
+                return ServiceOutcome.UNKNOWN;
+            }
             log.error("HA service {}.{} failed for {}: {}", domain, service, entityId, e.getMessage());
-            return false;
+            return ServiceOutcome.NOT_ACCEPTED;
         }
+    }
+
+    /** A read timeout: the request went out and no answer came back. A connect timeout is not one (nothing was sent). */
+    static boolean readTimedOut(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof java.net.SocketTimeoutException && t.getMessage() != null
+                    && t.getMessage().toLowerCase(java.util.Locale.ROOT).contains("read")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String urlFor(DeviceDescriptor d) {

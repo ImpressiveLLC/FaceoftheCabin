@@ -22,28 +22,28 @@ class HaServiceControllerTest {
 
     @Test
     void onTheWayPreheatIsForwardedToTheCabinInstance() {
-        when(ha.callService(any(), any(), any(), any(), any())).thenReturn(true);
+        when(ha.callServiceOutcome(any(), any(), any(), any(), any())).thenReturn(HomeAssistantAdapter.ServiceOutcome.ACCEPTED);
 
         ResponseEntity<Map<String, Object>> res =
             controller.call(call("input_boolean", "turn_on", "input_boolean.on_the_way_to_cabin"));
 
         assertThat(res.getStatusCode().value()).isEqualTo(200);
         assertThat(res.getBody()).containsEntry("accepted", true);
-        verify(ha).callService("cabin", "input_boolean", "turn_on", "input_boolean.on_the_way_to_cabin", Map.of());
+        verify(ha).callServiceOutcome("cabin", "input_boolean", "turn_on", "input_boolean.on_the_way_to_cabin", Map.of());
     }
 
     @Test
     void switchToggleIsForwarded() {
-        when(ha.callService(any(), any(), any(), any(), any())).thenReturn(true);
+        when(ha.callServiceOutcome(any(), any(), any(), any(), any())).thenReturn(HomeAssistantAdapter.ServiceOutcome.ACCEPTED);
 
         assertThat(controller.call(call("switch", "turn_off", "switch.heater_mech_room")).getStatusCode().value())
             .isEqualTo(200);
-        verify(ha).callService("cabin", "switch", "turn_off", "switch.heater_mech_room", Map.of());
+        verify(ha).callServiceOutcome("cabin", "switch", "turn_off", "switch.heater_mech_room", Map.of());
     }
 
     @Test
     void haFailureIsA502NotASilentSuccess() {
-        when(ha.callService(any(), any(), any(), any(), any())).thenReturn(false);
+        when(ha.callServiceOutcome(any(), any(), any(), any(), any())).thenReturn(HomeAssistantAdapter.ServiceOutcome.NOT_ACCEPTED);
 
         ResponseEntity<Map<String, Object>> res = controller.call(call("switch", "turn_on", "switch.heater_mech_room"));
 
@@ -66,5 +66,24 @@ class HaServiceControllerTest {
             assertThat(controller.call(c).getStatusCode().value()).as(String.valueOf(c)).isEqualTo(400);
         }
         verifyNoInteractions(ha);
+    }
+
+    @Test
+    void aReadTimeoutIsReportedAsOutcomeUnknownNotAsNotAccepted() {
+        when(ha.callServiceOutcome(any(), any(), any(), any(), any())).thenReturn(HomeAssistantAdapter.ServiceOutcome.UNKNOWN);
+
+        ResponseEntity<Map<String, Object>> res = controller.call(call("switch", "turn_on", "switch.heater_mech_room"));
+
+        assertThat(res.getStatusCode().value()).isEqualTo(504);
+        assertThat(res.getBody()).containsEntry("accepted", false).containsEntry("outcome", "unknown");
+        assertThat(String.valueOf(res.getBody().get("message"))).contains("may or may not have been carried out");
+    }
+
+    @Test
+    void anAcceptedCallAndARefusedCallSayTheirOutcome() {
+        when(ha.callServiceOutcome(any(), any(), any(), any(), any())).thenReturn(HomeAssistantAdapter.ServiceOutcome.ACCEPTED);
+        assertThat(controller.call(call("switch", "turn_on", "switch.heater_mech_room")).getBody()).containsEntry("outcome", "accepted");
+        when(ha.callServiceOutcome(any(), any(), any(), any(), any())).thenReturn(HomeAssistantAdapter.ServiceOutcome.NOT_ACCEPTED);
+        assertThat(controller.call(call("switch", "turn_on", "switch.heater_mech_room")).getBody()).containsEntry("outcome", "not_accepted");
     }
 }
