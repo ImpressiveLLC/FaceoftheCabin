@@ -201,6 +201,451 @@
       ]
     },
     {
+      "id": "alert_silencing",
+      "description": "Ignore, snooze and restore an alert",
+      "keywordPatterns": [
+        "ignore",
+        "ignored",
+        "snooze",
+        "snoozed",
+        "remind me",
+        "silence",
+        "silenced",
+        "restore an alert",
+        "bring back",
+        "go away",
+        "mute"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "ignore-remind-me-in-and-restore",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "status-checks-what-needs-attention-right-now",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "status_checks",
+      "description": "Status Checks card, alert levels and the marks on the tabs",
+      "keywordPatterns": [
+        "status check",
+        "what needs my attention",
+        "needs attention",
+        "need attention",
+        "what's wrong",
+        "alert",
+        "alert level",
+        "critical",
+        "warning",
+        "colored dot",
+        "dot",
+        "red dot",
+        "tab",
+        "open device",
+        "door left open"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "status-checks-what-needs-attention-right-now",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "alert-levels-and-the-marks-on-the-tabs",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "open-device-from-an-alert",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "phone_notifications",
+      "description": "What reaches a phone today",
+      "keywordPatterns": [
+        "notification",
+        "push notification",
+        "notify",
+        "notified",
+        "notify me",
+        "phone alert",
+        "alert my phone",
+        "text me",
+        "ntfy"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "phone-notifications-what-reaches-your-phone-today",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "alert-levels-and-the-marks-on-the-tabs",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "leak_response",
+      "description": "A water leak alert and turning the water back on",
+      "keywordPatterns": [
+        "leak",
+        "water leak",
+        "water back on",
+        "turn the water",
+        "main water",
+        "water valve",
+        "shut off the water",
+        "flood"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "a-water-leak-alert-and-turning-the-water-back-on",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "ignore-remind-me-in-and-restore",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/operations.md",
+          "section": "rules-and-safety",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "workflow_reset_undo",
+      "description": "Reset, Mark seen and why there is no undo",
+      "keywordPatterns": [
+        "undo",
+        "reset",
+        "mark seen",
+        "reverse",
+        "take back",
+        "firing"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "reset-mark-seen-and-why-there-is-no-undo",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "a-water-leak-alert-and-turning-the-water-back-on",
+          "audience": "household"
+        }
+      ],
+      "boost": 1
+    },
+    {
+      "id": "optimization_opportunities",
+      "description": "Optimization Opportunities: Power and Duplicate readings",
+      "keywordPatterns": [
+        "duplicate reading",
+        "drawing power",
+        "48 hour",
+        "optimization opportunity",
+        "power card"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "optimization-opportunities-power-and-duplicate-readings",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/operations.md",
+          "section": "opportunities-and-the-tech-id-service-k19",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "workflow_schedule",
+      "description": "Can a workflow run on a schedule",
+      "keywordPatterns": [
+        "schedule",
+        "scheduled",
+        "every night",
+        "every morning",
+        "every day",
+        "certain time",
+        "time of day",
+        "at a certain time",
+        "on a timer"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/workflows.md",
+          "section": "can-a-workflow-run-on-a-schedule-or-at-a-time-of-day",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "workflow_run_history",
+      "description": "Turn a workflow on or off, run it by hand, see when it ran",
+      "keywordPatterns": [
+        "fire now",
+        "activate",
+        "deactivate",
+        "turn a workflow on",
+        "mark seen",
+        "reset",
+        "undo",
+        "workflow history",
+        "history of a workflow",
+        "workflow ran",
+        "does nothing",
+        "doesn't do anything",
+        "recent firing",
+        "workflow firing",
+        "run a workflow",
+        "workflow by hand",
+        "workflow on or off"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/workflows.md",
+          "section": "turn-a-workflow-on-or-off-run-it-by-hand-and-see-when-it-ran",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "workflow_settings",
+      "description": "Workflow settings: cooldown and broken targets",
+      "keywordPatterns": [
+        "cooldown",
+        "stays fired",
+        "fire again",
+        "condition clears",
+        "broken",
+        "degraded",
+        "replacement device",
+        "different device",
+        "over and over"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/workflows.md",
+          "section": "workflow-settings-after-it-fires-cooldown-and-broken-targets",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "workflow_create",
+      "description": "Create a workflow",
+      "keywordPatterns": [
+        "create a workflow",
+        "create a new workflow",
+        "new workflow",
+        "make a workflow",
+        "save draft",
+        "not available yet",
+        "pick that trigger",
+        "can something happen",
+        "when someone arrives",
+        "shut off the water",
+        "start a workflow"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/workflows.md",
+          "section": "create-a-workflow",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/workflows.md",
+          "section": "what-a-workflow-is-and-where-it-runs",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "workflow_basics",
+      "description": "What a workflow is and where it runs",
+      "keywordPatterns": [
+        "what is a workflow",
+        "what can a workflow do",
+        "workflow turn on",
+        "where does a workflow run",
+        "home assistant automation",
+        "automations actually run",
+        "run by the app",
+        "by home assistant"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/workflows.md",
+          "section": "what-a-workflow-is-and-where-it-runs",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "access_sharing",
+      "description": "Guest links and demo links",
+      "keywordPatterns": [
+        "guest access",
+        "guest link",
+        "share link",
+        "shared",
+        "read-only access",
+        "revoke",
+        "demo link",
+        "adjuster",
+        "contractor",
+        "access link",
+        "view activity"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "share-read-only-access-with-a-link-guest-access",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "give-someone-a-demo-link",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "managed_users",
+      "description": "Add someone without a Google account",
+      "keywordPatterns": [
+        "managed user",
+        "invite",
+        "google account",
+        "household member",
+        "sign-in link",
+        "magic link",
+        "add someone",
+        "add a user"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "add-someone-without-a-google-account-managed-users",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "who-can-see-and-change-what",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "who_can_change",
+      "description": "Who can see and change what",
+      "keywordPatterns": [
+        "who is allowed",
+        "who can",
+        "allowed to",
+        "permission",
+        "can't create",
+        "cannot create",
+        "read-only account",
+        "viewer"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "who-can-see-and-change-what",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "storage_disk",
+      "description": "Disk space warnings and trimming old backups",
+      "keywordPatterns": [
+        "disk",
+        "disk space",
+        "almost full",
+        "storage warning",
+        "free up",
+        "trim",
+        "trim old backups",
+        "old backups",
+        "storage"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "disk-space-warnings",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "trim-old-backups",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
       "id": "rules_workflows",
       "description": "Workflow creation disabled by default; explicit activation required; valve reopen guard",
       "keywordPatterns": [
@@ -217,7 +662,9 @@
         "vocabulary",
         "notify_critical",
         "log_event",
-        "supported triggers"
+        "supported triggers",
+        "built-in rule",
+        "backend rule"
       ],
       "questions": [
         "Q08"
@@ -249,6 +696,11 @@
           "path": "ai-assistant/user-guide/operations.md",
           "section": "rules-and-alerts-trigger-and-action-catalog-k05",
           "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
+          "section": "backend-rules-card-versus-home-assistant-and-node-red",
+          "audience": "household"
         }
       ]
     },
@@ -363,7 +815,12 @@
         "rotate",
         "home_ha_token",
         "cabin_ask_intent_enabled",
-        "cabin_ask_intent_model"
+        "cabin_ask_intent_model",
+        "home assistant devices",
+        "home assistant token",
+        "not updating",
+        "stopped updating",
+        "token valid"
       ],
       "questions": [
         "Q12",
@@ -554,7 +1011,10 @@
         "health",
         "first checks",
         "service running",
-        "every service"
+        "every service",
+        "everything working",
+        "everything is working",
+        "is it up"
       ],
       "questions": [
         "Q16"
@@ -594,13 +1054,16 @@
       "id": "deployment_source",
       "description": "Manual-deploy runbook vs. actual main-push/dispatch workflow; cite disagreement without inferring runtime",
       "keywordPatterns": [
-        "manual",
         "deploy",
         "push",
-        "workflow",
         "repository",
         "pipeline",
-        "backend deploy"
+        "backend deploy",
+        "github workflow",
+        "deployed",
+        "update",
+        "roll back",
+        "rollback"
       ],
       "questions": [
         "Q17"
@@ -867,7 +1330,11 @@
         "recover automatically",
         "dead-man",
         "unhealthy",
-        "restart on its own"
+        "restart on its own",
+        "how do i restart",
+        "restart a service",
+        "restart one service",
+        "blink bridge"
       ],
       "questions": [],
       "contextNodes": [],
@@ -895,7 +1362,8 @@
         "database backup",
         "telemetry backup",
         "restore the database",
-        "backup-modular"
+        "backup-modular",
+        "restore from a backup"
       ],
       "questions": [],
       "contextNodes": [],
@@ -974,7 +1442,10 @@
         "ask is unavailable",
         "raw facts",
         "device is known",
-        "registry existence"
+        "registry existence",
+        "incident",
+        "postmortem",
+        "root cause"
       ],
       "questions": [],
       "contextNodes": [],
@@ -985,6 +1456,11 @@
         {
           "path": "ai-assistant/user-guide/maintenance.md",
           "section": "first-determine-what-is-failing",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/maintenance.md",
+          "section": "close-the-incident",
           "audience": "administrator"
         }
       ]
@@ -1002,7 +1478,12 @@
         "randomized mac",
         "stale presence",
         "phone wifi check",
-        "siren sound"
+        "siren sound",
+        "counted but not assigned",
+        "maintenance visit",
+        "maintenance person",
+        "primary and maintenance",
+        "make someone a maintenance"
       ],
       "questions": [],
       "contextNodes": [],
@@ -1019,6 +1500,247 @@
           "path": "ai-assistant/user-guide/operations.md",
           "section": "what-is-not-settled",
           "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "device_add",
+      "description": "Pair, scan for, register or import a device",
+      "keywordPatterns": [
+        "pair",
+        "paired",
+        "pairing",
+        "add a device",
+        "add a new",
+        "new zigbee",
+        "new zigbee sensor",
+        "scan for devices",
+        "network scan",
+        "printer",
+        "tv",
+        "register manually",
+        "manually",
+        "home assistant entity",
+        "import",
+        "smartthings",
+        "ring",
+        "bring in"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "pair-a-zigbee-device",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "scan-for-wifi-devices-at-home",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "register-a-device-manually",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "import-devices-from-smartthings-or-ring",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "device_management",
+      "description": "What the device states mean, removing, finding a device",
+      "keywordPatterns": [
+        "use this device",
+        "not now",
+        "saved for later",
+        "available and assigned",
+        "new device",
+        "showed up",
+        "remove a device",
+        "removing a device",
+        "removed",
+        "get back",
+        "bring a device back",
+        "previously exposed",
+        "can't find",
+        "cannot find",
+        "disappeared",
+        "where did my",
+        "parent devices only",
+        "imported from",
+        "smartthings device",
+        "ring device",
+        "group devices",
+        "collapse",
+        "filter",
+        "delete its history"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "what-candidates-available-assigned-saved-for-later-and-ignored-mean",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "remove-a-device-and-bring-it-back",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "find-a-device-filters-groups-and-layout",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "device_settings",
+      "description": "Rename a device, the Enabled switch, Monitoring display",
+      "keywordPatterns": [
+        "rename a device",
+        "renaming a device",
+        "display name",
+        "room",
+        "area",
+        "enabled switch",
+        "stop using",
+        "monitoring page",
+        "tile",
+        "hide a tile",
+        "display override"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "rename-a-device-or-set-its-room-and-area",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "the-enabled-switch",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "change-how-a-device-shows-on-monitoring",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "device_control",
+      "description": "Turn a device on or off, On the Way",
+      "keywordPatterns": [
+        "heater",
+        "turn it on",
+        "turn it off",
+        "on/off",
+        "power button",
+        "on the way",
+        "warm up",
+        "preheat",
+        "lock",
+        "unlock"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "turn-a-device-on-or-off-from-the-app",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "on-the-way-warm-up-the-cabin-before-you-arrive",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "device_health",
+      "description": "Not responding, late or blank device card",
+      "keywordPatterns": [
+        "offline",
+        "say offline",
+        "says offline",
+        "not responding",
+        "late checking in",
+        "blank",
+        "last seen",
+        "stopped reporting",
+        "check-in"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/devices.md",
+          "section": "why-a-device-says-not-responding-late-or-has-a-blank-card",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "zigbee_duplicate",
+      "description": "A Zigbee plug or sensor listed twice (W-88)",
+      "keywordPatterns": [
+        "listed twice",
+        "twice",
+        "duplicate",
+        "duplicate readings",
+        "power reading",
+        "power as unknown",
+        "no power",
+        "zigbee2mqtt",
+        "two cards",
+        "two lines"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/maintenance.md",
+          "section": "a-zigbee-plug-or-sensor-is-listed-twice-charts-twice-or-shows-power-as-unknown-w-88-2026-10-21",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "camera_frames",
+      "description": "A camera is not delivering frames",
+      "keywordPatterns": [
+        "camera",
+        "video",
+        "no events",
+        "frames",
+        "frigate",
+        "blink camera",
+        "blink bridge"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/maintenance.md",
+          "section": "a-camera-is-not-delivering-frames",
+          "audience": "administrator"
         }
       ]
     }
