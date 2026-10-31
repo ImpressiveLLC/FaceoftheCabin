@@ -59,6 +59,8 @@ Audience: operator. Source-reviewed at `main` from the Compose files, the Blink 
 
 ## What detects and what recovers
 
+**Short answers.** *Will it restart on its own if something crashes?* Only if the container stops: Docker then starts it again. A container that is still running but stuck or unhealthy is not restarted, except the Blink bridge (its own loop recovers, and a host timer restarts it if that timer is installed, host-dependent). *How do I restart one service?* That is an administrator task on the cabin hub (`docker restart <container>`). A restart keeps the container's stored data, and restarting Zigbee2MQTT does not re-pair or erase devices, but a restart does not pick up changed values in `.env`; those need the container recreated through Compose. A stuck Blink bridge has been recovered more than once with `docker restart blinkbridge` (Maintenance guide). After a Frigate configuration change, Frigate must be restarted before the change takes effect.
+
 Detection and recovery are separate. Several layers exist; only some of them restart anything.
 
 | Layer | Detects | Recovers by itself? | Where recorded |
@@ -83,6 +85,8 @@ Three limits to keep in mind:
 Sources: [overlay](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml), [base Compose](../../../cabin-orchestration-platform/infra/docker-compose.yml), [production stack](../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml), [application.yml health settings](../../../cabin-orchestration-platform/backend/src/main/resources/application.yml).
 
 ## Deployment source correction
+
+**Short answer.** Updates deploy when a change is merged to `main`: the hub's own runner picks it up and rebuilds the parts whose files changed (each part has its own rules, in the table below). The backend runs its tests first, checks its health after starting, and on a failed check goes back to the previous version by itself; the third-party service stack does the same. The web app, Family Hub and discovery service have no automatic rollback; to roll one back, deploy the previous commit. Home Assistant automations and Node-RED flows edited by hand on the hub are not deployed this way. Details and exceptions follow.
 
 The old Maintenance Deployment section describes backend deployment as manual-only. The current [deploy-cabin-backend workflow](../../../.github/workflows/deploy-cabin-backend.yml) instead has a main-push path filter and manual dispatch. Its implementation tests, builds/tags a candidate, checks health and has rollback handling. The workflow is the source for current configured behavior; none of this proves its latest run succeeded.
 
@@ -133,6 +137,8 @@ This is a **recovery scope**, not a verified backup procedure. Do not copy a liv
 Existing component guidance is available now: [REPLICATION section 10](../../REPLICATION.md#kuma-config-as-code-decision--poc-passed-production-approval-pending) records the Kuma 2.5.0 disposable reconciliation POC and distinguishes a monitor specification from a complete `/app/data` backup. It leaves production reconciliation separately pending and provides a manual monitor target list. Use that current record instead of the older Claude plan's proposed JSON-import wording. For camera/MQTT diagnosis, the same section explains the configured availability topic, frame checks and notification routing; a green service on the wrong broker/topic does not prove the intended path. See [recovered history H06](../corpus/local-history-evidence.md#findings-reconciled-with-current-source).
 
 ## Backup and restore recipes per store (K10, verified from source only)
+
+**Short answer.** Configuration and service files are set up to be copied to the storage disk every night (whether those timers run on the hub is host-dependent and not verified), and sensor history gets an hourly additive copy while the backend is running. The application database and the credential vault have no documented, tested backup, and no restore has ever been rehearsed. Ask the operator what a backup was taken from, and whether it was ever restored, before relying on it.
 
 Audience: operator. Every row is read from source or a guide; no backup was taken, no restore was rehearsed and nothing was checked on the host. Each restore step is `NOT_RUN`. A copy that has never been restored is an unproven backup.
 

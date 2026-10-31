@@ -12,6 +12,8 @@ Source baseline: `cd145620bcbe7deaa30e236779ec7e1134db7880`. Reviewed from repos
 | Configure an instance or trace a setting | [Configuration](user-guide/configuration.md) |
 | Create an independent instance | [Independent installation](user-guide/independent-installation.md) |
 | Diagnose, deploy or recover | [Maintenance supplement](user-guide/maintenance.md) |
+| Build, run or troubleshoot an app workflow | [Workflows in plain words](user-guide/workflows.md) |
+| Share access, invite someone, or free disk space | [Sharing access and keeping the disk healthy](user-guide/access-and-storage.md) |
 | Understand Ask, citations and knowledge limits | [Ask and knowledge](user-guide/ask-and-helpdesk.md) |
 | Contribute a correction or enhancement | [Shared contribution procedure](contributing.md) |
 | Check documentation completeness | [Coverage and gaps](corpus/coverage.md) |
