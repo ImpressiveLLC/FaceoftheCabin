@@ -1,10 +1,17 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.devices.DeviceRegistry;
+import com.cabin.orchestrator.devices.model.DeviceDescriptor;
+import com.cabin.orchestrator.devices.model.DeviceStatus;
+import com.cabin.orchestrator.devices.model.DeviceType;
 import com.cabin.orchestrator.integrations.homeassistant.HomeAssistantAdapter;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
@@ -14,7 +21,8 @@ import static org.mockito.Mockito.*;
 class HaServiceControllerTest {
 
     private final HomeAssistantAdapter ha = mock(HomeAssistantAdapter.class);
-    private final HaServiceController controller = new HaServiceController(ha);
+    private final DeviceRegistry registry = mock(DeviceRegistry.class);
+    private final HaServiceController controller = new HaServiceController(ha, registry);
 
     private static HaServiceController.ServiceCall call(String domain, String service, String entity) {
         return new HaServiceController.ServiceCall(domain, service, entity, null);
@@ -85,5 +93,39 @@ class HaServiceControllerTest {
         assertThat(controller.call(call("switch", "turn_on", "switch.heater_mech_room")).getBody()).containsEntry("outcome", "accepted");
         when(ha.callServiceOutcome(any(), any(), any(), any(), any())).thenReturn(HomeAssistantAdapter.ServiceOutcome.NOT_ACCEPTED);
         assertThat(controller.call(call("switch", "turn_on", "switch.heater_mech_room")).getBody()).containsEntry("outcome", "not_accepted");
+    }
+
+    @Test
+    void aValveRegisteredUnderAnEntityIdThatDoesNotSayValveIsStillRefused() {
+        DeviceDescriptor valve = new DeviceDescriptor("z2m-main_water_valve", "Main shutoff", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(), "ha_rest", "switch.main_shutoff", true, "cabin");
+        when(registry.descriptorsByConnectionString("switch.main_shutoff")).thenReturn(List.of(valve));
+        when(registry.get("z2m-main_water_valve")).thenReturn(new DeviceStatus("z2m-main_water_valve", DeviceType.HOME_ASSISTANT_ENTITY,
+            "Main shutoff", "ONLINE", Instant.parse("2026-10-31T12:00:00Z"), Map.of("entityId", "switch.main_shutoff"), "cabin"));
+
+        ResponseEntity<Map<String, Object>> res = controller.call(call("switch", "turn_on", "switch.main_shutoff"));
+
+        assertThat(res.getStatusCode().value()).isEqualTo(400);
+        verifyNoInteractions(ha);
+    }
+
+    @Test
+    void aValveDescriptorWithNoStatusIsRefusedToo() {
+        DeviceDescriptor valve = new DeviceDescriptor("ha-x", "Water valve", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(), "ha_rest", "switch.shutoff_b", true, "cabin");
+        when(registry.descriptorsByConnectionString("switch.shutoff_b")).thenReturn(List.of(valve));
+
+        assertThat(controller.call(call("switch", "turn_off", "switch.shutoff_b")).getStatusCode().value()).isEqualTo(400);
+        verifyNoInteractions(ha);
+    }
+
+    @Test
+    void anOrdinaryRegisteredDeviceStillGoesThrough() {
+        DeviceDescriptor heater = new DeviceDescriptor("z2m-heater_mech_room", "Mech Room Heater", DeviceType.HOME_ASSISTANT_ENTITY,
+            Set.of(), "ha_rest", "switch.heater_mech_room", true, "cabin");
+        when(registry.descriptorsByConnectionString("switch.heater_mech_room")).thenReturn(List.of(heater));
+        when(ha.callServiceOutcome(any(), any(), any(), any(), any())).thenReturn(HomeAssistantAdapter.ServiceOutcome.ACCEPTED);
+
+        assertThat(controller.call(call("switch", "turn_on", "switch.heater_mech_room")).getStatusCode().value()).isEqualTo(200);
     }
 }

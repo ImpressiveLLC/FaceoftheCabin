@@ -168,6 +168,8 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         final Set<String> knownFriendlyNames = ConcurrentHashMap.newKeySet();
         /** friendly name -> the registry id its state and availability messages belong to. */
         final Map<String, String> idByFriendlyName = new ConcurrentHashMap<>();
+        /** lower-case IEEE address -> the registry id of the device that owns it. Zigbee2MQTT accepts an address wherever a name goes. */
+        final Map<String, String> idByIeee = new ConcurrentHashMap<>();
 
         ZigbeeBridge(String topicPrefix, String location) {
             this.topicPrefix = topicPrefix;
@@ -466,6 +468,7 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 String ieee = device.path("ieee_address").asText("").toLowerCase(Locale.ROOT);
                 String deviceId = reconcileDeviceId(bridge, friendlyName, ieee);
                 bridge.idByFriendlyName.put(friendlyName, deviceId);
+                if (ieee.matches("0x[0-9a-f]{16}")) bridge.idByIeee.put(ieee, deviceId);
 
                 JsonNode definition = device.path("definition");
                 Set<DeviceCapability> caps = inferCapabilities(definition);
@@ -965,6 +968,27 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         } catch (Exception e) {
             log.error("Z2M permit_join failed: {}", e.getMessage());
         }
+    }
+
+    /**
+     * The registry ids a command to this Zigbee2MQTT name reaches: the device with that friendly name and the device that
+     * owns that IEEE address, because Zigbee2MQTT treats an address in a set topic like a name. Accepts the bare name or
+     * a topic-style "prefix/name". Empty means no known device, which a caller that guards commands must treat as unsafe.
+     */
+    public Set<String> deviceIdsReachedBy(String target) {
+        Set<String> ids = new java.util.LinkedHashSet<>();
+        if (target == null || target.isBlank()) return ids;
+        String name = target.strip();
+        for (ZigbeeBridge bridge : bridges()) {
+            if (name.startsWith(bridge.prefix())) name = name.substring(bridge.prefix().length());
+        }
+        for (ZigbeeBridge bridge : bridges()) {
+            String byName = bridge.idByFriendlyName.get(name);
+            if (byName != null) ids.add(byName);
+            String byIeee = bridge.idByIeee.get(name.toLowerCase(Locale.ROOT));
+            if (byIeee != null) ids.add(byIeee);
+        }
+        return ids;
     }
 
     /** Send a property update to a Zigbee device (e.g. water_leak_buzzer: true). */

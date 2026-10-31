@@ -4990,11 +4990,27 @@ function DmDeviceWorkflows({ device, workflows, onManage }) {
   );
 }
 
+/**
+ * Mirrors the backend's DeviceCommandGuard (safety order 2026-10-31): the dashboard never commands a valve, a lock only gets
+ * lock.lock (never an unlock), and anything else named "lock" gets nothing. Returns "none" (no command buttons at all),
+ * "lock-only" (the secure Lock button, no Unlock) or null (not restricted). The backend refuses regardless; this hides the buttons.
+ */
+export function dashboardCommandLimit(device) {
+  const text = `${device?.deviceId || ""} ${device?.name || ""} ${device?.attributes?.entityId || ""}`.toLowerCase();
+  if (text.includes("valve")) return "none";
+  if (device?.type === "LOCK") return "lock-only";
+  if (/valve|lock/.test(text)) return "none";
+  return null;
+}
+
 function DmCapabilityActions({ device, onConfigure, auth }) {
   const [result, setResult] = useState(null);
   const doFetch = auth?.authedFetch || fetch;
   const capabilities = device.attributes?.capabilities || [];
   if (!capabilities.includes("COMMAND") || device.type === "LOCK") return null;
+  if (dashboardCommandLimit(device) === "none") {
+    return <p className="config-hint">The dashboard does not send commands to a valve or a lock.</p>;
+  }
   const entityId = device.attributes?.entityId || "";
   const domain = entityId.split(".")[0];
   const commands = ["switch", "light"].includes(domain)
@@ -5030,6 +5046,9 @@ function DmCapabilityActions({ device, onConfigure, auth }) {
 
 function DmLockActions({ device, auth }) {
   const { refreshDevices } = useApp();
+  if (dashboardCommandLimit(device) === "none") {
+    return <p className="config-hint">The dashboard does not send commands to a valve or a lock.</p>;
+  }
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
   const doFetch = auth?.authedFetch || fetch;
   const cmd = async (command) => {
@@ -5042,7 +5061,7 @@ function DmLockActions({ device, auth }) {
   return (
     <div className="device-actions" style={{marginTop: 12}}>
       <button className="btn-secondary" onClick={() => cmd("lock.lock")}><Lock size={12}/> Lock</button>
-      <button className="btn-secondary" onClick={() => cmd("lock.unlock")}>Unlock</button>
+      {/* No Unlock: the backend refuses any lock command but lock.lock (DeviceCommandGuard). */}
     </div>
   );
 }
