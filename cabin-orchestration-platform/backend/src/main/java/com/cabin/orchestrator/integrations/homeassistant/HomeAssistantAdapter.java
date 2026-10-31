@@ -61,8 +61,16 @@ public class HomeAssistantAdapter implements ProtocolAdapter {
     @Value("${HOME_HA_TOKEN:}")
     private String homeHaToken;
 
-    private final RestTemplate rest = new RestTemplate();
+    /** Bounded so a Home Assistant that accepts the connection and never answers cannot stall a discovery pass or a command (W-118). */
+    private final RestTemplate rest = new RestTemplate(boundedFactory());
     private final ObjectMapper jsonMapper = new ObjectMapper();
+
+    private static org.springframework.http.client.SimpleClientHttpRequestFactory boundedFactory() {
+        org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3_000);
+        factory.setReadTimeout(30_000);
+        return factory;
+    }
 
     public record DiscoveredEntity(String entityId, String state, Map<String, Object> attributes) {}
 

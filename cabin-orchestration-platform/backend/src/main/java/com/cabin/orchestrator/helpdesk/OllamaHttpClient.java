@@ -1,8 +1,10 @@
 package com.cabin.orchestrator.helpdesk;
 
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -28,7 +30,37 @@ public class OllamaHttpClient implements OllamaClient {
     @Value("${cabin.ollama.model:llama3.2:3b}")
     private String model;
 
-    private final RestTemplate rest = new RestTemplate();
+    /** Connect and read bounds (W-118): an Ollama that accepts the connection and never answers must not hold the Ask open. */
+    static final int DEFAULT_CONNECT_TIMEOUT_SECONDS = 3;
+
+    /**
+     * Below the smallest limit in front of the backend (nginx's 60 s proxy_read_timeout on /api/, Cloudflare Tunnel's 100 s), so a
+     * wedged Ollama ends in the raw-facts fallback, not a 504 or 524. Still above a cold 3B generation on the M920q CPU.
+     */
+    static final int DEFAULT_READ_TIMEOUT_SECONDS = 50;
+
+    @Value("${cabin.ollama.connect-timeout-seconds:" + DEFAULT_CONNECT_TIMEOUT_SECONDS + "}")
+    private int connectTimeoutSeconds = DEFAULT_CONNECT_TIMEOUT_SECONDS;
+
+    @Value("${cabin.ollama.read-timeout-seconds:" + DEFAULT_READ_TIMEOUT_SECONDS + "}")
+    private int readTimeoutSeconds = DEFAULT_READ_TIMEOUT_SECONDS;
+
+    private RestTemplate rest = new RestTemplate(factory(DEFAULT_CONNECT_TIMEOUT_SECONDS, DEFAULT_READ_TIMEOUT_SECONDS));
+
+    /** Zero or negative would mean "no timeout" to the JDK client, which is the bug this class fixes, so it falls back to the default. */
+    @PostConstruct
+    void applyTimeouts() {
+        rest = new RestTemplate(factory(
+            connectTimeoutSeconds > 0 ? connectTimeoutSeconds : DEFAULT_CONNECT_TIMEOUT_SECONDS,
+            readTimeoutSeconds > 0 ? readTimeoutSeconds : DEFAULT_READ_TIMEOUT_SECONDS));
+    }
+
+    private static SimpleClientHttpRequestFactory factory(int connectSeconds, int readSeconds) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectSeconds * 1_000);
+        factory.setReadTimeout(readSeconds * 1_000);
+        return factory;
+    }
 
     @Override
     public Optional<String> generate(String prompt) {

@@ -227,6 +227,10 @@ services:
       # (the route answers 404 while off). Proposal only: no executor exists
       # behind it. The model tag is a local Ollama candidate that must be
       # created first (scripts/host/intent-slot-baseline).
+      # Ask path Ollama bounds (W-118): the read default sits below nginx's 60 s and Cloudflare's 100 s so a wedged
+      # Ollama ends in the raw-facts fallback, not a 504 or 524.
+      CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS: ${CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS:-3}
+      CABIN_OLLAMA_READ_TIMEOUT_SECONDS: ${CABIN_OLLAMA_READ_TIMEOUT_SECONDS:-50}
       CABIN_ASK_INTENT_ENABLED: ${CABIN_ASK_INTENT_ENABLED:-false}
       CABIN_ASK_INTENT_MODEL: ${CABIN_ASK_INTENT_MODEL:-cabin-intent-slot-prompt-r1}
       # "cabinCameraName:blinkDeviceName" pairs, comma-separated -- see
