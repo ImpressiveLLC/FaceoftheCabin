@@ -13,20 +13,19 @@ you have Docker. The UI is accessible via Tailscale from any device.
 │  "The face" — monitor cabin, home, or both from anywhere     │
 └──────────────────────┬──────────────────────────────────────┘
                        │ via Tailscale
-        ┌──────────────┴──────────────┐
-        ▼                             ▼
-  cabin-hub (M920q)             home-hub (M920q)
-  cabin-backend :8090           home-backend :8090
-  cabin-ui :4080                home-ui :4080
-        │                             │
-  existing cabin stack          existing home stack
-  mosquitto / HA / Z2M          mosquitto / HA / devices
-  nodered / frigate             nodered / cameras
+                       ▼
+                 cabin-hub (M920q)  <── Home collector (Termux phone)
+                 cabin-backend :8090      Zigbee2MQTT + scan agent,
+                 cabin-ui :4080           over MQTT and Tailscale
+                       │
+                 existing cabin stack
+                 mosquitto / HA / Z2M
+                 nodered / frigate
 ```
 
-The UI baked into `cabin-hub` shows cabin + home (the location switcher).
-The UI baked into `home-hub` works the same way in reverse.
-From a travel machine you point a browser at either Tailscale IP.
+The UI baked into `cabin-hub` shows cabin + home (the location switcher); it
+serves Home's data too (D23). There is no `home-hub` host. From a travel
+machine you point a browser at the `cabin-hub` Tailscale IP.
 
 ---
 
@@ -145,16 +144,9 @@ Docker only rebuilds changed layers — subsequent updates are fast.
 
 ---
 
-## Deploy on the home hub (future)
+## Home (no second deploy)
 
-The home hub follows the same pattern. Create `docker-compose.home.yml` (same structure as `docker-compose.m920q.yml`) adjusted for the home hub's existing stack port layout.
-
-```bash
-# On home-hub after cloning repo
-cd ~/repos/FaceoftheCabin/cabin-orchestration-platform/infra
-cp .env.m920q.example .env    # fill in HOME hub HA token
-docker compose -f docker-compose.yml -f docker-compose.home.yml up -d --build
-```
+Home is a collector for the cabin hub (D23), not a second stack, so there is nothing to deploy there with Docker Compose. Its Termux Zigbee2MQTT and scan agent are set up as described in `docs/MAINTENANCE.md` ("Home Location"). A separate Home Assistant at Home would be a new decision (D23 R-HD-4), not a copy of this deploy.
 
 ---
 

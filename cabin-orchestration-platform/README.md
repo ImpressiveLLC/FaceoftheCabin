@@ -21,9 +21,9 @@ Replace fragmented per-device apps (Home Assistant, Zigbee2MQTT, Grafana, Node-R
 | Hub | Site | Hardware |
 |-----|------|----------|
 | `cabin-hub` | Cumberland Cabin | Lenovo ThinkCentre M920q · Ubuntu 24.04 · Aeotec Z-Stick 10 Pro |
-| `home-hub` | Primary residence | Same hardware class · Daikin HVAC · Emporia Vue energy · 5× Reolink cameras |
+| Home | Primary residence | A collector, not a second stack (D23): an Android phone running Termux with Zigbee2MQTT and a network-scan agent, reporting to `cabin-hub` over MQTT and Tailscale. No `home-hub` host exists |
 
-Both hubs are reachable from anywhere via **Tailscale MagicDNS** (`cabin-hub` / `home-hub`).
+`cabin-hub` is reachable from anywhere via **Tailscale MagicDNS**; it serves Home's data too.
 
 ---
 
@@ -42,16 +42,16 @@ Both hubs are reachable from anywhere via **Tailscale MagicDNS** (`cabin-hub` / 
 │  Zigbee2MqttAdapter  ·  HomeAssistantAdapter                 │
 └──┬────────────┬─────────────┬────────────┬──────────────────┘
    │ MQTT       │ JDBC        │ Kafka      │ HA REST API
-Mosquitto     TimescaleDB   KRaft        home-hub:8123
-(port 1883)   (Postgres)    (port 9092)  cabin-hub:8123
+Mosquitto     TimescaleDB   KRaft        cabin-hub:8123
+(port 1883)   (Postgres)    (port 9092)  (the only Home Assistant)
    │
 Zigbee2MQTT ──▶ Aeotec Z-Stick 10 Pro ──▶ Zigbee devices
 
 Also in Docker stack: Grafana (3000) · Node-RED (1880) · Frigate (5000)
-Two identical stacks: cabin-hub + home-hub, linked via Tailscale
+One stack on cabin-hub; Home reports to it as a collector over Tailscale (D23)
 ```
 
-**Why two independent hubs?** Each location runs its own Zigbee coordinator and local MQTT broker. Cabin-side logic survives internet outages. The UI routes API calls to the selected location; the backend routes HA commands to the correct hub by `DeviceDescriptor.location()`.
+**Why one head and a collector at Home (D23)?** The M920q at the cabin runs the whole stack and serves both locations; Home runs only a Zigbee2MQTT instance (its own `home_z2m` base topic) and a scan agent. Cabin-side logic survives internet outages. The UI routes API calls to the selected location; the backend's Home Assistant adapter still routes by `DeviceDescriptor.location()`, but there is no Home Assistant at Home to route to today.
 
 ---
 
@@ -62,7 +62,7 @@ Two identical stacks: cabin-hub + home-hub, linked via Tailscale
 Central `DeviceRegistry` holds `DeviceDescriptor` (static config) and `DeviceStatus` (runtime state) for all devices across both locations. Protocol adapters implement a `ProtocolAdapter` interface:
 
 - **Zigbee2MqttAdapter** — subscribes to `zigbee2mqtt/#`, auto-discovers devices from `bridge/devices`, infers capabilities by recursively walking the `exposes[]` schema (handles composite features like THIRDREALITY Drip Detect). Any device registered by Z2M is auto-registered with a `z2m-` prefix.
-- **HomeAssistantAdapter** — uses the HA REST API, routing to `cabin-hub` or `home-hub` based on device location.
+- **HomeAssistantAdapter** — uses the HA REST API on `cabin-hub`; it can route by device location, but there is no Home Assistant at Home (D23).
 
 21 devices are seeded as defaults.
 
@@ -172,8 +172,8 @@ Themes stamp CSS custom properties on `:root` and a `data-theme` attribute on `<
 | Automation | Node-RED (flows) + Java rules | Node-RED for complex visual rules. Java for safety-critical rules that must survive Node-RED downtime |
 | Video | Frigate NVR · RTSP | Local ML object detection; no cloud dependency |
 | Monitoring | Grafana | Embedded iframe in Monitoring panel; TimescaleDB as data source |
-| Network | Tailscale MagicDNS | Zero-config mesh VPN; `cabin-hub` / `home-hub` resolve from anywhere without port-forwarding |
-| Deployment | Docker Compose (6 services per hub) | Single `docker compose up` to start the full stack |
+| Network | Tailscale MagicDNS | Zero-config mesh VPN; `cabin-hub` resolves from anywhere without port-forwarding, and Home reports to it over Tailscale |
+| Deployment | Docker Compose (6 services on the cabin hub) | Single `docker compose up` to start the full stack |
 
 **Why no TypeScript, no ORM?** One-developer project. Spring Data JDBC with `JdbcTemplate` keeps the persistence layer transparent. Tables are created with `CREATE TABLE IF NOT EXISTS` in `@PostConstruct` — no migration tooling required at current schema size.
 
@@ -191,7 +191,7 @@ Active local development. Full Docker stack runs on the cabin-hub dev machine; S
 | MQTT `:1883` | Running |
 | Kafka | Not running in dev (producer warns, non-fatal) |
 | Frigate | Config pending |
-| home-hub | Not yet deployed |
+| Home collector | Termux Zigbee2MQTT and scan agent (see docs/MAINTENANCE.md, "Home Location") |
 
 ---
 
@@ -200,7 +200,7 @@ Active local development. Full Docker stack runs on the cabin-hub dev machine; S
 - Notification service (email/SMS from `AutomationRuleService` alert events)
 - `GET/PATCH /api/preferences/card-order` for multi-device order sync
 - Node-RED rule CRUD API (unlocks Rules panel reorder)
-- home-hub deployment and cross-hub presence sync
+- Home collector: more devices and its presence signal (no separate home-hub stack, D23)
 - Production Docker Compose with env-var secrets management
 
 ---
