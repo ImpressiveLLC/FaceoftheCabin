@@ -121,6 +121,35 @@ public class CabinEventService implements DeviceEventLookup {
     }
 
     /**
+     * W-65: per (ruleId, device) count of automation alerts in a window, for
+     * the noisy-alert detector. Grouped in SQL because recent()'s 500-row
+     * cap would silently undercount exactly the case this exists to find (a
+     * very noisy rule). deviceId is nullable (null = every device). Events
+     * with no device are skipped: an opportunity is per device.
+     */
+    public List<AlertEventCount> alertEventCounts(List<String> eventTypes, Instant since, String deviceId) {
+        StringBuilder sql = new StringBuilder("""
+            SELECT payload->>'ruleId' AS rule_id, device_id, COUNT(*) AS n, MIN(time) AS first_at, MAX(time) AS last_at
+            FROM cabin_event
+            WHERE time >= ? AND device_id IS NOT NULL AND event_type IN (""");
+        java.util.List<Object> args = new java.util.ArrayList<>();
+        args.add(java.sql.Timestamp.from(since));
+        for (int i = 0; i < eventTypes.size(); i++) {
+            sql.append(i == 0 ? "?" : ",?");
+            args.add(eventTypes.get(i));
+        }
+        sql.append(")");
+        if (deviceId != null && !deviceId.isBlank()) {
+            sql.append(" AND device_id = ?");
+            args.add(deviceId);
+        }
+        sql.append(" GROUP BY 1, 2");
+        return jdbc.query(sql.toString(), (rs, i) -> new AlertEventCount(
+            rs.getString("rule_id"), rs.getString("device_id"), rs.getLong("n"),
+            rs.getTimestamp("first_at").toInstant(), rs.getTimestamp("last_at").toInstant()), args.toArray());
+    }
+
+    /**
      * Single event by its own id, or null if it doesn't exist. Added for
      * CameraMediaController's clip-by-time fallback (2026-08-18): a
      * motion-only event (MOTION_ON/OFF) has no frigateEventId to key the

@@ -102,6 +102,8 @@ class DemoAccessTest {
     void unknownRoutesDenyByDefault() {
         assertEquals(DemoAccessPolicy.RouteClass.DENY, DemoAccessPolicy.classify("/api/some-future-thing"));
         assertEquals(DemoAccessPolicy.RouteClass.DENY, DemoAccessPolicy.classify("/api/devices/candidates"));
+        assertEquals(DemoAccessPolicy.RouteClass.DENY, DemoAccessPolicy.classify("/api/alerts/history"),
+            "alert history lists door/motion times and who silenced what (W-64)");
         assertEquals(DemoAccessPolicy.RouteClass.ALLOW_REDACT, DemoAccessPolicy.classify("/api/devices/abc.def"));
         assertEquals(DemoAccessPolicy.RouteClass.ALLOW_REDACT, DemoAccessPolicy.classify("/api/devices"));
     }

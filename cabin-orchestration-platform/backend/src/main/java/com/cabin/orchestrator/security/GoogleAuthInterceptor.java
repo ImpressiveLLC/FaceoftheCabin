@@ -133,7 +133,12 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // GETs do. Only POST/DELETE .../acknowledgments require a real
         // identity -- silencing a safety-relevant alert is a genuine
         // action, unlike everything else this controller serves.
-        boolean isAlertsRead = startsWithBoth(path, npath, contextPath + "/api/alerts/") && "GET".equalsIgnoreCase(request.getMethod());
+        // Except /api/alerts/history (W-64): that one lists when doors opened
+        // and motion fired and who silenced what -- the occupancy-revealing
+        // data the /api/events gate exists for -- so it needs a real session.
+        // Either view of the path naming it keeps it closed (normalised paths deny, never admit).
+        boolean isAlertsRead = startsWithBoth(path, npath, contextPath + "/api/alerts/") && "GET".equalsIgnoreCase(request.getMethod())
+            && !(path.equals(contextPath + ALERT_HISTORY_PATH) || npath.equals(contextPath + ALERT_HISTORY_PATH));
         if (isAlertsRead) {
             return true;
         }
@@ -319,6 +324,8 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         "roof_spec", List.of("/api/roof-spec")
     );
 
+    private static final String ALERT_HISTORY_PATH = "/api/alerts/history";
+
     /** The single write path a guest link may ever use, and only with the roof_spec scope. */
     static final String ROOF_SPEC_POST_PATH = "/api/roof-spec/entries";
 
@@ -360,7 +367,9 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
             .flatMap(List::stream)
             .map(prefix -> contextPath + prefix)
             .anyMatch(base -> equalsBoth(path, npath, base) || startsWithBoth(path, npath, base + "/"));
-        if (!covered) {
+        // alerts_read maps to the whole /api/alerts prefix, which would reach
+        // the alert history too -- but that is a signed-in-only view (W-64).
+        if (!covered || path.equals(contextPath + ALERT_HISTORY_PATH) || npath.equals(contextPath + ALERT_HISTORY_PATH)) {
             recordGuestUse(accessToken, request, "DENY", HttpServletResponse.SC_FORBIDDEN);
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "This access link doesn't cover that page");
             return false;

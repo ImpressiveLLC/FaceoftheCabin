@@ -3,6 +3,10 @@ package com.cabin.orchestrator.api;
 import com.cabin.orchestrator.alerts.AcknowledgeAlertRequest;
 import com.cabin.orchestrator.alerts.ActiveAlertService;
 import com.cabin.orchestrator.alerts.AlertAcknowledgment;
+import com.cabin.orchestrator.alerts.AlertHistoryEntry;
+import com.cabin.orchestrator.alerts.AlertHistoryService;
+import com.cabin.orchestrator.alerts.JdbcAlertHistoryStore;
+import com.cabin.orchestrator.events.CabinEventService;
 import com.cabin.orchestrator.alerts.JdbcAlertAcknowledgmentStore;
 import com.cabin.orchestrator.automation.AutomationRuleService;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
@@ -39,14 +43,21 @@ class AlertControllerTest {
 
     private AlertController controller;
     private JdbcAlertAcknowledgmentStore store;
+    private JdbcAlertHistoryStore historyStore;
 
     @BeforeEach
     void setUp() {
         JdbcTemplate jdbc = new JdbcTemplate(new SimpleDriverDataSource(
             new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
-        store = new JdbcAlertAcknowledgmentStore(jdbc);
+        historyStore = new JdbcAlertHistoryStore(jdbc);
+        store = new JdbcAlertAcknowledgmentStore(jdbc, historyStore);
         jdbc.execute("TRUNCATE TABLE alert_acknowledgment");
-        controller = new AlertController(mock(ActiveAlertService.class), mock(AutomationRuleService.class), store);
+        jdbc.execute("TRUNCATE TABLE alert_history");
+        jdbc.execute("DROP TABLE IF EXISTS cabin_event");
+        jdbc.execute("DROP TABLE IF EXISTS device_reporting_relationship");
+        CabinEventService events = new CabinEventService(jdbc);
+        controller = new AlertController(mock(ActiveAlertService.class), mock(AutomationRuleService.class), store,
+            new AlertHistoryService(historyStore, events));
     }
 
     private MockHttpServletRequest authedRequest(String email) {
@@ -124,7 +135,7 @@ class AlertControllerTest {
             authedRequest("nate@example.com"));
         assertEquals(1, controller.acknowledgments().size());
 
-        ResponseEntity<?> response = controller.clearAcknowledgment("device:leak_mech_room:missed-checkin");
+        ResponseEntity<?> response = controller.clearAcknowledgment("device:leak_mech_room:missed-checkin", authedRequest("nate@example.com"));
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertTrue(controller.acknowledgments().isEmpty());
@@ -141,5 +152,80 @@ class AlertControllerTest {
         List<AlertAcknowledgment> active = controller.acknowledgments();
         assertEquals(1, active.size(), "one alert key must never produce two rows");
         assertEquals("SNOOZED", active.get(0).mode());
+    }
+
+    private List<AlertHistoryEntry> history() {
+        return controller.history("7d", 100, 0, null);
+    }
+
+    @Test
+    void ignoreSnoozeAndUnIgnoreAreAllKeptInTheHistory() {
+        String key = "device:leak_mech_room:missed-checkin";
+        controller.acknowledge(new AcknowledgeAlertRequest(key, "IGNORED", null), authedRequest("nate@example.com"));
+        controller.acknowledge(new AcknowledgeAlertRequest(key, "SNOOZED", Instant.now().plus(1, ChronoUnit.HOURS)),
+            authedRequest("nate@example.com"));
+        controller.clearAcknowledgment(key, authedRequest("nate@example.com"));
+
+        List<String> actions = history().stream().map(AlertHistoryEntry::action).toList();
+        assertEquals(List.of("UN_IGNORED", "SNOOZED", "IGNORED"), actions, "newest first, and nothing lost to the upsert");
+        AlertHistoryEntry first = history().get(2);
+        assertEquals("device", first.kind());
+        assertEquals("leak_mech_room", first.deviceId());
+        assertEquals("MISSED_CHECKIN", first.condition());
+        assertEquals("nate@example.com", first.actor());
+    }
+
+    @Test
+    void aRejectedAcknowledgmentLeavesNoHistory() {
+        controller.acknowledge(new AcknowledgeAlertRequest("device:x:alarm", "SNOOZED", null), authedRequest("nate@example.com"));
+        assertTrue(history().isEmpty());
+    }
+
+    @Test
+    void anExpiredSnoozeIsLoggedOnceAtTheTimeItExpired() {
+        Instant expiredAt = Instant.now().minusSeconds(120).truncatedTo(ChronoUnit.MILLIS);
+        store.save(new AlertAcknowledgment("device:leak_mech_room:missed-checkin", "SNOOZED",
+            expiredAt, "nate@example.com", Instant.now().minusSeconds(3600)));
+
+        controller.acknowledgments();
+        controller.acknowledgments();
+
+        List<AlertHistoryEntry> expiries = history().stream().filter(e -> "SNOOZE_EXPIRED".equals(e.action())).toList();
+        assertEquals(1, expiries.size(), "a second read must not log the same expiry again");
+        assertEquals(expiredAt, expiries.get(0).occurredAt());
+        assertNull(expiries.get(0).actor());
+    }
+
+    @Test
+    void automationAlertsAlreadyInTheEventLogAppearAsRaisedWithoutBeingCopied() {
+        CabinEventService events = new CabinEventService(new JdbcTemplate(new SimpleDriverDataSource(
+            new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+        events.save(new com.cabin.orchestrator.events.CabinEvent("e1", "z2m-temp_outside_lowest", "AUTOMATION_ALERT",
+            "WARN", Instant.now().minusSeconds(30),
+            java.util.Map.of("ruleId", "FREEZE_RISK", "see", "Outdoor temperature is near freezing")));
+        events.save(new com.cabin.orchestrator.events.CabinEvent("e2", "z2m-temp_outside_lowest", "TELEMETRY",
+            "INFO", Instant.now().minusSeconds(20), java.util.Map.of("temperature", 1.0)));
+        controller.acknowledge(new AcknowledgeAlertRequest("automation:FREEZE_RISK:z2m-temp_outside_lowest", "IGNORED", null),
+            authedRequest("nate@example.com"));
+
+        List<AlertHistoryEntry> entries = history();
+        assertEquals(2, entries.size(), "telemetry is not an alert");
+        assertEquals("IGNORED", entries.get(0).action());
+        AlertHistoryEntry raised = entries.get(1);
+        assertEquals("RAISED", raised.action());
+        assertEquals("e:e1", raised.entryId());
+        assertEquals("automation:FREEZE_RISK:z2m-temp_outside_lowest", raised.alertKey());
+        assertEquals("Outdoor temperature is near freezing", raised.title());
+    }
+
+    @Test
+    void historyCanBeNarrowedToOneDeviceAndPaged() {
+        controller.acknowledge(new AcknowledgeAlertRequest("device:a:alarm", "IGNORED", null), authedRequest("n@example.com"));
+        controller.acknowledge(new AcknowledgeAlertRequest("device:b:alarm", "IGNORED", null), authedRequest("n@example.com"));
+        controller.acknowledge(new AcknowledgeAlertRequest("device:b:missed-checkin", "IGNORED", null), authedRequest("n@example.com"));
+
+        assertEquals(2, controller.history("7d", 100, 0, "b").size());
+        assertEquals(1, controller.history("7d", 1, 1, null).size());
+        assertEquals(3, controller.history("garbage", 100, 0, null).size(), "an unparseable window falls back to 7d");
     }
 }

@@ -1,0 +1,722 @@
+[
+ {
+  "n": 1,
+  "id": "A1-1",
+  "question": "Where do I see what's wrong at the cabin right now?",
+  "category": "status_checks"
+ },
+ {
+  "n": 2,
+  "id": "A1-2",
+  "question": "What is the Status Checks list?",
+  "category": "status_checks"
+ },
+ {
+  "n": 3,
+  "id": "A1-3",
+  "question": "What needs my attention?",
+  "category": "status_checks"
+ },
+ {
+  "n": 4,
+  "id": "A2-1",
+  "question": "What counts as a critical alert?",
+  "category": "status_checks"
+ },
+ {
+  "n": 5,
+  "id": "A2-2",
+  "question": "Why didn't a door left open alert me?",
+  "category": "status_checks"
+ },
+ {
+  "n": 6,
+  "id": "A3-1",
+  "question": "How do I ignore an alert?",
+  "category": "alert_silencing"
+ },
+ {
+  "n": 7,
+  "id": "A3-2",
+  "question": "Can I make this low battery warning go away?",
+  "category": "alert_silencing"
+ },
+ {
+  "n": 8,
+  "id": "A4-1",
+  "question": "How do I snooze an alert for a day?",
+  "category": "alert_silencing"
+ },
+ {
+  "n": 9,
+  "id": "A4-2",
+  "question": "Remind me later about the battery warning",
+  "category": "alert_silencing"
+ },
+ {
+  "n": 10,
+  "id": "A5-1",
+  "question": "Why is there no Ignore button on the leak alert?",
+  "category": "alert_silencing"
+ },
+ {
+  "n": 11,
+  "id": "A5-2",
+  "question": "Can I silence a water leak alarm for a week?",
+  "category": "leak_response"
+ },
+ {
+  "n": 12,
+  "id": "A6-1",
+  "question": "Where did the alert I ignored go?",
+  "category": "alert_silencing"
+ },
+ {
+  "n": 13,
+  "id": "A6-2",
+  "question": "How do I bring back an alert I snoozed?",
+  "category": "alert_silencing"
+ },
+ {
+  "n": 14,
+  "id": "A7-1",
+  "question": "How do I get from an alert to the device it is about?",
+  "category": "status_checks"
+ },
+ {
+  "n": 15,
+  "id": "A7-2",
+  "question": "What does Open device do?",
+  "category": "status_checks"
+ },
+ {
+  "n": 16,
+  "id": "A8-1",
+  "question": "Will I get a notification on my phone if there's a leak?",
+  "category": "phone_notifications"
+ },
+ {
+  "n": 17,
+  "id": "A8-2",
+  "question": "Why didn't I get a push notification?",
+  "category": "phone_notifications"
+ },
+ {
+  "n": 18,
+  "id": "A9-1",
+  "question": "What are the built-in rules?",
+  "category": "rules_workflows"
+ },
+ {
+  "n": 19,
+  "id": "A9-2",
+  "question": "Are the leak and freeze alarms run by the app or by Home Assistant?",
+  "category": "workflow_basics"
+ },
+ {
+  "n": 20,
+  "id": "A10-1",
+  "question": "What do the colored dots on the tabs mean?",
+  "category": "status_checks"
+ },
+ {
+  "n": 21,
+  "id": "A10-2",
+  "question": "Why is there a red dot on Rules & Alerts?",
+  "category": "status_checks"
+ },
+ {
+  "n": 22,
+  "id": "A11-1",
+  "question": "There's a water leak alert, what do I do?",
+  "category": "leak_response"
+ },
+ {
+  "n": 23,
+  "id": "A11-2",
+  "question": "How do I turn the water back on after a leak?",
+  "category": "leak_response"
+ },
+ {
+  "n": 24,
+  "id": "A12-1",
+  "question": "What does Duplicate readings mean?",
+  "category": "zigbee_duplicate"
+ },
+ {
+  "n": 25,
+  "id": "A12-2",
+  "question": "Why does Opportunities say the heater has been drawing power for 48 hours?",
+  "category": "optimization_opportunities"
+ },
+ {
+  "n": 26,
+  "id": "B1-1",
+  "question": "What's the difference between a workflow and a Home Assistant automation?",
+  "category": "workflow_basics"
+ },
+ {
+  "n": 27,
+  "id": "B1-2",
+  "question": "Where do my automations actually run?",
+  "category": "workflow_basics"
+ },
+ {
+  "n": 28,
+  "id": "B2-1",
+  "question": "How do I create a new workflow?",
+  "category": "workflow_create"
+ },
+ {
+  "n": 29,
+  "id": "B2-2",
+  "question": "How do I make the cabin shut off the water when a leak is detected?",
+  "category": "leak_response"
+ },
+ {
+  "n": 30,
+  "id": "B3-1",
+  "question": "I made a workflow but it doesn't do anything",
+  "category": "workflow_run_history"
+ },
+ {
+  "n": 31,
+  "id": "B3-2",
+  "question": "How do I turn a workflow on or off?",
+  "category": "workflow_run_history"
+ },
+ {
+  "n": 32,
+  "id": "B4-1",
+  "question": "What events can start a workflow?",
+  "category": "workflow_create"
+ },
+ {
+  "n": 33,
+  "id": "B4-2",
+  "question": "Can something happen automatically when someone arrives?",
+  "category": "workflow_create"
+ },
+ {
+  "n": 34,
+  "id": "B5-1",
+  "question": "Can a workflow turn on the heater or the lights?",
+  "category": "workflow_basics"
+ },
+ {
+  "n": 35,
+  "id": "B5-2",
+  "question": "What can a workflow do?",
+  "category": "workflow_basics"
+ },
+ {
+  "n": 36,
+  "id": "B6-1",
+  "question": "How do I run a workflow by hand?",
+  "category": "workflow_run_history"
+ },
+ {
+  "n": 37,
+  "id": "B6-2",
+  "question": "What does Fire now do?",
+  "category": "workflow_run_history"
+ },
+ {
+  "n": 38,
+  "id": "B7-1",
+  "question": "How do I undo what a workflow did?",
+  "category": "workflow_reset_undo"
+ },
+ {
+  "n": 39,
+  "id": "B7-2",
+  "question": "What does Reset do on a workflow firing?",
+  "category": "workflow_reset_undo"
+ },
+ {
+  "n": 40,
+  "id": "B7-3",
+  "question": "What does Mark seen do?",
+  "category": "workflow_reset_undo"
+ },
+ {
+  "n": 41,
+  "id": "B8-1",
+  "question": "What does Stays fired until someone clears it mean?",
+  "category": "workflow_settings"
+ },
+ {
+  "n": 42,
+  "id": "B8-2",
+  "question": "Should my workflow be ready to fire again once the condition clears?",
+  "category": "workflow_settings"
+ },
+ {
+  "n": 43,
+  "id": "B9-1",
+  "question": "How do I stop a workflow from notifying me over and over?",
+  "category": "workflow_settings"
+ },
+ {
+  "n": 44,
+  "id": "B9-2",
+  "question": "What is the cooldown on an action?",
+  "category": "workflow_settings"
+ },
+ {
+  "n": 45,
+  "id": "B10-1",
+  "question": "Why does my workflow say broken?",
+  "category": "workflow_settings"
+ },
+ {
+  "n": 46,
+  "id": "B10-2",
+  "question": "How do I point a workflow at a different device?",
+  "category": "workflow_settings"
+ },
+ {
+  "n": 47,
+  "id": "B11-1",
+  "question": "Why do some choices say not available yet?",
+  "category": "workflow_create"
+ },
+ {
+  "n": 48,
+  "id": "B11-2",
+  "question": "Why can't I pick that trigger?",
+  "category": "workflow_create"
+ },
+ {
+  "n": 49,
+  "id": "B12-1",
+  "question": "Where can I see when a workflow ran?",
+  "category": "workflow_run_history"
+ },
+ {
+  "n": 50,
+  "id": "B12-2",
+  "question": "Show me the history of a workflow",
+  "category": "workflow_run_history"
+ },
+ {
+  "n": 51,
+  "id": "B13-1",
+  "question": "Why can't I create a workflow?",
+  "category": "rules_workflows"
+ },
+ {
+  "n": 52,
+  "id": "B13-2",
+  "question": "Who is allowed to change workflows?",
+  "category": "who_can_change"
+ },
+ {
+  "n": 53,
+  "id": "B14-1",
+  "question": "Can I schedule something to happen every night at 10?",
+  "category": "workflow_schedule"
+ },
+ {
+  "n": 54,
+  "id": "B14-2",
+  "question": "Can I turn something on at a certain time?",
+  "category": "workflow_schedule"
+ },
+ {
+  "n": 55,
+  "id": "C1-1",
+  "question": "How do I add a new Zigbee sensor?",
+  "category": "device_add"
+ },
+ {
+  "n": 56,
+  "id": "C1-2",
+  "question": "How do I pair a device?",
+  "category": "device_add"
+ },
+ {
+  "n": 57,
+  "id": "C2-1",
+  "question": "How do I add my TV or printer?",
+  "category": "device_add"
+ },
+ {
+  "n": 58,
+  "id": "C2-2",
+  "question": "How do I add a Home Assistant entity by hand?",
+  "category": "device_add"
+ },
+ {
+  "n": 59,
+  "id": "C3-1",
+  "question": "How do I bring in my Ring devices?",
+  "category": "device_add"
+ },
+ {
+  "n": 60,
+  "id": "C3-2",
+  "question": "How do I import from SmartThings?",
+  "category": "device_add"
+ },
+ {
+  "n": 61,
+  "id": "C4-1",
+  "question": "A new device showed up, what do I do with it?",
+  "category": "device_management"
+ },
+ {
+  "n": 62,
+  "id": "C4-2",
+  "question": "What does Use this device do?",
+  "category": "device_management"
+ },
+ {
+  "n": 63,
+  "id": "C4-3",
+  "question": "What does Not now mean for a new device?",
+  "category": "device_management"
+ },
+ {
+  "n": 64,
+  "id": "C5-1",
+  "question": "What's the difference between Available and Assigned?",
+  "category": "device_management"
+ },
+ {
+  "n": 65,
+  "id": "C5-2",
+  "question": "What does Saved for later mean?",
+  "category": "device_management"
+ },
+ {
+  "n": 66,
+  "id": "C6-1",
+  "question": "I can't find a device I added",
+  "category": "device_management"
+ },
+ {
+  "n": 67,
+  "id": "C6-2",
+  "question": "Where did my new device go after the restart?",
+  "category": "device_management"
+ },
+ {
+  "n": 68,
+  "id": "C7-1",
+  "question": "How do I remove a device?",
+  "category": "device_management"
+ },
+ {
+  "n": 69,
+  "id": "C7-2",
+  "question": "Does removing a device delete its history?",
+  "category": "device_management"
+ },
+ {
+  "n": 70,
+  "id": "C7-3",
+  "question": "How do I get back a device I removed?",
+  "category": "device_management"
+ },
+ {
+  "n": 71,
+  "id": "C8-1",
+  "question": "How do I rename a device?",
+  "category": "device_settings"
+ },
+ {
+  "n": 72,
+  "id": "C8-2",
+  "question": "Will renaming a device break my automations?",
+  "category": "device_settings"
+ },
+ {
+  "n": 73,
+  "id": "C9-1",
+  "question": "Why is my plug listed twice?",
+  "category": "zigbee_duplicate"
+ },
+ {
+  "n": 74,
+  "id": "C9-2",
+  "question": "What does Parent devices only do?",
+  "category": "device_management"
+ },
+ {
+  "n": 75,
+  "id": "C10-1",
+  "question": "How do I see only my SmartThings devices?",
+  "category": "device_management"
+ },
+ {
+  "n": 76,
+  "id": "C10-2",
+  "question": "What does the Imported from filter do?",
+  "category": "device_management"
+ },
+ {
+  "n": 77,
+  "id": "C11-1",
+  "question": "How do I group devices by room?",
+  "category": "device_management"
+ },
+ {
+  "n": 78,
+  "id": "C11-2",
+  "question": "Why can't I collapse this group?",
+  "category": "device_management"
+ },
+ {
+  "n": 79,
+  "id": "C12-1",
+  "question": "How do I set which room a device is in?",
+  "category": "device_settings"
+ },
+ {
+  "n": 80,
+  "id": "C12-2",
+  "question": "How do I change a device's area?",
+  "category": "device_settings"
+ },
+ {
+  "n": 81,
+  "id": "C13-1",
+  "question": "What does the Enabled switch on a device do?",
+  "category": "device_settings"
+ },
+ {
+  "n": 82,
+  "id": "C13-2",
+  "question": "How do I stop using a device without removing it?",
+  "category": "device_settings"
+ },
+ {
+  "n": 83,
+  "id": "C14-1",
+  "question": "How do I turn the heater on from the app?",
+  "category": "device_control"
+ },
+ {
+  "n": 84,
+  "id": "C14-2",
+  "question": "Why is there no on/off button on my device?",
+  "category": "device_control"
+ },
+ {
+  "n": 85,
+  "id": "C15-1",
+  "question": "How do I change how a sensor shows on the Monitoring page?",
+  "category": "device_settings"
+ },
+ {
+  "n": 86,
+  "id": "C15-2",
+  "question": "Can I hide a tile on Monitoring?",
+  "category": "device_settings"
+ },
+ {
+  "n": 87,
+  "id": "C16-1",
+  "question": "Why does my sensor say offline?",
+  "category": "device_health"
+ },
+ {
+  "n": 88,
+  "id": "C16-2",
+  "question": "Why is this device card blank?",
+  "category": "device_health"
+ },
+ {
+  "n": 89,
+  "id": "C17-1",
+  "question": "Why does my plug show power as unknown?",
+  "category": "zigbee_duplicate"
+ },
+ {
+  "n": 90,
+  "id": "C17-2",
+  "question": "My smart plug has no power reading",
+  "category": "zigbee_duplicate"
+ },
+ {
+  "n": 91,
+  "id": "C18-1",
+  "question": "How do I warm up the cabin before I get there?",
+  "category": "device_control"
+ },
+ {
+  "n": 92,
+  "id": "C18-2",
+  "question": "What does On the Way do?",
+  "category": "device_control"
+ },
+ {
+  "n": 105,
+  "id": "D6-1",
+  "question": "What's the difference between primary and maintenance?",
+  "category": "presence_roles_and_gaps"
+ },
+ {
+  "n": 106,
+  "id": "D6-2",
+  "question": "How do I make someone a maintenance user?",
+  "category": "presence_roles_and_gaps"
+ },
+ {
+  "n": 107,
+  "id": "D6-3",
+  "question": "What does Counted but not assigned mean?",
+  "category": "presence_roles_and_gaps"
+ },
+ {
+  "n": 108,
+  "id": "D7-1",
+  "question": "Is there a record of when the maintenance person came?",
+  "category": "presence_roles_and_gaps"
+ },
+ {
+  "n": 109,
+  "id": "D7-2",
+  "question": "Does a maintenance visit show up anywhere?",
+  "category": "presence_roles_and_gaps"
+ },
+ {
+  "n": 112,
+  "id": "E1-1",
+  "question": "The disk is almost full, what do I do?",
+  "category": "storage_disk"
+ },
+ {
+  "n": 113,
+  "id": "E1-2",
+  "question": "What does the storage warning mean?",
+  "category": "storage_disk"
+ },
+ {
+  "n": 114,
+  "id": "E2-1",
+  "question": "How do I free up disk space?",
+  "category": "storage_disk"
+ },
+ {
+  "n": 115,
+  "id": "E2-2",
+  "question": "Is Trim old backups safe?",
+  "category": "storage_disk"
+ },
+ {
+  "n": 116,
+  "id": "E3-1",
+  "question": "Is the database backed up?",
+  "category": "backup_restore_recipes"
+ },
+ {
+  "n": 117,
+  "id": "E3-2",
+  "question": "How do I restore from a backup?",
+  "category": "backup_restore_recipes"
+ },
+ {
+  "n": 118,
+  "id": "E4-1",
+  "question": "Will it restart on its own if something crashes?",
+  "category": "self_healing_recovery"
+ },
+ {
+  "n": 119,
+  "id": "E4-2",
+  "question": "How do I restart the Blink bridge?",
+  "category": "self_healing_recovery"
+ },
+ {
+  "n": 120,
+  "id": "E5-1",
+  "question": "How do I check everything is working?",
+  "category": "health_verification"
+ },
+ {
+  "n": 121,
+  "id": "E5-2",
+  "question": "Docker says every service is running, is that enough?",
+  "category": "health_verification"
+ },
+ {
+  "n": 122,
+  "id": "E6-1",
+  "question": "How do I give the insurance adjuster read-only access?",
+  "category": "access_sharing"
+ },
+ {
+  "n": 123,
+  "id": "E6-2",
+  "question": "How do I revoke a link I shared?",
+  "category": "access_sharing"
+ },
+ {
+  "n": 124,
+  "id": "E6-3",
+  "question": "How do I make a demo link?",
+  "category": "access_sharing"
+ },
+ {
+  "n": 125,
+  "id": "E7-1",
+  "question": "How do I add someone who doesn't have a Google account?",
+  "category": "managed_users"
+ },
+ {
+  "n": 126,
+  "id": "E7-2",
+  "question": "How do I invite a household member?",
+  "category": "managed_users"
+ },
+ {
+  "n": 129,
+  "id": "E9-1",
+  "question": "Why aren't Home Assistant devices updating?",
+  "category": "configuration_binding"
+ },
+ {
+  "n": 130,
+  "id": "E9-2",
+  "question": "Is the Home Assistant token valid?",
+  "category": "configuration_binding"
+ },
+ {
+  "n": 131,
+  "id": "E10-1",
+  "question": "How do updates get deployed?",
+  "category": "deployment_source"
+ },
+ {
+  "n": 132,
+  "id": "E10-2",
+  "question": "How do I roll back a bad update?",
+  "category": "deployment_source"
+ },
+ {
+  "n": 133,
+  "id": "E11-1",
+  "question": "A Zigbee sensor stopped reporting, what do I check?",
+  "category": "device_health"
+ },
+ {
+  "n": 134,
+  "id": "E11-2",
+  "question": "Is it safe to upgrade Zigbee2MQTT?",
+  "category": "zigbee_duplicate"
+ },
+ {
+  "n": 135,
+  "id": "E12-1",
+  "question": "Why is the camera not showing video?",
+  "category": "camera_frames"
+ },
+ {
+  "n": 136,
+  "id": "E12-2",
+  "question": "The camera shows no events",
+  "category": "camera_frames"
+ }
+]

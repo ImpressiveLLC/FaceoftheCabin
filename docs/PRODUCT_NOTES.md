@@ -979,3 +979,64 @@ reaches the device's own controls -- backlogged rather than rushed. *Clear
 `IGNORED` on resolve* (backend): changes what "ignore" means to the person
 who chose it, so it is a decision for Nate rather than a side effect of a
 UI fix; the silenced list makes the current behavior visible meanwhile.
+## 2026-10-12 — Alert History: a log you can review, and a way back from each alert
+
+**The ask (Nate, 2026-09-15):** on Rules & Alerts, clear alerts; get from an
+alert to the workflow or device behind it; and have what gets cleared
+persisted somewhere reviewable, so an alert that fires all the time can be
+recognized and its cause addressed rather than silenced forever.
+
+**What was already true when this was picked up (verified against `main`,
+not assumed):** ignore/snooze, "Open device", repeats grouped as history
+and the Status Checks merge had all shipped in September (PRs #76–#81,
+#89). The remainder was narrower than the ask sounded: no log (the
+acknowledgment table is "what is suppressed now" and deletes expired
+snoozes), no way back from an IGNORED alert in the UI, and no link from a
+workflow-driven alert to its workflow.
+
+**Why two homes instead of one table.** Automation alerts already sit in
+`cabin_event`, and copying them would give two answers to "what fired".
+Device conditions (`MISSED_CHECKIN`, `DEVICE_ALARM`) had no home at all —
+`ActiveAlertService` is stateless on purpose, so an alert vanishes the
+moment its evidence does, and no record said a sensor missed its check-in
+nine times this week. The log therefore adds only `alert_history` (device
+raised/resolved transitions + every acknowledgment action) and merges it
+with `cabin_event` at read time. It is append-only.
+
+**Why RESOLVED is slow.** A resolve needs two quiet cycles and is suppressed
+for three minutes after boot. The alternative was a log that, after every
+backend restart, recorded every open alert as resolved and re-raised — which
+would have made the very thing this feeds (repeat counting, W-65) count
+restarts as flapping.
+
+**Why the history route is gated, unlike its siblings.** The other GETs
+under `/api/alerts` stay open because they show current state. A history of
+door and motion alerts plus who silenced what is an occupancy record — the
+same data the `/api/events` gate exists for — so it needs a session, a guest
+`alerts_read` link is refused, and demo tokens are denied.
+
+**Known limits, stated rather than hidden:** device-condition history begins
+at first deploy; the client's alert key for an unconfirmed-command alert
+embeds the execution id, so ignoring one does not suppress the next
+(DL-2026-10-12-03, open). W-65 (alert noise → Optimization Opportunities,
+and the Tiny Helpdesk guidance as docs in git) builds on this log.
+
+---
+
+## 2026-10-12 — Noisy alerts: say what to look at, never "turn it down"
+
+W-65 turns the W-64 log into a finding. When an alert is raised five times
+or silenced three times for one device in a week, an Alert noise opportunity
+appears with where to look. Two choices worth recording. **Silencing counts
+as evidence:** a person who has snoozed the same alert three times has
+already decided it is noise, which is a stronger signal than the raw count.
+**Safety alerts are never told to tune down:** for a leak, smoke or CO
+device, any device alarm and the freeze-risk and safety-alarm rules, the
+advice is to find the cause, because a repeating safety alert is exactly the
+case where silencing is the wrong response (the same stance that kept the
+mechanical-room heater from being called "waste" in POWER_DRAW_ANOMALY).
+Advice is a deterministic table, not a model call. Tiny Helpdesk gets the
+same guidance as a section of the user guide in git, not a runtime KB write,
+because KB content must repopulate from a fresh clone.
+
+---

@@ -34,7 +34,7 @@ public final class DemoAccessPolicy {
         put(RouteClass.DENY,
             "/api/devices/candidates", "/api/devices/previously-exposed",
             "/api/devices/{id}/config", "/api/devices/{id}/discovery/latest", "/api/devices/{id}/jsonld",
-            "/api/events/live");
+            "/api/events/live", "/api/alerts/history");
 
         put(RouteClass.ALLOW,
             "/api/dashboard/config", "/api/locations", "/api/system/health", "/api/system/platform-info",

@@ -6001,11 +6001,177 @@ export function PresenceActivityView({ apiBase, location, authedFetch = fetch })
 // Temperature" HA duplicates, the disabled Loonie Mc Frigerton fridge
 // zone/setpoint entities, a disabled dead Kidde entity) cluttered the
 // picker with extra columns that could never have real data.
+// ─── Alert History log (W-64, D16 "Alert History") ─────────────────────────
+// A reviewable record of what happened to alerts, not just what is active:
+// device conditions raised/cleared, every ignore/snooze/bring-back/snooze-
+// expiry, and the automation alerts already in the event log. GET
+// /api/alerts/history needs a signed-in session (it lists door/motion times
+// and who silenced what), so the log degrades to a sign-in note rather than
+// an empty list. Reads and writes use the cabin API base, the same one
+// ignore/snooze writes already go to.
+const ALERT_HISTORY_WINDOWS = [
+  { id: "24h", label: "Last 24 hours" },
+  { id: "7d", label: "Last 7 days" },
+  { id: "30d", label: "Last 30 days" },
+];
+
+export const ALERT_ACTION_LABELS = {
+  RAISED: "Raised",
+  RESOLVED: "Cleared on its own",
+  IGNORED: "Ignored",
+  SNOOZED: "Snoozed",
+  UN_IGNORED: "Brought back",
+  SNOOZE_EXPIRED: "Snooze ended",
+};
+
+function alertHistorySubject(entry, deviceName) {
+  const where = deviceName || entry.deviceId;
+  if (entry.title) return entry.kind === "device" ? entry.title : `${entry.title}${where ? ` — ${where}` : ""}`;
+  if (entry.kind === "device") return `${where || "A device"}: ${(entry.condition || "alert").replaceAll("_", " ").toLowerCase()}`;
+  if (entry.kind === "automation") return `${humanizeRuleId(entry.ruleId)}${where ? ` — ${where}` : ""}`;
+  return entry.alertKey;
+}
+
+// Client-side twin of backend AlertKeys.parse(), only for labelling a
+// silenced alert from its key alone.
+function parseAlertKey(alertKey) {
+  const device = alertKey.startsWith("device:");
+  const automation = alertKey.startsWith("automation:");
+  if (!device && !automation) return { kind: "unknown" };
+  const rest = alertKey.slice(device ? "device:".length : "automation:".length);
+  const split = rest.lastIndexOf(":");
+  if (split < 0) return { kind: device ? "device" : "automation" };
+  const head = rest.slice(0, split);
+  const tail = rest.slice(split + 1);
+  if (device) return { kind: "device", deviceId: head, condition: tail === "alarm" ? "DEVICE_ALARM" : tail === "missed-checkin" ? "MISSED_CHECKIN" : tail };
+  return { kind: "automation", ruleId: head, deviceId: tail === "none" ? null : tail };
+}
+
+export function AlertHistoryLog({ devices = [], location, authedFetch = fetch, signedIn = false }) {
+  const app = useApp();
+  const setActivePanel = app?.setActivePanel;
+  const setPendingDeviceFocus = app?.setPendingDeviceFocus;
+  const setPendingRulesFocus = app?.setPendingRulesFocus;
+  const allDevices = app?.devices || devices;
+  const base = LOCATIONS.cabin.apiBase;
+  const [windowId, setWindowId] = useState("7d");
+  const [entries, setEntries] = useState(null);       // null = loading
+  const [denied, setDenied] = useState(false);
+  const [silenced, setSilenced] = useState([]);
+  const [error, setError] = useState(null);
+
+  const loadSilenced = useCallback(() => {
+    authedFetch(`${base}/api/alerts/acknowledgments`)
+      .then(r => r.ok ? r.json() : [])
+      .then(list => setSilenced(Array.isArray(list) ? list : []))
+      .catch(() => setSilenced([]));
+  }, [authedFetch, base]);
+
+  const loadHistory = useCallback(() => {
+    return authedFetch(`${base}/api/alerts/history?window=${windowId}&limit=200`)
+      .then(r => {
+        if (r.status === 401 || r.status === 403) { setDenied(true); return []; }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        setDenied(false);
+        return r.json();
+      })
+      .then(list => { setEntries(Array.isArray(list) ? list : []); setError(null); })
+      .catch(e => { setEntries([]); setError(e.message); });
+  }, [authedFetch, base, windowId]);
+
+  useEffect(() => { setEntries(null); loadHistory(); }, [loadHistory]);
+  useEffect(() => { loadSilenced(); }, [loadSilenced]);
+
+  const nameOf = (deviceId) => allDevices.find(d => d.deviceId === deviceId)?.name;
+  const inThisLocation = (entry) => {
+    const device = allDevices.find(d => d.deviceId === entry.deviceId);
+    return !(device?.location && location && device.location !== location);
+  };
+
+  const bringBack = async (alertKey) => {
+    setError(null);
+    try {
+      await clearAlertAcknowledgment(authedFetch, alertKey);
+      loadSilenced();
+      loadHistory();
+    } catch (e) { setError(e.message); }
+  };
+
+  const openDevice = (deviceId) => { setPendingDeviceFocus?.(deviceId); setActivePanel?.("DEVICE_MANAGER"); };
+  const openRules = (target) => { setPendingRulesFocus?.(target); setActivePanel?.("RULES_ENGINE"); };
+
+  const visible = (entries || []).filter(inThisLocation);
+
+  return (
+    <div className="alert-history-log">
+      {silenced.length > 0 && (
+        <div>
+          <h4>Silenced right now ({silenced.length})</h4>
+          <ul className="alert-history-list">
+            {silenced.map(a => {
+              const parsed = parseAlertKey(a.alertKey);
+              return (
+                <li key={a.alertKey} className="alert-history-item">
+                  <span className="alert-history-action">
+                    {a.mode === "SNOOZED" ? `Snoozed until ${formatAlertTimestamp(a.snoozedUntil)}` : "Ignored"}
+                  </span>
+                  <span>{alertHistorySubject({ ...parsed, alertKey: a.alertKey }, nameOf(parsed.deviceId))}</span>
+                  {a.acknowledgedBy && <span className="alert-history-who">by {a.acknowledgedBy}</span>}
+                  {signedIn && (
+                    <span className="alert-history-links">
+                      <button type="button" className="active-condition-link" onClick={() => bringBack(a.alertKey)}>
+                        {a.mode === "SNOOZED" ? "Bring back now" : "Un-ignore"}
+                      </button>
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      <div className="alert-history-controls">
+        <h4>History</h4>
+        <select aria-label="Alert history range" value={windowId} onChange={e => setWindowId(e.target.value)}>
+          {ALERT_HISTORY_WINDOWS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
+        </select>
+      </div>
+      {error && <p className="action-result action-error">{error}</p>}
+      {denied && <p className="config-hint">Sign in to see the alert history. It lists when doors opened and who silenced what, so it is not shown to anonymous viewers.</p>}
+      {!denied && entries === null && <p className="config-hint">Loading…</p>}
+      {!denied && entries !== null && visible.length === 0 && !error && (
+        <p className="config-hint">Nothing recorded in this range. Device conditions are recorded from the moment this log was turned on; automation alerts go back as far as the event log does.</p>
+      )}
+      {visible.length > 0 && (
+        <ul className="alert-history-list">
+          {visible.map(entry => {
+            const target = entry.kind === "automation" ? alertRulesTarget(entry.ruleId) : null;
+            return (
+              <li key={entry.entryId} className="alert-history-item">
+                <span className="alert-history-time">{formatAlertTimestamp(entry.occurredAt, true)}</span>
+                <span className={`alert-history-action action-${(entry.action || "").toLowerCase()}`}>{ALERT_ACTION_LABELS[entry.action] || entry.action}</span>
+                <span>{alertHistorySubject(entry, nameOf(entry.deviceId))}</span>
+                {entry.action === "SNOOZED" && entry.snoozedUntil && <span className="alert-history-who">until {formatAlertTimestamp(entry.snoozedUntil)}</span>}
+                {entry.actor && <span className="alert-history-who">by {entry.actor}</span>}
+                <span className="alert-history-links">
+                  {entry.deviceId && <button type="button" className="active-condition-link" onClick={() => openDevice(entry.deviceId)}>Open device</button>}
+                  {target && <button type="button" className="active-condition-link" onClick={() => openRules(target)}>{target.kind === "workflow" ? "Open workflow" : "Open rule"}</button>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // authedFetch defaults to plain fetch so every existing direct-render test
 // (none of which pass one) keeps working unchanged -- production callers
 // (MonitoringPanel) pass the real auth.authedFetch, required since
 // /api/events/** now requires a Google token (WebConfig.java, 2026-09-01).
-export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authedFetch = fetch }) {
+export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authedFetch = fetch, signedIn = false }) {
   // null outside the app shell (direct-render tests); the Alert History link is simply omitted then.
   const setActivePanel = useApp()?.setActivePanel;
   const [reportedFields, setReportedFields] = useState({});
@@ -6369,14 +6535,11 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
               ))}
             </ul>
           )}
-          <p className="config-hint">
-            This list is only what is active right now. The last 24 hours of alerts and automation actions, with each
-            repeat listed by time, are under Rules &amp; Alerts → Status Checks. A full historical log is not built yet:
-            older alerts are kept but have no screen.
-          </p>
+          <p className="config-hint">The list above is only what is active right now. Everything that has happened is in the log below.</p>
+          <AlertHistoryLog devices={devices} location={location} authedFetch={authedFetch} signedIn={signedIn} />
           {setActivePanel && (
             <button type="button" className="btn-ghost" onClick={() => setActivePanel("RULES_ENGINE")}>
-              Open Status Checks (last 24 hours)
+              Open Status Checks
             </button>
           )}
         </>
@@ -6591,7 +6754,12 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       </div>
 
       <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
-        apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch} />
+        apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch}
+        signedIn={!!auth?.signedIn} />
+
+      {locCfg.id === "cabin" && auth?.signedIn && !auth?.demo && (
+        <StorageSection apiBase={locCfg.apiBase} authedFetch={auth?.authedFetch} />
+      )}
 
       {auth?.demo
         ? <DemoCameraCards devices={devices.filter(d => !d.location || d.location === locCfg.id)} title={`Camera Health — ${locCfg.label}`} />
@@ -6621,6 +6789,27 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Nate, 2026-10-31: the Trim control was reachable only from inside an expanded disk alert. This puts it on the
+// Monitoring page so an administrator can find it any time, alerting or not. The widget itself hides for
+// anyone who is not an administrator.
+function StorageSection({ apiBase, authedFetch }) {
+  const { isCollapsed, toggle } = useCollapsedSections("collapsed.storageSection");
+  const collapsed = isCollapsed("trim");
+  return (
+    <div className="event-log storage-section">
+      <div className="event-log-header">
+        <span>Storage — backups and disk space</span>
+        <button type="button" className="section-caret" onClick={() => toggle("trim")}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand storage" : "Collapse storage"}>
+          {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+        </button>
+      </div>
+      {!collapsed && <StorageTrimWidget apiBase={apiBase} authedFetch={authedFetch} quietWhenForbidden />}
     </div>
   );
 }
@@ -7328,6 +7517,20 @@ export const SNOOZE_DURATIONS = [
 // "automation:{ruleId}:{sourceDeviceId}" since these come from a generic
 // event-log query with no per-alert identity of their own beyond the
 // single event that already fired.
+// Where an automation alert's "Open workflow" / "Open rule" click goes (W-64).
+// WorkflowRuleService stamps ruleId = "WORKFLOW_" + workflowId on its
+// notifications, so the workflow is recoverable from the alert itself; a
+// WORKFLOW_UNCONFIRMED_{executionId} alert is a failed command
+// confirmation, not a workflow you can edit, so it gets the device link
+// only. Anything else is a built-in AutomationRuleService rule, listed
+// read-only under Backend Rules.
+export function alertRulesTarget(ruleId) {
+  if (!ruleId) return null;
+  if (ruleId.startsWith("WORKFLOW_UNCONFIRMED_")) return null;
+  if (ruleId.startsWith("WORKFLOW_")) return { kind: "workflow", id: ruleId.slice("WORKFLOW_".length) };
+  return { kind: "rule", id: ruleId };
+}
+
 function normalizeDeviceAlert(alert) {
   return {
     kind: "device", id: alert.alertId, alertKey: alert.alertId, severity: alert.severity,
@@ -7557,7 +7760,20 @@ export function keepForFreeing(targets, wantGb) {
   return { keepN: 1, achievable: true, maxFreeGb: atMinimum };
 }
 
-export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 }) {
+// Same commands as docs/STORAGE_ARCHITECTURE.md "Trim control"; the backend sends them too (installCommands),
+// this copy is only the fallback if an older backend does not.
+const TRIM_INSTALL_COMMANDS = [
+  "git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin",
+  "sudo install -m 0755 scripts/host/cabin-storage-prune /usr/local/bin/cabin-storage-prune",
+  "sudo install -m 0755 scripts/host/cabin-storage-trim-agent /usr/local/bin/cabin-storage-trim-agent",
+  "sudo install -m 0644 scripts/host/cabin-storage-trim-agent.service /etc/systemd/system/cabin-storage-trim-agent.service",
+  "sudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent",
+].join("\n");
+
+// quietWhenForbidden: the Monitoring page shows this to every signed-in user; anyone who is not an
+// administrator should see nothing rather than an error about a control they were never meant to have.
+export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000, quietWhenForbidden = false }) {
+  const [copied, setCopied] = useState(false);
   const [view, setView] = useState(null);
   const [problem, setProblem] = useState(null);
   const [keepN, setKeepN] = useState(null);
@@ -7604,9 +7820,25 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
     return () => clearInterval(id);
   }, [waitingFor, load, pollMs]);
 
-  if (problem && !view) return <p className="trim-note" role="status">{problem}</p>;
+  if (problem && !view) return quietWhenForbidden && /administrator|Sign in/.test(problem) ? null : <p className="trim-note" role="status">{problem}</p>;
   if (!view) return <p className="trim-note" role="status">Loading the trim plan…</p>;
-  if (!view.installed) return <p className="trim-note" role="status">{view.message}</p>;
+  if (!view.installed) {
+    const cmds = view.installCommands || TRIM_INSTALL_COMMANDS;
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(cmds); setCopied(true); } catch { setCopied(false); setProblem("Copy was blocked by the browser; select the commands and copy them by hand."); }
+    };
+    return (
+      <div className="trim-widget">
+        <strong>Automatic backup trim is not running</strong>
+        {view.disk && <p className="trim-note">Disk now: {view.disk.usedPercent}% full, {Math.round(view.disk.freeGb)} GB free of {Math.round(view.disk.totalGb)} GB.</p>}
+        <p className="trim-note" role="status">{view.message}</p>
+        <p className="trim-note">To turn it on, the owner runs these on the M920q once (sudo needs the host password, so an agent cannot do it). The Trim control and automatic trimming then work without further steps:</p>
+        <pre className="trim-commands" aria-label="Install commands for the host trim service">{cmds}</pre>
+        <button type="button" className="trim-copy" onClick={copy}>{copied ? "Copied" : "Copy commands"}</button>
+        {problem && <p className="trim-error" role="alert">{problem}</p>}
+      </div>
+    );
+  }
   if (!view.targets?.length) return <p className="trim-note" role="status">No dated backup folders to trim.</p>;
 
   const max = Math.max(...view.targets.map(t => t.count));
@@ -7638,8 +7870,10 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
       <strong>Trim old backups</strong>
       {disk && <p className="trim-note">Disk now: {disk.usedPercent}% full, {Math.round(disk.freeGb)} GB free of {Math.round(disk.totalGb)} GB.</p>}
       {view.auto && (view.auto.enabled
-        ? <p className="trim-note">Automatic: at {view.auto.aboveFull}% full the oldest backup copies are removed until the disk is back to {view.auto.downTo}%, never leaving fewer than {view.auto.floorKeep} per folder. You are told each time.</p>
-        : <p className="trim-note">Automatic trimming is turned off on the host.</p>)}
+        ? <p className="trim-note">Automatic trim is on: at {view.auto.aboveFull}% full the oldest backup copies are removed until the disk is back to {view.auto.downTo}%, never leaving fewer than {view.auto.floorKeep} per folder. You are told each time.</p>
+        : <p className="trim-note">Automatic trim is turned off on the host (TRIM_AUTO=0), so nothing trims on its own. Use the control below.</p>)}
+      {view.autoTrim === "stale" && <p className="trim-error">The host trim service has stopped updating its plan, so automatic trim may not be running.</p>}
+      {view.autoTrim === "stuck" && <p className="trim-error">The last automatic trim could not get the disk under its line. Trim more by hand below.</p>}
       {view.stale && <p className="trim-note">This plan is more than 12 hours old, so recent folders may be missing from it.</p>}
       {!view.sizesMeasured && <p className="trim-note">The host is still measuring folder sizes (the first pass takes several minutes). You can trim now; the amount freed shows when it finishes.</p>}
 
@@ -7704,7 +7938,7 @@ function StatusChecksCard({ auth }) {
   const {
     activeAlerts = [], activeAlertLocations = [], activeLocation = "cabin",
     automationAlerts = [], automationAlertsLoading = false, alertAcknowledgments = [],
-    refreshAlertAcknowledgments, setActivePanel, setPendingDeviceFocus,
+    refreshAlertAcknowledgments, setActivePanel, setPendingDeviceFocus, setPendingRulesFocus,
   } = useApp();
   const { isCollapsed, toggle } = useCollapsedSections("collapsed.statusChecks");
   // 2026-09-19 (user directive): "only one expansion path can be open in
@@ -7739,6 +7973,10 @@ function StatusChecksCard({ auth }) {
   const openDevice = (deviceId) => {
     setPendingDeviceFocus?.(deviceId);
     setActivePanel("DEVICE_MANAGER");
+  };
+  const openRules = (target) => {
+    setPendingRulesFocus?.(target);
+    setActivePanel("RULES_ENGINE");
   };
   const doFetch = auth?.authedFetch || fetch;
   const ignoreAlert = async (alertKeys) => {
@@ -7933,11 +8171,21 @@ function StatusChecksCard({ auth }) {
                     {/* W-62: a full-disk alert's Act is the Trim control, not a device. */}
                     {item.kind === "automation" && item.sourceDeviceId === STORAGE_HDD_SOURCE ? (
                       <StorageTrimWidget apiBase={LOCATIONS.cabin.apiBase} authedFetch={doFetch} />
-                    ) : item.sourceDeviceId && (
+                    ) : (item.sourceDeviceId || (item.kind === "automation" && alertRulesTarget(item.raw?.payload?.ruleId))) && (
                       <div className="active-condition-actions active-condition-actions-expanded">
-                        <button type="button" className="active-condition-link" onClick={() => openDevice(item.sourceDeviceId)}>
-                          Open device <ChevronRight size={11}/>
-                        </button>
+                        {item.sourceDeviceId && (
+                          <button type="button" className="active-condition-link" onClick={() => openDevice(item.sourceDeviceId)}>
+                            Open device <ChevronRight size={11}/>
+                          </button>
+                        )}
+                        {item.kind === "automation" && (() => {
+                          const target = alertRulesTarget(item.raw?.payload?.ruleId);
+                          return target && (
+                            <button type="button" className="active-condition-link" onClick={() => openRules(target)}>
+                              {target.kind === "workflow" ? "Open workflow" : "Open rule"} <ChevronRight size={11}/>
+                            </button>
+                          );
+                        })()}
                       </div>
                     )}
                   </>
@@ -8403,6 +8651,18 @@ function WorkflowRow({ workflow, auth, devices = [], onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const rowRef = useRef(null);
+  const { pendingRulesFocus, setPendingRulesFocus } = useApp() || {};
+  // Consume+clear immediately, same as DeviceManagerPanel does for
+  // pendingDeviceFocus, so a later visit to this panel doesn't re-open it.
+  useEffect(() => {
+    if (pendingRulesFocus?.kind !== "workflow" || pendingRulesFocus.id !== workflow.workflowId) return;
+    setShowHistory(true);
+    setFocused(true);
+    rowRef.current?.scrollIntoView?.({ block: "nearest" });
+    setPendingRulesFocus?.(null);
+  }, [pendingRulesFocus, setPendingRulesFocus, workflow.workflowId]);
   const [retargetingActionId, setRetargetingActionId] = useState(null);
   const [pendingTarget, setPendingTarget] = useState("");
   const apiBase = LOCATIONS[workflow.location]?.apiBase || LOCATIONS.cabin.apiBase;
@@ -8449,7 +8709,7 @@ function WorkflowRow({ workflow, auth, devices = [], onChanged }) {
   const brokenActions = isBroken ? (health.actions || []).filter(a => !a.deviceExists || !a.hasCapability || !a.activeUseAllowed) : [];
 
   return (
-    <div className="rule-row">
+    <div className={`rule-row${focused ? " rule-row-focused" : ""}`} ref={rowRef}>
       <span className={`rule-dot ${workflow.enabled ? "rule-defined" : "rule-inactive"}`}>●</span>
       <div>
         <div className="rule-name">
@@ -8682,8 +8942,20 @@ export function WorkflowRulesCard({ workflows = [], auth, devices = [], defaultL
 // PlatformInfoCard.
 const OPPORTUNITY_TYPE_LABELS = {
   POWER_DRAW_ANOMALY: "Power",
+  NOISY_ALERT: "Alert noise",
   DUPLICATE_READING: "Duplicate readings",
 };
+
+// W-65: one noisy alert's line -- what it is, how often, and where to go.
+export function noisyAlertSummary(alert) {
+  const parts = [];
+  if (alert.raised > 0) parts.push(`raised ${alert.raised}×`);
+  if (alert.silenced > 0) parts.push(`silenced ${alert.silenced}×`);
+  const what = alert.kind === "device"
+    ? (alert.condition || "alert").replaceAll("_", " ").toLowerCase()
+    : humanizeRuleId(alert.ruleId);
+  return `${what} — ${parts.join(", ")}`;
+}
 
 export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // exported for src/App.test.jsx -- tested standalone rather than through RulesPanel's much larger fetch surface
   const [opportunities, setOpportunities] = useState([]);
@@ -8773,9 +9045,29 @@ export function OptimizationOpportunitiesCard({ auth, devices = [] }) { // expor
                 <div className="rule-detail">
                   {watts != null && `Drawing ~${Number(watts).toFixed(0)}W`}
                   {hours != null && ` continuously for ${hours}h`}
+                  {o.opportunityType === "NOISY_ALERT" && `Alerts keep recurring (last ${o.evidence?.windowDays ?? "?"} days)`}
                   {o.opportunityType === "DUPLICATE_READING" && `Same readings reported by the device and ${(o.evidence?.duplicates || []).length} of its services`}
                   {" · detected "}{new Date(o.detectedAt).toLocaleString()}
                 </div>
+                {o.opportunityType === "NOISY_ALERT" && (o.evidence?.alerts || []).map(alert => {
+                  const target = alert.kind === "automation" ? alertRulesTarget(alert.ruleId) : null;
+                  return (
+                    <div key={alert.alertKey} className="noisy-alert-item">
+                      <strong>{noisyAlertSummary(alert)}</strong>
+                      <ul>
+                        {(alert.recommendations || []).map((text, i) => <li key={i}>{text}</li>)}
+                      </ul>
+                      <div className="workflow-row-actions">
+                        <button type="button" className="btn-ghost" onClick={() => { app.setPendingDeviceFocus?.(o.deviceId); app.setActivePanel?.("DEVICE_MANAGER"); }}>Open device</button>
+                        {target && (
+                          <button type="button" className="btn-ghost" onClick={() => { app.setPendingRulesFocus?.(target); app.setActivePanel?.("RULES_ENGINE"); }}>
+                            {target.kind === "workflow" ? "Open workflow" : "Open rule"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
                 {o.opportunityType === "DUPLICATE_READING" && (
                   <div className="noisy-alert-item">
                     <ul>
@@ -8811,6 +9103,18 @@ function BuiltinRules({ location, auth }) {
   const loc = location === "both" ? LOCATIONS.cabin : (LOCATIONS[location] || LOCATIONS.cabin);
   const doFetch = auth?.authedFetch || fetch;
   const [rules, setRules] = useState(null);
+  const { pendingRulesFocus, setPendingRulesFocus } = useApp() || {};
+  const [focusedRuleId, setFocusedRuleId] = useState(null);
+  const focusedRowRef = useRef(null);
+  // Only consumed once the catalog has loaded and actually contains the
+  // rule -- otherwise the focus would be cleared before there is a row to
+  // scroll to.
+  useEffect(() => {
+    if (pendingRulesFocus?.kind !== "rule" || !rules?.some(r => r.ruleId === pendingRulesFocus.id)) return;
+    setFocusedRuleId(pendingRulesFocus.id);
+    setPendingRulesFocus?.(null);
+  }, [pendingRulesFocus, rules, setPendingRulesFocus]);
+  useEffect(() => { if (focusedRuleId) focusedRowRef.current?.scrollIntoView?.({ block: "nearest" }); }, [focusedRuleId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -8833,7 +9137,8 @@ function BuiltinRules({ location, auth }) {
       <p className="config-hint">Read from the backend evaluator. These are separate from the Node-RED and Home Assistant flows.</p>
       {rules === null && <p className="config-hint">Rule catalog unavailable — no status inferred.</p>}
       {rules?.map(r => (
-        <div key={r.ruleId} className="rule-row">
+        <div key={r.ruleId} className={`rule-row${focusedRuleId === r.ruleId ? " rule-row-focused" : ""}`}
+          ref={focusedRuleId === r.ruleId ? focusedRowRef : null}>
           <span className={`rule-dot ${r.enabled ? "rule-defined" : "rule-inactive"}`}>●</span>
           <div>
             <div className="rule-name">{r.name}</div>
@@ -9463,6 +9768,10 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   // consumes and clears this itself once it applies the selection, so it
   // never re-fires on an unrelated panel switch back to Device Manager.
   const [pendingDeviceFocus, setPendingDeviceFocus] = useState(null);
+  // Same hand-off as pendingDeviceFocus, for the other half of an alert's
+  // click-through (W-64): {kind: "workflow"|"rule", id}. WorkflowRow and
+  // BuiltinRules consume and clear it once they scroll to + open the match.
+  const [pendingRulesFocus, setPendingRulesFocus] = useState(null);
   const [activeLocation, setActiveLocation] = useState(() => readStoredLocation());
   useEffect(() => {
     try { localStorage.setItem(ACTIVE_LOCATION_KEY, activeLocation); } catch { /* storage unavailable: the choice just isn't remembered */ }
@@ -9638,6 +9947,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       lifecycleLabels,
       setActivePanel,
       pendingDeviceFocus, setPendingDeviceFocus,
+      pendingRulesFocus, setPendingRulesFocus,
     }}>
       <div className="app-shell">
         <NavRail active={activePanel} onSelect={setActivePanel} alertLevels={alertLevels} />
