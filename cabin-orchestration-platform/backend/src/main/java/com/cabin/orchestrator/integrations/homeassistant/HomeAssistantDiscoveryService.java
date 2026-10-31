@@ -92,7 +92,7 @@ public class HomeAssistantDiscoveryService {
         for (HomeAssistantAdapter.DiscoveredEntity entity : adapter.discover(location)) {
             String domain = domain(entity.entityId());
             if (isPresence(entity, domain)) {
-                presenceSignals.record(location, entity.entityId(), isPresent(entity.state()));
+                presenceSignals.recordSnapshot(location, entity.entityId(), isPresent(entity.state()));
             }
             if (!DEVICE_DOMAINS.contains(domain)) continue;
             if (belongsToZigbeeDeviceAtAnotherLocation(entity.entityId(), location, zigbeeLocations)) continue;

@@ -1,9 +1,13 @@
 package com.cabin.orchestrator.api;
 
+import com.cabin.orchestrator.events.CabinEvent;
+import com.cabin.orchestrator.kafka.EventPublisher;
 import com.cabin.orchestrator.locations.HubLocation;
+import org.mockito.ArgumentCaptor;
 import com.cabin.orchestrator.locations.HubLocationService;
 import com.cabin.orchestrator.presence.LocationRole;
 import com.cabin.orchestrator.presence.LocationRoleService;
+import com.cabin.orchestrator.presence.PresenceService;
 import com.cabin.orchestrator.presence.PresenceSignalRegistry;
 import com.cabin.orchestrator.presence.TrackedPersonStore;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
@@ -23,6 +27,9 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** W-38 slice 1: the roles API is administrator only and answers 400, not 500, for bad input. */
@@ -43,12 +50,16 @@ class PresenceRolesControllerTest {
 
     private final MemoryStore store = new MemoryStore();
     private final HubLocationService locations = mock(HubLocationService.class);
+    private final EventPublisher events = mock(EventPublisher.class);
+    private final PresenceSignalRegistry registry;
     private final PresenceRolesController controller;
 
     PresenceRolesControllerTest() {
         when(locations.byId(anyString())).thenReturn(null);
         when(locations.byId("cabin")).thenReturn(mock(HubLocation.class));
-        controller = new PresenceRolesController(new LocationRoleService(store), new PresenceSignalRegistry(), locations);
+        LocationRoleService service = new LocationRoleService(store);
+        registry = new PresenceSignalRegistry(service, events);
+        controller = new PresenceRolesController(service, registry, locations, mock(PresenceService.class));
     }
 
     private static MockHttpServletRequest as(HouseholdRole role) {
@@ -88,5 +99,56 @@ class PresenceRolesControllerTest {
         assertThat(controller.assign(Map.of("personId", "nate", "location", "cabin", "roles", "primary"), admin).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(controller.assign(Map.of("location", "cabin"), admin).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(store.rows).isEmpty();
+    }
+
+    @Test
+    void aBodyWithNoRolesKeyIsAnErrorAndNeverDeletesTheAssignment() {
+        store.setRoles("nate", "cabin", EnumSet.of(LocationRole.PRIMARY));
+        MockHttpServletRequest admin = as(HouseholdRole.ADMINISTRATOR);
+
+        assertThat(controller.assign(Map.of("personId", "nate", "location", "cabin"), admin).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        Map<String, Object> explicitNull = new HashMap<>();
+        explicitNull.put("personId", "nate");
+        explicitNull.put("location", "cabin");
+        explicitNull.put("roles", null);
+        assertThat(controller.assign(explicitNull, admin).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        assertThat(store.rows.get("nate@cabin")).containsExactly(LocationRole.PRIMARY);
+    }
+
+    @Test
+    void changingAPresentPersonToMaintenanceOnlyStopsCountingThemAndPublishesTheirDeparture() {
+        store.setRoles("nate", "cabin", EnumSet.of(LocationRole.PRIMARY));
+        registry.record("cabin", "nate", true);
+        assertThat(registry.anyPresentAt("cabin")).isTrue();
+
+        controller.assign(Map.of("personId", "nate", "location", "cabin", "roles", List.of("maintenance")), as(HouseholdRole.ADMINISTRATOR));
+
+        assertThat(registry.anyPresentAt("cabin")).isFalse();
+        ArgumentCaptor<CabinEvent> event = ArgumentCaptor.forClass(CabinEvent.class);
+        verify(events, times(1)).publish(event.capture());
+        assertThat(event.getValue().eventType()).isEqualTo("PRESENCE_CHANGED");
+        assertThat(event.getValue().payload()).containsEntry("present", false).containsEntry("personId", "nate");
+    }
+
+    @Test
+    void changingAnAbsentPersonPublishesNoDeparture() {
+        store.setRoles("nate", "cabin", EnumSet.of(LocationRole.PRIMARY));
+        registry.record("cabin", "nate", false);
+
+        controller.assign(Map.of("personId", "nate", "location", "cabin", "roles", List.of("maintenance")), as(HouseholdRole.ADMINISTRATOR));
+
+        verify(events, never()).publish(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void assigningAnUnregisteredPersonClearsTheFlagAtOnceNotAtTheirNextMessage() {
+        registry.record("cabin", "newphone", true);
+        assertThat(registry.unregisteredCounted()).hasSize(1);
+
+        controller.assign(Map.of("personId", "newphone", "location", "cabin", "roles", List.of("primary")), as(HouseholdRole.ADMINISTRATOR));
+
+        assertThat(registry.unregisteredCounted()).isEmpty();
+        assertThat(registry.anyPresentAt("cabin")).isTrue();
     }
 }
