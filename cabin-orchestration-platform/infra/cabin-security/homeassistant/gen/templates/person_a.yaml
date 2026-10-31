@@ -1,0 +1,83 @@
+  - id: cabin_security_publish_{{PERSON}}_presence_from_phone
+    alias: Cabin Security - Publish {{NAME}} Presence From Phone WiFi
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.{{PERSON}}_phone_on_wifi
+        to: "on"
+      - trigger: state
+        entity_id: binary_sensor.{{PERSON}}_phone_on_wifi
+        to: "off"
+        for: "00:03:00"
+    # W-23: the WiFi check is now the BACKUP signal; the Cabin-zone GPS
+    # automation below is primary. A WiFi "off" (not_home) must never override
+    # a phone that GPS says is inside the Cabin zone: the phone can drop off
+    # WiFi to sleep while still at the cabin, and a false "away" is the
+    # dangerous direction for the siren gate. "on" is always published.
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.to_state.state == 'on'
+             or '{{ZONE}}' not in (state_attr('{{TRACKER}}', 'in_zones') or []) }}
+    actions:
+      - action: shell_command.cabin_security_publish
+        data:
+          topic: {{LOCATION}}/presence/{{PERSON}}
+          payload: "{{ 'home' if trigger.to_state.state == 'on' else 'not_home' }}"
+
+  - id: {{STARTUP_ID}}
+    alias: {{STARTUP_ALIAS}}
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    actions:
+      - delay: "00:00:10" # let the first command_line poll complete
+      - action: shell_command.cabin_security_publish
+        data:
+          topic: {{LOCATION}}/presence/{{PERSON}}
+          # W-23: home if the phone is on the cabin WiFi OR GPS has it inside the
+          # Cabin zone. Before this, a restart republished "not_home" over a
+          # correct GPS "home".
+          payload: >-
+            {{ 'home' if (is_state('binary_sensor.{{PERSON}}_phone_on_wifi', 'on')
+                          or '{{ZONE}}' in (state_attr('{{TRACKER}}', 'in_zones') or []))
+               else 'not_home' }}
+
+  # W-23 (scope C, Cowork 2026-10-04): Cabin-zone GPS publisher, a copy of
+  # home_presence.yaml's House automation keyed to zone.cabin. Nothing
+  # published "home" for the cabin from GPS before this: the person-based
+  # automation in cabin_security.yaml only publishes when person.natecabin is
+  # exactly "home" or "not_home", but inside the Cabin zone the person's state
+  # is the zone NAME ("Cabin"), so it never fired. (The cabin signal had been
+  # "home" 0 times out of 190 recorded readings.)
+  #
+  # Same asymmetric debounce as the House automation: "home" publishes
+  # immediately, "not_home" needs 3 continuous minutes away (the zone trigger
+  # has no `for:`, so the leave branch delays, and mode: restart cancels that
+  # pending publish if a fresh "enter" arrives first).
+  - id: cabin_presence_publish_{{PERSON}}_presence_from_phone_gps
+    alias: Cabin Presence - Publish {{NAME}} Presence From Phone GPS Zone
+    mode: restart
+    triggers:
+      - trigger: zone
+        entity_id: {{TRACKER}}
+        zone: {{ZONE}}
+        event: enter
+        id: entered
+      - trigger: zone
+        entity_id: {{TRACKER}}
+        zone: {{ZONE}}
+        event: leave
+        id: left
+    actions:
+      - if:
+          - condition: trigger
+            id: left
+        then:
+          - delay: "00:03:00"
+      - action: shell_command.cabin_security_publish
+        data:
+          topic: {{LOCATION}}/presence/{{PERSON}}
+          payload: "{{ 'home' if trigger.id == 'entered' else 'not_home' }}"
+

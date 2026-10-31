@@ -1,0 +1,46 @@
+  # W-23 / W-33 / W-34: phone "last seen" heartbeat. Publishes the time the
+  # phone's Companion app last REPORTED to Home Assistant, retained, as
+  # cabin/presence/nate/last_seen. The siren gate (W-33) and the hub badge
+  # (W-34) use it to tell a stale signal from a current one: presence is only
+  # published on change, so the retained value can be days old and still right.
+  #
+  # Why it polls instead of reacting to the phone (found by simulating this in a
+  # real Home Assistant, 2026.7.4):
+  #  - Home Assistant refuses automation triggers on `state_reported`
+  #    ("Can't listen to state_reported in event trigger"), and template
+  #    sensors do not re-render when a sensor re-reports an unchanged value.
+  #    A plain state trigger would miss every report where the value did not
+  #    change (a phone on a charger at 100% for a night), which would make a
+  #    healthy phone look dead.
+  #  - So every 5 minutes this reads `last_reported` of the phone's battery
+  #    sensor, which the Companion app rewrites on every sensor update.
+  #
+  # Restart guard: after a Home Assistant restart every restored sensor is
+  # rewritten with the restart time, which would make a dead phone look freshly
+  # seen. The start-noting automation below records each start in its own
+  # `last_triggered`; a heartbeat counts only if last_reported is NEWER than
+  # that. After a restart nothing is published until the phone genuinely
+  # reports, and the broker keeps the last real timestamp meanwhile. If the
+  # noting automation exists but has never run (added by a reload, not a
+  # restart) there is no restart to guard against and the check passes.
+  #
+  # The guard reads the noting automation by its ENTITY id,
+  # automation.cabin_presence_note_home_assistant_start, which Home Assistant
+  # derives from its ALIAS (not from `id:`). A first version used the `id:` as
+  # if it were the entity id; the lookup found nothing and the guard silently
+  # let every restart-noise heartbeat through (caught by the simulation). So
+  # the guard now FAILS CLOSED: if that entity is missing (e.g. the alias is
+  # renamed), no heartbeat is published and the rule shows "unknown age"
+  # rather than a falsely fresh one.
+  #
+  # What is published is the phone's own last_reported time, not "now", so a
+  # silent phone's heartbeat does not advance and ages out.
+  - id: cabin_presence_note_ha_start
+    alias: Cabin Presence - Note Home Assistant Start
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    actions:
+      - event: cabin_presence_ha_started
+
