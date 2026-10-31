@@ -89,3 +89,98 @@ describe("LocationRolesCard", () => {
     expect(assign.disabled).toBe(true);
   });
 });
+
+describe("LocationRolesCard safety and repairs (#342 HOLD)", () => {
+  const ONE = { assignments: [{ personId: "nate", location: "cabin", roles: ["primary"] }], unregisteredCounted: [] };
+
+  function recorder(listBody) {
+    const puts = [];
+    const auth = authWith((url, init) => {
+      if (init && init.method === "PUT") { puts.push(JSON.parse(init.body)); return respond(200, {}); }
+      return respond(200, listBody);
+    });
+    return { auth, puts };
+  }
+
+  it("unticking a person's last role sends nothing: the box is disabled", async () => {
+    const { auth, puts } = recorder(ONE);
+    render(<LocationRolesCard auth={auth} />);
+    const box = await screen.findByLabelText("nate primary at cabin");
+    expect(box.disabled).toBe(true);
+    fireEvent.click(box);
+    await new Promise(r => setTimeout(r, 20));
+    expect(puts).toEqual([]);
+  });
+
+  it("Remove asks first, says what happens, and only the confirmed action sends an empty role list", async () => {
+    const { auth, puts } = recorder(ONE);
+    render(<LocationRolesCard auth={auth} />);
+    fireEvent.click(await screen.findByLabelText("Remove nate at cabin"));
+    expect(screen.getByText(/nate will stop counting as present at cabin/)).toBeTruthy();
+    expect(puts).toEqual([]);
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(puts).toEqual([]);
+    fireEvent.click(screen.getByLabelText("Remove nate at cabin"));
+    fireEvent.click(screen.getByText("Confirm remove"));
+    await waitFor(() => expect(puts).toEqual([{ personId: "nate", location: "cabin", roles: [] }]));
+  });
+
+  it("warns that a removed maintenance person counts as presence again", async () => {
+    const { auth } = recorder({ assignments: [{ personId: "contractor", location: "cabin", roles: ["maintenance"] }], unregisteredCounted: [] });
+    render(<LocationRolesCard auth={auth} />);
+    fireEvent.click(await screen.findByLabelText("Remove contractor at cabin"));
+    expect(screen.getByText(/signals at cabin will count as presence again/)).toBeTruthy();
+  });
+
+  it("Assign adds the ticked roles to the ones the person already holds", async () => {
+    const { auth, puts } = recorder(ONE);
+    render(<LocationRolesCard auth={auth} />);
+    fireEvent.change(await screen.findByLabelText("Person id"), { target: { value: "nate" } });
+    fireEvent.click(screen.getByLabelText("primary")); // untick the form's default; only maintenance is added
+    fireEvent.click(screen.getAllByLabelText("maintenance").find(el => !el.getAttribute("aria-label")?.includes(" at ")));
+    expect(screen.getByText(/nate already holds primary at cabin; the ticked roles are added/)).toBeTruthy();
+    fireEvent.click(screen.getByText("Assign"));
+    await waitFor(() => expect(puts).toEqual([{ personId: "nate", location: "cabin", roles: ["primary", "maintenance"] }]));
+  });
+
+  it("keeps the typed person id when the save is refused, and clears it when it is saved", async () => {
+    let refuse = true;
+    const auth = authWith((url, init) => {
+      if (init && init.method === "PUT") return refuse ? respond(400, { error: "unknown location 'mars'" }) : respond(200, {});
+      return respond(200, { assignments: [], unregisteredCounted: [] });
+    });
+    render(<LocationRolesCard auth={auth} />);
+    const input = await screen.findByLabelText("Person id");
+    fireEvent.change(input, { target: { value: "ghost" } });
+    fireEvent.click(screen.getByText("Assign"));
+    await screen.findByRole("alert");
+    expect(screen.getByLabelText("Person id").value).toBe("ghost");
+    refuse = false;
+    fireEvent.click(screen.getByText("Assign"));
+    await waitFor(() => expect(screen.getByLabelText("Person id").value).toBe(""));
+  });
+
+  it("announces a successful save in a polite status region", async () => {
+    const { auth } = recorder({ assignments: [], unregisteredCounted: [{ personId: "contractor", location: "cabin" }] });
+    render(<LocationRolesCard auth={auth} />);
+    fireEvent.click(await screen.findByLabelText("Make contractor maintenance at cabin"));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("contractor at cabin is now maintenance."));
+    expect(screen.getByRole("status").getAttribute("aria-live")).toBe("polite");
+  });
+
+  it("gives each one-click button the person and location in its name", async () => {
+    const { auth } = recorder({ assignments: [], unregisteredCounted: [{ personId: "a", location: "cabin" }, { personId: "b", location: "home" }] });
+    render(<LocationRolesCard auth={auth} />);
+    expect(await screen.findByLabelText("Make a primary at cabin")).toBeTruthy();
+    expect(screen.getByLabelText("Make b maintenance at home")).toBeTruthy();
+  });
+
+  it("states that unassigned signals are still counted, and uses plain ASCII dots while loading", async () => {
+    const auth = authWith(() => new Promise(() => {})); // never resolves
+    const { unmount } = render(<LocationRolesCard auth={auth} />);
+    expect(screen.getByText("Loading...")).toBeTruthy();
+    unmount();
+    render(<LocationRolesCard auth={authWith(() => respond(200, { assignments: [], unregisteredCounted: [] }))} />);
+    expect(await screen.findByText(/People publishing presence are still counted/)).toBeTruthy();
+  });
+});

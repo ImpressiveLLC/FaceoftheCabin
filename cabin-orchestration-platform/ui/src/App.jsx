@@ -2129,31 +2129,39 @@ export function LocationRolesCard({ auth }) {
   const [data, setData] = useState(null);
   const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(null); // the row whose Remove is awaiting confirmation
   const [personId, setPersonId] = useState("");
   const [location, setLocation] = useState(Object.keys(LOCATIONS)[0] || "cabin");
   const [newRoles, setNewRoles] = useState({ primary: true, maintenance: false });
   const doFetch = auth?.authedFetch || fetch;
   const apiBase = LOCATIONS.cabin.apiBase;
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
 
   const load = useCallback(() => doFetch(`${apiBase}/api/presence/roles`)
     .then(async r => {
+      if (!alive.current) return;
       if (r.status === 403) { setForbidden(true); return; }
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const body = await r.json();
       // A response without the expected lists (an older backend mid-deploy) reads as empty, never a crash.
+      if (!alive.current) return;
       setData({
         assignments: Array.isArray(body?.assignments) ? body.assignments : [],
         unregisteredCounted: Array.isArray(body?.unregisteredCounted) ? body.unregisteredCounted : [],
       });
       setError(null);
     })
-    .catch(err => setError(err.message)), [doFetch, apiBase]);
+    .catch(err => { if (alive.current) setError(err.message); }), [doFetch, apiBase]);
 
   useEffect(() => { load(); }, [load]);
 
-  const save = async (person, loc, roles) => {
+  // Resolves true when the server accepted the change, so a caller can keep what the admin typed after a refusal.
+  const save = async (person, loc, roles, saidAfter) => {
     setSaving(true);
+    setNotice("");
     try {
       const r = await doFetch(`${apiBase}/api/presence/roles`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
@@ -2164,21 +2172,34 @@ export function LocationRolesCard({ auth }) {
         throw new Error(body.error || `HTTP ${r.status}`);
       }
       await load();
+      if (alive.current) { setError(null); setNotice(saidAfter); }
+      return true;
     } catch (err) {
-      setError(err.message);
+      if (alive.current) setError(err.message);
+      return false;
     } finally {
-      setSaving(false);
+      if (alive.current) setSaving(false);
     }
   };
 
   if (forbidden) return <p className="config-desc">Admin access required to assign location roles.</p>;
-  if (!data) return <p className="config-desc">{error ? `Couldn't load location roles: ${error}` : "Loading…"}</p>;
+  if (!data) return <p className="config-desc">{error ? `Couldn't load location roles: ${error}` : "Loading..."}</p>;
 
+  const sentence = (person, loc, roles) => roles.length === 0
+    ? `${person} at ${loc} has no role.`
+    : `${person} at ${loc} is now ${roles.join(" and ")}.`;
+  // The last ticked box is disabled: emptying the list is a removal, which has its own confirmed Remove button.
   const toggle = (a, role) => {
     const has = a.roles.includes(role);
-    save(a.personId, a.location, has ? a.roles.filter(r => r !== role) : [...a.roles, role]);
+    if (has && a.roles.length === 1) return;
+    const roles = has ? a.roles.filter(r => r !== role) : [...a.roles, role];
+    save(a.personId, a.location, roles, sentence(a.personId, a.location, roles));
   };
   const chosen = Object.entries(newRoles).filter(([, on]) => on).map(([role]) => role);
+  const existing = data.assignments.find(a => a.personId === personId.trim() && a.location === location);
+  const removeConsequence = (a) => a.roles.includes("primary")
+    ? `${a.personId} will stop counting as present at ${a.location}.`
+    : `${a.personId}'s signals at ${a.location} will count as presence again, unless you assign them a role.`;
 
   return (
     <>
@@ -2186,40 +2207,64 @@ export function LocationRolesCard({ auth }) {
         Primary people are the active users of a location: their phone counts as presence. Maintenance people establish and
         look after a location: they are a guest for presence, so an arrival is recorded as a visit and not counted.
       </p>
-      {error && <p className="config-hint" role="alert">{error}</p>}
+      <p role="status" aria-live="polite" className={notice ? "action-result" : "config-hint"}>{notice}</p>
+      {error && <p className="action-result action-error" role="alert">{error}</p>}
       {data.unregisteredCounted.length > 0 && (
         <section aria-label="Counted but not assigned">
           <h4 className="platform-section-title">Counted but not assigned</h4>
           <p className="config-hint">Still counted as present, so nothing stops being recognized, until you give them a role.</p>
-          <ul className="config-list">
+          <div className="guest-access-list">
             {data.unregisteredCounted.map(p => (
-              <li key={`${p.location}:${p.personId}`}>
-                <strong>{p.personId}</strong> at {p.location}{" "}
-                <button className="btn-secondary" disabled={saving} onClick={() => save(p.personId, p.location, ["primary"])}>Make primary</button>{" "}
-                <button className="btn-secondary" disabled={saving} onClick={() => save(p.personId, p.location, ["maintenance"])}>Make maintenance</button>
-              </li>
+              <div className="guest-access-row" key={`${p.location}:${p.personId}`}>
+                <span><strong>{p.personId}</strong> at {p.location}</span>
+                <span className="managed-users-row-actions">
+                  <button className="btn-secondary" disabled={saving} aria-label={`Make ${p.personId} primary at ${p.location}`}
+                    onClick={() => save(p.personId, p.location, ["primary"], sentence(p.personId, p.location, ["primary"]))}>Make primary</button>
+                  <button className="btn-secondary" disabled={saving} aria-label={`Make ${p.personId} maintenance at ${p.location}`}
+                    onClick={() => save(p.personId, p.location, ["maintenance"], sentence(p.personId, p.location, ["maintenance"]))}>Make maintenance</button>
+                </span>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
       )}
       <section aria-label="Assigned roles">
         <h4 className="platform-section-title">Assigned</h4>
         {data.assignments.length === 0 ? (
-          <p className="config-hint">No one is assigned yet. Until someone is, every presence signal is counted.</p>
+          <p className="config-hint">No one is assigned yet. People publishing presence are still counted, and listed above as not assigned.</p>
         ) : (
           <table className="platform-info-table">
-            <thead><tr><th>Person</th><th>Location</th><th>Primary</th><th>Maintenance</th></tr></thead>
+            <thead><tr><th>Person</th><th>Location</th><th>Primary</th><th>Maintenance</th><th></th></tr></thead>
             <tbody>
               {data.assignments.map(a => (
                 <tr key={`${a.location}:${a.personId}`}>
                   <td>{a.personId}</td>
                   <td>{a.location}</td>
-                  {["primary", "maintenance"].map(role => (
-                    <td key={role}>
-                      <input type="checkbox" disabled={saving} checked={a.roles.includes(role)}
-                        aria-label={`${a.personId} ${role} at ${a.location}`} onChange={() => toggle(a, role)} />
-                    </td>
-                  ))}
+                  {["primary", "maintenance"].map(role => {
+                    const last = a.roles.includes(role) && a.roles.length === 1;
+                    return (
+                      <td key={role}>
+                        <input type="checkbox" disabled={saving || last} checked={a.roles.includes(role)}
+                          title={last ? "A person needs at least one role. Use Remove to take them out." : undefined}
+                          aria-label={`${a.personId} ${role} at ${a.location}`} onChange={() => toggle(a, role)} />
+                      </td>
+                    );
+                  })}
+                  <td>
+                    {removing === `${a.location}:${a.personId}` ? (
+                      <span role="group" aria-label={`Confirm removing ${a.personId} at ${a.location}`}>
+                        <span className="config-hint">{removeConsequence(a)}</span>{" "}
+                        <button className="btn-danger" disabled={saving}
+                          onClick={async () => { if (await save(a.personId, a.location, [], `${a.personId} at ${a.location} was removed.`)) setRemoving(null); }}>
+                          Confirm remove
+                        </button>{" "}
+                        <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
+                      </span>
+                    ) : (
+                      <button className="btn-ghost" disabled={saving} aria-label={`Remove ${a.personId} at ${a.location}`}
+                        onClick={() => setRemoving(`${a.location}:${a.personId}`)}>Remove</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -2228,7 +2273,7 @@ export function LocationRolesCard({ auth }) {
       </section>
       <section aria-label="Assign a role">
         <h4 className="platform-section-title">Assign a person</h4>
-        <div className="form-row">
+        <div className="guest-access-form">
           <input aria-label="Person id" placeholder="person id, e.g. nate" value={personId} onChange={e => setPersonId(e.target.value)} />
           <select aria-label="Location" value={location} onChange={e => setLocation(e.target.value)}>
             {Object.keys(LOCATIONS).map(id => <option key={id} value={id}>{id}</option>)}
@@ -2239,8 +2284,18 @@ export function LocationRolesCard({ auth }) {
             </label>
           ))}
           <button className="btn-secondary" disabled={saving || !personId.trim() || chosen.length === 0}
-            onClick={() => save(personId.trim(), location, chosen).then(() => setPersonId(""))}>Assign</button>
+            onClick={async () => {
+              // Adds to what the person already holds there; it never takes a role away.
+              const roles = [...new Set([...(existing ? existing.roles : []), ...chosen])];
+              if (await save(personId.trim(), location, roles, sentence(personId.trim(), location, roles))) setPersonId("");
+            }}>Assign</button>
         </div>
+        <p className="config-hint">
+          {existing
+            ? `${existing.personId} already holds ${existing.roles.join(" and ")} at ${location}; the ticked roles are added to those.`
+            : "The ticked roles are added to any the person already holds at that location."}
+          {" "}Locations are the fixed cabin and home pair for now.
+        </p>
       </section>
     </>
   );
