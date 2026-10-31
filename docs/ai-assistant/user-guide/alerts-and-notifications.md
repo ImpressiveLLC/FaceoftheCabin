@@ -6,7 +6,7 @@ Audience: household members and administrators; each section names its audience.
 
 Audience: household.
 
-**Short answer.** Open **Rules & Alerts** in the left rail. The **Status Checks** card at the top is the one list of things that need a look at the location chosen in the toolbar. Critical items are listed first, then the newest. The banner at the top of Devices, Monitoring and Rules & Alerts counts the same list, and pressing it opens Rules & Alerts.
+**Short answer.** Open **Rules & Alerts** in the left rail. The **Status Checks** card (the first card unless someone has dragged the cards into another order) is the one list of things that need a look at the location chosen in the toolbar. Critical items are listed first, then the newest. The banner at the top of Devices, Monitoring and Rules & Alerts counts the same list, and pressing it opens Rules & Alerts.
 
 What can appear in the list:
 
@@ -30,7 +30,7 @@ Audience: household.
 
 **Why did a door left open not alert me?** Every device message is graded too: leak, smoke or alarm is critical; tamper, low battery or a door contact open is a warning; everything else is information only. Warning-level device messages are kept in the event history, but they do not add a Status Checks item and are never sent to a phone. To be told about a door, a workflow is needed with the trigger "Door contact opened" and the step "Send a critical notification".
 
-The tab marks follow the Status Checks list exactly: ignored or snoozed items, and items for the location not selected, do not light a tab.
+The tab marks follow the Status Checks list exactly: silenced items, and items for the location not selected, do not light a tab. An ignored critical item is the exception: it stays in the list and still lights the tab.
 
 Evidence: `navAlertLevelsFor`, `alertLevelFor`, `NavRail` in App.jsx and `.nav-critical`, `.nav-badge-warn` in styles.css; [AlertSeverityClassifier](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/AlertSeverityClassifier.java); [AutomationRuleService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/automation/AutomationRuleService.java); `WORKFLOW_ACTION` and `WORKFLOW_UNCONFIRMED` in [WorkflowRuleService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/WorkflowRuleService.java) (both critical).
 
@@ -56,9 +56,9 @@ Audience: household.
 
 **Short answer.** Press **See more** on a Status Checks item, then **Open device**. The app switches to **Devices** and selects that device. If your saved filters would hide it, the filters are reset to show everything, and a collapsed group holding it is expanded. If the device is not in the list for this location, a note says so, with **Dismiss**. Open device changes nothing on the device itself.
 
-A disk-space alert shows the **Trim old backups** control here instead of Open device. Items that are not about one device have no Open device button.
+A disk-space alert for the storage disk (the one that holds backups) shows the **Trim old backups** control here instead of Open device. The alert for the other disk, the system disk, still shows Open device, which only leads to a note that it is not in the device list. Other items that are not about one device have no Open device button.
 
-Evidence: `openDevice` in `StatusChecksCard` and the `pendingDeviceFocus` effect in `DeviceManagerPanel`, App.jsx (2026-10-12 change).
+Evidence: `openDevice` and `STORAGE_HDD_SOURCE` in `StatusChecksCard` and the `pendingDeviceFocus` effect in `DeviceManagerPanel`, App.jsx (2026-10-12 change); `sourceId` in [StorageMonitorService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/storage/StorageMonitorService.java) (`storage-hdd`, `root-nvme`).
 
 ## Phone notifications: what reaches your phone today
 
@@ -71,7 +71,7 @@ When the channel is set, the app sends every critical event (for example a leak,
 Separate paths, each set up outside this app:
 
 - Home Assistant can send its own notifications through its Companion app. Which of its automations do is configured in Home Assistant and is not verified here.
-- Node-RED's overnight camera alert sends one only when a camera makes a detection while the cabin is armed away and nobody is present.
+- Node-RED's overnight camera alert sends one only when a camera makes a detection while the cabin is armed away and the one person it tracks shows as away.
 - The service monitor (Uptime Kuma) can send one when a hub service goes down; that is set up on the hub.
 
 **What does not exist.** The app has no notification feed or bell, and Config's **Notification Preferences** card is text only, with no controls. Nothing outside the cabin watches it yet, so if the cabin loses power or internet, no path can send anything (W-56, proposed).
@@ -90,11 +90,11 @@ What the app does and does not do:
 - The item can only be reminded in 1 hour (see above). It clears by itself when the sensor stops reporting a leak.
 - A phone notification is not guaranteed (see "Phone notifications" above).
 
-**How is the water turned back on?** The app never reopens the main water valve by itself, and a workflow started by a device event is not allowed to open it. In the app, the only way is a workflow set to **A person triggers it** with the step **Open the main water valve**, set up beforehand; a signed-in person presses **Fire now** on it. Whether such a workflow exists on your hub is not recorded here. Reset on a firing does not reopen the valve, and Devices has no on or off button for valves.
+**How is the water turned back on?** The app never reopens the main water valve by itself, and a workflow started by a device event is not allowed to open it. The way the app is built to reopen it is **Fire now** on a workflow that is set to **A person triggers it**, has the step **Open the main water valve** and is active (Fire now appears only on an active workflow); a signed-in person presses it. Whether such a workflow exists on your hub is not recorded here. Reset on a firing does not reopen the valve. Do not use the Devices page to turn the water valve on or off. Reopen the valve only after the leak is fixed, following the owner's own procedure.
 
-The app does not check that the leak sensor is dry before sending the open command. A sent command is not proof the valve moved: if the valve does not report open in time, a critical item "Commanded device did not confirm the expected state" appears, so check the valve in person. This has happened: once, a Home Assistant automation closed the valve again within a second of a reopen.
+The app does not check that the leak sensor is dry before sending the open command. A sent command is not proof the valve moved: if the valve does not report open in time, a critical item "Commanded device did not confirm the expected state" appears, so check the valve in person. If the command could not be sent at all, no alert appears; that firing's **History** shows the step as failed. This has happened: once, a Home Assistant automation closed the valve again within a second of a reopen.
 
-Evidence: [ActiveAlertService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/alerts/ActiveAlertService.java); `validateReopenGuard` and `fireManual` in [RulesController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java) and [WorkflowRuleService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/WorkflowRuleService.java) (2026-08-14 note on a reverted reopen); `powerToggleTarget` in App.jsx (no valve or lock toggle); [rules and safety](operations.md#rules-and-safety).
+Evidence: [ActiveAlertService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/alerts/ActiveAlertService.java); `validateReopenGuard` and `fireManual` in [RulesController](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RulesController.java) and [WorkflowRuleService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/workflow/WorkflowRuleService.java) (2026-08-14 note on a reverted reopen; `executeValveCommand` records REJECTED or PUBLISH_FAILED as a failed step with no alert; `fireManual` refuses an inactive workflow); `WorkflowExecutionHistory` and the Fire now button in App.jsx; [rules and safety](operations.md#rules-and-safety).
 
 ## Reset, Mark seen and why there is no undo
 
@@ -124,7 +124,7 @@ Evidence: `BuiltinRules` in App.jsx; `ruleStatuses()` in [AutomationRuleService]
 
 Audience: administrator.
 
-**Short answer.** The **Optimization Opportunities** card in Rules & Alerts lists patterns worth a look, found by scanning device readings. It never changes a device. Only an administrator can see it; others see "Admin access required". It is not the **Opportunities** tab in the left rail, which lists outside findings.
+**Short answer.** The **Optimization Opportunities** card in Rules & Alerts lists patterns worth a look, found by scanning device readings. It never changes a device. Only an administrator can see it; others see "Admin access required to view optimization opportunities." It is not the **Opportunities** tab in the left rail, which lists outside findings.
 
 - **Power**: a power meter whose readings have not dropped to 1 W or below for 48 hours or more; the card shows the draw in watts and for how many hours. It means worth a look, not waste: the mechanical-room heater is expected to draw power in cold weather.
 - **Duplicate readings**: a device and one of its services are both enabled and report the same reading, so it is carried twice. The card lists each service and the readings it repeats. Turn the service's Enabled switch off unless a workflow watches it; disabling never deletes its history. Open device goes to the device.
