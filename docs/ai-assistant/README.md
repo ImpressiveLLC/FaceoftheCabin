@@ -9,6 +9,7 @@ Source baseline: `cd145620bcbe7deaa30e236779ec7e1134db7880`. Reviewed from repos
 | Task | Start here |
 |---|---|
 | Understand the products and find supported capabilities | [Operating the platform](user-guide/operations.md) |
+| Understand Status Checks, silencing alerts and phone notifications | [Alerts and notifications](user-guide/alerts-and-notifications.md) |
 | Configure an instance or trace a setting | [Configuration](user-guide/configuration.md) |
 | Create an independent instance | [Independent installation](user-guide/independent-installation.md) |
 | Diagnose, deploy or recover | [Maintenance supplement](user-guide/maintenance.md) |
