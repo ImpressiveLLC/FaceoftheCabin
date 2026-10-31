@@ -955,7 +955,7 @@ All items below are **complete and pushed to GitHub**:
 - Wire real M920q entity IDs into `DeviceRegistry` default seeds
 - Swap `notify.mobile_app_YOUR_PHONE` in `CabinAutomations` for real HA mobile app service name
 - Armed/presence-aware severity escalation (deliberate MVP scope cut, see `event_severity`'s notes)
-- home-hub deployment
+- Home collector: more devices and its presence signal (no home-hub stack, D23)
 - Production Docker Compose with env-var secrets
 - If Family Notepad needs to sync across devices: `/api/notes` endpoint + poll/WebSocket push (see limitation in PRODUCT_NOTES.md)
 
