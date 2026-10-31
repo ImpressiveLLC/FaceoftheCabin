@@ -288,4 +288,74 @@ class DeviceCommandGuardTest {
         assertEquals(403, c.sendCommand("z2m-hall", Map.of("command", "lock.lock", "payload", Map.of("state", "UNLOCK"))).getStatusCode().value());
         verify(reg, never()).sendCommand(anyString(), anyString(), any());
     }
+
+    // ---- Home Assistant targets: one entity, its own domain, an allowed domain ----
+
+    @Test
+    void aHomeAssistantDeviceMustNameOneEntityAndACommandInThatDomain() {
+        DeviceStatus s = device("ha-9", "Porch plug", DeviceType.HOME_ASSISTANT_ENTITY, null);
+        for (String connection : List.of("all", "ALL", "group.living_room", "switch.a,switch.b", "switch.*", "switch", "", "Switch.Porch", "switch.porch extra")) {
+            DeviceDescriptor d = descriptor("ha-9", "Porch plug", DeviceType.HOME_ASSISTANT_ENTITY, connection, "ha_rest");
+            assertTrue(DeviceCommandGuard.denial(d, s, "switch.turn_on", null).isPresent(), connection);
+            assertTrue(DeviceCommandGuard.denial(d, s, "homeassistant.turn_on", null).isPresent(), connection);
+        }
+        DeviceDescriptor sw = descriptor("ha-9", "Porch plug", DeviceType.HOME_ASSISTANT_ENTITY, "switch.porch", "ha_rest");
+        assertTrue(DeviceCommandGuard.denial(sw, s, "switch.turn_on", null).isEmpty(), "the normal case still works");
+        for (String command : List.of("lock.unlock", "homeassistant.turn_on", "script.turn_on", "light.turn_on", "switch", "switch.turn_on.extra", "SWITCH.TURN_ON", "")) {
+            assertTrue(DeviceCommandGuard.denial(sw, s, command, null).isPresent(), "cross-domain or malformed: " + command);
+        }
+    }
+
+    @Test
+    void scriptsScenesAndAutomationsAreNotReachableFromTheDashboardCommandRoute() {
+        DeviceStatus s = device("ha-9", "Porch plug", DeviceType.HOME_ASSISTANT_ENTITY, null);
+        for (String entity : List.of("script.goodnight", "scene.movie", "automation.leak_response", "group.all_lights", "homeassistant.restart")) {
+            DeviceDescriptor d = descriptor("ha-9", "Porch plug", DeviceType.HOME_ASSISTANT_ENTITY, entity, "ha_rest");
+            String domain = entity.substring(0, entity.indexOf('.'));
+            assertTrue(DeviceCommandGuard.denial(d, s, domain + ".turn_on", null).isPresent(), entity);
+        }
+    }
+
+    // ---- pins for the three protections that must survive a mutation ----
+
+    @Test
+    void aDeviceSharingTheTargetsConnectionStringIsJudgedToo() {
+        DeviceRegistry reg = mock(DeviceRegistry.class);
+        DeviceController c = new DeviceController(reg, mock(Zigbee2MqttAdapter.class), mock(MqttBridgeService.class), mock(DeviceHealthMonitor.class),
+            mock(DeviceDisplayConfigService.class), mock(JdbcDeviceLifecycleVocabularyStore.class),
+            mock(DeviceReportingRelationshipRepository.class), mock(DeviceRepository.class));
+        DeviceDescriptor neutral = descriptor("ha-1", "Porch plug", DeviceType.HOME_ASSISTANT_ENTITY, "switch.shared_x", "ha_rest");
+        DeviceDescriptor sibling = descriptor("ha-2", "Plug 2", DeviceType.WATER_VALVE, "switch.shared_x", "ha_rest");
+        when(reg.descriptor("ha-1")).thenReturn(Optional.of(neutral));
+        when(reg.get("ha-1")).thenReturn(device("ha-1", "Porch plug", DeviceType.HOME_ASSISTANT_ENTITY, null));
+        when(reg.descriptor("ha-2")).thenReturn(Optional.of(sibling));
+        when(reg.get("ha-2")).thenReturn(device("ha-2", "Plug 2", DeviceType.WATER_VALVE, null));
+        when(reg.descriptorsByConnectionString("switch.shared_x")).thenReturn(List.of(neutral, sibling));
+        when(reg.sendCommand(anyString(), anyString(), any())).thenReturn(true);
+
+        assertEquals(403, c.sendCommand("ha-1", Map.of("command", "switch.turn_on")).getStatusCode().value());
+        verify(reg, never()).sendCommand(anyString(), anyString(), any());
+    }
+
+    @Test
+    void anInferredLockTypeAloneMakesTheTargetALock() {
+        DeviceDescriptor edited = descriptor("z2m-hall", "Hall plug", DeviceType.POWER_METER, "zigbee2mqtt/hall", "mqtt");
+        DeviceStatus status = device("z2m-hall", "Hall plug", DeviceType.POWER_METER, null);
+        DeviceCommandGuard.Resolution inferredType = new DeviceCommandGuard.Resolution(List.of(
+            reached("z2m-hall", "Hall plug", DeviceType.POWER_METER, DeviceType.LOCK, null)), false);
+        assertTrue(DeviceCommandGuard.denial(edited, status, "state.set", Map.of("state", "UNLOCK"), inferredType).isPresent());
+        assertTrue(DeviceCommandGuard.denial(edited, status, "lock.lock", Map.of("state", "UNLOCK"), inferredType).isPresent());
+        assertTrue(DeviceCommandGuard.denial(edited, status, "lock.lock", Map.of("state", "LOCK"), inferredType).isEmpty());
+    }
+
+    @Test
+    void anInferredAccessControlCapabilityAloneMakesTheTargetALock() {
+        DeviceDescriptor edited = descriptor("z2m-hall", "Hall plug", DeviceType.POWER_METER, "zigbee2mqtt/hall", "mqtt");
+        DeviceStatus status = device("z2m-hall", "Hall plug", DeviceType.POWER_METER, null);
+        DeviceCommandGuard.Resolution inferredCaps = new DeviceCommandGuard.Resolution(List.of(
+            reached("z2m-hall", "Hall plug", DeviceType.POWER_METER, null, Set.of(DeviceCapability.ACCESS_CONTROL))), false);
+        assertTrue(DeviceCommandGuard.denial(edited, status, "state.set", Map.of("state", "UNLOCK"), inferredCaps).isPresent());
+        assertTrue(DeviceCommandGuard.denial(edited, status, "lock.lock", Map.of("state", "UNLOCK"), inferredCaps).isPresent());
+        assertTrue(DeviceCommandGuard.denial(edited, status, "lock.lock", Map.of("state", "LOCK"), inferredCaps).isEmpty());
+    }
 }

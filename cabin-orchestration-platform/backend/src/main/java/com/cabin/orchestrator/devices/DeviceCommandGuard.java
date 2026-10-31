@@ -26,7 +26,11 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>a <b>valve</b> (any id, name, entity id or connection string containing "valve") accepts no command from here, open or close;</li>
  *   <li>a device of type {@code LOCK} accepts only {@code lock.lock} (the secure direction): never an unlock or any other command;</li>
- *   <li>any other device whose id, name or entity id contains "lock" accepts no command from here.</li>
+ *   <li>any other device whose id, name or entity id contains "lock" accepts no command from here;</li>
+ *   <li>a device on the {@code ha_rest} adapter must name exactly one entity ({@code domain.object}, lower case), and its command must be
+ *       {@code domain.service} in that same domain, from a short allow-list of domains (switch, light, cover, input_boolean, lock): the adapter
+ *       posts the connection string as the entity id, so a group, an {@code all} target, a script or a cross-domain command is refused;</li>
+ *   <li>a device reached by the same connection string, or by the same Zigbee2MQTT name or address, is judged as well (see {@link Resolution}).</li>
  * </ul>
  * Automation is separate: workflows reach {@code DeviceRegistry.sendCommand} through their own gate (CommandCatalogService),
  * so a leak workflow that closes the valve is not affected.
@@ -37,6 +41,10 @@ public final class DeviceCommandGuard {
     public static final Pattern DENIED_ENTITY = Pattern.compile("valve|lock");
 
     private static final String SECURE_LOCK_COMMAND = "lock.lock";
+    private static final Pattern HA_ENTITY = Pattern.compile("^([a-z0-9_]+)\\.[a-z0-9_]+$");
+    private static final Pattern HA_COMMAND = Pattern.compile("^([a-z0-9_]+)\\.[a-z0-9_]+$");
+    /** Domains the dashboard command route may call on a Home Assistant entity. */
+    private static final Set<String> HA_COMMAND_DOMAINS = Set.of("switch", "light", "cover", "input_boolean", "lock");
 
     private DeviceCommandGuard() {}
 
@@ -83,6 +91,10 @@ public final class DeviceCommandGuard {
             + nullToEmpty(device.attributes() == null ? null : device.attributes().get("entityId")) + " "
             + nullToEmpty(descriptor.deviceId()) + " " + nullToEmpty(descriptor.name()) + " "
             + nullToEmpty(descriptor.connectionString())).toLowerCase(Locale.ROOT);
+        if ("ha_rest".equals(descriptor.protocolAdapter())) {
+            Optional<String> shape = haTargetDenial(descriptor.connectionString(), command);
+            if (shape.isPresent()) return shape;
+        }
         String selfId = descriptor.deviceId();
         if (resolution != null && resolution.unresolved()) {
             return Optional.of("This device's Zigbee2MQTT target is not a known device, so it cannot be commanded from the dashboard.");
@@ -144,6 +156,20 @@ public final class DeviceCommandGuard {
             + " " + (device == null ? "" : nullToEmpty(device.deviceId()) + " " + nullToEmpty(device.name()) + " "
             + nullToEmpty(device.attributes() == null ? null : device.attributes().get("entityId")));
         return DENIED_ENTITY.matcher(text.toLowerCase(Locale.ROOT)).find();
+    }
+
+    /** One entity in domain.object form, and a command in that same allowed domain; anything else (all, groups, lists, scripts) is refused. */
+    private static Optional<String> haTargetDenial(String connectionString, String command) {
+        java.util.regex.Matcher entity = HA_ENTITY.matcher(connectionString == null ? "" : connectionString);
+        java.util.regex.Matcher cmd = HA_COMMAND.matcher(command == null ? "" : command);
+        if (!entity.matches()) {
+            return Optional.of("This device must name exactly one Home Assistant entity to be commanded from the dashboard.");
+        }
+        String domain = entity.group(1);
+        if (!cmd.matches() || !cmd.group(1).equals(domain) || !HA_COMMAND_DOMAINS.contains(domain)) {
+            return Optional.of("That command is not allowed for this device from the dashboard.");
+        }
+        return Optional.empty();
     }
 
     private static boolean lockPayloadAllowed(String protocolAdapter, Object payload) {

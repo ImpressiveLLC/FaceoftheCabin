@@ -1965,6 +1965,12 @@ describe("DmCapabilityActions: no dashboard command buttons for a valve or a loc
     expect(screen.getByRole("button", { name: "Turn on" })).toBeTruthy();
   });
 
+  it("dashboardCommandLimit also uses the device type and capability, not only the labels", () => {
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Plug", type: "WATER_VALVE" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Plug", type: "POWER_METER", attributes: { capabilities: ["COMMAND", "ACCESS_CONTROL"] } })).toBe("lock-only");
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Plug", type: "POWER_METER", attributes: { capabilities: ["COMMAND"] } })).toBeNull();
+  });
+
   it("dashboardCommandLimit mirrors the backend rules", () => {
     expect(dashboardCommandLimit({ deviceId: "z2m-main_water_valve" })).toBe("none");
     expect(dashboardCommandLimit({ deviceId: "a", name: "Water Valve" })).toBe("none");

@@ -4997,8 +4997,8 @@ function DmDeviceWorkflows({ device, workflows, onManage }) {
  */
 export function dashboardCommandLimit(device) {
   const text = `${device?.deviceId || ""} ${device?.name || ""} ${device?.attributes?.entityId || ""}`.toLowerCase();
-  if (text.includes("valve")) return "none";
-  if (device?.type === "LOCK") return "lock-only";
+  if (text.includes("valve") || device?.type === "WATER_VALVE") return "none";
+  if (device?.type === "LOCK" || (device?.attributes?.capabilities || []).includes("ACCESS_CONTROL")) return "lock-only";
   if (/valve|lock/.test(text)) return "none";
   return null;
 }
