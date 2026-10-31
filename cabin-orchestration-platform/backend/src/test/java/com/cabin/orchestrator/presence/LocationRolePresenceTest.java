@@ -146,4 +146,22 @@ class LocationRolePresenceTest {
         assertThat(legacy.anyPresentAt("cabin")).isTrue();
         assertThat(legacy.unregisteredCounted()).isEmpty();
     }
+
+    @Test
+    void aPolledSnapshotOfAMaintenancePersonAlreadyPresentIsNotAnArrival() {
+        store.setRoles("contractor", "cabin", EnumSet.of(LocationRole.MAINTENANCE));
+        registry.recordSnapshot("cabin", "contractor", true); // the first poll after a backend restart
+        registry.recordSnapshot("cabin", "contractor", true);
+
+        verify(events, never()).publish(any());
+    }
+
+    @Test
+    void aPolledSnapshotThatSawThePersonLeaveAndComeBackIsAVisit() {
+        store.setRoles("contractor", "cabin", EnumSet.of(LocationRole.MAINTENANCE));
+        registry.recordSnapshot("cabin", "contractor", false);
+        registry.recordSnapshot("cabin", "contractor", true);
+
+        verify(events, times(1)).publish(any());
+    }
 }

@@ -77,13 +77,33 @@ public class PresenceSignalRegistry {
      * on subscribe; a replay never writes a maintenance visit, so a restart or deploy does not log a visit that did not happen.
      */
     public LocationRoleService.Treatment record(String location, String personId, boolean present, boolean retained) {
+        return record(location, personId, present, retained ? Arrival.NEVER : Arrival.ANY_NEW_PRESENCE);
+    }
+
+    /**
+     * A polled state (the Home Assistant discovery pass), not a message. The first poll after a backend restart sees every
+     * person's current state and cannot tell an arrival from "already there", so a visit is written only for a not-present
+     * to present change the registry itself observed (W-129 item 1).
+     */
+    public LocationRoleService.Treatment recordSnapshot(String location, String personId, boolean present) {
+        return record(location, personId, present, Arrival.OBSERVED_CHANGE);
+    }
+
+    private enum Arrival { ANY_NEW_PRESENCE, OBSERVED_CHANGE, NEVER }
+
+    private LocationRoleService.Treatment record(String location, String personId, boolean present, Arrival arrival) {
         String key = key(location, personId);
         LocationRoleService.Treatment treatment = treatmentOf(location, personId);
         if (treatment == LocationRoleService.Treatment.MAINTENANCE_ONLY) {
             signals.remove(key);
             unregistered.remove(key);
             Boolean was = maintenancePresent.put(key, present);
-            if (present && !retained && !Boolean.TRUE.equals(was)) recordMaintenanceVisit(location, personId);
+            boolean arrived = present && !Boolean.TRUE.equals(was) && switch (arrival) {
+                case ANY_NEW_PRESENCE -> true;
+                case OBSERVED_CHANGE -> was != null;
+                case NEVER -> false;
+            };
+            if (arrived) recordMaintenanceVisit(location, personId);
             return treatment;
         }
         maintenancePresent.remove(key);
@@ -91,6 +111,44 @@ public class PresenceSignalRegistry {
         if (treatment == LocationRoleService.Treatment.UNREGISTERED_COUNTED) unregistered.add(key);
         else unregistered.remove(key);
         return treatment;
+    }
+
+    /**
+     * Called after a person's roles at a location changed (W-129 item 2). The stored signal was recorded under the old
+     * roles, so it is re-judged now: a person who has become maintenance-only is no longer counted, and if they were present
+     * a departure (PRESENCE_CHANGED, present false) is published so presence-arrived workflows and the profile see them leave;
+     * a person who has become registered stops being listed as unregistered at once, not at their next message.
+     * Returns the treatment now in force.
+     */
+    public LocationRoleService.Treatment reevaluate(String location, String personId) {
+        String key = key(location, personId);
+        LocationRoleService.Treatment treatment = treatmentOf(location, personId);
+        Signal stored = signals.get(key);
+        if (treatment == LocationRoleService.Treatment.MAINTENANCE_ONLY) {
+            if (stored != null) {
+                signals.remove(key);
+                unregistered.remove(key);
+                maintenancePresent.put(key, stored.present());
+                if (stored.present()) publishPresenceChanged(location, personId, false);
+            }
+        } else if (treatment == LocationRoleService.Treatment.UNREGISTERED_COUNTED) {
+            maintenancePresent.remove(key);
+            if (stored != null) unregistered.add(key);
+        } else {
+            maintenancePresent.remove(key);
+            unregistered.remove(key);
+        }
+        return treatment;
+    }
+
+    private void publishPresenceChanged(String location, String personId, boolean present) {
+        if (events == null) return;
+        try {
+            events.publish(new CabinEvent(UUID.randomUUID().toString(), "presence:" + location + ":" + personId, "PRESENCE_CHANGED",
+                "INFO", Instant.now(), Map.of("present", present, "personId", personId, "location", location)));
+        } catch (RuntimeException e) {
+            log.warn("Could not publish presence change of {} at {}: {}", personId, location, e.getMessage());
+        }
     }
 
     /** Counted signals from people who are not in the tracked-person registry yet. */
