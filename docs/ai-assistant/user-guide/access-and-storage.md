@@ -4,12 +4,14 @@ Audience: administrators, plus the household-safe summary in "Who can see and ch
 
 ## Who can see and change what
 
+Audience: household.
+
 | Who | How they get in | What they can do |
 |---|---|---|
 | Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Guest Access (share and demo links), Managed Users, Trim old backups, Optimization Opportunities, Location Roles and platform import |
 | Household member signed in with Google | Google sign-in with any other accepted account | See the app and make the changes that need a sign-in, for example workflows, notes and chores. Administrator-only screens say "Admin access required" or "Only an administrator can trim storage" |
-| Managed user, "Household member (read/write)" | An emailed sign-in link (Managed Users) | Same as a household member. Cannot manage share links or managed users |
-| Managed user, "Viewer (read-only)" | An emailed sign-in link | Look only. Any change is refused |
+| Managed user, "Household member (read/write)" | A sign-in link from Managed Users (copied and handed over, or emailed) | Same as a household member. Cannot manage share links or managed users |
+| Managed user, "Viewer (read-only)" | A sign-in link from Managed Users (copied or emailed) | Look only. Any change is refused |
 | Guest link | A share link from Guest Access | Read-only, and only the parts ticked when the link was made: Dashboard, Device states, Alerts, Historical readings |
 | Demo link | A demo link from Guest Access | The whole app, read-only. Cameras, locks, motion and door sensors, and phones show as "hidden for Demo viewers" |
 
@@ -41,19 +43,21 @@ Evidence: `DemoLinkSection` in `App.jsx`; `CabinAccessTokenService.create` (a de
 
 ## Add someone without a Google account (Managed Users)
 
-**Short answer.** In Config > **Managed Users**, enter their email address and name, choose **Viewer (read-only)** or **Household member (read/write)**, and press **Add managed user**. Then press **Invite** to email them a sign-in link. There is no password.
+**Short answer.** In Config > **Managed Users**, enter their email address and name, choose **Viewer (read-only)** or **Household member (read/write)**, and press **Add managed user**. Then press **Copy sign-in link** to copy a link and hand it to them yourself, or **Invite** to email it. There is no password.
 
 - Adding and inviting are separate, so you can fix a mistyped email before anything is sent.
-- The emailed link works once and expires after 30 minutes. If it has expired or was used, press **Invite** again. After they use it, they stay signed in on that browser for up to 90 days.
-- **Deactivate** signs them out everywhere at once and blocks new links. **Reactivate** lets them be invited again. Nothing is deleted.
-- **Invite** needs the hub's email service to be set up (host-dependent). If it is not, Invite shows an error instead of "Invite sent."
+- The link, copied or emailed, works once and expires after 30 minutes. If it has expired or was used, press **Copy sign-in link** (or **Invite**) again. Anyone who holds a copied link can sign in as that person until it is used or expires, so hand it over privately. After they use it, they stay signed in on that browser for up to 90 days.
+- **Deactivate** signs them out everywhere at once and blocks new links. **Reactivate** lets them be given a new link again. Nothing is deleted.
+- **Invite** needs the hub's email service to be set up (host-dependent), and a test sender may only mail its own account. If it cannot send, Invite shows an error instead of "Invite sent." **Copy sign-in link** does not use email: use it when Invite fails.
 - A managed user can never manage share links or other managed users, even as a household member.
 
 Only administrators manage share links and managed users. Managed accounts, guest links and demo links are always refused on these screens.
 
-Evidence: `ManagedUsersCard` in `App.jsx`; `ManagedUsersController`; `ManagedUserService` (`MAGIC_LINK_TTL` 30 minutes, `SESSION_TTL` 90 days, `validateSession` ends a deactivated user's sessions); `ResendEmailSender` refuses to send when its key is not configured; `GoogleAuthInterceptor.handleManagedSession` returns 403 for `/api/managed-users` and `/api/access-tokens`.
+Evidence: `ManagedUsersCard` in `App.jsx`; `ManagedUsersController`; `ManagedUserService` (`createSignInLink` builds the copied link; the route answers `Cache-Control: no-store`; `MAGIC_LINK_TTL` 30 minutes, `SESSION_TTL` 90 days, `validateSession` ends a deactivated user's sessions); `ResendEmailSender` refuses to send when its key is not configured; `GoogleAuthInterceptor.handleManagedSession` returns 403 for `/api/managed-users` and `/api/access-tokens`.
 
 ## Disk space warnings
+
+Audience: administrator.
 
 **Short answer.** The hub watches two disks: the large storage disk (nightly backups, recorded video, sensor-history archives) and the system disk (the database and Docker). At **60 percent** full you get a warning; at **75 percent**, a critical alert. It appears in Rules & Alerts > Status Checks, says how full the disk is, and says what to do. It clears once the disk falls 3 points below the line, and repeats once a day while the disk stays above it. The warning itself never deletes anything.
 

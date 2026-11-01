@@ -2314,9 +2314,12 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 .guest-access-list { display: flex; flex-direction: column; gap: 8px; }
 .guest-access-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 10px;
   padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-secondary);
 }
+/* The first child (a name or an id) may use the whole row and breaks anywhere; the action buttons wrap below it when the card is narrow.
+   Without this the row's non-shrinking buttons left the name one character wide, so a long id rendered as a vertical column. */
+.guest-access-row > :first-child { flex: 1 1 10em; min-width: 0; overflow-wrap: anywhere; }
 .guest-access-row.guest-access-revoked { opacity: 0.55; }
 .guest-access-usage { display: block; }
 .guest-access-activity { margin-top: 4px; font-size: 0.85rem; }
@@ -2325,7 +2328,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .guest-access-activity-table th, .guest-access-activity-table td { text-align: left; padding: 2px 12px 2px 0; }
 .guest-access-history { margin-top: 8px; }
 .guest-access-history > summary { cursor: pointer; font-size: 13px; opacity: 0.8; }
-.managed-users-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.managed-users-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* ─── Optimization Opportunities (Sprint 5 WSJF #1) ─────────────────────── */
 .opportunity-type-badge {
