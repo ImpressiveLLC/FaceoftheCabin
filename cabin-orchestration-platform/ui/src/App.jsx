@@ -2659,8 +2659,8 @@ export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.
         <span className="config-hint">
           {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
         </span>
-        <span className="config-hint guest-access-usage">{describeLinkUsage(t)}</span>
-        <AccessActivity id={t.id} doFetch={doFetch} apiBase={apiBase} />
+        {t.scope?.includes("demo") && <span className="config-hint guest-access-usage">{describeLinkUsage(t)}</span>}
+        {t.scope?.includes("demo") && <AccessActivity id={t.id} doFetch={doFetch} apiBase={apiBase} />}
       </div>
       {status.active
         ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
@@ -2675,7 +2675,7 @@ export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.
       <DemoLinkSection doFetch={doFetch} apiBase={apiBase} onCreated={refresh} />
 
       <h4 className="guest-access-subhead">Other share links</h4>
-      <p className="config-desc">Read-only links for people without a Google account — an insurance adjuster, a contractor.</p>
+      <p className="config-desc">A convenience view of what is open without signing in (D14), for sharing a look with someone who has no Google account: an insurance adjuster, a tradesperson. Read-only.</p>
       <div className="guest-access-form">
         <input value={label} placeholder="Label, e.g. Insurance Claim Sep 2026"
           onChange={e => setLabel(e.target.value)} />
@@ -10369,7 +10369,7 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
     return (
       <div className="guest-view">
         <h1>Cabin Conditions</h1>
-        <p>This link isn't valid, has expired, or has been revoked. Contact the cabin owner for a new one.</p>
+        <p>This link can't be opened. Contact the cabin owner.</p>
       </div>
     );
   }
@@ -10383,10 +10383,10 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
   return (
     <div className="guest-view">
       <h1>{dashboardConfig?.platformName || "Cabin Conditions"}</h1>
-      <p className="config-hint">Read-only view — only the sections this link is scoped to grant are shown below.</p>
+      <p className="config-hint">Read-only view of cabin conditions.</p>
 
       {nothingGranted && (
-        <p className="config-hint">This link doesn't currently grant access to any data. Contact the cabin owner.</p>
+        <p className="config-hint">There is nothing to show right now. Contact the cabin owner.</p>
       )}
 
       {alerts && alerts.length > 0 && (
