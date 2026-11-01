@@ -28,7 +28,7 @@ Evidence: `DeviceLifecycleState`, `DeviceLifecycleAction` (ACCEPT to AVAILABLE, 
 
 ## Pair a Zigbee device
 
-Audience: household (signed in). Devices > **Add** > **Pair a Zigbee device**. Put the device in pairing mode (usually hold its button until the light flashes), then press **Open pairing window**. A countdown of 4 minutes 14 seconds runs, new devices are listed as they appear, and **Stop early** closes the window. If something paired, choose **Add another** or **See all devices**; if not, **Try again**. A newly paired device arrives as a candidate; decide on it as described above.
+Audience: administrator. Devices > **Add** > **Pair a Zigbee device**. Put the device in pairing mode (usually hold its button until the light flashes), then press **Open pairing window**. A countdown of 4 minutes 14 seconds runs, new devices are listed as they appear, and **Stop early** closes the window. If something paired, choose **Add another** or **See all devices**; if not, **Try again**. A newly paired device arrives as a candidate; decide on it as described above.
 
 If the window will not open, the screen says why: you are signed out (sign in under Config), the session is read-only (guest or demo), or the hub could not be reached. The countdown shows only that the hub accepted the request; if Zigbee2MQTT itself is down nothing pairs and the window ends with "No new devices were found". Pairing opens on every Zigbee network the hub is set up for (the cabin's by default, and Home's too if the hub is configured for it, a host setting), whichever location you have selected. It does not set the device up in Home Assistant.
 
@@ -36,7 +36,7 @@ Evidence: `ZigbeePairingFlow`, `pairingRefusedMessage` in [App.jsx](../../../cab
 
 ## Scan for WiFi devices at Home
 
-Audience: household (signed in). Devices > **Add** > **Scan for devices** > **Start scan**. It looks for devices that are already on WiFi (smart speakers, TVs, printers, HomeKit or Matter accessories) for 4 minutes 14 seconds. No pairing mode is needed: power the device on and make sure it has joined the WiFi.
+Audience: administrator. Devices > **Add** > **Scan for devices** > **Start scan**. It looks for devices that are already on WiFi (smart speakers, TVs, printers, HomeKit or Matter accessories) for 4 minutes 14 seconds. No pairing mode is needed: power the device on and make sure it has joined the WiFi.
 
 What it does not do: it scans **Home's** network only, through the scan app on Home's phone collector, not the cabin's network, whichever location is selected. It needs that phone collector running (host setting). Found devices arrive as Home candidates with a generic type, and nothing is controlled or set up by the scan. The scan screen does not report a refused request, so if nothing is found while you are signed out, sign in and try again.
 
@@ -58,7 +58,7 @@ Evidence: `PlatformImportFlow`, `PendingImportRow` in [App.jsx](../../../cabin-o
 
 ## Remove a device and bring it back
 
-Audience: household. **Remove** takes a device out of the app without deleting anything. Devices > **Remove**, select the device, press **Remove this device**, then **Confirm remove**.
+Audience: administrator. **Remove** takes a device out of the app without deleting anything. Devices > **Remove**, select the device, press **Remove this device**, then **Confirm remove**.
 
 What Remove does: the device disappears from Device Manager and Monitoring, is marked Ignored and switched off in the app, and the app stops checking or commanding it. It stays removed even when its integration reports it again. What it does not do: it deletes no history, and it does not unpair the device from Zigbee2MQTT or remove it from Home Assistant, so Home Assistant automations that use it keep running. The Remove screen shows no error if the hub refused (for example when you are signed out), so check that the device is gone.
 
@@ -85,7 +85,7 @@ Evidence: Device Manager toolbar, `LIFECYCLE_FILTER_OPTIONS`, `DEFAULT_LIFECYCLE
 
 ## Rename a device or set its room and area
 
-Audience: household (signed in). Devices > **Change**, select the device.
+Audience: administrator. Devices > **Change**, select the device.
 
 - **Display Name**, then **Save changes**, renames it in this app. Workflows follow the device's id, not its name, so renaming does not break them, and the device id never changes. Once you save a name, a later report from Home Assistant or Zigbee2MQTT does not overwrite it. Renaming here does not rename the device in Home Assistant or Zigbee2MQTT. For a Zigbee device with Home Assistant services under it, rename the Zigbee (parent) device: its card and chart use that name.
 - **Room**, then **Save changes**, is what Group > Room uses ("Room not assigned" when blank). Clearing it and saving removes it.
@@ -98,7 +98,7 @@ Evidence: `DmEditForm`, `DmAreaEditor` in [App.jsx](../../../cabin-orchestration
 
 ## The Enabled switch
 
-Audience: household (signed in). Enabled decides whether the app actively uses a device. It is the switch at the end of each row in See and Change, and the Enabled toggle in Change (save with **Save changes**).
+Audience: administrator. Enabled decides whether the app actively uses a device. It is the switch at the end of each row in See and Change, and the Enabled toggle in Change (save with **Save changes**).
 
 - **On**: the app checks the device's check-ins, and the command buttons in its details (Turn on, Turn off, Lock, Unlock) work.
 - **Off**: the app stops checking it and those detail buttons are refused, but it keeps the device, its settings and its history. This is the way to stop using a device without removing it. The row's On/Off button goes straight to Home Assistant and is not blocked by Enabled.
@@ -110,7 +110,7 @@ Evidence: `DmRowEnableToggle` ("Enabling accepts and assigns this device") and `
 
 ## Turn a device on or off from the app
 
-Audience: household (signed in). **How do I turn the heater on?** Devices > See, find the heater's row and press its **On**/**Off** button. The button goes through Home Assistant and needs you signed in; signed out, a press fails and its tip says "Not changed: Sign in to control devices". It flips at once, then follows what the device reports.
+Audience: administrator. **How do I turn the heater on?** Devices > See, find the heater's row and press its **On**/**Off** button. The button goes through Home Assistant and needs you signed in; signed out, a press fails and its tip says "Not changed: Sign in to control devices". It flips at once, then follows what the device reports.
 
 Where on/off buttons appear:
 - The row's On/Off button: only on cabin devices that report On or Off as a Home Assistant switch and are Available or Assigned. Valves and locks never get it.
@@ -129,7 +129,7 @@ Evidence: `DmPowerToggle`, `powerToggleTarget`, `callHaService`, `DmCapabilityAc
 
 ## On the Way: warm up the cabin before you arrive
 
-Audience: household (signed in). **On the Way** tells the cabin you are coming so Home Assistant can start its preheat. It is on My Places ("Heading to the cabin?"), and in the Devices and Monitoring toolbars. Press it once, signed in.
+Audience: administrator. **On the Way** tells the cabin you are coming so Home Assistant can start its preheat. It is on My Places ("Heading to the cabin?"), and in the Devices and Monitoring toolbars. Press it once, signed in.
 
 - "Preheat started. Mech room is ..." means Home Assistant accepted the request, and shows the last mech room temperature (or "not reporting").
 - "Preheat: no answer from Home Assistant. It may or may not have started" means the outcome is unknown: check the mech room heater before trying again.
@@ -159,7 +159,7 @@ Evidence: `checkinStatusLabel`, `DmDeviceDetail` in [App.jsx](../../../cabin-orc
 
 ## Change how a device shows on Monitoring
 
-Audience: household (signed in). Monitoring > **Change**, select a device. You can set a **Custom display name**, a **Severity override** (Default, OK, Warn or Alert, which sets the tile's color) and **State label overrides** (show a raw status such as ONLINE as your own word), then **Save overrides**.
+Audience: administrator. Monitoring > **Change**, select a device. You can set a **Custom display name**, a **Severity override** (Default, OK, Warn or Alert, which sets the tile's color) and **State label overrides** (show a raw status such as ONLINE as your own word), then **Save overrides**.
 
 These settings apply to the current presence profile only (At Home, At Cabin, Away or Both Occupied, shown above the list), so set them again for each profile you want. Monitoring > **Remove** clears a device's overrides for that profile; it does not remove the device. The overrides change only how the tile looks: they do not change alerts, Status Checks or the device itself. The form says "Saved" even if the save failed (for example when signed out), so check the tile.
 

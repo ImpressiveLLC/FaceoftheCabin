@@ -205,4 +205,22 @@ class AskRoutingCoverageTest {
         @Override public List<KnowledgeNode> findByEntityRef(String entityRef) { return List.of(); }
         @Override public List<KnowledgeNode> loadAll() { return List.of(); }
     }
+
+    @Test
+    void aHouseholdMemberAskingAboutALeakGetsTheWhatToDoNowSectionAndNotTheValveOne() {
+        String q = "There's a water leak alert, what do I do?";
+        List<String> household = refs(q, HouseholdRole.ADULT_HOUSEHOLD_MEMBER);
+        assertThat(household).anyMatch(r -> r.endsWith("#what-to-do-right-now-when-a-water-leak-is-reported"));
+        assertThat(household).noneMatch(r -> r.endsWith("#a-water-leak-alert-and-turning-the-water-back-on"));
+        List<String> admin = refs(q, HouseholdRole.ADMINISTRATOR);
+        assertThat(admin).anyMatch(r -> r.endsWith("#what-to-do-right-now-when-a-water-leak-is-reported"));
+        assertThat(admin).anyMatch(r -> r.endsWith("#a-water-leak-alert-and-turning-the-water-back-on"));
+    }
+
+    @Test
+    void keepFiringAndKeepsFiringBothReachTheAlertNoiseCategory() {
+        for (String q : List.of("Why does this alert keep firing?", "This alert keeps firing, what do I do?", "My alert keeps firing")) {
+            assertThat(builder.categoryIdFor(q)).as(q).isEqualTo("alert_noise");
+        }
+    }
 }

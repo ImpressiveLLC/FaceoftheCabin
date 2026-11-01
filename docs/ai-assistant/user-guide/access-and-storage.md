@@ -4,6 +4,8 @@ Audience: administrators, plus the household-safe summary in "Who can see and ch
 
 ## Who can see and change what
 
+Audience: household.
+
 | Who | How they get in | What they can do |
 |---|---|---|
 | Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Guest Access (share and demo links), Managed Users, Trim old backups, Optimization Opportunities, Location Roles and platform import |
@@ -54,6 +56,8 @@ Only administrators manage share links and managed users. Managed accounts, gues
 Evidence: `ManagedUsersCard` in `App.jsx`; `ManagedUsersController`; `ManagedUserService` (`MAGIC_LINK_TTL` 30 minutes, `SESSION_TTL` 90 days, `validateSession` ends a deactivated user's sessions); `ResendEmailSender` refuses to send when its key is not configured; `GoogleAuthInterceptor.handleManagedSession` returns 403 for `/api/managed-users` and `/api/access-tokens`.
 
 ## Disk space warnings
+
+Audience: administrator.
 
 **Short answer.** The hub watches two disks: the large storage disk (nightly backups, recorded video, sensor-history archives) and the system disk (the database and Docker). At **60 percent** full you get a warning; at **75 percent**, a critical alert. It appears in Rules & Alerts > Status Checks, says how full the disk is, and says what to do. It clears once the disk falls 3 points below the line, and repeats once a day while the disk stays above it. The warning itself never deletes anything.
 
