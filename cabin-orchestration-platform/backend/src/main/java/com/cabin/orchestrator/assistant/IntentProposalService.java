@@ -97,10 +97,24 @@ public class IntentProposalService {
         long modelMillis = 0;
         String validation = "NOT_RUN";
 
-        Optional<IntentChatClient.ChatResult> chat = chatClient.chat(model, contract.systemPrompt(), contract.requestContent(text), contract.schema());
-        Response response;
+        // A politeness wrapper is not the request: what follows it is answered as it stands, and a wrapped command is the command
+        // (W-140). The audit log below keeps the text as typed.
+        QuestionShape.Unwrapped unwrapped = QuestionShape.unwrap(text);
+        String working = unwrapped.wrapped() ? unwrapped.remainder() : text;
+        Response response = null;
         ParsedIntent parsed = null;
-        if (chat.isEmpty()) {
+        Optional<IntentChatClient.ChatResult> chat = Optional.empty();
+        if (unwrapped.wrapped() && working.isBlank()) {
+            // nothing after the wrapper ("may I inquire something"): no model call, ask what
+            decisions.add(new ProposalAuditLog.Decision("request", "WRAPPER_ONLY", null, List.of("politeness wrapper with nothing after it")));
+            response = new Response(requestId, Status.CLARIFY, null, "WRAPPER_ONLY", "Of course. What would you like to ask?",
+                null, List.of(), List.of(), null);
+        } else {
+            chat = chatClient.chat(model, contract.systemPrompt(), contract.requestContent(working), contract.schema());
+        }
+        if (response != null) {
+            // answered above
+        } else if (chat.isEmpty()) {
             validation = "NO_MODEL_OUTPUT";
             response = refused(requestId, null, "MODEL_UNAVAILABLE", "The language model did not answer, so nothing was proposed.");
         } else {
@@ -109,7 +123,7 @@ public class IntentProposalService {
             try {
                 parsed = contract.validate(rawOutput);
                 validation = "OK";
-                response = handle(requestId, text, parsed, role, principal, decisions);
+                response = handle(requestId, working, parsed, role, principal, decisions);
             } catch (ContractViolation e) {
                 validation = "INVALID: " + e.getMessage();
                 response = refused(requestId, null, "MALFORMED_MODEL_OUTPUT",
