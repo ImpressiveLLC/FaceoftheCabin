@@ -40,8 +40,10 @@ final class QuestionShape {
     /** Conversational openers skipped before the check, longest first so "thank you" wins over "thank". */
     private static final List<String> OPENERS = List.of(
         // multi-word forms first, so "i have a question about" wins over "i"
+        // "can/could/may i ask ..." is deliberately NOT an opener: it starts with a lead phrase ("can i"), so a capability question
+        // such as "can I ask you to turn on the heater?" must stay a question (pinned by QuestionShapeNoRegressionTest).
         "quick question", "one more question", "another question", "next question", "my question is", "i have a question about",
-        "i have a question", "i had a question", "can i ask", "could i ask", "may i ask", "i would like to ask", "id like to ask",
+        "i have a question", "i had a question", "i would like to ask", "id like to ask",
         "i was wondering", "just wondering", "i wonder", "just curious", "curious", "wondering", "one more thing", "quick one",
         "tiny helpdesk", "thank you", "thanks a lot", "many thanks", "help desk", "helpdesk", "ask the helpdesk", "hey there",
         "hi there", "hello there", "good day", "good morning", "good afternoon", "good evening", "dear sir or madam", "dear sir",
@@ -56,9 +58,10 @@ final class QuestionShape {
     private static final Pattern WHITESPACE = Pattern.compile("[\\s\\p{Z}]+");
     private static final Pattern LEADING_JUNK = Pattern.compile("^[^\\p{L}\\p{N}]+");
     private static final Pattern SENTENCE_BREAK = Pattern.compile("[.!?;:\\n\\r]+");
-    /** A list marker such as "1)", "a)" or "2]" left after the leading brackets are stripped. ("1." is split off as a sentence.) */
+    /** A list marker such as "1)", "a)", "iv)" or "2]" left after the leading brackets are stripped. ("1." is split off as a sentence.)
+     *  Only a digit, one letter or a roman numeral: a short question word ("is", "do", "how") followed by a dash or bracket is not a marker. */
     private static final Pattern LIST_MARKER = Pattern.compile(
-        "^(?:(?:step|no|number|item|q|question)\\.?\\s*)?#?(?:\\d{1,3}|[a-z]{1,4})\\s*[)\\]}>\\-–—]+\\s*"
+        "^(?:(?:step|no|number|item|q|question)\\.?\\s*)?#?(?:\\d{1,3}|[a-z]|[ivx]{2,4})\\s*[)\\]}>\\-–—]+\\s*"
         + "|^#\\d{1,3}\\s+|^\\d{1,3}\\s+(?=[a-z])");
     private static final Pattern OPENER_PUNCTUATION = Pattern.compile("^[\\s,;:!.\\-–—]+");
 
