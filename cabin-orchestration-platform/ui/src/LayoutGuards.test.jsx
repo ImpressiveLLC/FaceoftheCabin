@@ -58,3 +58,20 @@ describe("the device list scrolls instead of squashing its groups", () => {
     expect(bodyOf(".dm-device-group")).toMatch(/overflow:\s*hidden/);
   });
 });
+
+// The Location Roles card listed an unassigned person's long id as a one-character-wide column (reported 2026-11-01): the row's
+// action buttons did not shrink and nothing could wrap, so the name got the leftover few pixels.
+describe("a name and its buttons share a narrow row without squeezing the name", () => {
+  it("lets the row wrap and the name take the whole row", () => {
+    expect(bodyOf(".guest-access-row")).toMatch(/flex-wrap:\s*wrap/);
+    const first = bodyOf(".guest-access-row > :first-child");
+    expect(first).toMatch(/min-width:\s*0/);
+    expect(first).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it("lets the buttons wrap and no longer pins them to their full width", () => {
+    const actions = bodyOf(".managed-users-row-actions");
+    expect(actions).toMatch(/flex-wrap:\s*wrap/);
+    expect(actions).not.toMatch(/flex-shrink:\s*0/);
+  });
+});
