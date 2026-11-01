@@ -207,6 +207,33 @@ class AskRoutingCoverageTest {
     }
 
     @Test
+    void aHouseholdMemberAskingAboutALeakGetsTheWhatToDoNowSectionAndNotTheValveOne() {
+        String q = "There's a water leak alert, what do I do?";
+        List<String> household = refs(q, HouseholdRole.ADULT_HOUSEHOLD_MEMBER);
+        assertThat(household).anyMatch(r -> r.endsWith("#what-to-do-right-now-when-a-water-leak-is-reported"));
+        assertThat(household).noneMatch(r -> r.endsWith("#a-water-leak-alert-and-turning-the-water-back-on"));
+        List<String> admin = refs(q, HouseholdRole.ADMINISTRATOR);
+        assertThat(admin).anyMatch(r -> r.endsWith("#what-to-do-right-now-when-a-water-leak-is-reported"));
+        assertThat(admin).anyMatch(r -> r.endsWith("#a-water-leak-alert-and-turning-the-water-back-on"));
+    }
+
+    @Test
+    void aLeakAlertWithoutTheWordWaterReachesTheLeakSectionForAHouseholdMember() {
+        for (String q : List.of("I got a leak alert, what do I do?", "The leak alarm just went off", "There is a leak alert on my phone", "Why does the leak alert keep firing?")) {
+            assertThat(builder.categoryIdFor(q)).as(q).isEqualTo("leak_response");
+            assertThat(refs(q, HouseholdRole.ADULT_HOUSEHOLD_MEMBER)).as(q).anyMatch(r -> r.endsWith("#what-to-do-right-now-when-a-water-leak-is-reported"));
+        }
+    }
+
+    @Test
+    void keepFiringAndKeepsFiringBothReachTheAlertNoiseCategory() {
+        for (String q : List.of("Why does this alert keep firing?", "This alert keeps firing, what do I do?", "My alert keeps firing",
+                "My alerts keep firing", "An alert that keeps firing", "The alert keeps on firing", "Why do these alerts keep on firing?")) {
+            assertThat(builder.categoryIdFor(q)).as(q).isEqualTo("alert_noise");
+        }
+    }
+
+    @Test
     void aHouseholdMemberAskingWhatARoleCanDoGetsTheByAreaTable() {
         for (String q : List.of("Who is allowed to change workflows?", "What can a viewer do?")) {
             assertThat(refs(q, HouseholdRole.ADULT_HOUSEHOLD_MEMBER)).as(q).anyMatch(r -> r.endsWith("#what-each-role-can-do-by-area"));

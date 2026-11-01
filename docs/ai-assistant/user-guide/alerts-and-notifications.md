@@ -26,7 +26,7 @@ Audience: household.
 
 **Short answer.** Status Checks items are critical or warning (a few notices, such as a disk that is back under its limit, are information only). A warning puts a small dot on the **Devices**, **Monitoring** and **Rules & Alerts** tabs. A critical item does not add a dot: it turns the tab's icon into a pulsing warning triangle, colors the label and adds a bar on its edge, in the theme's danger color. Hovering a tab says "attention needed" or "CRITICAL".
 
-**What counts as critical?** A device reporting a water leak, smoke or an alarm; from the backend rules, a freeze risk, a safety alarm, and low water pressure or an unlocked lock while nobody is there; a workflow's "Send a critical notification" step; a valve command that was not confirmed; and the critical disk-space level.
+**What counts as critical?** A device reporting a water leak, smoke or an alarm; from the backend rules, a freeze risk, a safety alarm, and low water pressure or an unlocked lock while nobody is there; a workflow's "Send a critical notification" step; a valve command that was not confirmed; and the critical disk-space level (an alert the hub is already clearing by itself can show as a warning instead; an administrator can tell you which).
 
 **Why did a door left open not alert me?** Every device message is graded too: leak, smoke or alarm is critical; tamper, low battery or a door contact open is a warning; everything else is information only. Warning-level device messages are kept in the event history, but they do not add a Status Checks item and are never sent to a phone. To be told about a door, a workflow is needed with the trigger "Door contact opened" and the step "Send a critical notification".
 
@@ -56,7 +56,7 @@ Audience: household.
 
 **Short answer.** Press **See more** on a Status Checks item, then **Open device**. The app switches to **Devices** and selects that device. If your saved filters would hide it, the filters are reset to show everything, and a collapsed group holding it is expanded. If the device is not in the list for this location, a note says so, with **Dismiss**. Open device changes nothing on the device itself.
 
-A disk-space alert for the storage disk (the one that holds backups) shows the **Trim old backups** control here instead of Open device. When automatic backup trim is installed and running, a critical storage alert says "Not a true emergency", appears as a warning and sends no phone push, because the hub clears it by itself; if automatic trim is missing, off or not keeping up, the alert is critical and says you need to act (see [Disk space warnings](access-and-storage.md#disk-space-warnings)). The alert for the other disk, the system disk, still shows Open device, which only leads to a note that it is not in the device list. Other items that are not about one device have no Open device button.
+A disk-space alert for the storage disk (the one that holds backups) shows the **Trim old backups** control here instead of Open device; that control is for administrators, who also have the explanation of how that alert behaves. The alert for the other disk, the system disk, still shows Open device, which only leads to a note that it is not in the device list. Other items that are not about one device have no Open device button.
 
 Evidence: `openDevice` and `STORAGE_HDD_SOURCE` in `StatusChecksCard` and the `pendingDeviceFocus` effect in `DeviceManagerPanel`, App.jsx (2026-10-12 change); `sourceId` in [StorageMonitorService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/storage/StorageMonitorService.java) (`storage-hdd`, `root-nvme`).
 
@@ -78,11 +78,21 @@ Separate paths, each set up outside this app:
 
 Evidence: [NOTIFICATION_PATH.md](../../NOTIFICATION_PATH.md) (2026-10-12 host check); W-51 and W-56 in [the backlog](../../governance/backlog.md); [NtfyAlertPublisher](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/NtfyAlertPublisher.java) (no-op while `CABIN_ALERT_NTFY_TOPIC` is blank; critical, or payload `notify=true`); `CameraNotifyToggle` and the Notification Preferences card in App.jsx.
 
-## A water leak alert and turning the water back on
+## What to do right now when a water leak is reported
 
 Audience: household.
 
-**Short answer.** A wet leak sensor that is enabled and assigned shows as a critical Status Checks item, "(sensor name) reports an alarm", and the Rules & Alerts tab turns critical. **This guide has no reviewed step-by-step leak procedure.** Follow your household's or operator's approved procedure, and ask an administrator if you do not have one.
+**Short answer.** Treat a reported leak as real until someone has looked. If you are there and it is safe, find the water and stop the source if you can (for example a fixture's own shut-off, or an appliance switched off), and keep away from electrical equipment that is wet or standing in water. Tell the owner or an administrator right away, by phone if you cannot reach them in the app. Do not just silence the alert: a critical item has no **Ignore**, only **Remind me in** 1 hour, and that hides the item for the hour without fixing anything (see "Ignore, Remind me in and Restore").
+
+Ask the administrator to turn the main water valve back on; the Devices page is not the place (guidance, not enforced). If you are not there, or it is not safe to go in, leave it to the owner: the cabin's own leak automations run in Home Assistant and Node-RED, not in this app.
+
+Evidence: [ActiveAlertService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/alerts/ActiveAlertService.java) (a wet sensor is a critical item); `CRITICAL_SNOOZE_DURATIONS` in ui/src/App.jsx (a critical item offers only the 1-hour reminder). The steps above are general household practice, not functions of the app, and are for the owner to confirm.
+
+## A water leak alert and turning the water back on
+
+Audience: administrator.
+
+**Short answer.** A wet leak sensor that is enabled and assigned shows as a critical Status Checks item, "(sensor name) reports an alarm", and the Rules & Alerts tab turns critical. **Beyond the household first steps, this guide has no reviewed leak procedure.** Follow your household's or operator's approved procedure, and ask an administrator if you do not have one.
 
 What the app does and does not do:
 
@@ -98,7 +108,7 @@ Evidence: [ActiveAlertService](../../../cabin-orchestration-platform/backend/src
 
 ## Reset, Mark seen and why there is no undo
 
-Audience: household.
+Audience: administrator.
 
 **Short answer.** There is no undo. **Reset** and **Mark seen** are bookkeeping: neither reverses anything a workflow did. They do not reopen a valve and cannot take back a notification.
 
