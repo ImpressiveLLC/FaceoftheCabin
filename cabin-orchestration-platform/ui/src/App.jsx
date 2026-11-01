@@ -2060,9 +2060,11 @@ export function FamilyConfigPanel({ auth }) {
   const haUrl = locationCfg?.haUrl || LOCATIONS.cabin.haUrl;
   const remoteAccessMethods = (config?.remoteAccess || "Tailscale")
     .split(",").map(s => s.trim()).filter(Boolean);
+  const configHeights = useConfigHeights();
   return (
     <div data-panel="config" className="panel-content">
       <div className="panel-header-bar"><h2>Configuration</h2></div>
+      <ConfigHeights.Provider value={configHeights}>
       <div className="config-grid">
         {!auth?.demo && <ConfigCard title="Google Account" icon={Home}>
           {auth?.userEmail ? (
@@ -2100,16 +2102,16 @@ export function FamilyConfigPanel({ auth }) {
         <ConfigCard title="Remote Access" icon={Wifi}>
           <RemoteAccessCard methods={remoteAccessMethods} />
         </ConfigCard>
-        {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2}>
+        {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2} neverShorten>
           <GuestAccessCard auth={auth} />
         </ConfigCard>}
         {!auth?.demo && <ConfigCard title="AcmeOptix by ImpressiveLLC" icon={Link2} wide>
           <RoofSpecOwnerCard auth={auth} />
         </ConfigCard>}
-        {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus}>
+        {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus} neverShorten>
           <ManagedUsersCard auth={auth} />
         </ConfigCard>}
-        {!auth?.demo && <ConfigCard title="Location Roles" icon={UserPlus}>
+        {!auth?.demo && <ConfigCard title="Location Roles" icon={UserPlus} neverShorten>
           <LocationRolesCard auth={auth} />
         </ConfigCard>}
         <ConfigCard title="Platform" icon={Cpu} wide>
@@ -2118,6 +2120,7 @@ export function FamilyConfigPanel({ auth }) {
           <PlatformInfoCard auth={auth} />
         </ConfigCard>
       </div>
+      </ConfigHeights.Provider>
     </div>
   );
 }
@@ -2976,11 +2979,110 @@ function ManagedUsersCard({ auth }) {
   );
 }
 
-function ConfigCard({ title, icon: Icon, wide = false, children }) {
+// Nate, 2026-11-01: no single-column card in Config may be taller than 133% of the average of the cards next to it.
+// A card over that budget is shortened to it, with a plainly marked Expand / Minimize; expanded, it scrolls inside its own box.
+// The panel collects every card's natural height (header, padding and body: ConfigHeights); a card's budget is 1.33 times the
+// mean of the OTHER single-column cards, never below 200 px. The Expand button takes room too, so the body is shortened by
+// CONFIG_CARD_TOGGLE_ALLOWANCE: the card plus its button stays inside the budget, and a card is only shortened when it is
+// over the budget (so what is hidden is always at least the button's height). A full-row card is its own row and sits outside the
+// budget. A card that holds a control to revoke, deactivate or remove (Guest Access: Revoke; Managed Users: Deactivate;
+// Location Roles: Remove) is never shortened: that control must not need an extra press, and its row may sit beside a taller card.
+// A never-shortened card still reports its height, so it counts in the average of the cards beside it.
+export const CONFIG_CARD_HEIGHT_RATIO = 1.33;
+export const CONFIG_CARD_MIN_BUDGET = 200;
+export const CONFIG_CARD_TOGGLE_ALLOWANCE = 64;
+export const ConfigHeights = createContext(null); // exported for src/ConfigCardCap.test.jsx
+
+export function useConfigHeights() {
+  const [measured, setMeasured] = useState({});
+  const report = useCallback((title, height) => setMeasured(prev => {
+    if (height == null) {
+      if (!(title in prev)) return prev;
+      const { [title]: _gone, ...rest } = prev;
+      return rest;
+    }
+    return prev[title] === height ? prev : { ...prev, [title]: height };
+  }), []);
+  return useMemo(() => ({ report, measured }), [report, measured]);
+}
+
+// Whether the last thing the person did was press a key. A text field that is clicked with a mouse counts as keyboard-focused to the
+// browser (:focus-visible), so that cannot tell a click from a Tab; the input that came just before the focus can.
+let lastInputWasKeyboard = false;
+if (typeof document !== "undefined") {
+  document.addEventListener("keydown", () => { lastInputWasKeyboard = true; }, true);
+  document.addEventListener("pointerdown", () => { lastInputWasKeyboard = false; }, true);
+  document.addEventListener("mousedown", () => { lastInputWasKeyboard = false; }, true);
+}
+
+const slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+export function ConfigCard({ title, icon: Icon, wide = false, neverShorten = false, children }) {
+  const heights = useContext(ConfigHeights);
+  const report = heights?.report;
+  const measuring = !wide; // a never-shortened card is measured too: it counts in the average of the cards beside it
+  const cardRef = useRef(null);
+  const bodyRef = useRef(null);
+  const innerRef = useRef(null);
+  const [natural, setNatural] = useState(0); // the card's height with nothing shortened and no button
+  const [chrome, setChrome] = useState(0);   // header, padding and border: the card minus its body
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const card = cardRef.current;
+    const inner = innerRef.current;
+    if (!card || !inner || !measuring || typeof ResizeObserver === "undefined") return undefined;
+    const measure = () => {
+      // The card is a grid item stretched to its row, so its own height says nothing: add up header, padding and border instead.
+      const px = (value) => parseFloat(value) || 0;
+      const header = card.firstElementChild;
+      const style = getComputedStyle(card);
+      const rest = header.offsetHeight + px(getComputedStyle(header).marginBottom)
+        + px(style.paddingTop) + px(style.paddingBottom) + px(style.borderTopWidth) + px(style.borderBottomWidth);
+      const total = rest + inner.offsetHeight;
+      setChrome(rest);
+      setNatural(total);
+      report?.(title, total);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(inner);
+    observer.observe(card);
+    return () => { observer.disconnect(); report?.(title, null); };
+  }, [measuring, title, report]);
+  const others = Object.entries(heights?.measured || {}).filter(([name]) => name !== title).map(([, h]) => h);
+  const budget = others.length === 0 ? 0
+    : Math.max(CONFIG_CARD_MIN_BUDGET, Math.round(CONFIG_CARD_HEIGHT_RATIO * others.reduce((a, b) => a + b, 0) / others.length));
+  const capped = measuring && !neverShorten && budget > 0 && natural > budget;
+  // An open card keeps its button even if its content later shrinks under the budget, so focus is never left on a control that went.
+  const showToggle = capped || open;
+  const shortened = capped && !open;
+  const bodyId = `config-card-body-${slug(title)}`;
+  const classes = ["config-card", wide && "config-card-wide", shortened && "config-card-capped", open && "config-card-open"]
+    .filter(Boolean).join(" ");
+  // Focus moving into a shortened card by keyboard opens it, so a keyboard user is never left on a control that cannot be seen.
+  // A pointer click on something already visible does not.
+  const onFocusCapture = shortened ? () => { if (lastInputWasKeyboard) setOpen(true); } : undefined;
+  // Minimize on a card that now fits takes its button away: focus goes to the card, not to the page.
+  const toggle = () => {
+    if (open && !capped) cardRef.current?.focus();
+    setOpen(o => !o);
+  };
   return (
-    <div className={`config-card${wide ? " config-card-wide" : ""}`}>
+    <div className={classes} ref={cardRef} tabIndex={-1}>
       <div className="config-card-header"><Icon size={18} /><strong>{title}</strong></div>
-      {children}
+      <div id={bodyId} ref={bodyRef} className="config-card-body"
+        style={shortened ? { maxHeight: Math.max(0, budget - chrome - CONFIG_CARD_TOGGLE_ALLOWANCE) } : undefined}
+        onFocusCapture={onFocusCapture}>
+        <div ref={innerRef}>{children}</div>
+      </div>
+      {showToggle && (
+        <button type="button" className="expandable-list-toggle config-card-toggle" aria-expanded={open}
+          aria-controls={bodyId} aria-label={`${open ? "Minimize" : "Expand"} ${title}`}
+          onClick={toggle}>
+          {open ? "Minimize" : "Expand"}
+          <span aria-hidden="true" className="expandable-list-chevron">{open ? "▲" : "▼"}</span>
+        </button>
+      )}
     </div>
   );
 }

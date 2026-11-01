@@ -357,6 +357,16 @@ body {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* A card over its height budget (see ConfigCard) is clipped with a fade; expanded, it scrolls inside its own box. */
+.config-card-body { min-width: 0; }
+.config-card:focus { outline: none; }
+.config-card-capped:not(.config-card-open) .config-card-body {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+.config-card-open .config-card-body { max-height: 75vh; overflow-y: auto; }
+.config-card-toggle { width: 100%; margin: 8px 0 0; }
 .config-card-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--text);
 }
@@ -3137,10 +3147,10 @@ select option { background: var(--bg-secondary); color: var(--text); }
   display: flex; align-items: center; justify-content: center; gap: 8px;
   margin: 6px 0; padding: 10px 16px; min-height: 44px;
   font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  color: var(--text); background: var(--bg-secondary);
   border: 2px solid var(--accent); border-radius: var(--radius);
 }
-.expandable-list-toggle:hover { background: color-mix(in srgb, var(--accent) 22%, var(--bg-secondary)); }
+.expandable-list-toggle:hover { background: color-mix(in srgb, var(--accent) 16%, var(--bg-secondary)); }
 .expandable-list-toggle:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .expandable-list-chevron { font-size: 11px; }
 .dm-duplicate-note { margin: 6px 0; }
