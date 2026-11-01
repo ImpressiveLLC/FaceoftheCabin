@@ -214,7 +214,8 @@
         "restore an alert",
         "bring back",
         "go away",
-        "mute"
+        "mute",
+        "ignore button"
       ],
       "questions": [],
       "contextNodes": [],
@@ -314,7 +315,11 @@
         "main water",
         "water valve",
         "shut off the water",
-        "flood"
+        "flood",
+        "leak alert",
+        "leak alarm",
+        "leak alert keep firing",
+        "leak alert keeps firing"
       ],
       "questions": [],
       "contextNodes": [],
@@ -329,11 +334,6 @@
           "path": "ai-assistant/user-guide/alerts-and-notifications.md",
           "section": "a-water-leak-alert-and-turning-the-water-back-on",
           "audience": "administrator"
-        },
-        {
-          "path": "ai-assistant/user-guide/alerts-and-notifications.md",
-          "section": "ignore-remind-me-in-and-restore",
-          "audience": "household"
         }
       ]
     },
@@ -716,7 +716,12 @@
         "noisy alert",
         "alert noise",
         "alert fatigue",
-        "too many alerts"
+        "too many alerts",
+        "alerts keep firing",
+        "keeps on firing",
+        "keep on firing",
+        "alert that keeps firing",
+        "alerts that keep firing"
       ],
       "questions": [],
       "contextNodes": [

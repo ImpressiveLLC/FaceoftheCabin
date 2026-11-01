@@ -1,7 +1,5 @@
 package com.cabin.orchestrator.helpdesk;
 
-import com.cabin.orchestrator.devices.KnowledgeNodeRepository;
-import com.cabin.orchestrator.devices.model.KnowledgeNode;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,12 +68,13 @@ class GuideAudienceLinesTest {
     }
 
     @Test
-    void theTwentyFourSectionsOfTheAudienceSplitAllStateTheirAudience() throws IOException {
+    void theSectionsOfTheAudienceSplitAndTheHouseholdLeakSectionAllStateTheirAudience() throws IOException {
         List<String> household = List.of("alert-levels-and-the-marks-on-the-tabs", "status-checks-what-needs-attention-right-now",
             "open-device-from-an-alert", "ignore-remind-me-in-and-restore", "phone-notifications-what-reaches-your-phone-today",
             "backend-rules-card-versus-home-assistant-and-node-red", "who-can-see-and-change-what", "what-a-workflow-is-and-where-it-runs",
             "can-a-workflow-run-on-a-schedule-or-at-a-time-of-day", "why-a-device-says-not-responding-late-or-has-a-blank-card",
-            "find-a-device-filters-groups-and-layout", "what-candidates-available-assigned-saved-for-later-and-ignored-mean");
+            "find-a-device-filters-groups-and-layout", "what-candidates-available-assigned-saved-for-later-and-ignored-mean",
+            "what-to-do-right-now-when-a-water-leak-is-reported");
         List<String> admin = List.of("disk-space-warnings", "a-water-leak-alert-and-turning-the-water-back-on",
             "reset-mark-seen-and-why-there-is-no-undo", "turn-a-workflow-on-or-off-run-it-by-hand-and-see-when-it-ran",
             "change-how-a-device-shows-on-monitoring", "on-the-way-warm-up-the-cabin-before-you-arrive", "pair-a-zigbee-device",
@@ -95,11 +94,5 @@ class GuideAudienceLinesTest {
 
     private static String abbreviate(String line) {
         return line.length() > 60 ? line.substring(0, 60) : line;
-    }
-
-    private static final class NoNodes implements KnowledgeNodeRepository {
-        @Override public void upsert(KnowledgeNode node) { }
-        @Override public List<KnowledgeNode> findByEntityRef(String entityRef) { return List.of(); }
-        @Override public List<KnowledgeNode> loadAll() { return List.of(); }
     }
 }

@@ -82,17 +82,17 @@ Evidence: [NOTIFICATION_PATH.md](../../NOTIFICATION_PATH.md) (2026-10-12 host ch
 
 Audience: household.
 
-**Short answer.** Treat a reported leak as real until someone has looked. If you are there and it is safe, find the water and stop the source if you can (for example a fixture's own shut-off, or an appliance switched off), and keep away from electrical equipment that is wet or standing in water. Tell the owner or an administrator right away, by phone if you cannot reach them in the app. Do not just silence the alert: a critical item can only be reminded in 1 hour, and **Ignore** or **Remind me in** hides the item without fixing anything (see "Ignore, Remind me in and Restore").
+**Short answer.** Treat a reported leak as real until someone has looked. If you are there and it is safe, find the water and stop the source if you can (for example a fixture's own shut-off, or an appliance switched off), and keep away from electrical equipment that is wet or standing in water. Tell the owner or an administrator right away, by phone if you cannot reach them in the app. Do not just silence the alert: a critical item has no **Ignore**, only **Remind me in** 1 hour, and that hides the item for the hour without fixing anything (see "Ignore, Remind me in and Restore").
 
-Turning the main water valve back on is an administrator task, and nobody should use the Devices page to open or close it. If you are not there, or it is not safe to go in, leave it to the owner: the cabin's own leak automations run in Home Assistant and Node-RED, not in this app.
+Ask the administrator to turn the main water valve back on; the Devices page is not the place (guidance, not enforced). If you are not there, or it is not safe to go in, leave it to the owner: the cabin's own leak automations run in Home Assistant and Node-RED, not in this app.
 
-Evidence: [ActiveAlertService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/alerts/ActiveAlertService.java) (a wet sensor is a critical item; critical items can only be reminded in 1 hour). The steps above are general household practice, not functions of the app, and are for the owner to confirm.
+Evidence: [ActiveAlertService](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/alerts/ActiveAlertService.java) (a wet sensor is a critical item); `CRITICAL_SNOOZE_DURATIONS` in ui/src/App.jsx (a critical item offers only the 1-hour reminder). The steps above are general household practice, not functions of the app, and are for the owner to confirm.
 
 ## A water leak alert and turning the water back on
 
 Audience: administrator.
 
-**Short answer.** A wet leak sensor that is enabled and assigned shows as a critical Status Checks item, "(sensor name) reports an alarm", and the Rules & Alerts tab turns critical. **This guide has no reviewed step-by-step leak procedure.** Follow your household's or operator's approved procedure, and ask an administrator if you do not have one.
+**Short answer.** A wet leak sensor that is enabled and assigned shows as a critical Status Checks item, "(sensor name) reports an alarm", and the Rules & Alerts tab turns critical. **Beyond the household first steps, this guide has no reviewed leak procedure.** Follow your household's or operator's approved procedure, and ask an administrator if you do not have one.
 
 What the app does and does not do:
 
