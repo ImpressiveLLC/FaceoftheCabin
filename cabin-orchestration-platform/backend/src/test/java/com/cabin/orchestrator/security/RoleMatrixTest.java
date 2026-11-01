@@ -19,53 +19,64 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The role-by-area table in docs/ai-assistant/user-guide/access-and-storage.md ("Who can see and change what") is checked against
+ * The role-by-area table in docs/ai-assistant/user-guide/access-and-storage.md ("What each role can do, by area") is checked against
  * the code, so the guide and the policy cannot drift (W-137; same family as WriteGateAuditTest and AdministratorRouteAuditTest).
+ * A change to who may do what has to change that table in the same pull request.
  *
- * <p>Each area names one representative route. Whether a role may reach it is computed by running the REAL GoogleAuthInterceptor with
- * a real credential of that kind (an administrator and an other-Google CabinSession, a managed household member and a managed viewer
- * ManagedSession, a guest link with every scope ticked), then applying the handler's own role gate, which this test ties to the
- * controller by requiring the gate's refusal message to still be in the controller source. The demo link is classified by
- * DemoAccessPolicy. Cell letters: R read, W change, U use, - none; a star on a guest cell means "only for the parts ticked".
+ * <p>Each area names one representative route per operation. Whether a way of getting in may reach it is computed by running the REAL
+ * GoogleAuthInterceptor with a real credential of that kind (an administrator and an other-Google CabinSession, a managed household
+ * member and a managed viewer ManagedSession, a guest link with every scope ticked), then applying a MODEL of the handler's own role
+ * gate (the area's Gate). The model is tied to the controller only by requiring the gate's refusal message to still be in the
+ * controller source: this test does not call the controllers, so a controller whose check changes while its message stays the same is
+ * not caught here. The demo link is classified by DemoAccessPolicy. Cell letters: C create, R read, U update, D delete (from the
+ * operation each probe stands for), + an action that is none of those (ask, send a device command, fire a workflow, trim backups), - none.
  * A controller that checks the administrator role and is not named by any area fails the completeness test: add a row.
  */
 class RoleMatrixTest {
 
     enum Gate { NONE, ADMIN, ADMIN_OR_ADULT }
 
-    /** read/change = "METHOD /path" or null; kind U means the one operation is "use" rather than read. */
-    record Area(String name, String read, String change, Gate gate, String controller, String marker, boolean use) {}
+    /** One probe: the letter of the operation it stands for (C, R, U, D, or + for an action) and "METHOD /path". */
+    record Op(String letter, String route) {}
+
+    record Area(String name, Gate gate, String controller, String marker, List<Op> ops) {}
+
+    private static Op op(String letter, String route) { return new Op(letter, route); }
 
     static final String ADMIN_MARKER = AdministratorOnly.MESSAGE;
 
     static final List<Area> AREAS = List.of(
-        new Area("Status checks and alerts", "GET /api/alerts/active", "POST /api/alerts/acknowledgments", Gate.NONE, null, null, false),
-        new Area("Alert history (doors, motion, who silenced what)", "GET /api/alerts/history", null, Gate.NONE, null, null, false),
-        new Area("Devices: inventory, status and commands", "GET /api/devices", "POST /api/devices/x/command", Gate.NONE, null, null, false),
-        new Area("Device type re-detect", null, "POST /api/devices/redetect/preview", Gate.ADMIN, "api/DeviceRedetectController", "Only an administrator can re-detect device types", false),
-        new Area("Rules and workflows", "GET /api/rules/workflows", "POST /api/rules/workflows", Gate.NONE, null, null, false),
-        new Area("Knowledge notes behind Ask", "GET /api/kb/nodes", "POST /api/kb/curate", Gate.NONE, null, null, false),
-        new Area("Ask: explain and diagnose", "POST /api/helpdesk/ask", null, Gate.NONE, null, null, true),
-        new Area("Ask: action proposals", "POST /api/helpdesk/propose", null, Gate.ADMIN, "api/HelpdeskProposeController", "Action proposals are administrator only.", true),
-        new Area("Places (locations)", "GET /api/locations", "POST /api/locations", Gate.NONE, null, null, false),
-        new Area("Family Hub notes, chores and profiles", "GET /api/notes", "POST /api/notes", Gate.NONE, null, null, false),
-        new Area("Cameras", "GET /api/camera/list", "POST /api/camera/x/liveview/start", Gate.NONE, null, null, false),
-        new Area("Presence and arming", "GET /api/presence", "PUT /api/presence", Gate.NONE, null, null, false),
-        new Area("Presence history", "GET /api/presence/activity", null, Gate.ADMIN_OR_ADULT, "api/PresenceActivityController", "This role cannot view presence history", false),
-        new Area("Historical readings", "GET /api/events/telemetry-history", null, Gate.NONE, null, null, false),
-        new Area("Event history", "GET /api/events", null, Gate.NONE, null, null, false),
-        new Area("Dashboard settings", "GET /api/dashboard/config", null, Gate.NONE, null, null, false),
-        new Area("Cabin status summary", "GET /api/cross-domain/cabin-status-summary", null, Gate.ADMIN_OR_ADULT, "api/CrossDomainController", "This role cannot view cabin status", false),
-        new Area("Assistant inventory", "GET /api/assistant/inventory", null, Gate.ADMIN_OR_ADULT, "api/AssistantInventoryController", "The assistant inventory needs an administrator or adult household member.", false),
-        new Area("Platform import: records", "GET /api/platform-import/records", null, Gate.ADMIN_OR_ADULT, "api/PlatformImportController", "This role cannot view import records", false),
-        new Area("Platform import: confirm", null, "POST /api/platform-import/x/confirm", Gate.ADMIN, "api/PlatformImportController", "This role cannot manage platform imports", false),
-        new Area("Guest Access links", "GET /api/access-tokens", "POST /api/access-tokens", Gate.ADMIN, "security/CabinAccessTokensController", ADMIN_MARKER, false),
-        new Area("Managed users", "GET /api/managed-users", "POST /api/managed-users", Gate.ADMIN, "security/ManagedUsersController", ADMIN_MARKER, false),
-        new Area("Location roles", "GET /api/presence/roles", "PUT /api/presence/roles", Gate.ADMIN, "api/PresenceRolesController", "Only an administrator can assign location roles", false),
-        new Area("Disk status", "GET /api/system/storage", null, Gate.NONE, null, null, false),
-        new Area("Trim old backups", null, "POST /api/system/storage/trim", Gate.ADMIN, "api/StorageTrimController", "Only an administrator can trim storage", false),
-        new Area("Platform info", "GET /api/system/platform-info", null, Gate.ADMIN, "api/SystemController", "This role cannot view platform info", false),
-        new Area("Optimization Opportunities", "GET /api/opportunities", "PATCH /api/opportunities/x/status", Gate.ADMIN, "api/OpportunitiesController", "This role cannot view or manage optimization opportunities", false));
+        new Area("Status checks and alerts", Gate.NONE, null, null, List.of(op("R", "GET /api/alerts/active"), op("C", "POST /api/alerts/acknowledgments"), op("D", "DELETE /api/alerts/acknowledgments/x"))),
+        new Area("Alert history (doors, motion, who silenced what)", Gate.NONE, null, null, List.of(op("R", "GET /api/alerts/history"))),
+        new Area("Devices: inventory, status and commands", Gate.NONE, null, null, List.of(op("R", "GET /api/devices"), op("C", "POST /api/devices"), op("U", "PUT /api/devices/x"), op("D", "DELETE /api/devices/x"), op("+", "POST /api/devices/x/command"))),
+        new Area("Device type re-detect", Gate.ADMIN, "api/DeviceRedetectController", "Only an administrator can re-detect device types", List.of(op("+", "POST /api/devices/redetect/preview"))),
+        new Area("Home Assistant switch calls", Gate.NONE, null, null, List.of(op("+", "POST /api/ha/services"))),
+        new Area("Rules and workflows", Gate.NONE, null, null, List.of(op("R", "GET /api/rules/workflows"), op("C", "POST /api/rules/workflows"), op("D", "DELETE /api/rules/workflows/x"), op("+", "POST /api/rules/workflows/x/fire"))),
+        new Area("Schedules", Gate.NONE, null, null, List.of(op("R", "GET /api/schedule/rules"), op("C", "POST /api/schedule/rules"))),
+        new Area("Knowledge notes behind Ask", Gate.NONE, null, null, List.of(op("R", "GET /api/kb/nodes"), op("C", "POST /api/kb/curate"))),
+        new Area("Ask: explain and diagnose", Gate.NONE, null, null, List.of(op("+", "POST /api/helpdesk/ask"))),
+        new Area("Ask: action proposals (off by default)", Gate.ADMIN, "api/HelpdeskProposeController", "Action proposals are administrator only.", List.of(op("+", "POST /api/helpdesk/propose"))),
+        new Area("Places (locations)", Gate.NONE, null, null, List.of(op("R", "GET /api/locations"), op("C", "POST /api/locations"), op("U", "PATCH /api/locations/x"), op("D", "DELETE /api/locations/x"))),
+        new Area("Family Hub notes, chores and profiles", Gate.NONE, null, null, List.of(op("R", "GET /api/notes"), op("C", "POST /api/notes"), op("U", "PATCH /api/profiles/x"), op("D", "DELETE /api/profiles/x"))),
+        new Area("Cameras", Gate.NONE, null, null, List.of(op("R", "GET /api/camera/list"), op("+", "POST /api/camera/x/liveview/start"))),
+        new Area("Presence and armed state (change = manual presence override)", Gate.NONE, null, null, List.of(op("R", "GET /api/presence"), op("U", "PUT /api/presence"))),
+        new Area("Presence history", Gate.ADMIN_OR_ADULT, "api/PresenceActivityController", "This role cannot view presence history", List.of(op("R", "GET /api/presence/activity"))),
+        new Area("Historical readings", Gate.NONE, null, null, List.of(op("R", "GET /api/events/telemetry-history"))),
+        new Area("Event history", Gate.NONE, null, null, List.of(op("R", "GET /api/events"))),
+        new Area("Dashboard settings", Gate.NONE, null, null, List.of(op("R", "GET /api/dashboard/config"))),
+        new Area("Cabin status summary", Gate.ADMIN_OR_ADULT, "api/CrossDomainController", "This role cannot view cabin status", List.of(op("R", "GET /api/cross-domain/cabin-status-summary"))),
+        new Area("Assistant inventory", Gate.ADMIN_OR_ADULT, "api/AssistantInventoryController", "The assistant inventory needs an administrator or adult household member.", List.of(op("R", "GET /api/assistant/inventory"))),
+        new Area("Tech ID findings (Opportunity Map data)", Gate.NONE, null, null, List.of(op("R", "GET /api/tech-id/findings"), op("U", "PATCH /api/tech-id/findings/x"), op("+", "POST /api/tech-id/findings/x/actions"))),
+        new Area("Platform import: records", Gate.ADMIN_OR_ADULT, "api/PlatformImportController", "This role cannot view import records", List.of(op("R", "GET /api/platform-import/records"))),
+        new Area("Platform import: confirm", Gate.ADMIN, "api/PlatformImportController", "This role cannot manage platform imports", List.of(op("+", "POST /api/platform-import/x/confirm"))),
+        new Area("Guest Access links", Gate.ADMIN, "security/CabinAccessTokensController", ADMIN_MARKER, List.of(op("R", "GET /api/access-tokens"), op("C", "POST /api/access-tokens"), op("D", "DELETE /api/access-tokens/x"))),
+        new Area("Roof Monitoring page: entries", Gate.NONE, null, null, List.of(op("R", "GET /api/roof-spec/entries"), op("C", "POST /api/roof-spec/entries"), op("D", "DELETE /api/roof-spec/entries/x"))),
+        new Area("Managed users", Gate.ADMIN, "security/ManagedUsersController", ADMIN_MARKER, List.of(op("R", "GET /api/managed-users"), op("C", "POST /api/managed-users"), op("U", "POST /api/managed-users/x/deactivate"))),
+        new Area("Location roles", Gate.ADMIN, "api/PresenceRolesController", "Only an administrator can assign location roles", List.of(op("R", "GET /api/presence/roles"), op("U", "PUT /api/presence/roles"))),
+        new Area("Disk status", Gate.NONE, null, null, List.of(op("R", "GET /api/system/storage"))),
+        new Area("Trim old backups", Gate.ADMIN, "api/StorageTrimController", "Only an administrator can trim storage", List.of(op("R", "GET /api/system/storage/trim"), op("+", "POST /api/system/storage/trim"))),
+        new Area("Platform info", Gate.ADMIN, "api/SystemController", "This role cannot view platform info", List.of(op("R", "GET /api/system/platform-info"))),
+        new Area("Optimization Opportunities", Gate.ADMIN, "api/OpportunitiesController", "This role cannot view or manage optimization opportunities", List.of(op("R", "GET /api/opportunities"), op("U", "PATCH /api/opportunities/x/status"))));
 
     static final List<String> WHO = List.of("Not signed in", "Administrator", "Google household member", "Managed household member", "Managed viewer", "Guest link", "Demo link");
 
@@ -146,14 +157,13 @@ class RoleMatrixTest {
     }
 
     private String cell(Area area, String who) throws Exception {
-        boolean read = area.read() != null && allowed(who, area.read(), area.gate());
-        boolean change = area.change() != null && allowed(who, area.change(), area.gate());
-        String letters;
-        if (area.use()) letters = read ? "U" : "-";
-        else letters = (read ? "R" : "") + (change ? "W" : "");
-        if (letters.isEmpty()) letters = "-";
-        if (who.equals("Guest link") && !letters.equals("-") && !letters.equals(cell(area, "Not signed in"))) return letters + "*";
-        return letters;
+        StringBuilder letters = new StringBuilder();
+        for (String letter : List.of("C", "R", "U", "D", "+")) {
+            for (Op probe : area.ops()) {
+                if (probe.letter().equals(letter) && allowed(who, probe.route(), area.gate())) { letters.append(letter); break; }
+            }
+        }
+        return letters.length() == 0 ? "-" : letters.toString();
     }
 
     private Map<String, List<String>> computed() throws Exception {

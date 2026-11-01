@@ -6,66 +6,72 @@ Audience: administrators, plus the household-safe summary in "Who can see and ch
 
 | Who | How they get in | What they can do |
 |---|---|---|
-| Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Guest Access (share and demo links), Managed Users, Trim old backups, Optimization Opportunities, Location Roles and platform import |
+| Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Guest Access (share and demo links), Managed Users, Trim old backups, Optimization Opportunities, Location Roles and confirming a platform import (households can read the import records) |
 | Household member signed in with Google | Google sign-in with any other accepted account | See the app and make the changes that need a sign-in, for example workflows, notes and chores. Administrator-only screens say "Admin access required" or "Only an administrator can trim storage" |
 | Managed user, "Household member (read/write)" | An emailed sign-in link (Managed Users) | Same as a household member. Cannot manage share links or managed users |
 | Managed user, "Viewer (read-only)" | An emailed sign-in link | Look only. Any change is refused |
-| Guest link | A share link from Guest Access | Read-only, and only the parts ticked when the link was made: Dashboard, Device states, Alerts, Historical readings |
+| Guest link | A share link from Guest Access | Read-only. It reaches the parts ticked when the link was made (Dashboard, Device states, Alerts, Historical readings) and whatever is open to anyone without signing in; it reaches nothing else and cannot change anything |
 | Demo link | A demo link from Guest Access | The whole app, read-only. Cameras, locks, motion and door sensors, and phones show as "hidden for Demo viewers" |
-| Not signed in | Opening the app without signing in | Read the open areas in the table below (status, devices, rules, places, readings, dashboard settings). Everything else asks for a sign-in |
+| Not signed in | Opening the app without signing in | Read the open areas, the ones marked **R** under Not signed in in the table below. Everything else asks for a sign-in |
 | Child, kiosk display and service roles | Defined in the code, not yet assignable | Nothing today: no one can be given these roles yet |
 
-Signing in with Google is in Config. Workflow buttons appear only when signed in; when signed out, Rules & Alerts says "Sign in with Google (Configuration tab) to create or manage workflows."
+Signing in with Google is in Config. Workflow buttons appear only when signed in.
 
-Evidence: `GoogleAuthInterceptor` (role derivation, managed-session gate, guest scope list `SCOPE_PATH_PREFIXES`), `WebConfig` (the routes the interceptor covers), `ManagedUserRole.allowsWrite`, `HouseholdRole` (the roles defined in code), `DemoAccessPolicy`, each controller's own role gate (`StorageTrimController` and the others named in `RoleMatrixTest`), `HIDDEN_FOR_DEMO` and `GUEST_SCOPE_OPTIONS` in `App.jsx`.
+Evidence: `GoogleAuthInterceptor` (role derivation, managed-session gate, guest scope list `SCOPE_PATH_PREFIXES`), `WebConfig`, `ManagedUserRole.allowsWrite`, `HouseholdRole`, `DemoAccessPolicy`, each controller's own role gate (named in `RoleMatrixTest`), `HIDDEN_FOR_DEMO` and `GUEST_SCOPE_OPTIONS` in `App.jsx`.
 
 ## What each role can do, by area
 
 Audience: household.
 
-**By area.** One row per part of the app; one column per way of getting in. **R** can look, **W** can change (the changes that need a sign-in: device commands, workflows, notes and chores, acknowledging alerts), **U** can use (ask), **-** cannot, and a star means only for the parts ticked on the link.
+**By area.** One row per part of the app; one column per way of getting in. **C** create, **R** read, **U** update, **D** delete, **+** an action that is none of those (asking a question, sending a device command, firing a workflow, starting a live camera view, switching a Home Assistant switch, confirming an import, trimming backups), **-** not allowed. A letter is shown when at least one example of that operation is allowed: Rules and workflows shows C and D for creating and deleting a workflow and + for firing one.
 
 | Area | Not signed in | Administrator | Google household member | Managed household member | Managed viewer | Guest link | Demo link |
 |---|---|---|---|---|---|---|---|
-| Status checks and alerts | R | RW | RW | RW | R | R | R |
+| Status checks and alerts | R | CRD | CRD | CRD | R | R | R |
 | Alert history (doors, motion, who silenced what) | - | R | R | R | R | - | - |
-| Devices: inventory, status and commands | R | RW | RW | RW | R | R | R |
-| Device type re-detect | - | W | - | - | - | - | - |
-| Rules and workflows | R | RW | RW | RW | R | R | R |
-| Knowledge notes behind Ask | R | RW | RW | RW | R | R | - |
-| Ask: explain and diagnose | - | U | U | U | - | - | - |
-| Ask: action proposals | - | U | - | - | - | - | - |
-| Places (locations) | R | RW | RW | RW | R | R | R |
-| Family Hub notes, chores and profiles | - | RW | RW | RW | R | - | - |
-| Cameras | - | RW | RW | RW | R | - | - |
-| Presence and arming | - | RW | RW | RW | R | - | - |
+| Devices: inventory, status and commands | R | CRUD+ | CRUD+ | CRUD+ | R | R | R |
+| Device type re-detect | - | + | - | - | - | - | - |
+| Home Assistant switch calls | - | + | + | + | - | - | - |
+| Rules and workflows | R | CRD+ | CRD+ | CRD+ | R | R | R |
+| Schedules | - | CR | CR | CR | R | - | - |
+| Knowledge notes behind Ask | R | CR | CR | CR | R | R | - |
+| Ask: explain and diagnose | - | + | + | + | - | - | - |
+| Ask: action proposals (off by default) | - | + | - | - | - | - | - |
+| Places (locations) | R | CRUD | CRUD | CRUD | R | R | R |
+| Family Hub notes, chores and profiles | - | CRUD | CRUD | CRUD | R | - | - |
+| Cameras | - | R+ | R+ | R+ | R | - | - |
+| Presence and armed state (change = manual presence override) | - | RU | RU | RU | R | - | - |
 | Presence history | - | R | R | R | R | - | - |
 | Historical readings | R | R | R | R | R | R | R |
 | Event history | - | R | R | R | R | - | - |
 | Dashboard settings | R | R | R | R | R | R | R |
 | Cabin status summary | - | R | R | R | R | - | - |
 | Assistant inventory | - | R | R | R | R | - | - |
+| Tech ID findings (Opportunity Map data) | R | RU+ | RU+ | RU+ | R | R | - |
 | Platform import: records | - | R | R | R | R | - | - |
-| Platform import: confirm | - | W | - | - | - | - | - |
-| Guest Access links | - | RW | - | - | - | - | - |
-| Managed users | - | RW | - | - | - | - | - |
-| Location roles | - | RW | - | - | - | - | - |
+| Platform import: confirm | - | + | - | - | - | - | - |
+| Guest Access links | - | CRD | - | - | - | - | - |
+| Roof Monitoring page: entries | - | CRD | CRD | CRD | R | - | - |
+| Managed users | - | CRU | - | - | - | - | - |
+| Location roles | - | RU | - | - | - | - | - |
 | Disk status | R | R | R | R | R | R | - |
-| Trim old backups | - | W | - | - | - | - | - |
+| Trim old backups | - | R+ | - | - | - | - | - |
 | Platform info | - | R | - | - | - | - | - |
-| Optimization Opportunities | - | RW | - | - | - | - | - |
+| Optimization Opportunities | - | RU | - | - | - | - | - |
 
 How to read the table:
-- The Administrator column is every area. Where a row says **-** for everyone else, only an administrator reaches it, and the screen says "Admin access required" or similar.
-- Anyone who can reach the hub can read the areas that say **R** under "Not signed in"; that is deliberate (D14), so a wall display works with no sign-in.
-- A managed **Viewer** cannot change anything, but for the role-checked reads (presence history, cabin status summary, the assistant inventory, import records) any managed account counts as a household member, so a Viewer can read them. A Viewer also cannot use Ask, because Ask is sent as a request and read-only accounts are refused every request that is not a plain read.
-- This table is checked against the code by `RoleMatrixTest` on every build: it runs the real sign-in checks for each way of getting in and fails when a row here and what the app does disagree, and when an administrator-only screen has no row. A change to who may do what has to change this table in the same pull request.
+- The Administrator column is every area. Where a row says **-** for everyone else, only an administrator reaches it ("Admin access required").
+- Anyone who can reach the hub can read the areas that say **R** under "Not signed in"; that is deliberate (D14), so a wall display works with no sign-in. A guest link reads those too, plus the parts ticked on it.
+- A managed **Viewer** cannot change anything, but for the role-checked reads (presence history, cabin status summary, the assistant inventory, import records) any managed account counts as a household member, so a Viewer can read them. A Viewer cannot use Ask: read-only accounts are refused every request that is not a plain read.
+- Ask's action proposals are off unless the hub turns them on; while off the route answers "not found" to everyone. The + on Devices never opens or closes a valve, and a lock accepts only the lock command, never unlock.
+- A Roof Monitoring link (Config) is a separate kind of link: it reads that page and posts comments or answers there, and nothing else. It is the only link that can post, and has no column here.
+- Every build checks this table against the app's sign-in code (`RoleMatrixTest`). It models each screen's own role check and does not call every screen.
 
 ## Share read-only access with a link (Guest Access)
 
 **Short answer.** To give someone without a Google account (an insurance adjuster, a contractor) a look at the cabin, go to Config > **Guest Access** > "Other share links". Type a label, tick what they may see (**Dashboard**, **Device states**, **Alerts**, **Historical readings**), set **Expires in** (days; blank means never), and press **Create link**. Copy the link straight away: "copy it now, it won't be shown again".
 
-- The link is read-only. It can never change anything, and it cannot open anything you did not tick.
+- The link is read-only. It can never change anything, and apart from the areas anyone can read without signing in (the **R** cells under Not signed in in the table above), it cannot open anything you did not tick.
 - **Revoke** next to a link stops it at once. A stopped link stays in the list marked **Revoked** or **Expired** as a record. Revoking cannot be undone; make a new link instead.
 - Each link shows when it was last opened and how many times. **View activity** lists the last 30 days: time, which part of the app, and the result.
 - The Config card for the Roof Monitoring page makes a separate kind of link that can only read that page and post comments or answers there. Revoke it from the Guest Access list.
