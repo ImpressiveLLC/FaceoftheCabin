@@ -2102,13 +2102,13 @@ export function FamilyConfigPanel({ auth }) {
         <ConfigCard title="Remote Access" icon={Wifi}>
           <RemoteAccessCard methods={remoteAccessMethods} />
         </ConfigCard>
-        {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2}>
+        {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2} neverShorten>
           <GuestAccessCard auth={auth} />
         </ConfigCard>}
         {!auth?.demo && <ConfigCard title="AcmeOptix by ImpressiveLLC" icon={Link2} wide>
           <RoofSpecOwnerCard auth={auth} />
         </ConfigCard>}
-        {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus}>
+        {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus} neverShorten>
           <ManagedUsersCard auth={auth} />
         </ConfigCard>}
         {!auth?.demo && <ConfigCard title="Location Roles" icon={UserPlus}>
@@ -2980,13 +2980,19 @@ function ManagedUsersCard({ auth }) {
 }
 
 // Nate, 2026-11-01: no single-column card in Config may be taller than 133% of the average of the cards next to it.
-// A card over that budget is clipped to it, with a plainly marked Expand / Minimize; expanded, it scrolls inside its own box.
-// The panel collects every card's natural height (ConfigHeights); a full-width card is its own row and sits outside the budget.
-const CONFIG_CARD_HEIGHT_RATIO = 1.33;
-const CONFIG_CARD_MIN_CAP = 200;
-const ConfigHeights = createContext(null);
+// A card over that budget is shortened to it, with a plainly marked Expand / Minimize; expanded, it scrolls inside its own box.
+// The panel collects every card's natural height (header, padding and body: ConfigHeights); a card's budget is 1.33 times the
+// mean of the OTHER single-column cards, never below 200 px. The Expand button takes room too, so the body is shortened by
+// CONFIG_CARD_TOGGLE_ALLOWANCE: the card plus its button stays inside the budget, and a card is only shortened when it is
+// over the budget (so what is hidden is always at least the button's height). A full-row card is its own row and sits outside the
+// budget. A card that holds a control to cut off access (Guest Access: Revoke; Managed Users: Deactivate) is never shortened:
+// that control must not need an extra press in an emergency.
+export const CONFIG_CARD_HEIGHT_RATIO = 1.33;
+export const CONFIG_CARD_MIN_BUDGET = 200;
+export const CONFIG_CARD_TOGGLE_ALLOWANCE = 64;
+export const ConfigHeights = createContext(null); // exported for src/ConfigCardCap.test.jsx
 
-function useConfigHeights() {
+export function useConfigHeights() {
   const [measured, setMeasured] = useState({});
   const report = useCallback((title, height) => setMeasured(prev => {
     if (height == null) {
@@ -2999,37 +3005,68 @@ function useConfigHeights() {
   return useMemo(() => ({ report, measured }), [report, measured]);
 }
 
-function ConfigCard({ title, icon: Icon, wide = false, children }) {
+const slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+export function ConfigCard({ title, icon: Icon, wide = false, neverShorten = false, children }) {
   const heights = useContext(ConfigHeights);
   const report = heights?.report;
+  const measuring = !wide && !neverShorten;
+  const cardRef = useRef(null);
+  const bodyRef = useRef(null);
   const innerRef = useRef(null);
-  const [natural, setNatural] = useState(0);
+  const [natural, setNatural] = useState(0); // the card's height with nothing shortened and no button
+  const [chrome, setChrome] = useState(0);   // header, padding and border: the card minus its body
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    const el = innerRef.current;
-    if (!el || wide || typeof ResizeObserver === "undefined") return undefined;
-    const measure = () => { setNatural(el.offsetHeight); report?.(title, el.offsetHeight); };
+    const card = cardRef.current;
+    const inner = innerRef.current;
+    if (!card || !inner || !measuring || typeof ResizeObserver === "undefined") return undefined;
+    const measure = () => {
+      // The card is a grid item stretched to its row, so its own height says nothing: add up header, padding and border instead.
+      const px = (value) => parseFloat(value) || 0;
+      const header = card.firstElementChild;
+      const style = getComputedStyle(card);
+      const rest = header.offsetHeight + px(getComputedStyle(header).marginBottom)
+        + px(style.paddingTop) + px(style.paddingBottom) + px(style.borderTopWidth) + px(style.borderBottomWidth);
+      const total = rest + inner.offsetHeight;
+      setChrome(rest);
+      setNatural(total);
+      report?.(title, total);
+    };
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(el);
+    observer.observe(inner);
+    observer.observe(card);
     return () => { observer.disconnect(); report?.(title, null); };
-  }, [wide, title, report]);
+  }, [measuring, title, report]);
   const others = Object.entries(heights?.measured || {}).filter(([name]) => name !== title).map(([, h]) => h);
-  const cap = others.length === 0 ? 0
-    : Math.max(CONFIG_CARD_MIN_CAP, Math.round(CONFIG_CARD_HEIGHT_RATIO * others.reduce((a, b) => a + b, 0) / others.length));
-  const capped = !wide && cap > 0 && natural > cap;
-  const classes = ["config-card", wide && "config-card-wide", capped && "config-card-capped", capped && open && "config-card-open"]
+  const budget = others.length === 0 ? 0
+    : Math.max(CONFIG_CARD_MIN_BUDGET, Math.round(CONFIG_CARD_HEIGHT_RATIO * others.reduce((a, b) => a + b, 0) / others.length));
+  const capped = measuring && budget > 0 && natural > budget;
+  // An open card keeps its button even if its content later shrinks under the budget, so focus is never left on a control that went.
+  const showToggle = capped || open;
+  const shortened = capped && !open;
+  const bodyId = `config-card-body-${slug(title)}`;
+  const classes = ["config-card", wide && "config-card-wide", shortened && "config-card-capped", open && "config-card-open"]
     .filter(Boolean).join(" ");
+  // Focus moving into a shortened card by keyboard opens it, so a keyboard user is never left on a control that cannot be seen.
+  // A pointer click on something already visible does not.
+  const onFocusCapture = shortened ? (event) => {
+    let byKeyboard = true;
+    try { byKeyboard = event.target.matches(":focus-visible"); } catch { byKeyboard = true; }
+    if (byKeyboard) setOpen(true);
+  } : undefined;
   return (
-    <div className={classes}>
+    <div className={classes} ref={cardRef}>
       <div className="config-card-header"><Icon size={18} /><strong>{title}</strong></div>
-      {/* Focus inside a clipped card opens it, so a keyboard user is never left on a control that cannot be seen. */}
-      <div className="config-card-body" style={capped && !open ? { maxHeight: cap } : undefined}
-        onFocusCapture={capped && !open ? () => setOpen(true) : undefined}>
+      <div id={bodyId} ref={bodyRef} className="config-card-body"
+        style={shortened ? { maxHeight: Math.max(0, budget - chrome - CONFIG_CARD_TOGGLE_ALLOWANCE) } : undefined}
+        onFocusCapture={onFocusCapture}>
         <div ref={innerRef}>{children}</div>
       </div>
-      {capped && (
+      {showToggle && (
         <button type="button" className="expandable-list-toggle config-card-toggle" aria-expanded={open}
+          aria-controls={bodyId} aria-label={`${open ? "Minimize" : "Expand"} ${title}`}
           onClick={() => setOpen(o => !o)}>
           {open ? "Minimize" : "Expand"}
           <span aria-hidden="true" className="expandable-list-chevron">{open ? "▲" : "▼"}</span>

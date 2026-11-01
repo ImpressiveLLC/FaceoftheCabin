@@ -3146,10 +3146,10 @@ select option { background: var(--bg-secondary); color: var(--text); }
   display: flex; align-items: center; justify-content: center; gap: 8px;
   margin: 6px 0; padding: 10px 16px; min-height: 44px;
   font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  color: var(--text); background: var(--bg-secondary);
   border: 2px solid var(--accent); border-radius: var(--radius);
 }
-.expandable-list-toggle:hover { background: color-mix(in srgb, var(--accent) 22%, var(--bg-secondary)); }
+.expandable-list-toggle:hover { background: color-mix(in srgb, var(--accent) 16%, var(--bg-secondary)); }
 .expandable-list-toggle:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .expandable-list-chevron { font-size: 11px; }
 .dm-duplicate-note { margin: 6px 0; }
