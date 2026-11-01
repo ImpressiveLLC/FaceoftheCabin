@@ -31,17 +31,27 @@ final class QuestionShape {
 
     private static final Set<String> LEAD_WORDS = Set.of(
         "how", "why", "what", "whats", "where", "wheres", "which", "who", "whose", "whom",
-        "does", "did", "is", "isnt", "are", "arent", "was", "wasnt", "were", "werent", "am", "doesnt", "didnt", "hows", "whos", "whys");
+        "does", "did", "is", "isnt", "are", "arent", "was", "wasnt", "were", "werent", "am", "doesnt", "didnt", "hows", "whos", "whys", "whether");
 
     /** First-person or impersonal ability and permission questions: "can I", "should we", "do I". */
     private static final Pattern LEAD_PHRASE = Pattern.compile(
         "^(can|could|may|might|should|shall|must|do|does)\\s+(i|we|someone|anyone|a\\s+guest|the\\s+\\w+)\\b");
 
+    /**
+     * A polite wrapper about asking ("can I ask", "could we ask", "am I able to ask", "is it ok to ask"), with an optional "you" and
+     * "a question" / "something". Nate's rule (2026-11-01): the can/could/may of such a wrapper is not part of the inquiry. The
+     * wrapper is skipped and what follows is judged as it stands ("can I ask how the heater works" is a question; "can I ask you to
+     * turn on the heater" is a request and is not); a wrapper standing alone ("can I ask a question?", "am I able to ask") is itself a
+     * question, answered rhetorically: you can ask, and I will do my best.
+     */
+    private static final Pattern ASK_WRAPPER = Pattern.compile(
+        "^(?:(?:can|could|may|might)\\s+(?:i|we)\\s+ask|(?:am\\s+i|are\\s+we)\\s+able\\s+to\\s+ask|is\\s+it\\s+(?:ok|okay)\\s+(?:to|if\\s+(?:i|we))\\s+ask)"
+        + "(?:\\s+(?:you|us))?(?:\\s+(?:a|one)(?:\\s+quick)?\\s+question|\\s+something|\\s+anything)?(?![a-z0-9])");
+
     /** Conversational openers skipped before the check, longest first so "thank you" wins over "thank". */
     private static final List<String> OPENERS = List.of(
         // multi-word forms first, so "i have a question about" wins over "i"
-        // "can/could/may i ask ..." is deliberately NOT an opener: it starts with a lead phrase ("can i"), so a capability question
-        // such as "can I ask you to turn on the heater?" must stay a question (pinned by QuestionShapeNoRegressionTest).
+        // the "can/could/may i ask ..." wrappers are handled by ASK_WRAPPER (see its note), not listed here
         "quick question", "one more question", "another question", "next question", "my question is", "i have a question about",
         "i have a question", "i had a question", "i would like to ask", "id like to ask",
         "i was wondering", "just wondering", "i wonder", "just curious", "curious", "wondering", "one more thing", "quick one",
@@ -102,13 +112,22 @@ final class QuestionShape {
 
     private static boolean startsLikeAQuestion(String sentence) {
         String s = LEADING_JUNK.matcher(WHITESPACE.matcher(sentence).replaceAll(" ").strip()).replaceFirst("");
-        // Every pass strictly shortens the text, so this ends; it strips as many openers and markers as are stacked.
+        boolean wrapperSeen = false;
+        // Every pass strictly shortens the text, so this ends; it strips as many wrappers, openers and markers as are stacked.
         while (true) {
-            String stripped = LIST_MARKER.matcher(stripOpener(s)).replaceFirst("");
-            if (stripped.equals(s)) break;
-            s = LEADING_JUNK.matcher(stripped).replaceFirst("");
+            java.util.regex.Matcher wrapper = ASK_WRAPPER.matcher(s);
+            String next;
+            if (wrapper.find()) {
+                wrapperSeen = true;
+                next = OPENER_PUNCTUATION.matcher(s.substring(wrapper.end())).replaceFirst("").strip();
+            } else {
+                next = LIST_MARKER.matcher(stripOpener(s)).replaceFirst("");
+            }
+            if (next.equals(s)) break;
+            s = LEADING_JUNK.matcher(next).replaceFirst("");
         }
-        if (s.isEmpty()) return false;
+        // Nothing left after a wrapper ("can I ask a question?", "am I able to ask"): a question about asking, answered rhetorically.
+        if (s.isEmpty()) return wrapperSeen;
         String first = s.split("[\\s,;:?!.]+", 2)[0];
         return LEAD_WORDS.contains(first) || LEAD_PHRASE.matcher(s).find();
     }
