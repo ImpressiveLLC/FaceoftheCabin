@@ -52,9 +52,35 @@ final class QuestionShape {
      * turn on the heater" is a request and is not); a wrapper standing alone ("can I ask a question?", "am I able to ask") is itself a
      * question, answered rhetorically: you can ask, and I will do my best.
      */
-    private static final Pattern ASK_WRAPPER = Pattern.compile(
-        "^(?:(?:can|could|may|might)\\s+(?:i|we)\\s+ask|(?:am\\s+i|are\\s+we)\\s+able\\s+to\\s+ask|is\\s+it\\s+(?:ok|okay)\\s+(?:to|if\\s+(?:i|we))\\s+ask)"
-        + "(?:\\s+(?:you|us))?(?:\\s+(?:a|one)(?:\\s+quick)?\\s+question|\\s+something|\\s+anything)?(?![a-z0-9])");
+    private static final String ASK_WRAPPER_BODY =
+        "(?:(?:can|could|may|might)\\s+(?:i|we)\\s+(?:ask|inquire|enquire)|(?:am\\s+i|are\\s+we)\\s+able\\s+to\\s+(?:ask|inquire|enquire)"
+        + "|is\\s+it\\s+(?:ok|okay)\\s+(?:to|if\\s+(?:i|we))\\s+(?:ask|inquire|enquire))"
+        + "(?:\\s+(?:you|us))?(?:\\s+(?:a|one)(?:\\s+quick)?\\s+question|\\s+something|\\s+anything)?(?![a-z0-9])";
+    private static final Pattern ASK_WRAPPER = Pattern.compile("^" + ASK_WRAPPER_BODY);
+
+    /** The wrapper at the start of the ORIGINAL text (any case), after a greeting or two: "Hi, can I ask ...". */
+    private static final Pattern WRAPPER_AT_START = Pattern.compile(
+        "^\\W*(?:(?:hi|hello|hey|please|ok|okay|so|well|um|uh)\\b[\\s,!.]*)*" + ASK_WRAPPER_BODY, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern AFTER_WRAPPER_FILLER = Pattern.compile("^[\\s,;:\\-–—]*(?:for\\s+)?(?:you\\s+)?(?:to\\s+)?", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * What a request means once its politeness wrapper is taken off (W-140, Nate 2026-11-01): the wrapper is not the request, so what
+     * follows is answered as it stands, even a fragment ("can I ask weather" is "weather"; "can I ask for you to turn on the heater" is
+     * "turn on the heater"). {@code wrapped} is false when the text does not start with a wrapper; a wrapper with nothing after it
+     * ("may I inquire something") has a blank remainder.
+     */
+    record Unwrapped(boolean wrapped, String remainder) {}
+
+    static Unwrapped unwrap(String text) {
+        if (text == null) return new Unwrapped(false, "");
+        java.util.regex.Matcher m = WRAPPER_AT_START.matcher(text.strip());
+        if (!m.find()) return new Unwrapped(false, text);
+        String rest = text.strip().substring(m.end());
+        rest = AFTER_WRAPPER_FILLER.matcher(rest).replaceFirst("").strip();
+        // a bare question mark or full stop after the wrapper is not a remainder
+        String bare = rest.replaceAll("[\\s?!.,;:]+", "");
+        return new Unwrapped(true, bare.isEmpty() ? "" : rest);
+    }
 
     /** Conversational openers skipped before the check, longest first so "thank you" wins over "thank". */
     private static final List<String> OPENERS = List.of(
