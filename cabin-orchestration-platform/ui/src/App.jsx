@@ -2111,7 +2111,7 @@ export function FamilyConfigPanel({ auth }) {
         {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus} neverShorten>
           <ManagedUsersCard auth={auth} />
         </ConfigCard>}
-        {!auth?.demo && <ConfigCard title="Location Roles" icon={UserPlus}>
+        {!auth?.demo && <ConfigCard title="Location Roles" icon={UserPlus} neverShorten>
           <LocationRolesCard auth={auth} />
         </ConfigCard>}
         <ConfigCard title="Platform" icon={Cpu} wide>
@@ -2985,8 +2985,9 @@ function ManagedUsersCard({ auth }) {
 // mean of the OTHER single-column cards, never below 200 px. The Expand button takes room too, so the body is shortened by
 // CONFIG_CARD_TOGGLE_ALLOWANCE: the card plus its button stays inside the budget, and a card is only shortened when it is
 // over the budget (so what is hidden is always at least the button's height). A full-row card is its own row and sits outside the
-// budget. A card that holds a control to cut off access (Guest Access: Revoke; Managed Users: Deactivate) is never shortened:
-// that control must not need an extra press in an emergency.
+// budget. A card that holds a control to revoke, deactivate or remove (Guest Access: Revoke; Managed Users: Deactivate;
+// Location Roles: Remove) is never shortened: that control must not need an extra press, and its row may sit beside a taller card.
+// A never-shortened card still reports its height, so it counts in the average of the cards beside it.
 export const CONFIG_CARD_HEIGHT_RATIO = 1.33;
 export const CONFIG_CARD_MIN_BUDGET = 200;
 export const CONFIG_CARD_TOGGLE_ALLOWANCE = 64;
@@ -3005,12 +3006,21 @@ export function useConfigHeights() {
   return useMemo(() => ({ report, measured }), [report, measured]);
 }
 
+// Whether the last thing the person did was press a key. A text field that is clicked with a mouse counts as keyboard-focused to the
+// browser (:focus-visible), so that cannot tell a click from a Tab; the input that came just before the focus can.
+let lastInputWasKeyboard = false;
+if (typeof document !== "undefined") {
+  document.addEventListener("keydown", () => { lastInputWasKeyboard = true; }, true);
+  document.addEventListener("pointerdown", () => { lastInputWasKeyboard = false; }, true);
+  document.addEventListener("mousedown", () => { lastInputWasKeyboard = false; }, true);
+}
+
 const slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 export function ConfigCard({ title, icon: Icon, wide = false, neverShorten = false, children }) {
   const heights = useContext(ConfigHeights);
   const report = heights?.report;
-  const measuring = !wide && !neverShorten;
+  const measuring = !wide; // a never-shortened card is measured too: it counts in the average of the cards beside it
   const cardRef = useRef(null);
   const bodyRef = useRef(null);
   const innerRef = useRef(null);
@@ -3042,7 +3052,7 @@ export function ConfigCard({ title, icon: Icon, wide = false, neverShorten = fal
   const others = Object.entries(heights?.measured || {}).filter(([name]) => name !== title).map(([, h]) => h);
   const budget = others.length === 0 ? 0
     : Math.max(CONFIG_CARD_MIN_BUDGET, Math.round(CONFIG_CARD_HEIGHT_RATIO * others.reduce((a, b) => a + b, 0) / others.length));
-  const capped = measuring && budget > 0 && natural > budget;
+  const capped = measuring && !neverShorten && budget > 0 && natural > budget;
   // An open card keeps its button even if its content later shrinks under the budget, so focus is never left on a control that went.
   const showToggle = capped || open;
   const shortened = capped && !open;
@@ -3051,13 +3061,14 @@ export function ConfigCard({ title, icon: Icon, wide = false, neverShorten = fal
     .filter(Boolean).join(" ");
   // Focus moving into a shortened card by keyboard opens it, so a keyboard user is never left on a control that cannot be seen.
   // A pointer click on something already visible does not.
-  const onFocusCapture = shortened ? (event) => {
-    let byKeyboard = true;
-    try { byKeyboard = event.target.matches(":focus-visible"); } catch { byKeyboard = true; }
-    if (byKeyboard) setOpen(true);
-  } : undefined;
+  const onFocusCapture = shortened ? () => { if (lastInputWasKeyboard) setOpen(true); } : undefined;
+  // Minimize on a card that now fits takes its button away: focus goes to the card, not to the page.
+  const toggle = () => {
+    if (open && !capped) cardRef.current?.focus();
+    setOpen(o => !o);
+  };
   return (
-    <div className={classes} ref={cardRef}>
+    <div className={classes} ref={cardRef} tabIndex={-1}>
       <div className="config-card-header"><Icon size={18} /><strong>{title}</strong></div>
       <div id={bodyId} ref={bodyRef} className="config-card-body"
         style={shortened ? { maxHeight: Math.max(0, budget - chrome - CONFIG_CARD_TOGGLE_ALLOWANCE) } : undefined}
@@ -3067,7 +3078,7 @@ export function ConfigCard({ title, icon: Icon, wide = false, neverShorten = fal
       {showToggle && (
         <button type="button" className="expandable-list-toggle config-card-toggle" aria-expanded={open}
           aria-controls={bodyId} aria-label={`${open ? "Minimize" : "Expand"} ${title}`}
-          onClick={() => setOpen(o => !o)}>
+          onClick={toggle}>
           {open ? "Minimize" : "Expand"}
           <span aria-hidden="true" className="expandable-list-chevron">{open ? "▲" : "▼"}</span>
         </button>

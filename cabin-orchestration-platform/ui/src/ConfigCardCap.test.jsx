@@ -109,18 +109,44 @@ describe("Config cards stay within a height budget", () => {
     expect(shortened("X")).toBe(true);
   });
 
-  it("a click on a visible field does not open the card; keyboard focus into it does", () => {
-    const original = Element.prototype.matches;
-    let keyboard = false;
-    vi.spyOn(Element.prototype, "matches").mockImplementation(function (selector) {
-      return selector === ":focus-visible" ? keyboard : original.call(this, selector);
-    });
+  it("a click on a visible field does not open the card; focus that follows a key press does", () => {
+    render(<Grid cards={[...peers(300), { title: "X", n: 450 }]} />);
+    // a mouse press then focus: the browser calls a clicked text field focus-visible, but the last input was a pointer
+    fireEvent.mouseDown(document.body);
+    fireEvent.focus(screen.getByLabelText("field X"));
+    expect(shortened("X")).toBe(true);
+    // Tab: the last input was a key
+    fireEvent.keyDown(document.body, { key: "Tab" });
+    fireEvent.focus(screen.getByLabelText("field X"));
+    expect(card("X").className).toContain("config-card-open");
+  });
+
+  it("with no input yet (focus set by a script) a shortened card stays shortened", () => {
+    fireEvent.mouseDown(document.body);
     render(<Grid cards={[...peers(300), { title: "X", n: 450 }]} />);
     fireEvent.focus(screen.getByLabelText("field X"));
     expect(shortened("X")).toBe(true);
-    keyboard = true;
-    fireEvent.focus(screen.getByLabelText("field X"));
-    expect(card("X").className).toContain("config-card-open");
+  });
+
+  it("a never-shortened card still counts in the average of the cards beside it", () => {
+    // peers 301, 301 and a never-shortened 1001: mean 534, budget 710, so a 501 card fits. Left out of the average the budget is 400 and it would be cut.
+    render(<Grid cards={[...peers(300), { title: "G", n: 1000, neverShorten: true }, { title: "X", n: 500 }]} />);
+    expect(shortened("X")).toBe(false);
+    cleanup();
+    render(<Grid cards={[...peers(300), { title: "X", n: 500 }]} />);
+    expect(shortened("X")).toBe(true);
+  });
+
+  it("Minimize on a card that now fits hands focus to the card, not to the page", () => {
+    const { rerender } = render(<Grid cards={[...peers(300), { title: "X", n: 450 }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Expand X" }));
+    rerender(<Grid cards={[...peers(300), { title: "X", n: 100 }]} />);
+    act(() => { observers.forEach(o => o.callback()); });
+    const minimize = screen.getByRole("button", { name: "Minimize X" });
+    minimize.focus();
+    fireEvent.click(minimize);
+    expect(screen.queryByRole("button", { name: /Minimize X|Expand X/ })).toBeNull();
+    expect(document.activeElement).toBe(card("X"));
   });
 
   it("an open card keeps its Minimize button when its content later shrinks under the budget", () => {

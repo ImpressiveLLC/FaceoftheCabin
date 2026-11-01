@@ -359,6 +359,7 @@ body {
 }
 /* A card over its height budget (see ConfigCard) is clipped with a fade; expanded, it scrolls inside its own box. */
 .config-card-body { min-width: 0; }
+.config-card:focus { outline: none; }
 .config-card-capped:not(.config-card-open) .config-card-body {
   overflow: hidden;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
