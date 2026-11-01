@@ -31,7 +31,7 @@ should be small and deliberately conservative.
 ## Proposed architecture
 
 ```
- GitHub (issues, labels, PRs, branch protection)   <- the vault: board, queue, decisions, history (already how we work)
+ GitHub (issues, labels, PRs)   <- the vault: board, queue, decisions, history (already how we work)
         ^                    ^
         |                    |
  [runner container, any Linux box]          [vault repo `factory-vault` (git)]
