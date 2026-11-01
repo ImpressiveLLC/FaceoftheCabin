@@ -5404,7 +5404,7 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
 
     render(<GuestDashboard token="secret-abc" />);
 
-    await screen.findByText(/doesn't currently grant access/);
+    await screen.findByText(/There is nothing to show right now/);
     fetchMock.mock.calls.forEach(call => expect(call[0]).toContain("t=secret-abc"));
   });
 
@@ -5421,7 +5421,7 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
 
     render(<GuestDashboard token="secret-abc" />);
 
-    expect(await screen.findByText(/doesn't currently grant access to any data/)).toBeTruthy();
+    expect(await screen.findByText(/There is nothing to show right now/)).toBeTruthy();
     expect(screen.queryByText(/isn't valid, has expired/)).toBeFalsy();
   });
 });

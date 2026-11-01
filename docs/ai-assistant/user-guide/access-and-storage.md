@@ -71,11 +71,10 @@ How to read the table:
 
 ## Share read-only access with a link (Guest Access)
 
-**Short answer.** A guest link is a convenience view of data that is open without signing in (D14), made for sharing a look with someone who has no Google account. Today its main uses are the insurance claim and tradespeople. To make one, go to Config > **Guest Access** > "Other share links". Type a label, choose the parts to include, set **Expires in** (days; blank means never), and press **Create link**. Copy the link straight away: "copy it now, it won't be shown again".
+**Short answer.** A guest link is a convenience view of data that is open without signing in (D14), made for sharing a look with someone who has no Google account. Today its main uses are the insurance claim and tradespeople. To make one, go to Config > **Guest Access** > "Other share links". Type a label, set **Expires in** (days; blank means never), and press **Create link**. Copy the link straight away: "copy it now, it won't be shown again".
 
 - The link is read-only and can never change anything. It shows data that is open without signing in (D14); it is a convenience for sharing a look.
-- **Revoke** next to a link stops it at once. A stopped link stays in the list marked **Revoked** or **Expired** as a record. Revoking cannot be undone; make a new link instead.
-- Each link shows when it was last opened and how many times. **View activity** lists the last 30 days: time, which part of the app, and the result.
+- **Revoke** marks a link Revoked; it stays in the list, marked **Revoked** or **Expired**, as a record. Revoking cannot be undone; make a new link instead.
 - The Config card for the Roof Monitoring page makes a separate kind of link that can only read that page and post comments or answers there. Revoke it from the Guest Access list.
 - Long cards in Config are shortened and show **Expand** (press it to see the rest, **Minimize** to fold it back). Guest Access, Managed Users and Location Roles are never shortened, so **Create link**, **Revoke**, **Deactivate** and **Remove** are always in view.
 

@@ -2659,8 +2659,8 @@ export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.
         <span className="config-hint">
           {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
         </span>
-        <span className="config-hint guest-access-usage">{describeLinkUsage(t)}</span>
-        <AccessActivity id={t.id} doFetch={doFetch} apiBase={apiBase} />
+        {t.scope?.includes("demo") && <span className="config-hint guest-access-usage">{describeLinkUsage(t)}</span>}
+        {t.scope?.includes("demo") && <AccessActivity id={t.id} doFetch={doFetch} apiBase={apiBase} />}
       </div>
       {status.active
         ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
@@ -10383,10 +10383,10 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
   return (
     <div className="guest-view">
       <h1>{dashboardConfig?.platformName || "Cabin Conditions"}</h1>
-      <p className="config-hint">Read-only view — only the sections this link is scoped to grant are shown below.</p>
+      <p className="config-hint">Read-only view of cabin conditions.</p>
 
       {nothingGranted && (
-        <p className="config-hint">This link doesn't currently grant access to any data. Contact the cabin owner.</p>
+        <p className="config-hint">There is nothing to show right now. Contact the cabin owner.</p>
       )}
 
       {alerts && alerts.length > 0 && (

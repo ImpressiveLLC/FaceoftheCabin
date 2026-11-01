@@ -25,4 +25,14 @@ describe("guest link product language", () => {
       expect(read(file), file).toContain("a guest link is a convenience view of data that is open without signing in, D14");
     }
   });
+  it("the guide and the card say nothing about what Revoke does beyond marking the link, name no limiting ticks, and show no usage on guest links", () => {
+    const guide = read("docs", "ai-assistant", "user-guide", "access-and-storage.md");
+    expect(guide).not.toMatch(/stops it at once|choose the parts to include|last opened|View activity/);
+    expect(guide).toContain("**Revoke** marks a link Revoked");
+    const app = read("cabin-orchestration-platform", "ui", "src", "App.jsx");
+    expect(app).toContain('{t.scope?.includes("demo") && <span className="config-hint guest-access-usage">');
+    expect(app).toContain('{t.scope?.includes("demo") && <AccessActivity');
+    expect(app).toContain("Read-only view of cabin conditions.");
+    expect(app).not.toContain("only the sections this link is scoped to grant");
+  });
 });
