@@ -63,7 +63,7 @@ class GoogleAuthInterceptorTest {
     }
 
     /** Minimal in-memory fakes -- no database needed for this unit test, mirroring InMemoryAccessTokenStore above. */
-    private static final class InMemoryManagedUserStore implements ManagedUserStore {
+    static final class InMemoryManagedUserStore implements ManagedUserStore {
         private final Map<String, ManagedUser> byId = new HashMap<>();
         @Override public List<ManagedUser> loadAll() { return List.copyOf(byId.values()); }
         @Override public Optional<ManagedUser> findById(String id) { return Optional.ofNullable(byId.get(id)); }
@@ -73,7 +73,7 @@ class GoogleAuthInterceptorTest {
         @Override public void save(ManagedUser user) { byId.put(user.id(), user); }
     }
 
-    private static final class InMemoryMagicLinkTokenStore implements MagicLinkTokenStore {
+    static final class InMemoryMagicLinkTokenStore implements MagicLinkTokenStore {
         private final Map<String, MagicLinkToken> byToken = new HashMap<>();
         @Override public void save(MagicLinkToken token) { byToken.put(token.token(), token); }
         @Override public Optional<MagicLinkToken> findByToken(String token) { return Optional.ofNullable(byToken.get(token)); }
@@ -83,7 +83,7 @@ class GoogleAuthInterceptorTest {
         }
     }
 
-    private static final class InMemoryManagedUserSessionStore implements ManagedUserSessionStore {
+    static final class InMemoryManagedUserSessionStore implements ManagedUserSessionStore {
         private final Map<String, ManagedUserSession> byToken = new HashMap<>();
         @Override public void save(ManagedUserSession session) { byToken.put(session.token(), session); }
         @Override public Optional<ManagedUserSession> findByToken(String token) { return Optional.ofNullable(byToken.get(token)); }
@@ -93,7 +93,7 @@ class GoogleAuthInterceptorTest {
         }
     }
 
-    private static final class InMemoryCabinSessionStore implements CabinSessionStore {
+    static final class InMemoryCabinSessionStore implements CabinSessionStore {
         private final Map<String, CabinSession> byToken = new HashMap<>();
         @Override public void save(CabinSession session) { byToken.put(session.token(), session); }
         @Override public Optional<CabinSession> findByToken(String token) { return Optional.ofNullable(byToken.get(token)); }
@@ -108,7 +108,7 @@ class GoogleAuthInterceptorTest {
     }
 
     /** Minimal in-memory fake -- no database needed for this unit test. */
-    private class InMemoryAccessTokenStore implements CabinAccessTokenStore {
+    class InMemoryAccessTokenStore implements CabinAccessTokenStore {
         private final Map<String, CabinAccessToken> byToken = new HashMap<>();
 
         @Override public List<CabinAccessToken> loadAll() { return List.copyOf(byToken.values()); }

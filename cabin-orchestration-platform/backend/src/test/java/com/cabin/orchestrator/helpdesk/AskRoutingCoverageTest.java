@@ -232,4 +232,11 @@ class AskRoutingCoverageTest {
             assertThat(builder.categoryIdFor(q)).as(q).isEqualTo("alert_noise");
         }
     }
+
+    @Test
+    void aHouseholdMemberAskingWhatARoleCanDoGetsTheByAreaTable() {
+        for (String q : List.of("Who is allowed to change workflows?", "What can a viewer do?")) {
+            assertThat(refs(q, HouseholdRole.ADULT_HOUSEHOLD_MEMBER)).as(q).anyMatch(r -> r.endsWith("#what-each-role-can-do-by-area"));
+        }
+    }
 }

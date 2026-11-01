@@ -612,6 +612,11 @@
           "path": "ai-assistant/user-guide/access-and-storage.md",
           "section": "who-can-see-and-change-what",
           "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "what-each-role-can-do-by-area",
+          "audience": "household"
         }
       ]
     },
