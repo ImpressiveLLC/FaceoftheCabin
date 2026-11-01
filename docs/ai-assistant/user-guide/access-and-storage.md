@@ -8,11 +8,11 @@ Audience: administrators, plus the household-safe summary in "Who can see and ch
 |---|---|---|
 | Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Guest Access (share and demo links), Managed Users, Trim old backups, Optimization Opportunities, Location Roles and confirming a platform import (households can read the import records) |
 | Household member signed in with Google | Google sign-in with any other accepted account | See the app and make the changes that need a sign-in, for example workflows, notes and chores. Administrator-only screens say "Admin access required" or "Only an administrator can trim storage" |
-| Managed user, "Household member (read/write)" | An emailed sign-in link (Managed Users) | Same as a household member. Cannot manage share links or managed users |
-| Managed user, "Viewer (read-only)" | An emailed sign-in link | Look only. Any change is refused |
+| Managed user, "Household member (read/write)" | A sign-in link from Managed Users (copied and handed over, or emailed) | Same as a household member. Cannot manage share links or managed users |
+| Managed user, "Viewer (read-only)" | A sign-in link from Managed Users (copied or emailed) | Look only. Any change is refused |
 | Guest link | A share link from Guest Access | Read-only. It reaches the parts ticked when the link was made (Dashboard, Device states, Alerts, Historical readings) and whatever is open to anyone without signing in; it reaches nothing else and cannot change anything |
 | Demo link | A demo link from Guest Access | The whole app, read-only. Cameras, locks, motion and door sensors, and phones show as "hidden for Demo viewers" |
-| Not signed in | Opening the app without signing in | Read the open areas, the ones marked **R** under Not signed in in the table below. Everything else asks for a sign-in |
+| Not signed in | Opening the app without signing in | Read the areas marked **R** under Not signed in below. Everything else asks for a sign-in |
 | Child, kiosk display and service roles | Defined in the code, not yet assignable | Nothing today: no one can be given these roles yet |
 
 Signing in with Google is in Config. Workflow buttons appear only when signed in.
@@ -62,9 +62,9 @@ Audience: household.
 How to read the table:
 - The Administrator column is every area. Where a row says **-** for everyone else, only an administrator reaches it ("Admin access required").
 - Anyone who can reach the hub can read the areas that say **R** under "Not signed in"; that is deliberate (D14), so a wall display works with no sign-in. A guest link reads those too, plus the parts ticked on it.
-- A managed **Viewer** cannot change anything, but for the role-checked reads (presence history, cabin status summary, the assistant inventory, import records) any managed account counts as a household member, so a Viewer can read them. A Viewer cannot use Ask: read-only accounts are refused every request that is not a plain read.
+- A managed **Viewer** cannot change anything, but for the role-checked reads (presence history, cabin status summary, the assistant inventory, import records) any managed account counts as a household member, so a Viewer can read them. A Viewer cannot use Ask (read-only accounts are refused every non-read request).
 - Ask's action proposals are off unless the hub turns them on; while off the route answers "not found" to everyone. The + on Devices never opens or closes a valve, and a lock accepts only the lock command, never unlock.
-- A Roof Monitoring link (Config) is a separate kind of link: it reads that page and posts comments or answers there, and nothing else. It is the only link that can post, and has no column here.
+- A Roof Monitoring link (Config) reads that page and posts comments or answers there, nothing else. It is the only link that can post, and has no column here.
 - Every build checks this table against the app's sign-in code (`RoleMatrixTest`). It models each screen's own role check and does not call every screen.
 
 ## Share read-only access with a link (Guest Access)
@@ -91,17 +91,17 @@ Evidence: `DemoLinkSection` in `App.jsx`; `CabinAccessTokenService.create` (a de
 
 ## Add someone without a Google account (Managed Users)
 
-**Short answer.** In Config > **Managed Users**, enter their email address and name, choose **Viewer (read-only)** or **Household member (read/write)**, and press **Add managed user**. Then press **Invite** to email them a sign-in link. There is no password.
+**Short answer.** In Config > **Managed Users**, enter their email address and name, choose **Viewer (read-only)** or **Household member (read/write)**, and press **Add managed user**. Then press **Copy sign-in link** to copy a link and hand it to them yourself, or **Invite** to email it. There is no password.
 
 - Adding and inviting are separate, so you can fix a mistyped email before anything is sent.
-- The emailed link works once and expires after 30 minutes. If it has expired or was used, press **Invite** again. After they use it, they stay signed in on that browser for up to 90 days.
-- **Deactivate** signs them out everywhere at once and blocks new links. **Reactivate** lets them be invited again. Nothing is deleted.
-- **Invite** needs the hub's email service to be set up (host-dependent). If it is not, Invite shows an error instead of "Invite sent."
+- The link, copied or emailed, works once and expires after 30 minutes. If it has expired or was used, press **Copy sign-in link** (or **Invite**) again. Anyone who holds a copied link can sign in as that person until it is used or expires, so hand it over privately. After they use it, they stay signed in on that browser for up to 90 days.
+- **Deactivate** signs them out everywhere at once and blocks new links. **Reactivate** lets them be given a new link again. Nothing is deleted.
+- **Invite** needs the hub's email service to be set up (host-dependent), and a test sender may only mail its own account. If it cannot send, Invite shows an error instead of "Invite sent." **Copy sign-in link** does not use email: use it when Invite fails.
 - A managed user can never manage share links or other managed users, even as a household member.
 
 Only administrators manage share links and managed users. Managed accounts, guest links and demo links are always refused on these screens.
 
-Evidence: `ManagedUsersCard` in `App.jsx`; `ManagedUsersController`; `ManagedUserService` (`MAGIC_LINK_TTL` 30 minutes, `SESSION_TTL` 90 days, `validateSession` ends a deactivated user's sessions); `ResendEmailSender` refuses to send when its key is not configured; `GoogleAuthInterceptor.handleManagedSession` returns 403 for `/api/managed-users` and `/api/access-tokens`.
+Evidence: `ManagedUsersCard` in `App.jsx`; `ManagedUsersController`; `ManagedUserService` (`createSignInLink` builds the copied link; the route answers `Cache-Control: no-store`; `MAGIC_LINK_TTL` 30 minutes, `SESSION_TTL` 90 days, `validateSession` ends a deactivated user's sessions); `ResendEmailSender` refuses to send when its key is not configured; `GoogleAuthInterceptor.handleManagedSession` returns 403 for `/api/managed-users` and `/api/access-tokens`.
 
 ## Disk space warnings
 
