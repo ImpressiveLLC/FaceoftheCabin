@@ -2895,6 +2895,27 @@ function ManagedUsersCard({ auth }) {
     refresh();
   };
 
+  // A sign-in link to copy and hand over, like a guest link: no email, so it works without the email service.
+  const [signInLink, setSignInLink] = useState(null);
+  const [copied, setCopied] = useState(null); // "ok" | "blocked" after pressing Copy on the link above
+  // A plain http address has no clipboard (navigator.clipboard is undefined there), so a failure says how to copy by hand.
+  const copyToClipboard = async (text) => {
+    try { await navigator.clipboard.writeText(text); setCopied("ok"); } catch { setCopied("blocked"); }
+  };
+  const copyLink = async (id) => {
+    setActionResult(null);
+    setSignInLink(null);
+    setCopied(null);
+    try {
+      const response = await doFetch(`${apiBase}/api/managed-users/${id}/sign-in-link`, { method: "POST" });
+      const body = await response.json().catch(() => ({}));
+      if (body.url) setSignInLink({ id, url: body.url, minutes: body.expiresInMinutes || 30 });
+      else setActionResult({ id, ok: false, message: body.error || "Could not create a link." });
+    } catch {
+      setActionResult({ id, ok: false, message: "Could not create a link." });
+    }
+  };
+
   const invite = async (id) => {
     setActionResult(null);
     const response = await doFetch(`${apiBase}/api/managed-users/${id}/invite`, { method: "POST" });
@@ -2906,7 +2927,7 @@ function ManagedUsersCard({ auth }) {
 
   return (
     <>
-      <p className="config-desc">Standing access for a household member or collaborator without a Google account — passwordless, via an emailed sign-in link.</p>
+      <p className="config-desc">Standing access for a household member or collaborator without a Google account — passwordless, via a sign-in link you can copy and hand over, or have emailed.</p>
       <div className="guest-access-form">
         <input value={email} placeholder="Email address"
           onChange={e => setEmail(e.target.value)} />
@@ -2934,8 +2955,18 @@ function ManagedUsersCard({ auth }) {
               {actionResult?.id === u.id && (
                 <p className={`action-result ${actionResult.ok ? "" : "action-error"}`}>{actionResult.message}</p>
               )}
+              {signInLink?.id === u.id && (
+                <div className="guest-access-new-link">
+                  <strong>Sign-in link for {u.name}: copy it now. Anyone who holds it can sign in as {u.name} until it is used once or expires in {signInLink.minutes} minutes. It will not be shown again:</strong>
+                  <code style={{ userSelect: "all" }}>{signInLink.url}</code>
+                  <button className="btn-ghost" onClick={() => copyToClipboard(signInLink.url)}>Copy</button>
+                  {copied === "ok" && <span role="status" className="action-result">Copied.</span>}
+                  {copied === "blocked" && <span role="status" className="action-result action-error">Copy was blocked by the browser (a plain http address does this). Select the link above and copy it by hand.</span>}
+                </div>
+              )}
             </div>
             <div className="managed-users-row-actions">
+              {u.active && <button className="btn-secondary" onClick={() => copyLink(u.id)}>Copy sign-in link</button>}
               {u.active && <button className="btn-ghost" onClick={() => invite(u.id)}>Invite</button>}
               {u.active
                 ? <button className="btn-danger" onClick={() => setActive(u.id, false)}>Deactivate</button>

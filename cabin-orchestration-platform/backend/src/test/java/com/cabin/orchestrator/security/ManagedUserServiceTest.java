@@ -169,4 +169,26 @@ class ManagedUserServiceTest {
                 existing.token(), existing.managedUserId(), existing.expiresAt(), revokedAt, existing.createdAt()));
         }
     }
+
+    @Test
+    void aSignInLinkIsReturnedForCopyingAndNothingIsEmailed() {
+        ManagedUser user = service.create("a@example.com", "Alice", ManagedUserRole.HOUSEHOLD_MEMBER, "nate@example.com");
+
+        String url = service.createSignInLink(user.id());
+
+        assertTrue(url.startsWith("https://app.example.com/auth/magic/"), url);
+        assertEquals(0, sentUrls.size(), "no email is sent");
+        // it is a real single-use link: it signs the person in once and then no longer works
+        String token = url.substring(url.lastIndexOf('/') + 1);
+        assertTrue(service.consumeMagicLink(token).isPresent());
+        assertTrue(service.consumeMagicLink(token).isEmpty());
+    }
+
+    @Test
+    void aSignInLinkIsRefusedForADeactivatedOrUnknownUser() {
+        ManagedUser user = service.create("a@example.com", "Alice", ManagedUserRole.VIEWER, "nate@example.com");
+        service.setActive(user.id(), false);
+        assertThrows(IllegalStateException.class, () -> service.createSignInLink(user.id()));
+        assertThrows(NoSuchElementException.class, () -> service.createSignInLink("no-such-id"));
+    }
 }
