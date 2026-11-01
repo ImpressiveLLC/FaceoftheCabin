@@ -1,6 +1,6 @@
 # Sharing access and keeping the disk healthy
 
-Audience: administrators, plus the household-safe summary in "Who can see and change what". Behavior as of `main` on 2026-10-31, read from the app and backend source; nothing here was run on the live hub. Anything that depends on how the hub is set up is marked "host-dependent". No link, token, password or address appears here.
+Audience: administrators, plus the household-safe sections "Who can see and change what" and "What each role can do, by area". Behavior as of `main` on 2026-10-31, read from the app and backend source; nothing here was run on the live hub. Anything that depends on how the hub is set up is marked "host-dependent". No link, token, password or address appears here.
 
 ## Who can see and change what
 
@@ -12,7 +12,7 @@ Audience: household.
 | Household member signed in with Google | Google sign-in with any other accepted account | See the app and make the changes that need a sign-in, for example workflows, notes and chores. Administrator-only screens say "Admin access required" or "Only an administrator can trim storage" |
 | Managed user, "Household member (read/write)" | A sign-in link from Managed Users (copied and handed over, or emailed) | Same as a household member. Cannot manage share links or managed users |
 | Managed user, "Viewer (read-only)" | A sign-in link from Managed Users (copied or emailed) | Look only. Any change is refused |
-| Guest link | A share link from Guest Access | Read-only. It reaches the parts ticked when the link was made (Dashboard, Device states, Alerts, Historical readings) and whatever is open to anyone without signing in; it reaches nothing else and cannot change anything |
+| Guest link | A share link from Guest Access | A guest link is read-only and reads the areas that are open without signing in (D14) |
 | Demo link | A demo link from Guest Access | The whole app, read-only. Cameras, locks, motion and door sensors, and phones show as "hidden for Demo viewers" |
 | Not signed in | Opening the app without signing in | Read the areas marked **R** under Not signed in below. Everything else asks for a sign-in |
 | Child, kiosk display and service roles | Defined in the code, not yet assignable | Nothing today: no one can be given these roles yet |
@@ -34,9 +34,9 @@ Audience: household.
 | Devices: inventory, status and commands | R | CRUD+ | CRUD+ | CRUD+ | R | R | R |
 | Device type re-detect | - | + | - | - | - | - | - |
 | Home Assistant switch calls | - | + | + | + | - | - | - |
-| Rules and workflows | R | CRD+ | CRD+ | CRD+ | R | R | R |
-| Schedules | - | CR | CR | CR | R | - | - |
-| Knowledge notes behind Ask | R | CR | CR | CR | R | R | - |
+| Rules and workflows | R | CRUD+ | CRUD+ | CRUD+ | R | R | R |
+| Schedules and holidays | - | CRUD | CRUD | CRUD | R | - | - |
+| Knowledge notes behind Ask | R | CR+ | CR+ | CR+ | R | R | - |
 | Ask: explain and diagnose | - | + | + | + | - | - | - |
 | Ask: action proposals (off by default) | - | + | - | - | - | - | - |
 | Places (locations) | R | CRUD | CRUD | CRUD | R | R | R |
@@ -54,7 +54,7 @@ Audience: household.
 | Platform import: confirm | - | + | - | - | - | - | - |
 | Guest Access links | - | CRD | - | - | - | - | - |
 | Roof Monitoring page: entries | - | CRD | CRD | CRD | R | - | - |
-| Managed users | - | CRU | - | - | - | - | - |
+| Managed users | - | CRU+ | - | - | - | - | - |
 | Location roles | - | RU | - | - | - | - | - |
 | Disk status | R | R | R | R | R | R | - |
 | Trim old backups | - | R+ | - | - | - | - | - |
@@ -63,7 +63,7 @@ Audience: household.
 
 How to read the table:
 - The Administrator column is every area. Where a row says **-** for everyone else, only an administrator reaches it ("Admin access required").
-- Anyone who can reach the hub can read the areas that say **R** under "Not signed in"; that is deliberate (D14), so a wall display works with no sign-in. A guest link reads those too, plus the parts ticked on it.
+- Anyone who can reach the hub can read the areas that say **R** under "Not signed in"; that is deliberate (D14), so a wall display works with no sign-in. A guest link reads those too.
 - A managed **Viewer** cannot change anything, but for the role-checked reads (presence history, cabin status summary, the assistant inventory, import records) any managed account counts as a household member, so a Viewer can read them. A Viewer cannot use Ask (read-only accounts are refused every non-read request).
 - Ask's action proposals are off unless the hub turns them on; while off the route answers "not found" to everyone. The + on Devices never opens or closes a valve, and a lock accepts only the lock command, never unlock.
 - A Roof Monitoring link (Config) reads that page and posts comments or answers there, nothing else. It is the only link that can post, and has no column here.
@@ -73,7 +73,7 @@ How to read the table:
 
 **Short answer.** To give someone without a Google account (an insurance adjuster, a contractor) a look at the cabin, go to Config > **Guest Access** > "Other share links". Type a label, tick what they may see (**Dashboard**, **Device states**, **Alerts**, **Historical readings**), set **Expires in** (days; blank means never), and press **Create link**. Copy the link straight away: "copy it now, it won't be shown again".
 
-- The link is read-only. It can never change anything, and apart from the areas anyone can read without signing in (the **R** cells under Not signed in in the table above), it cannot open anything you did not tick.
+- The link is read-only. It can never change anything, and it reads the areas that are open without signing in (D14).
 - **Revoke** next to a link stops it at once. A stopped link stays in the list marked **Revoked** or **Expired** as a record. Revoking cannot be undone; make a new link instead.
 - Each link shows when it was last opened and how many times. **View activity** lists the last 30 days: time, which part of the app, and the result.
 - The Config card for the Roof Monitoring page makes a separate kind of link that can only read that page and post comments or answers there. Revoke it from the Guest Access list.
