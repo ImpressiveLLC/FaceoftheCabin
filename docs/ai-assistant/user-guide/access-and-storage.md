@@ -27,7 +27,7 @@ Evidence: `GoogleAuthInterceptor` (role derivation, managed-session gate, guest 
 - **Revoke** next to a link stops it at once. A stopped link stays in the list marked **Revoked** or **Expired** as a record. Revoking cannot be undone; make a new link instead.
 - Each link shows when it was last opened and how many times. **View activity** lists the last 30 days: time, which part of the app, and the result.
 - The Config card for the Roof Monitoring page makes a separate kind of link that can only read that page and post comments or answers there. Revoke it from the Guest Access list.
-- Long cards in Config are shortened and show **Expand** (press it to see the rest, **Minimize** to fold it back). Guest Access and Managed Users are never shortened, so **Create link** and **Revoke** are always in view.
+- Long cards in Config are shortened and show **Expand** (press it to see the rest, **Minimize** to fold it back). Guest Access, Managed Users and Location Roles are never shortened, so **Create link**, **Revoke**, **Deactivate** and **Remove** are always in view.
 
 What it does not do: it does not create an account, and it does not send anything. You send the link yourself.
 
