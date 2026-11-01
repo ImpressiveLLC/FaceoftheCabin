@@ -20,14 +20,18 @@ describe("guest link product language", () => {
     expect(guide).not.toMatch(/cannot open anything you did not tick|reaches nothing else/);
   });
   it("the ontology and both instruction files describe it the same way, with no claim about fixed scope prefixes", () => {
-    expect(read("docs", "ontology.yaml")).not.toContain("four fixed\n      read-only scope prefixes");
+    expect(read("docs", "ontology.yaml").replace(/\s+/g, " ")).not.toContain("four fixed read-only scope prefixes");
     for (const file of ["CLAUDE.md", "AGENTS.md"]) {
       expect(read(file), file).toContain("a guest link is a convenience view of data that is open without signing in, D14");
     }
   });
   it("the guide and the card say nothing about what Revoke does beyond marking the link, name no limiting ticks, and show no usage on guest links", () => {
     const guide = read("docs", "ai-assistant", "user-guide", "access-and-storage.md");
-    expect(guide).not.toMatch(/stops it at once|choose the parts to include|last opened|View activity/);
+    const guestSection = guide.slice(guide.indexOf("## Share read-only access with a link"), guide.indexOf("## Give someone a demo link"));
+    expect(guestSection).not.toMatch(/stops it at once|choose the parts to include|last opened|View activity/i);
+    // demo links still show Last opened and View activity, so the demo section explains them
+    const demoSection = guide.slice(guide.indexOf("## Give someone a demo link"), guide.indexOf("## Add someone without a Google account"));
+    expect(demoSection).toMatch(/\*\*Last opened\*\*[^\n]*\*\*View activity\*\*/);
     expect(guide).toContain("**Revoke** marks a link Revoked");
     const app = read("cabin-orchestration-platform", "ui", "src", "App.jsx");
     expect(app).toContain('{t.scope?.includes("demo") && <span className="config-hint guest-access-usage">');

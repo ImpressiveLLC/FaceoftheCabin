@@ -87,6 +87,7 @@ Evidence: `GuestAccessCard`, `AccessActivity`, `RoofSpecOwnerCard` in `App.jsx`;
 **Short answer.** For someone evaluating the product, use Config > **Guest Access** > "Demo link for product evaluation". Name it after the person and why (for example "Agent evaluation - Jane Doe"), set **Lives for** (whole days, 1 or more), press **Create demo link**, and copy the link at once; it is shown only once.
 
 - A demo link shows the real app read-only with no sign-in. Cameras, locks, motion and door sensors, and phones are hidden, and the Config cards for Guest Access, Managed Users and Location Roles are not shown to it.
+- In the list, a demo link shows **Last opened** (when, and how many times it was opened) and **View activity** (the last 30 days: time, which part of the app, and the result).
 - It always has an end date. The form shows "it stops working on" a date before you create it. After that, anyone opening it sees "This link is no longer active." To end it early, press **Revoke** in the list.
 
 Evidence: `DemoLinkSection` in `App.jsx`; `CabinAccessTokenService.create` (a demo link holds only the demo scope and defaults to 30 days if no lifetime is sent); `DemoAccessFilter` refuses every change.

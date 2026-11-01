@@ -5358,7 +5358,7 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
     render(<GuestDashboard token="secret-abc" />);
 
     expect(await screen.findByText("main_water_valve")).toBeTruthy();
-    expect(screen.queryByText(/isn't valid, has expired/)).toBeFalsy();
+    expect(screen.queryByText(/This link can't be opened/)).toBeFalsy();
   });
 
   it("alerts_read scope shows active alerts (continues to work as before)", async () => {
@@ -5413,7 +5413,7 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
 
     render(<GuestDashboard token="bad-token" />);
 
-    expect(await screen.findByText(/isn't valid, has expired, or has been revoked/)).toBeTruthy();
+    expect(await screen.findByText(/This link can't be opened/)).toBeTruthy();
   });
 
   it("a token granted no covered scope shows a distinct message, not the invalid-link error", async () => {
@@ -5422,7 +5422,7 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
     render(<GuestDashboard token="secret-abc" />);
 
     expect(await screen.findByText(/There is nothing to show right now/)).toBeTruthy();
-    expect(screen.queryByText(/isn't valid, has expired/)).toBeFalsy();
+    expect(screen.queryByText(/This link can't be opened/)).toBeFalsy();
   });
 });
 

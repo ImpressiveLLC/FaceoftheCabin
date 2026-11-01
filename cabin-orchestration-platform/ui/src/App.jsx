@@ -10369,7 +10369,7 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
     return (
       <div className="guest-view">
         <h1>Cabin Conditions</h1>
-        <p>This link isn't valid, has expired, or has been revoked. Contact the cabin owner for a new one.</p>
+        <p>This link can't be opened. Contact the cabin owner.</p>
       </div>
     );
   }
