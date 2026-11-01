@@ -357,6 +357,15 @@ body {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* A card over its height budget (see ConfigCard) is clipped with a fade; expanded, it scrolls inside its own box. */
+.config-card-body { min-width: 0; }
+.config-card-capped:not(.config-card-open) .config-card-body {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+.config-card-open .config-card-body { max-height: 75vh; overflow-y: auto; }
+.config-card-toggle { width: 100%; margin: 8px 0 0; }
 .config-card-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--text);
 }

@@ -2060,9 +2060,11 @@ export function FamilyConfigPanel({ auth }) {
   const haUrl = locationCfg?.haUrl || LOCATIONS.cabin.haUrl;
   const remoteAccessMethods = (config?.remoteAccess || "Tailscale")
     .split(",").map(s => s.trim()).filter(Boolean);
+  const configHeights = useConfigHeights();
   return (
     <div data-panel="config" className="panel-content">
       <div className="panel-header-bar"><h2>Configuration</h2></div>
+      <ConfigHeights.Provider value={configHeights}>
       <div className="config-grid">
         {!auth?.demo && <ConfigCard title="Google Account" icon={Home}>
           {auth?.userEmail ? (
@@ -2118,6 +2120,7 @@ export function FamilyConfigPanel({ auth }) {
           <PlatformInfoCard auth={auth} />
         </ConfigCard>
       </div>
+      </ConfigHeights.Provider>
     </div>
   );
 }
@@ -2945,11 +2948,62 @@ function ManagedUsersCard({ auth }) {
   );
 }
 
+// Nate, 2026-11-01: no single-column card in Config may be taller than 133% of the average of the cards next to it.
+// A card over that budget is clipped to it, with a plainly marked Expand / Minimize; expanded, it scrolls inside its own box.
+// The panel collects every card's natural height (ConfigHeights); a full-width card is its own row and sits outside the budget.
+const CONFIG_CARD_HEIGHT_RATIO = 1.33;
+const CONFIG_CARD_MIN_CAP = 200;
+const ConfigHeights = createContext(null);
+
+function useConfigHeights() {
+  const [measured, setMeasured] = useState({});
+  const report = useCallback((title, height) => setMeasured(prev => {
+    if (height == null) {
+      if (!(title in prev)) return prev;
+      const { [title]: _gone, ...rest } = prev;
+      return rest;
+    }
+    return prev[title] === height ? prev : { ...prev, [title]: height };
+  }), []);
+  return useMemo(() => ({ report, measured }), [report, measured]);
+}
+
 function ConfigCard({ title, icon: Icon, wide = false, children }) {
+  const heights = useContext(ConfigHeights);
+  const report = heights?.report;
+  const innerRef = useRef(null);
+  const [natural, setNatural] = useState(0);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el || wide || typeof ResizeObserver === "undefined") return undefined;
+    const measure = () => { setNatural(el.offsetHeight); report?.(title, el.offsetHeight); };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => { observer.disconnect(); report?.(title, null); };
+  }, [wide, title, report]);
+  const others = Object.entries(heights?.measured || {}).filter(([name]) => name !== title).map(([, h]) => h);
+  const cap = others.length === 0 ? 0
+    : Math.max(CONFIG_CARD_MIN_CAP, Math.round(CONFIG_CARD_HEIGHT_RATIO * others.reduce((a, b) => a + b, 0) / others.length));
+  const capped = !wide && cap > 0 && natural > cap;
+  const classes = ["config-card", wide && "config-card-wide", capped && "config-card-capped", capped && open && "config-card-open"]
+    .filter(Boolean).join(" ");
   return (
-    <div className={`config-card${wide ? " config-card-wide" : ""}`}>
+    <div className={classes}>
       <div className="config-card-header"><Icon size={18} /><strong>{title}</strong></div>
-      {children}
+      {/* Focus inside a clipped card opens it, so a keyboard user is never left on a control that cannot be seen. */}
+      <div className="config-card-body" style={capped && !open ? { maxHeight: cap } : undefined}
+        onFocusCapture={capped && !open ? () => setOpen(true) : undefined}>
+        <div ref={innerRef}>{children}</div>
+      </div>
+      {capped && (
+        <button type="button" className="expandable-list-toggle config-card-toggle" aria-expanded={open}
+          onClick={() => setOpen(o => !o)}>
+          {open ? "Minimize" : "Expand"}
+          <span aria-hidden="true" className="expandable-list-chevron">{open ? "▲" : "▼"}</span>
+        </button>
+      )}
     </div>
   );
 }
