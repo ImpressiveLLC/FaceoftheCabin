@@ -5007,7 +5007,7 @@ elements:
       ui_components: []
       elements: [hub_location, active_presence_profile, check_authorized_user_phone_wifi, nodered_cabin_security_siren_gate]
     notes: >
-      NOT the same axis as HouseholdRole / ManagedUserRole (what a signed-in
+      NOT the same axis as principal_role (HouseholdRole / ManagedUserRole: what a signed-in
       principal may do) and NOT provisioning_role (install-dependency scoping,
       docs/ontology/PROPOSAL_2026-09-16_provisioning-role.md). A location role
       never grants or removes a permission; maintenance is a superset of
@@ -5018,6 +5018,44 @@ elements:
       (see active_presence_profile's notes on the missing tracked-person
       registry). Until W-38, a maintenance-only person is kept out of presence
       only by never creating a check or publisher for them.
+
+  - id: principal_role
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: "0.4.0"
+    migration_status: complete
+    lifecycle_status: used
+    data_class: conceptual
+    data_type: xsd:string
+    constraint:
+      enum: ["ADMINISTRATOR", "ADULT_HOUSEHOLD_MEMBER", "CHILD", "KIOSK_DISPLAY", "SERVICE"]
+    ui_display_name: "Principal Role"
+    source: >
+      HouseholdRole (cabin-backend, security package), derived server-side by GoogleAuthInterceptor from the verified principal;
+      ManagedUserRole (VIEWER, HOUSEHOLD_MEMBER) and the guest-link and demo-link credentials are the other ways a request is
+      let in. Decided in D11 (household roles).
+    rendering:
+      semantic: "What a signed-in principal is allowed to do"
+      systems: "ADMINISTRATOR | ADULT_HOUSEHOLD_MEMBER derived today; CHILD | KIOSK_DISPLAY | SERVICE defined, not yet assignable"
+      technical: "request attribute cabin.auth.householdRole; a managed session is always ADULT_HOUSEHOLD_MEMBER (W-132)"
+      compliance: Access Roles
+    definition: >
+      What a request's principal may do, derived on the server, never taken from the request. The definitions live here; the
+      role-by-area table (who may read, change or use each part of the app) lives in the user guide, "Who can see and change what"
+      (docs/ai-assistant/user-guide/access-and-storage.md), and RoleMatrixTest checks that table against the code. Do not copy the
+      table into this entity.
+    relationships:
+      - target: location_role
+        type: distinct_from
+        cardinality: "N:M"
+    relates_to:
+      ui_components: []
+      elements: [location_role]
+    notes: >
+      NOT location_role (how a person relates to one location; it never grants or removes a permission). Guest links (four fixed
+      read-only scope prefixes), demo links and managed accounts are credentials that map into this axis, not roles of their own
+      in the code; the guide table shows all six ways of getting in.
 
   - id: active_presence_profile
     entity_type: owl:Class

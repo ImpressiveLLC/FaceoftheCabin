@@ -12,10 +12,54 @@ Audience: administrators, plus the household-safe summary in "Who can see and ch
 | Managed user, "Viewer (read-only)" | An emailed sign-in link | Look only. Any change is refused |
 | Guest link | A share link from Guest Access | Read-only, and only the parts ticked when the link was made: Dashboard, Device states, Alerts, Historical readings |
 | Demo link | A demo link from Guest Access | The whole app, read-only. Cameras, locks, motion and door sensors, and phones show as "hidden for Demo viewers" |
+| Not signed in | Opening the app without signing in | Read the open areas in the table below (status, devices, rules, places, readings, dashboard settings). Everything else asks for a sign-in |
+| Child, kiosk display and service roles | Defined in the code, not yet assignable | Nothing today: no one can be given these roles yet |
 
 Signing in with Google is in Config. Workflow buttons appear only when signed in; when signed out, Rules & Alerts says "Sign in with Google (Configuration tab) to create or manage workflows."
 
-Evidence: `GoogleAuthInterceptor` (role derivation, managed-session gate, guest scope list `SCOPE_PATH_PREFIXES`), `ManagedUserRole.allowsWrite`, `DemoAccessFilter`, `StorageTrimController`, `HIDDEN_FOR_DEMO` and `GUEST_SCOPE_OPTIONS` in `App.jsx`.
+Evidence: `GoogleAuthInterceptor` (role derivation, managed-session gate, guest scope list `SCOPE_PATH_PREFIXES`), `WebConfig` (the routes the interceptor covers), `ManagedUserRole.allowsWrite`, `HouseholdRole` (the roles defined in code), `DemoAccessPolicy`, each controller's own role gate (`StorageTrimController` and the others named in `RoleMatrixTest`), `HIDDEN_FOR_DEMO` and `GUEST_SCOPE_OPTIONS` in `App.jsx`.
+
+## What each role can do, by area
+
+Audience: household.
+
+**By area.** One row per part of the app; one column per way of getting in. **R** can look, **W** can change (the changes that need a sign-in: device commands, workflows, notes and chores, acknowledging alerts), **U** can use (ask), **-** cannot, and a star means only for the parts ticked on the link.
+
+| Area | Not signed in | Administrator | Google household member | Managed household member | Managed viewer | Guest link | Demo link |
+|---|---|---|---|---|---|---|---|
+| Status checks and alerts | R | RW | RW | RW | R | R | R |
+| Alert history (doors, motion, who silenced what) | - | R | R | R | R | - | - |
+| Devices: inventory, status and commands | R | RW | RW | RW | R | R | R |
+| Device type re-detect | - | W | - | - | - | - | - |
+| Rules and workflows | R | RW | RW | RW | R | R | R |
+| Knowledge notes behind Ask | R | RW | RW | RW | R | R | - |
+| Ask: explain and diagnose | - | U | U | U | - | - | - |
+| Ask: action proposals | - | U | - | - | - | - | - |
+| Places (locations) | R | RW | RW | RW | R | R | R |
+| Family Hub notes, chores and profiles | - | RW | RW | RW | R | - | - |
+| Cameras | - | RW | RW | RW | R | - | - |
+| Presence and arming | - | RW | RW | RW | R | - | - |
+| Presence history | - | R | R | R | R | - | - |
+| Historical readings | R | R | R | R | R | R | R |
+| Event history | - | R | R | R | R | - | - |
+| Dashboard settings | R | R | R | R | R | R | R |
+| Cabin status summary | - | R | R | R | R | - | - |
+| Assistant inventory | - | R | R | R | R | - | - |
+| Platform import: records | - | R | R | R | R | - | - |
+| Platform import: confirm | - | W | - | - | - | - | - |
+| Guest Access links | - | RW | - | - | - | - | - |
+| Managed users | - | RW | - | - | - | - | - |
+| Location roles | - | RW | - | - | - | - | - |
+| Disk status | R | R | R | R | R | R | - |
+| Trim old backups | - | W | - | - | - | - | - |
+| Platform info | - | R | - | - | - | - | - |
+| Optimization Opportunities | - | RW | - | - | - | - | - |
+
+How to read the table:
+- The Administrator column is every area. Where a row says **-** for everyone else, only an administrator reaches it, and the screen says "Admin access required" or similar.
+- Anyone who can reach the hub can read the areas that say **R** under "Not signed in"; that is deliberate (D14), so a wall display works with no sign-in.
+- A managed **Viewer** cannot change anything, but for the role-checked reads (presence history, cabin status summary, the assistant inventory, import records) any managed account counts as a household member, so a Viewer can read them. A Viewer also cannot use Ask, because Ask is sent as a request and read-only accounts are refused every request that is not a plain read.
+- This table is checked against the code by `RoleMatrixTest` on every build: it runs the real sign-in checks for each way of getting in and fails when a row here and what the app does disagree, and when an administrator-only screen has no row. A change to who may do what has to change this table in the same pull request.
 
 ## Share read-only access with a link (Guest Access)
 
