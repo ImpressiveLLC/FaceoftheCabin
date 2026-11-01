@@ -87,6 +87,21 @@ public class ManagedUsersController {
         }
     }
 
+    /**
+     * A sign-in link to copy and give to the person, with no email involved (Nate 2026-11-01: as for guest links). Administrator only;
+     * the link is a credential (single use, 30 minutes), so the response is never cached.
+     */
+    @PostMapping("/{id}/sign-in-link")
+    public org.springframework.http.ResponseEntity<Map<String, Object>> signInLink(@PathVariable String id, HttpServletRequest request) {
+        AdministratorOnly.require(request);
+        org.springframework.http.ResponseEntity.BodyBuilder ok = org.springframework.http.ResponseEntity.ok().header("Cache-Control", "no-store");
+        try {
+            return ok.body(Map.of("url", service.createSignInLink(id), "expiresInMinutes", 30));
+        } catch (NoSuchElementException | IllegalStateException e) {
+            return ok.body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /** Public -- see class doc. Exchanges a clicked magic link for a real session token the browser stores and sends back as `Authorization: ManagedSession {token}`. */
     @PostMapping("/magic/{token}/consume")
     public Map<String, Object> consumeMagicLink(@PathVariable String token) {

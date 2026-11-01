@@ -2892,6 +2892,21 @@ function ManagedUsersCard({ auth }) {
     refresh();
   };
 
+  // A sign-in link to copy and hand over, like a guest link: no email, so it works without the email service.
+  const [signInLink, setSignInLink] = useState(null);
+  const copyLink = async (id) => {
+    setActionResult(null);
+    setSignInLink(null);
+    try {
+      const response = await doFetch(`${apiBase}/api/managed-users/${id}/sign-in-link`, { method: "POST" });
+      const body = await response.json().catch(() => ({}));
+      if (body.url) setSignInLink({ id, url: body.url, minutes: body.expiresInMinutes || 30 });
+      else setActionResult({ id, ok: false, message: body.error || "Could not create a link." });
+    } catch {
+      setActionResult({ id, ok: false, message: "Could not create a link." });
+    }
+  };
+
   const invite = async (id) => {
     setActionResult(null);
     const response = await doFetch(`${apiBase}/api/managed-users/${id}/invite`, { method: "POST" });
@@ -2903,7 +2918,7 @@ function ManagedUsersCard({ auth }) {
 
   return (
     <>
-      <p className="config-desc">Standing access for a household member or collaborator without a Google account — passwordless, via an emailed sign-in link.</p>
+      <p className="config-desc">Standing access for a household member or collaborator without a Google account — passwordless, via a sign-in link you can copy and hand over, or have emailed.</p>
       <div className="guest-access-form">
         <input value={email} placeholder="Email address"
           onChange={e => setEmail(e.target.value)} />
@@ -2931,8 +2946,16 @@ function ManagedUsersCard({ auth }) {
               {actionResult?.id === u.id && (
                 <p className={`action-result ${actionResult.ok ? "" : "action-error"}`}>{actionResult.message}</p>
               )}
+              {signInLink?.id === u.id && (
+                <div className="guest-access-new-link">
+                  <strong>Sign-in link: copy it now, it works once and expires in {signInLink.minutes} minutes, and it will not be shown again:</strong>
+                  <code>{signInLink.url}</code>
+                  <button className="btn-ghost" onClick={() => navigator.clipboard?.writeText(signInLink.url)}>Copy</button>
+                </div>
+              )}
             </div>
             <div className="managed-users-row-actions">
+              {u.active && <button className="btn-secondary" onClick={() => copyLink(u.id)}>Copy sign-in link</button>}
               {u.active && <button className="btn-ghost" onClick={() => invite(u.id)}>Invite</button>}
               {u.active
                 ? <button className="btn-danger" onClick={() => setActive(u.id, false)}>Deactivate</button>

@@ -62,16 +62,33 @@ public class ManagedUserService {
 
     /** Generates and emails a fresh magic link, pointing at this instance's own configured frontend origin (cabin.frontend.origin). */
     public void invite(String managedUserId) {
+        ManagedUser user = activeUser(managedUserId);
+        emailSender.sendMagicLink(user.email(), user.name(), newMagicLinkUrl(user));
+    }
+
+    /**
+     * A fresh single-use sign-in link for an administrator to copy and hand over, the way a guest link is: no email is sent, so it works
+     * without the email service. Same link, same 30-minute expiry, same single use as an emailed invite; the caller is the
+     * administrator-only controller route and the URL is a credential, so it is returned once and never logged.
+     */
+    public String createSignInLink(String managedUserId) {
+        return newMagicLinkUrl(activeUser(managedUserId));
+    }
+
+    private ManagedUser activeUser(String managedUserId) {
         ManagedUser user = users.findById(managedUserId)
             .orElseThrow(() -> new java.util.NoSuchElementException("Managed user not found: " + managedUserId));
         if (!user.active()) {
             throw new IllegalStateException("Cannot invite a deactivated managed user -- reactivate them first");
         }
+        return user;
+    }
+
+    private String newMagicLinkUrl(ManagedUser user) {
         Instant now = Instant.now();
         MagicLinkToken link = new MagicLinkToken(UUID.randomUUID().toString(), user.id(), now.plus(MAGIC_LINK_TTL), null, now);
         magicLinks.save(link);
-        String url = frontendOrigin.replaceAll("/$", "") + "/auth/magic/" + link.token();
-        emailSender.sendMagicLink(user.email(), user.name(), url);
+        return frontendOrigin.replaceAll("/$", "") + "/auth/magic/" + link.token();
     }
 
     /** Empty if the token is missing/expired/already used/points at a deactivated user; otherwise the newly-issued session. */

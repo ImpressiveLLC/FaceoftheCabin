@@ -5186,6 +5186,37 @@ describe("FamilyConfigPanel — Managed Users (Tier 2)", () => {
     expect(await screen.findByText("Invite sent.")).toBeTruthy();
   });
 
+  it("copy sign-in link shows the link once with a Copy button and calls the no-email route", async () => {
+    const auth = mockAuth([
+      { ok: true, json: async () => [{ id: "u5", email: "eli@example.com", name: "Eli", role: "HOUSEHOLD_MEMBER", active: true }] },
+      { ok: true, json: async () => ({ url: "https://cabin.example.com/auth/magic/abc-123", expiresInMinutes: 30 }) },
+    ]);
+
+    renderPanel(auth);
+    await screen.findByText("Eli");
+    fireEvent.click(screen.getByText("Copy sign-in link"));
+
+    expect(await screen.findByText("https://cabin.example.com/auth/magic/abc-123")).toBeTruthy();
+    expect(screen.getByText(/works once and expires in 30 minutes/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
+    const calls = managedUserCalls(auth);
+    expect(calls[1][0]).toContain("/api/managed-users/u5/sign-in-link");
+    expect(calls[1][1].method).toBe("POST");
+  });
+
+  it("copy sign-in link says so when the server cannot make one", async () => {
+    const auth = mockAuth([
+      { ok: true, json: async () => [{ id: "u6", email: "fay@example.com", name: "Fay", role: "VIEWER", active: true }] },
+      { ok: true, json: async () => ({ error: "Managed user not found: u6" }) },
+    ]);
+
+    renderPanel(auth);
+    await screen.findByText("Fay");
+    fireEvent.click(screen.getByText("Copy sign-in link"));
+
+    expect(await screen.findByText("Managed user not found: u6")).toBeTruthy();
+  });
+
   it("degrades to an empty list instead of crashing when the request is unauthenticated", async () => {
     const auth = mockAuth([{ ok: false, status: 401, json: async () => ({ error: "Missing bearer token" }) }]);
 

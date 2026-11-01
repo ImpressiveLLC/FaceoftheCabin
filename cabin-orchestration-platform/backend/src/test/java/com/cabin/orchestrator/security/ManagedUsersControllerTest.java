@@ -172,4 +172,26 @@ class ManagedUsersControllerTest {
                 existing.token(), existing.managedUserId(), existing.expiresAt(), revokedAt, existing.createdAt()));
         }
     }
+
+    @Test
+    void signInLinkReturnsACopyableUrlWithoutEmailingAndIsNeverCached() {
+        ManagedUser created = controller.create(
+            Map.of("email", "a@example.com", "name", "Alice", "role", "HOUSEHOLD_MEMBER"), signedInAs("nate@example.com"));
+
+        org.springframework.http.ResponseEntity<Map<String, Object>> result = controller.signInLink(created.id(), signedInAs("nate@example.com"));
+
+        assertThat(result.getBody()).containsKey("url");
+        assertThat((String) result.getBody().get("url")).contains("/auth/magic/");
+        assertThat(result.getHeaders().getFirst("Cache-Control")).isEqualTo("no-store");
+        assertThat(sentUrls).isEmpty();
+    }
+
+    @Test
+    void signInLinkOnADeactivatedUserReturnsAnErrorNotAnException() {
+        ManagedUser created = controller.create(
+            Map.of("email", "a@example.com", "name", "Alice", "role", "VIEWER"), signedInAs("nate@example.com"));
+        controller.deactivate(created.id(), signedInAs("nate@example.com"));
+
+        assertThat(controller.signInLink(created.id(), signedInAs("nate@example.com")).getBody()).containsKey("error");
+    }
 }
