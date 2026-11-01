@@ -71,7 +71,7 @@ How to read the table:
 
 ## Share read-only access with a link (Guest Access)
 
-**Short answer.** To give someone without a Google account (an insurance adjuster, a contractor) a look at the cabin, go to Config > **Guest Access** > "Other share links". Type a label, tick what they may see (**Dashboard**, **Device states**, **Alerts**, **Historical readings**), set **Expires in** (days; blank means never), and press **Create link**. Copy the link straight away: "copy it now, it won't be shown again".
+**Short answer.** To give someone without a Google account (an insurance adjuster, a contractor) a look at the cabin, go to Config > **Guest Access** > "Other share links". Type a label, choose the parts to include, set **Expires in** (days; blank means never), and press **Create link**. Copy the link straight away: "copy it now, it won't be shown again".
 
 - The link is read-only. It can never change anything, and it reads the areas that are open without signing in (D14).
 - **Revoke** next to a link stops it at once. A stopped link stays in the list marked **Revoked** or **Expired** as a record. Revoking cannot be undone; make a new link instead.
