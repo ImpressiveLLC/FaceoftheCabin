@@ -85,7 +85,7 @@ final class QuestionShape {
     private static final Pattern LIST_MARKER = Pattern.compile(
         "^(?:(?:step|no|number|item|q|question)\\.?\\s*)?#?(?:\\d{1,3}|[a-z]|[ivx]{2,4})\\s*[)\\]}>\\-–—]+\\s*"
         + "|^#\\d{1,3}\\s+|^\\d{1,3}\\s+(?=[a-z])");
-    /** One or two letters or digits and a closing bracket at the start: "id) how ...". */
+    /** One to three letters or digits and a closing bracket at the start: "id) how ...". */
     private static final Pattern LOOSE_TAG = Pattern.compile("^[a-z0-9]{1,3}[)\\]}>]+\\s*");
     private static final Pattern OPENER_PUNCTUATION = Pattern.compile("^[\\s,;:!.\\-–—]+");
 

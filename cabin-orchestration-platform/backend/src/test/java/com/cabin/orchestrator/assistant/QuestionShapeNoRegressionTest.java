@@ -143,4 +143,38 @@ class QuestionShapeNoRegressionTest {
             assertThat(QuestionShape.isQuestion(q)).as(q).isTrue();
         }
     }
+
+    /** One input per word and per wrapper piece that nothing else would recognise: remove the piece and exactly this fails. */
+    @Test
+    void everyAfterWrapperWordAndWrapperPieceIsPinnedByAnInputOnlyItCanRecognise() {
+        for (String q : List.of(
+                "Can I ask regarding the heater", "Can I ask you to show me the heater", "Can I ask you to describe the heater",
+                "Can I ask you to clarify the heater", "Can I ask you to explain the heater", "Can I ask you to tell me about nothing",
+                "Can we ask us to explain the heater", "Can I ask one question about the heater", "Can I ask a question about the heater",
+                "Can I ask something about the heater", "Can I ask anything about the heater")) {
+            assertThat(QuestionShape.isQuestion(q)).as(q).isTrue();
+        }
+        for (String q : List.of("Is it ok if I ask you to close the valve", "Is it okay if I ask you to turn on the heater",
+                "Is it ok to ask us to close the valve", "Can we ask us to close the valve")) {
+            assertThat(QuestionShape.isQuestion(q)).as(q).isFalse();
+        }
+    }
+
+    /** Each character that ends the first word, with a lead word too long to be taken for a short tag, so only the split can recognise it. */
+    @Test
+    void everySplitCharacterEndsTheFirstWord() {
+        for (String separator : List.of("-", "–", "—", ")", "]", "}", ">")) {
+            String q = "whether" + separator + "the valve is closed";
+            assertThat(QuestionShape.isQuestion(q)).as(q).isTrue();
+        }
+    }
+
+    @Test
+    void aShortTagIsOneToThreeCharactersAndNoMore() {
+        for (String q : List.of("q) how does it work", "id) how does it work", "ids) how does it work", "id] how does it work", "id} how does it work",
+                "id> how does it work")) {
+            assertThat(QuestionShape.isQuestion(q)).as(q).isTrue();
+        }
+        assertThat(QuestionShape.isQuestion("abcd) how does it work")).as("a four-character tag is not a tag").isFalse();
+    }
 }
