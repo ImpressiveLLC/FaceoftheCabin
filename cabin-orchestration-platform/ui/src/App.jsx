@@ -2894,9 +2894,15 @@ function ManagedUsersCard({ auth }) {
 
   // A sign-in link to copy and hand over, like a guest link: no email, so it works without the email service.
   const [signInLink, setSignInLink] = useState(null);
+  const [copied, setCopied] = useState(null); // "ok" | "blocked" after pressing Copy on the link above
+  // A plain http address has no clipboard (navigator.clipboard is undefined there), so a failure says how to copy by hand.
+  const copyToClipboard = async (text) => {
+    try { await navigator.clipboard.writeText(text); setCopied("ok"); } catch { setCopied("blocked"); }
+  };
   const copyLink = async (id) => {
     setActionResult(null);
     setSignInLink(null);
+    setCopied(null);
     try {
       const response = await doFetch(`${apiBase}/api/managed-users/${id}/sign-in-link`, { method: "POST" });
       const body = await response.json().catch(() => ({}));
@@ -2948,9 +2954,11 @@ function ManagedUsersCard({ auth }) {
               )}
               {signInLink?.id === u.id && (
                 <div className="guest-access-new-link">
-                  <strong>Sign-in link: copy it now, it works once and expires in {signInLink.minutes} minutes, and it will not be shown again:</strong>
-                  <code>{signInLink.url}</code>
-                  <button className="btn-ghost" onClick={() => navigator.clipboard?.writeText(signInLink.url)}>Copy</button>
+                  <strong>Sign-in link for {u.name}: copy it now. Anyone who holds it can sign in as {u.name} until it is used once or expires in {signInLink.minutes} minutes. It will not be shown again:</strong>
+                  <code style={{ userSelect: "all" }}>{signInLink.url}</code>
+                  <button className="btn-ghost" onClick={() => copyToClipboard(signInLink.url)}>Copy</button>
+                  {copied === "ok" && <span role="status" className="action-result">Copied.</span>}
+                  {copied === "blocked" && <span role="status" className="action-result action-error">Copy was blocked by the browser (a plain http address does this). Select the link above and copy it by hand.</span>}
                 </div>
               )}
             </div>

@@ -79,7 +79,7 @@ public class ManagedUserService {
         ManagedUser user = users.findById(managedUserId)
             .orElseThrow(() -> new java.util.NoSuchElementException("Managed user not found: " + managedUserId));
         if (!user.active()) {
-            throw new IllegalStateException("Cannot invite a deactivated managed user -- reactivate them first");
+            throw new IllegalStateException("This managed user is deactivated -- reactivate them first");
         }
         return user;
     }

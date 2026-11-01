@@ -1,7 +1,10 @@
 package com.cabin.orchestrator.security;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestClientException;
 
 import java.util.List;
 import java.util.Map;
@@ -9,11 +12,11 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 
 /**
- * Admin CRUD (create/list/deactivate/reactivate/invite), each route refusing anyone who is not an ADMINISTRATOR
+ * Admin CRUD (create/list/deactivate/reactivate, invite by email, a sign-in link to copy), each route refusing anyone who is not an ADMINISTRATOR
  * (AdministratorOnly), plus the one
  * genuinely public endpoint in this class -- POST .../magic/{token}/consume,
- * which a managed user's browser calls right after clicking their emailed
- * link. That one can never require a Google token (a managed user has no
+ * which a managed user's browser calls right after clicking their sign-in
+ * link (emailed, or copied by an administrator and handed over). That one can never require a Google token (a managed user has no
  * Google account by definition), so it gets its own exact carve-out in
  * GoogleAuthInterceptor.preHandle() -- see that method's own comment --
  * the same technique already used for the tech-id findings collection.
@@ -24,6 +27,8 @@ import java.util.Optional;
 @RequestMapping("/api/managed-users")
 @CrossOrigin
 public class ManagedUsersController {
+
+    private static final Logger log = LoggerFactory.getLogger(ManagedUsersController.class);
 
     private final ManagedUserService service;
 
@@ -84,6 +89,11 @@ public class ManagedUsersController {
             return Map.of("sent", true);
         } catch (NoSuchElementException | IllegalStateException e) {
             return Map.of("error", e.getMessage());
+        } catch (RestClientException e) {
+            // the email service refused or could not be reached (a test sender may only mail its owner): not a server fault, and its reply
+            // names the recipient, so only the kind of failure is logged and a way round it is offered
+            log.warn("Invite email for managed user {} was not sent ({})", id, e.getClass().getSimpleName());
+            return Map.of("error", "The email could not be sent. Use Copy sign-in link and hand the link over instead.");
         }
     }
 
