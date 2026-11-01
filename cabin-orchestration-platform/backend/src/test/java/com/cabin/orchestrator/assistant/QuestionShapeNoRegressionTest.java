@@ -33,9 +33,15 @@ class QuestionShapeNoRegressionTest {
         // forms that begin with a short question word followed by a marker-like character
         "is-it on", "is - it on", "what-is the heater doing", "who) can silence the siren", "do) I need a token", "how- do I turn it off",
         "is it on", "do i", "can i", "can i ask how the heater works", "can i ask: why is the valve closed",
+        "whom- do I ask", "id) how does it work", "who] can silence the siren", "how> do I turn it off", "what}is the heater doing",
         // "ask"-style capability questions
         "can I ask you to turn on the heater?", "could I ask whether the valve is closed", "may I ask who can silence the siren",
-        "can i ask you something about the heater", "could i ask what the heater does");
+        "can i ask you something about the heater", "could i ask what the heater does",
+        // wrapper followed by an inquiry that is not a lead word: judged by what follows (Nate, 2026-11-01)
+        "can i ask if the valve is closed", "could i ask about the heater", "may i ask for help with the heater",
+        "can i ask a question about the heater", "can i ask something about the heater", "can i ask a quick question about the heater",
+        "can i ask you to explain how the heater works", "can i ask when the heater turns on", "might i ask which sensors are offline",
+        "can we ask whether the valve is closed", "am i able to ask how to add a device", "is it ok to ask who can see the cameras");
 
     @Test
     void everyFormTheOldGuardRecognisedIsStillRecognised() {
@@ -43,16 +49,21 @@ class QuestionShapeNoRegressionTest {
         for (String prefix : PREFIXES) {
             for (String core : CORES) {
                 String input = prefix + core;
-                if (isAskWrapperForm(input)) continue; // Nate's rule 2026-11-01: judged by what follows the wrapper, see the tests below
+                if (isRequestAfterWrapper(input)) continue; // Nate's rule 2026-11-01: a wrapper followed by a request is a request
                 if (QuestionShapePre377.isQuestion(input) && !QuestionShape.isQuestion(input)) lost.add(input);
             }
         }
         assertThat(lost).as("forms recognised before #377 and not now").isEmpty();
     }
 
-    /** can/could/may/might + I/we + ask, or "am I able to ask": the wrapper forms Nate's rule treats as not part of the inquiry. */
-    private static boolean isAskWrapperForm(String input) {
-        return input.toLowerCase().matches("(?s).*" + "(?:(?:can|could|may|might)\\s+(?:i|we)\\s+ask|(?:am\\s+i|are\\s+we)\\s+able\\s+to\\s+ask|is\\s+it\\s+(?:ok|okay)\\s+(?:to|if\\s+(?:i|we))\\s+ask)" + ".*");
+    /**
+     * The only forms exempt from the comparison: an ask wrapper followed by "you to" and then something other than explain, tell, show,
+     * describe or clarify, i.e. a request ("can I ask you to turn on the heater"). Every other wrapper form is checked against the old guard.
+     */
+    private static boolean isRequestAfterWrapper(String input) {
+        return input.toLowerCase().matches("(?s).*"
+            + "(?:(?:can|could|may|might)\\s+(?:i|we)\\s+ask|(?:am\\s+i|are\\s+we)\\s+able\\s+to\\s+ask|is\\s+it\\s+(?:ok|okay)\\s+(?:to|if\\s+(?:i|we))\\s+ask)"
+            + "\\s+(?:you|us)\\s+to\\s+(?!explain|tell|show|describe|clarify).*");
     }
 
     // Nate (2026-11-01): "can/could/may" in "can I ask ..." is not part of the inquiry; "am I able to ask" standing alone is a question
@@ -82,10 +93,54 @@ class QuestionShapeNoRegressionTest {
         }
     }
 
+    /** One case per piece of the wrapper pattern: take a piece out and one of these (or the cases above) fails. */
+    @Test
+    void everyWrapperVariantFollowedByARequestIsARequest() {
+        for (String q : List.of("Might I ask you to close the valve", "Am I able to ask you to turn on the heater", "Are we able to ask you to silence the siren",
+                "Is it ok to ask you to turn on the heater", "Is it okay if we ask you to close the valve", "Can we ask you to close the valve",
+                "Could we ask you to turn on the heater")) {
+            assertThat(QuestionShape.isQuestion(q)).as(q).isFalse();
+        }
+    }
+
+    @Test
+    void theWrapperMustEndAtAWordBoundary() {
+        // "asking" is not "ask": without the boundary the wrapper would match and the request after it would be let through
+        assertThat(QuestionShape.isQuestion("Can I asking you to turn on the heater")).isTrue();
+    }
+
+    @Test
+    void aWrapperFollowedByAnInquiryThatIsNotALeadWordIsAQuestion() {
+        for (String q : List.of("Can I ask if the valve is closed", "Could I ask about the heater", "May I ask for help with the heater",
+                "Can I ask a question about the heater", "Can I ask something about the heater", "Can I ask a quick question about the heater",
+                "Can I ask you to explain how the heater works", "Can I ask you to tell me what Fire does", "Can I ask when the heater turns on",
+                "Can I ask anything about the cameras")) {
+            assertThat(QuestionShape.isQuestion(q)).as(q).isTrue();
+        }
+    }
+
+    @Test
+    void theAfterWrapperWordsDoNotMakeAnOrdinaryCommandAQuestion() {
+        for (String q : List.of("If the door opens, turn on the heater", "For the cabin, turn on the heater", "About now, turn on the heater",
+                "When the door opens, turn on the heater")) {
+            assertThat(QuestionShape.isQuestion(q)).as(q).isFalse();
+        }
+    }
+
     @Test
     void aQuestionWordFollowedByAHyphenOrBracketIsNotMistakenForAListMarker() {
-        for (String q : List.of("is-it on", "is - it on", "do) I need a token", "who) can silence the siren", "does-the heater need a plug")) {
-            assertThat(QuestionShape.isQuestion(q) || !QuestionShapePre377.isQuestion(q)).as(q).isTrue();
+        // every form the old guard recognised must still be recognised (a form it missed is not a regression)
+        for (String q : List.of("is-it on", "is - it on", "do) I need a token", "who) can silence the siren", "does-the heater need a plug",
+                "how- do I turn it off", "what-is the heater doing", "whom- do I ask", "id) how does it work", "who] can silence the siren",
+                "how> do I turn it off", "what}is the heater doing")) {
+            if (QuestionShapePre377.isQuestion(q)) assertThat(QuestionShape.isQuestion(q)).as(q).isTrue();
+        }
+    }
+
+    @Test
+    void theHyphenAndBracketFormsTheReviewNamedAreRecognised() {
+        for (String q : List.of("how- do I turn it off", "what-is the heater doing", "whom- do I ask", "id) how does it work")) {
+            assertThat(QuestionShape.isQuestion(q)).as(q).isTrue();
         }
     }
 }
