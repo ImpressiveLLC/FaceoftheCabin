@@ -1,6 +1,6 @@
 # Ask delivery: RAID log and delegation to the child bot (PMO card, parent wingman)
 
-Date: 2026-10-31. Status: proposed; documentation only. Owner: parent wingman (Code session), as PMO. CEO and stakeholder: Nate.
+Date: 2026-10-31. Status: proposed; documentation only. Owner: parent wingman (Code session), as PMO. CEO and stakeholder: Nate. Facts about the child bot and its machine are session-reported by Code and not verified by Cowork unless marked.
 Basis: [AI assistant WSJF backlog](../../ai-assistant/wsjf-backlog.md), [HO-2026-10-31](../handovers/HO-2026-10-31-ask-weekend-next-steps.md),
 [HO-2026-10-25 training readiness](../handovers/HO-2026-10-25-claude-to-code-and-codex-training-readiness.md), W-117 and W-133 in the
 [backlog](../backlog.md), and the [delivery bot design](2026-10-31-autonomous-delivery-bot-design.md). Neutral wording only: this repo is public.
@@ -22,7 +22,7 @@ rate and question-to-action rate. Today only the routing replica is measured (95
 | Lane | Who | May do | May not |
 |---|---|---|---|
 | Parent (PMO, wingman) | Code session | plan, review, decide order, run host evidence, merge tier-A PRs after an independent CLEAN, own this log | change safety or auth without Nate; run anything on the cabin host that deploys or restarts |
-| Child bot | `factory` on bluefin, rootless container | work GitHub issues into PRs in a sandbox repo now; later PRs on this repo from a fork or a PR-only token | merge; hold any host, Home Assistant or deploy credential; touch sealed files |
+| Child bot | `factory` on the spike machine, rootless container (session-reported) | work GitHub issues into PRs in a sandbox repo now; later PRs on this repo from a fork or a PR-only token | merge; hold any host, Home Assistant or deploy credential; touch sealed files |
 | Cowork | RTE, independent review lane | independent CLEAN or HOLD on exact heads, board, merge records | n/a |
 | Nate (CEO) | decisions and approvals | tier B and C, audits (S5), sealed files, the deploy go | n/a |
 
@@ -30,7 +30,7 @@ rate and question-to-action rate. Today only the routing replica is measured (95
 
 | # | Item | Lane | Gate | State today |
 |---|---|---|---|---|
-| 1 | Merge the safety and auth PRs: device-command guard (#381), managed sessions (#378) | Parent + Cowork review; Nate go | independent CLEAN on the exact head | open, unreviewed |
+| 1 | Merge the safety and auth PRs: device-command guard (#381), managed sessions (#378) | Parent + Cowork review; Nate go | independent CLEAN on the exact head | done 2026-10-31: both independently reviewed CLEAN, merged (f034eba, cd7f564) and deployed green |
 | 2 | Deploy and live-measure Ask routing: 150 phrasings plus boundary set against the deployed Ask | Parent (needs an administrator session) | #1 not required; needs a session to `/api/helpdesk/ask` | `NOT_MEASURED` |
 | 3 | Close routing gaps: the 16 unrouted phrasings and the three unmapped guide sections | Child (tier A) with parent review | child go-live checklist below | not started |
 | 4 | Corpus completion to the frozen inventory (C2): remaining guides, each section mapped and reviewed | Child drafts, parent verifies against source, Cowork reviews | same | partly done (alerts, devices, workflows, access, storage guides merged) |
@@ -38,30 +38,30 @@ rate and question-to-action rate. Today only the routing replica is measured (95
 | 6 | One-stop assistance (C3): in-app explain, sources, troubleshoot, no dead ends | Parent + child, UI tier A | independent CLEAN | not started |
 | 7 | Intent/slot SFT (POC2): author S2 families, review packets, freeze, run, export | Child may draft families; reviews and sealed files are Nate and Cowork | Nate S5 audits at 90 percent or better; sealed files placed; M920q idle | blocked |
 | 8 | "I'm cold" vertical POC (W-75) | Nate decision; code tier B | #381 merged, W-66 and W-67, shadow report, Nate go | flag off, no executor, none authorised |
-| 9 | Delivery bot spike (PR #380) | Parent | the pass criteria in the design | running; first PR produced unattended |
+| 9 | Delivery bot spike (PR #380) | Parent | the pass criteria in the design | session-reported: running, first PR produced unattended (not verified by Cowork) |
 
 ## RAID
 
 **Risks**
-- R1 Review bottleneck: independent reviews were silent for hours on 2026-10-31; safety PRs wait. Mitigation: Cowork priority order, nudge cadence, tiered merge for low-risk PRs under Nate's standing instruction.
-- R2 Reviewer independence: the child's reviewer is Claude, not a second vendor (no Codex login; Gemini CLI is not a supported agent). A same-family reviewer misses same-family errors. Mitigation: parent plus Cowork review remain the gate for anything beyond tier A.
+- R1 Review bottleneck: independent reviews were silent for hours on 2026-10-31; safety PRs wait. Mitigation: Cowork priority order, nudge cadence, tiered merge for low-risk PRs within Nate's recorded instruction (see A1).
+- R2 Reviewer independence: the child's reviewer is Claude, not a second vendor (session-reported: no Codex login for the child yet; Gemini CLI is not a supported agent). A same-family reviewer misses same-family errors. Mitigation: parent plus Cowork review remain the gate for anything beyond tier A.
 - R3 Public repository: details of security findings must never be committed; one such slip already happened and was cleaned. Mitigation: neutral-wording rule, private hand-over channel, scan before push.
 - R4 Unsandboxed agents: the child runs with sandbox checks off; the container is the only boundary. It holds a Claude login and a repo-scoped token. Mitigation: no host, Home Assistant or deploy credentials in the volume; short-lived token; delete the volume to wipe.
 - R5 Cost: about 0.5 USD per agent run on Nate's Claude account; one issue used six runs before it worked. Mitigation: per-issue run cap (50) lowered for routine work; report cost per merged PR.
-- R6 Host availability: bluefin is a laptop on Wi-Fi with no Wake-on-LAN; the M920q ssh needs periodic Tailscale re-authentication, which stalled host checks for hours. Mitigation: keep powered and open; make Tailscale key expiry long.
+- R6 Host availability: the spike machine is a laptop with no remote wake, and remote access to the cabin host needs periodic re-authentication, which stalled host checks for hours. Mitigation: keep the spike machine powered and awake; lengthen key expiry.
 - R7 Model quality: the 3B model is the answer-quality limit (Nate decision pending on a stronger model). Mitigation: measure first; decide with data.
 - R8 Windows shell pitfalls (leading slash rewritten, heredoc quoting) silently dropped commands. Mitigation: post commands from files; read back.
 
 **Assumptions**
-- A1 Nate's standing go covers tier-A merges and per-batch deploys under Cowork's proxy; tier B and C stay with Nate.
-- A2 Claude headless on Nate's subscription is the model for the child; local Ollama is only for cheap steps and is not yet installed on bluefin.
+- A1 Recorded instruction (Nate, 2026-10-31 02:41 CDT, on a CLEAN pull request): "auto-merge next time if reasonable", read as: merge a CLEAN PR that sits within an existing go. Nate's earlier batch go (2026-10-31 00:43 CDT) covered one named batch of deploys in order. **No standing deploy policy is ratified.** Any wider reading (merge on CLEAN for deploy-triggering paths without a per-PR or per-batch go) is a question for Nate, below. Tier B and C stay with Nate.
+- A2 Claude headless on Nate's subscription is the model for the child; local Ollama is only for cheap steps and is not yet installed on the spike machine.
 - A3 The corpus-first order (C2, C1, C3) stays; SFT stays parked until data and access unblock.
 
 **Issues (now)**
-- I1 #381 and #378 have no independent review.
+- I1 (closed 2026-10-31) #381 and #378 were reviewed CLEAN, merged and deployed.
 - I2 No administrator session for live Ask measurement.
 - I3 Child agents sometimes rebase or ask a question that parks an issue (one issue closed after that).
-- I4 Branch protection and required reviewers on a private repo may need a paid plan; tier B is then enforced by process, not GitHub.
+- I4 Branch protection, rulesets and CODEOWNERS are **not in place** on this repo today (main is unprotected), and the bot and Nate would share one GitHub identity, so CODEOWNERS could not tell them apart. Tier B is enforced by process until Nate decides otherwise. The paid-plan limit does not apply: this repo is public.
 
 **Dependencies**
 - D1 Spike pass criteria met (design doc) before the child touches this repo.
@@ -78,6 +78,7 @@ rate and question-to-action rate. Today only the routing replica is measured (95
 
 ## Decisions needed from Nate
 
-1. Approve the child go-live checklist and its first assignment (items 3 and 4 above, tier A only).
+1. Approve the child go-live checklist and its first assignment (items 3 and 4 above, tier A only: docs, tests and backlog rows).
+   1b. Decide whether tier A may later include deploy-triggering paths (Ask content and routing, UI polish, `backend/**`, `ui/**`, `infra/**`) and, if so, what go is needed per PR or per batch.
 2. Provide an administrator session (or run the live measurement) for item 2.
 3. Confirm SFT stays parked until item 2 shows what the corpus path leaves unanswered.
