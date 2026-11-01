@@ -5056,8 +5056,8 @@ elements:
       ui_components: []
       elements: [location_role]
     notes: >
-      NOT location_role (how a person relates to one location; it never grants or removes a permission). Guest links (four fixed
-      read-only scope prefixes), demo links and managed accounts are credentials that map into this axis, not roles of their own
+      NOT location_role (how a person relates to one location; it never grants or removes a permission). Guest links (a convenience view
+      of data that is open without signing in, D14), demo links and managed accounts are credentials that map into this axis, not roles of their own
       in the code; the guide table shows all seven ways of getting in.
 
   - id: active_presence_profile

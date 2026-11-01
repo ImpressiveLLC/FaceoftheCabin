@@ -12,7 +12,7 @@ Audience: household.
 | Household member signed in with Google | Google sign-in with any other accepted account | See the app and make the changes that need a sign-in, for example workflows, notes and chores. Administrator-only screens say "Admin access required" or "Only an administrator can trim storage" |
 | Managed user, "Household member (read/write)" | A sign-in link from Managed Users (copied and handed over, or emailed) | Same as a household member. Cannot manage share links or managed users |
 | Managed user, "Viewer (read-only)" | A sign-in link from Managed Users (copied or emailed) | Look only. Any change is refused |
-| Guest link | A share link from Guest Access | A guest link is read-only and reads the areas that are open without signing in (D14) |
+| Guest link | A share link from Guest Access | A convenience view for sharing a look: read-only, and it reads the areas that are open without signing in (D14) |
 | Demo link | A demo link from Guest Access | The whole app, read-only. Cameras, locks, motion and door sensors, and phones show as "hidden for Demo viewers" |
 | Not signed in | Opening the app without signing in | Read the areas marked **R** under Not signed in below. Everything else asks for a sign-in |
 | Child, kiosk display and service roles | Defined in the code, not yet assignable | Nothing today: no one can be given these roles yet |
@@ -71,9 +71,9 @@ How to read the table:
 
 ## Share read-only access with a link (Guest Access)
 
-**Short answer.** To give someone without a Google account (an insurance adjuster, a contractor) a look at the cabin, go to Config > **Guest Access** > "Other share links". Type a label, choose the parts to include, set **Expires in** (days; blank means never), and press **Create link**. Copy the link straight away: "copy it now, it won't be shown again".
+**Short answer.** A guest link is a convenience view of data that is open without signing in (D14), made for sharing a look with someone who has no Google account. Today its main uses are the insurance claim and tradespeople. To make one, go to Config > **Guest Access** > "Other share links". Type a label, choose the parts to include, set **Expires in** (days; blank means never), and press **Create link**. Copy the link straight away: "copy it now, it won't be shown again".
 
-- The link is read-only. It can never change anything, and it reads the areas that are open without signing in (D14).
+- The link is read-only and can never change anything. It shows data that is open without signing in (D14); it is a convenience for sharing a look.
 - **Revoke** next to a link stops it at once. A stopped link stays in the list marked **Revoked** or **Expired** as a record. Revoking cannot be undone; make a new link instead.
 - Each link shows when it was last opened and how many times. **View activity** lists the last 30 days: time, which part of the app, and the result.
 - The Config card for the Roof Monitoring page makes a separate kind of link that can only read that page and post comments or answers there. Revoke it from the Guest Access list.

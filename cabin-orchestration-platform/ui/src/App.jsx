@@ -2675,7 +2675,7 @@ export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.
       <DemoLinkSection doFetch={doFetch} apiBase={apiBase} onCreated={refresh} />
 
       <h4 className="guest-access-subhead">Other share links</h4>
-      <p className="config-desc">Read-only links for people without a Google account — an insurance adjuster, a contractor.</p>
+      <p className="config-desc">A convenience view of what is open without signing in (D14), for sharing a look with someone who has no Google account: an insurance adjuster, a tradesperson. Read-only.</p>
       <div className="guest-access-form">
         <input value={label} placeholder="Label, e.g. Insurance Claim Sep 2026"
           onChange={e => setLabel(e.target.value)} />
