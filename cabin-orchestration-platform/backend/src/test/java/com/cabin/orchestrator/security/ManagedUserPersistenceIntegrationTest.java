@@ -79,8 +79,9 @@ class ManagedUserPersistenceIntegrationTest {
         assertTrue(restored.isPresent());
         assertNull(restored.get().consumedAt());
 
-        restarted.markConsumed("link-1", now.plusSeconds(60));
+        assertTrue(restarted.consumeIfUnused("link-1", now.plusSeconds(60)));
         assertNotNull(restarted.findByToken("link-1").orElseThrow().consumedAt());
+        assertFalse(restarted.consumeIfUnused("link-1", now.plusSeconds(61)), "a second consume of the same token must lose");
     }
 
     @Test

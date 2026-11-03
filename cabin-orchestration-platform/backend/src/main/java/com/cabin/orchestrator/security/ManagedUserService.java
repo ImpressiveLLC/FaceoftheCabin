@@ -100,7 +100,8 @@ public class ManagedUserService {
         if (userOpt.isEmpty()) return Optional.empty();
 
         Instant now = Instant.now();
-        magicLinks.markConsumed(rawToken, now);
+        // W-138 G3: the caller that consumes the link gets the session
+        if (!magicLinks.consumeIfUnused(rawToken, now)) return Optional.empty();
         ManagedUserSession session = new ManagedUserSession(
             UUID.randomUUID().toString(), userOpt.get().id(), now.plus(SESSION_TTL), null, now);
         sessions.save(session);
