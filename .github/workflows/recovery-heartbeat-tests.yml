@@ -9,6 +9,7 @@ on:
       - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/RecoveryController.java'
       - 'cabin-orchestration-platform/backend/src/test/java/com/cabin/orchestrator/recovery/**'
       - 'cabin-orchestration-platform/backend/src/test/java/com/cabin/orchestrator/api/RecoveryControllerTest.java'
+      - 'docs/ai-assistant/user-guide/access-and-storage.md'
       - '.github/workflows/recovery-heartbeat-tests.yml'
   push:
     branches: [main]
@@ -36,4 +37,4 @@ jobs:
           cache: maven
       - name: Recovery tests and the repo-wide guards a new route and bean can trip
         working-directory: cabin-orchestration-platform/backend
-        run: mvn -B -ntp test -Dtest='RecoveryHeartbeatServiceTest,RecoveryControllerTest,ActiveAlertServiceTest,DemoAccessTest,WriteGateAuditTest,BeanConstructorGuardTest,RestControllerCorsGuardTest'
+        run: mvn -B -ntp test -Dtest='RecoveryHeartbeatServiceTest,RecoveryControllerTest,ActiveAlertServiceTest,DemoAccessTest,WriteGateAuditTest,BeanConstructorGuardTest,RestControllerCorsGuardTest,RoleMatrixTest'

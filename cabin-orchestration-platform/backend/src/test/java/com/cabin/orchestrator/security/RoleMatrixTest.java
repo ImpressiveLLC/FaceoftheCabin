@@ -75,6 +75,7 @@ class RoleMatrixTest {
         new Area("Location roles", Gate.ADMIN, "api/PresenceRolesController", "Only an administrator can assign location roles", List.of(op("R", "GET /api/presence/roles"), op("U", "PUT /api/presence/roles"))),
         new Area("Disk status", Gate.NONE, null, null, List.of(op("R", "GET /api/system/storage"))),
         new Area("Trim old backups", Gate.ADMIN, "api/StorageTrimController", "Only an administrator can trim storage", List.of(op("R", "GET /api/system/storage/trim"), op("+", "POST /api/system/storage/trim"))),
+        new Area("Recovery status and heartbeats", Gate.ADMIN, "api/RecoveryController", "Only an administrator can see recovery status", List.of(op("R", "GET /api/system/recovery"))),
         new Area("Platform info", Gate.ADMIN, "api/SystemController", "This role cannot view platform info", List.of(op("R", "GET /api/system/platform-info"))),
         new Area("Optimization Opportunities", Gate.ADMIN, "api/OpportunitiesController", "This role cannot view or manage optimization opportunities", List.of(op("R", "GET /api/opportunities"), op("U", "PATCH /api/opportunities/x/status"))));
 
