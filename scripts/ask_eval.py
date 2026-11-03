@@ -74,7 +74,8 @@ def endpoint(value):
 def request_ask(url, question, token, timeout):
     headers = {"Content-Type": "application/json"}
     if token:
-        headers["Authorization"] = "CabinSession " + token
+        # a managed-user session carries its scheme ("ManagedSession <uuid>"); a bare uuid is a CabinSession
+        headers["Authorization"] = token if token.startswith("ManagedSession ") else "CabinSession " + token
     request = Request(url, data=json.dumps({"question": question}).encode(),
                       headers=headers, method="POST")
     # Disable ambient proxies; credentials can only go to the checked loopback URL.
@@ -198,7 +199,7 @@ def main():
     auth = parser.add_mutually_exclusive_group(required=True)
     auth.add_argument("--resident-admin-session", action="store_true",
                       help="Use only with explicit operator approval on M920q")
-    auth.add_argument("--token-file", type=Path, help="Operator-provided CabinSession, mode 0600")
+    auth.add_argument("--token-file", type=Path, help="Operator-provided CabinSession (bare uuid) or 'ManagedSession <uuid>' line, mode 0600")
     auth.add_argument("--denial-only", action="store_true", help="Check unauthenticated denial only")
     parser.add_argument("--record-runtime", action="store_true")
     parser.add_argument("--use-context", type=Path, dest="use_context", default=None,
@@ -227,8 +228,8 @@ def main():
         if os.name != "nt" and stat.S_IMODE(args.token_file.stat().st_mode) & 0o077:
             raise EvalError("Token file must be accessible only to its owner (0600).")
         token = args.token_file.read_text().strip()
-        if not re.fullmatch(r"[0-9a-fA-F-]{36}", token):
-            raise EvalError("Expected a CabinSession token; value suppressed.")
+        if not re.fullmatch(r"(?:ManagedSession )?[0-9a-fA-F-]{36}", token):
+            raise EvalError("Expected a CabinSession or ManagedSession token; value suppressed.")
     metadata = runtime_metadata() if args.record_runtime else {}
     os.umask(0o077)
     # Refuse overwrites/symlinks and persist every completed request immediately.
