@@ -222,6 +222,9 @@ services:
       # empty by default (CRITICAL events still persist, just no phone push).
       # Real value lives only in infra/.env on this host, never committed.
       CABIN_ALERT_NTFY_TOPIC: ${CABIN_ALERT_NTFY_TOPIC:-}
+      # Reads the host recovery service's state file (scripts/host/cabin-recovery-heartbeat) from the archive mount
+      # below. On here because this is the host that runs it; off by default elsewhere so a clone is not nagged.
+      CABIN_RECOVERY_ENABLED: "true"
       # Ask action proposals (W-75, HO-2026-10-16): POST /api/helpdesk/propose.
       # OFF unless infra/.env on this host sets CABIN_ASK_INTENT_ENABLED=true
       # (the route answers 404 while off). Proposal only: no executor exists

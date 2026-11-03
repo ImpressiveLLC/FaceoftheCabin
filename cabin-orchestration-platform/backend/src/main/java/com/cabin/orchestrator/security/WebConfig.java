@@ -198,6 +198,6 @@ public class WebConfig implements WebMvcConfigurer {
                 "/api/platform-import/**", "/api/system/platform-info", "/api/auth/session",
                 "/api/presence/**", "/api/security/**", "/api/opportunities/**", "/api/alerts/**",
                 "/api/devices/**", "/api/ha/**", "/api/assistant/**", "/api/locations/**", "/api/system/storage/trim",
-                "/api/roof-spec/**");
+                "/api/system/recovery", "/api/roof-spec/**");
     }
 }

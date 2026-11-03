@@ -6,6 +6,7 @@ import com.cabin.orchestrator.devices.model.CheckinStatus;
 import com.cabin.orchestrator.devices.model.DeviceDescriptor;
 import com.cabin.orchestrator.devices.model.DeviceStatus;
 import com.cabin.orchestrator.integrations.cameras.BlinkRelayPulse;
+import com.cabin.orchestrator.recovery.RecoveryHeartbeatService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +34,7 @@ public class ActiveAlertService {
     private final DeviceHealthMonitor healthMonitor;
 
     private BlinkRelayPulse blinkRelayPulse;
+    private RecoveryHeartbeatService recoveryHeartbeat;
 
     public ActiveAlertService(DeviceRegistry registry, DeviceHealthMonitor healthMonitor) {
         this.registry = registry;
@@ -46,6 +48,15 @@ public class ActiveAlertService {
 
     void useBlinkRelayPulse(BlinkRelayPulse blinkRelayPulse) {
         this.blinkRelayPulse = blinkRelayPulse;
+    }
+
+    @Autowired(required = false)
+    void setRecoveryHeartbeat(RecoveryHeartbeatService recoveryHeartbeat) {
+        this.recoveryHeartbeat = recoveryHeartbeat;
+    }
+
+    void useRecoveryHeartbeat(RecoveryHeartbeatService recoveryHeartbeat) {
+        this.recoveryHeartbeat = recoveryHeartbeat;
     }
 
     public ActiveAlertsSnapshot snapshot() {
@@ -97,6 +108,11 @@ public class ActiveAlertService {
                     + blinkRelayPulse.staleAfterMinutes() + "+ minutes. Blink cameras will not start live view on motion "
                     + "until it is back: check the relay phone (power, Tailscale, notification access)."
             ));
+        }
+
+        // The host recovery service: a component that stopped answering, or the service itself going quiet.
+        if (recoveryHeartbeat != null) {
+            alerts.addAll(recoveryHeartbeat.activeAlerts(Instant.now()));
         }
 
         alerts.sort(Comparator

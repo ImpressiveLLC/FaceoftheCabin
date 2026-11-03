@@ -1,0 +1,25 @@
+[Unit]
+Description=Cabin recovery check and component heartbeats (docs/governance/proposals/2026-11-03-recovery-heartbeat-service.md)
+# Runs on the host, outside Docker, so it keeps watching when the stack is down. It waits for Docker only so the boot
+# check does not start before the containers can have come up; it does not require it.
+After=local-fs.target network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Secrets and overrides, one VAR=value per line, root-readable only (never in git):
+#   HB_NTFY_TOPIC=...       the same topic as CABIN_ALERT_NTFY_TOPIC
+#   HB_DEADMAN_URL=...      external dead-man check, for example https://hc-ping.com/<uuid>
+#   HB_MISS_LIMIT=5  HB_INTERVAL=60  HB_BOOT_GRACE=180  HB_NOTIFY_HOOK=/usr/local/bin/my-notify
+EnvironmentFile=-/etc/cabin-recovery-heartbeat.env
+ExecStart=/usr/local/bin/cabin-recovery-heartbeat run
+# ExecStopPost, not ExecStop: it runs however the service ended, and SERVICE_RESULT says whether that was a deliberate
+# stop, a host shutdown (a marker is written and nobody is paged) or a crash.
+ExecStopPost=/usr/local/bin/cabin-recovery-heartbeat stopped
+Restart=always
+RestartSec=15
+TimeoutStopSec=60
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

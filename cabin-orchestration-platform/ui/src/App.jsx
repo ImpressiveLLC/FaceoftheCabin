@@ -6912,6 +6912,10 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
         <StorageSection apiBase={locCfg.apiBase} authedFetch={auth?.authedFetch} />
       )}
 
+      {locCfg.id === "cabin" && auth?.signedIn && !auth?.demo && (
+        <RecoverySection apiBase={locCfg.apiBase} authedFetch={auth?.authedFetch} />
+      )}
+
       {auth?.demo
         ? <DemoCameraCards devices={devices.filter(d => !d.location || d.location === locCfg.id)} title={`Camera Health — ${locCfg.label}`} />
         : <CameraHealthPanel locCfg={locCfg} />}
@@ -6961,6 +6965,121 @@ function StorageSection({ apiBase, authedFetch }) {
         </button>
       </div>
       {!collapsed && <StorageTrimWidget apiBase={apiBase} authedFetch={authedFetch} quietWhenForbidden />}
+    </div>
+  );
+}
+
+// Recovery check and component heartbeats (docs/governance/proposals/2026-11-03-recovery-heartbeat-service.md). The host
+// service writes the state; the backend serves it to administrators here, and raises the same problems as Critical banner
+// alerts through /api/alerts/active, so this section is the detail behind that banner, not the only place it shows.
+export function formatHeartbeatAge(seconds) {
+  if (seconds == null || Number.isNaN(Number(seconds))) return "never";
+  const s = Math.max(0, Math.round(Number(seconds)));
+  if (s < 90) return `${s} s ago`;
+  if (s < 5400) return `${Math.round(s / 60)} min ago`;
+  if (s < 172800) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+
+export function RecoveryStatusWidget({ apiBase, authedFetch = fetch, pollMs = 30000, quietWhenForbidden = false }) {
+  const [view, setView] = useState(null);
+  const [problem, setProblem] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const url = `${apiBase}/api/system/recovery`;
+
+  const load = useCallback(async () => {
+    try {
+      const r = await authedFetch(url);
+      if (r.status === 401) { setProblem("Sign in to see recovery status."); return; }
+      if (r.status === 403) { setProblem("Only an administrator can see recovery status."); return; }
+      if (!r.ok) { setProblem("The hub could not read the recovery status."); return; }
+      setView(await r.json());
+      setProblem(null);
+    } catch {
+      setProblem("The hub could not be reached.");
+    }
+  }, [authedFetch, url]);
+
+  useEffect(() => {
+    load();
+    if (!pollMs) return undefined;
+    const id = setInterval(load, pollMs);
+    return () => clearInterval(id);
+  }, [load, pollMs]);
+
+  if (problem && !view) return quietWhenForbidden && /administrator|Sign in/.test(problem) ? null : <p className="trim-note" role="status">{problem}</p>;
+  if (!view) return <p className="trim-note" role="status">Loading recovery status…</p>;
+  if (view.state === "disabled") return null;
+
+  if (view.state === "not-installed") {
+    const cmds = view.installCommands || "";
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(cmds); setCopied(true); } catch { setCopied(false); setProblem("Copy was blocked by the browser; select the commands and copy them by hand."); }
+    };
+    return (
+      <div className="trim-widget">
+        <strong>Recovery heartbeat service is not installed</strong>
+        <p className="trim-note" role="status">{view.message}</p>
+        <pre className="trim-commands" aria-label="Install commands for the recovery heartbeat service">{cmds}</pre>
+        <button type="button" className="trim-copy" onClick={copy}>{copied ? "Copied" : "Copy commands"}</button>
+        {problem && <p className="trim-error" role="alert">{problem}</p>}
+      </div>
+    );
+  }
+
+  const comps = view.components || [];
+  const down = comps.filter(c => c.status === "down");
+  const headline = view.state === "stopped" ? "Recovery heartbeat STOPPED on purpose — nothing is watching the components"
+    : view.state === "silent" ? `Recovery service NOT REPORTING — last report ${formatHeartbeatAge(view.ageSeconds)}`
+    : view.state === "degraded" ? `${down.length} component${down.length === 1 ? "" : "s"} down: ${down.map(c => c.name).join(", ")}`
+    : `Recovery service reporting — last report ${formatHeartbeatAge(view.ageSeconds)}`;
+  const bad = view.state !== "ok";
+  const boot = view.boot;
+  const noDeadman = view.deadman && view.deadman.configured === false;
+  const noPhone = view.notify && view.notify.ntfy === "not-configured";
+  return (
+    <div className="trim-widget recovery-widget">
+      <strong className={bad ? "recovery-bad" : "recovery-good"} role="status">{headline}</strong>
+      {view.message && <p className="trim-note">{view.message}</p>}
+      {boot?.summary && (
+        <p className="trim-note">Last restart check ({boot.severity}): {boot.summary}
+          {boot.uncleanShutdown === "true" ? " The previous shutdown was not clean." : ""}</p>
+      )}
+      {boot?.problems?.length > 0 && (
+        <ul className="recovery-rows" aria-label="Problems found at the last restart">
+          {boot.problems.map((p, i) => <li key={`${p.name}-${i}`}><span>{p.name}</span><span className={p.level === "critical" ? "recovery-bad" : ""}>{p.level}</span><span>{p.detail}</span></li>)}
+        </ul>
+      )}
+      <ul className="recovery-rows" aria-label="Component heartbeats">
+        {comps.map(c => (
+          <li key={c.name}>
+            <span>{c.name}</span>
+            <span className={c.status === "down" ? "recovery-bad" : "recovery-good"}>{c.status === "down" ? "DOWN" : "ok"}</span>
+            <span>{c.status === "down" && c.downSince ? `down since ${new Date(c.downSince).toLocaleString()}` : `last heartbeat ${formatHeartbeatAge(c.ageSeconds)}`}</span>
+          </li>
+        ))}
+      </ul>
+      {noPhone && <p className="trim-error" role="alert">Phone alerts are not configured on the host: problems show here and in the banner but nothing is pushed.</p>}
+      {noDeadman && <p className="trim-note">No external dead-man check is configured, so a dead host or a dead service is only noticed here, and only while this page is reachable.</p>}
+      {problem && <p className="trim-error" role="alert">{problem}</p>}
+    </div>
+  );
+}
+
+function RecoverySection({ apiBase, authedFetch }) {
+  const { isCollapsed, toggle } = useCollapsedSections("collapsed.recoverySection");
+  const collapsed = isCollapsed("recovery");
+  return (
+    <div className="event-log storage-section recovery-section">
+      <div className="event-log-header">
+        <span>Recovery and heartbeats — is every component up?</span>
+        <button type="button" className="section-caret" onClick={() => toggle("recovery")}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand recovery status" : "Collapse recovery status"}>
+          {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+        </button>
+      </div>
+      {!collapsed && <RecoveryStatusWidget apiBase={apiBase} authedFetch={authedFetch} quietWhenForbidden />}
     </div>
   );
 }

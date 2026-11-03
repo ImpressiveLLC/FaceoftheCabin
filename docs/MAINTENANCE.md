@@ -2858,8 +2858,84 @@ trusted at face value.
 
 ---
 
+## Recovery check: boot summary, component heartbeats and the dead-man's switch
+
+*Added 2026-11-03 (W-144). Design and every default decision: [`docs/governance/proposals/2026-11-03-recovery-heartbeat-service.md`](governance/proposals/2026-11-03-recovery-heartbeat-service.md). Use this section after any restart or outage, and whenever the Critical banner says "Recovery service not reporting".*
+
+**What it is.** `cabin-recovery-heartbeat` is a root systemd service on the M920q, outside Docker. After each host boot it runs the checklist below once and sends one summary push. Every 60 seconds it probes each component; five misses in a row (5 minutes) is a CRITICAL push and a Critical banner entry for that component, cleared automatically after two good beats, with a reminder after 1 hour and then every 6 hours. It pings an external dead-man URL each cycle and sends a "stopped on purpose" notice when it is stopped. It writes `/storage/archives/cabin_event/.recovery/state.json`, which `cabin-backend` reads for the banner and the Monitoring section "Recovery and heartbeats".
+
+**Run the recovery check by hand** (read-only, sends nothing; add `--notify` to also push the summary, which is also the way to test that a phone receives it):
+
+```bash
+sudo cabin-recovery-heartbeat check
+```
+
+It prints one line per check (`OK`/`WARN`/`CRIT`) and the same one-line summary the boot push carries. Exit status is 0 only when everything is clear.
+
+**What the checklist covers.**
+
+| Check | Passes when | Level if not |
+|---|---|---|
+| previous-shutdown | A clean-shutdown marker was left (a reboot or poweroff). No marker means power loss or a crash; stated in the summary, not a warning by itself | info |
+| backend, postgres, kafka, mosquitto, zigbee2mqtt, frigate, blinkbridge, cloudflared, homeassistant, nodered | Container running and not unhealthy, plus a real answer where cheap (actuator `UP`, `pg_isready`, a broker message, Zigbee bridge `online`, HTTP reply) | CRITICAL |
+| `<name>-restarts` | Fewer than 3 daemon restarts | WARN |
+| cabin-ui, family-hub, cabin-grafana, uptime-kuma, mediamtx | Container running and not unhealthy | WARN |
+| cabin-event-ingest | Newest `cabin_event` under 15 minutes old (also proves Kafka to Postgres works) | WARN at 15 minutes, CRITICAL at 60 or if the query fails |
+| telemetry-gap | Reported: time between the last event before boot and the first after | info |
+| zigbee-devices | No device reports `offline` | WARN, devices named |
+| frigate-cameras | No camera at 0 fps | WARN, cameras named |
+| public-url | `HB_PUBLIC_URLS` answers below HTTP 500 | WARN |
+| disk/storage, disk/ | Under 60% used (the storage monitor owns the 75% critical alert) | WARN at most |
+| timer-backup-home, -configs, -services, -data | Timer active | WARN |
+| cabin-storage-trim-agent.service, blinkbridge-watchdog.timer | Active | WARN |
+| ntp | Clock synchronized | WARN |
+
+**Reading the pushes.** `Cabin restarted: all clear` (default priority): nothing to do. `Cabin restarted: needs a look` (high): warnings only, named. `Cabin restarted: PROBLEMS` (urgent): at least one component is down, named; the heartbeat then tracks it and sends `Cabin: <name> recovered` when it is back. `Cabin: <name> is down` / `STILL down`: a component missed its heartbeats. `Cabin: heartbeat STOPPED on purpose`: someone stopped the service; start it with `sudo systemctl start cabin-recovery-heartbeat`.
+
+**What is and is not detected** (full table in the design note). The host service sees any component failing and any restart. If the heartbeat service itself dies or hangs, the backend sees a stale state file after 5 minutes and shows the Critical banner "Recovery service not reporting" (banner only, no push). **If the whole host is dead, nothing on the host can report it: only the external dead-man URL notices.** Until that is set up, a dead host is found by looking.
+
+**Install once on the M920q** (Nate; an agent session cannot write there). Every step is safe to run again:
+
+```bash
+git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin
+sudo install -m 0755 scripts/host/cabin-recovery-heartbeat /usr/local/bin/cabin-recovery-heartbeat
+sudo install -m 0644 scripts/host/cabin-recovery-heartbeat.service /etc/systemd/system/cabin-recovery-heartbeat.service
+sudo touch /etc/cabin-recovery-heartbeat.env && sudo chmod 600 /etc/cabin-recovery-heartbeat.env
+sudo grep -q '^HB_NTFY_TOPIC=.' /etc/cabin-recovery-heartbeat.env || grep -E '^CABIN_ALERT_NTFY_TOPIC=.+' cabin-orchestration-platform/infra/.env | sed 's/^CABIN_ALERT_NTFY_TOPIC=/HB_NTFY_TOPIC=/' | sudo tee -a /etc/cabin-recovery-heartbeat.env >/dev/null
+sudo grep -c '^HB_NTFY_TOPIC=.' /etc/cabin-recovery-heartbeat.env
+```
+
+The last line prints `1` when the push topic is set and `0` when it is not (the topic was blank in `infra/.env` on 2026-10-12, W-51: set `CABIN_ALERT_NTFY_TOPIC` there first, or add `HB_NTFY_TOPIC=<topic>` to the env file by hand; without it nothing is pushed). It never prints the topic. Then try it before enabling, and fix any container or timer name that does not match this host by setting `HB_COMPONENTS`, `HB_EXTRA_CONTAINERS`, `HB_BACKUP_TIMERS` or `HB_HOST_UNITS` in the env file:
+
+```bash
+sudo cabin-recovery-heartbeat check
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now cabin-recovery-heartbeat
+sudo systemctl status cabin-recovery-heartbeat --no-pager | head -5; sudo ls -l /storage/archives/cabin_event/.recovery/
+```
+
+The backend half (`CABIN_RECOVERY_ENABLED` is already set in `docker-compose.m920q.yml`) arrives with the normal backend deploy, which needs Nate's go. Until it deploys, the pushes work and the banner and Monitoring section do not.
+
+**Dead-man's switch (five minutes, free).**
+
+1. Create a check at healthchecks.io: period 5 minutes, grace 5 minutes; add the integration you want admins to be reached by (email, SMS, Signal, Telegram, or ntfy).
+2. Copy the check's ping URL (treat it as a secret).
+3. `echo 'HB_DEADMAN_URL=https://hc-ping.com/<your-uuid>' | sudo tee -a /etc/cabin-recovery-heartbeat.env >/dev/null && sudo systemctl restart cabin-recovery-heartbeat`
+
+If pings stop for about ten minutes it alerts, whether the service died or the host lost power. A deliberate stop calls `<url>/fail`, which alerts at once. A Cloudflare Worker with a Cron Trigger and a KV key can do the same job on the free tier (design note, "Cloudflare Worker alternative"); it is not built.
+
+**Tuning** (in `/etc/cabin-recovery-heartbeat.env`, then restart the service): `HB_MISS_LIMIT` (5), `HB_INTERVAL` (60 s), `HB_RECOVER_OKS` (2), `HB_REPAGE_FIRST` (3600 s), `HB_REPAGE_EVERY` (21600 s), `HB_BOOT_GRACE` (180 s), `HB_BOOT_RETRY` (120 s), `HB_PUBLIC_URLS`, `HB_NOTIFY_HOOK` (an executable called as `HOOK LEVEL TITLE MESSAGE`, for email or SMS). Backend: `cabin.recovery.staleAfterSeconds` (300).
+
+**Stopping it for maintenance.** Stopping the service pages by design (that is the "heartbeat stopped" notice). There is no maintenance mute yet. Stopping a monitored container for more than 5 minutes also pages.
+
+**Tests.** `bash scripts/host/test_cabin_recovery_heartbeat.sh` (71 checks against stand-in `docker`, `curl` and `systemctl`; needs Linux), `RecoveryHeartbeatServiceTest`, `RecoveryControllerTest`, `ActiveAlertServiceTest`, and `ui/src/RecoveryStatus.test.jsx`.
+
 ## Incident Response — quick triage
 
+0. **The cabin restarted or lost power, or the banner says "Recovery service not reporting"** — run `sudo cabin-recovery-heartbeat check` and read
+   [Recovery check](#recovery-check-boot-summary-component-heartbeats-and-the-dead-mans-switch) first; it is the codified version of the checks below.
 1. **Public site unreachable** — check `docker ps` for `cloudflared`
    first; a crashed tunnel container is the most common single cause.
    `docker restart cloudflared` if it's not running.
