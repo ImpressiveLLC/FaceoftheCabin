@@ -4012,7 +4012,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
                 )}
               </span>
             </header>
-            {groupOpen && <ExpandableList items={groupItems} noun="devices" forceOpen={reorderMode}
+            {groupOpen && <ExpandableList items={groupItems} noun="devices" limit={COLLAPSED_LIMIT} forceOpen={reorderMode}
               isPinned={d => isAlarm(d) || d.deviceId === selected}
               renderItem={(d) => {
           const ignored = deviceLifecycleState(d) === "IGNORED";
@@ -4104,7 +4104,7 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isG
                 </button>
               </span>
             </header>
-            {groupOpen && <ExpandableList items={groupItems} noun="devices"
+            {groupOpen && <ExpandableList items={groupItems} noun="devices" limit={COLLAPSED_LIMIT}
               isPinned={d => isAlarm(d) || d.deviceId === selected}
               renderItem={d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
                 ref={selected === d.deviceId ? selectedRowRef : undefined}
@@ -6887,7 +6887,6 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
 
       <div className={`kpi-grid ${reorderMode ? "reorder-mode" : ""}`}>
         <ExpandableList items={kpiEntries} keyOf={e => e.tile.deviceId} noun="tiles" forceOpen={reorderMode}
-          limit={{ base: COLLAPSED_LIMIT, wide: 25 }}
           isPinned={e => pinnedCount != null && e.globalIdx < pinnedCount}
           renderItem={({ globalIdx, tile }) => {
           const isPinned = pinnedCount != null && globalIdx < pinnedCount;
