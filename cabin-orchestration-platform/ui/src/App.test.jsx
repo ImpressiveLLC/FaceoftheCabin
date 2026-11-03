@@ -5439,18 +5439,37 @@ describe("MagicLinkLanding (Tier 2 magic link, /auth/magic/{token})", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => { cleanup(); localStorage.clear(); });
 
-  it("consuming a valid token stores the managed session and role", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        sessionToken: "sess-abc", email: "carol@example.com", name: "Carol",
-        role: "HOUSEHOLD_MEMBER", expiresAt: "2026-12-01T00:00:00Z",
-      }),
-    }));
+  const validResponse = () => ({
+    ok: true,
+    json: async () => ({
+      sessionToken: "sess-abc", email: "carol@example.com", name: "Carol",
+      role: "HOUSEHOLD_MEMBER", expiresAt: "2026-12-01T00:00:00Z",
+    }),
+  });
+
+  it("W-138 G4: nothing is posted on load", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(validResponse());
+    vi.stubGlobal("fetch", fetchMock);
 
     render(<MagicLinkLanding token="link-xyz" />);
+    await new Promise(r => setTimeout(r, 30));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(localStorage.getItem("managedSessionToken")).toBeNull();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+  });
+
+  it("W-138 G4: Continue consumes a valid token once and stores the managed session and role", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(validResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MagicLinkLanding token="link-xyz" />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => expect(localStorage.getItem("managedSessionToken")).toBe("sess-abc"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain("/api/managed-users/magic/link-xyz/consume");
+    expect(fetchMock.mock.calls[0][1].method).toBe("POST");
     expect(localStorage.getItem("managedSessionEmail")).toBe("carol@example.com");
     expect(localStorage.getItem("managedSessionRole")).toBe("HOUSEHOLD_MEMBER");
     expect(Number(localStorage.getItem("managedSessionExpiresAt"))).toBe(new Date("2026-12-01T00:00:00Z").getTime());
@@ -5463,6 +5482,7 @@ describe("MagicLinkLanding (Tier 2 magic link, /auth/magic/{token})", () => {
     }));
 
     render(<MagicLinkLanding token="stale-token" />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByText(/invalid, expired, already used/)).toBeTruthy();
     expect(localStorage.getItem("managedSessionToken")).toBeNull();
@@ -5472,6 +5492,7 @@ describe("MagicLinkLanding (Tier 2 magic link, /auth/magic/{token})", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 
     render(<MagicLinkLanding token="link-xyz" />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByText(/Couldn't reach the cabin server/)).toBeTruthy();
   });

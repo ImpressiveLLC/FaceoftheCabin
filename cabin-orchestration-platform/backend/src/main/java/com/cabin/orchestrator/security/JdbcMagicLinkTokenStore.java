@@ -42,9 +42,10 @@ public class JdbcMagicLinkTokenStore implements MagicLinkTokenStore {
     }
 
     @Override
-    public void markConsumed(String token, Instant consumedAt) {
-        jdbc.update("UPDATE managed_user_magic_links SET consumed_at = ? WHERE token = ?",
-            Timestamp.from(consumedAt), token);
+    public boolean consumeIfUnused(String token, Instant consumedAt) {
+        // W-138 G3: one conditional UPDATE
+        return jdbc.update("UPDATE managed_user_magic_links SET consumed_at = ? WHERE token = ? AND consumed_at IS NULL",
+            Timestamp.from(consumedAt), token) == 1;
     }
 
     private MagicLinkToken map(ResultSet rs, int i) throws SQLException {

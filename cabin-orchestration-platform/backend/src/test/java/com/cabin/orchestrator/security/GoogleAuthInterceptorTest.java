@@ -77,9 +77,11 @@ class GoogleAuthInterceptorTest {
         private final Map<String, MagicLinkToken> byToken = new HashMap<>();
         @Override public void save(MagicLinkToken token) { byToken.put(token.token(), token); }
         @Override public Optional<MagicLinkToken> findByToken(String token) { return Optional.ofNullable(byToken.get(token)); }
-        @Override public void markConsumed(String token, Instant consumedAt) {
-            byToken.computeIfPresent(token, (t, existing) -> new MagicLinkToken(
-                existing.token(), existing.managedUserId(), existing.expiresAt(), consumedAt, existing.createdAt()));
+        @Override public synchronized boolean consumeIfUnused(String token, Instant consumedAt) {
+            MagicLinkToken existing = byToken.get(token);
+            if (existing == null || existing.consumedAt() != null) return false;
+            byToken.put(token, new MagicLinkToken(existing.token(), existing.managedUserId(), existing.expiresAt(), consumedAt, existing.createdAt()));
+            return true;
         }
     }
 
@@ -767,6 +769,22 @@ class GoogleAuthInterceptorTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         assertTrue(interceptor.preHandle(request, response, new Object()));
+    }
+
+    @Test
+    void w138G1_theManagedLinkRouteShapeIsExact() throws Exception {
+        for (String path : java.util.List.of(
+                "/api/managed-users/magic/sign-in-link", "/api/managed-users/magic/invite", "/api/managed-users/magic/deactivate",
+                "/api/managed-users/magic/reactivate", "/api/managed-users/magic/x/consume/extra", "/api/managed-users/magic//consume",
+                "/api/managed-users/magic/a/b/consume", "/api/managed-users/magic/x/consume/", "/api/managed-users/magic/x/Consume")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            assertFalse(interceptor.preHandle(request, response, new Object()), path + " meets the normal gate");
+            assertEquals(401, response.getStatus(), path);
+        }
+        MockHttpServletRequest real = new MockHttpServletRequest("POST", "/api/managed-users/magic/0f8c-ab12/consume");
+        assertTrue(interceptor.preHandle(real, new MockHttpServletResponse(), new Object()));
     }
 
     @Test

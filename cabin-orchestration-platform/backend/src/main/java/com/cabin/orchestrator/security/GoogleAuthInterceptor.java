@@ -195,7 +195,8 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // tech-id findings collection above. Every OTHER /api/managed-users
         // endpoint (list/create/deactivate/invite) stays behind the normal
         // Google gate via WebConfig's path pattern.
-        boolean isMagicLinkConsume = startsWithBoth(path, npath, contextPath + "/api/managed-users/magic/")
+        // W-138 G1: the exact route shape, on the raw and the normalised path alike.
+        boolean isMagicLinkConsume = matchesBoth(path, npath, contextPath, MAGIC_LINK_CONSUME)
             && "POST".equalsIgnoreCase(request.getMethod());
         if (isMagicLinkConsume) {
             return true;
@@ -469,6 +470,16 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
      * to match. The normalised path is used to deny, never to admit on its own: widening what counts as an open route would let a
      * spelling the router does not serve the same way be treated as open (W-132 review).
      */
+    /** The public managed-user route: POST /api/managed-users/magic/{token}/consume. */
+    private static final java.util.regex.Pattern MAGIC_LINK_CONSUME =
+        java.util.regex.Pattern.compile("/api/managed-users/magic/[A-Za-z0-9._~-]+/consume");
+
+    private static boolean matchesBoth(String raw, String normalised, String contextPath, java.util.regex.Pattern shape) {
+        String prefix = java.util.regex.Pattern.quote(contextPath);
+        java.util.regex.Pattern whole = java.util.regex.Pattern.compile(prefix + shape.pattern());
+        return whole.matcher(raw).matches() && whole.matcher(normalised).matches();
+    }
+
     private static boolean startsWithBoth(String raw, String normalised, String prefix) {
         return raw.startsWith(prefix) && normalised.startsWith(prefix);
     }

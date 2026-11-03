@@ -6,5 +6,6 @@ import java.util.Optional;
 public interface MagicLinkTokenStore {
     void save(MagicLinkToken token);
     Optional<MagicLinkToken> findByToken(String token);
-    void markConsumed(String token, Instant consumedAt);
+    /** Marks the token consumed only if it is still unused; true for the one caller that did it, false for every other (atomic). */
+    boolean consumeIfUnused(String token, Instant consumedAt);
 }

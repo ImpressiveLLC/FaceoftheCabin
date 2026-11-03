@@ -157,9 +157,11 @@ class ManagedUsersControllerTest {
         private final Map<String, MagicLinkToken> byToken = new HashMap<>();
         @Override public void save(MagicLinkToken token) { byToken.put(token.token(), token); }
         @Override public Optional<MagicLinkToken> findByToken(String token) { return Optional.ofNullable(byToken.get(token)); }
-        @Override public void markConsumed(String token, Instant consumedAt) {
-            byToken.computeIfPresent(token, (t, existing) -> new MagicLinkToken(
-                existing.token(), existing.managedUserId(), existing.expiresAt(), consumedAt, existing.createdAt()));
+        @Override public synchronized boolean consumeIfUnused(String token, Instant consumedAt) {
+            MagicLinkToken existing = byToken.get(token);
+            if (existing == null || existing.consumedAt() != null) return false;
+            byToken.put(token, new MagicLinkToken(existing.token(), existing.managedUserId(), existing.expiresAt(), consumedAt, existing.createdAt()));
+            return true;
         }
     }
 
