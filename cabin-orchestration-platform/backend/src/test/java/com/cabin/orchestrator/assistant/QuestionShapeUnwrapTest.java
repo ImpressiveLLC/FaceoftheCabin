@@ -2,6 +2,8 @@ package com.cabin.orchestrator.assistant;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** W-140: what is left of a request once its politeness wrapper is taken off. */
@@ -66,6 +68,26 @@ class QuestionShapeUnwrapTest {
         assertThat(QuestionShape.isQuestion("Can I ask for us to turn on the heater")).isFalse();
         assertThat(QuestionShape.isQuestion("May I ask for help with the heater")).isTrue();
         assertThat(QuestionShape.isQuestion("Can I ask for the heater status")).isTrue();
+    }
+
+    @Test
+    void forYouOrUsToFollowedByAnInquiryVerbIsStillAnInquiry() {
+        for (String q : List.of("can I ask for you to explain how the heater works", "can I ask for you to tell me if the heater is on",
+                "can I ask for us to tell me if the heater is on", "Can I ask for you to describe the heater", "Can I ask for you to show me the heater",
+                "Can I ask for you to clarify the heater")) {
+            assertThat(QuestionShape.isQuestion(q)).as(q).isTrue();
+        }
+        for (String q : List.of("Can I ask for you to turn on the heater", "Can I ask for us to turn on the heater",
+                "Can I ask for you to turn on the heater if it is cold")) {
+            assertThat(QuestionShape.isQuestion(q)).as(q).isFalse();
+        }
+    }
+
+    @Test
+    void theFillerTakesUsAndTrailingPunctuation() {
+        unwraps("Can I ask for us to turn on the heater", "turn on the heater");
+        unwraps("Can I ask for you?", "");
+        unwraps("Can I ask for us.", "");
     }
 
     @Test

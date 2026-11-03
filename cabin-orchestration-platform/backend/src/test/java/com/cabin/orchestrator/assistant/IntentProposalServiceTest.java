@@ -411,7 +411,8 @@ class IntentProposalServiceTest {
     void aWrappedCommandIsTheCommandAndOnlyEverAProposal() {
         for (String wrapped : List.of("Can I ask for you to turn on the heater", "Could I ask you to turn on the heater", "May I ask you to turn on the heater?",
                 "Might I ask for you to turn on the heater", "Am I able to ask you to turn on the heater", "Is it ok if I ask you to turn on the heater",
-                "Hi, can I ask for you to turn on the heater", "can we inquire you to turn on the heater")) {
+                "Hi, can I ask for you to turn on the heater", "can we inquire you to turn on the heater",
+                "Can I ask for us to turn on the heater", "Can I ask for you to turn on the heater if it is cold")) {
             prompts.clear();
             Response r = propose(intent("set_device_state", "{\"device_name\":\"heater\",\"location\":\"mech room\",\"state\":\"on\"}", true), wrapped);
 
@@ -484,7 +485,9 @@ class IntentProposalServiceTest {
     void aWrapperThatLeadsIntoAnInquiryNeverBecomesAProposalEvenIfTheModelSaysAct() {
         for (String typed : List.of("Can I ask if the heater is on", "Can I ask when the heater turns on", "Could I ask about turning on the heater",
                 "May I ask for help with the heater", "Can I ask you to explain how to turn on the heater", "Can I ask you to tell me if the heater is on",
-                "Can I ask if I can turn on the heater", "Can I ask regarding the heater", "Can I ask a question about the heater")) {
+                "Can I ask if I can turn on the heater", "Can I ask regarding the heater", "Can I ask a question about the heater",
+                "can I ask for you to explain how the heater works", "can I ask for you to tell me if the heater is on", "can I ask for us to tell me if the heater is on",
+                "Can I ask for you to describe the heater", "Can I ask for you to show me the heater", "Can I ask for you to clarify the heater")) {
             Response r = propose(intent("set_device_state", "{\"device_name\":\"heater\",\"location\":\"mech room\",\"state\":\"on\"}", true), typed);
 
             assertEquals(Status.CLARIFY, r.status(), typed);
