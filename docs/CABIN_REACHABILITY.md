@@ -40,10 +40,10 @@ Honest assessment before anyone starts: **the cabin's data is made at the cabin.
 
 | Slice | What | Needs |
 |---|---|---|
-| S1 | Host heartbeat script and timer on the M920q (two ping kinds), plus the external monitor and its alert route | Nate creates the free account and chooses channels; the ntfy topic (W-51 S1) |
+| S1 | Host heartbeat script and timer on the M920q (two ping kinds), plus the external monitor and its alert route. **Built, PR #400 (W-144): the heartbeat is part of `cabin-recovery-heartbeat` (one host service instead of a separate timer), both ping kinds with a bearer token; the off-host monitor is the Cloudflare Worker `cabin-deadman` (`infra/cabin-deadman-worker`) or healthchecks.io. Awaiting install** | Nate deploys the Worker (or creates the free account) and sets its secrets; the ntfy topic (W-51 S1) |
 | S2 | Revive the Home collector (`G3223`): power, Termux, Tailscale, Zigbee2MQTT | Nate, at Home |
-| S3 | Pull probes with the two-vantage rule (`ILikeTheLights`, S23, Home collector) | S2 for the collector; Nate's choice of probe devices |
-| S4 | Cloudflare tunnel-health notification | Nate checks his Cloudflare account |
+| S3 | Pull probes with the two-vantage rule (`ILikeTheLights`, S23, Home collector). Not built; the host service's `tailscale`, `public-url` and `tailscale-ssh` checks are from the host's own vantage and do not replace it. The Worker's `GET /status` is a place for probes to read | S2 for the collector; Nate's choice of probe devices |
+| S4 | Cloudflare tunnel-health notification. Not built; the host's `public-url` component sees the same fault from inside (HTTP 530 with no tunnel connection), an independent signal of one cause | Nate checks his Cloudflare account |
 | S5 | UPS with NUT and an LTE path | Hardware purchase and a decision |
 | S6 | A small observer (last-known state and a status page) | S3; only if still wanted |
 

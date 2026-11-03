@@ -2859,8 +2859,164 @@ trusted at face value.
 
 ---
 
+## Recovery check: boot summary, component heartbeats and the dead-man's switch
+
+*Added 2026-11-03 (W-144). Design and every default decision: [`docs/governance/proposals/2026-11-03-recovery-heartbeat-service.md`](governance/proposals/2026-11-03-recovery-heartbeat-service.md). Use this section after any restart or outage, and whenever the Critical banner says "Recovery service not reporting".*
+
+**What it is.** `cabin-recovery-heartbeat` is a root systemd service on the M920q, outside Docker. After each host boot it runs the checklist below once and sends one summary push. Every 60 seconds it probes each component; five misses in a row (5 minutes) is a CRITICAL push and a Critical banner entry for that component, cleared automatically after two good beats, with a reminder after 1 hour and then every 6 hours. It pings an external dead-man URL each cycle and sends a "stopped on purpose" notice when it is stopped. It writes `/var/lib/cabin-recovery/state.json`, which `cabin-backend` reads for the banner and the Monitoring section "Recovery and heartbeats".
+
+**Run the recovery check by hand** (read-only, sends nothing; add `--notify` to also push the summary, which is also the way to test that a phone receives it):
+
+```bash
+sudo cabin-recovery-heartbeat check
+```
+
+It prints one line per check (`OK`/`WARN`/`CRIT`) and the same one-line summary the boot push carries. Exit status is 0 only when everything is clear.
+
+**What the checklist covers.**
+
+| Check | Passes when | Level if not |
+|---|---|---|
+| previous-shutdown | A clean-shutdown marker was left (a reboot or poweroff). No marker means power loss or a crash; stated in the summary, not a warning by itself | info |
+| backend, postgres, kafka, mosquitto, zigbee2mqtt, frigate, blinkbridge, cloudflared, homeassistant, nodered | Container running and not unhealthy, plus a real answer where cheap (actuator `UP`, `pg_isready`, a broker message, Zigbee bridge `online`, HTTP reply) | CRITICAL |
+| gateway | Default route exists and the router answers a ping | CRITICAL |
+| internet | At least one of two ping targets or two HTTPS targets answers | CRITICAL |
+| dns | One of two names resolves | CRITICAL |
+| tailscale | `tailscaled` Running and a peer online (named peers in `HB_TAILSCALE_PEERS` must answer) | CRITICAL |
+| public-url | Every `HB_PUBLIC_URLS` answers below HTTP 500 from the host (Cloudflare answers 530 when the tunnel has no connection) | CRITICAL |
+| sshd | An OpenSSH service is active and port 22 is listening | CRITICAL |
+| tailscale-ssh | Tailscale SSH is enabled | CRITICAL |
+| `<name>-restarts` | Fewer than 3 daemon restarts | WARN |
+| cabin-ui, family-hub, cabin-grafana, uptime-kuma, mediamtx | Container running and not unhealthy | WARN |
+| cabin-event-ingest | Newest `cabin_event` under 15 minutes old (also proves Kafka to Postgres works) | WARN at 15 minutes, CRITICAL at 60 or if the query fails |
+| telemetry-gap | Reported: time between the last event before boot and the first after | info |
+| zigbee-devices | No device reports `offline` | WARN, devices named |
+| frigate-cameras | No camera at 0 fps | WARN, cameras named |
+| disk/storage, disk/ | Under 60% used (the storage monitor owns the 75% critical alert) | WARN at most |
+| timer-backup-home, -configs, -services, -data | Timer active | WARN |
+| cabin-storage-trim-agent.service, blinkbridge-watchdog.timer | Active | WARN |
+| ntp | Clock synchronized | WARN |
+
+**Reading the pushes.** `Cabin restarted: all clear` (default priority): nothing to do. `Cabin restarted: needs a look` (high): warnings only, named. `Cabin restarted: PROBLEMS` (urgent): at least one component is down, named; the heartbeat then tracks it and sends `Cabin: <name> recovered` when it is back. `Cabin: <name> is down` / `STILL down`: a component missed its heartbeats. `Cabin: heartbeat STOPPED on purpose`: someone stopped the service; start it with `sudo systemctl start cabin-recovery-heartbeat`.
+
+**What is and is not detected** (full table in the design note). The host service sees any component failing and any restart. If the heartbeat service itself dies or hangs, the backend sees a stale state file after 5 minutes and shows the Critical banner "Recovery service not reporting" (banner only, no push). **If the whole host is dead, nothing on the host can report it: only the external dead-man URL notices.** Until that is set up, a dead host is found by looking.
+
+**Install once on the M920q** (Nate; an agent session cannot write there). Every step is safe to run again:
+
+```bash
+git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin
+sudo install -m 0755 scripts/host/cabin-recovery-heartbeat /usr/local/bin/cabin-recovery-heartbeat
+sudo install -m 0644 scripts/host/cabin-recovery-heartbeat.service /etc/systemd/system/cabin-recovery-heartbeat.service
+sudo touch /etc/cabin-recovery-heartbeat.env && sudo chmod 600 /etc/cabin-recovery-heartbeat.env
+sudo grep -q '^HB_NTFY_TOPIC=.' /etc/cabin-recovery-heartbeat.env || grep -E '^CABIN_ALERT_NTFY_TOPIC=.+' cabin-orchestration-platform/infra/.env | sed 's/^CABIN_ALERT_NTFY_TOPIC=/HB_NTFY_TOPIC=/' | sudo tee -a /etc/cabin-recovery-heartbeat.env >/dev/null
+sudo grep -c '^HB_NTFY_TOPIC=.' /etc/cabin-recovery-heartbeat.env
+```
+
+The last line prints `1` when the push topic is set and `0` when it is not (the topic was blank in `infra/.env` on 2026-10-12, W-51: set `CABIN_ALERT_NTFY_TOPIC` there first, or add `HB_NTFY_TOPIC=<topic>` to the env file by hand; without it nothing is pushed). It never prints the topic. Then try it before enabling, and fix any container or timer name that does not match this host by setting `HB_COMPONENTS`, `HB_EXTRA_CONTAINERS`, `HB_BACKUP_TIMERS` or `HB_HOST_UNITS` in the env file:
+
+```bash
+sudo cabin-recovery-heartbeat check
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now cabin-recovery-heartbeat
+sudo systemctl status cabin-recovery-heartbeat --no-pager | head -5; sudo ls -l /var/lib/cabin-recovery/
+```
+
+Then do one controlled reboot (`sudo reboot`) and expect exactly one "Cabin restarted" push about 3 to 5 minutes after boot and no "heartbeat STOPPED on purpose" push. That confirms the shutdown detection on this host; if a stop notice arrives at reboot, tell the session that built this before relying on it.
+
+The backend half (`CABIN_RECOVERY_ENABLED` is already set in `docker-compose.m920q.yml`) arrives with the normal backend deploy, which needs Nate's go. Until it deploys, the pushes work and the banner and Monitoring section do not.
+
+**Dead-man's switch (W-56).** Two kinds of ping, so silence tells you which part is down: *host alive* (`HB_DEADMAN_URL`, every minute, no dependencies) and *platform healthy* (`HB_DEADMAN_PLATFORM_URL`, only while the backend and the Zigbee bridge both answered). Two ways to receive them; pick one.
+
+*Cloudflare Worker `cabin-deadman` (source and tests in `cabin-orchestration-platform/infra/cabin-deadman-worker/`; contract in the design note).* Nate creates it in the Cloudflare dashboard: a KV namespace (put its id in `wrangler.toml`), a Worker `cabin-deadman` deployed from that folder with a cron trigger `*/5 * * * *`, binding `HEARTBEAT_KV`, and two secrets, `HEARTBEAT_TOKEN` (a long random string) and `NTFY_TOPIC`. Then on the host:
+
+```bash
+sudo tee -a /etc/cabin-recovery-heartbeat.env >/dev/null <<'EOF'
+HB_DEADMAN_URL=https://cabin-deadman.<account>.workers.dev/ping/host
+HB_DEADMAN_PLATFORM_URL=https://cabin-deadman.<account>.workers.dev/ping/platform
+HB_DEADMAN_STOP_URL=https://cabin-deadman.<account>.workers.dev/stop/host
+HB_DEADMAN_TOKEN=<the same value as the Worker's HEARTBEAT_TOKEN>
+EOF
+sudo chown root:root /etc/cabin-recovery-heartbeat.env && sudo chmod 600 /etc/cabin-recovery-heartbeat.env
+sudo systemctl restart cabin-recovery-heartbeat
+```
+
+The token is sent only to hosts listed in `HB_DEADMAN_TOKEN_HOSTS` (default `.workers.dev`; add a custom Worker domain there), so a third-party monitor URL never receives it, and it travels on curl's standard input so it does not appear in `ps` output. The Worker stores each ping at most once every 4 minutes to stay inside the Workers KV free tier (1000 writes a day), so its `/status` ages are accurate to about 4 minutes, and its silence threshold is never lower than 8 minutes whatever `SILENCE_MINUTES` says. The token is sent only over `https://`, never to a URL with a user name in it, and `HB_DEADMAN_TOKEN` must not contain control characters (a token with a line break is refused and the ping reports failed).
+
+*healthchecks.io.* A check with period 5 minutes and grace 5 minutes and an integration for where admins are reached; put its ping URL in `HB_DEADMAN_URL` (no token, no platform URL, or a second check for it). A deliberate stop calls `<url>/fail`.
+
+Either way, silence of about ten minutes alerts, repeats hourly, and says when it is back. The ping URLs and the token are secrets: root-only env file, never git.
+
+**SSH for non-interactive recovery checks (decision: option A, Nate, 2026-11-03).** The `sshd` and `tailscale-ssh` components watch that SSH is up. Reaching the host *without* a browser re-auth link uses a read-only user with a forced command (design note, "SSH for non-interactive recovery checks", has the options and the reasons). Nate applied this on 2026-11-03; the commands below are the record and the way to redo it on a new host (they need sudo). Option A, with an extra OpenSSH port because Tailscale SSH holds port 22 on the tailnet address:
+
+```bash
+sudo useradd --create-home --shell /bin/bash --comment "read-only recovery monitor" cabin-monitor
+sudo install -d -m 700 -o cabin-monitor -g cabin-monitor /home/cabin-monitor/.ssh
+echo 'restrict,command="cat /var/lib/cabin-recovery/state.json /var/lib/cabin-recovery/report.txt" ssh-ed25519 <PUBLIC KEY> cabin-monitor' | sudo tee /home/cabin-monitor/.ssh/authorized_keys >/dev/null
+sudo chown cabin-monitor:cabin-monitor /home/cabin-monitor/.ssh/authorized_keys && sudo chmod 600 /home/cabin-monitor/.ssh/authorized_keys
+printf 'Match User cabin-monitor\n  PasswordAuthentication no\n  AllowTcpForwarding no\n  X11Forwarding no\n  PermitTTY no\nMatch LocalPort 2222\n  AllowUsers cabin-monitor\n  PermitRootLogin no\n  PasswordAuthentication no\n  KbdInteractiveAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/cabin-monitor.conf >/dev/null
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+   The `Match LocalPort 2222` block makes the extra port usable by `cabin-monitor` only (no root, no passwords, no other account), even though the socket listens on every address. If the first block was already applied from an earlier version of this runbook, run the same `printf ... | sudo tee` line again to replace the file, then `sudo sshd -t && sudo systemctl reload ssh`, and confirm with `sudo sshd -T -C user=root,host=x,addr=1.2.3.4,laddr=100.77.44.113,lport=2222 | grep -Ei '^(allowusers|permitrootlogin)'` (expect `allowusers cabin-monitor` and `permitrootlogin no`).
+
+   Then open port 2222. **How depends on how OpenSSH is started, and a `Port 2222` line is ignored on Ubuntu 24.04**, where `ssh.socket` (socket activation) owns the listening ports; this is what a first attempt on 2026-11-03 hit ("Connection refused" on 2222 while 22 answered). Check which applies, then do the matching step:
+
+```bash
+systemctl is-active ssh.socket
+```
+
+   If it prints `active` (expected on Ubuntu 24.04), add the port to the socket:
+
+```bash
+sudo mkdir -p /etc/systemd/system/ssh.socket.d
+printf '[Socket]\nListenStream=\nListenStream=0.0.0.0:22\nListenStream=[::]:22\nListenStream=0.0.0.0:2222\nListenStream=[::]:2222\n' | sudo tee /etc/systemd/system/ssh.socket.d/cabin-monitor.conf >/dev/null
+sudo systemctl daemon-reload && sudo systemctl restart ssh.socket
+```
+
+   **Name every address.** A bare `ListenStream=2222` binds IPv6 only here, because Ubuntu's `ssh.socket` sets `BindIPv6Only=ipv6-only`; `ss` then shows only `[::]:2222`, and a connection to the IPv4 tailnet address (`100.77.44.113`) is accepted and closed before the SSH banner ("kex_exchange_identification: write: Connection refused"), which is exactly what the first attempt on 2026-11-03 did. The leading empty `ListenStream=` clears the default before the four explicit addresses. Expect four listeners (`0.0.0.0:22`, `[::]:22`, `0.0.0.0:2222`, `[::]:2222`).
+
+   Otherwise (`inactive`), add the port to the daemon instead:
+
+```bash
+printf 'Port 22\nPort 2222\n' | sudo tee /etc/ssh/sshd_config.d/cabin-monitor-port.conf >/dev/null
+sudo sshd -t && sudo systemctl restart ssh
+```
+
+   Either way, confirm both ports listen (open sessions keep running through the restart; Tailscale SSH on port 22 is served by `tailscaled`, not by this service):
+
+```bash
+sudo ss -ltn | grep -E ':(22|2222) '
+
+```
+
+**Using the monitoring key (installed and verified 2026-11-03).** Verified from `ILikeTheLights` over Tailscale: the key connects on 2222 as `cabin-monitor` and runs only the forced `cat` (it printed `No such file or directory` for both files, as expected until the recovery service is installed and has written them; the content itself has not been seen yet). Without the key the host answers `Permission denied (publickey)`. The key pair was generated on the Windows PC `ILikeTheLights`, where the agent sessions run. The private key is `%USERPROFILE%\.ssh\cabin-monitor_ed25519` (no passphrase so checks can run unattended; permissions limited to the signed-in account; never in git). Only the public half went to the host. Fingerprint: `SHA256:dKY+MgpLiYvJgsOLuMVNRRvSqiOCyPDpskIegtiI33E`. The M920q's tailnet address is `100.77.44.113` (name `nates-little-m920q.tailb20f8b.ts.net`; the short name `cabin-hub` only resolves where MagicDNS search domains are set, which this PC does not have). To read the cabin's state:
+
+```powershell
+ssh -T -i "$env:USERPROFILE\.ssh\cabin-monitor_ed25519" -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes cabin-monitor@100.77.44.113
+```
+
+It prints the live component state (JSON) and the last boot check report, and nothing else: the key is forced to run one `cat` and has no shell, terminal or forwarding. **Path change (2026-11-03, review fix):** the state folder moved from `/storage/archives/cabin_event/.recovery` to the root-only `/var/lib/cabin-recovery`. A host whose key was installed before the move updates the forced command once (safe to repeat): `sudo sed -i 's#/storage/archives/cabin_event/.recovery#/var/lib/cabin-recovery#g' /home/cabin-monitor/.ssh/authorized_keys`. An old `/storage/archives/cabin_event/.recovery` folder, if one exists, can be removed.
+
+It cannot run a new check or fix anything; for that, use the owner's Tailscale SSH (`ssh nate@nates-little-m920q.tailb20f8b.ts.net`). If live diagnostics are wanted later, add a sudoers entry limited to `cabin-recovery-heartbeat check` for this user rather than widening the key.
+
+*Backup.* The key is read-only and revocable, so losing the PC costs one regeneration, not an incident. An optional copy can go in the password manager as a Secure Note ("cabin-monitor SSH key"). Vaultwarden is not installed on the cabin host yet (the `vaultwarden` service in `docker-compose.m920q.yml` has not been deployed), so until it is, use whatever password manager Nate already uses, and if Vaultwarden is later hosted on the M920q remember it cannot be reached during a cabin outage, which makes it a backup only. Do not put the private key in git or in `ansible/group_vars/cabin/vault.yml` (that vault is for values templated into `.env`).
+
+*Revoke or rotate.* On the host: `sudo rm /home/cabin-monitor/.ssh/authorized_keys` (revokes at once), or `sudo userdel -r cabin-monitor` to remove the user. To rotate, generate a new pair with `ssh-keygen -t ed25519 -N '' -f <path>`, replace the line in `authorized_keys` with the new public key, then delete the old private key. Verify with the command above: a successful print is the check, a `Permission denied (publickey)` means the old key is revoked.
+
+*Troubleshooting.* `Connection refused` or an immediate close on 2222 with 22 working: the port was not opened, or only on IPv6 (`ssh.socket` notes above; check `sudo ss -ltn | grep 2222` shows `0.0.0.0:2222`). `PTY allocation request failed` is harmless (terminals are disabled for this key); `-T` suppresses it. `Permission denied (publickey)`: wrong key, or `authorized_keys` ownership or mode (it must be `600`, owned by `cabin-monitor`). `No such file` from the `cat`: the recovery service has not yet written `state.json` (not installed, or still in its first minute). A hang: Tailscale is down on this PC or the host, and the `tailscale` and `internet` heartbeats should already say so.
+
+**Tuning** (in `/etc/cabin-recovery-heartbeat.env`, then restart the service): `HB_MISS_LIMIT` (5), `HB_INTERVAL` (60 s), `HB_RECOVER_OKS` (2), `HB_REPAGE_FIRST` (3600 s), `HB_REPAGE_EVERY` (21600 s), `HB_BOOT_GRACE` (180 s), `HB_BOOT_RETRY` (120 s), `HB_PUBLIC_URLS`, `HB_PING_TARGETS`, `HB_HTTPS_TARGETS`, `HB_DNS_NAMES`, `HB_TAILSCALE_PEERS`, `HB_NOTIFY_HOOK` (an executable called as `HOOK LEVEL TITLE MESSAGE`, for email or SMS). Backend: `cabin.recovery.staleAfterSeconds` (300).
+
+**Stopping it for maintenance.** `sudo systemctl restart cabin-recovery-heartbeat` (an upgrade, a settings change) does not page and does not tell the dead-man the heartbeat ended; `sudo systemctl stop` pages by design (that is the "heartbeat stopped" notice). There is no maintenance mute yet. Stopping a monitored container for more than 5 minutes also pages.
+
+**Tests.** `bash scripts/host/test_cabin_recovery_heartbeat.sh` (see the test file for the count; against stand-in `docker`, `curl`, `systemctl`, `ping` and `tailscale`; needs Linux), `node --test` in `cabin-orchestration-platform/infra/cabin-deadman-worker` (12 checks), `RecoveryHeartbeatServiceTest`, `RecoveryControllerTest`, `ActiveAlertServiceTest`, and `ui/src/RecoveryStatus.test.jsx`.
+
 ## Incident Response — quick triage
 
+0. **The cabin restarted or lost power, or the banner says "Recovery service not reporting"**: run `sudo cabin-recovery-heartbeat check` and read
+   [Recovery check](#recovery-check-boot-summary-component-heartbeats-and-the-dead-mans-switch) first; it is the codified version of the checks below.
 1. **Public site unreachable** — check `docker ps` for `cloudflared`
    first; a crashed tunnel container is the most common single cause.
    `docker restart cloudflared` if it's not running.

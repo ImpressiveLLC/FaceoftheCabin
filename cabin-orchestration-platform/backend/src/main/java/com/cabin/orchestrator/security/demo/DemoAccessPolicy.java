@@ -61,6 +61,8 @@ public final class DemoAccessPolicy {
             "/api/auth/**", "/api/webhooks/**", "/api/roof-spec/**",
             // W-11: disk capacity is operator detail, not part of the demo. The alerts it raises are events.
             "/api/system/storage", "/api/system/storage/trim",
+            // Host component names and heartbeat ages: operator detail. The Critical banner reaches the demo only as alerts.
+            "/api/system/recovery",
             "/api/profiles/**", "/api/profiles", "/api/chores/**", "/api/chores",
             "/api/notes/**", "/api/notes", "/api/schedule/**", "/api/schedule");
     }

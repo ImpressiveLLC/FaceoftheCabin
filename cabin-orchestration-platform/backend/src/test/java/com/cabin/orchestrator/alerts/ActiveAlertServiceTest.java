@@ -126,4 +126,24 @@ class ActiveAlertServiceTest {
         pulse.record(Instant.now().toString(), Instant.now());  // relay back
         assertTrue(service.snapshot().alerts().isEmpty());
     }
+
+    @Test
+    void recoveryServiceConditionsJoinTheSnapshotAndSortFirstWhenCritical() throws Exception {
+        java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("recovery");
+        java.nio.file.Files.writeString(dir.resolve("state.json"),
+            "{\"writtenAt\":\"" + Instant.now() + "\",\"status\":\"running\",\"intervalSeconds\":60,\"missLimit\":5,"
+                + "\"components\":[{\"name\":\"kafka\",\"status\":\"down\",\"downSince\":\"" + Instant.now() + "\",\"detail\":\"container cabin-kafka not running\"}]}");
+        service.useRecoveryHeartbeat(new com.cabin.orchestrator.recovery.RecoveryHeartbeatService(true, dir.toString(), 300));
+        DeviceStatus missed = status("missed", "OFFLINE");
+        when(registry.visible()).thenReturn(List.of(missed));
+        configure("missed", DeviceLifecycleState.ASSIGNED, true);
+        when(healthMonitor.getCheckinStatuses()).thenReturn(Map.of("missed", CheckinStatus.MISSED));
+        when(healthMonitor.getStaleSince("missed")).thenReturn(Optional.empty());
+
+        List<ActiveAlert> alerts = service.snapshot().alerts();
+        assertEquals(2, alerts.size());
+        assertEquals("recovery:component:kafka", alerts.get(0).alertId());
+        assertEquals("CRITICAL", alerts.get(0).severity());
+        assertEquals(1L, service.snapshot().counts().get("CRITICAL"));
+    }
 }

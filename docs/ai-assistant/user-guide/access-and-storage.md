@@ -58,6 +58,7 @@ Audience: household.
 | Location roles | - | RU | - | - | - | - | - |
 | Disk status | R | R | R | R | R | R | - |
 | Trim old backups | - | R+ | - | - | - | - | - |
+| Recovery status and heartbeats | - | R | - | - | - | - | - |
 | Platform info | - | R | - | - | - | - | - |
 | Optimization Opportunities | - | RU | - | - | - | - | - |
 

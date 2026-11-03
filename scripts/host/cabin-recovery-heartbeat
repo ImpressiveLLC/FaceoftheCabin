@@ -1,0 +1,757 @@
+#!/usr/bin/env bash
+# cabin-recovery-heartbeat -- the host-side recovery check and component heartbeats (docs/governance/proposals/
+# 2026-11-03-recovery-heartbeat-service.md).
+#
+# It runs as a root systemd service OUTSIDE Docker, so it keeps working when the stack is down. Three jobs:
+#
+#   1. Boot recovery check. After a grace period it runs the codified recovery checklist once (containers, Postgres,
+#      event ingest, Zigbee devices, Frigate cameras, public URLs, disk, backup timers, trim agent, NTP, telemetry gap,
+#      previous shutdown clean or not) and sends ONE summary: INFO if clear, WARN or CRITICAL naming what is wrong.
+#   2. Component heartbeats. Every INTERVAL seconds each component is probed. A component that misses MISS_LIMIT beats in
+#      a row is reported CRITICAL once; it is re-reported only on persistence (REPAGE_FIRST, then REPAGE_EVERY) and a
+#      single "recovered" notice follows. One good beat in the middle resets the count, so a blip never pages.
+#   3. Dead-man signals. Each cycle pings HB_DEADMAN_URL (an external monitor, healthchecks.io style) so that something
+#      OFF the host notices if this service or the whole host stops. A deliberate stop sends a "stopped on purpose" notice.
+#
+# State lives in a root-only folder the backend reads through a read-only bind mount. The service still treats everything it
+# reads back from there as untrusted, in case the folder is ever shared again:
+#   $HB_STATE_DIR/state.json       what the Critical banner and the Monitoring section show
+#   $HB_STATE_DIR/comp.tsv         per-component counters, so a service restart does not re-page
+#   $HB_STATE_DIR/clean-shutdown   written on a clean shutdown; its absence at boot means power loss or a crash
+#   $HB_STATE_DIR/outbox/          notices that could not be sent yet (no internet after an outage); retried each cycle
+# It holds no secrets. The ntfy topic is read from the environment file, never written to the spool.
+#
+# Subcommands:  run (the service) | check [--notify] (the whole checklist now, printed) | once (one heartbeat cycle)
+#               stopped (ExecStopPost: classify how the service ended and send the notice)
+# Install (Nate, once): docs/MAINTENANCE.md, "Recovery check".
+set -uo pipefail
+
+# A root-only host folder. It is mounted into cabin-backend READ-ONLY. It must never be inside a folder the container can
+# write (the old /storage/archives/cabin_event/.recovery was: a compromised backend could plant files this root service trusts).
+HB_STATE_DIR=${HB_STATE_DIR:-/var/lib/cabin-recovery}
+HB_STATE_DIR_UID=${HB_STATE_DIR_UID:-0}          # the uid that must own the folder (tests use their own)
+HB_INTERVAL=${HB_INTERVAL:-60}                  # seconds between heartbeat cycles
+HB_MISS_LIMIT=${HB_MISS_LIMIT:-5}               # consecutive missed beats before a component is CRITICAL (5 x 60 s = 5 min)
+HB_RECOVER_OKS=${HB_RECOVER_OKS:-2}             # consecutive good beats before "recovered"
+HB_REPAGE_FIRST=${HB_REPAGE_FIRST:-3600}        # first reminder after this many seconds down
+HB_REPAGE_EVERY=${HB_REPAGE_EVERY:-21600}       # later reminders
+HB_BOOT_GRACE=${HB_BOOT_GRACE:-180}             # seconds after service start before the boot check
+HB_BOOT_RETRY=${HB_BOOT_RETRY:-120}             # a failing boot check is repeated once after this long
+HB_BOOT_WINDOW=${HB_BOOT_WINDOW:-900}           # host up less than this at service start = a host boot
+HB_PROBE_TIMEOUT=${HB_PROBE_TIMEOUT:-10}
+HB_NTFY_URL=${HB_NTFY_URL:-https://ntfy.sh}
+HB_NTFY_TOPIC=${HB_NTFY_TOPIC:-}                # same topic as CABIN_ALERT_NTFY_TOPIC; set in /etc/cabin-recovery-heartbeat.env
+HB_NOTIFY_HOOK=${HB_NOTIFY_HOOK:-}              # optional executable: called as HOOK LEVEL TITLE MESSAGE (email, SMS, Signal ...)
+HB_DEADMAN_URL=${HB_DEADMAN_URL:-}              # kind 1, "host alive": pinged every cycle, no dependencies (W-56)
+HB_DEADMAN_PLATFORM_URL=${HB_DEADMAN_PLATFORM_URL:-}  # kind 2, "platform healthy": pinged only while backend and Zigbee are up (W-56)
+HB_DEADMAN_STOP_URL=${HB_DEADMAN_STOP_URL:-}    # default: HB_DEADMAN_URL + /fail (healthchecks.io)
+HB_DEADMAN_TOKEN=${HB_DEADMAN_TOKEN:-}          # sent as "Authorization: Bearer" (via curl's stdin config, never on the command line)
+HB_DEADMAN_TOKEN_HOSTS=${HB_DEADMAN_TOKEN_HOSTS:-.workers.dev}  # only these hosts receive the token: a leading dot matches subdomains; add a custom Worker domain here
+HB_UNIT=${HB_UNIT:-cabin-recovery-heartbeat.service}
+HB_PING_TARGETS=${HB_PING_TARGETS:-"1.1.1.1 9.9.9.9"}
+HB_HTTPS_TARGETS=${HB_HTTPS_TARGETS:-"https://www.cloudflare.com/cdn-cgi/trace https://www.google.com/generate_204"}
+HB_DNS_NAMES=${HB_DNS_NAMES:-"cloudflare.com github.com"}
+HB_TAILSCALE_PEERS=${HB_TAILSCALE_PEERS:-}     # optional, space separated: each must answer a tailscale ping
+HB_SSH_UNITS=${HB_SSH_UNITS:-"ssh sshd"}        # OpenSSH service name differs by distribution; any one active passes
+HB_BACKEND_URL=${HB_BACKEND_URL:-http://127.0.0.1:8090}
+HB_PUBLIC_URLS=${HB_PUBLIC_URLS:-https://cabin.unicornpingpong.com}
+HB_DISK_WARN=${HB_DISK_WARN:-60}                # same lines as StorageMonitorService
+HB_DISK_CRIT=${HB_DISK_CRIT:-75}
+HB_INGEST_WARN=${HB_INGEST_WARN:-900}           # newest cabin_event older than this = WARN
+HB_INGEST_CRIT=${HB_INGEST_CRIT:-3600}          # ... CRITICAL
+HB_PG_USER=${HB_PG_USER:-cabin}
+HB_PG_DB=${HB_PG_DB:-cabin}
+
+# Heartbeat components: probe name == label. Container names are the compose container_name values.
+# Connectivity first and in dependency order (gateway, internet, dns, ...): a failing parent silences its children's pages.
+COMPONENTS=${HB_COMPONENTS:-"gateway internet dns tailscale public-url sshd tailscale-ssh backend postgres kafka mosquitto zigbee2mqtt frigate blinkbridge cloudflared homeassistant nodered"}
+EXTRA_CONTAINERS=${HB_EXTRA_CONTAINERS:-"cabin-ui family-hub cabin-grafana uptime-kuma mediamtx"}
+BACKUP_TIMERS=${HB_BACKUP_TIMERS:-"backup-home backup-configs backup-services backup-data"}
+HOST_UNITS=${HB_HOST_UNITS:-"cabin-storage-trim-agent.service blinkbridge-watchdog.timer"}
+
+declare -A STATUS MISSES OKS LASTOK FIRSTMISS DOWNSINCE LASTPAGE PAGES SUPP PRC
+STEP_EVENT=none
+PROBE_DETAIL=""
+NOTIFY_RESULT="none"
+DEADMAN_RESULT="not-configured"
+DEADMAN_PLATFORM_RESULT="not-configured"
+LASTNOTIFY_AT=0
+LASTNOTIFY_ERR=""
+BOOT_AT=0
+BOOT_JSON=null
+SERVICE_STATUS=running
+
+now_epoch() { echo "${HB_NOW:-$(date +%s)}"; }
+iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
+log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) recovery-heartbeat: $*" >&2; }
+to() { timeout "$HB_PROBE_TIMEOUT" "$@"; }
+
+jstr() { # JSON-escape one line of text
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}
+  s=$(printf '%s' "$s" | tr -d '\000-\010\013-\037')
+  printf '%s' "${s:0:300}"
+}
+
+write_atomic() { # write_atomic FILE  (content on stdin)
+  local f=$1 tmp
+  tmp=$(mktemp "$f.XXXXXX") || return 1
+  cat >"$tmp" && chmod 0644 "$tmp" && mv -f "$tmp" "$f"
+}
+
+human_dur() { # seconds -> "5 min" / "2 h 10 min"
+  local s=$1
+  if [ "$s" -lt 120 ]; then echo "${s} s"; elif [ "$s" -lt 7200 ]; then echo "$(( s / 60 )) min"
+  else echo "$(( s / 3600 )) h $(( (s % 3600) / 60 )) min"; fi
+}
+
+# ---- notifications ------------------------------------------------------------------------------------------------
+
+prio_for() { case $1 in critical) echo urgent ;; warn) echo high ;; *) echo default ;; esac; }
+
+send_ntfy() { # send_ntfy LEVEL TITLE MESSAGE ; rc 0 sent, 2 not configured, 1 failed
+  [ -n "$HB_NTFY_TOPIC" ] || return 2
+  local title; title=$(printf '%s' "$2" | tr -c '\040-\176' ' ')
+  curl -fsS -m 10 -o /dev/null -H "Title: $title" -H "Priority: $(prio_for "$1")" \
+    -d "$3" "$HB_NTFY_URL/$HB_NTFY_TOPIC" 2>/dev/null
+}
+
+queue_outbox() {
+  mkdir -p "$HB_STATE_DIR/outbox"
+  local f; f="$HB_STATE_DIR/outbox/$(now_epoch)-$RANDOM"
+  printf '%s\n%s\n%s\n' "$1" "$2" "$3" >"$f"
+}
+
+notify() { # notify LEVEL TITLE MESSAGE
+  local level=$1 title=$2 msg=$3 rc
+  log "notify $level: $title -- $msg"
+  if [ -n "$HB_NOTIFY_HOOK" ] && [ -x "$HB_NOTIFY_HOOK" ]; then
+    to "$HB_NOTIFY_HOOK" "$level" "$title" "$msg" >/dev/null 2>&1 || log "notify hook failed"
+  fi
+  send_ntfy "$level" "$title" "$msg"; rc=$?
+  case $rc in
+    0) NOTIFY_RESULT=ok; LASTNOTIFY_AT=$(now_epoch); LASTNOTIFY_ERR="" ;;
+    2) NOTIFY_RESULT=not-configured ;;
+    *) NOTIFY_RESULT=failed; LASTNOTIFY_ERR="ntfy send failed"; queue_outbox "$level" "$title" "$msg" ;;
+  esac
+}
+
+flush_outbox() { # resend what could not go out; drop anything older than a day, and anything that is not a small regular file
+  local f level title msg age now stamp; now=$(now_epoch)
+  [ -n "$HB_NTFY_TOPIC" ] || return 0
+  for f in "$HB_STATE_DIR"/outbox/*; do
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    if [ ! -f "$f" ] || [ -L "$f" ] || [ "$(stat -c %s "$f" 2>/dev/null || echo 99999)" -gt 4096 ]; then rm -f -- "$f"; continue; fi
+    stamp=$(basename "$f"); stamp=${stamp%%-*}
+    if ! [[ "$stamp" =~ ^[0-9]{1,12}$ ]]; then rm -f -- "$f"; continue; fi
+    age=$(( now - stamp ))
+    if [ "$age" -gt 86400 ]; then rm -f -- "$f"; continue; fi
+    { read -r level; read -r title; read -r msg; } <"$f"
+    case $level in info|warn|critical) ;; *) rm -f -- "$f"; continue ;; esac
+    if send_ntfy "$level" "$title (delayed ${age}s)" "$msg"; then rm -f -- "$f"; NOTIFY_RESULT=ok; LASTNOTIFY_AT=$now; else break; fi
+  done
+}
+
+token_host_ok() { # token_host_ok URL ; the bearer token goes only over https to a host the owner named
+  local url=$1 auth host h rest hosts=()
+  case $url in https://*) ;; *) return 1 ;; esac
+  auth=${url#https://}; auth=${auth%%[/?#]*}
+  # Reject userinfo ("host.workers.dev:pw@evil.com" would otherwise read as host.workers.dev), backslashes (some clients
+  # treat them as a path separator), IPv6 literals and empty authorities, before anything is split.
+  case $auth in ''|*@*|*\\*|*\[*|*\]*) return 1 ;; esac
+  host=${auth%%:*}; host=${host,,}
+  if [[ $auth == *:* ]]; then rest=${auth#*:}; [[ $rest =~ ^[0-9]{1,5}$ ]] || return 1; fi
+  [ -n "$host" ] || return 1
+  read -ra hosts <<<"$HB_DEADMAN_TOKEN_HOSTS"   # read -a does not glob, unlike an unquoted for-list
+  for h in "${hosts[@]}"; do
+    h=${h,,}
+    case $h in
+      .*) [[ "$host" == *"$h" ]] && return 0 ;;
+      *) [ "$host" = "$h" ] && return 0 ;;
+    esac
+  done
+  return 1
+}
+
+dm_curl() { # dm_curl URL ; the token travels on curl's stdin (a shell builtin feeds it), so it is not in `ps` output or the log
+  local url=$1 esc
+  if [ -n "$HB_DEADMAN_TOKEN" ] && token_host_ok "$url"; then
+    # A control character would split curl's config line and could add options; refuse such a token outright.
+    if [[ $HB_DEADMAN_TOKEN =~ [[:cntrl:]] ]]; then log "HB_DEADMAN_TOKEN contains a control character; not sending"; return 1; fi
+    esc=${HB_DEADMAN_TOKEN//\\/\\\\}; esc=${esc//\"/\\\"}
+    printf 'header = "Authorization: Bearer %s"\n' "$esc" | curl -K - -fsS -m 10 --retry 2 -o /dev/null "$url" 2>/dev/null
+  else
+    curl -fsS -m 10 --retry 2 -o /dev/null "$url" 2>/dev/null
+  fi
+}
+
+# The external piece: proves this service and the host are alive. Two kinds (W-56): "host alive" every cycle, and
+# "platform healthy" only while the backend and the Zigbee bridge both answered this cycle, so silence of the second
+# alone means the platform is sick while the cabin itself is up.
+deadman_ping() { # deadman_ping PLATFORM_OK(0|1)
+  if [ -z "$HB_DEADMAN_URL" ]; then DEADMAN_RESULT=not-configured
+  elif dm_curl "$HB_DEADMAN_URL"; then DEADMAN_RESULT=ok; else DEADMAN_RESULT=failed; fi
+  if [ -z "$HB_DEADMAN_PLATFORM_URL" ]; then DEADMAN_PLATFORM_RESULT=not-configured
+  elif [ "${1:-1}" != 0 ]; then DEADMAN_PLATFORM_RESULT=withheld
+  elif dm_curl "$HB_DEADMAN_PLATFORM_URL"; then DEADMAN_PLATFORM_RESULT=ok; else DEADMAN_PLATFORM_RESULT=failed; fi
+}
+
+deadman_fail() {
+  [ -n "$HB_DEADMAN_URL" ] || return 0
+  dm_curl "${HB_DEADMAN_STOP_URL:-${HB_DEADMAN_URL%/}/fail}" || true
+}
+
+# ---- probes -------------------------------------------------------------------------------------------------------
+# Each probe returns 0 when the component is good and leaves a short reason in PROBE_DETAIL. Commands (docker, curl,
+# systemctl, df ...) are looked up on PATH so tests can substitute stubs.
+
+CS_RUNNING=false; CS_HEALTH=""; CS_RESTARTS=0
+container_state() { # container_state NAME ; rc 1 when the container does not exist
+  local out
+  out=$(to docker inspect -f '{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}|{{.RestartCount}}' "$1" 2>/dev/null) || return 1
+  IFS='|' read -r CS_RUNNING CS_HEALTH CS_RESTARTS <<<"$out"
+  [[ "${CS_RESTARTS:-}" =~ ^[0-9]+$ ]] || CS_RESTARTS=0
+  return 0
+}
+
+container_ok() { # container_ok NAME ; sets PROBE_DETAIL
+  if ! container_state "$1"; then PROBE_DETAIL="container $1 not found"; return 1; fi
+  if [ "$CS_RUNNING" != true ]; then PROBE_DETAIL="container $1 not running"; return 1; fi
+  if [ "$CS_HEALTH" = unhealthy ]; then PROBE_DETAIL="container $1 unhealthy"; return 1; fi
+  PROBE_DETAIL="running${CS_HEALTH:+, $CS_HEALTH}"
+  return 0
+}
+
+http_code() { curl -s -o /dev/null -m 5 -w '%{http_code}' "$1" 2>/dev/null || true; }
+
+http_reachable() { # http_reachable URL ; the server answered at all (any status below 500)
+  local code; code=$(http_code "$1"); code=${code:-000}
+  if [[ "$code" =~ ^[0-9]+$ ]] && [ "$code" -ge 100 ] && [ "$code" -lt 500 ]; then PROBE_DETAIL="HTTP $code"; return 0; fi
+  PROBE_DETAIL="HTTP $code from $1"; return 1
+}
+
+mqtt_sub() { # mqtt_sub TOPIC ; one retained message through the broker's own container
+  to docker exec mosquitto mosquitto_sub -t "$1" -C 1 -W 3 2>/dev/null
+}
+
+ts_json() { to tailscale status --json 2>/dev/null; }
+
+probe_component() {
+  PROBE_DETAIL=""
+  local t ok found gw n h
+  case $1 in
+    gateway)
+      gw=$(ip route show default 2>/dev/null | awk '/^default/ {print $3; exit}')
+      [ -n "$gw" ] || { PROBE_DETAIL="no default route"; return 1; }
+      to ping -c 1 -W 2 "$gw" >/dev/null 2>&1 || { PROBE_DETAIL="gateway $gw does not answer ping"; return 1; }
+      PROBE_DETAIL="gateway $gw answers" ;;
+    internet)
+      # Two independent targets of each kind. Down only when every one fails, so one provider's outage never pages;
+      # the detail says which kind still works (ICMP only: a captive or filtered path; HTTPS only: ICMP blocked).
+      ok=""; found=""
+      for t in $HB_PING_TARGETS; do to ping -c 1 -W 2 "$t" >/dev/null 2>&1 && ok+="ping:$t "; done
+      for t in $HB_HTTPS_TARGETS; do
+        n=$(http_code "$t")
+        [[ "$n" =~ ^[23][0-9][0-9]$ ]] && ok+="https:${t#https://} "
+      done
+      [ -n "$ok" ] || { PROBE_DETAIL="no ping or HTTPS target answers (Starlink or router down)"; return 1; }
+      PROBE_DETAIL="reachable via ${ok% }" ;;
+    dns)
+      for t in $HB_DNS_NAMES; do
+        if to getent hosts "$t" >/dev/null 2>&1; then PROBE_DETAIL="resolved $t"; return 0; fi
+      done
+      PROBE_DETAIL="could not resolve any of: $HB_DNS_NAMES"; return 1 ;;
+    tailscale)
+      h=$(ts_json) || { PROBE_DETAIL="tailscale status failed (tailscaled not running)"; return 1; }
+      printf '%s' "$h" | grep -q '"BackendState": *"Running"' || { PROBE_DETAIL="tailscale is not Running"; return 1; }
+      n=$(printf '%s' "$h" | grep -o '"Online": *true' | wc -l)
+      [ "${n:-0}" -ge 2 ] || { PROBE_DETAIL="tailscale is up but no peer is online"; return 1; }
+      for t in $HB_TAILSCALE_PEERS; do
+        to tailscale ping -c 1 --timeout 5s "$t" >/dev/null 2>&1 || { PROBE_DETAIL="peer $t does not answer a tailscale ping"; return 1; }
+      done
+      PROBE_DETAIL="running, $(( n - 1 )) peer(s) online" ;;
+    public-url)
+      for t in $HB_PUBLIC_URLS; do
+        http_reachable "$t" || return 1
+      done
+      PROBE_DETAIL="answered from the host" ;;
+    sshd)
+      found=""
+      for t in $HB_SSH_UNITS; do [ "$(unit_active "$t")" = active ] && found=$t; done
+      [ -n "$found" ] || { PROBE_DETAIL="no OpenSSH service active ($HB_SSH_UNITS)"; return 1; }
+      to ss -ltn 2>/dev/null | grep -Eq '[:.]22([[:space:]]|$)' || { PROBE_DETAIL="$found active but nothing listens on port 22"; return 1; }
+      PROBE_DETAIL="$found active, listening on 22" ;;
+    tailscale-ssh)
+      # Proves Tailscale SSH is switched on and the daemon is up. That a remote machine can really get in is only provable
+      # from another vantage point (W-56 S3), not from the host itself.
+      h=$(to tailscale debug prefs 2>/dev/null) || { PROBE_DETAIL="tailscale prefs unreadable"; return 1; }
+      printf '%s' "$h" | grep -q '"RunSSH": *true' || { PROBE_DETAIL="Tailscale SSH is not enabled on this host"; return 1; }
+      PROBE_DETAIL="Tailscale SSH enabled" ;;
+    backend)
+      container_ok cabin-backend || return 1
+      curl -fsS -m 5 "$HB_BACKEND_URL/actuator/health" 2>/dev/null | grep -q '"status":"UP"' \
+        || { PROBE_DETAIL="actuator health is not UP"; return 1; } ;;
+    postgres)
+      container_ok cabin-postgres || return 1
+      to docker exec cabin-postgres pg_isready -q >/dev/null 2>&1 || { PROBE_DETAIL="pg_isready: not accepting connections"; return 1; } ;;
+    kafka) container_ok cabin-kafka || return 1 ;;
+    mosquitto)
+      container_ok mosquitto || return 1
+      mqtt_sub '$SYS/broker/uptime' | grep -q . || { PROBE_DETAIL="broker gave no uptime message"; return 1; } ;;
+    zigbee2mqtt)
+      container_ok zigbee2mqtt || return 1
+      mqtt_sub zigbee2mqtt/bridge/state | grep -q online || { PROBE_DETAIL="bridge state is not online"; return 1; } ;;
+    frigate)
+      container_ok frigate || return 1
+      http_reachable http://127.0.0.1:5000/api/version || return 1 ;;
+    blinkbridge) container_ok blinkbridge || return 1 ;;
+    cloudflared) container_ok cloudflared || return 1 ;;
+    homeassistant)
+      container_ok homeassistant || return 1
+      http_reachable http://127.0.0.1:8123/ || return 1 ;;
+    nodered)
+      container_ok nodered || return 1
+      http_reachable http://127.0.0.1:1880/ || return 1 ;;
+    *) PROBE_DETAIL="unknown component"; return 1 ;;
+  esac
+  return 0
+}
+
+# ---- heartbeat state machine --------------------------------------------------------------------------------------
+
+init_comp() { # init_comp NAME
+  : "${STATUS[$1]:=ok}"; : "${MISSES[$1]:=0}"; : "${OKS[$1]:=0}"; : "${LASTOK[$1]:=0}"
+  : "${FIRSTMISS[$1]:=0}"; : "${DOWNSINCE[$1]:=0}"; : "${LASTPAGE[$1]:=0}"; : "${PAGES[$1]:=0}"; : "${SUPP[$1]:=0}"
+}
+
+# hb_step NAME RC NOW -> STEP_EVENT in: none | down | repage | recovered
+hb_step() {
+  local n=$1 rc=$2 now=$3 wait
+  init_comp "$n"; STEP_EVENT=none
+  if [ "$rc" -eq 0 ]; then
+    LASTOK[$n]=$now; MISSES[$n]=0; FIRSTMISS[$n]=0
+    if [ "${STATUS[$n]}" = down ]; then
+      OKS[$n]=$(( OKS[$n] + 1 ))
+      if [ "${OKS[$n]}" -ge "$HB_RECOVER_OKS" ]; then STATUS[$n]=ok; OKS[$n]=0; STEP_EVENT=recovered; fi
+    else
+      OKS[$n]=0
+    fi
+  else
+    OKS[$n]=0
+    [ "${MISSES[$n]}" -eq 0 ] && FIRSTMISS[$n]=$now
+    MISSES[$n]=$(( MISSES[$n] + 1 ))
+    if [ "${STATUS[$n]}" = ok ]; then
+      if [ "${MISSES[$n]}" -ge "$HB_MISS_LIMIT" ]; then
+        STATUS[$n]=down; DOWNSINCE[$n]=${FIRSTMISS[$n]}; LASTPAGE[$n]=$now; PAGES[$n]=1; STEP_EVENT=down
+      fi
+    else
+      [ "${PAGES[$n]}" -le 1 ] && wait=$HB_REPAGE_FIRST || wait=$HB_REPAGE_EVERY
+      if [ $(( now - LASTPAGE[$n] )) -ge "$wait" ]; then LASTPAGE[$n]=$now; PAGES[$n]=$(( PAGES[$n] + 1 )); STEP_EVENT=repage; fi
+    fi
+  fi
+}
+
+# A component the boot summary already named as failing is marked announced, so the heartbeat loop does not page it again.
+mark_announced() { # mark_announced NAME NOW
+  init_comp "$1"
+  STATUS[$1]=down; MISSES[$1]=$HB_MISS_LIMIT; OKS[$1]=0; DOWNSINCE[$1]=$2; LASTPAGE[$1]=$2; PAGES[$1]=1; SUPP[$1]=0
+}
+
+load_comp() { # every column is validated: these values go into bash arithmetic, so a planted row must never reach it
+  local f="$HB_STATE_DIR/comp.tsv" n st mi ok lo fm ds lp pg sp v bad
+  [ -f "$f" ] && [ ! -L "$f" ] || return 0
+  while IFS=$'\t' read -r n st mi ok lo fm ds lp pg sp; do
+    [[ "$n" =~ ^[a-z0-9][a-z0-9-]*$ ]] || continue
+    [[ "$st" =~ ^(ok|down)$ ]] || continue
+    bad=0
+    for v in "$mi" "$ok" "$lo" "$fm" "$ds" "$lp" "$pg"; do [[ "$v" =~ ^[0-9]{1,12}$ ]] || bad=1; done
+    [[ "${sp:-0}" =~ ^[01]$ ]] || bad=1
+    [ "$bad" = 0 ] || continue
+    STATUS[$n]=$st; MISSES[$n]=$mi; OKS[$n]=$ok; LASTOK[$n]=$lo; FIRSTMISS[$n]=$fm; DOWNSINCE[$n]=$ds; LASTPAGE[$n]=$lp; PAGES[$n]=$pg; SUPP[$n]=${sp:-0}
+  done <"$f"
+}
+
+save_comp() {
+  local n
+  for n in $COMPONENTS; do
+    init_comp "$n"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "${STATUS[$n]}" "${MISSES[$n]}" "${OKS[$n]}" "${LASTOK[$n]}" \
+      "${FIRSTMISS[$n]}" "${DOWNSINCE[$n]}" "${LASTPAGE[$n]}" "${PAGES[$n]}" "${SUPP[$n]}"
+  done | write_atomic "$HB_STATE_DIR/comp.tsv"
+}
+
+# ---- state file ---------------------------------------------------------------------------------------------------
+
+write_state() { # write_state [STATUS]
+  local now n first=1 comps="" age lastok detail
+  now=$(now_epoch)
+  for n in $COMPONENTS; do
+    init_comp "$n"
+    if [ "${LASTOK[$n]}" -gt 0 ]; then lastok="\"$(iso "${LASTOK[$n]}")\""; age=$(( now - LASTOK[$n] )); else lastok=null; age=null; fi
+    detail=$(jstr "${DETAIL[$n]:-}")
+    [ $first -eq 1 ] || comps+=","; first=0
+    comps+=$(printf '{"name":"%s","status":"%s","lastOkAt":%s,"ageSeconds":%s,"misses":%s,"downSince":%s,"detail":"%s"}' \
+      "$n" "${STATUS[$n]}" "$lastok" "$age" "${MISSES[$n]}" \
+      "$([ "${STATUS[$n]}" = down ] && echo "\"$(iso "${DOWNSINCE[$n]}")\"" || echo null)" "$detail")
+  done
+  mkdir -p "$HB_STATE_DIR" || return 1
+  printf '{"schemaVersion":1,"writtenAt":"%s","host":"%s","intervalSeconds":%s,"missLimit":%s,"status":"%s","bootAt":%s,"notify":{"ntfy":"%s","lastResult":"%s","lastOkAt":%s},"deadman":{"configured":%s,"lastResult":"%s","platform":"%s"},"boot":%s,"components":[%s]}\n' \
+    "$(iso "$now")" "$(jstr "$(hostname 2>/dev/null || echo unknown)")" "$HB_INTERVAL" "$HB_MISS_LIMIT" "${1:-$SERVICE_STATUS}" \
+    "$([ "$BOOT_AT" -gt 0 ] && echo "\"$(iso "$BOOT_AT")\"" || echo null)" \
+    "$([ -n "$HB_NTFY_TOPIC" ] && echo configured || echo not-configured)" "$NOTIFY_RESULT" \
+    "$([ "$LASTNOTIFY_AT" -gt 0 ] && echo "\"$(iso "$LASTNOTIFY_AT")\"" || echo null)" \
+    "$([ -n "$HB_DEADMAN_URL" ] && echo true || echo false)" "$DEADMAN_RESULT" "$DEADMAN_PLATFORM_RESULT" "$BOOT_JSON" "$comps" | write_atomic "$HB_STATE_DIR/state.json"
+}
+
+declare -A DETAIL
+
+# ---- the boot recovery checklist ----------------------------------------------------------------------------------
+
+BOOT_NAMES=(); BOOT_LEVELS=(); BOOT_DETAILS=()
+bres() { BOOT_NAMES+=("$1"); BOOT_LEVELS+=("$2"); BOOT_DETAILS+=("$3"); } # name ok|warn|crit detail
+
+boot_epoch() {
+  if [ -n "${HB_BOOT_EPOCH:-}" ]; then echo "$HB_BOOT_EPOCH"; return; fi
+  date -d "$(uptime -s 2>/dev/null)" +%s 2>/dev/null || echo 0
+}
+
+check_shutdown() { # sets UNCLEAN (true|false|unknown)
+  local marker="$HB_STATE_DIR/clean-shutdown"
+  if [ -f "$marker" ] && [ ! -L "$marker" ]; then UNCLEAN=false; rm -f -- "$marker"; bres previous-shutdown ok "clean"
+  elif [ ! -f "$HB_STATE_DIR/state.json" ]; then UNCLEAN=unknown; bres previous-shutdown ok "no earlier record (first run of this service)"
+  else UNCLEAN=true; bres previous-shutdown ok "NOT clean: no shutdown marker, so power loss or a crash"; fi
+}
+
+check_components() {
+  local c
+  for c in $COMPONENTS; do
+    if probe_component "$c"; then bres "$c" ok "$PROBE_DETAIL"
+    else bres "$c" crit "$PROBE_DETAIL"; fi
+    DETAIL[$c]=$PROBE_DETAIL
+    if container_state "$(container_for "$c")" 2>/dev/null && [ "$CS_RESTARTS" -ge 3 ]; then
+      bres "$c-restarts" warn "container restarted $CS_RESTARTS times"
+    fi
+  done
+}
+
+container_for() { case $1 in backend) echo cabin-backend ;; postgres) echo cabin-postgres ;; kafka) echo cabin-kafka ;; *) echo "$1" ;; esac; }
+
+check_extras() {
+  local c
+  for c in $EXTRA_CONTAINERS; do
+    if container_ok "$c"; then bres "$c" ok "$PROBE_DETAIL"; else bres "$c" warn "$PROBE_DETAIL"; fi
+  done
+}
+
+check_ingest() { # postgres accepting, cabin_event flowing, telemetry gap across the outage
+  local boot=$1 now out lastbefore firstafter latest gap age
+  now=$(now_epoch); GAP_SECONDS=-1
+  out=$(to docker exec cabin-postgres psql -U "$HB_PG_USER" -d "$HB_PG_DB" -tAF'|' -c \
+    "select coalesce(extract(epoch from max(time) filter (where time < to_timestamp($boot)))::bigint,0), coalesce(extract(epoch from min(time) filter (where time >= to_timestamp($boot)))::bigint,0), coalesce(extract(epoch from max(time))::bigint,0) from cabin_event where time > to_timestamp($boot) - interval '7 days'" 2>/dev/null | head -1)
+  if ! [[ "$out" =~ ^[0-9]+\|[0-9]+\|[0-9]+$ ]]; then bres cabin-event-ingest crit "could not query cabin_event"; return; fi
+  IFS='|' read -r lastbefore firstafter latest <<<"$out"
+  if [ "$latest" -eq 0 ]; then bres cabin-event-ingest warn "no cabin_event rows in the last 7 days"; return; fi
+  age=$(( now - latest ))
+  if [ "$age" -ge "$HB_INGEST_CRIT" ]; then bres cabin-event-ingest crit "newest event is $(human_dur "$age") old"
+  elif [ "$age" -ge "$HB_INGEST_WARN" ]; then bres cabin-event-ingest warn "newest event is $(human_dur "$age") old"
+  else bres cabin-event-ingest ok "newest event is $(human_dur "$age") old"; fi
+  if [ "$lastbefore" -gt 0 ]; then
+    if [ "$firstafter" -gt 0 ]; then gap=$(( firstafter - lastbefore )); else gap=$(( now - lastbefore )); fi
+    [ "$gap" -lt 0 ] && gap=0
+    GAP_SECONDS=$gap
+    bres telemetry-gap ok "no events for $(human_dur "$gap") across the restart"
+  fi
+}
+
+check_zigbee_devices() {
+  local out offline names
+  out=$(to docker exec mosquitto mosquitto_sub -v -t 'zigbee2mqtt/+/availability' -W 5 2>/dev/null)
+  if [ -z "$out" ]; then bres zigbee-devices ok "availability not reported (not enabled, or the bridge is still starting)"; return; fi
+  offline=$(printf '%s\n' "$out" | grep -c '"offline"' || true)
+  if [ "${offline:-0}" -gt 0 ]; then
+    names=$(printf '%s\n' "$out" | grep '"offline"' | awk '{print $1}' | sed 's#zigbee2mqtt/##; s#/availability##' | head -5 | paste -sd, -)
+    bres zigbee-devices warn "$offline device(s) offline: $names"
+  else bres zigbee-devices ok "all reporting devices online"; fi
+}
+
+check_frigate_cameras() {
+  local stats cams zero total n
+  stats=$(curl -fsS -m 8 http://127.0.0.1:5000/api/stats 2>/dev/null) || { bres frigate-cameras warn "stats not readable"; return; }
+  cams=$(printf '%s' "$stats" | grep -oE '"[A-Za-z0-9_ -]+": ?\{"camera_fps": ?[0-9.]+' | sed -E 's/^"([^"]+)": ?\{"camera_fps": ?([0-9.]+)$/\1 \2/')
+  total=$(printf '%s\n' "$cams" | grep -c . || true)
+  if [ "${total:-0}" -eq 0 ]; then bres frigate-cameras ok "no cameras in the stats"; return; fi
+  zero=$(printf '%s\n' "$cams" | awk '$NF+0 == 0 {print $1}' | paste -sd, -)
+  n=$(printf '%s\n' "$cams" | awk '$NF+0 == 0' | grep -c . || true)
+  if [ "${n:-0}" -gt 0 ]; then bres frigate-cameras warn "$n of $total cameras at 0 fps: $zero"
+  else bres frigate-cameras ok "all $total cameras producing frames"; fi
+}
+
+check_disks() {
+  local m pct lvl
+  for m in /storage /; do
+    pct=$(df --output=pcent "$m" 2>/dev/null | tail -1 | tr -dc '0-9')
+    [[ "$pct" =~ ^[0-9]+$ ]] || { bres "disk$m" warn "not readable"; continue; }
+    lvl=ok
+    # Owned by StorageMonitorService, which already raises its own alert: never worse than WARN in the boot summary.
+    [ "$pct" -ge "$HB_DISK_WARN" ] && lvl=warn
+    bres "disk$m" "$lvl" "${pct}% used$([ "$pct" -ge "$HB_DISK_CRIT" ] && echo " (above the ${HB_DISK_CRIT}% critical line)")"
+  done
+}
+
+unit_active() { systemctl is-active "$1" 2>/dev/null; }
+
+check_host_units() {
+  local t u st
+  for t in $BACKUP_TIMERS; do
+    st=$(unit_active "$t.timer"); [ -n "$st" ] || st=missing
+    if [ "$st" = active ]; then bres "timer-$t" ok "active"; else bres "timer-$t" warn "$st"; fi
+  done
+  for u in $HOST_UNITS; do
+    st=$(unit_active "$u"); [ -n "$st" ] || st=missing
+    if [ "$st" = active ]; then bres "$u" ok "active"; else bres "$u" warn "$st (not installed or stopped)"; fi
+  done
+  if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = yes ]; then bres ntp ok "clock synchronized"
+  else bres ntp warn "clock not synchronized yet"; fi
+}
+
+run_all_checks() { # run_all_checks BOOT_EPOCH
+  BOOT_NAMES=(); BOOT_LEVELS=(); BOOT_DETAILS=()
+  check_components
+  check_extras
+  check_ingest "$1"
+  check_zigbee_devices
+  check_frigate_cameras
+  check_disks
+  check_host_units
+}
+
+# summarize: sets SUMMARY_LEVEL (info|warn|critical), SUMMARY_TEXT and PROBLEMS_JSON
+summarize() { # summarize BOOT_EPOCH NOW
+  local i crit=0 warn=0 names="" pj="" first=1 total=${#BOOT_NAMES[@]} minutes gap_txt="" lvl
+  for i in "${!BOOT_NAMES[@]}"; do
+    case ${BOOT_LEVELS[$i]} in
+      crit) crit=$((crit+1)) ;; warn) warn=$((warn+1)) ;; *) continue ;;
+    esac
+    names+="${names:+; }${BOOT_NAMES[$i]} (${BOOT_DETAILS[$i]})"
+    [ $first -eq 1 ] || pj+=","; first=0
+    lvl=${BOOT_LEVELS[$i]}; [ "$lvl" = crit ] && lvl=critical
+    pj+=$(printf '{"name":"%s","level":"%s","detail":"%s"}' "$(jstr "${BOOT_NAMES[$i]}")" "$lvl" "$(jstr "${BOOT_DETAILS[$i]}")")
+  done
+  PROBLEMS_JSON="[$pj]"
+  minutes=$(( ($2 - $1) / 60 )); [ "$minutes" -lt 0 ] && minutes=0
+  [ "${GAP_SECONDS:--1}" -ge 0 ] && gap_txt=", telemetry gap $(human_dur "$GAP_SECONDS")"
+  local shut=""; [ "$UNCLEAN" = true ] && shut=" after an unclean shutdown"
+  if [ $crit -gt 0 ]; then SUMMARY_LEVEL=critical
+  elif [ $warn -gt 0 ]; then SUMMARY_LEVEL=warn
+  else SUMMARY_LEVEL=info; fi
+  if [ "$SUMMARY_LEVEL" = info ]; then
+    SUMMARY_TEXT="Cabin restarted at $(iso "$1")${shut}, recovered in ${minutes} min${gap_txt}. All $total checks clear."
+  else
+    SUMMARY_TEXT="Cabin restarted at $(iso "$1")${shut}, ${minutes} min ago${gap_txt}. $((crit+warn)) of $total checks need attention: $names"
+  fi
+  SUMMARY_TEXT=${SUMMARY_TEXT:0:900}
+}
+
+print_report() {
+  local i
+  for i in "${!BOOT_NAMES[@]}"; do
+    printf '%-6s %-34s %s\n' "$(echo "${BOOT_LEVELS[$i]}" | tr a-z A-Z)" "${BOOT_NAMES[$i]}" "${BOOT_DETAILS[$i]}"
+  done
+}
+
+boot_check() { # boot_check NOTIFY(0|1)
+  local boot now c i
+  boot=$(boot_epoch); BOOT_AT=$boot
+  GAP_SECONDS=-1
+  [ "$1" = 1 ] && [ "$SERVICE_STATUS" = booting ] && write_state booting
+  run_all_checks "$boot"
+  if [ "$1" = 1 ] && ! all_clear && [ "$HB_BOOT_RETRY" -gt 0 ]; then
+    log "boot check found problems; waiting ${HB_BOOT_RETRY}s and checking again"
+    [ "$SERVICE_STATUS" = booting ] && write_state booting   # keeps writtenAt fresh so the banner does not say "not reporting"
+    sleep "$HB_BOOT_RETRY"
+    run_all_checks "$boot"
+  fi
+  # previous-shutdown is read once, from the state before this run overwrote it
+  BOOT_NAMES+=(previous-shutdown); BOOT_LEVELS+=("$PREV_SHUT_LEVEL"); BOOT_DETAILS+=("$PREV_SHUT_DETAIL")
+  now=$(now_epoch)
+  summarize "$boot" "$now"
+  BOOT_JSON=$(printf '{"checkedAt":"%s","severity":"%s","uncleanShutdown":"%s","recoveredMinutes":%s,"telemetryGapSeconds":%s,"summary":"%s","problems":%s}' \
+    "$(iso "$now")" "$SUMMARY_LEVEL" "$UNCLEAN" "$(( (now - boot) / 60 ))" "${GAP_SECONDS:--1}" "$(jstr "$SUMMARY_TEXT")" "$PROBLEMS_JSON")
+  if [ "$1" = 1 ]; then
+    for c in $COMPONENTS; do
+      for i in "${!BOOT_NAMES[@]}"; do
+        if [ "${BOOT_NAMES[$i]}" = "$c" ] && [ "${BOOT_LEVELS[$i]}" = crit ]; then mark_announced "$c" "$now"; fi
+      done
+    done
+    { echo "Recovery check at $(iso "$now")"; print_report; echo; echo "$SUMMARY_TEXT"; } | write_atomic "$HB_STATE_DIR/report.txt"
+    case $SUMMARY_LEVEL in
+      info) notify info "Cabin restarted: all clear" "$SUMMARY_TEXT" ;;
+      warn) notify warn "Cabin restarted: needs a look" "$SUMMARY_TEXT" ;;
+      critical) notify critical "Cabin restarted: PROBLEMS" "$SUMMARY_TEXT" ;;
+    esac
+  fi
+}
+
+all_clear() {
+  local i
+  for i in "${!BOOT_LEVELS[@]}"; do [ "${BOOT_LEVELS[$i]}" = ok ] || return 1; done
+  return 0
+}
+
+# ---- heartbeat cycle ----------------------------------------------------------------------------------------------
+
+# A child is silenced while its parent is down: when the internet is out, one page names the internet, not also DNS and
+# the public URL. The child stays tracked and visible; it is announced later if it is still down once the parent is back.
+parent_of() { case $1 in internet) echo gateway ;; dns|tailscale|public-url) echo internet ;; *) echo "" ;; esac; }
+
+cycle() {
+  local now c rc down_for parent pdown
+  now=$(now_epoch)
+  for c in $COMPONENTS; do
+    probe_component "$c"; rc=$?
+    PRC[$c]=$rc
+    DETAIL[$c]=$PROBE_DETAIL
+    hb_step "$c" "$rc" "$now"
+    parent=$(parent_of "$c"); pdown=false
+    [ -n "$parent" ] && [ "${STATUS[$parent]:-ok}" = down ] && pdown=true
+    case $STEP_EVENT in
+      down) if $pdown; then SUPP[$c]=1; STEP_EVENT=none; fi ;;
+      repage) if [ "${SUPP[$c]}" = 1 ]; then if $pdown; then STEP_EVENT=none; else SUPP[$c]=0; STEP_EVENT=down; fi; elif $pdown; then STEP_EVENT=none; fi ;;
+      recovered) if [ "${SUPP[$c]}" = 1 ]; then SUPP[$c]=0; STEP_EVENT=none; fi ;;
+    esac
+    # A silenced child whose parent has come back and which is still down is announced on the next real miss cycle.
+    if [ "$STEP_EVENT" = none ] && [ "${STATUS[$c]}" = down ] && [ "${SUPP[$c]}" = 1 ] && ! $pdown; then
+      SUPP[$c]=0; STEP_EVENT=down; LASTPAGE[$c]=$now; PAGES[$c]=1
+    fi
+    case $STEP_EVENT in
+      down) notify critical "Cabin: $c is down" "$c missed $HB_MISS_LIMIT heartbeats in a row (about $(human_dur $(( HB_MISS_LIMIT * HB_INTERVAL )))). ${PROBE_DETAIL}. Last good beat: $([ "${LASTOK[$c]}" -gt 0 ] && iso "${LASTOK[$c]}" || echo never)." ;;
+      repage) down_for=$(( now - DOWNSINCE[$c] )); notify critical "Cabin: $c STILL down" "$c has been down for $(human_dur "$down_for"). ${PROBE_DETAIL}." ;;
+      recovered) down_for=$(( now - DOWNSINCE[$c] )); notify info "Cabin: $c recovered" "$c is answering again after about $(human_dur "$down_for") down." ;;
+    esac
+  done
+  flush_outbox
+  local platform_ok=1
+  [ "${PRC[backend]:-1}" = 0 ] && [ "${PRC[zigbee2mqtt]:-1}" = 0 ] && platform_ok=0
+  deadman_ping "$platform_ok"
+  save_comp
+  write_state "$SERVICE_STATUS"
+}
+
+# ---- entry points -------------------------------------------------------------------------------------------------
+
+prep_state_dir() {
+  local d=$HB_STATE_DIR owner mode go
+  if [ -L "$d" ]; then log "refusing $d: it is a symlink"; return 1; fi
+  mkdir -p "$d" 2>/dev/null || { log "cannot create $d"; return 1; }
+  owner=$(stat -c %u "$d" 2>/dev/null); mode=$(stat -c %a "$d" 2>/dev/null)
+  if [ "$owner" != "$HB_STATE_DIR_UID" ]; then log "refusing $d: owned by uid ${owner:-?}, expected $HB_STATE_DIR_UID"; return 1; fi
+  go="${mode: -2:1}${mode: -1}"
+  case $go in *[2367]*) log "refusing $d: writable by group or others (mode $mode)"; return 1 ;; esac
+  chmod 0755 "$d" 2>/dev/null
+  if [ -L "$d/outbox" ]; then log "refusing $d/outbox: it is a symlink"; return 1; fi
+  mkdir -p "$d/outbox" 2>/dev/null || { log "cannot create $d/outbox"; return 1; }
+}
+
+load_prev_shutdown() { # read the shutdown marker before anything rewrites state.json
+  check_shutdown
+  PREV_SHUT_LEVEL=${BOOT_LEVELS[0]}; PREV_SHUT_DETAIL=${BOOT_DETAILS[0]}
+  BOOT_NAMES=(); BOOT_LEVELS=(); BOOT_DETAILS=()
+}
+
+host_uptime() { echo $(( $(now_epoch) - $(boot_epoch) )); }
+
+cmd_run() {
+  prep_state_dir || exit 1
+  trap 'log "TERM received, exiting"; exit 0' TERM INT
+  load_comp
+  local resumed=false prior=""
+  [ -f "$HB_STATE_DIR/state.json" ] && [ ! -L "$HB_STATE_DIR/state.json" ] && prior=$(grep -o '"status":"[a-z-]*"' "$HB_STATE_DIR/state.json" | head -1)
+  [ "$prior" = '"status":"stopped"' ] && resumed=true
+  load_prev_shutdown
+  SERVICE_STATUS=booting; BOOT_AT=$(boot_epoch)
+  write_state booting
+  if [ "$(host_uptime)" -lt "$HB_BOOT_WINDOW" ]; then
+    log "host boot detected; waiting ${HB_BOOT_GRACE}s before the recovery check"
+    sleep "$HB_BOOT_GRACE" & wait $!
+    boot_check 1
+  else
+    log "service start on a host that has been up a while; no boot summary"
+    $resumed && notify info "Cabin: heartbeat service running again" "The recovery heartbeat service was stopped on purpose and has started again."
+    boot_check 0 >/dev/null
+  fi
+  SERVICE_STATUS=running
+  while :; do
+    cycle
+    [ "${HB_ONCE:-0}" = 1 ] && break
+    sleep "$HB_INTERVAL" & wait $!
+  done
+}
+
+cmd_once() { prep_state_dir || exit 1; load_comp; cycle; }
+
+cmd_check() { # check [--notify] : the whole checklist now, printed
+  local notify=0 sf="$HB_STATE_DIR/state.json"; [ "${1:-}" = --notify ] && notify=1
+  prep_state_dir 2>/dev/null
+  # The shutdown marker is consumed once, by the service at boot. A manual check reports what that boot found.
+  UNCLEAN=unknown
+  if [ -f "$sf" ] && [ ! -L "$sf" ]; then
+    grep -q '"uncleanShutdown":"true"' "$sf" && UNCLEAN=true
+    grep -q '"uncleanShutdown":"false"' "$sf" && UNCLEAN=false
+  fi
+  PREV_SHUT_LEVEL=ok; PREV_SHUT_DETAIL="as judged at the last boot: $UNCLEAN (unclean = true)"
+  HB_BOOT_RETRY=0
+  load_comp
+  boot_check "$notify"
+  [ "$notify" = 1 ] && { save_comp; write_state "$SERVICE_STATUS"; }
+  print_report
+  echo
+  echo "$SUMMARY_TEXT"
+  [ "$SUMMARY_LEVEL" = info ]
+}
+
+# ExecStopPost: how did the service end?
+cmd_stopped() {
+  prep_state_dir || exit 0
+  load_comp
+  if systemctl list-jobs 2>/dev/null | grep -Eq '(shutdown|reboot|poweroff|halt|kexec)\.target'; then
+    printf '' | write_atomic "$HB_STATE_DIR/clean-shutdown"
+    write_state host-shutdown
+    return 0
+  fi
+  # `systemctl restart` (an upgrade, a config change) also ends this service with SERVICE_RESULT=success, but a restart job
+  # for this unit is queued; that is not a stop and must not page or tell the dead-man the heartbeat ended. A crash
+  # during a queued restart (SERVICE_RESULT not success) still falls through to the crash warning below.
+  if [ "${SERVICE_RESULT:-success}" = success ] && systemctl list-jobs 2>/dev/null | grep -Eq "${HB_UNIT//./\\.}[[:space:]]+(restart|try-restart|reload-or-restart|try-reload-or-restart)"; then
+    write_state restarting
+    return 0
+  fi
+  case "${SERVICE_RESULT:-success}" in
+    success)
+      write_state stopped
+      notify critical "Cabin: heartbeat STOPPED on purpose" "The recovery heartbeat service on the cabin host was stopped (not a reboot). Nothing on the host is watching the components or the dead-man signal until it is started: sudo systemctl start cabin-recovery-heartbeat."
+      deadman_fail ;;
+    *)
+      write_state restarting
+      # RestartSec is 15 s, so a crash loop would otherwise push four notices a minute: one per HB_CRASH_NOTICE_EVERY.
+      local cf="$HB_STATE_DIR/last-crash-notice" lastc=0
+      [ -f "$cf" ] && [ ! -L "$cf" ] && lastc=$(cat "$cf" 2>/dev/null)
+      [[ "$lastc" =~ ^[0-9]+$ ]] || lastc=0
+      if [ $(( $(now_epoch) - lastc )) -lt "${HB_CRASH_NOTICE_EVERY:-600}" ]; then return 0; fi
+      now_epoch | write_atomic "$cf"
+      notify warn "Cabin: heartbeat service crashed" "The recovery heartbeat service ended with '${SERVICE_RESULT}' and systemd will restart it. If this repeats, check: journalctl -u cabin-recovery-heartbeat."
+      ;;
+  esac
+}
+
+main() {
+  case "${1:-run}" in
+    run) cmd_run ;;
+    once) cmd_once ;;
+    check) shift; cmd_check "$@" ;;
+    stopped) cmd_stopped ;;
+    *) echo "usage: cabin-recovery-heartbeat run|once|check [--notify]|stopped" >&2; exit 2 ;;
+  esac
+}
+
+# Sourced by the test script to reach the functions; executed normally otherwise.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi
