@@ -149,7 +149,8 @@ An agent session cannot write to the host. Exact commands are in the runbook; th
 - **The ntfy topic is blank on the M920q today (W-51).** If it stays blank no push is sent anywhere; the state file says `not-configured` and the Monitoring section shows a red warning. The banner still works.
 - **Kafka is probed by its container only**; the real Kafka-to-Postgres path is proved by the ingest-freshness check at boot, not by the per-minute heartbeat.
 - **No maintenance mute.** Stopping the service on purpose pages; so does stopping a monitored container for longer than 5 minutes. A planned-maintenance window is a follow-up.
-- **SSH setup is documented, not applied.** The host was not touched; the choice between options A, B and C is Nate's.
+- **Option B is the longer-term follow-up (W-145).** Nate wants the Tailscale ACL rule as the next step if it proves feasible; feasibility (tagging the M920q) is unchecked. As of 2026-11-03 option A is installed on the host but the connection from `ILikeTheLights` to port 2222 is accepted and closed before the SSH banner, so it is not yet verified.
+- **SSH setup was documented, and has been applied by Nate.** The host was not touched; the choice between options A, B and C is Nate's.
 - **Pull probes (W-56 S3), Cloudflare tunnel-health notification (S4), UPS (S5), observer (S6)**: not built.
 - **Home location.** The banner entries have location `cabin` and do not show when Home alone is selected. Fixing it means teaching the banner filter an "all locations" value, which touches `mergeStatusCheckItems` and `AlertControls`; left for a separate change.
 - **Backend flicker at boot.** For a few seconds after a reboot the backend may read the pre-reboot state file before the host service rewrites it; a stale-file banner can flash and clear.
