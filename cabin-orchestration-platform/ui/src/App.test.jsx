@@ -4997,12 +4997,15 @@ describe("FamilyConfigPanel — Guest Access (Tier 1 share links)", () => {
     return auth.authedFetch.mock.calls.filter(([url]) => url.includes("/api/access-tokens"));
   }
 
+  // W-141: the card starts collapsed; its list and controls only exist after the entry action is pressed.
   function renderPanel(auth) {
-    return render(
+    const view = render(
       <AppContext.Provider value={{ config: {}, locationCfg: { haUrl: "http://cabin-hub:8123" } }}>
         <FamilyConfigPanel auth={auth} />
       </AppContext.Provider>
     );
+    fireEvent.click(screen.getByRole("button", { name: "Review or add links: Guest Access" }));
+    return view;
   }
 
   it("lists existing share links returned by the API", async () => {
@@ -5109,12 +5112,15 @@ describe("FamilyConfigPanel — Managed Users (Tier 2)", () => {
     return auth.authedFetch.mock.calls.filter(([url]) => url.includes("/api/managed-users"));
   }
 
+  // W-141: the card starts collapsed; its list and controls only exist after the entry action is pressed.
   function renderPanel(auth) {
-    return render(
+    const view = render(
       <AppContext.Provider value={{ config: {}, locationCfg: { haUrl: "http://cabin-hub:8123" } }}>
         <FamilyConfigPanel auth={auth} />
       </AppContext.Provider>
     );
+    fireEvent.click(screen.getByRole("button", { name: "Review or add people: Managed Users" }));
+    return view;
   }
 
   it("tells a signed-in non-administrator that managed users are administrator-only instead of an empty list", async () => {

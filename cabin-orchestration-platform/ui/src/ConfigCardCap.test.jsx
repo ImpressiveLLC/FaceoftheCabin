@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
+  FamilyConfigPanel, AppContext, COLLAPSED_BY_DEFAULT_CARDS,
   ConfigCard, ConfigHeights, useConfigHeights,
   CONFIG_CARD_HEIGHT_RATIO, CONFIG_CARD_MIN_BUDGET, CONFIG_CARD_TOGGLE_ALLOWANCE,
 } from "./App.jsx";
@@ -90,11 +91,49 @@ describe("Config cards stay within a height budget", () => {
     expect(card("X").querySelector(".config-card-body").style.maxHeight).toBe(`${400 - 1 - CONFIG_CARD_TOGGLE_ALLOWANCE}px`);
   });
 
-  it("never shortens a full-row card or one that holds a control to cut off access", () => {
-    render(<Grid cards={[...peers(300), { title: "W", n: 900, wide: true }, { title: "G", n: 900, neverShorten: true }]} />);
+  const entry = { summary: "A short summary.", action: "Open" };
+
+  it("never shortens a full-row card, and an opened collapsed-by-default card is never clipped", () => {
+    render(<Grid cards={[...peers(300), { title: "W", n: 900, wide: true }, { title: "G", n: 900, entry }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open: G" }));
     expect(shortened("W")).toBe(false);
     expect(shortened("G")).toBe(false);
-    expect(within(card("G")).queryByRole("button")).toBeNull();
+    expect(within(card("G")).queryByRole("button", { name: /Expand|Minimize/ })).toBeNull();
+  });
+
+  it("a collapsed-by-default card shows a summary and its entry action and none of its content", () => {
+    render(<Grid cards={[...peers(300), { title: "G", n: 50, entry }]} />);
+    expect(card("G").className).toContain("config-card-collapsed");
+    expect(within(card("G")).getByText("A short summary.")).toBeTruthy();
+    expect(within(card("G")).getByRole("button", { name: "Open: G" })).toBeTruthy();
+    expect(card("G").querySelector("input")).toBeNull();
+    expect(card("G").textContent).not.toContain("xxxxx");
+  });
+
+  it("entering shows the content and a Close; Close folds it away again, with focus following each press", () => {
+    render(<Grid cards={[...peers(300), { title: "G", n: 50, entry }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open: G" }));
+    expect(card("G").querySelector("input")).not.toBeNull();
+    expect(document.activeElement).toBe(card("G"));
+    fireEvent.click(within(card("G")).getByRole("button", { name: "Close G" }));
+    expect(card("G").className).toContain("config-card-collapsed");
+    expect(card("G").querySelector("input")).toBeNull();
+    expect(document.activeElement).toBe(within(card("G")).getByRole("button", { name: "Open: G" }));
+  });
+
+  it("the cards that start collapsed are exactly Guest Access, Managed Users and Location Roles, and no other Config card does", () => {
+    expect([...COLLAPSED_BY_DEFAULT_CARDS].sort()).toEqual(["Guest Access", "Location Roles", "Managed Users"]);
+    const auth = { userEmail: "nate@example.com", signIn: () => {}, authedFetch: vi.fn(() => new Promise(() => {})) };
+    render(
+      <AppContext.Provider value={{ config: {}, locationCfg: { haUrl: "http://cabin-hub:8123" } }}>
+        <FamilyConfigPanel auth={auth} />
+      </AppContext.Provider>
+    );
+    const collapsedTitles = [...document.querySelectorAll(".config-card-collapsed .config-card-header strong")].map(n => n.textContent).sort();
+    expect(collapsedTitles).toEqual(["Guest Access", "Location Roles", "Managed Users"]);
+    // nothing about who has access is fetched or listed until one is opened
+    const asked = auth.authedFetch.mock.calls.map(([url]) => url).join(" ");
+    expect(asked).not.toMatch(/access-tokens|managed-users|presence\/roles/);
   });
 
   it("names its button after the card, points it at the body, and Expand then Minimize toggles", () => {
@@ -128,9 +167,10 @@ describe("Config cards stay within a height budget", () => {
     expect(shortened("X")).toBe(true);
   });
 
-  it("a never-shortened card still counts in the average of the cards beside it", () => {
+  it("an opened collapsed-by-default card counts in the average of the cards beside it", () => {
     // peers 301, 301 and a never-shortened 1001: mean 534, budget 710, so a 501 card fits. Left out of the average the budget is 400 and it would be cut.
-    render(<Grid cards={[...peers(300), { title: "G", n: 1000, neverShorten: true }, { title: "X", n: 500 }]} />);
+    render(<Grid cards={[...peers(300), { title: "G", n: 1000, entry }, { title: "X", n: 500 }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open: G" }));
     expect(shortened("X")).toBe(false);
     cleanup();
     render(<Grid cards={[...peers(300), { title: "X", n: 500 }]} />);

@@ -76,7 +76,7 @@ How to read the table:
 - The link is read-only and can never change anything. It shows data that is open without signing in (D14); it is a convenience for sharing a look.
 - **Revoke** marks a link Revoked; it stays in the list, marked **Revoked** or **Expired**, as a record. Revoking cannot be undone; make a new link instead.
 - The Config card for the Roof Monitoring page makes a separate kind of link that can only read that page and post comments or answers there. Revoke it from the Guest Access list.
-- Long cards in Config are shortened and show **Expand** (press it to see the rest, **Minimize** to fold it back). Guest Access, Managed Users and Location Roles are never shortened, so **Create link**, **Revoke**, **Deactivate** and **Remove** are always in view.
+- In Config, Guest Access, Managed Users and Location Roles start closed, with a one-line summary and a button (**Review or add links**, **Review or add people**, **Review roles**). Press it to open the card and see its list and controls; **Close** folds it away. An opened card is never cut off. Other long cards show **Expand**.
 
 What it does not do: it does not create an account, and it does not send anything. You send the link yourself.
 
