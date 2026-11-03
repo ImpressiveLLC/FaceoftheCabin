@@ -2965,9 +2965,11 @@ systemctl is-active ssh.socket
 
 ```bash
 sudo mkdir -p /etc/systemd/system/ssh.socket.d
-printf '[Socket]\nListenStream=\nListenStream=22\nListenStream=2222\n' | sudo tee /etc/systemd/system/ssh.socket.d/cabin-monitor.conf >/dev/null
+printf '[Socket]\nListenStream=\nListenStream=0.0.0.0:22\nListenStream=[::]:22\nListenStream=0.0.0.0:2222\nListenStream=[::]:2222\n' | sudo tee /etc/systemd/system/ssh.socket.d/cabin-monitor.conf >/dev/null
 sudo systemctl daemon-reload && sudo systemctl restart ssh.socket
 ```
+
+   **Name every address.** A bare `ListenStream=2222` binds IPv6 only here, because Ubuntu's `ssh.socket` sets `BindIPv6Only=ipv6-only`; `ss` then shows only `[::]:2222`, and a connection to the IPv4 tailnet address (`100.77.44.113`) is accepted and closed before the SSH banner ("kex_exchange_identification: write: Connection refused"), which is exactly what the first attempt on 2026-11-03 did. The leading empty `ListenStream=` clears the default before the four explicit addresses. Expect four listeners (`0.0.0.0:22`, `[::]:22`, `0.0.0.0:2222`, `[::]:2222`).
 
    Otherwise (`inactive`), add the port to the daemon instead:
 
@@ -2983,10 +2985,10 @@ sudo ss -ltn | grep -E ':(22|2222) '
 
 ```
 
-**Using the monitoring key (key and user installed 2026-11-03; the connection is NOT yet verified).** Status on 2026-11-03: the host listens on 2222 (`ss` showed `[::]:2222`), but from `ILikeTheLights` over Tailscale the connection to `100.77.44.113:2222` is accepted and then closed before the SSH banner ("kex_exchange_identification: write: Connection refused"), so no read has succeeded yet. Host-side diagnostics (`ufw status`, `journalctl -u ssh -u ssh.socket`, `sshd -T`) are the next step; this section is updated when a read works. The key pair was generated on the Windows PC `ILikeTheLights`, where the agent sessions run. The private key is `%USERPROFILE%\.ssh\cabin-monitor_ed25519` (no passphrase so checks can run unattended; permissions limited to the signed-in account; never in git). Only the public half went to the host. Fingerprint: `SHA256:dKY+MgpLiYvJgsOLuMVNRRvSqiOCyPDpskIegtiI33E`. The M920q's tailnet address is `100.77.44.113` (name `nates-little-m920q.tailb20f8b.ts.net`; the short name `cabin-hub` only resolves where MagicDNS search domains are set, which this PC does not have). To read the cabin's state:
+**Using the monitoring key (installed and verified 2026-11-03).** Verified from `ILikeTheLights` over Tailscale: the key connects on 2222 as `cabin-monitor` and runs only the forced `cat` (it printed `No such file or directory` for both files, as expected until the recovery service is installed and has written them; the content itself has not been seen yet). Without the key the host answers `Permission denied (publickey)`. The key pair was generated on the Windows PC `ILikeTheLights`, where the agent sessions run. The private key is `%USERPROFILE%\.ssh\cabin-monitor_ed25519` (no passphrase so checks can run unattended; permissions limited to the signed-in account; never in git). Only the public half went to the host. Fingerprint: `SHA256:dKY+MgpLiYvJgsOLuMVNRRvSqiOCyPDpskIegtiI33E`. The M920q's tailnet address is `100.77.44.113` (name `nates-little-m920q.tailb20f8b.ts.net`; the short name `cabin-hub` only resolves where MagicDNS search domains are set, which this PC does not have). To read the cabin's state:
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\cabin-monitor_ed25519" -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes cabin-monitor@100.77.44.113
+ssh -T -i "$env:USERPROFILE\.ssh\cabin-monitor_ed25519" -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes cabin-monitor@100.77.44.113
 ```
 
 It prints the live component state (JSON) and the last boot check report, and nothing else: the key is forced to run one `cat` and has no shell, terminal or forwarding. It cannot run a new check or fix anything; for that, use the owner's Tailscale SSH (`ssh nate@nates-little-m920q.tailb20f8b.ts.net`). If live diagnostics are wanted later, add a sudoers entry limited to `cabin-recovery-heartbeat check` for this user rather than widening the key.
@@ -2995,7 +2997,7 @@ It prints the live component state (JSON) and the last boot check report, and no
 
 *Revoke or rotate.* On the host: `sudo rm /home/cabin-monitor/.ssh/authorized_keys` (revokes at once), or `sudo userdel -r cabin-monitor` to remove the user. To rotate, generate a new pair with `ssh-keygen -t ed25519 -N '' -f <path>`, replace the line in `authorized_keys` with the new public key, then delete the old private key. Verify with the command above: a successful print is the check, a `Permission denied (publickey)` means the old key is revoked.
 
-*Troubleshooting.* `Connection refused` on 2222 with 22 working: the port was not opened (`ssh.socket` note above). `Permission denied (publickey)`: wrong key, or `authorized_keys` ownership or mode (it must be `600`, owned by `cabin-monitor`). `No such file` from the `cat`: the recovery service has not yet written `state.json` (not installed, or still in its first minute). A hang: Tailscale is down on this PC or the host, and the `tailscale` and `internet` heartbeats should already say so.
+*Troubleshooting.* `Connection refused` or an immediate close on 2222 with 22 working: the port was not opened, or only on IPv6 (`ssh.socket` notes above; check `sudo ss -ltn | grep 2222` shows `0.0.0.0:2222`). `PTY allocation request failed` is harmless (terminals are disabled for this key); `-T` suppresses it. `Permission denied (publickey)`: wrong key, or `authorized_keys` ownership or mode (it must be `600`, owned by `cabin-monitor`). `No such file` from the `cat`: the recovery service has not yet written `state.json` (not installed, or still in its first minute). A hang: Tailscale is down on this PC or the host, and the `tailscale` and `internet` heartbeats should already say so.
 
 **Tuning** (in `/etc/cabin-recovery-heartbeat.env`, then restart the service): `HB_MISS_LIMIT` (5), `HB_INTERVAL` (60 s), `HB_RECOVER_OKS` (2), `HB_REPAGE_FIRST` (3600 s), `HB_REPAGE_EVERY` (21600 s), `HB_BOOT_GRACE` (180 s), `HB_BOOT_RETRY` (120 s), `HB_PUBLIC_URLS`, `HB_PING_TARGETS`, `HB_HTTPS_TARGETS`, `HB_DNS_NAMES`, `HB_TAILSCALE_PEERS`, `HB_NOTIFY_HOOK` (an executable called as `HOOK LEVEL TITLE MESSAGE`, for email or SMS). Backend: `cabin.recovery.staleAfterSeconds` (300).
 
