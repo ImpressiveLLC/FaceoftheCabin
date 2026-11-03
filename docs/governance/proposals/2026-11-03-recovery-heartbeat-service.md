@@ -67,7 +67,7 @@ Tailscale SSH currently asks for a browser re-auth link on each session, which b
 | B: Tailscale ACL, `check` to `accept` for one tagged machine and one non-root user | A tailnet policy edit by Nate in the admin console | Medium: a real shell as that user, no browser step | No host change, but the user has a shell, and the policy edit is broader |
 | C: lengthen the ACL `checkPeriod` | One value in the tailnet policy | Lowest change, no new access | Still needs a browser link now and then, so it does not make checks unattended |
 
-**Decisions for Nate:** A, B or C; which machine holds the private key (it belongs in the vault, not in git); and whether to add the extra port or turn Tailscale SSH off (not recommended: it is the admin path). The draft host commands for A are in the runbook, marked as not run.
+**Decision (Nate, 2026-11-03): option A.** Nate leaned to the Tailscale ACL and, asked for a recommendation, took A. Reasons: B needs the M920q to carry a Tailscale tag, and as understood a tagged device loses its user ownership, which can stop Nate's own `check` rule matching it and changes key-expiry behaviour, and a policy mistake can lock out the cabin; A touches nothing tailnet-wide, is owner-run, is undone with `userdel`, and the forced command can only read two files. It covers the 2026-11-02 case, because the service has already run the full check at boot. Still open and Nate's: where the private key lives (the vault, not git), and the port. If live diagnostics are wanted later, the narrow extension is a sudoers entry limited to `cabin-recovery-heartbeat check` for that user. The host commands are in the runbook and have not been run.
 
 ## What is detected, and what is not
 

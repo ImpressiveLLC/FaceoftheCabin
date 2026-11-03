@@ -2922,6 +2922,8 @@ sudo systemctl daemon-reload && sudo systemctl enable --now cabin-recovery-heart
 sudo systemctl status cabin-recovery-heartbeat --no-pager | head -5; sudo ls -l /storage/archives/cabin_event/.recovery/
 ```
 
+Then do one controlled reboot (`sudo reboot`) and expect exactly one "Cabin restarted" push about 3 to 5 minutes after boot and no "heartbeat STOPPED on purpose" push. That confirms the shutdown detection on this host; if a stop notice arrives at reboot, tell the session that built this before relying on it.
+
 The backend half (`CABIN_RECOVERY_ENABLED` is already set in `docker-compose.m920q.yml`) arrives with the normal backend deploy, which needs Nate's go. Until it deploys, the pushes work and the banner and Monitoring section do not.
 
 **Dead-man's switch (W-56).** Two kinds of ping, so silence tells you which part is down: *host alive* (`HB_DEADMAN_URL`, every minute, no dependencies) and *platform healthy* (`HB_DEADMAN_PLATFORM_URL`, only while the backend and the Zigbee bridge both answered). Two ways to receive them; pick one.
@@ -2942,7 +2944,7 @@ sudo systemctl restart cabin-recovery-heartbeat
 
 Either way, silence of about ten minutes alerts, repeats hourly, and says when it is back. The ping URLs and the token are secrets: root-only env file, never git.
 
-**SSH for non-interactive recovery checks.** The `sshd` and `tailscale-ssh` components watch that SSH is up. Reaching the host *without* a browser re-auth link is a decision for Nate (design note, "SSH for non-interactive recovery checks": option A, a read-only user with a forced command, is recommended). Nothing below has been run on the host. Draft for option A, with an extra OpenSSH port because Tailscale SSH holds port 22 on the tailnet address:
+**SSH for non-interactive recovery checks (decision: option A, Nate, 2026-11-03).** The `sshd` and `tailscale-ssh` components watch that SSH is up. Reaching the host *without* a browser re-auth link uses a read-only user with a forced command (design note, "SSH for non-interactive recovery checks", has the options and the reasons). **Nothing below has been run on the host;** the commands need sudo, so Nate runs them. Option A, with an extra OpenSSH port because Tailscale SSH holds port 22 on the tailnet address:
 
 ```bash
 sudo useradd --create-home --shell /bin/bash --comment "read-only recovery monitor" cabin-monitor
@@ -2953,7 +2955,7 @@ printf 'Port 22\nPort 2222\nMatch User cabin-monitor\n  PasswordAuthentication n
 sudo sshd -t && sudo systemctl reload ssh
 ```
 
-Generate the key pair on the machine that will hold it (`ssh-keygen -t ed25519`), paste only the public half above, and keep the private half in the vault. From that machine: `ssh -p 2222 cabin-monitor@<host>` prints the live component state and the last boot check report. It cannot run a new check or fix anything; for that, use Tailscale SSH as today.
+Generate the key pair on the machine that will hold it (`ssh-keygen -t ed25519`), paste only the public half above, and keep the private half in the vault. From that machine: `ssh -p 2222 cabin-monitor@<host>` prints the live component state and the last boot check report. It cannot run a new check or fix anything; for that, use Tailscale SSH as today. If live diagnostics are wanted later, add a sudoers entry limited to `cabin-recovery-heartbeat check` for this user rather than widening the key.
 
 **Tuning** (in `/etc/cabin-recovery-heartbeat.env`, then restart the service): `HB_MISS_LIMIT` (5), `HB_INTERVAL` (60 s), `HB_RECOVER_OKS` (2), `HB_REPAGE_FIRST` (3600 s), `HB_REPAGE_EVERY` (21600 s), `HB_BOOT_GRACE` (180 s), `HB_BOOT_RETRY` (120 s), `HB_PUBLIC_URLS`, `HB_PING_TARGETS`, `HB_HTTPS_TARGETS`, `HB_DNS_NAMES`, `HB_TAILSCALE_PEERS`, `HB_NOTIFY_HOOK` (an executable called as `HOOK LEVEL TITLE MESSAGE`, for email or SMS). Backend: `cabin.recovery.staleAfterSeconds` (300).
 
