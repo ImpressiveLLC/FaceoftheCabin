@@ -677,7 +677,7 @@ forward from an earlier session's list)
 | POST | `/api/rules/executions/{id}/view` \| `/clear` | RulesController |
 | GET | `/api/kb/nodes` \| `/nodes/{entityRef}` | KnowledgeNodeController — Tiny Helpdesk's own KB read path (`CREDENTIAL_POINTER` content redacted for any non-ADMINISTRATOR caller). Added to this table 2026-09-13 — was live and in use since Sprint 1 (2026-08-30) but missing from this list entirely; documentation drift, not a new endpoint |
 | POST | `/api/kb/curate` | KnowledgeNodeController — the only way to write `SETUP`/`TROUBLESHOOTING`/`CREDENTIAL_POINTER` chunks (KB Generator v1 only ever auto-writes `DESCRIPTION`/`RELATIONSHIP`); body `{entityRef, chunkType, content}`, `source` is ignored and always forced to `MANUALLY_CURATED` server-side regardless of what's sent |
-| GET | `/api/system/recovery` | RecoveryController — administrator only (demo DENY). The host recovery service's state: per-component heartbeat ages, the last boot summary, notify and dead-man status (W-144). The same problems reach the Critical banner as ordinary alerts through `/api/alerts/active` |
+| GET | `/api/system/recovery` | RecoveryController, administrator only (demo DENY). The host recovery service's state: per-component heartbeat ages, the last boot summary, notify and dead-man status (W-144). The same problems reach the Critical banner as ordinary alerts through `/api/alerts/active` |
 | GET | `/actuator/health` | Spring Actuator — what `deploy-cabin-backend.yml`'s health-check gate polls |
 
 **Route groups missing from the table above** (added 2026-10-04, read from

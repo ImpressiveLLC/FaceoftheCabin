@@ -299,6 +299,12 @@ reset_world; echo '{"status":"running"}' >"$W/state/state.json"; echo '2213 cabi
 SERVICE_RESULT=exit-code run stopped
 check "a crash during a queued restart still warns" "grep -q '^high|Cabin: heartbeat service crashed|' $W/ntfy.log"
 
+reset_world; echo '{"status":"running"}' >"$W/state/state.json"
+SERVICE_RESULT=exit-code run stopped; HB_NOW=$((1000300+15)) SERVICE_RESULT=exit-code run stopped; HB_NOW=$((1000300+30)) SERVICE_RESULT=signal run stopped
+check "a crash loop pushes one notice, not one per restart, and the state is restarting, not stopped" "[ \$(pushes) -eq 1 ] && grep -q '\"status\":\"restarting\"' $W/state/state.json"
+HB_NOW=$((1000300+700)) SERVICE_RESULT=exit-code run stopped
+check "a crash after the cooldown notifies again" "[ \$(pushes) -eq 2 ]"
+
 echo "delivery problems"
 reset_world; echo 'false||0' >"$W/c/nodered"; echo 7 >"$W/ntfy_rc"
 for i in 1 2 3 4 5; do HB_NOW=$((1000300+i*60)) run once; done
@@ -349,14 +355,15 @@ echo '{"RunSSH": false}' >"$W/ts_prefs"; check "tailscale ssh switched off" "pro
 
 echo "a parent outage silences its children"
 reset_world
-touch "$W/ping_down_1_1_1_1" "$W/ping_down_9_9_9_9" "$W/dns_down"; echo 000 >"$W/code_https___cabin_test_"
+touch "$W/ping_down_1_1_1_1" "$W/ping_down_9_9_9_9" "$W/dns_down" "$W/ts_dead"; echo 000 >"$W/code_https___cabin_test_"
 echo 000 >"$W/code_https___www_cloudflare_com_cdn_cgi_trace"; echo 000 >"$W/code_https___www_google_com_generate_204"
 for i in 1 2 3 4 5; do HB_NOW=$((1000300+i*60)) run once; done
+check "tailscale down with the internet is silenced too (it is a child of internet)" "! grep -q 'tailscale' $W/ntfy.log && grep -q '\"name\":\"tailscale\",\"status\":\"down\"' $W/state/state.json"
 check "internet, dns and public-url all down: ONE page, naming the internet" "[ \$(pushes) -eq 1 ] && grep -q 'Cabin: internet is down' $W/ntfy.log"
 check "the children are still shown as down in state.json" "grep -q '\"name\":\"dns\",\"status\":\"down\"' $W/state/state.json && grep -q '\"name\":\"public-url\",\"status\":\"down\"' $W/state/state.json"
-rm "$W/ping_down_1_1_1_1" "$W/ping_down_9_9_9_9" "$W"/code_https___www_* "$W/code_https___cabin_test_"
+rm "$W/ping_down_1_1_1_1" "$W/ping_down_9_9_9_9" "$W/ts_dead" "$W"/code_https___www_* "$W/code_https___cabin_test_"
 for i in 6 7; do HB_NOW=$((1000300+i*60)) run once; done
-check "internet back; dns still broken is announced on its own; public-url recovered silently" "[ \$(pushes) -eq 3 ] && grep -q 'Cabin: internet recovered' $W/ntfy.log && tail -1 $W/ntfy.log | grep -q 'Cabin: dns is down' && ! grep -q 'public-url' $W/ntfy.log"
+check "internet back; dns still broken is announced on its own; public-url recovered silently" "[ \$(pushes) -eq 3 ] && grep -q 'Cabin: internet recovered' $W/ntfy.log && tail -1 $W/ntfy.log | grep -q 'Cabin: dns is down' && ! grep -q 'public-url' $W/ntfy.log && ! grep -q 'tailscale' $W/ntfy.log"
 
 echo "dead-man: two kinds and a token"
 reset_world

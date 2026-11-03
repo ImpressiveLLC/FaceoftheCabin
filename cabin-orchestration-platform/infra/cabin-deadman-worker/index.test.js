@@ -103,7 +103,7 @@ test('a missing topic never throws and never records an alert as sent', async ()
   assert.equal(w.calls.length, 0);
 });
 
-test('a deliberate stop pushes once, is not announced again as silence, and clears when pings resume', async () => {
+test('a deliberate stop pushes once, is never repeated, and clears when pings resume', async () => {
   const w = world();
   await handleFetch(req('/ping/host'), w.env, T0);
   assert.equal((await handleFetch(req('/stop/host'), w.env, T0 + MIN, w.fetchImpl)).status, 204);
@@ -112,7 +112,9 @@ test('a deliberate stop pushes once, is not announced again as silence, and clea
   assert.deepEqual(await evaluate(w.env, T0 + 5 * MIN, w.fetchImpl), []);   // fresh-looking, alert open, no "back"
   assert.deepEqual(await evaluate(w.env, T0 + 20 * MIN, w.fetchImpl), []);  // silent but already announced
   assert.equal(w.calls.length, 1);
-  assert.deepEqual(await evaluate(w.env, T0 + 61 * MIN, w.fetchImpl), ['repeat:host']);
+  assert.deepEqual(await evaluate(w.env, T0 + 61 * MIN, w.fetchImpl), []);   // a deliberate stop is never repeated
+  assert.deepEqual(await evaluate(w.env, T0 + 300 * MIN, w.fetchImpl), []);
+  assert.equal(w.calls.length, 1);
   await handleFetch(req('/ping/host'), w.env, T0 + 70 * MIN);
   assert.deepEqual(await evaluate(w.env, T0 + 71 * MIN, w.fetchImpl), ['back:host']);
 });

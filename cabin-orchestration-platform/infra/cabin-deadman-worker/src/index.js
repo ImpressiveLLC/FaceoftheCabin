@@ -17,7 +17,7 @@
 // Rules: a kind that has never pinged is never alerted (an unused platform ping is not nagged). Silence longer than
 // SILENCE_MINUTES (default 10) alerts once, then repeats every REPEAT_MINUTES (default 60). While the host kind is
 // silent the platform kind is not alerted separately (a dark cabin explains both). When pings resume, one "back"
-// message states the outage length.
+// message states the outage length. A deliberate stop is announced once and never repeated: it is not an outage.
 
 const KINDS = ['host', 'platform'];
 // Workers KV's free tier allows 1000 writes a day. The host pings every minute, so a ping is stored at most once per
@@ -110,7 +110,7 @@ export async function evaluate(env, now, fetchImpl = fetch) {
         await kv.put(`alert:${kind}`, JSON.stringify({ since: last + silenceMs, after: last, notifiedAt: now }));
         sent.push(`silent:${kind}`);
       }
-    } else if (now - alert.notifiedAt >= repeatMs) {
+    } else if (!alert.stopped && now - alert.notifiedAt >= repeatMs) {
       const ok = await notify(env, fetchImpl, 'critical', `Cabin ${kind} heartbeat still silent`,
         `Still no ${LABEL[kind]} heartbeat: silent for ${minutes(now - (alert.since - silenceMs))}.`);
       if (ok) {
@@ -143,7 +143,7 @@ export async function handleFetch(request, env, now = Date.now(), fetchImpl = fe
     const last = (await readInt(kv, 'last:host')) ?? now;
     const ok = await notify(env, fetchImpl, 'critical', 'Cabin heartbeat stopped on purpose',
       'The cabin host stopped its heartbeat deliberately. Nothing on the host is watching the components until it is started again.');
-    await kv.put('alert:host', JSON.stringify({ since: now, after: Math.max(last, now), notifiedAt: ok ? now : 0 }));
+    await kv.put('alert:host', JSON.stringify({ since: now, after: Math.max(last, now), notifiedAt: ok ? now : 0, stopped: ok }));
     return new Response(null, { status: 204 });
   }
   if (path === '/status' && method === 'GET') {

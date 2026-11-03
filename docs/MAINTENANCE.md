@@ -2947,7 +2947,7 @@ The token is sent only to hosts listed in `HB_DEADMAN_TOKEN_HOSTS` (default `.wo
 
 Either way, silence of about ten minutes alerts, repeats hourly, and says when it is back. The ping URLs and the token are secrets: root-only env file, never git.
 
-**SSH for non-interactive recovery checks (decision: option A, Nate, 2026-11-03).** The `sshd` and `tailscale-ssh` components watch that SSH is up. Reaching the host *without* a browser re-auth link uses a read-only user with a forced command (design note, "SSH for non-interactive recovery checks", has the options and the reasons). **Nothing below has been run on the host;** the commands need sudo, so Nate runs them. Option A, with an extra OpenSSH port because Tailscale SSH holds port 22 on the tailnet address:
+**SSH for non-interactive recovery checks (decision: option A, Nate, 2026-11-03).** The `sshd` and `tailscale-ssh` components watch that SSH is up. Reaching the host *without* a browser re-auth link uses a read-only user with a forced command (design note, "SSH for non-interactive recovery checks", has the options and the reasons). Nate applied this on 2026-11-03; the commands below are the record and the way to redo it on a new host (they need sudo). Option A, with an extra OpenSSH port because Tailscale SSH holds port 22 on the tailnet address:
 
 ```bash
 sudo useradd --create-home --shell /bin/bash --comment "read-only recovery monitor" cabin-monitor
@@ -3012,7 +3012,7 @@ It prints the live component state (JSON) and the last boot check report, and no
 
 ## Incident Response — quick triage
 
-0. **The cabin restarted or lost power, or the banner says "Recovery service not reporting"** — run `sudo cabin-recovery-heartbeat check` and read
+0. **The cabin restarted or lost power, or the banner says "Recovery service not reporting"**: run `sudo cabin-recovery-heartbeat check` and read
    [Recovery check](#recovery-check-boot-summary-component-heartbeats-and-the-dead-mans-switch) first; it is the codified version of the checks below.
 1. **Public site unreachable** — check `docker ps` for `cloudflared`
    first; a crashed tunnel container is the most common single cause.

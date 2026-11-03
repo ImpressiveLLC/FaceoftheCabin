@@ -81,6 +81,9 @@ class RecoveryHeartbeatServiceTest {
         assertEquals("recovery:component:kafka", a.alertId());
         assertEquals("CRITICAL", a.severity());
         assertEquals("kafka is down", a.title());
+        // probe text (addresses, peer names) must not reach the anonymously readable alert feed
+        assertFalse(a.detail().contains("not running"), a.detail());
+        assertFalse(a.detail().contains("container"), a.detail());
         assertEquals(Instant.parse("2026-11-03T11:50:00Z"), a.evidenceAt());
         assertEquals("cabin", a.location());
         assertEquals("degraded", service(true).view(NOW).get("state"));

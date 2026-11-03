@@ -3,6 +3,8 @@ Description=Cabin recovery check and component heartbeats (docs/governance/propo
 # Runs on the host, outside Docker, so it keeps watching when the stack is down. It waits for Docker only so the boot
 # check does not start before the containers can have come up; it does not require it.
 After=local-fs.target network-online.target docker.service
+# A watcher must keep coming back: never let a crash loop trip systemd's start limit and leave it stopped.
+StartLimitIntervalSec=0
 Wants=network-online.target
 
 [Service]

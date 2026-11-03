@@ -203,9 +203,10 @@ public class RecoveryHeartbeatService {
             Instant since = instant(c.get("downSince"));
             alerts.add(alert("recovery:component:" + name, "Component " + name, "COMPONENT_DOWN", "CRITICAL", since,
                 name + " is down",
-                "The host heartbeat has missed " + name + " for " + number(s.get("missLimit")) + " checks in a row"
-                    + (c.get("detail") == null || String.valueOf(c.get("detail")).isBlank() ? "" : ": " + c.get("detail"))
-                    + "."));
+                // Deliberately generic: this reaches /api/alerts/active, which the demo can read. The probe's own text
+                // (addresses, peer names) is shown only on the administrator-only Monitoring view.
+                "The host heartbeat has missed " + name + " for " + number(s.get("missLimit")) + " checks in a row. "
+                    + "Administrators can see why under Monitoring, Recovery and heartbeats."));
         }
         return alerts;
     }

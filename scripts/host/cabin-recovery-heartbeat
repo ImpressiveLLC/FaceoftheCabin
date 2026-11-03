@@ -587,7 +587,7 @@ all_clear() {
 
 # A child is silenced while its parent is down: when the internet is out, one page names the internet, not also DNS and
 # the public URL. The child stays tracked and visible; it is announced later if it is still down once the parent is back.
-parent_of() { case $1 in internet) echo gateway ;; dns|public-url) echo internet ;; *) echo "" ;; esac; }
+parent_of() { case $1 in internet) echo gateway ;; dns|tailscale|public-url) echo internet ;; *) echo "" ;; esac; }
 
 cycle() {
   local now c rc down_for parent pdown
@@ -707,7 +707,13 @@ cmd_stopped() {
       notify critical "Cabin: heartbeat STOPPED on purpose" "The recovery heartbeat service on the cabin host was stopped (not a reboot). Nothing on the host is watching the components or the dead-man signal until it is started: sudo systemctl start cabin-recovery-heartbeat."
       deadman_fail ;;
     *)
-      write_state stopped
+      write_state restarting
+      # RestartSec is 15 s, so a crash loop would otherwise push four notices a minute: one per HB_CRASH_NOTICE_EVERY.
+      local cf="$HB_STATE_DIR/last-crash-notice" lastc=0
+      [ -f "$cf" ] && [ ! -L "$cf" ] && lastc=$(cat "$cf" 2>/dev/null)
+      [[ "$lastc" =~ ^[0-9]+$ ]] || lastc=0
+      if [ $(( $(now_epoch) - lastc )) -lt "${HB_CRASH_NOTICE_EVERY:-600}" ]; then return 0; fi
+      now_epoch >"$cf"
       notify warn "Cabin: heartbeat service crashed" "The recovery heartbeat service ended with '${SERVICE_RESULT}' and systemd will restart it. If this repeats, check: journalctl -u cabin-recovery-heartbeat."
       ;;
   esac

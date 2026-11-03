@@ -1,4 +1,4 @@
-# Recovery check and component heartbeats — design note
+# Recovery check and component heartbeats: design note
 
 Date: 2026-11-03. Status: built in this PR, not yet installed on the M920q. Work item: W-144 (see `docs/governance/backlog.md`). Runbook: [`docs/MAINTENANCE.md`, "Recovery check"](../../MAINTENANCE.md#recovery-check-boot-summary-component-heartbeats-and-the-dead-mans-switch).
 
@@ -125,7 +125,7 @@ The banner needs the backend alive; the push needs the host service alive and nt
 | Silence threshold | 10 minutes (`SILENCE_MINUTES`), so detection takes 10 to 15 minutes |
 | Alert | One ntfy push at priority `urgent` ("Cabin host heartbeat silent": the silence length and last-seen time); repeated every 60 minutes (`REPEAT_MINUTES`) while silent |
 | Recovery message | One push at default priority when pings resume: "heartbeat is back after N min" |
-| Rules | A kind that never pinged is never alerted. While *host alive* is silent, *platform healthy* is not alerted separately. A failed ntfy send is retried on the next cron rather than recorded. A deliberate stop pushes once, then its silence is treated as already announced |
+| Rules | A kind that never pinged is never alerted. While *host alive* is silent, *platform healthy* is not alerted separately. A failed ntfy send is retried on the next cron rather than recorded. A deliberate stop pushes once, then its silence is treated as already announced and is never repeated hourly |
 | Not secrets | `NTFY_URL` (`https://ntfy.sh`), `SILENCE_MINUTES`, `REPEAT_MINUTES` are plain variables in `wrangler.toml` |
 
 **healthchecks.io remains a valid alternative** (about five minutes: a check with period 5 and grace 5 minutes, an integration for where admins are reached, the ping URL into `HB_DEADMAN_URL`, no token). Choose one; the host service pings whichever URL it is given.
@@ -150,7 +150,7 @@ An agent session cannot write to the host. Exact commands are in the runbook; th
 - **Kafka is probed by its container only**; the real Kafka-to-Postgres path is proved by the ingest-freshness check at boot, not by the per-minute heartbeat.
 - **No maintenance mute.** Stopping the service on purpose pages; so does stopping a monitored container for longer than 5 minutes. A planned-maintenance window is a follow-up.
 - **Option B is the longer-term follow-up (W-145).** Nate wants the Tailscale ACL rule as the next step if it proves feasible; feasibility (tagging the M920q) is unchecked. As of 2026-11-03 option A is installed and verified: the key connects on port 2222 from `ILikeTheLights` and runs only the forced `cat` (the files do not exist until the recovery service is installed). The first attempt failed because a bare `ListenStream=2222` bound IPv6 only; the runbook now names all four addresses.
-- **SSH setup was documented, and has been applied by Nate.** The host was not touched; the choice between options A, B and C is Nate's.
+- **SSH option A was applied by Nate on 2026-11-03.** Options B and C remain unbuilt; B is tracked as W-145.
 - **Pull probes (W-56 S3), Cloudflare tunnel-health notification (S4), UPS (S5), observer (S6)**: not built.
 - **Home location.** The banner entries have location `cabin` and do not show when Home alone is selected. Fixing it means teaching the banner filter an "all locations" value, which touches `mergeStatusCheckItems` and `AlertControls`; left for a separate change.
 - **Backend flicker at boot.** For a few seconds after a reboot the backend may read the pre-reboot state file before the host service rewrites it; a stale-file banner can flash and clear.
