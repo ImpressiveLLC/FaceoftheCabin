@@ -41,7 +41,9 @@ HB_NOTIFY_HOOK=${HB_NOTIFY_HOOK:-}              # optional executable: called as
 HB_DEADMAN_URL=${HB_DEADMAN_URL:-}              # kind 1, "host alive": pinged every cycle, no dependencies (W-56)
 HB_DEADMAN_PLATFORM_URL=${HB_DEADMAN_PLATFORM_URL:-}  # kind 2, "platform healthy": pinged only while backend and Zigbee are up (W-56)
 HB_DEADMAN_STOP_URL=${HB_DEADMAN_STOP_URL:-}    # default: HB_DEADMAN_URL + /fail (healthchecks.io)
-HB_DEADMAN_TOKEN=${HB_DEADMAN_TOKEN:-}          # sent as "Authorization: Bearer" to every dead-man call (the Cloudflare Worker needs it)
+HB_DEADMAN_TOKEN=${HB_DEADMAN_TOKEN:-}          # sent as "Authorization: Bearer" (via curl's stdin config, never on the command line)
+HB_DEADMAN_TOKEN_HOSTS=${HB_DEADMAN_TOKEN_HOSTS:-.workers.dev}  # only these hosts receive the token: a leading dot matches subdomains; add a custom Worker domain here
+HB_UNIT=${HB_UNIT:-cabin-recovery-heartbeat.service}
 HB_PING_TARGETS=${HB_PING_TARGETS:-"1.1.1.1 9.9.9.9"}
 HB_HTTPS_TARGETS=${HB_HTTPS_TARGETS:-"https://www.cloudflare.com/cdn-cgi/trace https://www.google.com/generate_204"}
 HB_DNS_NAMES=${HB_DNS_NAMES:-"cloudflare.com github.com"}
@@ -142,10 +144,26 @@ flush_outbox() { # resend what could not go out; drop anything older than a day
   done
 }
 
-dm_curl() { # dm_curl URL ; the optional token goes in a header, never in the URL or the log
-  local args=(-fsS -m 10 --retry 2 -o /dev/null)
-  [ -n "$HB_DEADMAN_TOKEN" ] && args+=(-H "Authorization: Bearer $HB_DEADMAN_TOKEN")
-  curl "${args[@]}" "$1" 2>/dev/null
+token_host_ok() { # token_host_ok URL ; the bearer token goes only to a host the owner named (a third-party monitor must never get it)
+  local u=${1#*://} h
+  u=${u%%[/:?#]*}
+  for h in $HB_DEADMAN_TOKEN_HOSTS; do
+    case $h in
+      .*) [[ "$u" == *"$h" ]] && return 0 ;;
+      *) [ "$u" = "$h" ] && return 0 ;;
+    esac
+  done
+  return 1
+}
+
+dm_curl() { # dm_curl URL ; the token travels on curl's stdin (a shell builtin feeds it), so it is not in `ps` output or the log
+  local url=$1 esc
+  if [ -n "$HB_DEADMAN_TOKEN" ] && token_host_ok "$url"; then
+    esc=${HB_DEADMAN_TOKEN//\\/\\\\}; esc=${esc//\"/\\\"}
+    printf 'header = "Authorization: Bearer %s"\n' "$esc" | curl -K - -fsS -m 10 --retry 2 -o /dev/null "$url" 2>/dev/null
+  else
+    curl -fsS -m 10 --retry 2 -o /dev/null "$url" 2>/dev/null
+  fi
 }
 
 # The external piece: proves this service and the host are alive. Two kinds (W-56): "host alive" every cycle, and
@@ -663,6 +681,12 @@ cmd_stopped() {
   if systemctl list-jobs 2>/dev/null | grep -Eq '(shutdown|reboot|poweroff|halt|kexec)\.target'; then
     : >"$HB_STATE_DIR/clean-shutdown"; chmod 0644 "$HB_STATE_DIR/clean-shutdown"
     write_state host-shutdown
+    return 0
+  fi
+  # `systemctl restart` (an upgrade, a config change) also ends this service with SERVICE_RESULT=success, but a restart job
+  # for this unit is queued; that is not a stop and must not page or tell the dead-man the heartbeat ended.
+  if systemctl list-jobs 2>/dev/null | grep -Eq "${HB_UNIT//./\\.}[[:space:]]+(restart|try-restart|reload-or-restart|try-reload-or-restart)"; then
+    write_state restarting
     return 0
   fi
   case "${SERVICE_RESULT:-success}" in

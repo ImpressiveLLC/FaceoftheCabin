@@ -117,6 +117,37 @@ test('a deliberate stop pushes once, is not announced again as silence, and clea
   assert.deepEqual(await evaluate(w.env, T0 + 71 * MIN, w.fetchImpl), ['back:host']);
 });
 
+test('pings are stored at most once per four minutes so the KV free tier is not exhausted', async () => {
+  const w = world();
+  let puts = 0;
+  const realPut = w.env.HEARTBEAT_KV.put;
+  w.env.HEARTBEAT_KV.put = async (k, v) => { if (k.startsWith('last:')) puts++; return realPut(k, v); };
+  for (let i = 0; i < 10; i++) await handleFetch(req('/ping/host'), w.env, T0 + i * 60000);   // ten minutes, one ping a minute
+  assert.equal(puts, 3);                                                                       // minutes 0, 4 and 8
+  const status = await (await handleFetch(req('/status', { method: 'GET' }), w.env, T0 + 9 * 60000)).json();
+  assert.equal(status.kinds.host.ageSeconds, 60);                                              // minute 8's write
+  assert.deepEqual(await evaluate(w.env, T0 + 9 * MIN, w.fetchImpl), []);
+  // a day of pings stays under the 1000-writes-a-day limit for both kinds together
+  const d = world();
+  let dayPuts = 0;
+  const dayPut = d.env.HEARTBEAT_KV.put;
+  d.env.HEARTBEAT_KV.put = async (k, v) => { dayPuts++; return dayPut(k, v); };
+  for (let i = 0; i < 1440; i++) {
+    await handleFetch(req('/ping/host'), d.env, T0 + i * 60000);
+    await handleFetch(req('/ping/platform'), d.env, T0 + i * 60000);
+  }
+  assert.ok(dayPuts <= 720, `${dayPuts} writes in a day`);
+});
+
+test('a ping after a long silence is stored at once, and clock going backwards still stores', async () => {
+  const w = world();
+  await handleFetch(req('/ping/host'), w.env, T0);
+  await handleFetch(req('/ping/host'), w.env, T0 + 60 * MIN);
+  assert.equal(await w.env.HEARTBEAT_KV.get('last:host'), String(T0 + 60 * MIN));
+  await handleFetch(req('/ping/host'), w.env, T0 + 59 * MIN);
+  assert.equal(await w.env.HEARTBEAT_KV.get('last:host'), String(T0 + 59 * MIN));
+});
+
 test('thresholds come from the variables', async () => {
   const w = world({ SILENCE_MINUTES: '3', REPEAT_MINUTES: '5', NTFY_URL: 'https://ntfy.example/' });
   await handleFetch(req('/ping/host'), w.env, T0);

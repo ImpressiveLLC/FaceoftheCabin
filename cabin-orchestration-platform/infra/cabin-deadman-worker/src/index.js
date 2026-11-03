@@ -6,7 +6,7 @@
 // A cron trigger (every 5 minutes) looks at how long each kind has been silent and pushes to ntfy.
 //
 // Routes (every one needs "Authorization: Bearer <HEARTBEAT_TOKEN>"):
-//   GET|POST /ping/host        record "host alive"                       204
+//   GET|POST /ping/host        record "host alive" (stored at most every 4 min, KV write limit)   204
 //   GET|POST /ping/platform    record "platform healthy"                 204
 //   GET|POST /stop/host        the host stopped its heartbeat on purpose 204, and pushes once
 //   GET      /status           last-seen ages and open alerts            200 JSON
@@ -20,6 +20,9 @@
 // message states the outage length.
 
 const KINDS = ['host', 'platform'];
+// Workers KV's free tier allows 1000 writes a day. The host pings every minute, so a ping is stored at most once per
+// PING_WRITE_MS (well under the 10 minute silence threshold); /status ages are accurate to about that much.
+const PING_WRITE_MS = 4 * 60000;
 const DEFAULTS = { silenceMinutes: 10, repeatMinutes: 60, ntfyUrl: 'https://ntfy.sh' };
 
 function num(v, d) {
@@ -128,7 +131,9 @@ export async function handleFetch(request, env, now = Date.now(), fetchImpl = fe
 
   const ping = path.match(/^\/ping\/(host|platform)$/);
   if (ping) {
-    await kv.put(`last:${ping[1]}`, String(now));
+    const key = `last:${ping[1]}`;
+    const prev = await readInt(kv, key);
+    if (prev == null || now - prev >= PING_WRITE_MS || now < prev) await kv.put(key, String(now));
     return new Response(null, { status: 204 });
   }
   if (path === '/stop/host') {

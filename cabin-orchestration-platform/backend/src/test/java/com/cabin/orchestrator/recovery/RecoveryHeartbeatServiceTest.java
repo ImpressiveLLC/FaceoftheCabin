@@ -151,6 +151,19 @@ class RecoveryHeartbeatServiceTest {
     }
 
     @Test
+    void aSymlinkedStateFolderIsRefused() throws IOException {
+        Path real = Files.createDirectory(dir.resolve("real"));
+        Files.writeString(real.resolve("state.json"), state("running", "2026-11-03T11:59:30Z", comp("backend", "ok", "2026-11-03T11:59:30Z")));
+        Path link = dir.resolve("link");
+        try {
+            Files.createSymbolicLink(link, real);
+        } catch (UnsupportedOperationException | IOException e) {
+            assumeTrue(false, "symlinks not available here");
+        }
+        assertEquals("recovery:service-silent", new RecoveryHeartbeatService(true, link.toString(), 300).activeAlerts(NOW).get(0).alertId());
+    }
+
+    @Test
     void untrustedFieldsAreWhitelistedAndBounded() throws IOException {
         String evil = "{\"name\":\"../etc/passwd\",\"status\":\"down\"},{\"name\":\"BAD NAME\",\"status\":\"down\"},"
             + "{\"name\":\"ok-one\",\"status\":\"down\",\"detail\":\"" + "d".repeat(2000) + "\",\"extra\":\"ignored\"}";

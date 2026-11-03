@@ -10,10 +10,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -81,13 +83,19 @@ public class RecoveryHeartbeatService {
     private record Snapshot(Map<String, Object> state, Instant writtenAt, boolean unreadable) {}
 
     private Snapshot read() {
-        Path p = Path.of(stateDir, "state.json");
+        Path dir = Path.of(stateDir);
+        Path p = dir.resolve("state.json");
+        // A symlinked state folder or file would let whoever can write there point this read at another file.
+        if (Files.isSymbolicLink(dir)) return new Snapshot(null, null, true);
         if (!Files.exists(p, LinkOption.NOFOLLOW_LINKS)) return null;
-        try {
-            if (!Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS) || Files.size(p) > MAX_BYTES) {
+        // One open that refuses symlinks, then a bounded read: no separate size check to race against.
+        try (InputStream in = Files.newInputStream(p, LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).isRegularFile()) {
                 return new Snapshot(null, null, true);
             }
-            Map<String, Object> raw = mapper.readValue(Files.readString(p, StandardCharsets.UTF_8), new TypeReference<>() {});
+            byte[] bytes = in.readNBytes((int) MAX_BYTES + 1);
+            if (bytes.length > MAX_BYTES) return new Snapshot(null, null, true);
+            Map<String, Object> raw = mapper.readValue(new String(bytes, StandardCharsets.UTF_8), new TypeReference<>() {});
             Instant at = instant(raw.get("writtenAt"));
             if (at == null) return new Snapshot(null, null, true);
             return new Snapshot(raw, at, false);

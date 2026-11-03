@@ -33,13 +33,14 @@ esac
 EOF
 cat >"$W/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-url="${@: -1}"; title=""; prio=""; body=""; wfmt=0; auth=no
+echo "$*" >>"$W/argv.log"; url="${@: -1}"; title=""; prio=""; body=""; wfmt=0; auth=no
 args=("$@")
 for ((i=0;i<${#args[@]};i++)); do
   case "${args[$i]}" in
     -H) h="${args[$((i+1))]}"; case "$h" in Title:*) title="${h#Title: }";; Priority:*) prio="${h#Priority: }";; esac ;;
     -d) body="${args[$((i+1))]}" ;;
     -w) wfmt=1 ;;
+    -K) if grep -q 'Authorization: Bearer' ; then auth=yes; fi ;;
   esac
   case "${args[$i]}" in "Authorization: Bearer "*) auth=yes ;; esac
 done
@@ -99,7 +100,7 @@ EOF
 chmod +x "$W"/bin/*
 
 reset_world() {
-  rm -rf "$W/state" "$W/c" "$W/units" "$W/ntfy.log" "$W/deadman.log" "$W/report_seen" "$W/hook.log" "$W/ntfy_rc" "$W/jobs" "$W/avail" "$W/pg_rc"
+  rm -rf "$W/state" "$W/c" "$W/units" "$W/ntfy.log" "$W/deadman.log" "$W/report_seen" "$W/argv.log" "$W/hook.log" "$W/ntfy_rc" "$W/jobs" "$W/avail" "$W/pg_rc"
   rm -f "$W"/df_* "$W"/code_* "$W"/ping_* "$W"/dns_down "$W"/no_route "$W"/ts_dead "$W"/tsping_rc
   mkdir -p "$W/state" "$W/c" "$W/units"
   for c in cabin-backend cabin-postgres cabin-kafka mosquitto zigbee2mqtt frigate blinkbridge cloudflared homeassistant nodered \
@@ -275,6 +276,25 @@ reset_world; echo '{"status":"running"}' >"$W/state/state.json"
 SERVICE_RESULT=exit-code run stopped
 check "crash: WARN notice, no dead-man fail, systemd restarts it" "grep -q '^high|Cabin: heartbeat service crashed|' $W/ntfy.log"
 
+echo "restart versus deliberate stop"
+reset_world; echo '{"status":"running"}' >"$W/state/state.json"
+echo '2210 cabin-recovery-heartbeat.service restart running' >"$W/jobs"
+HB_DEADMAN_URL=https://dead.test/ping/abc SERVICE_RESULT=success run stopped
+check "systemctl restart: no push, no dead-man /fail, state says restarting" "[ \$(pushes) -eq 0 ] && [ ! -s $W/deadman.log ] && grep -q '\"status\":\"restarting\"' $W/state/state.json"
+for j in try-restart reload-or-restart; do
+  reset_world; echo '{"status":"running"}' >"$W/state/state.json"; echo "77 cabin-recovery-heartbeat.service $j running" >"$W/jobs"
+  SERVICE_RESULT=success run stopped
+  check "$j job: no push" "[ \$(pushes) -eq 0 ]"
+done
+reset_world; echo '{"status":"running"}' >"$W/state/state.json"
+echo '2211 cabin-recovery-heartbeat.service stop running' >"$W/jobs"
+HB_DEADMAN_URL=https://dead.test/ping/abc SERVICE_RESULT=success run stopped
+check "systemctl stop: still the CRITICAL death notice and /fail" "[ \$(pushes) -eq 1 ] && grep -q 'STOPPED on purpose' $W/ntfy.log && grep -q 'ping/abc/fail' $W/deadman.log"
+reset_world; echo '{"status":"running"}' >"$W/state/state.json"
+echo '2212 some-other.service restart running' >"$W/jobs"
+SERVICE_RESULT=success run stopped
+check "a restart job for a different unit does not hide a real stop" "[ \$(pushes) -eq 1 ]"
+
 echo "delivery problems"
 reset_world; echo 'false||0' >"$W/c/nodered"; echo 7 >"$W/ntfy_rc"
 for i in 1 2 3 4 5; do HB_NOW=$((1000300+i*60)) run once; done
@@ -336,16 +356,25 @@ check "internet back; dns still broken is announced on its own; public-url recov
 
 echo "dead-man: two kinds and a token"
 reset_world
-HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_PLATFORM_URL=https://dead.test/ping/platform HB_DEADMAN_TOKEN=s3cret-token run once
+HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_PLATFORM_URL=https://dead.test/ping/platform HB_DEADMAN_TOKEN=s3cret-token HB_DEADMAN_TOKEN_HOSTS=dead.test run once
 check "both kinds ping while the platform is healthy, with the bearer token" "grep -qx 'https://dead.test/ping/host auth=yes' $W/deadman.log && grep -qx 'https://dead.test/ping/platform auth=yes' $W/deadman.log"
 check "the token never reaches the state file or the report" "! grep -rq s3cret-token $W/state"
+check "the token is never on a command line (it goes through curl stdin)" "! grep -q s3cret-token $W/argv.log"
+: >"$W/deadman.log"
+HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_TOKEN=s3cret-token run once
+check "a host not named in HB_DEADMAN_TOKEN_HOSTS never receives the token" "grep -qx 'https://dead.test/ping/host auth=no' $W/deadman.log"
+: >"$W/deadman.log"
+HB_DEADMAN_URL=https://cabin-deadman.acct.workers.dev/ping/host run once
+check "token host matching: a .workers.dev subdomain matches the default list" "( source '$SCRIPT'; HB_DEADMAN_TOKEN_HOSTS=.workers.dev; token_host_ok https://cabin-deadman.acct.workers.dev/ping/host && ! token_host_ok https://hc-ping.com/abc && ! token_host_ok https://evilworkers.dev.example.com/x && ! token_host_ok https://workers.dev.evil.test/ping )"
+HB_DEADMAN_TOKEN=s3cret-token HB_DEADMAN_TOKEN_HOSTS=dead.test HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_PLATFORM_URL=https://dead.test/ping/platform run once >/dev/null
+: >"$W/deadman.log"
 echo '{"state":"offline"}' >"$W/z2m_state"; : >"$W/deadman.log"
 HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_PLATFORM_URL=https://dead.test/ping/platform run once
 check "Zigbee bridge offline: host-alive still pings, platform-healthy is withheld" "grep -qx 'https://dead.test/ping/host auth=no' $W/deadman.log && ! grep -q platform $W/deadman.log && grep -q '\"platform\":\"withheld\"' $W/state/state.json"
 reset_world; echo 'false||0' >"$W/c/cabin-backend"; HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_PLATFORM_URL=https://dead.test/ping/platform run once
 check "backend down: platform-healthy withheld too" "! grep -q platform $W/deadman.log"
 reset_world; : >"$W/state/clean-shutdown"; echo '{"status":"running"}' >"$W/state/state.json"
-HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_STOP_URL=https://dead.test/stop/host HB_DEADMAN_TOKEN=tok SERVICE_RESULT=success run stopped
+HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_STOP_URL=https://dead.test/stop/host HB_DEADMAN_TOKEN=tok HB_DEADMAN_TOKEN_HOSTS=dead.test SERVICE_RESULT=success run stopped
 check "stop uses HB_DEADMAN_STOP_URL with the token" "grep -qx 'https://dead.test/stop/host auth=yes' $W/deadman.log"
 
 echo "report for the read-only monitoring user"

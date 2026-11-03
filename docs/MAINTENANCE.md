@@ -2937,8 +2937,11 @@ HB_DEADMAN_PLATFORM_URL=https://cabin-deadman.<account>.workers.dev/ping/platfor
 HB_DEADMAN_STOP_URL=https://cabin-deadman.<account>.workers.dev/stop/host
 HB_DEADMAN_TOKEN=<the same value as the Worker's HEARTBEAT_TOKEN>
 EOF
+sudo chown root:root /etc/cabin-recovery-heartbeat.env && sudo chmod 600 /etc/cabin-recovery-heartbeat.env
 sudo systemctl restart cabin-recovery-heartbeat
 ```
+
+The token is sent only to hosts listed in `HB_DEADMAN_TOKEN_HOSTS` (default `.workers.dev`; add a custom Worker domain there), so a third-party monitor URL never receives it, and it travels on curl's standard input so it does not appear in `ps` output. The Worker stores each ping at most once every 4 minutes to stay inside the Workers KV free tier (1000 writes a day), so its `/status` ages are accurate to about 4 minutes.
 
 *healthchecks.io.* A check with period 5 minutes and grace 5 minutes and an integration for where admins are reached; put its ping URL in `HB_DEADMAN_URL` (no token, no platform URL, or a second check for it). A deliberate stop calls `<url>/fail`.
 
@@ -2951,9 +2954,11 @@ sudo useradd --create-home --shell /bin/bash --comment "read-only recovery monit
 sudo install -d -m 700 -o cabin-monitor -g cabin-monitor /home/cabin-monitor/.ssh
 echo 'restrict,command="cat /storage/archives/cabin_event/.recovery/state.json /storage/archives/cabin_event/.recovery/report.txt" ssh-ed25519 <PUBLIC KEY> cabin-monitor' | sudo tee /home/cabin-monitor/.ssh/authorized_keys >/dev/null
 sudo chown cabin-monitor:cabin-monitor /home/cabin-monitor/.ssh/authorized_keys && sudo chmod 600 /home/cabin-monitor/.ssh/authorized_keys
-printf 'Match User cabin-monitor\n  PasswordAuthentication no\n  AllowTcpForwarding no\n  X11Forwarding no\n  PermitTTY no\n' | sudo tee /etc/ssh/sshd_config.d/cabin-monitor.conf >/dev/null
+printf 'Match User cabin-monitor\n  PasswordAuthentication no\n  AllowTcpForwarding no\n  X11Forwarding no\n  PermitTTY no\nMatch LocalPort 2222\n  AllowUsers cabin-monitor\n  PermitRootLogin no\n  PasswordAuthentication no\n  KbdInteractiveAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/cabin-monitor.conf >/dev/null
 sudo sshd -t && sudo systemctl reload ssh
 ```
+
+   The `Match LocalPort 2222` block makes the extra port usable by `cabin-monitor` only (no root, no passwords, no other account), even though the socket listens on every address. If the first block was already applied from an earlier version of this runbook, run the same `printf ... | sudo tee` line again to replace the file, then `sudo sshd -t && sudo systemctl reload ssh`, and confirm with `sudo sshd -T -C user=root,host=x,addr=1.2.3.4,laddr=100.77.44.113,lport=2222 | grep -Ei '^(allowusers|permitrootlogin)'` (expect `allowusers cabin-monitor` and `permitrootlogin no`).
 
    Then open port 2222. **How depends on how OpenSSH is started, and a `Port 2222` line is ignored on Ubuntu 24.04**, where `ssh.socket` (socket activation) owns the listening ports; this is what a first attempt on 2026-11-03 hit ("Connection refused" on 2222 while 22 answered). Check which applies, then do the matching step:
 
@@ -3001,9 +3006,9 @@ It prints the live component state (JSON) and the last boot check report, and no
 
 **Tuning** (in `/etc/cabin-recovery-heartbeat.env`, then restart the service): `HB_MISS_LIMIT` (5), `HB_INTERVAL` (60 s), `HB_RECOVER_OKS` (2), `HB_REPAGE_FIRST` (3600 s), `HB_REPAGE_EVERY` (21600 s), `HB_BOOT_GRACE` (180 s), `HB_BOOT_RETRY` (120 s), `HB_PUBLIC_URLS`, `HB_PING_TARGETS`, `HB_HTTPS_TARGETS`, `HB_DNS_NAMES`, `HB_TAILSCALE_PEERS`, `HB_NOTIFY_HOOK` (an executable called as `HOOK LEVEL TITLE MESSAGE`, for email or SMS). Backend: `cabin.recovery.staleAfterSeconds` (300).
 
-**Stopping it for maintenance.** Stopping the service pages by design (that is the "heartbeat stopped" notice). There is no maintenance mute yet. Stopping a monitored container for more than 5 minutes also pages.
+**Stopping it for maintenance.** `sudo systemctl restart cabin-recovery-heartbeat` (an upgrade, a settings change) does not page and does not tell the dead-man the heartbeat ended; `sudo systemctl stop` pages by design (that is the "heartbeat stopped" notice). There is no maintenance mute yet. Stopping a monitored container for more than 5 minutes also pages.
 
-**Tests.** `bash scripts/host/test_cabin_recovery_heartbeat.sh` (96 checks against stand-in `docker`, `curl`, `systemctl`, `ping` and `tailscale`; needs Linux), `node --test` in `cabin-orchestration-platform/infra/cabin-deadman-worker` (12 checks), `RecoveryHeartbeatServiceTest`, `RecoveryControllerTest`, `ActiveAlertServiceTest`, and `ui/src/RecoveryStatus.test.jsx`.
+**Tests.** `bash scripts/host/test_cabin_recovery_heartbeat.sh` (see the test file for the count; against stand-in `docker`, `curl`, `systemctl`, `ping` and `tailscale`; needs Linux), `node --test` in `cabin-orchestration-platform/infra/cabin-deadman-worker` (12 checks), `RecoveryHeartbeatServiceTest`, `RecoveryControllerTest`, `ActiveAlertServiceTest`, and `ui/src/RecoveryStatus.test.jsx`.
 
 ## Incident Response — quick triage
 
