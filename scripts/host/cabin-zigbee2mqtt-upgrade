@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# cabin-zigbee2mqtt-upgrade: upgrade the cabin's Zigbee2MQTT container safely.
+#
+# Why this exists: a Zigbee2MQTT upgrade is a whole-mesh change (docs/MAINTENANCE.md,
+# "Upgrading Zigbee2MQTT"). The cabin runs koenkk/zigbee2mqtt:latest, and an old build did not
+# know the SONOFF S61SZBTPB (2026-10-21). This script does the careful version of
+# "docker compose pull && up": copy the data directory, keep the old image under a rollback tag,
+# pull, recreate, then require the container healthy and the bridge online. On any failure it puts
+# the old image and the copied data back.
+#
+# Default is a dry run (reports, changes nothing). --apply does it.
+#   cabin-zigbee2mqtt-upgrade            # dry run: current vs available image, what it would do
+#   cabin-zigbee2mqtt-upgrade --apply    # back up, pull, recreate, verify, roll back on failure
+#
+# It never deletes a backup (storage rules: nothing is removed by an upgrade script); it lists old
+# ones and their sizes so cabin-storage-prune or the owner can decide.
+#
+# Settings (environment, all optional):
+#   Z2M_CONTAINER   container name                       (default zigbee2mqtt)
+#   Z2M_DATA_DIR    host data directory                  (default /storage/services/zigbee2mqtt)
+#   Z2M_IMAGE       image to pull                        (default: the container's own image name)
+#   COMPOSE_FILE    compose file of the stack            (default: read from the container's labels)
+#   MQTT_CONTAINER  broker container for the bridge check (default mosquitto; the check is skipped
+#                   with a warning if mosquitto_sub cannot read the topic)
+#   HEALTH_WAIT     seconds to wait for healthy          (default 180)
+set -u
+
+Z2M_CONTAINER="${Z2M_CONTAINER:-zigbee2mqtt}"
+Z2M_DATA_DIR="${Z2M_DATA_DIR:-/storage/services/zigbee2mqtt}"
+MQTT_CONTAINER="${MQTT_CONTAINER:-mosquitto}"
+HEALTH_WAIT="${HEALTH_WAIT:-180}"
+APPLY=0
+[ "${1:-}" = "--apply" ] && APPLY=1
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+command -v docker >/dev/null 2>&1 || die "docker not found"
+docker inspect "$Z2M_CONTAINER" >/dev/null 2>&1 || die "container '$Z2M_CONTAINER' not found"
+[ -d "$Z2M_DATA_DIR" ] || die "data directory '$Z2M_DATA_DIR' not found"
+
+IMAGE="${Z2M_IMAGE:-$(docker inspect -f '{{.Config.Image}}' "$Z2M_CONTAINER")}"
+OLD_ID="$(docker inspect -f '{{.Image}}' "$Z2M_CONTAINER")"
+PROJECT="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$Z2M_CONTAINER")"
+SERVICE="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$Z2M_CONTAINER")"
+if [ -z "${COMPOSE_FILE:-}" ]; then
+  COMPOSE_FILE="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$Z2M_CONTAINER" | cut -d, -f1)"
+fi
+[ -n "$PROJECT" ] && [ -n "$SERVICE" ] && [ -f "$COMPOSE_FILE" ] ||
+  die "cannot find the compose file for '$Z2M_CONTAINER' (set COMPOSE_FILE)"
+compose() { docker compose -p "$PROJECT" -f "$COMPOSE_FILE" "$@"; }
+
+version_of() { docker exec "$Z2M_CONTAINER" sh -c 'cat /app/package.json 2>/dev/null' 2>/dev/null |
+  sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' | head -1; }
+
+say "container : $Z2M_CONTAINER ($SERVICE in project $PROJECT)"
+say "compose   : $COMPOSE_FILE"
+say "image     : $IMAGE"
+say "running   : $(version_of) (image ${OLD_ID#sha256:})"
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP="${Z2M_DATA_DIR}.bak-${STAMP}"
+ROLLBACK_TAG="cabin-rollback/zigbee2mqtt:${STAMP}"
+
+if [ "$APPLY" -ne 1 ]; then
+  say "dry run: would copy $Z2M_DATA_DIR to $BACKUP, tag the running image $ROLLBACK_TAG,"
+  say "         pull $IMAGE, recreate $SERVICE, wait up to ${HEALTH_WAIT}s for healthy and bridge online,"
+  say "         and restore the copy and old image if any step fails."
+  say "existing backups:"
+  du -sh "${Z2M_DATA_DIR}".bak-* 2>/dev/null || say "  (none)"
+  say "run with --apply to do it."
+  exit 0
+fi
+
+bridge_online() {
+  out="$(docker exec "$MQTT_CONTAINER" mosquitto_sub -t zigbee2mqtt/bridge/state -C 1 -W 5 2>/dev/null)" || return 2
+  case "$out" in *online*) return 0 ;; *) return 1 ;; esac
+}
+wait_ready() {
+  waited=0
+  while [ "$waited" -lt "$HEALTH_WAIT" ]; do
+    status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$Z2M_CONTAINER" 2>/dev/null)"
+    if [ "$status" = "healthy" ] || [ "$status" = "running" ]; then
+      bridge_online; rc=$?
+      [ "$rc" -eq 0 ] && return 0
+      if [ "$rc" -eq 2 ]; then say "WARNING: could not read zigbee2mqtt/bridge/state from '$MQTT_CONTAINER'; relying on container health"; return 0; fi
+    fi
+    sleep 5; waited=$((waited + 5))
+  done
+  return 1
+}
+
+say "backing up $Z2M_DATA_DIR -> $BACKUP"
+cp -a "$Z2M_DATA_DIR" "$BACKUP" || die "backup failed; nothing changed"
+docker tag "$OLD_ID" "$ROLLBACK_TAG" || die "could not tag the running image; nothing changed"
+
+say "pulling $IMAGE"
+compose pull "$SERVICE" || die "pull failed; nothing changed (the backup at $BACKUP is unused)"
+NEW_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE" 2>/dev/null)"
+if [ "$NEW_ID" = "$OLD_ID" ]; then
+  say "already on the latest image; nothing to upgrade (the backup at $BACKUP is unused)"
+  exit 0
+fi
+
+rollback() {
+  say "ROLLBACK: $1"
+  compose stop "$SERVICE" >/dev/null 2>&1
+  rm -rf "${Z2M_DATA_DIR:?}"/* "${Z2M_DATA_DIR:?}"/.[!.]* 2>/dev/null
+  cp -a "$BACKUP"/. "$Z2M_DATA_DIR"/
+  docker tag "$ROLLBACK_TAG" "$IMAGE"
+  compose up -d --no-deps --force-recreate "$SERVICE"
+  if wait_ready; then say "rolled back to ${OLD_ID#sha256:}; data restored from $BACKUP"; else say "ROLLBACK DID NOT COME UP HEALTHY: check 'docker logs $Z2M_CONTAINER' by hand"; fi
+  exit 1
+}
+
+say "recreating $SERVICE on the new image"
+compose up -d --no-deps --force-recreate "$SERVICE" || rollback "compose up failed"
+wait_ready || rollback "not healthy and bridge online within ${HEALTH_WAIT}s"
+
+say "upgraded : $(version_of) (image ${NEW_ID#sha256:})"
+say "backup kept at $BACKUP; old image kept as $ROLLBACK_TAG"
+say "old backups (never deleted by this script):"
+du -sh "${Z2M_DATA_DIR}".bak-* 2>/dev/null
+say "check next: the other devices report in Device Manager, and 'Re-check device info' on any device the new version newly supports."
