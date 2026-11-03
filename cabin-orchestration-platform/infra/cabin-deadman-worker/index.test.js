@@ -149,11 +149,20 @@ test('a ping after a long silence is stored at once, and clock going backwards s
 });
 
 test('thresholds come from the variables', async () => {
-  const w = world({ SILENCE_MINUTES: '3', REPEAT_MINUTES: '5', NTFY_URL: 'https://ntfy.example/' });
+  const w = world({ SILENCE_MINUTES: '12', REPEAT_MINUTES: '5', NTFY_URL: 'https://ntfy.example/' });
   await handleFetch(req('/ping/host'), w.env, T0);
-  assert.deepEqual(await evaluate(w.env, T0 + 4 * MIN, w.fetchImpl), ['silent:host']);
+  assert.deepEqual(await evaluate(w.env, T0 + 11 * MIN, w.fetchImpl), []);
+  assert.deepEqual(await evaluate(w.env, T0 + 13 * MIN, w.fetchImpl), ['silent:host']);
   assert.equal(w.calls[0].url, 'https://ntfy.example/topic-x');
-  assert.deepEqual(await evaluate(w.env, T0 + 10 * MIN, w.fetchImpl), ['repeat:host']);
+  assert.deepEqual(await evaluate(w.env, T0 + 19 * MIN, w.fetchImpl), ['repeat:host']);
+});
+
+test('a silence threshold smaller than two write intervals is raised so throttled pings never false-alert', async () => {
+  const w = world({ SILENCE_MINUTES: '1' });
+  await handleFetch(req('/ping/host'), w.env, T0);
+  await handleFetch(req('/ping/host'), w.env, T0 + 3 * MIN);   // not stored: under four minutes since the last write
+  assert.deepEqual(await evaluate(w.env, T0 + 7 * MIN, w.fetchImpl), []);
+  assert.deepEqual(await evaluate(w.env, T0 + 9 * MIN, w.fetchImpl), ['silent:host']);
 });
 
 test('safeEqual compares whole strings', () => {

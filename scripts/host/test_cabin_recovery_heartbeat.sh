@@ -295,6 +295,10 @@ echo '2212 some-other.service restart running' >"$W/jobs"
 SERVICE_RESULT=success run stopped
 check "a restart job for a different unit does not hide a real stop" "[ \$(pushes) -eq 1 ]"
 
+reset_world; echo '{"status":"running"}' >"$W/state/state.json"; echo '2213 cabin-recovery-heartbeat.service restart running' >"$W/jobs"
+SERVICE_RESULT=exit-code run stopped
+check "a crash during a queued restart still warns" "grep -q '^high|Cabin: heartbeat service crashed|' $W/ntfy.log"
+
 echo "delivery problems"
 reset_world; echo 'false||0' >"$W/c/nodered"; echo 7 >"$W/ntfy_rc"
 for i in 1 2 3 4 5; do HB_NOW=$((1000300+i*60)) run once; done
@@ -365,7 +369,12 @@ HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_TOKEN=s3cret-token run onc
 check "a host not named in HB_DEADMAN_TOKEN_HOSTS never receives the token" "grep -qx 'https://dead.test/ping/host auth=no' $W/deadman.log"
 : >"$W/deadman.log"
 HB_DEADMAN_URL=https://cabin-deadman.acct.workers.dev/ping/host run once
-check "token host matching: a .workers.dev subdomain matches the default list" "( source '$SCRIPT'; HB_DEADMAN_TOKEN_HOSTS=.workers.dev; token_host_ok https://cabin-deadman.acct.workers.dev/ping/host && ! token_host_ok https://hc-ping.com/abc && ! token_host_ok https://evilworkers.dev.example.com/x && ! token_host_ok https://workers.dev.evil.test/ping )"
+check "token host matching: a .workers.dev subdomain matches the default list" "( source '$SCRIPT'; HB_DEADMAN_TOKEN_HOSTS=.workers.dev; token_host_ok https://cabin-deadman.acct.workers.dev/ping/host && token_host_ok https://CABIN-DEADMAN.Acct.Workers.Dev:443/ping && ! token_host_ok https://hc-ping.com/abc && ! token_host_ok https://evilworkers.dev.example.com/x && ! token_host_ok https://workers.dev.evil.test/ping )"
+check "token host matching: userinfo, backslash, plain http, odd ports and brackets are never sent" "( source '$SCRIPT'; HB_DEADMAN_TOKEN_HOSTS=.workers.dev; ! token_host_ok 'https://x.workers.dev:pw@evil.com/p' && ! token_host_ok 'https://evil.com\\\\@x.workers.dev/p' && ! token_host_ok 'https://evil.com\\\\x.workers.dev/p' && ! token_host_ok 'https://user@x.workers.dev/p' && ! token_host_ok 'http://x.workers.dev/p' && ! token_host_ok 'https://x.workers.dev:abc/p' && ! token_host_ok 'https://[::1]/p' && ! token_host_ok 'https:///p' && ! token_host_ok 'ftp://x.workers.dev/p' )"
+check "token host list is not globbed" "( source '$SCRIPT'; cd '$W' && touch zzz.workers.dev; HB_DEADMAN_TOKEN_HOSTS='*.workers.dev'; ! token_host_ok https://anything.test/p )"
+: >"$W/deadman.log"
+HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_TOKEN=$'bad\nheader = "x"' HB_DEADMAN_TOKEN_HOSTS=dead.test run once
+check "a token with a control character is refused, the ping reports failed, nothing is sent" "[ ! -s $W/deadman.log ] && grep -q '\"lastResult\":\"failed\"' $W/state/state.json"
 HB_DEADMAN_TOKEN=s3cret-token HB_DEADMAN_TOKEN_HOSTS=dead.test HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_PLATFORM_URL=https://dead.test/ping/platform run once >/dev/null
 : >"$W/deadman.log"
 echo '{"state":"offline"}' >"$W/z2m_state"; : >"$W/deadman.log"

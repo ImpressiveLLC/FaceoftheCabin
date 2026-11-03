@@ -144,13 +144,22 @@ flush_outbox() { # resend what could not go out; drop anything older than a day
   done
 }
 
-token_host_ok() { # token_host_ok URL ; the bearer token goes only to a host the owner named (a third-party monitor must never get it)
-  local u=${1#*://} h
-  u=${u%%[/:?#]*}
-  for h in $HB_DEADMAN_TOKEN_HOSTS; do
+token_host_ok() { # token_host_ok URL ; the bearer token goes only over https to a host the owner named
+  local url=$1 auth host h rest hosts=()
+  case $url in https://*) ;; *) return 1 ;; esac
+  auth=${url#https://}; auth=${auth%%[/?#]*}
+  # Reject userinfo ("host.workers.dev:pw@evil.com" would otherwise read as host.workers.dev), backslashes (some clients
+  # treat them as a path separator), IPv6 literals and empty authorities, before anything is split.
+  case $auth in ''|*@*|*\\*|*\[*|*\]*) return 1 ;; esac
+  host=${auth%%:*}; host=${host,,}
+  if [[ $auth == *:* ]]; then rest=${auth#*:}; [[ $rest =~ ^[0-9]{1,5}$ ]] || return 1; fi
+  [ -n "$host" ] || return 1
+  read -ra hosts <<<"$HB_DEADMAN_TOKEN_HOSTS"   # read -a does not glob, unlike an unquoted for-list
+  for h in "${hosts[@]}"; do
+    h=${h,,}
     case $h in
-      .*) [[ "$u" == *"$h" ]] && return 0 ;;
-      *) [ "$u" = "$h" ] && return 0 ;;
+      .*) [[ "$host" == *"$h" ]] && return 0 ;;
+      *) [ "$host" = "$h" ] && return 0 ;;
     esac
   done
   return 1
@@ -159,6 +168,8 @@ token_host_ok() { # token_host_ok URL ; the bearer token goes only to a host the
 dm_curl() { # dm_curl URL ; the token travels on curl's stdin (a shell builtin feeds it), so it is not in `ps` output or the log
   local url=$1 esc
   if [ -n "$HB_DEADMAN_TOKEN" ] && token_host_ok "$url"; then
+    # A control character would split curl's config line and could add options; refuse such a token outright.
+    if [[ $HB_DEADMAN_TOKEN =~ [[:cntrl:]] ]]; then log "HB_DEADMAN_TOKEN contains a control character; not sending"; return 1; fi
     esc=${HB_DEADMAN_TOKEN//\\/\\\\}; esc=${esc//\"/\\\"}
     printf 'header = "Authorization: Bearer %s"\n' "$esc" | curl -K - -fsS -m 10 --retry 2 -o /dev/null "$url" 2>/dev/null
   else
@@ -684,8 +695,9 @@ cmd_stopped() {
     return 0
   fi
   # `systemctl restart` (an upgrade, a config change) also ends this service with SERVICE_RESULT=success, but a restart job
-  # for this unit is queued; that is not a stop and must not page or tell the dead-man the heartbeat ended.
-  if systemctl list-jobs 2>/dev/null | grep -Eq "${HB_UNIT//./\\.}[[:space:]]+(restart|try-restart|reload-or-restart|try-reload-or-restart)"; then
+  # for this unit is queued; that is not a stop and must not page or tell the dead-man the heartbeat ended. A crash
+  # during a queued restart (SERVICE_RESULT not success) still falls through to the crash warning below.
+  if [ "${SERVICE_RESULT:-success}" = success ] && systemctl list-jobs 2>/dev/null | grep -Eq "${HB_UNIT//./\\.}[[:space:]]+(restart|try-restart|reload-or-restart|try-reload-or-restart)"; then
     write_state restarting
     return 0
   fi

@@ -88,17 +88,23 @@ public class RecoveryHeartbeatService {
         // A symlinked state folder or file would let whoever can write there point this read at another file.
         if (Files.isSymbolicLink(dir)) return new Snapshot(null, null, true);
         if (!Files.exists(p, LinkOption.NOFOLLOW_LINKS)) return null;
-        // One open that refuses symlinks, then a bounded read: no separate size check to race against.
-        try (InputStream in = Files.newInputStream(p, LinkOption.NOFOLLOW_LINKS)) {
-            if (!Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).isRegularFile()) {
-                return new Snapshot(null, null, true);
+        // Decide it is a regular file BEFORE opening (opening a FIFO would block forever), open without following
+        // symlinks, then confirm it is still the same file and read at most MAX_BYTES + 1.
+        try {
+            BasicFileAttributes before = Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (!before.isRegularFile() || before.size() > MAX_BYTES) return new Snapshot(null, null, true);
+            try (InputStream in = Files.newInputStream(p, LinkOption.NOFOLLOW_LINKS)) {
+                BasicFileAttributes after = Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                if (!after.isRegularFile() || (before.fileKey() != null && !before.fileKey().equals(after.fileKey()))) {
+                    return new Snapshot(null, null, true);
+                }
+                byte[] bytes = in.readNBytes((int) MAX_BYTES + 1);
+                if (bytes.length > MAX_BYTES) return new Snapshot(null, null, true);
+                Map<String, Object> raw = mapper.readValue(new String(bytes, StandardCharsets.UTF_8), new TypeReference<>() {});
+                Instant at = instant(raw.get("writtenAt"));
+                if (at == null) return new Snapshot(null, null, true);
+                return new Snapshot(raw, at, false);
             }
-            byte[] bytes = in.readNBytes((int) MAX_BYTES + 1);
-            if (bytes.length > MAX_BYTES) return new Snapshot(null, null, true);
-            Map<String, Object> raw = mapper.readValue(new String(bytes, StandardCharsets.UTF_8), new TypeReference<>() {});
-            Instant at = instant(raw.get("writtenAt"));
-            if (at == null) return new Snapshot(null, null, true);
-            return new Snapshot(raw, at, false);
         } catch (IOException | RuntimeException e) {
             log.debug("Could not read recovery state: {}", e.toString());
             return new Snapshot(null, null, true);

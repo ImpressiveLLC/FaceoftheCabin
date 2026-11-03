@@ -2941,7 +2941,7 @@ sudo chown root:root /etc/cabin-recovery-heartbeat.env && sudo chmod 600 /etc/ca
 sudo systemctl restart cabin-recovery-heartbeat
 ```
 
-The token is sent only to hosts listed in `HB_DEADMAN_TOKEN_HOSTS` (default `.workers.dev`; add a custom Worker domain there), so a third-party monitor URL never receives it, and it travels on curl's standard input so it does not appear in `ps` output. The Worker stores each ping at most once every 4 minutes to stay inside the Workers KV free tier (1000 writes a day), so its `/status` ages are accurate to about 4 minutes.
+The token is sent only to hosts listed in `HB_DEADMAN_TOKEN_HOSTS` (default `.workers.dev`; add a custom Worker domain there), so a third-party monitor URL never receives it, and it travels on curl's standard input so it does not appear in `ps` output. The Worker stores each ping at most once every 4 minutes to stay inside the Workers KV free tier (1000 writes a day), so its `/status` ages are accurate to about 4 minutes, and its silence threshold is never lower than 8 minutes whatever `SILENCE_MINUTES` says. The token is sent only over `https://`, never to a URL with a user name in it, and `HB_DEADMAN_TOKEN` must not contain control characters (a token with a line break is refused and the ping reports failed).
 
 *healthchecks.io.* A check with period 5 minutes and grace 5 minutes and an integration for where admins are reached; put its ping URL in `HB_DEADMAN_URL` (no token, no platform URL, or a second check for it). A deliberate stop calls `<url>/fail`.
 

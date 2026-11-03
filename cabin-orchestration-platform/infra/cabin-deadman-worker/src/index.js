@@ -32,7 +32,9 @@ function num(v, d) {
 
 function cfg(env) {
   return {
-    silenceMs: num(env.SILENCE_MINUTES, DEFAULTS.silenceMinutes) * 60000,
+    // Never below two write intervals: pings are stored at most every PING_WRITE_MS, so a smaller threshold would
+    // false-alert on a healthy, throttled host.
+    silenceMs: Math.max(num(env.SILENCE_MINUTES, DEFAULTS.silenceMinutes) * 60000, 2 * PING_WRITE_MS),
     repeatMs: num(env.REPEAT_MINUTES, DEFAULTS.repeatMinutes) * 60000,
     ntfyUrl: (env.NTFY_URL || DEFAULTS.ntfyUrl).replace(/\/+$/, ''),
   };

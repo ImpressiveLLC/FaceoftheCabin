@@ -151,6 +151,20 @@ class RecoveryHeartbeatServiceTest {
     }
 
     @Test
+    void aFifoAtTheStatePathIsNeverOpenedSoTheReadCannotBlock() throws Exception {
+        Path fifo = dir.resolve("state.json");
+        Process mk = null;
+        try {
+            mk = new ProcessBuilder("mkfifo", fifo.toString()).redirectErrorStream(true).start();
+            assumeTrue(mk.waitFor() == 0 && Files.exists(fifo), "mkfifo not available here");
+        } catch (IOException e) {
+            assumeTrue(false, "mkfifo not available here");
+        }
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () ->
+            assertEquals("recovery:service-silent", service(true).activeAlerts(NOW).get(0).alertId()));
+    }
+
+    @Test
     void aSymlinkedStateFolderIsRefused() throws IOException {
         Path real = Files.createDirectory(dir.resolve("real"));
         Files.writeString(real.resolve("state.json"), state("running", "2026-11-03T11:59:30Z", comp("backend", "ok", "2026-11-03T11:59:30Z")));
