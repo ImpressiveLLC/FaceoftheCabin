@@ -8,13 +8,13 @@ const row = item => <div key={item.deviceId} data-testid="row">{item.deviceId}</
 
 describe('ExpandableList', () => {
   it('shows ten rows and a control for the rest', () => {
-    render(<ExpandableList items={items} renderItem={row} noun="devices" />);
+    render(<ExpandableList items={items} renderItem={row} noun="devices" limit={10} />);
     expect(screen.getAllByTestId('row')).toHaveLength(10);
     expect(screen.getByRole('button', { name: 'Show 15 more devices' })).toBeTruthy();
   });
 
   it('expands on click and collapses on a click away, not on a click inside', () => {
-    render(<div><span>elsewhere</span><ExpandableList items={items} renderItem={row} /></div>);
+    render(<div><span>elsewhere</span><ExpandableList items={items} renderItem={row} limit={10} /></div>);
     fireEvent.click(screen.getByRole('button', { name: /Show 15 more/ }));
     expect(screen.getAllByTestId('row')).toHaveLength(25);
     fireEvent.mouseDown(screen.getAllByTestId('row')[3]);
@@ -24,14 +24,14 @@ describe('ExpandableList', () => {
   });
 
   it('always shows a pinned row (an alarm) beyond the limit without counting it', () => {
-    render(<ExpandableList items={items} renderItem={row} isPinned={item => item.alarm} />);
+    render(<ExpandableList items={items} renderItem={row} isPinned={item => item.alarm} limit={10} />);
     const ids = screen.getAllByTestId('row').map(r => r.textContent);
     expect(ids).toHaveLength(11);
     expect(ids).toContain('d20');
   });
 
   it('has no control for a short list, and shows everything when forced open', () => {
-    const { unmount } = render(<ExpandableList items={items.slice(0, 10)} renderItem={row} />);
+    const { unmount } = render(<ExpandableList items={items.slice(0, 10)} renderItem={row} limit={10} />);
     expect(screen.queryByRole('button')).toBeNull();
     unmount();
     render(<ExpandableList items={items} renderItem={row} forceOpen />);
@@ -56,8 +56,14 @@ describe('ExpandableList', () => {
     }
   });
 
+  it('shows every item with no control unless a caller sets a limit (only Devices does)', () => {
+    render(<ExpandableList items={items} renderItem={row} noun="tiles" />);
+    expect(screen.getAllByTestId('row')).toHaveLength(25);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('makes the control prominent: its own class, not the small ghost button', () => {
-    render(<ExpandableList items={items} renderItem={row} />);
+    render(<ExpandableList items={items} renderItem={row} limit={10} />);
     const button = screen.getByRole('button', { name: /Show 15 more/ });
     expect(button.className).toBe('expandable-list-toggle');
   });

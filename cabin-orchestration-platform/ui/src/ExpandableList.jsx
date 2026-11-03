@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-// The common long-list approach: show a handful of rows, a control to show the rest, and collapse again when the
+// The long-list approach for Devices: show a handful of rows, a control to show the rest, and collapse again when the
 // person clicks anywhere outside the list. Rows that must never be hidden (an active alarm, the selected row)
 // are always shown and do not count against the limit.
 export const COLLAPSED_LIMIT = 10;
+// Nate, 2026-11-02: only Devices limits how many cards it shows. Everywhere else shows every item unless a caller passes a limit.
 // A wide screen (a conventional monitor or a kiosk) has room for about three full rows of cards; phones and tablets keep ten.
 export const WIDE_QUERY = '(min-width: 1200px)';
 
@@ -25,8 +26,8 @@ function useWide() {
 }
 
 export function ExpandableList({ items, renderItem, keyOf = item => item.deviceId, isPinned = () => false,
-                                  limit: limitProp = COLLAPSED_LIMIT, forceOpen = false, noun = 'items' }) {
-  // limit is a number, or { base, wide } to show more on a wide screen.
+                                  limit: limitProp = Infinity, forceOpen = false, noun = 'items' }) {
+  // limit is a number (default: none), or { base, wide } to show more on a wide screen.
   const wide = useWide();
   const limit = typeof limitProp === 'number' ? limitProp : (wide ? limitProp.wide : limitProp.base);
   const [open, setOpen] = useState(false);
