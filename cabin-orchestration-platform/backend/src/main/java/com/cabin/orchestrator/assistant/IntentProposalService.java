@@ -123,7 +123,7 @@ public class IntentProposalService {
             try {
                 parsed = contract.validate(rawOutput);
                 validation = "OK";
-                response = handle(requestId, working, parsed, role, principal, decisions);
+                response = handle(requestId, working, text, parsed, role, principal, decisions);
             } catch (ContractViolation e) {
                 validation = "INVALID: " + e.getMessage();
                 response = refused(requestId, null, "MALFORMED_MODEL_OUTPUT",
@@ -140,7 +140,7 @@ public class IntentProposalService {
         return response;
     }
 
-    private Response handle(String requestId, String text, ParsedIntent parsed, HouseholdRole role, String principal,
+    private Response handle(String requestId, String text, String typed, ParsedIntent parsed, HouseholdRole role, String principal,
                             List<ProposalAuditLog.Decision> decisions) {
         String intent = parsed.intent();
         switch (intent) {
@@ -162,7 +162,8 @@ public class IntentProposalService {
 
         // The model decides answer-versus-act and is fallible. Whatever it said, a question-shaped request never becomes a
         // proposal: ask instead (a read of a device's state, get_device_state, is not an action and is left alone).
-        if (!"get_device_state".equals(intent) && QuestionShape.isQuestion(text)) {
+        // the guard reads the text as typed: a wrapper that leads into an inquiry ("can I ask if ...") stays a question
+        if (!"get_device_state".equals(intent) && QuestionShape.isQuestion(typed)) {
             decisions.add(new ProposalAuditLog.Decision("request", "QUESTION_SHAPED", null,
                 List.of("question-shaped request: the model chose " + intent + ", so no proposal was made")));
             return new Response(requestId, Status.CLARIFY, intent, "QUESTION_SHAPED",

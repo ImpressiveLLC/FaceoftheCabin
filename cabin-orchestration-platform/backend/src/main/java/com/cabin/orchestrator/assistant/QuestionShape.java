@@ -60,8 +60,8 @@ final class QuestionShape {
 
     /** The wrapper at the start of the ORIGINAL text (any case), after a greeting or two: "Hi, can I ask ...". */
     private static final Pattern WRAPPER_AT_START = Pattern.compile(
-        "^\\W*(?:(?:hi|hello|hey|please|ok|okay|so|well|um|uh)\\b[\\s,!.]*)*" + ASK_WRAPPER_BODY, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-    private static final Pattern AFTER_WRAPPER_FILLER = Pattern.compile("^[\\s,;:\\-–—]*(?:for\\s+)?(?:you\\s+)?(?:to\\s+)?", Pattern.CASE_INSENSITIVE);
+        "^\\W*(?:(?:hi|hello|hey|please|ok|okay|so|well|um|uh)\\b[\\s,!.]*){0,3}" + ASK_WRAPPER_BODY, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern AFTER_WRAPPER_FILLER = Pattern.compile("^[\\s,;:\\-–—]*(?:for\\s+)?(?:you(?:\\s+|$))?(?:to\\s+)?", Pattern.CASE_INSENSITIVE);
 
     /**
      * What a request means once its politeness wrapper is taken off (W-140, Nate 2026-11-01): the wrapper is not the request, so what
@@ -100,7 +100,7 @@ final class QuestionShape {
 
     /** What counts as an inquiry right after a wrapper, beyond the lead words: "can I ask if ...", "about ...", "you to explain how ...". */
     private static final Pattern AFTER_WRAPPER = Pattern.compile(
-        "^(?:when|if|about|for|regarding|to\\s+(?:explain|tell|show|describe|clarify))(?![a-z0-9])");
+        "^(?:when|if|about|regarding|for(?!\\s+(?:you|us)\\s+to\\b)|to\\s+(?:explain|tell|show|describe|clarify))(?![a-z0-9])");
 
     private static final Pattern INVISIBLE = Pattern.compile("[\\p{Cf}\\u00AD\\uFE0F\\u20E3]");
     private static final Pattern WHITESPACE = Pattern.compile("[\\s\\p{Z}]+");

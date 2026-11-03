@@ -472,9 +472,24 @@ class IntentProposalServiceTest {
     }
 
     @Test
-    void theAuditLogKeepsTheTextAsTypedNotTheUnwrappedRemainder() {
+    void theAuditLogKeepsTheTextAsTypedWhileTheModelSeesTheRemainder() {
         propose(intent("answer_question", "{}", false), "Can I ask weather");
 
         assertTrue(audit.get(audit.size() - 1).toString().contains("Can I ask weather"));
+        assertFalse(prompts.get(0).toLowerCase().contains("can i ask"), "the model sees the remainder, not the wrapper");
+        assertTrue(prompts.get(0).contains("weather"));
+    }
+
+    @Test
+    void aWrapperThatLeadsIntoAnInquiryNeverBecomesAProposalEvenIfTheModelSaysAct() {
+        for (String typed : List.of("Can I ask if the heater is on", "Can I ask when the heater turns on", "Could I ask about turning on the heater",
+                "May I ask for help with the heater", "Can I ask you to explain how to turn on the heater", "Can I ask you to tell me if the heater is on",
+                "Can I ask if I can turn on the heater", "Can I ask regarding the heater", "Can I ask a question about the heater")) {
+            Response r = propose(intent("set_device_state", "{\"device_name\":\"heater\",\"location\":\"mech room\",\"state\":\"on\"}", true), typed);
+
+            assertEquals(Status.CLARIFY, r.status(), typed);
+            assertEquals("QUESTION_SHAPED", r.code(), typed);
+            assertNull(r.proposal(), typed);
+        }
     }
 }

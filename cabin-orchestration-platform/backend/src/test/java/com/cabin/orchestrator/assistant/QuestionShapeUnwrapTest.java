@@ -59,4 +59,25 @@ class QuestionShapeUnwrapTest {
     void theWrapperMustEndAtAWordBoundary() {
         assertThat(QuestionShape.unwrap("Can I asking you to turn on the heater").wrapped()).isFalse();
     }
+
+    @Test
+    void forYouToIsARequestButForHelpIsAnInquiry() {
+        assertThat(QuestionShape.isQuestion("Can I ask for you to turn on the heater")).isFalse();
+        assertThat(QuestionShape.isQuestion("Can I ask for us to turn on the heater")).isFalse();
+        assertThat(QuestionShape.isQuestion("May I ask for help with the heater")).isTrue();
+        assertThat(QuestionShape.isQuestion("Can I ask for the heater status")).isTrue();
+    }
+
+    @Test
+    void aWrapperThenJustYouHasNothingAfterIt() {
+        unwraps("Can I ask for you", "");
+        unwraps("Can I ask you", "");
+    }
+
+    @Test
+    void aVeryLongRunOfGreetingsDoesNotOverflowTheStack() {
+        String text = "hi ".repeat(10_000) + "can I ask weather";
+        assertThat(QuestionShape.unwrap(text).wrapped()).isFalse();
+        assertThat(QuestionShape.isQuestion(text)).isIn(true, false);
+    }
 }
