@@ -50,6 +50,38 @@ class ManagedUserServiceTest {
     }
 
     @Test
+    void w138G3_oneSessionPerLink() throws Exception {
+        // both callers read the token before either consumes it
+        java.util.concurrent.CyclicBarrier bothHaveRead = new java.util.concurrent.CyclicBarrier(2);
+        MagicLinkTokenStore racing = new MagicLinkTokenStore() {
+            @Override public void save(MagicLinkToken token) { magicLinks.save(token); }
+            @Override public Optional<MagicLinkToken> findByToken(String token) {
+                Optional<MagicLinkToken> found = magicLinks.findByToken(token);
+                try { bothHaveRead.await(5, java.util.concurrent.TimeUnit.SECONDS); } catch (Exception e) { throw new IllegalStateException(e); }
+                return found;
+            }
+            @Override public boolean consumeIfUnused(String token, Instant consumedAt) { return magicLinks.consumeIfUnused(token, consumedAt); }
+        };
+        ManagedUserService racingService = new ManagedUserService(users, racing, sessions, (to, name, url) -> sentUrls.add(url));
+        ReflectionTestUtils.setField(racingService, "frontendOrigin", "https://app.example.com/");
+        ManagedUser user = racingService.create("a@example.com", "Alice", ManagedUserRole.HOUSEHOLD_MEMBER, "nate@example.com");
+        racingService.invite(user.id());
+        String token = sentUrls.get(0).substring(sentUrls.get(0).lastIndexOf('/') + 1);
+
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Future<Optional<ManagedUserSession>> first = pool.submit(() -> racingService.consumeMagicLink(token));
+            java.util.concurrent.Future<Optional<ManagedUserSession>> second = pool.submit(() -> racingService.consumeMagicLink(token));
+
+            int sessionsMinted = (first.get(10, java.util.concurrent.TimeUnit.SECONDS).isPresent() ? 1 : 0)
+                + (second.get(10, java.util.concurrent.TimeUnit.SECONDS).isPresent() ? 1 : 0);
+            assertEquals(1, sessionsMinted, "one session per link");
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
     void inviteRejectsADeactivatedUser() {
         ManagedUser user = service.create("a@example.com", "Alice", ManagedUserRole.VIEWER, "nate@example.com");
         service.setActive(user.id(), false);
@@ -154,9 +186,11 @@ class ManagedUserServiceTest {
         private final Map<String, MagicLinkToken> byToken = new HashMap<>();
         @Override public void save(MagicLinkToken token) { byToken.put(token.token(), token); }
         @Override public Optional<MagicLinkToken> findByToken(String token) { return Optional.ofNullable(byToken.get(token)); }
-        @Override public void markConsumed(String token, Instant consumedAt) {
-            byToken.computeIfPresent(token, (t, existing) -> new MagicLinkToken(
-                existing.token(), existing.managedUserId(), existing.expiresAt(), consumedAt, existing.createdAt()));
+        @Override public synchronized boolean consumeIfUnused(String token, Instant consumedAt) {
+            MagicLinkToken existing = byToken.get(token);
+            if (existing == null || existing.consumedAt() != null) return false;
+            byToken.put(token, new MagicLinkToken(existing.token(), existing.managedUserId(), existing.expiresAt(), consumedAt, existing.createdAt()));
+            return true;
         }
     }
 

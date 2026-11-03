@@ -10564,15 +10564,18 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
 // instance, so writing shared storage + reloading is simpler and more
 // robust than trying to thread state across that boundary live.
 export function MagicLinkLanding({ token }) { // exported for src/App.test.jsx
-  const [status, setStatus] = useState("consuming"); // consuming | error
+  const [status, setStatus] = useState("ready"); // ready | consuming | error
   const [error, setError] = useState(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  // W-138 G4: the link is consumed on Continue, not on load.
+  const continueSignIn = () => {
+    setStatus("consuming");
     fetch(`${LOCATIONS.cabin.apiBase}/api/managed-users/magic/${encodeURIComponent(token)}/consume`, { method: "POST" })
       .then(async r => {
         const body = await r.json().catch(() => ({}));
-        if (cancelled) return;
+        if (!alive.current) return;
         if (!r.ok || body.error || !body.sessionToken) {
           setError(body.error || "This link is invalid, expired, already used, or the account is no longer active");
           setStatus("error");
@@ -10585,10 +10588,9 @@ export function MagicLinkLanding({ token }) { // exported for src/App.test.jsx
         window.location.href = "/";
       })
       .catch(() => {
-        if (!cancelled) { setError("Couldn't reach the cabin server. Check your connection and try the link again."); setStatus("error"); }
+        if (alive.current) { setError("Couldn't reach the cabin server. Check your connection and try the link again."); setStatus("error"); }
       });
-    return () => { cancelled = true; };
-  }, [token]);
+  };
 
   if (status === "error") {
     return (
@@ -10600,10 +10602,20 @@ export function MagicLinkLanding({ token }) { // exported for src/App.test.jsx
     );
   }
 
+  if (status === "consuming") {
+    return (
+      <div className="guest-view">
+        <h1>Sign-in link</h1>
+        <p className="config-hint">Signing you in…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="guest-view">
       <h1>Sign-in link</h1>
-      <p className="config-hint">Signing you in…</p>
+      <p className="config-hint">Press Continue to sign in on this device. The link works once.</p>
+      <button type="button" className="btn-primary" onClick={continueSignIn}>Continue</button>
     </div>
   );
 }
