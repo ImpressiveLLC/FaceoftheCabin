@@ -2878,13 +2878,19 @@ It prints one line per check (`OK`/`WARN`/`CRIT`) and the same one-line summary 
 |---|---|---|
 | previous-shutdown | A clean-shutdown marker was left (a reboot or poweroff). No marker means power loss or a crash; stated in the summary, not a warning by itself | info |
 | backend, postgres, kafka, mosquitto, zigbee2mqtt, frigate, blinkbridge, cloudflared, homeassistant, nodered | Container running and not unhealthy, plus a real answer where cheap (actuator `UP`, `pg_isready`, a broker message, Zigbee bridge `online`, HTTP reply) | CRITICAL |
+| gateway | Default route exists and the router answers a ping | CRITICAL |
+| internet | At least one of two ping targets or two HTTPS targets answers | CRITICAL |
+| dns | One of two names resolves | CRITICAL |
+| tailscale | `tailscaled` Running and a peer online (named peers in `HB_TAILSCALE_PEERS` must answer) | CRITICAL |
+| public-url | Every `HB_PUBLIC_URLS` answers below HTTP 500 from the host (Cloudflare answers 530 when the tunnel has no connection) | CRITICAL |
+| sshd | An OpenSSH service is active and port 22 is listening | CRITICAL |
+| tailscale-ssh | Tailscale SSH is enabled | CRITICAL |
 | `<name>-restarts` | Fewer than 3 daemon restarts | WARN |
 | cabin-ui, family-hub, cabin-grafana, uptime-kuma, mediamtx | Container running and not unhealthy | WARN |
 | cabin-event-ingest | Newest `cabin_event` under 15 minutes old (also proves Kafka to Postgres works) | WARN at 15 minutes, CRITICAL at 60 or if the query fails |
 | telemetry-gap | Reported: time between the last event before boot and the first after | info |
 | zigbee-devices | No device reports `offline` | WARN, devices named |
 | frigate-cameras | No camera at 0 fps | WARN, cameras named |
-| public-url | `HB_PUBLIC_URLS` answers below HTTP 500 | WARN |
 | disk/storage, disk/ | Under 60% used (the storage monitor owns the 75% critical alert) | WARN at most |
 | timer-backup-home, -configs, -services, -data | Timer active | WARN |
 | cabin-storage-trim-agent.service, blinkbridge-watchdog.timer | Active | WARN |
@@ -2918,19 +2924,42 @@ sudo systemctl status cabin-recovery-heartbeat --no-pager | head -5; sudo ls -l 
 
 The backend half (`CABIN_RECOVERY_ENABLED` is already set in `docker-compose.m920q.yml`) arrives with the normal backend deploy, which needs Nate's go. Until it deploys, the pushes work and the banner and Monitoring section do not.
 
-**Dead-man's switch (five minutes, free).**
+**Dead-man's switch (W-56).** Two kinds of ping, so silence tells you which part is down: *host alive* (`HB_DEADMAN_URL`, every minute, no dependencies) and *platform healthy* (`HB_DEADMAN_PLATFORM_URL`, only while the backend and the Zigbee bridge both answered). Two ways to receive them; pick one.
 
-1. Create a check at healthchecks.io: period 5 minutes, grace 5 minutes; add the integration you want admins to be reached by (email, SMS, Signal, Telegram, or ntfy).
-2. Copy the check's ping URL (treat it as a secret).
-3. `echo 'HB_DEADMAN_URL=https://hc-ping.com/<your-uuid>' | sudo tee -a /etc/cabin-recovery-heartbeat.env >/dev/null && sudo systemctl restart cabin-recovery-heartbeat`
+*Cloudflare Worker `cabin-deadman` (source and tests in `cabin-orchestration-platform/infra/cabin-deadman-worker/`; contract in the design note).* Nate creates it in the Cloudflare dashboard: a KV namespace (put its id in `wrangler.toml`), a Worker `cabin-deadman` deployed from that folder with a cron trigger `*/5 * * * *`, binding `HEARTBEAT_KV`, and two secrets, `HEARTBEAT_TOKEN` (a long random string) and `NTFY_TOPIC`. Then on the host:
 
-If pings stop for about ten minutes it alerts, whether the service died or the host lost power. A deliberate stop calls `<url>/fail`, which alerts at once. A Cloudflare Worker with a Cron Trigger and a KV key can do the same job on the free tier (design note, "Cloudflare Worker alternative"); it is not built.
+```bash
+sudo tee -a /etc/cabin-recovery-heartbeat.env >/dev/null <<'EOF'
+HB_DEADMAN_URL=https://cabin-deadman.<account>.workers.dev/ping/host
+HB_DEADMAN_PLATFORM_URL=https://cabin-deadman.<account>.workers.dev/ping/platform
+HB_DEADMAN_STOP_URL=https://cabin-deadman.<account>.workers.dev/stop/host
+HB_DEADMAN_TOKEN=<the same value as the Worker's HEARTBEAT_TOKEN>
+EOF
+sudo systemctl restart cabin-recovery-heartbeat
+```
 
-**Tuning** (in `/etc/cabin-recovery-heartbeat.env`, then restart the service): `HB_MISS_LIMIT` (5), `HB_INTERVAL` (60 s), `HB_RECOVER_OKS` (2), `HB_REPAGE_FIRST` (3600 s), `HB_REPAGE_EVERY` (21600 s), `HB_BOOT_GRACE` (180 s), `HB_BOOT_RETRY` (120 s), `HB_PUBLIC_URLS`, `HB_NOTIFY_HOOK` (an executable called as `HOOK LEVEL TITLE MESSAGE`, for email or SMS). Backend: `cabin.recovery.staleAfterSeconds` (300).
+*healthchecks.io.* A check with period 5 minutes and grace 5 minutes and an integration for where admins are reached; put its ping URL in `HB_DEADMAN_URL` (no token, no platform URL, or a second check for it). A deliberate stop calls `<url>/fail`.
+
+Either way, silence of about ten minutes alerts, repeats hourly, and says when it is back. The ping URLs and the token are secrets: root-only env file, never git.
+
+**SSH for non-interactive recovery checks.** The `sshd` and `tailscale-ssh` components watch that SSH is up. Reaching the host *without* a browser re-auth link is a decision for Nate (design note, "SSH for non-interactive recovery checks": option A, a read-only user with a forced command, is recommended). Nothing below has been run on the host. Draft for option A, with an extra OpenSSH port because Tailscale SSH holds port 22 on the tailnet address:
+
+```bash
+sudo useradd --create-home --shell /bin/bash --comment "read-only recovery monitor" cabin-monitor
+sudo install -d -m 700 -o cabin-monitor -g cabin-monitor /home/cabin-monitor/.ssh
+echo 'restrict,command="cat /storage/archives/cabin_event/.recovery/state.json /storage/archives/cabin_event/.recovery/report.txt" ssh-ed25519 <PUBLIC KEY> cabin-monitor' | sudo tee /home/cabin-monitor/.ssh/authorized_keys >/dev/null
+sudo chown cabin-monitor:cabin-monitor /home/cabin-monitor/.ssh/authorized_keys && sudo chmod 600 /home/cabin-monitor/.ssh/authorized_keys
+printf 'Port 22\nPort 2222\nMatch User cabin-monitor\n  PasswordAuthentication no\n  AllowTcpForwarding no\n  X11Forwarding no\n  PermitTTY no\n' | sudo tee /etc/ssh/sshd_config.d/cabin-monitor.conf >/dev/null
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+Generate the key pair on the machine that will hold it (`ssh-keygen -t ed25519`), paste only the public half above, and keep the private half in the vault. From that machine: `ssh -p 2222 cabin-monitor@<host>` prints the live component state and the last boot check report. It cannot run a new check or fix anything; for that, use Tailscale SSH as today.
+
+**Tuning** (in `/etc/cabin-recovery-heartbeat.env`, then restart the service): `HB_MISS_LIMIT` (5), `HB_INTERVAL` (60 s), `HB_RECOVER_OKS` (2), `HB_REPAGE_FIRST` (3600 s), `HB_REPAGE_EVERY` (21600 s), `HB_BOOT_GRACE` (180 s), `HB_BOOT_RETRY` (120 s), `HB_PUBLIC_URLS`, `HB_PING_TARGETS`, `HB_HTTPS_TARGETS`, `HB_DNS_NAMES`, `HB_TAILSCALE_PEERS`, `HB_NOTIFY_HOOK` (an executable called as `HOOK LEVEL TITLE MESSAGE`, for email or SMS). Backend: `cabin.recovery.staleAfterSeconds` (300).
 
 **Stopping it for maintenance.** Stopping the service pages by design (that is the "heartbeat stopped" notice). There is no maintenance mute yet. Stopping a monitored container for more than 5 minutes also pages.
 
-**Tests.** `bash scripts/host/test_cabin_recovery_heartbeat.sh` (71 checks against stand-in `docker`, `curl` and `systemctl`; needs Linux), `RecoveryHeartbeatServiceTest`, `RecoveryControllerTest`, `ActiveAlertServiceTest`, and `ui/src/RecoveryStatus.test.jsx`.
+**Tests.** `bash scripts/host/test_cabin_recovery_heartbeat.sh` (96 checks against stand-in `docker`, `curl`, `systemctl`, `ping` and `tailscale`; needs Linux), `node --test` in `cabin-orchestration-platform/infra/cabin-deadman-worker` (12 checks), `RecoveryHeartbeatServiceTest`, `RecoveryControllerTest`, `ActiveAlertServiceTest`, and `ui/src/RecoveryStatus.test.jsx`.
 
 ## Incident Response — quick triage
 

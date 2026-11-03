@@ -10,6 +10,7 @@ on:
       - 'cabin-orchestration-platform/backend/src/test/java/com/cabin/orchestrator/recovery/**'
       - 'cabin-orchestration-platform/backend/src/test/java/com/cabin/orchestrator/api/RecoveryControllerTest.java'
       - 'docs/ai-assistant/user-guide/access-and-storage.md'
+      - 'cabin-orchestration-platform/infra/cabin-deadman-worker/**'
       - '.github/workflows/recovery-heartbeat-tests.yml'
   push:
     branches: [main]
@@ -26,6 +27,16 @@ jobs:
       - uses: actions/checkout@v5
       - name: Recovery heartbeat script tests (state machine, probes, boot check, notices, dead-man)
         run: bash scripts/host/test_cabin_recovery_heartbeat.sh
+  deadman-worker:
+    runs-on: ubuntu-latest   # no Cloudflare account, no secrets: fake KV and fake ntfy
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Dead-man Worker tests
+        working-directory: cabin-orchestration-platform/infra/cabin-deadman-worker
+        run: node --test
   backend:
     runs-on: ubuntu-latest
     steps:

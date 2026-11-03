@@ -33,7 +33,7 @@ esac
 EOF
 cat >"$W/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-url="${@: -1}"; title=""; prio=""; body=""; wfmt=0
+url="${@: -1}"; title=""; prio=""; body=""; wfmt=0; auth=no
 args=("$@")
 for ((i=0;i<${#args[@]};i++)); do
   case "${args[$i]}" in
@@ -41,11 +41,12 @@ for ((i=0;i<${#args[@]};i++)); do
     -d) body="${args[$((i+1))]}" ;;
     -w) wfmt=1 ;;
   esac
+  case "${args[$i]}" in "Authorization: Bearer "*) auth=yes ;; esac
 done
 case "$url" in
   https://ntfy.test/*) rc=$(cat "$W/ntfy_rc" 2>/dev/null || echo 0)
      [ "$rc" = 0 ] && printf '%s|%s|%s\n' "$prio" "$title" "$body" >>"$W/ntfy.log"; exit "$rc" ;;
-  https://dead.test/*) echo "$url" >>"$W/deadman.log"; exit 0 ;;
+  https://dead.test/*) echo "$url auth=$auth" >>"$W/deadman.log"; exit 0 ;;
   */actuator/health) cat "$W/health" 2>/dev/null || exit 22 ;;
   */api/stats) cat "$W/frigate_stats" 2>/dev/null || exit 22 ;;
   *) key=$(printf '%s' "$url" | tr -c 'a-z0-9' _)
@@ -68,11 +69,38 @@ cat >"$W/bin/df" <<'EOF'
 m="${@: -1}"; key=$(printf '%s' "$m" | tr -c 'a-z0-9' _)
 printf 'Use%%\n %s%%\n' "$(cat "$W/df_$key" 2>/dev/null || echo 40)"
 EOF
+cat >"$W/bin/ping" <<'EOF'
+#!/usr/bin/env bash
+t="${@: -1}"; key=$(printf '%s' "$t" | tr -c 'a-z0-9' _)
+[ -f "$W/ping_all_down" ] || [ -f "$W/ping_down_$key" ] && exit 1
+exit 0
+EOF
+cat >"$W/bin/getent" <<'EOF'
+#!/usr/bin/env bash
+[ -f "$W/dns_down" ] && exit 2
+echo "104.16.0.1 $2"
+EOF
+cat >"$W/bin/ip" <<'EOF'
+#!/usr/bin/env bash
+[ -f "$W/no_route" ] || echo "default via 192.168.2.1 dev eno1 proto dhcp"
+EOF
+cat >"$W/bin/tailscale" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  status) [ -f "$W/ts_dead" ] && exit 1; cat "$W/ts_status" ;;
+  debug) cat "$W/ts_prefs" ;;
+  ping) exit "$(cat "$W/tsping_rc" 2>/dev/null || echo 0)" ;;
+esac
+EOF
+cat >"$W/bin/ss" <<'EOF'
+#!/usr/bin/env bash
+cat "$W/ss_out"
+EOF
 chmod +x "$W"/bin/*
 
 reset_world() {
-  rm -rf "$W/state" "$W/c" "$W/units" "$W/ntfy.log" "$W/deadman.log" "$W/hook.log" "$W/ntfy_rc" "$W/jobs" "$W/avail" "$W/pg_rc"
-  rm -f "$W"/df_* "$W"/code_*
+  rm -rf "$W/state" "$W/c" "$W/units" "$W/ntfy.log" "$W/deadman.log" "$W/report_seen" "$W/hook.log" "$W/ntfy_rc" "$W/jobs" "$W/avail" "$W/pg_rc"
+  rm -f "$W"/df_* "$W"/code_* "$W"/ping_* "$W"/dns_down "$W"/no_route "$W"/ts_dead "$W"/tsping_rc
   mkdir -p "$W/state" "$W/c" "$W/units"
   for c in cabin-backend cabin-postgres cabin-kafka mosquitto zigbee2mqtt frigate blinkbridge cloudflared homeassistant nodered \
            cabin-ui family-hub cabin-grafana uptime-kuma mediamtx; do echo 'true||0' >"$W/c/$c"; done
@@ -84,6 +112,10 @@ reset_world() {
   echo '{"cameras":{"driveway":{"camera_fps":5.0,"process_fps":5.0},"porch":{"camera_fps":10.0}}}' >"$W/frigate_stats"
   echo '999000|1000100|1000290' >"$W/psql_out"
   echo yes >"$W/ntp"
+  echo active >"$W/units/ssh"
+  echo 'LISTEN 0 128 0.0.0.0:22 0.0.0.0:*' >"$W/ss_out"
+  printf '{\n "BackendState": "Running",\n "Self": {\n  "Online": true\n },\n "Peer": {\n  "a": {\n   "Online": true\n  },\n  "b": {\n   "Online": false\n  }\n }\n}\n' >"$W/ts_status"
+  echo '{"RunSSH": true}' >"$W/ts_prefs"
 }
 
 export W
@@ -191,7 +223,7 @@ check "unclean shutdown is stated" "grep -q 'after an unclean shutdown' $W/repor
 check "restart count flagged" "grep -q 'WARN   frigate-restarts .*restarted 4 times' $W/report.txt"
 check "zigbee device offline named" "grep -q 'WARN   zigbee-devices .*leak_mech_room' $W/report.txt"
 check "camera at 0 fps named" "grep -q 'WARN   frigate-cameras .*driveway' $W/report.txt"
-check "public URL 530 is a warning" "grep -q 'WARN   public-url .*530' $W/report.txt"
+check "public URL answering 530 (tunnel down) is a CRITICAL component" "grep -q 'CRIT   public-url .*530' $W/report.txt"
 check "disk above the line is only a warning (the storage monitor owns that alert)" "grep -q 'WARN   disk/storage .*85% used' $W/report.txt && ! grep -q 'CRIT.*disk' $W/report.txt"
 check "stopped backup timer, missing trim agent and unsynced clock named" "grep -q 'WARN   timer-backup-data' $W/report.txt && grep -q 'WARN   cabin-storage-trim-agent.service' $W/report.txt && grep -q 'WARN   ntp' $W/report.txt"
 check "check without --notify sends nothing" "[ \$(pushes) -eq 0 ]"
@@ -235,7 +267,7 @@ check "host shutdown: clean marker written, nobody paged" "[ -e $W/state/clean-s
 reset_world; echo '{"status":"running"}' >"$W/state/state.json"
 HB_DEADMAN_URL=https://dead.test/ping/abc SERVICE_RESULT=success run stopped
 check "deliberate stop: CRITICAL death notice" "[ \$(pushes) -eq 1 ] && grep -q '^urgent|Cabin: heartbeat STOPPED on purpose|' $W/ntfy.log"
-check "deliberate stop: dead-man /fail signalled" "grep -qx 'https://dead.test/ping/abc/fail' $W/deadman.log"
+check "deliberate stop: dead-man /fail signalled" "grep -qx 'https://dead.test/ping/abc/fail auth=no' $W/deadman.log"
 check "deliberate stop: state says stopped (the backend shows the banner from this)" "grep -q '\"status\":\"stopped\"' $W/state/state.json && [ ! -e $W/state/clean-shutdown ]"
 HB_ONCE=1 HB_BOOT_EPOCH=$((1000300-100000)) run run
 check "starting again after a deliberate stop says so" "grep -q 'heartbeat service running again' $W/ntfy.log"
@@ -265,9 +297,61 @@ check "optional notify hook receives level and title" "grep -qx 'critical|Cabin:
 echo "dead-man ping"
 reset_world
 HB_DEADMAN_URL=https://dead.test/ping/abc run once
-check "each heartbeat cycle pings the dead-man URL" "[ \$(grep -c 'ping/abc' $W/deadman.log) -eq 1 ] && grep -q '\"deadman\":{\"configured\":true,\"lastResult\":\"ok\"}' $W/state/state.json"
+check "each heartbeat cycle pings the dead-man URL" "[ \$(grep -c 'ping/abc' $W/deadman.log) -eq 1 ] && grep -q '\"deadman\":{\"configured\":true,\"lastResult\":\"ok\",\"platform\":\"not-configured\"}' $W/state/state.json"
 run once
 check "without a URL the dead-man is reported as not configured" "grep -q '\"deadman\":{\"configured\":false' $W/state/state.json"
+
+echo "connectivity and ssh probes"
+reset_world
+check "all good: gateway, internet, dns, tailscale, public-url, sshd, tailscale-ssh" "for c in gateway internet dns tailscale public-url sshd tailscale-ssh; do probe \$c | grep -q '^rc=0' || return 1; done"
+touch "$W/no_route"; check "no default route" "probe gateway | grep -q 'rc=1 no default route'"; rm "$W/no_route"
+touch "$W/ping_down_192_168_2_1"; check "gateway not answering" "probe gateway | grep -q 'rc=1 gateway 192.168.2.1 does not answer'"; rm "$W/ping_down_192_168_2_1"
+touch "$W/ping_down_1_1_1_1"; check "one ping target down is still up (reports the others)" "probe internet | grep -q '^rc=0 reachable via ping:9.9.9.9'"; rm "$W/ping_down_1_1_1_1"
+touch "$W/ping_all_down"; check "ICMP blocked but HTTPS works: still up, says so" "probe internet | grep -q '^rc=0 reachable via https:'"
+echo 000 >"$W/code_https___www_cloudflare_com_cdn_cgi_trace"; echo 000 >"$W/code_https___www_google_com_generate_204"
+check "every ping and HTTPS target failing is down" "probe internet | grep -q 'rc=1 no ping or HTTPS target answers'"
+rm "$W/ping_all_down" "$W"/code_https___www_*
+touch "$W/dns_down"; check "dns not resolving" "probe dns | grep -q 'rc=1 could not resolve'"; rm "$W/dns_down"
+touch "$W/ts_dead"; check "tailscaled not running" "probe tailscale | grep -q 'rc=1 tailscale status failed'"; rm "$W/ts_dead"
+echo '{"BackendState": "Stopped"}' >"$W/ts_status"; check "tailscale stopped" "probe tailscale | grep -q 'rc=1 tailscale is not Running'"
+printf '{\n "BackendState": "Running",\n "Self": {\n  "Online": true\n }\n}\n' >"$W/ts_status"; check "tailscale up with no peer online" "probe tailscale | grep -q 'rc=1 tailscale is up but no peer is online'"
+reset_world; echo 1 >"$W/tsping_rc"
+check "a listed tailscale peer that does not answer" "( export HB_TAILSCALE_PEERS=ilikethelights; source '$SCRIPT'; probe_component tailscale; echo rc=\$? \$PROBE_DETAIL ) | grep -q 'rc=1 peer ilikethelights'"
+reset_world; echo 530 >"$W/code_https___cabin_test_"; check "public URL 530" "probe public-url | grep -q 'rc=1 HTTP 530'"
+reset_world; echo inactive >"$W/units/ssh"; check "sshd not active" "probe sshd | grep -q 'rc=1 no OpenSSH service active'"
+echo active >"$W/units/ssh"; echo 'LISTEN 0 128 0.0.0.0:80' >"$W/ss_out"; check "sshd active but not listening" "probe sshd | grep -q 'rc=1 ssh active but nothing listens on port 22'"
+echo active >"$W/units/sshd"; echo inactive >"$W/units/ssh"; echo 'LISTEN 0 128 0.0.0.0:22' >"$W/ss_out"; check "either OpenSSH unit name counts" "probe sshd | grep -q '^rc=0'"
+echo '{"RunSSH": false}' >"$W/ts_prefs"; check "tailscale ssh switched off" "probe tailscale-ssh | grep -q 'rc=1 Tailscale SSH is not enabled'"
+
+echo "a parent outage silences its children"
+reset_world
+touch "$W/ping_down_1_1_1_1" "$W/ping_down_9_9_9_9" "$W/dns_down"; echo 000 >"$W/code_https___cabin_test_"
+echo 000 >"$W/code_https___www_cloudflare_com_cdn_cgi_trace"; echo 000 >"$W/code_https___www_google_com_generate_204"
+for i in 1 2 3 4 5; do HB_NOW=$((1000300+i*60)) run once; done
+check "internet, dns and public-url all down: ONE page, naming the internet" "[ \$(pushes) -eq 1 ] && grep -q 'Cabin: internet is down' $W/ntfy.log"
+check "the children are still shown as down in state.json" "grep -q '\"name\":\"dns\",\"status\":\"down\"' $W/state/state.json && grep -q '\"name\":\"public-url\",\"status\":\"down\"' $W/state/state.json"
+rm "$W/ping_down_1_1_1_1" "$W/ping_down_9_9_9_9" "$W"/code_https___www_* "$W/code_https___cabin_test_"
+for i in 6 7; do HB_NOW=$((1000300+i*60)) run once; done
+check "internet back; dns still broken is announced on its own; public-url recovered silently" "[ \$(pushes) -eq 3 ] && grep -q 'Cabin: internet recovered' $W/ntfy.log && tail -1 $W/ntfy.log | grep -q 'Cabin: dns is down' && ! grep -q 'public-url' $W/ntfy.log"
+
+echo "dead-man: two kinds and a token"
+reset_world
+HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_PLATFORM_URL=https://dead.test/ping/platform HB_DEADMAN_TOKEN=s3cret-token run once
+check "both kinds ping while the platform is healthy, with the bearer token" "grep -qx 'https://dead.test/ping/host auth=yes' $W/deadman.log && grep -qx 'https://dead.test/ping/platform auth=yes' $W/deadman.log"
+check "the token never reaches the state file or the report" "! grep -rq s3cret-token $W/state"
+echo '{"state":"offline"}' >"$W/z2m_state"; : >"$W/deadman.log"
+HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_PLATFORM_URL=https://dead.test/ping/platform run once
+check "Zigbee bridge offline: host-alive still pings, platform-healthy is withheld" "grep -qx 'https://dead.test/ping/host auth=no' $W/deadman.log && ! grep -q platform $W/deadman.log && grep -q '\"platform\":\"withheld\"' $W/state/state.json"
+reset_world; echo 'false||0' >"$W/c/cabin-backend"; HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_PLATFORM_URL=https://dead.test/ping/platform run once
+check "backend down: platform-healthy withheld too" "! grep -q platform $W/deadman.log"
+reset_world; : >"$W/state/clean-shutdown"; echo '{"status":"running"}' >"$W/state/state.json"
+HB_DEADMAN_URL=https://dead.test/ping/host HB_DEADMAN_STOP_URL=https://dead.test/stop/host HB_DEADMAN_TOKEN=tok SERVICE_RESULT=success run stopped
+check "stop uses HB_DEADMAN_STOP_URL with the token" "grep -qx 'https://dead.test/stop/host auth=yes' $W/deadman.log"
+
+echo "report for the read-only monitoring user"
+reset_world; echo '{"status":"running"}' >"$W/state/state.json"
+run check --notify >/dev/null
+check "report.txt is written next to state.json, world-readable, with the checks and summary" "[ \$(stat -c %a $W/state/report.txt) = 644 ] && grep -q 'Recovery check at' $W/state/report.txt && grep -q 'Cabin restarted at' $W/state/report.txt"
 
 echo
 echo "passed $PASS, failed $FAIL"

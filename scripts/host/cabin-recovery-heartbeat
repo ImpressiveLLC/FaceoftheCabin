@@ -38,8 +38,15 @@ HB_PROBE_TIMEOUT=${HB_PROBE_TIMEOUT:-10}
 HB_NTFY_URL=${HB_NTFY_URL:-https://ntfy.sh}
 HB_NTFY_TOPIC=${HB_NTFY_TOPIC:-}                # same topic as CABIN_ALERT_NTFY_TOPIC; set in /etc/cabin-recovery-heartbeat.env
 HB_NOTIFY_HOOK=${HB_NOTIFY_HOOK:-}              # optional executable: called as HOOK LEVEL TITLE MESSAGE (email, SMS, Signal ...)
-HB_DEADMAN_URL=${HB_DEADMAN_URL:-}
+HB_DEADMAN_URL=${HB_DEADMAN_URL:-}              # kind 1, "host alive": pinged every cycle, no dependencies (W-56)
+HB_DEADMAN_PLATFORM_URL=${HB_DEADMAN_PLATFORM_URL:-}  # kind 2, "platform healthy": pinged only while backend and Zigbee are up (W-56)
 HB_DEADMAN_STOP_URL=${HB_DEADMAN_STOP_URL:-}    # default: HB_DEADMAN_URL + /fail (healthchecks.io)
+HB_DEADMAN_TOKEN=${HB_DEADMAN_TOKEN:-}          # sent as "Authorization: Bearer" to every dead-man call (the Cloudflare Worker needs it)
+HB_PING_TARGETS=${HB_PING_TARGETS:-"1.1.1.1 9.9.9.9"}
+HB_HTTPS_TARGETS=${HB_HTTPS_TARGETS:-"https://www.cloudflare.com/cdn-cgi/trace https://www.google.com/generate_204"}
+HB_DNS_NAMES=${HB_DNS_NAMES:-"cloudflare.com github.com"}
+HB_TAILSCALE_PEERS=${HB_TAILSCALE_PEERS:-}     # optional, space separated: each must answer a tailscale ping
+HB_SSH_UNITS=${HB_SSH_UNITS:-"ssh sshd"}        # OpenSSH service name differs by distribution; any one active passes
 HB_BACKEND_URL=${HB_BACKEND_URL:-http://127.0.0.1:8090}
 HB_PUBLIC_URLS=${HB_PUBLIC_URLS:-https://cabin.unicornpingpong.com}
 HB_DISK_WARN=${HB_DISK_WARN:-60}                # same lines as StorageMonitorService
@@ -50,16 +57,18 @@ HB_PG_USER=${HB_PG_USER:-cabin}
 HB_PG_DB=${HB_PG_DB:-cabin}
 
 # Heartbeat components: probe name == label. Container names are the compose container_name values.
-COMPONENTS=${HB_COMPONENTS:-"backend postgres kafka mosquitto zigbee2mqtt frigate blinkbridge cloudflared homeassistant nodered"}
+# Connectivity first and in dependency order (gateway, internet, dns, ...): a failing parent silences its children's pages.
+COMPONENTS=${HB_COMPONENTS:-"gateway internet dns tailscale public-url sshd tailscale-ssh backend postgres kafka mosquitto zigbee2mqtt frigate blinkbridge cloudflared homeassistant nodered"}
 EXTRA_CONTAINERS=${HB_EXTRA_CONTAINERS:-"cabin-ui family-hub cabin-grafana uptime-kuma mediamtx"}
 BACKUP_TIMERS=${HB_BACKUP_TIMERS:-"backup-home backup-configs backup-services backup-data"}
 HOST_UNITS=${HB_HOST_UNITS:-"cabin-storage-trim-agent.service blinkbridge-watchdog.timer"}
 
-declare -A STATUS MISSES OKS LASTOK FIRSTMISS DOWNSINCE LASTPAGE PAGES
+declare -A STATUS MISSES OKS LASTOK FIRSTMISS DOWNSINCE LASTPAGE PAGES SUPP PRC
 STEP_EVENT=none
 PROBE_DETAIL=""
 NOTIFY_RESULT="none"
 DEADMAN_RESULT="not-configured"
+DEADMAN_PLATFORM_RESULT="not-configured"
 LASTNOTIFY_AT=0
 LASTNOTIFY_ERR=""
 BOOT_AT=0
@@ -133,14 +142,26 @@ flush_outbox() { # resend what could not go out; drop anything older than a day
   done
 }
 
-deadman_ping() { # the external piece: proves this service and the host are alive
-  [ -n "$HB_DEADMAN_URL" ] || { DEADMAN_RESULT=not-configured; return 0; }
-  if curl -fsS -m 10 --retry 2 -o /dev/null "$HB_DEADMAN_URL" 2>/dev/null; then DEADMAN_RESULT=ok; else DEADMAN_RESULT=failed; fi
+dm_curl() { # dm_curl URL ; the optional token goes in a header, never in the URL or the log
+  local args=(-fsS -m 10 --retry 2 -o /dev/null)
+  [ -n "$HB_DEADMAN_TOKEN" ] && args+=(-H "Authorization: Bearer $HB_DEADMAN_TOKEN")
+  curl "${args[@]}" "$1" 2>/dev/null
+}
+
+# The external piece: proves this service and the host are alive. Two kinds (W-56): "host alive" every cycle, and
+# "platform healthy" only while the backend and the Zigbee bridge both answered this cycle, so silence of the second
+# alone means the platform is sick while the cabin itself is up.
+deadman_ping() { # deadman_ping PLATFORM_OK(0|1)
+  if [ -z "$HB_DEADMAN_URL" ]; then DEADMAN_RESULT=not-configured
+  elif dm_curl "$HB_DEADMAN_URL"; then DEADMAN_RESULT=ok; else DEADMAN_RESULT=failed; fi
+  if [ -z "$HB_DEADMAN_PLATFORM_URL" ]; then DEADMAN_PLATFORM_RESULT=not-configured
+  elif [ "${1:-1}" != 0 ]; then DEADMAN_PLATFORM_RESULT=withheld
+  elif dm_curl "$HB_DEADMAN_PLATFORM_URL"; then DEADMAN_PLATFORM_RESULT=ok; else DEADMAN_PLATFORM_RESULT=failed; fi
 }
 
 deadman_fail() {
   [ -n "$HB_DEADMAN_URL" ] || return 0
-  curl -fsS -m 10 --retry 2 -o /dev/null "${HB_DEADMAN_STOP_URL:-${HB_DEADMAN_URL%/}/fail}" 2>/dev/null || true
+  dm_curl "${HB_DEADMAN_STOP_URL:-${HB_DEADMAN_URL%/}/fail}" || true
 }
 
 # ---- probes -------------------------------------------------------------------------------------------------------
@@ -176,9 +197,59 @@ mqtt_sub() { # mqtt_sub TOPIC ; one retained message through the broker's own co
   to docker exec mosquitto mosquitto_sub -t "$1" -C 1 -W 3 2>/dev/null
 }
 
+ts_json() { to tailscale status --json 2>/dev/null; }
+
 probe_component() {
   PROBE_DETAIL=""
+  local t ok found gw n h
   case $1 in
+    gateway)
+      gw=$(ip route show default 2>/dev/null | awk '/^default/ {print $3; exit}')
+      [ -n "$gw" ] || { PROBE_DETAIL="no default route"; return 1; }
+      to ping -c 1 -W 2 "$gw" >/dev/null 2>&1 || { PROBE_DETAIL="gateway $gw does not answer ping"; return 1; }
+      PROBE_DETAIL="gateway $gw answers" ;;
+    internet)
+      # Two independent targets of each kind. Down only when every one fails, so one provider's outage never pages;
+      # the detail says which kind still works (ICMP only: a captive or filtered path; HTTPS only: ICMP blocked).
+      ok=""; found=""
+      for t in $HB_PING_TARGETS; do to ping -c 1 -W 2 "$t" >/dev/null 2>&1 && ok+="ping:$t "; done
+      for t in $HB_HTTPS_TARGETS; do
+        n=$(http_code "$t")
+        [[ "$n" =~ ^[23][0-9][0-9]$ ]] && ok+="https:${t#https://} "
+      done
+      [ -n "$ok" ] || { PROBE_DETAIL="no ping or HTTPS target answers (Starlink or router down)"; return 1; }
+      PROBE_DETAIL="reachable via ${ok% }" ;;
+    dns)
+      for t in $HB_DNS_NAMES; do
+        if to getent hosts "$t" >/dev/null 2>&1; then PROBE_DETAIL="resolved $t"; return 0; fi
+      done
+      PROBE_DETAIL="could not resolve any of: $HB_DNS_NAMES"; return 1 ;;
+    tailscale)
+      h=$(ts_json) || { PROBE_DETAIL="tailscale status failed (tailscaled not running)"; return 1; }
+      printf '%s' "$h" | grep -q '"BackendState": *"Running"' || { PROBE_DETAIL="tailscale is not Running"; return 1; }
+      n=$(printf '%s' "$h" | grep -o '"Online": *true' | wc -l)
+      [ "${n:-0}" -ge 2 ] || { PROBE_DETAIL="tailscale is up but no peer is online"; return 1; }
+      for t in $HB_TAILSCALE_PEERS; do
+        to tailscale ping -c 1 --timeout 5s "$t" >/dev/null 2>&1 || { PROBE_DETAIL="peer $t does not answer a tailscale ping"; return 1; }
+      done
+      PROBE_DETAIL="running, $(( n - 1 )) peer(s) online" ;;
+    public-url)
+      for t in $HB_PUBLIC_URLS; do
+        http_reachable "$t" || return 1
+      done
+      PROBE_DETAIL="answered from the host" ;;
+    sshd)
+      found=""
+      for t in $HB_SSH_UNITS; do [ "$(unit_active "$t")" = active ] && found=$t; done
+      [ -n "$found" ] || { PROBE_DETAIL="no OpenSSH service active ($HB_SSH_UNITS)"; return 1; }
+      to ss -ltn 2>/dev/null | grep -Eq '[:.]22([[:space:]]|$)' || { PROBE_DETAIL="$found active but nothing listens on port 22"; return 1; }
+      PROBE_DETAIL="$found active, listening on 22" ;;
+    tailscale-ssh)
+      # Proves Tailscale SSH is switched on and the daemon is up. That a remote machine can really get in is only provable
+      # from another vantage point (W-56 S3), not from the host itself.
+      h=$(to tailscale debug prefs 2>/dev/null) || { PROBE_DETAIL="tailscale prefs unreadable"; return 1; }
+      printf '%s' "$h" | grep -q '"RunSSH": *true' || { PROBE_DETAIL="Tailscale SSH is not enabled on this host"; return 1; }
+      PROBE_DETAIL="Tailscale SSH enabled" ;;
     backend)
       container_ok cabin-backend || return 1
       curl -fsS -m 5 "$HB_BACKEND_URL/actuator/health" 2>/dev/null | grep -q '"status":"UP"' \
@@ -213,7 +284,7 @@ probe_component() {
 
 init_comp() { # init_comp NAME
   : "${STATUS[$1]:=ok}"; : "${MISSES[$1]:=0}"; : "${OKS[$1]:=0}"; : "${LASTOK[$1]:=0}"
-  : "${FIRSTMISS[$1]:=0}"; : "${DOWNSINCE[$1]:=0}"; : "${LASTPAGE[$1]:=0}"; : "${PAGES[$1]:=0}"
+  : "${FIRSTMISS[$1]:=0}"; : "${DOWNSINCE[$1]:=0}"; : "${LASTPAGE[$1]:=0}"; : "${PAGES[$1]:=0}"; : "${SUPP[$1]:=0}"
 }
 
 # hb_step NAME RC NOW -> STEP_EVENT in: none | down | repage | recovered
@@ -246,15 +317,15 @@ hb_step() {
 # A component the boot summary already named as failing is marked announced, so the heartbeat loop does not page it again.
 mark_announced() { # mark_announced NAME NOW
   init_comp "$1"
-  STATUS[$1]=down; MISSES[$1]=$HB_MISS_LIMIT; OKS[$1]=0; DOWNSINCE[$1]=$2; LASTPAGE[$1]=$2; PAGES[$1]=1
+  STATUS[$1]=down; MISSES[$1]=$HB_MISS_LIMIT; OKS[$1]=0; DOWNSINCE[$1]=$2; LASTPAGE[$1]=$2; PAGES[$1]=1; SUPP[$1]=0
 }
 
 load_comp() {
-  local f="$HB_STATE_DIR/comp.tsv" n st mi ok lo fm ds lp pg
+  local f="$HB_STATE_DIR/comp.tsv" n st mi ok lo fm ds lp pg sp
   [ -f "$f" ] && [ ! -L "$f" ] || return 0
-  while IFS=$'\t' read -r n st mi ok lo fm ds lp pg; do
+  while IFS=$'\t' read -r n st mi ok lo fm ds lp pg sp; do
     [[ "$n" =~ ^[a-z0-9][a-z0-9-]*$ ]] || continue
-    STATUS[$n]=$st; MISSES[$n]=$mi; OKS[$n]=$ok; LASTOK[$n]=$lo; FIRSTMISS[$n]=$fm; DOWNSINCE[$n]=$ds; LASTPAGE[$n]=$lp; PAGES[$n]=$pg
+    STATUS[$n]=$st; MISSES[$n]=$mi; OKS[$n]=$ok; LASTOK[$n]=$lo; FIRSTMISS[$n]=$fm; DOWNSINCE[$n]=$ds; LASTPAGE[$n]=$lp; PAGES[$n]=$pg; SUPP[$n]=${sp:-0}
   done <"$f"
 }
 
@@ -262,8 +333,8 @@ save_comp() {
   local n
   for n in $COMPONENTS; do
     init_comp "$n"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "${STATUS[$n]}" "${MISSES[$n]}" "${OKS[$n]}" "${LASTOK[$n]}" \
-      "${FIRSTMISS[$n]}" "${DOWNSINCE[$n]}" "${LASTPAGE[$n]}" "${PAGES[$n]}"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "${STATUS[$n]}" "${MISSES[$n]}" "${OKS[$n]}" "${LASTOK[$n]}" \
+      "${FIRSTMISS[$n]}" "${DOWNSINCE[$n]}" "${LASTPAGE[$n]}" "${PAGES[$n]}" "${SUPP[$n]}"
   done | write_atomic "$HB_STATE_DIR/comp.tsv"
 }
 
@@ -282,12 +353,12 @@ write_state() { # write_state [STATUS]
       "$([ "${STATUS[$n]}" = down ] && echo "\"$(iso "${DOWNSINCE[$n]}")\"" || echo null)" "$detail")
   done
   mkdir -p "$HB_STATE_DIR" || return 1
-  printf '{"schemaVersion":1,"writtenAt":"%s","host":"%s","intervalSeconds":%s,"missLimit":%s,"status":"%s","bootAt":%s,"notify":{"ntfy":"%s","lastResult":"%s","lastOkAt":%s},"deadman":{"configured":%s,"lastResult":"%s"},"boot":%s,"components":[%s]}\n' \
+  printf '{"schemaVersion":1,"writtenAt":"%s","host":"%s","intervalSeconds":%s,"missLimit":%s,"status":"%s","bootAt":%s,"notify":{"ntfy":"%s","lastResult":"%s","lastOkAt":%s},"deadman":{"configured":%s,"lastResult":"%s","platform":"%s"},"boot":%s,"components":[%s]}\n' \
     "$(iso "$now")" "$(jstr "$(hostname 2>/dev/null || echo unknown)")" "$HB_INTERVAL" "$HB_MISS_LIMIT" "${1:-$SERVICE_STATUS}" \
     "$([ "$BOOT_AT" -gt 0 ] && echo "\"$(iso "$BOOT_AT")\"" || echo null)" \
     "$([ -n "$HB_NTFY_TOPIC" ] && echo configured || echo not-configured)" "$NOTIFY_RESULT" \
     "$([ "$LASTNOTIFY_AT" -gt 0 ] && echo "\"$(iso "$LASTNOTIFY_AT")\"" || echo null)" \
-    "$([ -n "$HB_DEADMAN_URL" ] && echo true || echo false)" "$DEADMAN_RESULT" "$BOOT_JSON" "$comps" | write_atomic "$HB_STATE_DIR/state.json"
+    "$([ -n "$HB_DEADMAN_URL" ] && echo true || echo false)" "$DEADMAN_RESULT" "$DEADMAN_PLATFORM_RESULT" "$BOOT_JSON" "$comps" | write_atomic "$HB_STATE_DIR/state.json"
 }
 
 declare -A DETAIL
@@ -373,15 +444,6 @@ check_frigate_cameras() {
   else bres frigate-cameras ok "all $total cameras producing frames"; fi
 }
 
-check_public_urls() {
-  local u code
-  for u in $HB_PUBLIC_URLS; do
-    code=$(http_code "$u"); code=${code:-000}
-    if [[ "$code" =~ ^[0-9]+$ ]] && [ "$code" -ge 100 ] && [ "$code" -lt 500 ]; then bres "public-url" ok "$u answered $code"
-    else bres "public-url" warn "$u answered $code (tunnel or internet not back yet)"; fi
-  done
-}
-
 check_disks() {
   local m pct lvl
   for m in /storage /; do
@@ -417,7 +479,6 @@ run_all_checks() { # run_all_checks BOOT_EPOCH
   check_ingest "$1"
   check_zigbee_devices
   check_frigate_cameras
-  check_public_urls
   check_disks
   check_host_units
 }
@@ -478,6 +539,7 @@ boot_check() { # boot_check NOTIFY(0|1)
         if [ "${BOOT_NAMES[$i]}" = "$c" ] && [ "${BOOT_LEVELS[$i]}" = crit ]; then mark_announced "$c" "$now"; fi
       done
     done
+    { echo "Recovery check at $(iso "$now")"; print_report; echo; echo "$SUMMARY_TEXT"; } | write_atomic "$HB_STATE_DIR/report.txt"
     case $SUMMARY_LEVEL in
       info) notify info "Cabin restarted: all clear" "$SUMMARY_TEXT" ;;
       warn) notify warn "Cabin restarted: needs a look" "$SUMMARY_TEXT" ;;
@@ -494,13 +556,29 @@ all_clear() {
 
 # ---- heartbeat cycle ----------------------------------------------------------------------------------------------
 
+# A child is silenced while its parent is down: when the internet is out, one page names the internet, not also DNS and
+# the public URL. The child stays tracked and visible; it is announced later if it is still down once the parent is back.
+parent_of() { case $1 in internet) echo gateway ;; dns|public-url) echo internet ;; *) echo "" ;; esac; }
+
 cycle() {
-  local now c rc down_for
+  local now c rc down_for parent pdown
   now=$(now_epoch)
   for c in $COMPONENTS; do
     probe_component "$c"; rc=$?
+    PRC[$c]=$rc
     DETAIL[$c]=$PROBE_DETAIL
     hb_step "$c" "$rc" "$now"
+    parent=$(parent_of "$c"); pdown=false
+    [ -n "$parent" ] && [ "${STATUS[$parent]:-ok}" = down ] && pdown=true
+    case $STEP_EVENT in
+      down) if $pdown; then SUPP[$c]=1; STEP_EVENT=none; fi ;;
+      repage) if [ "${SUPP[$c]}" = 1 ]; then if $pdown; then STEP_EVENT=none; else SUPP[$c]=0; STEP_EVENT=down; fi; elif $pdown; then STEP_EVENT=none; fi ;;
+      recovered) if [ "${SUPP[$c]}" = 1 ]; then SUPP[$c]=0; STEP_EVENT=none; fi ;;
+    esac
+    # A silenced child whose parent has come back and which is still down is announced on the next real miss cycle.
+    if [ "$STEP_EVENT" = none ] && [ "${STATUS[$c]}" = down ] && [ "${SUPP[$c]}" = 1 ] && ! $pdown; then
+      SUPP[$c]=0; STEP_EVENT=down; LASTPAGE[$c]=$now; PAGES[$c]=1
+    fi
     case $STEP_EVENT in
       down) notify critical "Cabin: $c is down" "$c missed $HB_MISS_LIMIT heartbeats in a row (about $(human_dur $(( HB_MISS_LIMIT * HB_INTERVAL )))). ${PROBE_DETAIL}. Last good beat: $([ "${LASTOK[$c]}" -gt 0 ] && iso "${LASTOK[$c]}" || echo never)." ;;
       repage) down_for=$(( now - DOWNSINCE[$c] )); notify critical "Cabin: $c STILL down" "$c has been down for $(human_dur "$down_for"). ${PROBE_DETAIL}." ;;
@@ -508,7 +586,9 @@ cycle() {
     esac
   done
   flush_outbox
-  deadman_ping
+  local platform_ok=1
+  [ "${PRC[backend]:-1}" = 0 ] && [ "${PRC[zigbee2mqtt]:-1}" = 0 ] && platform_ok=0
+  deadman_ping "$platform_ok"
   save_comp
   write_state "$SERVICE_STATUS"
 }

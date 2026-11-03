@@ -136,7 +136,7 @@ public class RecoveryHeartbeatService {
         out.put("host", text(s.get("host"), 60));
         out.put("bootAt", text(s.get("bootAt"), 40));
         out.put("notify", subset(s.get("notify"), "ntfy", "lastResult", "lastOkAt"));
-        out.put("deadman", subset(s.get("deadman"), "configured", "lastResult"));
+        out.put("deadman", subset(s.get("deadman"), "configured", "lastResult", "platform"));
         out.put("boot", boot(s.get("boot")));
         out.put("components", comps);
         if (stale && !"stopped".equals(status)) {
