@@ -2951,11 +2951,51 @@ sudo useradd --create-home --shell /bin/bash --comment "read-only recovery monit
 sudo install -d -m 700 -o cabin-monitor -g cabin-monitor /home/cabin-monitor/.ssh
 echo 'restrict,command="cat /storage/archives/cabin_event/.recovery/state.json /storage/archives/cabin_event/.recovery/report.txt" ssh-ed25519 <PUBLIC KEY> cabin-monitor' | sudo tee /home/cabin-monitor/.ssh/authorized_keys >/dev/null
 sudo chown cabin-monitor:cabin-monitor /home/cabin-monitor/.ssh/authorized_keys && sudo chmod 600 /home/cabin-monitor/.ssh/authorized_keys
-printf 'Port 22\nPort 2222\nMatch User cabin-monitor\n  PasswordAuthentication no\n  AllowTcpForwarding no\n  X11Forwarding no\n  PermitTTY no\n' | sudo tee /etc/ssh/sshd_config.d/cabin-monitor.conf >/dev/null
+printf 'Match User cabin-monitor\n  PasswordAuthentication no\n  AllowTcpForwarding no\n  X11Forwarding no\n  PermitTTY no\n' | sudo tee /etc/ssh/sshd_config.d/cabin-monitor.conf >/dev/null
 sudo sshd -t && sudo systemctl reload ssh
 ```
 
-Generate the key pair on the machine that will hold it (`ssh-keygen -t ed25519`), paste only the public half above, and keep the private half in the vault. From that machine: `ssh -p 2222 cabin-monitor@<host>` prints the live component state and the last boot check report. It cannot run a new check or fix anything; for that, use Tailscale SSH as today. If live diagnostics are wanted later, add a sudoers entry limited to `cabin-recovery-heartbeat check` for this user rather than widening the key.
+   Then open port 2222. **How depends on how OpenSSH is started, and a `Port 2222` line is ignored on Ubuntu 24.04**, where `ssh.socket` (socket activation) owns the listening ports; this is what a first attempt on 2026-11-03 hit ("Connection refused" on 2222 while 22 answered). Check which applies, then do the matching step:
+
+```bash
+systemctl is-active ssh.socket
+```
+
+   If it prints `active` (expected on Ubuntu 24.04), add the port to the socket:
+
+```bash
+sudo mkdir -p /etc/systemd/system/ssh.socket.d
+printf '[Socket]\nListenStream=\nListenStream=22\nListenStream=2222\n' | sudo tee /etc/systemd/system/ssh.socket.d/cabin-monitor.conf >/dev/null
+sudo systemctl daemon-reload && sudo systemctl restart ssh.socket
+```
+
+   Otherwise (`inactive`), add the port to the daemon instead:
+
+```bash
+printf 'Port 22\nPort 2222\n' | sudo tee /etc/ssh/sshd_config.d/cabin-monitor-port.conf >/dev/null
+sudo sshd -t && sudo systemctl restart ssh
+```
+
+   Either way, confirm both ports listen (open sessions keep running through the restart; Tailscale SSH on port 22 is served by `tailscaled`, not by this service):
+
+```bash
+sudo ss -ltn | grep -E ':(22|2222) '
+
+```
+
+**Using the monitoring key (installed 2026-11-03).** The key pair was generated on the Windows PC `ILikeTheLights`, where the agent sessions run. The private key is `%USERPROFILE%\.ssh\cabin-monitor_ed25519` (no passphrase so checks can run unattended; permissions limited to the signed-in account; never in git). Only the public half went to the host. Fingerprint: `SHA256:dKY+MgpLiYvJgsOLuMVNRRvSqiOCyPDpskIegtiI33E`. The M920q's tailnet address is `100.77.44.113` (name `nates-little-m920q.tailb20f8b.ts.net`; the short name `cabin-hub` only resolves where MagicDNS search domains are set, which this PC does not have). To read the cabin's state:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\cabin-monitor_ed25519" -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes cabin-monitor@100.77.44.113
+```
+
+It prints the live component state (JSON) and the last boot check report, and nothing else: the key is forced to run one `cat` and has no shell, terminal or forwarding. It cannot run a new check or fix anything; for that, use the owner's Tailscale SSH (`ssh nate@nates-little-m920q.tailb20f8b.ts.net`). If live diagnostics are wanted later, add a sudoers entry limited to `cabin-recovery-heartbeat check` for this user rather than widening the key.
+
+*Backup.* The key is read-only and revocable, so losing the PC costs one regeneration, not an incident. An optional copy can go in the password manager as a Secure Note ("cabin-monitor SSH key"). Vaultwarden is not installed on the cabin host yet (the `vaultwarden` service in `docker-compose.m920q.yml` has not been deployed), so until it is, use whatever password manager Nate already uses, and if Vaultwarden is later hosted on the M920q remember it cannot be reached during a cabin outage, which makes it a backup only. Do not put the private key in git or in `ansible/group_vars/cabin/vault.yml` (that vault is for values templated into `.env`).
+
+*Revoke or rotate.* On the host: `sudo rm /home/cabin-monitor/.ssh/authorized_keys` (revokes at once), or `sudo userdel -r cabin-monitor` to remove the user. To rotate, generate a new pair with `ssh-keygen -t ed25519 -N '' -f <path>`, replace the line in `authorized_keys` with the new public key, then delete the old private key. Verify with the command above: a successful print is the check, a `Permission denied (publickey)` means the old key is revoked.
+
+*Troubleshooting.* `Connection refused` on 2222 with 22 working: the port was not opened (`ssh.socket` note above). `Permission denied (publickey)`: wrong key, or `authorized_keys` ownership or mode (it must be `600`, owned by `cabin-monitor`). `No such file` from the `cat`: the recovery service has not yet written `state.json` (not installed, or still in its first minute). A hang: Tailscale is down on this PC or the host, and the `tailscale` and `internet` heartbeats should already say so.
 
 **Tuning** (in `/etc/cabin-recovery-heartbeat.env`, then restart the service): `HB_MISS_LIMIT` (5), `HB_INTERVAL` (60 s), `HB_RECOVER_OKS` (2), `HB_REPAGE_FIRST` (3600 s), `HB_REPAGE_EVERY` (21600 s), `HB_BOOT_GRACE` (180 s), `HB_BOOT_RETRY` (120 s), `HB_PUBLIC_URLS`, `HB_PING_TARGETS`, `HB_HTTPS_TARGETS`, `HB_DNS_NAMES`, `HB_TAILSCALE_PEERS`, `HB_NOTIFY_HOOK` (an executable called as `HOOK LEVEL TITLE MESSAGE`, for email or SMS). Backend: `cabin.recovery.staleAfterSeconds` (300).
 
