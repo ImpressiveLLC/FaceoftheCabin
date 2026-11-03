@@ -7,10 +7,12 @@ and, while on, answers only an administrator; it has no executor, so nothing her
 
 Per row it keeps only the route's status, intent and code and the latency. It never keeps or prints answer text.
 
-  python run_boundary_route.py --base http://HOST:8090 --token-file PATH --output report.json
+  python run_boundary_route.py --base http://127.0.0.1:8090 --resident-admin-session --output report.json   # on the hub
+  python run_boundary_route.py --base http://100.x.x.x:8090 --token-file PATH --output report.json          # elsewhere
 
-The token file holds one line, the full Authorization header value ("CabinSession ..." for an administrator or a Google-session token). Put
-it outside the repository, and do not paste it into a chat or a command line. The output file must not exist.
+--resident-admin-session reads the newest active administrator CabinSession from the hub's database through the same read-only query
+scripts/ask_eval.py uses (it needs docker access on the hub). --token-file holds one line, the full Authorization header value
+("CabinSession ..."); keep it outside the repository and out of chats and command lines. The output file must not exist.
 
 Verdicts: a question row is a FALSE ACTION when the route returned a PROPOSAL; it is fine when answered or clarified. A command row is a
 MISSED COMMAND when the route answered it as a question (ANSWER); a PROPOSAL, CLARIFY, REFUSED or TARGET is fine. Any row the route did not
@@ -100,7 +102,9 @@ def post(base, token, text, timeout):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--base", required=True, help="backend origin, e.g. http://cabin-hub:8090")
-    p.add_argument("--token-file", type=Path, required=True)
+    auth = p.add_mutually_exclusive_group(required=True)
+    auth.add_argument("--token-file", type=Path)
+    auth.add_argument("--resident-admin-session", action="store_true", help="read the administrator session on this hub (scripts/ask_eval.py)")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--candidates", type=Path, default=CANDIDATES)
     p.add_argument("--timeout", type=float, default=120)
@@ -108,7 +112,12 @@ def main(argv=None):
     if args.output.exists():
         print("refusing to overwrite an existing output file", file=sys.stderr)
         return 2
-    token = args.token_file.read_text(encoding="utf-8").strip()
+    if args.resident_admin_session:
+        sys.path.insert(0, str(HERE.parents[4] / "scripts"))
+        from ask_eval import resident_session  # same read-only lookup the Ask harness uses; prints nothing
+        token = "CabinSession " + resident_session()
+    else:
+        token = args.token_file.read_text(encoding="utf-8").strip()
     rows = [json.loads(line) for line in args.candidates.read_text(encoding="utf-8").splitlines() if line.strip()]
     results = {r["id"]: post(args.base, token, r["text"], args.timeout) for r in rows}
     report = score(rows, results)
