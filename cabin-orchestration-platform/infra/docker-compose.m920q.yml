@@ -323,6 +323,9 @@ services:
       - /storage/archives/cabin_event:/app/archives/cabin_event
       # Read-write -- OutdoorWeatherService's raw and monthly outdoor-weather CSV log (cold tier).
       - /storage/archives/weather:/app/archives/weather
+      # Read-only: the host recovery service (root) writes its state here; the backend must never be able to write what a root
+      # service trusts. Docker creates the folder (root-owned) if the service is not installed yet.
+      - /var/lib/cabin-recovery:/app/recovery:ro
     networks:
       - default         # project network: reaches cabin-postgres, cabin-kafka
       - cabin_default   # existing network: reaches mosquitto, nodered, z2m

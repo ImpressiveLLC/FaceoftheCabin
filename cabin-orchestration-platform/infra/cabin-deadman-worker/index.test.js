@@ -150,6 +150,27 @@ test('a ping after a long silence is stored at once, and clock going backwards s
   assert.equal(await w.env.HEARTBEAT_KV.get('last:host'), String(T0 + 59 * MIN));
 });
 
+test('a forgotten deliberate stop stops muting after STOP_MAX_MINUTES and then behaves as an outage', async () => {
+  const w = world();
+  await handleFetch(req('/ping/host'), w.env, T0);
+  await handleFetch(req('/stop/host'), w.env, T0 + MIN, w.fetchImpl);
+  assert.deepEqual(await evaluate(w.env, T0 + 23 * 60 * MIN, w.fetchImpl), []);                 // still muted inside 24 h
+  assert.deepEqual(await evaluate(w.env, T0 + 25 * 60 * MIN, w.fetchImpl), ['stopmax:host']);   // then it says so, once
+  assert.match(w.calls[1].body, /not resumed/);
+  assert.deepEqual(await evaluate(w.env, T0 + 25 * 60 * MIN + 10 * MIN, w.fetchImpl), []);
+  assert.deepEqual(await evaluate(w.env, T0 + 26 * 60 * MIN + 5 * MIN, w.fetchImpl), ['repeat:host']);   // and repeats hourly like an outage
+  await handleFetch(req('/ping/host'), w.env, T0 + 27 * 60 * MIN);
+  assert.deepEqual(await evaluate(w.env, T0 + 27 * 60 * MIN + MIN, w.fetchImpl), ['back:host']);
+});
+
+test('STOP_MAX_MINUTES can be shortened', async () => {
+  const w = world({ STOP_MAX_MINUTES: '30' });
+  await handleFetch(req('/ping/host'), w.env, T0);
+  await handleFetch(req('/stop/host'), w.env, T0, w.fetchImpl);
+  assert.deepEqual(await evaluate(w.env, T0 + 20 * MIN, w.fetchImpl), []);
+  assert.deepEqual(await evaluate(w.env, T0 + 31 * MIN, w.fetchImpl), ['stopmax:host']);
+});
+
 test('thresholds come from the variables', async () => {
   const w = world({ SILENCE_MINUTES: '12', REPEAT_MINUTES: '5', NTFY_URL: 'https://ntfy.example/' });
   await handleFetch(req('/ping/host'), w.env, T0);

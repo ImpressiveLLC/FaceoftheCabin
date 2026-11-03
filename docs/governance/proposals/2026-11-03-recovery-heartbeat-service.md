@@ -11,12 +11,12 @@ On 2026-11-02 the cabin lost power. The host rebooted at 23:54 UTC and recovered
 | Piece | Where | Runs |
 |---|---|---|
 | Host service `cabin-recovery-heartbeat` (bash) and its systemd unit | `scripts/host/` | On the host, as root, **outside Docker**, so it keeps working when the stack is down |
-| State spool `state.json` | `/storage/archives/cabin_event/.recovery/` (the bind mount the backend already has) | Written by the host service, read-only for the backend |
+| State folder `state.json`, `report.txt` | `/var/lib/cabin-recovery/` on the host, mounted read-only into `cabin-backend` at `/app/recovery` | Written by the host service (root-only folder); read-only for the backend |
 | `RecoveryHeartbeatService`, `RecoveryController` (`GET /api/system/recovery`, administrator only) | `cabin-backend` | Reads the spool, validates it, serves the Monitoring section, and feeds `ActiveAlertService` |
 | Critical banner entries | `ActiveAlertService` → `GET /api/alerts/active` → the existing banner, Status Checks and nav rail | Nothing new in the UI's banner code: the conditions arrive as ordinary CRITICAL alerts |
 | Monitoring section "Recovery and heartbeats" | `RecoveryStatusWidget` in `App.jsx`, under Storage | Administrators, Cabin location, signed in, not demo |
 | Off-host dead-man Worker `cabin-deadman` | `cabin-orchestration-platform/infra/cabin-deadman-worker/` | Cloudflare, deployed by Nate |
-| Tests | `scripts/host/test_cabin_recovery_heartbeat.sh` (96 checks), the Worker's `index.test.js` (12), `RecoveryHeartbeatServiceTest`, `RecoveryControllerTest`, `ActiveAlertServiceTest`, `ui/src/RecoveryStatus.test.jsx` | CI: `.github/workflows/recovery-heartbeat-tests.yml` and `kiosk-cabin-ui.yml` |
+| Tests | `scripts/host/test_cabin_recovery_heartbeat.sh` (see the test file for the count), the Worker's `index.test.js`, `RecoveryHeartbeatServiceTest`, `RecoveryControllerTest`, `ActiveAlertServiceTest`, `ui/src/RecoveryStatus.test.jsx` | CI: `.github/workflows/recovery-heartbeat-tests.yml` and `kiosk-cabin-ui.yml` |
 
 ### Three jobs of the host service
 
@@ -53,7 +53,7 @@ Added at Nate's request ("services should include SSH setup and all health check
 | `sshd` | An OpenSSH service (`ssh` or `sshd`) is active and something listens on port 22 | |
 | `tailscale-ssh` | Tailscale SSH is switched on (`RunSSH`) | Proves it is enabled, not that a remote machine can get in; that needs an outside vantage point (S3) |
 
-**Parent silencing.** When `gateway` is down its child `internet` is not paged separately, and when `internet` is down neither are `dns` or `public-url`. They stay tracked and shown as down. If a child is still down once its parent has recovered, it is announced then. One outage, one page.
+**Parent silencing.** When `gateway` is down its child `internet` is not paged separately, and when `internet` is down neither are `dns`, `tailscale` or `public-url`. They stay tracked and shown as down. If a child is still down once its parent has recovered, it is announced then. One outage, one page.
 
 **While the internet is down the push cannot leave.** The host queues the notice and sends it, marked delayed, when the connection returns. The banner works throughout (it is LAN-local) and the Worker catches the silence off-host after 10 minutes.
 
@@ -63,11 +63,11 @@ Tailscale SSH currently asks for a browser re-auth link on each session, which b
 
 | Option | What changes | Least privilege | Cost |
 |---|---|---|---|
-| **A (recommended): dedicated read-only OpenSSH user with a forced command** | A user `cabin-monitor` and an ed25519 key. The `authorized_keys` line is `restrict,command="cat .../.recovery/state.json .../.recovery/report.txt"`: no shell, no terminal, no forwarding. It can read only the two world-readable files the service writes (live component state, and the full report of the last boot check) | Highest: it cannot run Docker, read secrets, or change anything | Cannot run a fresh check or fix anything; it returns the service's last report. An extra OpenSSH port (for example 2222) is needed because Tailscale SSH takes port 22 on the tailnet address |
+| **A (recommended): dedicated read-only OpenSSH user with a forced command** | A user `cabin-monitor` and an ed25519 key. The `authorized_keys` line is `restrict,command="cat /var/lib/cabin-recovery/state.json /var/lib/cabin-recovery/report.txt"`: no shell, no terminal, no forwarding. It can read only the two world-readable files the service writes (live component state, and the full report of the last boot check) | Highest: it cannot run Docker, read secrets, or change anything | Cannot run a fresh check or fix anything; it returns the service's last report. An extra OpenSSH port (for example 2222) is needed because Tailscale SSH takes port 22 on the tailnet address |
 | B: Tailscale ACL, `check` to `accept` for one tagged machine and one non-root user | A tailnet policy edit by Nate in the admin console | Medium: a real shell as that user, no browser step | No host change, but the user has a shell, and the policy edit is broader |
 | C: lengthen the ACL `checkPeriod` | One value in the tailnet policy | Lowest change, no new access | Still needs a browser link now and then, so it does not make checks unattended |
 
-**Decision (Nate, 2026-11-03): option A.** Nate leaned to the Tailscale ACL and, asked for a recommendation, took A. Reasons: B needs the M920q to carry a Tailscale tag, and as understood a tagged device loses its user ownership, which can stop Nate's own `check` rule matching it and changes key-expiry behaviour, and a policy mistake can lock out the cabin; A touches nothing tailnet-wide, is owner-run, is undone with `userdel`, and the forced command can only read two files. It covers the 2026-11-02 case, because the service has already run the full check at boot. Still open and Nate's: where the private key lives (the vault, not git), and the port. If live diagnostics are wanted later, the narrow extension is a sudoers entry limited to `cabin-recovery-heartbeat check` for that user. The host commands are in the runbook and have not been run.
+**Decision (Nate, 2026-11-03): option A.** Nate leaned to the Tailscale ACL and, asked for a recommendation, took A. Reasons: B needs the M920q to carry a Tailscale tag, and as understood a tagged device loses its user ownership, which can stop Nate's own `check` rule matching it and changes key-expiry behaviour, and a policy mistake can lock out the cabin; A touches nothing tailnet-wide, is owner-run, is undone with `userdel`, and the forced command can only read two files. It covers the 2026-11-02 case, because the service has already run the full check at boot. Still open and Nate's: where the private key lives (the vault, not git), and the port. If live diagnostics are wanted later, the narrow extension is a sudoers entry limited to `cabin-recovery-heartbeat check` for that user. The host commands are in the runbook; Nate applied them on 2026-11-03 and the connection was verified.
 
 ## What is detected, and what is not
 
@@ -98,7 +98,7 @@ The banner needs the backend alive; the push needs the host service alive and nt
 | 8 | A missing or stale state file: stale is CRITICAL "Recovery service not reporting"; missing is only a WARN "not installed" | A stale file proves something was running and stopped. A missing file on a clone or a dev machine must not nag. The feature is off by default (`cabin.recovery.enabled=false`) and `docker-compose.m920q.yml` turns it on |
 | 9 | Stale after 300 s (`cabin.recovery.staleAfterSeconds`) | Five missed writes at the 60 s interval, the same patience as the component rule |
 | 10 | Banner alerts carry location `cabin` | The M920q is the head for both locations (D23), but the banner filters alerts by the selected location, so with Home selected these do not show. Known limit, see "Not built" |
-| 11 | State lives in a new `.recovery` folder inside `/storage/archives/cabin_event`, mode 0755, files 0644, written only by the host | The backend only reads. It is a different folder from the world-writable `.trim` spool on purpose: the backend must never be able to write what a root service trusts |
+| 11 | State lives in `/var/lib/cabin-recovery`, a root-only host folder (systemd `StateDirectory`), mounted into `cabin-backend` read-only; files 0644 | The first version put it inside `/storage/archives/cabin_event`, which the backend container can write (root in the container), so a compromised backend could plant files that a root service trusts (found in review, fixed before any install). The service additionally treats what it reads back as untrusted: every `comp.tsv` column is validated before it reaches shell arithmetic, markers are written by rename (a planted symlink is replaced, not followed), the folder must be a real directory owned by root and not group or world writable, and outbox files are size-capped regular files with a numeric name |
 | 12 | The backend treats the file as untrusted: regular file only (no symlink), at most 200 KB, whitelisted fields, bounded lengths, component names matched against a pattern | Same discipline as `StorageTrimService` |
 | 13 | `GET /api/system/recovery` is administrator-only and a demo DENY | It lists internal component names and install commands |
 | 14 | `ExecStopPost`, not `ExecStop`, classifies how the service ended | It runs however the service ended; `SERVICE_RESULT` separates a deliberate stop (success), a crash, and a shutdown (a `shutdown.target` job is queued) |
@@ -112,7 +112,7 @@ The banner needs the backend alive; the push needs the host service alive and nt
 
 **Host side (built).** Each cycle the service pings `HB_DEADMAN_URL` (*host alive*) and, only while the backend and the Zigbee bridge both answered, `HB_DEADMAN_PLATFORM_URL` (*platform healthy*). `HB_DEADMAN_TOKEN` is sent as `Authorization: Bearer <token>` and is never written to the state file or a log. A deliberate stop calls `HB_DEADMAN_STOP_URL` (default: the host URL plus `/fail`, which is what healthchecks.io expects). The URLs and token live in the root-only `/etc/cabin-recovery-heartbeat.env`, never in git.
 
-**Off-host side (built as source; Nate deploys).** Cloudflare Worker `cabin-deadman`, source in `cabin-orchestration-platform/infra/cabin-deadman-worker/` with 12 tests (`node --test`), run in CI. Contract:
+**Off-host side (built as source; Nate deploys).** Cloudflare Worker `cabin-deadman`, source in `cabin-orchestration-platform/infra/cabin-deadman-worker/` with tests (`node --test`), run in CI. Contract:
 
 | Item | Value |
 |---|---|
@@ -125,7 +125,7 @@ The banner needs the backend alive; the push needs the host service alive and nt
 | Silence threshold | 10 minutes (`SILENCE_MINUTES`), so detection takes 10 to 15 minutes |
 | Alert | One ntfy push at priority `urgent` ("Cabin host heartbeat silent": the silence length and last-seen time); repeated every 60 minutes (`REPEAT_MINUTES`) while silent |
 | Recovery message | One push at default priority when pings resume: "heartbeat is back after N min" |
-| Rules | A kind that never pinged is never alerted. While *host alive* is silent, *platform healthy* is not alerted separately. A failed ntfy send is retried on the next cron rather than recorded. A deliberate stop pushes once, then its silence is treated as already announced and is never repeated hourly |
+| Rules | A kind that never pinged is never alerted. While *host alive* is silent, *platform healthy* is not alerted separately. A failed ntfy send is retried on the next cron rather than recorded. A deliberate stop pushes once, then its silence is treated as already announced and is not repeated hourly, but only for `STOP_MAX_MINUTES` (default 24 hours): after that a forgotten stop is treated as an ordinary outage |
 | Not secrets | `NTFY_URL` (`https://ntfy.sh`), `SILENCE_MINUTES`, `REPEAT_MINUTES` are plain variables in `wrangler.toml` |
 
 **healthchecks.io remains a valid alternative** (about five minutes: a check with period 5 and grace 5 minutes, an integration for where admins are reached, the ping URL into `HB_DEADMAN_URL`, no token). Choose one; the host service pings whichever URL it is given.

@@ -97,10 +97,15 @@ cat >"$W/bin/ss" <<'EOF'
 #!/usr/bin/env bash
 cat "$W/ss_out"
 EOF
+cat >"$W/bin/sleep" <<'EOF'
+#!/usr/bin/env bash
+[ -f "$HB_STATE_DIR/state.json" ] && cp "$HB_STATE_DIR/state.json" "$W/during_sleep.$1" 2>/dev/null
+exit 0
+EOF
 chmod +x "$W"/bin/*
 
 reset_world() {
-  rm -rf "$W/state" "$W/c" "$W/units" "$W/ntfy.log" "$W/deadman.log" "$W/report_seen" "$W/argv.log" "$W/hook.log" "$W/ntfy_rc" "$W/jobs" "$W/avail" "$W/pg_rc"
+  rm -rf "$W/state" "$W/c" "$W/units" "$W/ntfy.log" "$W/deadman.log" "$W/report_seen" "$W/argv.log" "$W"/during_sleep.* "$W/victim" "$W/realdir" "$W/hook.log" "$W/ntfy_rc" "$W/jobs" "$W/avail" "$W/pg_rc"
   rm -f "$W"/df_* "$W"/code_* "$W"/ping_* "$W"/dns_down "$W"/no_route "$W"/ts_dead "$W"/tsping_rc
   mkdir -p "$W/state" "$W/c" "$W/units"
   for c in cabin-backend cabin-postgres cabin-kafka mosquitto zigbee2mqtt frigate blinkbridge cloudflared homeassistant nodered \
@@ -122,6 +127,7 @@ reset_world() {
 export W
 export PATH="$W/bin:$PATH"
 export HB_STATE_DIR="$W/state" HB_NTFY_URL=https://ntfy.test HB_NTFY_TOPIC=testtopic HB_PUBLIC_URLS=https://cabin.test/
+export HB_STATE_DIR_UID=$(id -u)
 export HB_BOOT_EPOCH=1000000 HB_NOW=1000300 HB_BOOT_RETRY=0 HB_BOOT_GRACE=0 HB_PROBE_TIMEOUT=5
 export HB_MISS_LIMIT=5 HB_INTERVAL=60
 
@@ -304,6 +310,43 @@ SERVICE_RESULT=exit-code run stopped; HB_NOW=$((1000300+15)) SERVICE_RESULT=exit
 check "a crash loop pushes one notice, not one per restart, and the state is restarting, not stopped" "[ \$(pushes) -eq 1 ] && grep -q '\"status\":\"restarting\"' $W/state/state.json"
 HB_NOW=$((1000300+700)) SERVICE_RESULT=exit-code run stopped
 check "a crash after the cooldown notifies again" "[ \$(pushes) -eq 2 ]"
+
+echo "the state folder is untrusted input"
+reset_world
+printf 'nodered\tdown\t5\t0\t1\t0\t1\t1\t1\t0\nkafka\tok\tMISSES[$(touch %s/pwn)]\t0\t1\t0\t0\t0\t0\t0\npostgres\tdown\t5\t0\t1\t0\t1\tMISSES[$(touch %s/pwn2)]\t1\t0\ngateway\tbogus\t0\t0\t1\t0\t0\t0\t0\t0\n' "$W" "$W" >"$W/state/comp.tsv"
+echo 'false||0' >"$W/c/cabin-kafka"; echo 'false||0' >"$W/c/cabin-postgres"
+run once
+check "a planted comp.tsv row is never executed" "[ ! -e $W/pwn ] && [ ! -e $W/pwn2 ]"
+check "rows with a bad column or status are dropped, a valid row is kept" "grep -q '\"name\":\"nodered\",\"status\":\"down\"' $W/state/state.json && json_ok $W/state/state.json"
+reset_world
+echo 'victim' >"$W/victim"; ln -s "$W/victim" "$W/state/clean-shutdown"
+echo 'shutdown.target stop waiting' >"$W/jobs"
+run stopped
+check "a symlinked shutdown marker is not followed: the target is untouched and the marker becomes a regular file" "[ \$(cat $W/victim) = victim ] && [ ! -L $W/state/clean-shutdown ] && [ -f $W/state/clean-shutdown ]"
+reset_world
+echo 'victim' >"$W/victim"; ln -s "$W/victim" "$W/state/last-crash-notice"
+SERVICE_RESULT=exit-code run stopped
+check "a symlinked crash-notice file is not followed" "[ \$(cat $W/victim) = victim ] && [ ! -L $W/state/last-crash-notice ]"
+reset_world
+mkdir -p "$W/realdir"; rm -rf "$W/state"; ln -s "$W/realdir" "$W/state"
+bash "$SCRIPT" once 2>/dev/null; rc=$?
+check "a symlinked state folder is refused and nothing is written through it" "[ \$rc -ne 0 ] && [ -z \"\$(ls -A $W/realdir)\" ]"
+rm -f "$W/state"; mkdir -p "$W/state"
+reset_world
+HB_STATE_DIR_UID=99999 bash "$SCRIPT" once 2>/dev/null; rc=$?
+check "a state folder owned by the wrong uid is refused" "[ \$rc -ne 0 ] && [ ! -e $W/state/state.json ]"
+chmod 777 "$W/state"; bash "$SCRIPT" once 2>/dev/null; rc=$?
+check "a group/other-writable state folder is refused" "[ \$rc -ne 0 ] && [ ! -e $W/state/state.json ]"
+chmod 755 "$W/state"
+reset_world; mkdir -p "$W/state/outbox"
+printf 'critical\nforged\nbody\n' >"$W/state/outbox/1000000-1"; ln -s "$W/victim" "$W/state/outbox/1000000-2"; head -c 9000 /dev/zero | tr '\0' 'a' >"$W/state/outbox/1000000-3"; printf 'critical\nx\ny\n' >"$W/state/outbox/\$(touch_pwn)-4"; printf 'weird\nx\ny\n' >"$W/state/outbox/1000000-5"
+HB_NOW=1000300 run once
+check "outbox: symlinks, oversized, non-numeric names and unknown levels are dropped, a valid file is delivered" "[ \$(ls $W/state/outbox | wc -l) -eq 0 ] && grep -q 'forged (delayed' $W/ntfy.log && [ \$(grep -c delayed $W/ntfy.log) -eq 1 ]"
+
+echo "a long boot keeps the state fresh"
+reset_world; echo 'false||0' >"$W/c/cabin-kafka"
+HB_ONCE=1 HB_BOOT_RETRY=7 run run
+check "state is rewritten as booting before the retry wait, so the banner never says not reporting" "grep -q '\"status\":\"booting\"' $W/during_sleep.7"
 
 echo "delivery problems"
 reset_world; echo 'false||0' >"$W/c/nodered"; echo 7 >"$W/ntfy_rc"

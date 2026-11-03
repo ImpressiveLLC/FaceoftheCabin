@@ -29,7 +29,7 @@ import java.util.regex.Pattern;
  *
  * The work is done by a root service on the host, outside Docker (scripts/host/cabin-recovery-heartbeat), which writes
  * {@code state.json} into a spool folder inside the bind mount this container already has
- * ({@code /storage/archives/cabin_event}), the same arrangement as the storage trim agent. This class only READS that
+ * ({@code /var/lib/cabin-recovery}, mounted read-only at {@code /app/recovery}). This class only READS that
  * file, never writes the spool, and turns it into two things: the Monitoring section's view and the current alerts that
  * feed the Critical banner.
  *
@@ -63,7 +63,7 @@ public class RecoveryHeartbeatService {
     @Value("${cabin.recovery.enabled:false}")
     private boolean enabled;
 
-    @Value("${cabin.recovery.stateDir:/app/archives/cabin_event/.recovery}")
+    @Value("${cabin.recovery.stateDir:/app/recovery}")
     private String stateDir;
 
     /** The host writes every minute; five missed writes in a row is not a blip. */

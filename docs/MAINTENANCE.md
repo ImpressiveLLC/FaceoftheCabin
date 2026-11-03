@@ -2862,7 +2862,7 @@ trusted at face value.
 
 *Added 2026-11-03 (W-144). Design and every default decision: [`docs/governance/proposals/2026-11-03-recovery-heartbeat-service.md`](governance/proposals/2026-11-03-recovery-heartbeat-service.md). Use this section after any restart or outage, and whenever the Critical banner says "Recovery service not reporting".*
 
-**What it is.** `cabin-recovery-heartbeat` is a root systemd service on the M920q, outside Docker. After each host boot it runs the checklist below once and sends one summary push. Every 60 seconds it probes each component; five misses in a row (5 minutes) is a CRITICAL push and a Critical banner entry for that component, cleared automatically after two good beats, with a reminder after 1 hour and then every 6 hours. It pings an external dead-man URL each cycle and sends a "stopped on purpose" notice when it is stopped. It writes `/storage/archives/cabin_event/.recovery/state.json`, which `cabin-backend` reads for the banner and the Monitoring section "Recovery and heartbeats".
+**What it is.** `cabin-recovery-heartbeat` is a root systemd service on the M920q, outside Docker. After each host boot it runs the checklist below once and sends one summary push. Every 60 seconds it probes each component; five misses in a row (5 minutes) is a CRITICAL push and a Critical banner entry for that component, cleared automatically after two good beats, with a reminder after 1 hour and then every 6 hours. It pings an external dead-man URL each cycle and sends a "stopped on purpose" notice when it is stopped. It writes `/var/lib/cabin-recovery/state.json`, which `cabin-backend` reads for the banner and the Monitoring section "Recovery and heartbeats".
 
 **Run the recovery check by hand** (read-only, sends nothing; add `--notify` to also push the summary, which is also the way to test that a phone receives it):
 
@@ -2919,7 +2919,7 @@ sudo cabin-recovery-heartbeat check
 
 ```bash
 sudo systemctl daemon-reload && sudo systemctl enable --now cabin-recovery-heartbeat
-sudo systemctl status cabin-recovery-heartbeat --no-pager | head -5; sudo ls -l /storage/archives/cabin_event/.recovery/
+sudo systemctl status cabin-recovery-heartbeat --no-pager | head -5; sudo ls -l /var/lib/cabin-recovery/
 ```
 
 Then do one controlled reboot (`sudo reboot`) and expect exactly one "Cabin restarted" push about 3 to 5 minutes after boot and no "heartbeat STOPPED on purpose" push. That confirms the shutdown detection on this host; if a stop notice arrives at reboot, tell the session that built this before relying on it.
@@ -2952,7 +2952,7 @@ Either way, silence of about ten minutes alerts, repeats hourly, and says when i
 ```bash
 sudo useradd --create-home --shell /bin/bash --comment "read-only recovery monitor" cabin-monitor
 sudo install -d -m 700 -o cabin-monitor -g cabin-monitor /home/cabin-monitor/.ssh
-echo 'restrict,command="cat /storage/archives/cabin_event/.recovery/state.json /storage/archives/cabin_event/.recovery/report.txt" ssh-ed25519 <PUBLIC KEY> cabin-monitor' | sudo tee /home/cabin-monitor/.ssh/authorized_keys >/dev/null
+echo 'restrict,command="cat /var/lib/cabin-recovery/state.json /var/lib/cabin-recovery/report.txt" ssh-ed25519 <PUBLIC KEY> cabin-monitor' | sudo tee /home/cabin-monitor/.ssh/authorized_keys >/dev/null
 sudo chown cabin-monitor:cabin-monitor /home/cabin-monitor/.ssh/authorized_keys && sudo chmod 600 /home/cabin-monitor/.ssh/authorized_keys
 printf 'Match User cabin-monitor\n  PasswordAuthentication no\n  AllowTcpForwarding no\n  X11Forwarding no\n  PermitTTY no\nMatch LocalPort 2222\n  AllowUsers cabin-monitor\n  PermitRootLogin no\n  PasswordAuthentication no\n  KbdInteractiveAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/cabin-monitor.conf >/dev/null
 sudo sshd -t && sudo systemctl reload ssh
@@ -2996,7 +2996,9 @@ sudo ss -ltn | grep -E ':(22|2222) '
 ssh -T -i "$env:USERPROFILE\.ssh\cabin-monitor_ed25519" -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes cabin-monitor@100.77.44.113
 ```
 
-It prints the live component state (JSON) and the last boot check report, and nothing else: the key is forced to run one `cat` and has no shell, terminal or forwarding. It cannot run a new check or fix anything; for that, use the owner's Tailscale SSH (`ssh nate@nates-little-m920q.tailb20f8b.ts.net`). If live diagnostics are wanted later, add a sudoers entry limited to `cabin-recovery-heartbeat check` for this user rather than widening the key.
+It prints the live component state (JSON) and the last boot check report, and nothing else: the key is forced to run one `cat` and has no shell, terminal or forwarding. **Path change (2026-11-03, review fix):** the state folder moved from `/storage/archives/cabin_event/.recovery` to the root-only `/var/lib/cabin-recovery`. A host whose key was installed before the move updates the forced command once (safe to repeat): `sudo sed -i 's#/storage/archives/cabin_event/.recovery#/var/lib/cabin-recovery#g' /home/cabin-monitor/.ssh/authorized_keys`. An old `/storage/archives/cabin_event/.recovery` folder, if one exists, can be removed.
+
+It cannot run a new check or fix anything; for that, use the owner's Tailscale SSH (`ssh nate@nates-little-m920q.tailb20f8b.ts.net`). If live diagnostics are wanted later, add a sudoers entry limited to `cabin-recovery-heartbeat check` for this user rather than widening the key.
 
 *Backup.* The key is read-only and revocable, so losing the PC costs one regeneration, not an incident. An optional copy can go in the password manager as a Secure Note ("cabin-monitor SSH key"). Vaultwarden is not installed on the cabin host yet (the `vaultwarden` service in `docker-compose.m920q.yml` has not been deployed), so until it is, use whatever password manager Nate already uses, and if Vaultwarden is later hosted on the M920q remember it cannot be reached during a cabin outage, which makes it a backup only. Do not put the private key in git or in `ansible/group_vars/cabin/vault.yml` (that vault is for values templated into `.env`).
 

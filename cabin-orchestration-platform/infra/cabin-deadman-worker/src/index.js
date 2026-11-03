@@ -14,6 +14,7 @@
 // Secrets (set in the Cloudflare dashboard, never in this repo): HEARTBEAT_TOKEN, NTFY_TOPIC.
 // KV binding: HEARTBEAT_KV. Plain vars (wrangler.toml): NTFY_URL, SILENCE_MINUTES, REPEAT_MINUTES.
 //
+// STOP_MAX_MINUTES (default 24 h) bounds how long a deliberate stop mutes the alert.
 // Rules: a kind that has never pinged is never alerted (an unused platform ping is not nagged). Silence longer than
 // SILENCE_MINUTES (default 10) alerts once, then repeats every REPEAT_MINUTES (default 60). While the host kind is
 // silent the platform kind is not alerted separately (a dark cabin explains both). When pings resume, one "back"
@@ -23,7 +24,7 @@ const KINDS = ['host', 'platform'];
 // Workers KV's free tier allows 1000 writes a day. The host pings every minute, so a ping is stored at most once per
 // PING_WRITE_MS (well under the 10 minute silence threshold); /status ages are accurate to about that much.
 const PING_WRITE_MS = 4 * 60000;
-const DEFAULTS = { silenceMinutes: 10, repeatMinutes: 60, ntfyUrl: 'https://ntfy.sh' };
+const DEFAULTS = { silenceMinutes: 10, repeatMinutes: 60, stopMaxMinutes: 1440, ntfyUrl: 'https://ntfy.sh' };
 
 function num(v, d) {
   const n = Number(v);
@@ -36,6 +37,8 @@ function cfg(env) {
     // false-alert on a healthy, throttled host.
     silenceMs: Math.max(num(env.SILENCE_MINUTES, DEFAULTS.silenceMinutes) * 60000, 2 * PING_WRITE_MS),
     repeatMs: num(env.REPEAT_MINUTES, DEFAULTS.repeatMinutes) * 60000,
+    // A deliberate stop mutes the silence alert only this long. A forgotten stop must not hide a real outage.
+    stopMaxMs: num(env.STOP_MAX_MINUTES, DEFAULTS.stopMaxMinutes) * 60000,
     ntfyUrl: (env.NTFY_URL || DEFAULTS.ntfyUrl).replace(/\/+$/, ''),
   };
 }
@@ -86,7 +89,7 @@ const LABEL = {
 // One pass of the cron: decide, per kind, whether to alert, repeat, or say it is back. Exported for the tests.
 export async function evaluate(env, now, fetchImpl = fetch) {
   const kv = env.HEARTBEAT_KV;
-  const { silenceMs, repeatMs } = cfg(env);
+  const { silenceMs, repeatMs, stopMaxMs } = cfg(env);
   const hostLast = await readInt(kv, 'last:host');
   const hostSilent = hostLast != null && now - hostLast > silenceMs;
   const sent = [];
@@ -99,6 +102,17 @@ export async function evaluate(env, now, fetchImpl = fetch) {
       const ok = await notify(env, fetchImpl, 'info', `Cabin ${kind} is back`,
         `The ${LABEL[kind]} heartbeat is back after ${minutes(now - alert.since)}.`);
       if (ok) { await kv.delete(`alert:${kind}`); sent.push(`back:${kind}`); }
+      continue;
+    }
+    if (alert && alert.stopped) {
+      if (now - alert.since >= stopMaxMs) {
+        const ok = await notify(env, fetchImpl, 'critical', `Cabin ${kind} heartbeat still stopped`,
+          `The ${LABEL[kind]} heartbeat was stopped on purpose ${minutes(now - alert.since)} ago and has not resumed. Treating it as an outage from now on.`);
+        if (ok) {
+          await kv.put(`alert:${kind}`, JSON.stringify({ ...alert, stopped: false, notifiedAt: now }));
+          sent.push(`stopmax:${kind}`);
+        }
+      }
       continue;
     }
     if (!silent) continue;

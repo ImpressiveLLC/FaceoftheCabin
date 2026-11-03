@@ -23,6 +23,9 @@ RestartSec=15
 TimeoutStopSec=60
 Nice=5
 NoNewPrivileges=yes
+# /var/lib/cabin-recovery, root-owned and not writable by anyone else. cabin-backend sees it only through a read-only mount.
+StateDirectory=cabin-recovery
+StateDirectoryMode=0755
 PrivateTmp=yes
 
 [Install]

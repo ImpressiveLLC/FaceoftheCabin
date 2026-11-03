@@ -13,7 +13,8 @@
 #   3. Dead-man signals. Each cycle pings HB_DEADMAN_URL (an external monitor, healthchecks.io style) so that something
 #      OFF the host notices if this service or the whole host stops. A deliberate stop sends a "stopped on purpose" notice.
 #
-# State is a spool folder the backend reads (read-only bind mount semantics, same folder family as the storage trim agent):
+# State lives in a root-only folder the backend reads through a read-only bind mount. The service still treats everything it
+# reads back from there as untrusted, in case the folder is ever shared again:
 #   $HB_STATE_DIR/state.json       what the Critical banner and the Monitoring section show
 #   $HB_STATE_DIR/comp.tsv         per-component counters, so a service restart does not re-page
 #   $HB_STATE_DIR/clean-shutdown   written on a clean shutdown; its absence at boot means power loss or a crash
@@ -25,7 +26,10 @@
 # Install (Nate, once): docs/MAINTENANCE.md, "Recovery check".
 set -uo pipefail
 
-HB_STATE_DIR=${HB_STATE_DIR:-/storage/archives/cabin_event/.recovery}
+# A root-only host folder. It is mounted into cabin-backend READ-ONLY. It must never be inside a folder the container can
+# write (the old /storage/archives/cabin_event/.recovery was: a compromised backend could plant files this root service trusts).
+HB_STATE_DIR=${HB_STATE_DIR:-/var/lib/cabin-recovery}
+HB_STATE_DIR_UID=${HB_STATE_DIR_UID:-0}          # the uid that must own the folder (tests use their own)
 HB_INTERVAL=${HB_INTERVAL:-60}                  # seconds between heartbeat cycles
 HB_MISS_LIMIT=${HB_MISS_LIMIT:-5}               # consecutive missed beats before a component is CRITICAL (5 x 60 s = 5 min)
 HB_RECOVER_OKS=${HB_RECOVER_OKS:-2}             # consecutive good beats before "recovered"
@@ -132,14 +136,18 @@ notify() { # notify LEVEL TITLE MESSAGE
   esac
 }
 
-flush_outbox() { # resend what could not go out; drop anything older than a day
-  local f level title msg age now; now=$(now_epoch)
+flush_outbox() { # resend what could not go out; drop anything older than a day, and anything that is not a small regular file
+  local f level title msg age now stamp; now=$(now_epoch)
   [ -n "$HB_NTFY_TOPIC" ] || return 0
   for f in "$HB_STATE_DIR"/outbox/*; do
-    [ -f "$f" ] || continue
-    age=$(( now - $(basename "$f" | cut -d- -f1) ))
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    if [ ! -f "$f" ] || [ -L "$f" ] || [ "$(stat -c %s "$f" 2>/dev/null || echo 99999)" -gt 4096 ]; then rm -f -- "$f"; continue; fi
+    stamp=$(basename "$f"); stamp=${stamp%%-*}
+    if ! [[ "$stamp" =~ ^[0-9]{1,12}$ ]]; then rm -f -- "$f"; continue; fi
+    age=$(( now - stamp ))
     if [ "$age" -gt 86400 ]; then rm -f -- "$f"; continue; fi
     { read -r level; read -r title; read -r msg; } <"$f"
+    case $level in info|warn|critical) ;; *) rm -f -- "$f"; continue ;; esac
     if send_ntfy "$level" "$title (delayed ${age}s)" "$msg"; then rm -f -- "$f"; NOTIFY_RESULT=ok; LASTNOTIFY_AT=$now; else break; fi
   done
 }
@@ -349,11 +357,16 @@ mark_announced() { # mark_announced NAME NOW
   STATUS[$1]=down; MISSES[$1]=$HB_MISS_LIMIT; OKS[$1]=0; DOWNSINCE[$1]=$2; LASTPAGE[$1]=$2; PAGES[$1]=1; SUPP[$1]=0
 }
 
-load_comp() {
-  local f="$HB_STATE_DIR/comp.tsv" n st mi ok lo fm ds lp pg sp
+load_comp() { # every column is validated: these values go into bash arithmetic, so a planted row must never reach it
+  local f="$HB_STATE_DIR/comp.tsv" n st mi ok lo fm ds lp pg sp v bad
   [ -f "$f" ] && [ ! -L "$f" ] || return 0
   while IFS=$'\t' read -r n st mi ok lo fm ds lp pg sp; do
     [[ "$n" =~ ^[a-z0-9][a-z0-9-]*$ ]] || continue
+    [[ "$st" =~ ^(ok|down)$ ]] || continue
+    bad=0
+    for v in "$mi" "$ok" "$lo" "$fm" "$ds" "$lp" "$pg"; do [[ "$v" =~ ^[0-9]{1,12}$ ]] || bad=1; done
+    [[ "${sp:-0}" =~ ^[01]$ ]] || bad=1
+    [ "$bad" = 0 ] || continue
     STATUS[$n]=$st; MISSES[$n]=$mi; OKS[$n]=$ok; LASTOK[$n]=$lo; FIRSTMISS[$n]=$fm; DOWNSINCE[$n]=$ds; LASTPAGE[$n]=$lp; PAGES[$n]=$pg; SUPP[$n]=${sp:-0}
   done <"$f"
 }
@@ -550,9 +563,11 @@ boot_check() { # boot_check NOTIFY(0|1)
   local boot now c i
   boot=$(boot_epoch); BOOT_AT=$boot
   GAP_SECONDS=-1
+  [ "$1" = 1 ] && [ "$SERVICE_STATUS" = booting ] && write_state booting
   run_all_checks "$boot"
   if [ "$1" = 1 ] && ! all_clear && [ "$HB_BOOT_RETRY" -gt 0 ]; then
     log "boot check found problems; waiting ${HB_BOOT_RETRY}s and checking again"
+    [ "$SERVICE_STATUS" = booting ] && write_state booting   # keeps writtenAt fresh so the banner does not say "not reporting"
     sleep "$HB_BOOT_RETRY"
     run_all_checks "$boot"
   fi
@@ -625,7 +640,16 @@ cycle() {
 # ---- entry points -------------------------------------------------------------------------------------------------
 
 prep_state_dir() {
-  mkdir -p "$HB_STATE_DIR/outbox" && chmod 0755 "$HB_STATE_DIR" 2>/dev/null || { log "cannot create $HB_STATE_DIR"; return 1; }
+  local d=$HB_STATE_DIR owner mode go
+  if [ -L "$d" ]; then log "refusing $d: it is a symlink"; return 1; fi
+  mkdir -p "$d" 2>/dev/null || { log "cannot create $d"; return 1; }
+  owner=$(stat -c %u "$d" 2>/dev/null); mode=$(stat -c %a "$d" 2>/dev/null)
+  if [ "$owner" != "$HB_STATE_DIR_UID" ]; then log "refusing $d: owned by uid ${owner:-?}, expected $HB_STATE_DIR_UID"; return 1; fi
+  go="${mode: -2:1}${mode: -1}"
+  case $go in *[2367]*) log "refusing $d: writable by group or others (mode $mode)"; return 1 ;; esac
+  chmod 0755 "$d" 2>/dev/null
+  if [ -L "$d/outbox" ]; then log "refusing $d/outbox: it is a symlink"; return 1; fi
+  mkdir -p "$d/outbox" 2>/dev/null || { log "cannot create $d/outbox"; return 1; }
 }
 
 load_prev_shutdown() { # read the shutdown marker before anything rewrites state.json
@@ -641,7 +665,7 @@ cmd_run() {
   trap 'log "TERM received, exiting"; exit 0' TERM INT
   load_comp
   local resumed=false prior=""
-  [ -f "$HB_STATE_DIR/state.json" ] && prior=$(grep -o '"status":"[a-z-]*"' "$HB_STATE_DIR/state.json" | head -1)
+  [ -f "$HB_STATE_DIR/state.json" ] && [ ! -L "$HB_STATE_DIR/state.json" ] && prior=$(grep -o '"status":"[a-z-]*"' "$HB_STATE_DIR/state.json" | head -1)
   [ "$prior" = '"status":"stopped"' ] && resumed=true
   load_prev_shutdown
   SERVICE_STATUS=booting; BOOT_AT=$(boot_epoch)
@@ -690,7 +714,7 @@ cmd_stopped() {
   prep_state_dir || exit 0
   load_comp
   if systemctl list-jobs 2>/dev/null | grep -Eq '(shutdown|reboot|poweroff|halt|kexec)\.target'; then
-    : >"$HB_STATE_DIR/clean-shutdown"; chmod 0644 "$HB_STATE_DIR/clean-shutdown"
+    printf '' | write_atomic "$HB_STATE_DIR/clean-shutdown"
     write_state host-shutdown
     return 0
   fi
@@ -713,7 +737,7 @@ cmd_stopped() {
       [ -f "$cf" ] && [ ! -L "$cf" ] && lastc=$(cat "$cf" 2>/dev/null)
       [[ "$lastc" =~ ^[0-9]+$ ]] || lastc=0
       if [ $(( $(now_epoch) - lastc )) -lt "${HB_CRASH_NOTICE_EVERY:-600}" ]; then return 0; fi
-      now_epoch >"$cf"
+      now_epoch | write_atomic "$cf"
       notify warn "Cabin: heartbeat service crashed" "The recovery heartbeat service ended with '${SERVICE_RESULT}' and systemd will restart it. If this repeats, check: journalctl -u cabin-recovery-heartbeat."
       ;;
   esac
